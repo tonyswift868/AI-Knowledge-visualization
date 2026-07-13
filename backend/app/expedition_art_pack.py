@@ -34,7 +34,7 @@ from .orm import SessionLocal, init_orm
 ART_KINDS = ("portrait", "avatar", "skill_cutin", "skill_icon")
 ALLOWED_IMAGE_EXTENSIONS = {".webp": "image/webp", ".png": "image/png"}
 MAX_PACK_BYTES = 100 * 1024 * 1024
-MAX_FILES = 512
+MAX_FILES = 1024
 MAX_SINGLE_BYTES = 25 * 1024 * 1024
 MAX_TOTAL_BYTES = 300 * 1024 * 1024
 MAX_DEPTH = 10
@@ -47,6 +47,14 @@ ART_DIMENSION_RULES = {
     "skill_cutin": (256, 128, 4096, 2048),
     "skill_icon": (64, 64, 1024, 1024),
 }
+OFFICIAL_ART_KINDS = ("portrait", "battle_portrait", "avatar", "card_art", "skill_cutin", "skill_icon", "expression_neutral", "expression_smile", "expression_hurt", "expression_awaken", "core_prop")
+OFFICIAL_ART_DIMENSIONS = {
+    "portrait": (1024, 1536), "battle_portrait": (768, 1024), "avatar": (512, 512),
+    "card_art": (768, 1024), "skill_cutin": (1600, 600), "skill_icon": (256, 256),
+    "expression_neutral": (512, 512), "expression_smile": (512, 512), "expression_hurt": (512, 512),
+    "expression_awaken": (512, 512), "core_prop": (1024, 1024),
+}
+OFFICIAL_ALPHA_KINDS = set(OFFICIAL_ART_KINDS) - {"card_art", "skill_cutin"}
 MAX_COMPRESSION_RATIO = 200
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = PROJECT_ROOT / "content" / "expedition_art_packs"
@@ -268,6 +276,130 @@ def _manifest_assets(manifest: dict[str, Any], root: str, names: set[str]) -> tu
     return assets, metadata_paths
 
 
+
+def _validate_official_art_pack(
+    zf: zipfile.ZipFile,
+    infos: dict[str, zipfile.ZipInfo],
+    manifest: dict[str, Any],
+    manifest_raw: bytes,
+    manifest_path: str,
+    archive_name: str,
+) -> dict[str, Any]:
+    required = manifest.get("required_hero_ids")
+    if sorted(str(item) for item in (required or [])) != sorted(EXPECTED_HERO_IDS) or int(manifest.get("hero_count") or 0) != len(EXPECTED_HERO_IDS):
+        raise ArtPackError("ART_PACK_HERO_COVERAGE_INVALID", "official art pack must cover the current 24 runtime heroes")
+    if tuple(manifest.get("asset_kinds") or ()) != OFFICIAL_ART_KINDS:
+        raise ArtPackError("ART_PACK_ASSET_SCHEMA_INVALID", "official art pack asset kinds do not match the approved schema")
+    if not isinstance(manifest.get("assets"), list):
+        raise ArtPackError("ART_PACK_ASSETS_REQUIRED", "official art pack assets must be listed")
+    if "attribution.json" not in infos or "SHA256SUMS.json" not in infos:
+        raise ArtPackError("ART_PACK_PROVENANCE_REQUIRED", "official art pack requires attribution.json and SHA256SUMS.json")
+    try:
+        attribution = json.loads(_read_zip_file(zf, infos["attribution.json"]).decode("utf-8"))
+        checksum_doc = json.loads(_read_zip_file(zf, infos["SHA256SUMS.json"]).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ArtPackError("ART_PACK_PROVENANCE_INVALID", "official provenance files must be UTF-8 JSON") from exc
+    checksum_entries = checksum_doc.get("files") if isinstance(checksum_doc, dict) and isinstance(checksum_doc.get("files"), dict) else checksum_doc
+    if not isinstance(attribution, dict) or not isinstance(checksum_entries, dict):
+        raise ArtPackError("ART_PACK_PROVENANCE_INVALID", "official provenance files must contain JSON objects")
+    checksums = {}
+    for raw_path, raw_hash in checksum_entries.items():
+        path = _safe_member(str(raw_path))
+        value = raw_hash.get("sha256") if isinstance(raw_hash, dict) else raw_hash
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            raise ArtPackError("ART_PACK_CHECKSUM_INVALID", "invalid official SHA256 entry", details={"path": str(raw_path)})
+        checksums[path] = value.lower()
+
+    listed_files: set[str] = {"manifest.json", "attribution.json", "SHA256SUMS.json", "HERO_INDEX.md", "README_FOR_CODEX.md", "asset_quality_report.json", "portrait_contact_sheet.png", "face_diversity_contact_sheet.png"}
+    folder_order = manifest.get("folder_order") or []
+    if len(folder_order) != len(EXPECTED_HERO_IDS) or len(set(str(item) for item in folder_order)) != len(EXPECTED_HERO_IDS):
+        raise ArtPackError("ART_PACK_FOLDER_SCHEMA_INVALID", "official art pack folder order is invalid")
+    folder_by_hero = dict(zip(EXPECTED_HERO_IDS, (str(item) for item in folder_order)))
+    runtime_rows: list[dict[str, Any]] = []
+    metadata_paths: list[str] = []
+    metadata_by_hero: dict[str, dict[str, Any]] = {}
+    errors: list[dict[str, Any]] = []
+    expected_files: set[str] = set()
+    for entry in manifest["assets"]:
+        hero_id = str(entry.get("hero_id") or "")
+        kind = str(entry.get("asset_kind") or "")
+        files = entry.get("files")
+        if hero_id not in EXPECTED_HERO_IDS or kind not in OFFICIAL_ART_KINDS or not isinstance(files, list) or len(files) != 2:
+            errors.append({"entry": entry, "error": "invalid official asset entry"})
+            continue
+        for raw_path in files:
+            path = _safe_member(str(raw_path))
+            extension = PurePosixPath(path).suffix.lower()
+            if extension not in ALLOWED_IMAGE_EXTENSIONS or path not in infos:
+                errors.append({"path": path, "error": "missing or unsupported official asset"})
+                continue
+            if path in expected_files:
+                errors.append({"path": path, "error": "duplicate official asset"})
+                continue
+            if PurePosixPath(path).stem != kind:
+                errors.append({"path": path, "error": "invalid official asset path"})
+                continue
+            if PurePosixPath(path).parts[0] != folder_by_hero[hero_id]:
+                errors.append({"path": path, "error": "official asset is in the wrong hero folder"})
+                continue
+            expected_files.add(path)
+            listed_files.add(path)
+            image_bytes = _read_zip_file(zf, infos[path])
+            try:
+                image = _image_info(image_bytes, extension)
+                width, height = OFFICIAL_ART_DIMENSIONS[kind]
+                if (image["width"], image["height"]) != (width, height):
+                    raise ArtPackError("ART_PACK_DIMENSION_INVALID", "official image dimensions do not match schema", details={"path": path, "actual": [image["width"], image["height"]], "expected": [width, height]})
+                if kind in OFFICIAL_ALPHA_KINDS and not image["has_alpha"]:
+                    raise ArtPackError("ART_PACK_ALPHA_REQUIRED", "official transparent asset has no alpha channel", details={"path": path})
+                _reject_active_content(image_bytes, path)
+                if checksums.get(path) != _sha256(image_bytes):
+                    raise ArtPackError("ART_PACK_HASH_MISMATCH", "official asset SHA256 mismatch", details={"path": path})
+                if kind in ART_KINDS and extension == ".png":
+                    runtime_rows.append({"path": path, "hero_id": hero_id, "asset_kind": kind, "mime": ALLOWED_IMAGE_EXTENSIONS[extension], "width": image["width"], "height": image["height"], "has_alpha": image["has_alpha"], "sha256": _sha256(image_bytes), "metadata": {}})
+            except ArtPackError as exc:
+                errors.append({"path": path, "error": exc.message, "code": exc.code, "details": exc.details})
+
+    for index, hero_id in enumerate(EXPECTED_HERO_IDS):
+        folder = folder_by_hero[hero_id]
+        metadata_path = _safe_member(f"{folder}/metadata.json")
+        listed_files.add(metadata_path)
+        metadata_paths.append(metadata_path)
+        if metadata_path not in infos or metadata_path not in checksums:
+            errors.append({"path": metadata_path, "error": "missing official metadata"})
+            continue
+        metadata_bytes = _read_zip_file(zf, infos[metadata_path])
+        try:
+            _reject_active_content(metadata_bytes, metadata_path)
+            if checksums[metadata_path] != _sha256(metadata_bytes):
+                raise ArtPackError("ART_PACK_HASH_MISMATCH", "official metadata SHA256 mismatch", details={"path": metadata_path})
+            metadata = _validate_metadata(json.loads(metadata_bytes.decode("utf-8")), hero_id)
+            metadata_by_hero[hero_id] = metadata
+            for row in runtime_rows:
+                if row["hero_id"] == hero_id:
+                    row["metadata"] = metadata
+        except (UnicodeDecodeError, json.JSONDecodeError, ArtPackError) as exc:
+            errors.append({"path": metadata_path, "error": getattr(exc, "message", str(exc))})
+
+    required_pairs = len(EXPECTED_HERO_IDS) * len(OFFICIAL_ART_KINDS) * 2
+    if len(expected_files) != required_pairs or len(runtime_rows) != len(EXPECTED_HERO_IDS) * len(ART_KINDS):
+        errors.append({"error": "official asset coverage is incomplete", "expected_files": required_pairs, "actual_files": len(expected_files), "runtime_rows": len(runtime_rows)})
+    extras = sorted(set(infos) - listed_files)
+    if extras:
+        errors.append({"error": "official ZIP contains unlisted files", "paths": extras[:20]})
+    return {
+        "valid": not errors, "status": "VALIDATED" if not errors else "REJECTED", "archive_name": archive_name,
+        "pack_id": _safe_component(str(manifest.get("pack_id") or ""), "pack_id", PACK_COMPONENT_RE),
+        "version": _safe_component(str(manifest.get("version") or ""), "version", VERSION_RE),
+        "manifest": manifest, "manifest_hash": _sha256(manifest_raw), "root": "", "official_format": True,
+        "asset_count": len(expected_files), "runtime_asset_count": len(runtime_rows), "hero_count": len(metadata_by_hero),
+        "assets": runtime_rows, "all_files": sorted(expected_files | set(metadata_paths)),
+        "metadata_paths": metadata_paths, "metadata": metadata_by_hero, "attribution": attribution,
+        "checksums": checksums, "errors": errors, "checked_at": _now().isoformat(),
+        "fallback": {"available": True, "source": "generated_svg"},
+    }
+
+
 def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[str, Any]:
     if len(data) > MAX_PACK_BYTES:
         raise ArtPackError("ART_PACK_TOO_LARGE", "美术包超过 100 MB 限制")
@@ -305,6 +437,8 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
     pack_id = _safe_component(str(manifest.get("pack_id") or ""), "pack_id", PACK_COMPONENT_RE)
     version = _safe_component(str(manifest.get("version") or ""), "version", VERSION_RE)
     _reject_active_content(manifest_raw, manifest_path)
+    if manifest.get("asset_kinds"):
+        return _validate_official_art_pack(zf, infos, manifest, manifest_raw, manifest_path, archive_name)
     assets, metadata_paths = _manifest_assets(manifest, root, set(infos))
     allowed = {manifest_path}
     if root:
@@ -439,6 +573,7 @@ def install_preview(preview_id: str, confirm: bool = False) -> dict[str, Any]:
             allowed = {root + "manifest.json" if root else "manifest.json"}
             allowed.update({root + "attribution.json", root + "SHA256SUMS.json"} if root else {"attribution.json", "SHA256SUMS.json"})
             allowed.update(item["path"] for item in report["assets"])
+            allowed.update(report.get("all_files", []))
             allowed.update(report.get("metadata_paths", []))
             for info in zf.infolist():
                 if info.is_dir():

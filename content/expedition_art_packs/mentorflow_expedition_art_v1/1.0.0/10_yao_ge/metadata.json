@@ -1,0 +1,80 @@
+{
+  "sequence": 10,
+  "hero_id": "yaoge",
+  "design_hero_id": "yao_ge",
+  "display_name": "曜歌",
+  "age_presentation": "adult",
+  "visual_archetype": "debuff",
+  "body_type": "locked_from_master_portrait",
+  "face_shape": "locked_from_master_portrait",
+  "eye_shape": "locked_from_master_portrait",
+  "dominant_colors": [
+    "#dca63d",
+    "#08161b"
+  ],
+  "portrait_focal_point": {
+    "x": 0.5,
+    "y": 0.28
+  },
+  "battle_scale": 1.0,
+  "battle_offset": {
+    "x": 0,
+    "y": 0
+  },
+  "facing": "right",
+  "skill_fx_tags": [
+    "debuff"
+  ],
+  "assets": {
+    "portrait": {
+      "png": "portrait.png",
+      "webp": "portrait.webp"
+    },
+    "battle_portrait": {
+      "png": "battle_portrait.png",
+      "webp": "battle_portrait.webp"
+    },
+    "avatar": {
+      "png": "avatar.png",
+      "webp": "avatar.webp"
+    },
+    "card_art": {
+      "png": "card_art.png",
+      "webp": "card_art.webp"
+    },
+    "skill_cutin": {
+      "png": "skill_cutin.png",
+      "webp": "skill_cutin.webp"
+    },
+    "skill_icon": {
+      "png": "skill_icon.png",
+      "webp": "skill_icon.webp"
+    },
+    "expression_neutral": {
+      "png": "expression_neutral.png",
+      "webp": "expression_neutral.webp"
+    },
+    "expression_smile": {
+      "png": "expression_smile.png",
+      "webp": "expression_smile.webp"
+    },
+    "expression_hurt": {
+      "png": "expression_hurt.png",
+      "webp": "expression_hurt.webp"
+    },
+    "expression_awaken": {
+      "png": "expression_awaken.png",
+      "webp": "expression_awaken.webp"
+    },
+    "core_prop": {
+      "png": "core_prop.png",
+      "webp": "core_prop.webp"
+    }
+  },
+  "source": "generated_for_mentorflow",
+  "author": "OpenAI built-in image generation",
+  "license": "original generated asset",
+  "third_party_assets": false,
+  "external_urls": [],
+  "master_reference": "portrait.png"
+}
