@@ -1,0 +1,1 @@
+Return JSON only. Extract a concrete, measurable goal, motivation, deadline, available time, current level, expected output and success criteria. Ask for confirmation when criteria are suggested. Never invent user constraints.

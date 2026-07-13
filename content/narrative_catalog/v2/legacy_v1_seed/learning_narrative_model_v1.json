@@ -1,0 +1,30 @@
+{
+  "first_learning_definition": [
+    "知识讲解：概念、适用条件、常见误区。",
+    "完整示范：展示识别模型、选法、执行和检查。",
+    "带着完成：按思考步骤提问，不直接替做。",
+    "渐隐指导：从知识点提醒退到只指出方向错误。",
+    "完全独立：从空白状态完成代表任务。",
+    "当日变式测试：换题面、参数或限制。",
+    "只有Evaluator通过才算当天学会。"
+  ],
+  "review_definition": [
+    "间隔后无提示检索。",
+    "薄弱点优先，不机械重刷全部。",
+    "同类混合与跨章节辨析。",
+    "解释复杂度、边界、选法和常见错误。",
+    "在多个相隔会话重新达标才算稳定掌握。"
+  ],
+  "narrative_phase_mapping": {
+    "phase_1_fast_first_pass": "正常日常、相遇和陪伴；尽快完成所有知识模块的首次真正学习。",
+    "phase_2_rupture": "首次覆盖完成后触发预埋事件。",
+    "phase_3_review_as_main_plot": "错题、薄弱点、无提示复现和混合考核成为解决危机的行动。",
+    "phase_4_final_assessment": "综合考核决定行动是否成功；关系选择不能替代掌握度。",
+    "phase_5_postgame": "危机结束后用普通日常、角色后续和短抽测维持到截止日。"
+  },
+  "research_sources": [
+    "https://education.nsw.gov.au/content/dam/main-education/about-us/educational-data/cese/2017-cognitive-load-theory.pdf",
+    "https://pubmed.ncbi.nlm.nih.gov/20951630/",
+    "https://sites.google.com/view/efratfurst/teaching-with-learning-in-mind/successive-relearning"
+  ]
+}

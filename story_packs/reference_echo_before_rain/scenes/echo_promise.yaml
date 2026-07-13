@@ -1,0 +1,34 @@
+scene_id: echo_promise
+arc_id: echo_main
+scene_type: fixed_main_story
+story_order: 3
+speaker_lines:
+- line_id: echo_promise_line_1
+  speaker_id: lan
+  text: 我们做个交换。你把第一轮全部学完，我把这里最后一批档案整理完。
+  expression: neutral
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_promise_line_2
+  speaker_id: lan
+  text: 到时候，我们交换答案。谁都不许只交一半。
+  expression: smile
+  voice_profile_ref: lan_zh_soft
+background_ref: bg_night
+character_layers:
+- character_id: lan
+  expression: smile
+  asset_ref: lan_smile
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices: []
+next_scene_rules:
+- when: continue
+  target_scene_id: echo_first_pass
+learning_gate_ref: null
+safe_dynamic_slots:
+- first_pass_progress
+repeatable_daily: false
+immutable: true

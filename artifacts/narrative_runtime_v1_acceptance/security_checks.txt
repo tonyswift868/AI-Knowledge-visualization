@@ -1,0 +1,14 @@
+Security and consistency checks
+
+- Story Pack uses `yaml.safe_load`; no scripts, HTML or arbitrary code are executed.
+- Pack IDs are constrained; absolute paths, backslashes, `..`, script tags and javascript/data HTML references are rejected.
+- Scene, character, asset, learning gate, entry and ending references are validated.
+- Main anchor cycles and unreachable endings are rejected.
+- Declared pack checksum is compared with a canonical SHA-256 calculation.
+- Public Campaign responses remove true identity, false beliefs, secrets and forbidden speech.
+- Pass learning events require trusted sources (`evaluator`, `task_completion`, `system` or `test`).
+- Revision conflicts return HTTP 409 through the existing error envelope.
+- Campaigns lock both Story Pack version and checksum; changed pack metadata returns a conflict instead of silently changing active state.
+- API keys remain outside Narrative state, Story Packs, events, voice cache and response payloads.
+- FakeVoiceProvider stores only hashes and fallback metadata; no real audio or voice cloning is used.
+- Existing ZIP traversal, symlink, absolute path and encrypted archive security tests remain passing.

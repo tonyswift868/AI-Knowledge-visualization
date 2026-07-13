@@ -1,0 +1,16 @@
+story_pack_id: dev_fixture_minimal
+version: 1.0.0
+title: DEV FIXTURE — Narrative Runtime Minimal
+source_work: internal-dev-fixture
+source_version: 1
+language: zh-CN
+minimum_runtime_version: 1.0.0
+supported_duration_days: [1, 7]
+content_rating: dev-fixture
+entry_scene_id: dev_intro
+ending_scene_ids: [dev_assessment, dev_postgame]
+checksum: sha256:f9e6ac7d816b4421eec9f7dcd5c792a6e9626f33518b01a33cd0d8a9952b68bb
+created_at: '2026-07-12T00:00:00Z'
+provenance_notes:
+  - DEV FIXTURE — NOT PRODUCTION STORY ASSET
+  - All characters, lines, backgrounds and voice references are anonymous test placeholders.

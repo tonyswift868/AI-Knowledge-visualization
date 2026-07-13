@@ -1,0 +1,25 @@
+bindings:
+  - binding_id: dev_gate
+    story_anchor_id: dev_learning
+    required_learning_phase: independent_completion
+    required_plan_item_ids: []
+    required_mastery_status: verified
+    required_review_status: any
+    minimum_independent_passes: 1
+    allowed_hint_level: reduced
+    assessment_requirement: independent_problem_passed
+    on_pass_event: dev_learning_passed
+    on_fail_event: dev_learning_failed
+    on_delay_event: dev_learning_delayed
+  - binding_id: dev_assessment_gate
+    story_anchor_id: dev_assessment
+    required_learning_phase: daily_variant_test
+    required_plan_item_ids: []
+    required_mastery_status: verified
+    required_review_status: any
+    minimum_independent_passes: 1
+    allowed_hint_level: none
+    assessment_requirement: daily_variant_test
+    on_pass_event: dev_assessment_passed
+    on_fail_event: dev_assessment_failed
+    on_delay_event: dev_assessment_delayed

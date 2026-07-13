@@ -1,0 +1,12 @@
+[
+  {"adapter_id":"question_bank","version":"1.0.0","task_shapes":["large_question_bank","mixed"],"artifact":"answer_set","story_object":"archive_report"},
+  {"adapter_id":"memory_drill","version":"1.0.0","task_shapes":["memory_drill","interview_memory"],"artifact":"summary","story_object":"identity_proof"},
+  {"adapter_id":"concept_learning","version":"1.0.0","task_shapes":["concept_course","general_concepts"],"artifact":"explanation","story_object":"research_note"},
+  {"adapter_id":"coding_practice","version":"1.0.0","task_shapes":["coding_practice"],"artifact":"code","story_object":"system_patch"},
+  {"adapter_id":"practical_project","version":"1.0.0","task_shapes":["practical_project"],"artifact":"project_plan","story_object":"route_plan"},
+  {"adapter_id":"language_learning","version":"1.0.0","task_shapes":["language_acquisition"],"artifact":"translation","story_object":"translated_message"},
+  {"adapter_id":"evidence_argument","version":"1.0.0","task_shapes":["case_analysis","evidence_network"],"artifact":"argument","story_object":"testimony_analysis"},
+  {"adapter_id":"long_form_creation","version":"1.0.0","task_shapes":["long_form_creation"],"artifact":"creative_draft","story_object":"research_note"},
+  {"adapter_id":"exam_cram","version":"1.0.0","task_shapes":["exam_cram"],"artifact":"answer_set","story_object":"risk_model"},
+  {"adapter_id":"mixed_learning","version":"1.0.0","task_shapes":["mixed"],"artifact":"summary","story_object":"archive_report"}
+]

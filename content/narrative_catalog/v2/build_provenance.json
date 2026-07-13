@@ -1,0 +1,8 @@
+{
+  "build_script": "build_narrative_catalog_v2.py",
+  "source_csv_filename": "source_steam_games_full.csv",
+  "source_csv_sha256": "7b3761a7891316d341f8d673e133f8f949cff8b66e81fbea2bf3be29920cd96e",
+  "source_csv_size_bytes": 82918443,
+  "v1_jsonl_sha256": "1f8655878fd1b4410989e4b1bb90009fad6a33b61ec2e490beccc52beb33a006",
+  "selection_code_version": "2.0.0"
+}

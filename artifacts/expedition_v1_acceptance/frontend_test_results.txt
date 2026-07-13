@@ -1,0 +1,2 @@
+PASS: frontend Vitest — 4 test files, 46 tests passed.
+PASS: clean-install dependency graph includes Phaser 3.90.0 exact version.

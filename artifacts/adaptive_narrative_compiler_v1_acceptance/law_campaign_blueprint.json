@@ -1,0 +1,9 @@
+{
+  "story_pack_id":"reference_echo_before_rain",
+  "coupling_mode":"strong",
+  "fusion_adapter_ids":["evidence_argument"],
+  "artifact_story_mappings":[{"artifact_type":"argument","object_type":"testimony_analysis"}],
+  "fixed_anchor_policy":"same Story Pack anchors and gates as LeetCode; only task semantics and scene contract differ",
+  "scene_contract":{"required_artifact_type":"argument","story_object_type":"testimony_analysis","story_action":"compare_testimony","world_change_on_pass":["unlock_record_comparison"]},
+  "later_reference":"review can reopen weak evidence and final pass maps to decision_memo"
+}

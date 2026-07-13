@@ -1,0 +1,1 @@
+Return JSON only with goal_clarity, source_sufficiency, estimated_total_minutes, available_total_minutes, risk_level, risks, missing_materials and recommendations. If time is insufficient, state the deficit and provide extend, reduce-scope and add-time options.

@@ -1,0 +1,24 @@
+{
+  "background_pool_or_template_every": 100,
+  "baseline_curve": "0.10*M + 0.000002*M^2 (calibration only; simulator adjusts)",
+  "boss_every": 10,
+  "chapter_mechanism_every": 50,
+  "composition": [
+    "enemy_archetype",
+    "formation_template",
+    "chapter_theme",
+    "stage_affix",
+    "boss_template",
+    "seed"
+  ],
+  "infinite": true,
+  "milestone_every": 500,
+  "sample_stage_seeds": {
+    "1": 1713984130,
+    "10": 1076261465,
+    "100": 1549468744,
+    "1000": 807667161,
+    "10000": 699996930,
+    "50": 1657238686
+  }
+}

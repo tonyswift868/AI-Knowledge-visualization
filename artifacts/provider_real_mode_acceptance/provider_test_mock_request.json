@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "url": "https://mock.deepseek.test/v1/chat/completions",
+  "headers": {
+    "authorization": "Bearer [REDACTED]",
+    "content-type": "application/json"
+  },
+  "payload": {
+    "model": "mock-deepseek",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Respond with exactly OK."
+      }
+    ],
+    "temperature": 0
+  }
+}

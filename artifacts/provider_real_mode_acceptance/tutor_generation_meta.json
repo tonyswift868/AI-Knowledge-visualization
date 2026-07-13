@@ -1,0 +1,9 @@
+{
+  "mode": "real",
+  "provider": "openai_compatible",
+  "model": "mock-deepseek",
+  "provider_session_id": "ps_r3Mt0E53rq6b5fkF",
+  "request_id": "req_4d92d0c37f2b56a48160",
+  "latency_ms": 1,
+  "fallback_used": false
+}

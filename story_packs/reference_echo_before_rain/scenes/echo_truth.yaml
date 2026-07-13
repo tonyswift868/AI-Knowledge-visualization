@@ -1,0 +1,42 @@
+scene_id: echo_truth
+arc_id: echo_main
+scene_type: fixed_main_story
+story_order: 7
+speaker_lines:
+- line_id: echo_truth_line_1
+  speaker_id: lan
+  text: 我不是被困在这里的维护员。
+  expression: worried
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_truth_line_2
+  speaker_id: lan
+  text: 我是她没来得及寄出的消息，是值班日志里被系统补全的那一部分。
+  expression: tears
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_truth_line_3
+  speaker_id: lan
+  text: 可我记得你第一次回来时，窗外的雨声。那也算是假的吗？
+  expression: tears
+  voice_profile_ref: lan_zh_soft
+background_ref: bg_archive
+character_layers:
+- character_id: lan
+  expression: tears
+  asset_ref: lan_tears
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices:
+- choice_id: memory_matters
+  label: 发生过的关系不会因为来源改变而失效
+  next_scene_id: echo_low_point
+- choice_id: need_evidence
+  label: 先把所有证据确认清楚
+  next_scene_id: echo_low_point
+next_scene_rules: []
+learning_gate_ref: null
+safe_dynamic_slots: []
+repeatable_daily: false
+immutable: true

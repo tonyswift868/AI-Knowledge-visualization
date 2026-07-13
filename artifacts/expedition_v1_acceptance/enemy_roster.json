@@ -1,0 +1,311 @@
+[
+  {
+    "active": [
+      {
+        "max_hp_ratio": 0.12,
+        "op": "shield",
+        "target": "self"
+      },
+      {
+        "op": "apply_status",
+        "stacks": 1,
+        "status": "taunt",
+        "target": "front"
+      }
+    ],
+    "enemy_id": "shield_guard",
+    "name": "盾卫",
+    "role": "tank",
+    "stats": {
+      "ATK": 62,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.04,
+      "DEF": 70,
+      "DODGE": 0.02,
+      "HIT": 0.04,
+      "HP": 820
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 0.72,
+        "op": "direct_damage",
+        "target": "row"
+      }
+    ],
+    "enemy_id": "row_crossbow",
+    "name": "横排弩手",
+    "role": "ranged",
+    "stats": {
+      "ATK": 80,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.07,
+      "DEF": 42,
+      "DODGE": 0.04,
+      "HIT": 0.08,
+      "HP": 560
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 1.35,
+        "op": "direct_damage",
+        "target": "last_ally"
+      }
+    ],
+    "enemy_id": "rear_assassin",
+    "name": "后排刺客",
+    "role": "assassin",
+    "stats": {
+      "ATK": 92,
+      "CRIT_DAMAGE": 1.55,
+      "CRIT_RATE": 0.12,
+      "DEF": 36,
+      "DODGE": 0.1,
+      "HIT": 0.1,
+      "HP": 500
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 0.62,
+        "op": "direct_damage",
+        "target": "two_random"
+      },
+      {
+        "op": "apply_status",
+        "stacks": 1,
+        "status": "burn",
+        "target": "two_random"
+      }
+    ],
+    "enemy_id": "fire_bomber",
+    "name": "火瓶手",
+    "role": "burn",
+    "stats": {
+      "ATK": 74,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.05,
+      "DEF": 40,
+      "DODGE": 0.03,
+      "HIT": 0.06,
+      "HP": 580
+    }
+  },
+  {
+    "active": [
+      {
+        "count": 3,
+        "effect": {
+          "multiplier": 0.45,
+          "op": "direct_damage",
+          "target": "random_ally"
+        },
+        "op": "repeat"
+      },
+      {
+        "op": "apply_status",
+        "stacks": 1,
+        "status": "poison",
+        "target": "random_allies"
+      }
+    ],
+    "enemy_id": "poison_needle",
+    "name": "毒针客",
+    "role": "poison",
+    "stats": {
+      "ATK": 72,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.04,
+      "DEF": 40,
+      "DODGE": 0.04,
+      "HIT": 0.07,
+      "HP": 560
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 0.64,
+        "op": "direct_damage",
+        "target": "row"
+      },
+      {
+        "op": "chance",
+        "probability": 0.14,
+        "then": {
+          "op": "apply_status",
+          "stacks": 1,
+          "status": "freeze"
+        }
+      }
+    ],
+    "enemy_id": "ice_caster",
+    "name": "冰术师",
+    "role": "control",
+    "stats": {
+      "ATK": 76,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.05,
+      "DEF": 38,
+      "DODGE": 0.04,
+      "HIT": 0.08,
+      "HP": 540
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 0.9,
+        "op": "direct_damage",
+        "target": "front"
+      },
+      {
+        "op": "chance",
+        "probability": 0.16,
+        "then": {
+          "op": "apply_status",
+          "stacks": 1,
+          "status": "stun"
+        }
+      }
+    ],
+    "enemy_id": "shock_trooper",
+    "name": "震击兵",
+    "role": "stun",
+    "stats": {
+      "ATK": 70,
+      "CRIT_DAMAGE": 1.45,
+      "CRIT_RATE": 0.05,
+      "DEF": 56,
+      "DODGE": 0.03,
+      "HIT": 0.08,
+      "HP": 720
+    }
+  },
+  {
+    "active": [
+      {
+        "count": 2,
+        "op": "heal",
+        "power": 0.8,
+        "target": "lowest_allies"
+      }
+    ],
+    "enemy_id": "field_medic",
+    "name": "军医",
+    "role": "healer",
+    "stats": {
+      "ATK": 55,
+      "CRIT_DAMAGE": 1.4,
+      "CRIT_RATE": 0.03,
+      "DEF": 48,
+      "DODGE": 0.03,
+      "HIT": 0.05,
+      "HP": 600
+    }
+  },
+  {
+    "active": [
+      {
+        "count": 1,
+        "op": "cleanse",
+        "target": "allies"
+      }
+    ],
+    "enemy_id": "cleanser",
+    "name": "净化师",
+    "role": "cleanse",
+    "stats": {
+      "ATK": 58,
+      "CRIT_DAMAGE": 1.4,
+      "CRIT_RATE": 0.03,
+      "DEF": 50,
+      "DODGE": 0.03,
+      "HIT": 0.06,
+      "HP": 620
+    }
+  },
+  {
+    "active": [
+      {
+        "amount": 18,
+        "count": 2,
+        "op": "modify_energy",
+        "target": "lowest_allies"
+      }
+    ],
+    "enemy_id": "drummer",
+    "name": "鼓手",
+    "role": "energy",
+    "stats": {
+      "ATK": 60,
+      "CRIT_DAMAGE": 1.4,
+      "CRIT_RATE": 0.04,
+      "DEF": 42,
+      "DODGE": 0.04,
+      "HIT": 0.06,
+      "HP": 580
+    }
+  },
+  {
+    "active": [
+      {
+        "amount": 0.16,
+        "duration": 1,
+        "op": "modify_stat",
+        "stat": "DAMAGE_REDUCTION",
+        "target": "self"
+      },
+      {
+        "max_triggers": 3,
+        "multiplier": 0.35,
+        "op": "counter",
+        "target": "direct_attackers"
+      }
+    ],
+    "enemy_id": "counter_guard",
+    "name": "反击卫",
+    "role": "counter",
+    "stats": {
+      "ATK": 65,
+      "CRIT_DAMAGE": 1.4,
+      "CRIT_RATE": 0.04,
+      "DEF": 64,
+      "DODGE": 0.02,
+      "HIT": 0.05,
+      "HP": 760
+    }
+  },
+  {
+    "active": [
+      {
+        "multiplier": 1.0,
+        "op": "direct_damage",
+        "target": "front"
+      }
+    ],
+    "enemy_id": "bomb_golem",
+    "name": "爆破傀儡",
+    "on_death": [
+      {
+        "multiplier": 0.5,
+        "op": "direct_damage",
+        "target": "adjacent"
+      }
+    ],
+    "role": "burst",
+    "stats": {
+      "ATK": 72,
+      "CRIT_DAMAGE": 1.4,
+      "CRIT_RATE": 0.03,
+      "DEF": 58,
+      "DODGE": 0.01,
+      "HIT": 0.05,
+      "HP": 850
+    }
+  }
+]

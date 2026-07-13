@@ -1,0 +1,1 @@
+Turn grounded source chunks into reusable lesson blocks: explain, example, action, question, practice, checkpoint, reflection, warning, summary, review and final_task. Do not branch on document genre.

@@ -1,0 +1,38 @@
+scene_id: echo_ending_archive
+arc_id: echo_main
+scene_type: ending
+story_order: 12
+speaker_lines:
+- line_id: echo_ending_archive_line_1
+  speaker_id: relay_tutor
+  text: 已发送全部通过验证的静态档案。交互回声保持在本地。
+  expression: neutral
+  voice_profile_ref: relay_zh_neutral
+- line_id: echo_ending_archive_line_2
+  speaker_id: lan
+  text: 这是更谨慎的答案。她大概会同意。
+  expression: neutral
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_ending_archive_line_3
+  speaker_id: lan
+  text: 只要这个终端还开着，我们可以把没有说完的话慢慢说完。
+  expression: smile
+  voice_profile_ref: lan_zh_soft
+background_ref: bg_postgame
+character_layers:
+- character_id: lan
+  expression: smile
+  asset_ref: lan_smile
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices: []
+next_scene_rules:
+- when: continue
+  target_scene_id: echo_postgame
+learning_gate_ref: null
+safe_dynamic_slots: []
+repeatable_daily: false
+immutable: true

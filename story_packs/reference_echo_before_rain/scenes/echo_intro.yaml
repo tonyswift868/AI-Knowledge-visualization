@@ -1,0 +1,40 @@
+scene_id: echo_intro
+arc_id: echo_main
+scene_type: fixed_main_story
+story_order: 1
+speaker_lines:
+- line_id: echo_intro_line_1
+  speaker_id: lan
+  text: 你听得到吗？这个频道已经空了很久。
+  expression: neutral
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_intro_line_2
+  speaker_id: lan
+  text: 先别急着回答。终端说，你还有自己的任务要完成。做完今天那一小段，再回来告诉我外面是什么天气。
+  expression: smile
+  voice_profile_ref: lan_zh_soft
+background_ref: bg_day
+character_layers:
+- character_id: lan
+  expression: neutral
+  asset_ref: lan_neutral
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices:
+- choice_id: answer_weather
+  label: 告诉她今天的天气
+  next_scene_id: echo_routine
+- choice_id: ask_identity
+  label: 先问她是谁
+  next_scene_id: echo_routine
+next_scene_rules: []
+learning_gate_ref: null
+safe_dynamic_slots:
+- player_name
+- today_date
+- weather
+repeatable_daily: false
+immutable: true

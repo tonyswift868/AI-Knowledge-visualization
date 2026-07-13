@@ -1,0 +1,6 @@
+PASS - pytest backend/tests -q: 100 passed, 1 warning.
+PASS - Story Catalog matching tests: 4 passed; 3 results, READY/PACK_REQUIRED split, profile rematch, diversity, and fake mode verified.
+PASS - pytest backend/tests/test_adaptive_narrative.py -q: 4 passed, 1 warning.
+PASS - scripts/migrate.ps1: Alembic upgrade head completed through 0009_story_object_campaign_scope.
+PASS - scripts/smoke_test.py: workspace -> source -> goal -> feasibility -> fake plan -> activate -> tutor -> evaluate -> complete -> progress -> replan.
+PASS - scripts/security_smoke.py: root rejection, preview confirmation, key redaction path.

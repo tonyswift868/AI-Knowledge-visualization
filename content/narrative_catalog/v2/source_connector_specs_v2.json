@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "runtime_network_policy": "offline_by_default",
+  "connectors": [
+    {
+      "connector_id": "bundled_steam_candidate_snapshot",
+      "mode": "bundled_snapshot",
+      "enabled_for_runtime": true,
+      "purpose": "Broad candidate discovery using metadata and narrative tags.",
+      "input": "candidate_index_9959.jsonl",
+      "notes": "This package bundles derived metadata records only; it does not bundle scripts or store descriptions."
+    },
+    {
+      "connector_id": "vndb_kana_background_updater",
+      "mode": "background_catalog_update",
+      "enabled_for_runtime": false,
+      "base_url": "https://api.vndb.org/kana",
+      "resource": "/vn",
+      "method": "POST",
+      "usage_boundary": "Candidate discovery and metadata refresh only. Never recreate a script from VNDB summaries.",
+      "rate_limit_note": "Respect VNDB published rate limits and non-commercial API terms.",
+      "fields_hint": "id,title,alttitle,released,languages,platforms,length_minutes,length_votes,tags,developers"
+    },
+    {
+      "connector_id": "ifdb_archive_background_updater",
+      "mode": "background_archive_import",
+      "enabled_for_runtime": false,
+      "archive_index": "https://ifarchive.org/indexes/if-archive/info/ifdb/",
+      "usage_boundary": "Interactive-fiction candidate discovery only; upgrade to curated DNA requires source verification."
+    },
+    {
+      "connector_id": "manual_curator_submission",
+      "mode": "reviewed_import",
+      "enabled_for_runtime": false,
+      "required_artifacts": [
+        "source_evidence",
+        "full_dna_card",
+        "continuity_review",
+        "rights_notes"
+      ]
+    }
+  ]
+}

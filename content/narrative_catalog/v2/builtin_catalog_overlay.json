@@ -1,0 +1,41 @@
+{
+  "catalog_id": "builtin:reference_echo_before_rain",
+  "record_tier": "curated_dna",
+  "title": "雨停之前的回声",
+  "title_original": "Echo Before the Rain",
+  "source_platform": "builtin",
+  "source_url": null,
+  "release_date": "2026-07-12",
+  "narrative_signals": [
+    "companionship",
+    "ordinary_then_rupture",
+    "first_pass_then_review",
+    "postgame"
+  ],
+  "genres": [
+    "interactive fiction",
+    "visual novel",
+    "learning narrative"
+  ],
+  "tags": [
+    "emotional",
+    "real-time companion",
+    "review crisis",
+    "multiple endings"
+  ],
+  "review_category": "built-in-reference",
+  "review_count": 0,
+  "narrative_score": 92,
+  "interaction_score": 94,
+  "quality_score": 88,
+  "curation_priority": 100,
+  "discovery_tier": "builtin",
+  "curation_status": "curated",
+  "story_pack_status": "ready",
+  "story_pack_id": "reference_echo_before_rain",
+  "duration_days": [
+    7,
+    60
+  ],
+  "content_rating": "general"
+}

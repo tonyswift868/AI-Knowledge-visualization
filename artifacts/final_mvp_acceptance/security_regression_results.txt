@@ -1,0 +1,4 @@
+Result: PASS
+scripts/security_smoke.py: root rejection, archive preview confirmation, and API key redaction path passed.
+Story Pack tests: asset path traversal rejected; future-stage character knowledge filtered; wrong voice asset kinds rejected.
+E2E: malicious ZIP traversal rejected before source import.

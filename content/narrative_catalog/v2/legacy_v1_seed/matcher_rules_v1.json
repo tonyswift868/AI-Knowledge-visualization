@@ -1,0 +1,22 @@
+{
+  "principle": "故事质量决定是否入库；运行时适配度决定本次是否使用。DNA用于检索，不用于临场拼接完整主线。",
+  "hard_filters": [
+    "内容警告与用户年龄/偏好兼容",
+    "任务周期可安全适配",
+    "资产与交互形态可实现",
+    "避免近期剧情指纹高度重复"
+  ],
+  "weighted_score": {
+    "story_quality": 0.3,
+    "first_pass_review_fit": 0.2,
+    "interaction_fit": 0.14,
+    "duration_fit": 0.1,
+    "user_preference_fit": 0.1,
+    "task_fit": 0.08,
+    "asset_feasibility": 0.08,
+    "adaptation_risk_penalty": -0.12
+  },
+  "diversity_rule": "默认返回三个候选，玩家身份、关系引擎、时间机制、信息结构至少三项不同。",
+  "runtime_rule": "选择作品后必须加载独立Story Pack；缺包返回PACK_REQUIRED，不允许LLM重建原作剧情。",
+  "network_rule": "运行时匹配不联网；新增作品须经过采集、核验、结构化与版本发布。"
+}

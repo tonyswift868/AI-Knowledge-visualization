@@ -1,0 +1,14 @@
+backend/app/catalog_repository.py
+backend/app/learning_evaluator.py
+backend/app/learning_run.py
+backend/app/main.py
+backend/app/narrative_runtime.py
+backend/app/orm.py
+backend/app/story_pack.py
+backend/alembic/versions/0007_learning_run_idempotency.py
+backend/tests/test_learning_run.py
+backend/tests/test_narrative_runtime.py
+frontend/e2e/demo.spec.ts
+frontend/src/App.tsx
+frontend/src/styles/grounding-fixes.css
+scripts/test.ps1

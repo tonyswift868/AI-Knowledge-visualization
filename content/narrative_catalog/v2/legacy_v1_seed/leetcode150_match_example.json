@@ -1,0 +1,36 @@
+{
+  "task": "2026-07-13至2026-08-15，掌握LeetCode热门150题",
+  "learning_assumption": "每天为讲解→完整示范→带做→渐隐指导→独立完成→当日变式测试。",
+  "top_matches": [
+    {
+      "entry_id": "oneshot",
+      "score": 98,
+      "reason": "原生具有首轮结局、系统异常和真路线记忆结构，直接对应首次学习→复习→真结局。"
+    },
+    {
+      "entry_id": "little_busters",
+      "score": 95,
+      "reason": "团队日常建立陪伴，真路线强调从被帮助到独立承担，适合教学支架渐隐。"
+    },
+    {
+      "entry_id": "steins_gate",
+      "score": 93,
+      "reason": "技术社团日常、中期危机、反复修正和跨知识回收适合34天计划。"
+    },
+    {
+      "entry_id": "gnosia",
+      "score": 92,
+      "reason": "短循环天然适配间隔复习与每日混合抽测。"
+    },
+    {
+      "entry_id": "aliya_timelink",
+      "score": 90,
+      "reason": "陪伴和自由互动最强，算法学习可作为玩家侧通信权限。"
+    }
+  ],
+  "phase_ratio": {
+    "first_pass": "约14—18天，按每日时间与基础动态调整",
+    "review_story": "约10—14天",
+    "final_postgame": "约3—6天"
+  }
+}

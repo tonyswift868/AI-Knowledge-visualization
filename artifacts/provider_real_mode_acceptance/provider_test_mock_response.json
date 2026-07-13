@@ -1,0 +1,16 @@
+{
+  "provider_session_id": "ps_r3Mt0E53rq6b5fkF",
+  "provider": "openai_compatible",
+  "base_url_host": "mock.deepseek.test",
+  "model_requested": "mock-deepseek",
+  "model_reported": "mock-deepseek",
+  "verified": true,
+  "expires_at": "2026-07-12T15:18:51.660006+00:00",
+  "last_tested_at": "2026-07-12T14:48:51.662322+00:00",
+  "latency_ms": 1,
+  "last_error_code": null,
+  "request_id": "req_c3c68a5bd2145ccf9ca3",
+  "ok": true,
+  "mode": "real",
+  "fallback_used": false
+}

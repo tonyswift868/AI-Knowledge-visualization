@@ -1,0 +1,43 @@
+{
+  "authority": "server BattleEngine; frontend only renders append-only events",
+  "event_types": [
+    "BATTLE_END",
+    "BATTLE_START",
+    "CLEANSE",
+    "COUNTER",
+    "CRITICAL",
+    "DAMAGE",
+    "DISPEL",
+    "DODGE",
+    "ENERGY_CHANGE",
+    "HEAL",
+    "INITIATIVE_ROLL",
+    "MISS",
+    "NORMAL_ATTACK",
+    "ROUND_END",
+    "ROUND_START",
+    "SHIELD_ABSORB",
+    "SHIELD_BREAK",
+    "SHIELD_GAIN",
+    "SKILL_CAST",
+    "STATUS_APPLY",
+    "STATUS_REMOVE",
+    "STATUS_TICK",
+    "TAUNT",
+    "TURN_START",
+    "UNIT_DEATH"
+  ],
+  "fields": {
+    "actor_id": "string",
+    "animation_hint": "string",
+    "event_index": "integer",
+    "is_critical": "boolean",
+    "is_miss": "boolean",
+    "numeric_values": "object",
+    "rng_trace": "object",
+    "source_skill_id": "string",
+    "status_ids": "string[]",
+    "target_ids": "string[]",
+    "timestamp_offset": "integer"
+  }
+}

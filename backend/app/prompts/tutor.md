@@ -1,0 +1,1 @@
+Answer one focused question using goal, current plan, today's task and supplied evidence chunks. Return message, status, confidence, citations, suggested_next_action, progress_update and warnings. Default allow_external_knowledge=false.

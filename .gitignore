@@ -1,0 +1,31 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.pid
+*.log
+
+# Local runtime databases and private user data
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/preset_settings.json
+data/presets/*
+data/uploads/*
+data/local_import_snapshots/*
+data/archive_previews/*
+
+# Local dependencies and generated frontend output
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Local attachments, backups, and test output
+_codex_inputs/
+backups/
+test-results/
+playwright-report/
+artifacts/pre_completion_backup/
+
+# Local handoff document; do not publish with the project
+CODEX_MENTORFLOW_ACCEPTANCE_REPORT_FOR_GPT.md

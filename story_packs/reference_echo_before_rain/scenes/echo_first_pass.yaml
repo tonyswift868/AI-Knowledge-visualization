@@ -1,0 +1,29 @@
+scene_id: echo_first_pass
+arc_id: echo_main
+scene_type: learning_session
+story_order: 4
+speaker_lines:
+- line_id: echo_first_pass_line_1
+  speaker_id: relay_tutor
+  text: 首次覆盖尚未完成。完成全部核心模块的讲解、示范、带做、独立完成和当日变式测试后，频道将继续。
+  expression: neutral
+  voice_profile_ref: relay_zh_neutral
+background_ref: bg_night
+character_layers:
+- character_id: lan
+  expression: neutral
+  asset_ref: lan_neutral
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices: []
+next_scene_rules:
+- when: learning_gate_passed
+  target_scene_id: echo_rupture
+learning_gate_ref: gate_first_pass
+safe_dynamic_slots:
+- first_pass_progress
+repeatable_daily: false
+immutable: true

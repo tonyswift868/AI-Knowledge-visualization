@@ -1,0 +1,9 @@
+{
+  "story_pack_id":"reference_echo_before_rain",
+  "coupling_mode":"weak",
+  "fusion_adapter_ids":["coding_practice"],
+  "artifact_story_mappings":[{"artifact_type":"code","object_type":"system_patch"}],
+  "fixed_anchor_policy":"bind existing anchors; never rewrite Story Pack canon",
+  "scene_contract":{"required_artifact_type":"code","story_object_type":"system_patch","story_action":"diagnose_failure","world_change_on_pass":["unlock_relay_diagnostic","record_patch_boundary"]},
+  "later_reference":"dynamic scene dialogue cites the verified Story Object and artifact id"
+}

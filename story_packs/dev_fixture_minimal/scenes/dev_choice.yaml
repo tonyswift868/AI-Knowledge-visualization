@@ -1,0 +1,26 @@
+scene_id: dev_choice
+arc_id: dev_arc
+scene_type: safe_dynamic_interaction
+story_order: 3
+speaker_lines:
+  - speaker_id: guide_b
+    text: DEV FIXTURE — select the fixed branch for the assessment.
+background_ref: dev_placeholder_bg
+character_layers:
+  - character_id: guide_b
+    expression: neutral
+    position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: [dev_learning_completed]
+exit_conditions: [choice_made]
+choices:
+  - choice_id: submit
+    label: Submit the verified result
+    next_scene_id: dev_assessment
+next_scene_rules:
+  - when: choice_made
+    target_scene_id: dev_assessment
+learning_gate_ref: null
+safe_dynamic_slots: [mastery_status]
+immutable: true

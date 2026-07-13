@@ -1,0 +1,21 @@
+scene_id: dev_postgame
+arc_id: dev_arc
+scene_type: postgame
+story_order: 5
+speaker_lines:
+  - speaker_id: guide_a
+    text: DEV FIXTURE — postgame maintenance is now available.
+background_ref: dev_placeholder_bg
+character_layers:
+  - character_id: guide_a
+    expression: relieved
+    position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: [final_assessment_passed]
+exit_conditions: []
+choices: []
+next_scene_rules: []
+learning_gate_ref: null
+safe_dynamic_slots: [next_review_date]
+immutable: true

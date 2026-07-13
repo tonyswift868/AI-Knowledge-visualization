@@ -1,0 +1,19 @@
+{
+  "library_id": "mentorflow_narrative_dna_v1",
+  "version": "1.0.0-seed",
+  "created_at": "2026-07-12",
+  "language": "zh-CN",
+  "entry_count": 41,
+  "family_count": 18,
+  "contains_spoilers": true,
+  "contains_full_scripts": false,
+  "contains_dialogue_dumps": false,
+  "contains_media_assets": false,
+  "intended_use": [
+    "候选检索",
+    "结构匹配",
+    "Story Pack生产指导",
+    "Codex工程接入"
+  ],
+  "boundary": "正式使用现有IP的完整剧本、逐句台词、图像、音乐、语音及商标素材须单独建立Story Pack并完成来源/权利审查。"
+}

@@ -1,0 +1,49 @@
+immutable_facts:
+- 岚是旧城通信档案根据一名已离开维护员的未寄出消息重建出的交互回声。
+- 岚在首次学习阶段不知道自己是重建回声，只知道自己被困在中继站。
+- 玩家不能靠好感度替代学习验证。
+- 复习阶段的任务是分辨真实档案与系统补全内容。
+- 最终考核决定玩家能否生成可信的外发档案。
+timeline_rules:
+- 正常日常必须发生在首次覆盖完成之前。
+- echo_rupture 只能由 FIRST_PASS_MILESTONE_REACHED 解锁。
+- truth reveal 不能早于 review gate。
+- postgame 只能在一个 ending 后进入。
+world_rules:
+- 角色可以感知玩家是否回来，但不能把缺席解释为背叛。
+- Relay Tutor 负责教学事实，岚负责陪伴和剧情。
+- 固定剧情不可由动态聊天修改。
+main_plot_anchors:
+- echo_intro
+- echo_routine
+- echo_promise
+- echo_first_pass
+- echo_rupture
+- echo_review
+- echo_truth
+- echo_low_point
+- echo_final_prep
+- echo_final_assessment
+forbidden_reveals:
+- fact: 岚是重建回声
+  before_scene: echo_truth
+- fact: 原维护员主动关闭了最后一次外发
+  before_scene: echo_low_point
+ending_conditions:
+  echo_ending_complete:
+    required_event: FINAL_ASSESSMENT_PASSED
+    required_choice: send_complete
+  echo_ending_archive:
+    required_event: FINAL_ASSESSMENT_PASSED
+    required_choice: send_archive_only
+allowed_small_adaptations:
+- 玩家称呼
+- 真实日期
+- 用户学习任务标题
+- 日常互动槽位中的非主线内容
+forbidden_adaptations:
+- 提前揭露岚的身份
+- 让岚替代 Tutor 判定答案
+- 把用户缺席写成人格背叛
+- 增加未定义的反派
+- 修改最终选择含义

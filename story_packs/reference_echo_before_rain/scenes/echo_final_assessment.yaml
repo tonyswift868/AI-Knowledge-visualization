@@ -1,0 +1,38 @@
+scene_id: echo_final_assessment
+arc_id: echo_main
+scene_type: assessment
+story_order: 10
+speaker_lines:
+- line_id: echo_final_assessment_line_1
+  speaker_id: relay_tutor
+  text: 最终考核将从核心概念、薄弱点、跨模块迁移和无提示独立完成中取样。
+  expression: neutral
+  voice_profile_ref: relay_zh_neutral
+- line_id: echo_final_assessment_line_2
+  speaker_id: lan
+  text: 我在这里。不是为了替你回答。
+  expression: neutral
+  voice_profile_ref: lan_zh_soft
+background_ref: bg_archive
+character_layers:
+- character_id: lan
+  expression: neutral
+  asset_ref: lan_neutral
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices:
+- choice_id: send_complete
+  label: 发送完整交互档案
+  next_scene_id: echo_ending_complete
+- choice_id: send_archive_only
+  label: 只发送已验证的静态档案
+  next_scene_id: echo_ending_archive
+next_scene_rules: []
+learning_gate_ref: gate_final
+safe_dynamic_slots:
+- final_assessment_status
+repeatable_daily: false
+immutable: true

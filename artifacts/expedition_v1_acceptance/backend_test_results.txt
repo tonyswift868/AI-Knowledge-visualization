@@ -1,0 +1,4 @@
+PASS: python compilation for backend/app/*.py.
+PASS: backend full suite — 107 passed, 1 Starlette/httpx deprecation warning.
+PASS: expedition acceptance — 7 passed, including concurrent reward publication.
+PASS: deterministic BattleEngine seed and event schema checks.

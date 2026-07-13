@@ -1,0 +1,3 @@
+Command: .venv\Scripts\python.exe -m pytest backend/tests -q --import-mode=importlib
+Result: PASS
+92 passed, 1 warning

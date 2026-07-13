@@ -1,0 +1,7 @@
+
+Running 2 tests using 1 worker
+
+  ok 1 e2e\demo.spec.ts:163:1 › normal ZIP preview import keeps internal paths (1.9s)
+  ok 2 e2e\demo.spec.ts:167:1 › malicious ZIP traversal is rejected before source import (1.6s)
+
+  2 passed (4.6s)

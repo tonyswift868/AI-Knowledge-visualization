@@ -1,0 +1,23 @@
+story_pack_id: reference_echo_before_rain
+catalog_id: builtin:reference_echo_before_rain
+version: 1.0.0
+title: 雨停之前的回声
+source_work: MentorFlow built-in reference story
+source_version: '1.0'
+language: zh-CN
+minimum_runtime_version: 2.0.0
+supported_duration_days:
+- 7
+- 60
+content_rating: general
+entry_scene_id: echo_intro
+ending_scene_ids:
+- echo_ending_complete
+- echo_ending_archive
+- echo_postgame
+checksum: sha256:8d3f1123d2fa6f900fba4c6d9ca5eb87ff52415071d9d8701878254d61628d3a
+created_at: '2026-07-12T00:00:00Z'
+provenance_notes:
+- Built-in reference content supplied with the final completion bundle.
+- Codex must integrate it as written and must not replace it with self-generated plot.
+- Local images are simple original reference assets, not third-party IP assets.

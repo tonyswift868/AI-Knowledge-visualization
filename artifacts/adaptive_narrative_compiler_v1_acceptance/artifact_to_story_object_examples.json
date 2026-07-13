@@ -1,0 +1,6 @@
+[
+  {"phase":"passed","artifact":{"artifact_type":"code","verified":true,"status":"verified"},"story_object":{"object_type":"system_patch","status":"verified","world_state_changed":true}},
+  {"phase":"passed_with_hints","artifact":{"artifact_type":"code","verified":true,"status":"provisional"},"story_object":{"object_type":"system_patch","status":"provisional","world_state_changed":false}},
+  {"phase":"review_passed","artifact":{"artifact_type":"argument","verified":true,"status":"revised"},"story_object":{"object_type":"testimony_analysis","status":"revised","revises_previous":true}},
+  {"phase":"final_passed","artifact":{"artifact_type":"code","verified":true,"status":"final"},"story_object":{"object_type":"system_patch","status":"final","eligible_for_ending_gate":true}}
+]

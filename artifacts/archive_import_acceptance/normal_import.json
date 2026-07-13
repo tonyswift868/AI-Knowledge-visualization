@@ -1,0 +1,99 @@
+{
+  "preview_id": "ap_dddb1a4fcdb345",
+  "archive_source_id": "source_89f4cc8b8e234d",
+  "imported": [
+    {
+      "file_id": "af_b2bd0b1376ac4b",
+      "relative_path": "notes/java/jvm.md",
+      "source": {
+        "id": "source_d7cb92581ce2",
+        "workspace_id": "ws_089040f1b9d0",
+        "title": "study_bundle.zip / notes/java/jvm.md",
+        "source_type": "archive_file",
+        "original_filename": "notes/java/jvm.md",
+        "original_url": "",
+        "local_path": "",
+        "trust_level": "reference",
+        "content_hash": "374e0f03636b97fca64e6c02cd87c3345178ffcb68360a897ca979816edfd371",
+        "status": "ready",
+        "parse_error": "",
+        "page_count": 0,
+        "created_at": "2026-07-12T14:27:07.232201+00:00",
+        "updated_at": "2026-07-12T14:27:07.232201+00:00",
+        "archive_preview_id": "ap_dddb1a4fcdb345",
+        "archive_relative_path": "notes/java/jvm.md",
+        "parent_archive_name": "study_bundle.zip",
+        "language": "",
+        "chunks": [
+          {
+            "id": "chunk_98ba6e99473444",
+            "source_id": "source_d7cb92581ce2",
+            "ordinal": 1,
+            "page": null,
+            "heading": "JVM",
+            "text": "# JVM",
+            "normalized_text": "# jvm",
+            "content_hash": "dc82fafac599810a585bde2e7d5c1912c2c1a26602e85ee6806b190b7dc45b72",
+            "page_start": null,
+            "page_end": null
+          },
+          {
+            "id": "chunk_06de14c716d64d",
+            "source_id": "source_d7cb92581ce2",
+            "ordinal": 2,
+            "page": null,
+            "heading": "JVM",
+            "text": "Safe evidence",
+            "normalized_text": "safe evidence",
+            "content_hash": "2e49e4b8c0796c736665388023668f3f6eea17edf223c0437e10291615eb50b7",
+            "page_start": null,
+            "page_end": null
+          }
+        ],
+        "chunk_count": 2
+      }
+    },
+    {
+      "file_id": "af_0b12244c05054c",
+      "relative_path": "src/main.py",
+      "source": {
+        "id": "source_dee4a4bc6b0a",
+        "workspace_id": "ws_089040f1b9d0",
+        "title": "study_bundle.zip / src/main.py",
+        "source_type": "archive_file",
+        "original_filename": "src/main.py",
+        "original_url": "",
+        "local_path": "",
+        "trust_level": "reference",
+        "content_hash": "bd25d98c03c15bda79a9a9f6828961e5ef5ce8d076554bcf96d2d07c14490925",
+        "status": "ready",
+        "parse_error": "",
+        "page_count": 0,
+        "created_at": "2026-07-12T14:27:07.278092+00:00",
+        "updated_at": "2026-07-12T14:27:07.278092+00:00",
+        "archive_preview_id": "ap_dddb1a4fcdb345",
+        "archive_relative_path": "src/main.py",
+        "parent_archive_name": "study_bundle.zip",
+        "language": "python",
+        "chunks": [
+          {
+            "id": "chunk_e23a4071d0bd43",
+            "source_id": "source_dee4a4bc6b0a",
+            "ordinal": 1,
+            "page": null,
+            "heading": "",
+            "text": "print('not executed')",
+            "normalized_text": "print('not executed')",
+            "content_hash": "bd25d98c03c15bda79a9a9f6828961e5ef5ce8d076554bcf96d2d07c14490925",
+            "page_start": null,
+            "page_end": null
+          }
+        ],
+        "chunk_count": 1
+      }
+    }
+  ],
+  "duplicates": [],
+  "failed": [],
+  "ignored": []
+}

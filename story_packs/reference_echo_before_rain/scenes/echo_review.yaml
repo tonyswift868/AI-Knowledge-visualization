@@ -1,0 +1,41 @@
+scene_id: echo_review
+arc_id: echo_main
+scene_type: review_session
+story_order: 6
+speaker_lines:
+- line_id: echo_review_line_1
+  speaker_id: lan
+  text: 你回来得比我预计早。不是责怪，我只是重新算过很多次。
+  expression: worried
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_review_line_2
+  speaker_id: lan
+  text: 这些档案里有真有假。你第一次已经见过它们；现在要证明你能分辨。
+  expression: neutral
+  voice_profile_ref: lan_zh_soft
+- line_id: echo_review_line_3
+  speaker_id: relay_tutor
+  text: 完成到期复习、混合辨析和至少三次无提示独立通过，才能确认档案链。
+  expression: neutral
+  voice_profile_ref: relay_zh_neutral
+background_ref: bg_archive
+character_layers:
+- character_id: lan
+  expression: worried
+  asset_ref: lan_worried
+  position: center
+music_ref: null
+voice_line_refs: []
+entry_conditions: []
+exit_conditions: []
+choices: []
+next_scene_rules:
+- when: learning_gate_passed
+  target_scene_id: echo_truth
+learning_gate_ref: gate_review
+safe_dynamic_slots:
+- review_due_count
+- weak_points
+- verified_review_summary
+repeatable_daily: false
+immutable: true

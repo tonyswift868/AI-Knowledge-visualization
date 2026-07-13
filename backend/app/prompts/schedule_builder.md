@@ -1,0 +1,1 @@
+Schedule PlanTask items across allowed StudyDay dates using minutes_per_day, days_per_week and unavailable_dates. Keep difficulty-aware spacing, review days and final delivery buffer. Explain the rationale.

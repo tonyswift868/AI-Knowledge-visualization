@@ -1,0 +1,2 @@
+PASS: Playwright expedition.spec.ts — 1 browser test passed with 18 named steps.
+Covered: navigation, resource bar, training slots, hero assets/detail, cross formation, gacha, infinite stages, rules, inventory and return to expedition home.

@@ -1,0 +1,34 @@
+{
+  "id": "ap_30279f0e786d45",
+  "workspace_id": "ws_089040f1b9d0",
+  "archive_name": "executable.zip",
+  "archive_hash": "b37a2fb8a46eaec28f847e197f49088db013e91a52faa97179110ab8915f2ec2",
+  "archive_size_bytes": 116,
+  "expires_at": "2026-07-12T14:57:07.352963+00:00",
+  "created_at": "2026-07-12T14:27:07.352963+00:00",
+  "storage_path": "E:\\CodexData\\temp\\mentorflow_archive_smoke_xtjlh90n\\archive_previews\\ap_30279f0e786d45\\archive.zip",
+  "archive_mtime_ns": 1783866427343577400,
+  "preview_id": "ap_30279f0e786d45",
+  "tree": [
+    {
+      "id": "af_92c69506205347",
+      "relative_path": "run.exe",
+      "filename": "run.exe",
+      "extension": ".exe",
+      "size_bytes": 2,
+      "compressed_size_bytes": 4,
+      "content_hash": "",
+      "kind": "binary",
+      "language": null,
+      "status": "rejected",
+      "reason": "默认拒绝可执行或二进制文件",
+      "selected_by_default": false
+    }
+  ],
+  "supported_count": 0,
+  "ignored_count": 0,
+  "rejected_count": 1,
+  "warnings": [
+    "默认拒绝可执行或二进制文件"
+  ]
+}

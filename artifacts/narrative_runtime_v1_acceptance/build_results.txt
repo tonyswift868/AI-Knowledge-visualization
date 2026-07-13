@@ -1,0 +1,7 @@
+Build evidence
+
+- powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -> passed
+- TypeScript build -> passed
+- Vite production build -> passed
+- frontend/dist/index.html and dist/assets -> present
+- FastAPI served `/assets/characters/lumen.png` with HTTP 200 during runtime verification.

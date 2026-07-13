@@ -1,0 +1,20 @@
+{
+  "catalog_scan": {"scanned_records": 10000, "overlay_records": 1, "display_max": 3, "selection_rule": "scan_and_score_before_filtering; retain READY and fill remaining slots with curated/candidate records"},
+  "algorithm_workspace": {
+    "task_profile": {"domain": "algorithms", "task_shape": "coding_practice", "knowledge_structure": "prerequisite_graph", "review_need": "standard"},
+    "results": [
+      {"catalog_id": "builtin:reference_echo_before_rain", "match_score": 48.7, "pack_status": "ready", "playable": true, "narrative_structure": "companionship, ordinary_then_rupture, first_pass_then_review", "match_reasons": ["编程练习与题库式学习", "建议周期 7–60 天", "weak 耦合部分匹配"]},
+      {"catalog_id": "curated:steins_gate", "match_score": 83.5, "pack_status": "PACK_REQUIRED", "playable": false, "narrative_structure": "ordinary_then_rupture, knowledge_accumulation_loop, ensemble_found_family", "match_reasons": ["编程练习与题库式学习", "建议周期 25–65 天", "实验进度与时间线权限"]},
+      {"catalog_id": "curated:oneshot", "match_score": 83.1, "pack_status": "PACK_REQUIRED", "playable": false, "narrative_structure": "meta_system_awareness, false_ending_true_route, journey_bonding", "match_reasons": ["力扣题库与章节课程", "建议周期 14–45 天", "系统权限式弱耦合"]}
+    ]
+  },
+  "law_workspace": {
+    "task_profile": {"domain": "law", "task_shape": "case_analysis", "knowledge_structure": "evidence_network", "review_need": "standard"},
+    "results": [
+      {"catalog_id": "builtin:reference_echo_before_rain", "match_score": 48.7, "pack_status": "ready", "playable": true, "narrative_structure": "companionship, ordinary_then_rupture, first_pass_then_review", "match_reasons": ["证据论证与案例分析", "建议周期 7–60 天", "strong 耦合部分匹配"]},
+      {"catalog_id": "curated:ace_attorney", "match_score": 83.1, "pack_status": "PACK_REQUIRED", "playable": false, "narrative_structure": "evidence_argument_climax, multi_pov_interlock, ensemble_found_family", "match_reasons": ["证据论证与案例分析", "建议周期 14–60 天", "强融合或证据门禁"]},
+      {"catalog_id": "curated:paranormasight", "match_score": 82.9, "pack_status": "PACK_REQUIRED", "playable": false, "narrative_structure": "multi_pov_interlock, unreliable_people_mystery, closed_room_deadline", "match_reasons": ["证据论证与案例分析", "建议周期 5–18 天", "线索/视角门禁"]}
+    ]
+  },
+  "fake_provider_mode": {"count": 3, "ready_count": 1, "pack_required_count": 2, "deterministic": true}
+}

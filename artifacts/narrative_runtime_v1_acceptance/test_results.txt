@@ -1,0 +1,16 @@
+Narrative Runtime V1 test evidence
+
+Backend:
+  powershell -ExecutionPolicy Bypass -File .\scripts\migrate.ps1 -> passed
+  .venv\Scripts\python.exe -m pytest backend/tests -q -> 90 passed, 1 warning
+
+Frontend:
+  npm --prefix frontend run test -- --run -> 44 passed
+
+E2E:
+  npm exec -- playwright test --config=playwright.config.ts -> 8 passed
+  Includes fixed Story Pack scene rendering, learning-gate blocking, postgame transition and refreshed campaign read.
+
+Smoke:
+  scripts/smoke_test.py -> passed
+  scripts/security_smoke.py -> passed

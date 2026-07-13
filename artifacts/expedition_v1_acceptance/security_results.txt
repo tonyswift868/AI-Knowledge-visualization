@@ -1,0 +1,8 @@
+PASS: forged gacha results/seed/crystals fields are ignored; server selects result and cost.
+PASS: repeated gacha idempotency key returns the original record without a second charge.
+PASS: negative verified minutes do not mint or subtract balance.
+PASS: concurrent reward publication produces one ledger row and one balance mutation.
+PASS: client-supplied battle winner and event list are ignored; persisted events come from BattleEngine.
+PASS: asset lookup is registry-by-id; direct ../secret lookup raises INVALID_ASSET_ID and unknown IDs return 404.
+PASS: event types are restricted to the declarative allowlist in BattleEngine.
+PASS: generated SVG manifest reports no remote refs/script/foreignObject/event attributes; 96 files parsed successfully.
