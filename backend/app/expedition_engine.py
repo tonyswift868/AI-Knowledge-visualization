@@ -27,14 +27,42 @@ def stable_seed(*parts: Any) -> int:
     return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big") & 0x7FFFFFFF
 
 
+def stage_difficulty(stage_number: int) -> dict[str, float]:
+    """Shared progression curve used by the API and offline balance runner.
+
+    Regular stages rise gradually.  Every tenth stage adds a visible step;
+    chapter and milestone bosses add bounded multipliers rather than a hidden
+    one-off rule, so the same curve can be audited from stage 1 to 300.
+    """
+    number = max(1, int(stage_number))
+    boss_factor = 1.05 if number % 10 == 0 else 1.0
+    if number % 50 == 0:
+        boss_factor *= 1.12
+    if number % 100 == 0:
+        boss_factor *= 1.15
+    return {
+        "hp": round((1.0 + 0.0012 * number) * boss_factor, 4),
+        "atk": round((1.0 + 0.0010 * number) * boss_factor, 4),
+        "defense": round((1.0 + 0.0008 * number) * boss_factor, 4),
+        "hit": round(min(0.06, 0.0001 * number), 4),
+        "dodge": round(min(0.04, 0.00005 * number), 4),
+    }
+
+
+def stage_enemy_ids(stage_number: int) -> list[str]:
+    """Keep the comparison roster stable; difficulty comes from audited rules."""
+    return ["row_crossbow", "poison_needle", "field_medic", "counter_guard", "bomb_golem"]
+
+
 class BattleEngine:
-    def __init__(self, *, seed: int, heroes: list[dict[str, Any]], enemy_ids: list[str], stance: str = "balanced"):
+    def __init__(self, *, seed: int, heroes: list[dict[str, Any]], enemy_ids: list[str], stance: str = "balanced", difficulty: dict[str, float] | None = None):
         self.seed = int(seed)
         self.rng = random.Random(self.seed)
         self.events: list[dict[str, Any]] = []
         self.index = 0
         self.time = 0
         self.stance = stance if stance in STANCES else "balanced"
+        self.difficulty = {"hp": 1.0, "atk": 1.0, "defense": 1.0, "hit": 0.0, "dodge": 0.0, **(difficulty or {})}
         hero_by_id = {h["hero_id"]: h for h in HEROES}
         self.allies = [self._unit(f"hero:{h['hero_id']}", h, "ally", i + 1) for i, h in enumerate(heroes) if h.get("hero_id") in hero_by_id]
         self.enemies = [self._enemy_unit(f"enemy:{i}:{enemy_id}", enemy_id, i + 1) for i, enemy_id in enumerate(enemy_ids)]
@@ -53,9 +81,11 @@ class BattleEngine:
         combat_stats = deepcopy(definition["stats"])
         # The catalog values are readable baseline values; the combat pass adds
         # room for formation, equipment and future chapter scaling.
-        combat_stats["HP"] = int(combat_stats["HP"] * 2.1)
-        combat_stats["ATK"] = int(combat_stats["ATK"] * 1.8)
-        combat_stats["DEF"] = int(combat_stats["DEF"] * 1.25)
+        combat_stats["HP"] = int(combat_stats["HP"] * 2.1 * float(self.difficulty["hp"]))
+        combat_stats["ATK"] = int(combat_stats["ATK"] * 1.8 * float(self.difficulty["atk"]))
+        combat_stats["DEF"] = int(combat_stats["DEF"] * 1.25 * float(self.difficulty["defense"]))
+        combat_stats["HIT"] = float(combat_stats.get("HIT", 0)) + float(self.difficulty.get("hit", 0))
+        combat_stats["DODGE"] = float(combat_stats.get("DODGE", 0)) + float(self.difficulty.get("dodge", 0))
         return {"id": uid, "hero_id": enemy_id, "name": definition["name"], "side": "enemy", "position": position, "stats": combat_stats, "max_hp": int(combat_stats["HP"]), "hp": int(combat_stats["HP"]), "energy": 0, "shield": 0, "statuses": {}, "alive": True, "definition": definition, "damage": 0, "healing": 0, "round_hit_energy": 0}
 
     def emit(self, event_type: str, actor: dict[str, Any] | None = None, targets: list[dict[str, Any]] | None = None, *, skill: str = "", numeric: dict[str, Any] | None = None, statuses: list[str] | None = None, critical: bool = False, miss: bool = False, hint: str = "") -> None:
@@ -222,4 +252,4 @@ class BattleEngine:
             self.time += 1000
         winner = "ally" if self.alive("ally") and not self.alive("enemy") else ("enemy" if self.alive("enemy") and not self.alive("ally") else "draw")
         self.emit("BATTLE_END", numeric={"winner": winner, "rounds": min(max_rounds, round_number if 'round_number' in locals() else 0)}, hint="victory" if winner == "ally" else "defeat")
-        return {"winner": winner, "rounds": min(max_rounds, round_number if 'round_number' in locals() else 0), "seed": self.seed, "events": self.events, "units": [{"id": u["id"], "name": u["name"], "side": u["side"], "hp": u["hp"], "max_hp": u["max_hp"], "damage": u["damage"], "healing": u["healing"], "alive": u["alive"]} for u in self.units]}
+        return {"winner": winner, "rounds": min(max_rounds, round_number if 'round_number' in locals() else 0), "seed": self.seed, "events": self.events, "units": [{"id": u["id"], "hero_id": u["hero_id"], "name": u["name"], "side": u["side"], "position": u["position"], "hp": u["hp"], "max_hp": u["max_hp"], "shield": u["shield"], "energy": u["energy"], "statuses": u["statuses"], "damage": u["damage"], "healing": u["healing"], "alive": u["alive"]} for u in self.units]}

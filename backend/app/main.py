@@ -37,6 +37,7 @@ from . import catalog_repository
 from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, submit_learning_run
 from .adaptive_narrative import AdaptiveNarrativeError, activate_blueprint, adaptive_context, analyze_task_profile, compile_adaptation, generate_dynamic_scene, generate_scene_contract, get_blueprint, get_current_contract, list_artifacts, list_contracts, list_story_objects
 from .expedition_service import ExpeditionError, activate_lineup, assets as expedition_asset, awaken as expedition_awaken, battle as expedition_battle, challenge_stage, claim_milestone, claim_stage, delete_lineup, equipment as expedition_equipment, equip_equipment, equip_pet, get_ledger as expedition_ledger, get_profile as expedition_profile, gacha_banners, gacha_history, gacha_pull, hero_detail, lineups as expedition_lineups, list_heroes, milestones as expedition_milestones, pets as expedition_pets, reset_equipment, reset_slot, save_lineup, star_up, stage_definition, stages as expedition_stages, training_slots, unequip_equipment, upgrade_equipment, upgrade_slot
+from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = PROJECT_ROOT / "data" / "presets"
@@ -1352,6 +1353,10 @@ def _expedition_error(exc: ExpeditionError):
     fail(exc.code, exc.message, exc.status_code, exc.details)
 
 
+def _art_pack_error(exc: ArtPackError):
+    fail(exc.code, exc.message, exc.status, exc.details)
+
+
 @app.get("/api/expedition/profile")
 def expedition_profile_get(request: Request):
     try: return {"request_id": request.state.request_id, **expedition_profile()}
@@ -1374,6 +1379,12 @@ def expedition_heroes_get(request: Request):
 def expedition_hero_get(hero_id: str, request: Request):
     try: return {"request_id": request.state.request_id, "item": hero_detail(hero_id)}
     except ExpeditionError as exc: _expedition_error(exc)
+
+
+@app.get("/api/expedition/heroes/{hero_id}/assets")
+def expedition_hero_assets_get(hero_id: str, request: Request):
+    try: return {"request_id": request.state.request_id, **expedition_hero_assets(hero_id)}
+    except ArtPackError as exc: _art_pack_error(exc)
 
 
 @app.post("/api/expedition/heroes/{hero_id}/star-up")
@@ -1538,10 +1549,71 @@ def expedition_battle_events(battle_id: str, request: Request):
     except ExpeditionError as exc: _expedition_error(exc)
 
 
+@app.post("/api/expedition/art-packs/preview")
+async def expedition_art_pack_preview(request: Request, file: UploadFile = File(...)):
+    try:
+        return {"request_id": request.state.request_id, **preview_expedition_art_bytes(await file.read(), file.filename or "art-pack.zip")}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.post("/api/expedition/art-packs/install")
+def expedition_art_pack_install(request: Request, body: dict[str, Any]):
+    try: return {"request_id": request.state.request_id, "item": install_expedition_art_preview(str(body.get("preview_id") or ""), bool(body.get("confirm")))}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.get("/api/expedition/art-packs")
+def expedition_art_pack_list(request: Request):
+    try: return {"request_id": request.state.request_id, **list_expedition_art_packs()}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.get("/api/expedition/art-packs/active")
+def expedition_art_pack_active(request: Request):
+    try: return {"request_id": request.state.request_id, **active_pack()}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.post("/api/expedition/art-packs/{pack_id}/{version}/activate")
+def expedition_art_pack_activate(pack_id: str, version: str, request: Request):
+    try: return {"request_id": request.state.request_id, "item": activate_pack(pack_id, version)}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.post("/api/expedition/art-packs/{pack_id}/{version}/rollback")
+def expedition_art_pack_rollback(pack_id: str, version: str, request: Request):
+    try: return {"request_id": request.state.request_id, "item": rollback_pack(pack_id, version)}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.post("/api/expedition/art-packs/{pack_id}/{version}/reviews/{hero_id}/{asset_kind}")
+def expedition_art_pack_review(pack_id: str, version: str, hero_id: str, asset_kind: str, request: Request, body: dict[str, Any]):
+    try: return {"request_id": request.state.request_id, "item": review_expedition_art_asset(pack_id, version, hero_id, asset_kind, str(body.get("review_status") or "PENDING"), str(body.get("review_note") or ""))}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.get("/api/expedition/art-assets/{asset_id:path}/file")
+def expedition_art_asset_file(asset_id: str):
+    try:
+        path = expedition_art_asset_file(asset_id)
+        return FileResponse(path, media_type="image/webp" if path.suffix.lower() == ".webp" else "image/png")
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
+@app.get("/api/expedition/art-assets/{asset_id:path}")
+def expedition_art_asset_metadata(asset_id: str, request: Request):
+    try: return {"request_id": request.state.request_id, **expedition_art_asset_public(asset_id)}
+    except ArtPackError as exc: _art_pack_error(exc)
+
+
 @app.get("/api/expedition/assets/{asset_id:path}")
 def expedition_asset_get(asset_id: str, request: Request):
-    try: return {"request_id": request.state.request_id, **expedition_asset(asset_id)}
-    except ExpeditionError as exc: _expedition_error(exc)
+    try:
+        if asset_id.startswith("art:"):
+            return {"request_id": request.state.request_id, **expedition_art_asset_public(asset_id)}
+        return {"request_id": request.state.request_id, **expedition_asset(asset_id)}
+    except (ExpeditionError, ArtPackError) as exc:
+        _art_pack_error(exc) if isinstance(exc, ArtPackError) else _expedition_error(exc)
 
 
 @app.get("/api/expedition/milestones")

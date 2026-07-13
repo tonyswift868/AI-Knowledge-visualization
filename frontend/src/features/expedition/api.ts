@@ -29,7 +29,14 @@ export type Hero = {
   passive_one?: { skill_id: string; name: string; summary: string }
   passive_two?: { skill_id: string; name: string; summary: string }
   awakening?: { skill_id: string; name: string; summary: string }
+  assets?: Record<AssetKind, ExpeditionAsset>
+  fallback_used?: boolean
 }
+
+export type AssetKind = "portrait" | "avatar" | "skill_cutin" | "skill_icon"
+export type ExpeditionAsset = { asset_id: string; url: string; width: number; height: number; focal_point: { x: number; y: number }; scale: number; offset: { x: number; y: number }; fallback_used: boolean; version: string }
+
+export type ArtPackVersion = { pack_id: string; version: string; status: string; installed_at?: string | null; activated_at?: string | null; manifest_hash: string; hero_count: number; source: string; validation_result?: { assets?: Array<{ hero_id: string; asset_kind: AssetKind; path: string; width: number; height: number; mime: string; sha256: string }> }; reviewed_assets: number; required_reviews: number; previous_active_pack_id?: string; previous_active_version?: string; reviews?: Array<{ hero_id: string; asset_kind: AssetKind; review_status: string; review_note: string; reviewed_at?: string | null }> }
 
 export type LineupMember = { slot_id: string; hero_id: string }
 export type Lineup = {
@@ -85,8 +92,9 @@ export type BattleSummary = {
 }
 
 async function expeditionRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData
   const response = await fetch(`/api/expedition${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: isForm ? { ...(init?.headers || {}) } : { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
   })
   const body = await response.json().catch(() => ({}))
@@ -121,6 +129,14 @@ export const expeditionApi = {
   battleEvents: (battleId: string) => expeditionRequest<{ events: BattleEvent[] }>(`/battles/${encodeURIComponent(battleId)}/events`),
   milestones: () => expeditionRequest<{ items: Array<{ milestone_id: string; label: string; required_minutes: number; claimed: boolean }>; total_verified_minutes: number }>("/milestones"),
   claimMilestone: (milestoneId: string) => expeditionRequest<Record<string, unknown>>(`/milestones/${encodeURIComponent(milestoneId)}/claim`, { method: "POST", body: "{}" }),
+  heroAssets: (heroId: string) => expeditionRequest<{ hero_id: string; assets: Record<AssetKind, ExpeditionAsset>; fallback_used: boolean }>(`/heroes/${encodeURIComponent(heroId)}/assets`),
+  artPacks: () => expeditionRequest<{ items: ArtPackVersion[]; fallback: { active: boolean } }>("/art-packs"),
+  activeArtPack: () => expeditionRequest<{ active: ArtPackVersion | null; fallback: boolean }>("/art-packs/active"),
+  previewArtPack: (file: File) => { const body = new FormData(); body.append("file", file); return expeditionRequest<Record<string, unknown>>("/art-packs/preview", { method: "POST", body }) },
+  installArtPack: (previewId: string, confirm = true) => expeditionRequest<{ item: ArtPackVersion }>("/art-packs/install", { method: "POST", body: JSON.stringify({ preview_id: previewId, confirm }) }),
+  activateArtPack: (packId: string, version: string) => expeditionRequest<{ item: ArtPackVersion }>(`/art-packs/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/activate`, { method: "POST" }),
+  rollbackArtPack: (packId: string, version: string) => expeditionRequest<{ item: { active: ArtPackVersion | null; fallback: boolean } }>(`/art-packs/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/rollback`, { method: "POST" }),
+  reviewArtAsset: (packId: string, version: string, heroId: string, kind: AssetKind, reviewStatus: "APPROVED" | "NEEDS_REDO" | "PENDING", reviewNote = "") => expeditionRequest<{ item: ArtPackVersion }>(`/art-packs/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/reviews/${encodeURIComponent(heroId)}/${kind}`, { method: "POST", body: JSON.stringify({ review_status: reviewStatus, review_note: reviewNote }) }),
 }
 
 export function unwrapProfile(payload: { profile: ExpeditionProfile } | ExpeditionProfile): ExpeditionProfile {

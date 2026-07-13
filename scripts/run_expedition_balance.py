@@ -23,15 +23,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.expedition_data import BOSSES, ENEMIES, EQUIPMENT, HEROES, PETS  # noqa: E402
-from app.expedition_engine import BattleEngine, stable_seed  # noqa: E402
+from app.expedition_engine import BattleEngine, stage_difficulty, stage_enemy_ids, stable_seed  # noqa: E402
 
 
 def _stage_case(stage_number: int) -> dict:
-    enemy_ids = [ENEMIES[(stage_number + index * 3) % len(ENEMIES)]["enemy_id"] for index in range(5)]
+    enemy_ids = stage_enemy_ids(stage_number)
     return {
         "stage_number": stage_number,
         "enemy_ids": enemy_ids,
         "boss": BOSSES[(stage_number // 10 - 1) % len(BOSSES)] if stage_number % 10 == 0 else None,
+        "difficulty": stage_difficulty(stage_number),
     }
 
 
@@ -51,6 +52,7 @@ def _run(case: dict, lineup: list[dict], battle_index: int) -> dict:
         heroes=lineup,
         enemy_ids=case["enemy_ids"],
         stance=("balanced", "vanguard", "fortify")[battle_index % 3],
+        difficulty=case.get("difficulty"),
     ).run()
     events = result["events"]
     event_counts = Counter(event["event_type"] for event in events)

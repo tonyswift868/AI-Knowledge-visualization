@@ -11,7 +11,8 @@ from typing import Any
 from sqlalchemy import and_
 
 from .expedition_data import BOSSES, ENEMIES, EQUIPMENT, HEROES, PETS, STANCES
-from .expedition_engine import BattleEngine, stable_seed
+from .expedition_engine import BattleEngine, stage_difficulty, stage_enemy_ids, stable_seed
+from .expedition_art_pack import hero_assets as resolve_hero_assets
 from .expedition_orm import (
     BattleEventLogORM, BattleRecordORM, EquipmentDefinitionORM, EquipmentInstanceORM,
     ExpeditionAssetRegistryORM, ExpeditionProfileORM, ExpeditionStageDefinitionCacheORM,
@@ -132,14 +133,15 @@ def list_heroes() -> dict[str, Any]:
     init_orm()
     with SessionLocal() as session:
         profile = _seed(session); owns = {row.hero_id: row for row in session.query(HeroOwnershipORM).filter_by(profile_id=profile.id).all()}; session.commit()
-        return {"items": [{"hero_id": item["hero_id"], "name": item["name"], "rarity": item["rarity"], "role": item["role"], "tags": item["tags"], "asset_id": item["asset_id"], "owned": item["hero_id"] in owns, "stars": owns[item["hero_id"]].stars if item["hero_id"] in owns else 0, "weakness": item["weakness"]} for item in HEROES]}
+        return {"items": [{"hero_id": item["hero_id"], "name": item["name"], "rarity": item["rarity"], "role": item["role"], "tags": item["tags"], "asset_id": item["asset_id"], "owned": item["hero_id"] in owns, "stars": owns[item["hero_id"]].stars if item["hero_id"] in owns else 0, "weakness": item["weakness"], "assets": resolve_hero_assets(item["hero_id"])["assets"]} for item in HEROES]}
 
 
 def hero_detail(hero_id: str) -> dict[str, Any]:
     item = next((item for item in HEROES if item["hero_id"] == hero_id), None)
     if not item: raise ExpeditionError("HERO_NOT_FOUND", "角色不存在", 404)
     result = next((row for row in list_heroes()["items"] if row["hero_id"] == hero_id), {})
-    return {**item, **result, "portrait_url": f"/assets/expedition/heroes/{hero_id}/portrait.svg", "skill_cut_in_url": f"/assets/expedition/heroes/{hero_id}/skill_cut_in.svg", "skill_icon_url": f"/assets/expedition/heroes/{hero_id}/skill_icon.svg"}
+    resolved = resolve_hero_assets(hero_id)
+    return {**item, **result, "assets": resolved["assets"], "portrait_url": resolved["assets"]["portrait"]["url"], "skill_cut_in_url": resolved["assets"]["skill_cutin"]["url"], "skill_icon_url": resolved["assets"]["skill_icon"]["url"], "fallback_used": resolved["fallback_used"]}
 
 
 def star_up(hero_id: str) -> dict[str, Any]:
@@ -340,9 +342,9 @@ def stage_definition(number: int) -> dict[str, Any]:
     with SessionLocal() as session:
         cached = session.get(ExpeditionStageDefinitionCacheORM, number)
         if cached: result = cached.definition; session.commit(); return result
-        enemy_ids = [ENEMIES[(number + i * 3) % len(ENEMIES)]["enemy_id"] for i in range(5)]
+        enemy_ids = stage_enemy_ids(number)
         boss = BOSSES[(number // 10 - 1) % len(BOSSES)] if number % 10 == 0 else None
-        result = {"stage_number": number, "seed": seed, "chapter": (number - 1) // 50 + 1, "theme": ["雾港档案", "星轨温室", "逆光剧场", "深层回廊"][(number - 1) // 50 % 4], "affix": ["无", "灼热回响", "脆弱护盾", "能量潮汐"][(number - 1) % 4], "enemy_ids": enemy_ids, "boss": boss, "rewards": {"tickets": 1 + number // 10, "equipment_material": 2 + number // 5, "pet_egg": number % 25 == 0}}
+        result = {"stage_number": number, "seed": seed, "chapter": (number - 1) // 50 + 1, "theme": ["雾港档案", "星轨温室", "逆光剧场", "深层回廊"][(number - 1) // 50 % 4], "affix": ["无", "灼热回响", "脆弱护盾", "能量潮汐"][(number - 1) % 4], "enemy_ids": enemy_ids, "boss": boss, "difficulty": stage_difficulty(number), "rewards": {"tickets": 1 + number // 10, "equipment_material": 2 + number // 5, "pet_egg": number % 25 == 0}}
         session.add(ExpeditionStageDefinitionCacheORM(stage_number=number, seed=seed, definition=result)); session.commit(); return result
 
 
@@ -359,7 +361,7 @@ def challenge_stage(number: int, body: dict[str, Any]) -> dict[str, Any]:
         members = session.query(LineupMemberORM).filter_by(lineup_id=lineup.lineup_id).order_by(LineupMemberORM.slot_id).all(); hero_ids = [m.hero_id for m in members if m.hero_id and not m.hero_id.startswith("__empty_")]
         if len(hero_ids) != 5: raise ExpeditionError("FORMATION_REQUIRES_FIVE", "挑战关卡前需要完整的五人阵容")
         definitions = {h["hero_id"]: h for h in HEROES}; heroes = [definitions[x] for x in hero_ids]
-        seed = stable_seed(profile.id, number, lineup.lineup_id, lineup.revision, tuple(hero_ids), definition["seed"]); result = BattleEngine(seed=seed, heroes=heroes, enemy_ids=definition["enemy_ids"], stance=lineup.stance).run()
+        seed = stable_seed(profile.id, number, lineup.lineup_id, lineup.revision, tuple(hero_ids), definition["seed"]); result = BattleEngine(seed=seed, heroes=heroes, enemy_ids=definition["enemy_ids"], stance=lineup.stance, difficulty=definition.get("difficulty")).run()
         battle_id = _id("battle"); record = BattleRecordORM(battle_id=battle_id, profile_id=profile.id, stage_number=number, lineup_id=lineup.lineup_id, seed=seed, status="completed", winner=result["winner"], result={k: v for k, v in result.items() if k != "events"}); session.add(record)
         for event in result["events"]: session.add(BattleEventLogORM(id=_id("event"), battle_id=battle_id, event_index=event["event_index"], event_type=event["event_type"], actor_id=event["actor_id"], target_ids=event["target_ids"], source_skill_id=event["source_skill_id"], numeric_values=event["numeric_values"], status_ids=event["status_ids"], is_critical=event["is_critical"], is_miss=event["is_miss"], animation_hint=event["animation_hint"], timestamp_offset=event["timestamp_offset"], rng_trace=event["rng_trace"]))
         progress = session.query(ExpeditionStageProgressORM).filter_by(profile_id=profile.id, stage_number=number).first() or ExpeditionStageProgressORM(id=_id("stage"), profile_id=profile.id, stage_number=number, status="available"); progress.status = "cleared" if result["winner"] == "ally" else "failed"; progress.best_result = result["units"]; progress.last_battle_id = battle_id; session.add(progress)

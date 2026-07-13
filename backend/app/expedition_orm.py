@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .orm import Base
@@ -273,3 +273,77 @@ class ExpeditionAssetRegistryORM(Base):
     generated_by: Mapped[str] = mapped_column(String(120), default="programmatic_svg")
     attribution: Mapped[str] = mapped_column(Text, default="")
     sha256: Mapped[str] = mapped_column(String(128), default="")
+
+
+class ExpeditionArtPackORM(Base):
+    """Logical art-pack identity; versions are immutable once installed."""
+
+    __tablename__ = "orm_expedition_art_packs"
+    pack_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(160), default="")
+    source: Mapped[str] = mapped_column(String(64), default="upstream_approved_art")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=expedition_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=expedition_now)
+
+
+class ExpeditionArtPackVersionORM(Base):
+    __tablename__ = "orm_expedition_art_pack_versions"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pack_id: Mapped[str] = mapped_column(ForeignKey("orm_expedition_art_packs.pack_id", ondelete="CASCADE"), index=True)
+    version: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(24), default="PREVIEWED")
+    installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    manifest_hash: Mapped[str] = mapped_column(String(128), default="")
+    hero_count: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(64), default="upstream_approved_art")
+    validation_result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    asset_path: Mapped[str] = mapped_column(Text, default="")
+    previous_active_pack_id: Mapped[str] = mapped_column(String(96), default="")
+    previous_active_version: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=expedition_now)
+    __table_args__ = (UniqueConstraint("pack_id", "version", name="uq_expedition_art_pack_version"),)
+
+
+class ExpeditionHeroAssetORM(Base):
+    __tablename__ = "orm_expedition_hero_assets"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pack_id: Mapped[str] = mapped_column(String(96), index=True)
+    pack_version: Mapped[str] = mapped_column(String(32), index=True)
+    hero_id: Mapped[str] = mapped_column(String(64), index=True)
+    asset_kind: Mapped[str] = mapped_column(String(32))
+    asset_id: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    path: Mapped[str] = mapped_column(Text)
+    mime: Mapped[str] = mapped_column(String(80), default="")
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    focal_point: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    scale: Mapped[float] = mapped_column(Float, default=1.0)
+    offset: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    sha256: Mapped[str] = mapped_column(String(128), default="")
+    source: Mapped[str] = mapped_column(String(64), default="upstream_approved_art")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=expedition_now)
+    __table_args__ = (UniqueConstraint("pack_id", "pack_version", "hero_id", "asset_kind", name="uq_expedition_hero_pack_asset"),)
+
+
+class ExpeditionArtReviewORM(Base):
+    __tablename__ = "orm_expedition_art_reviews"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pack_id: Mapped[str] = mapped_column(String(96), index=True)
+    pack_version: Mapped[str] = mapped_column(String(32), index=True)
+    hero_id: Mapped[str] = mapped_column(String(64))
+    asset_kind: Mapped[str] = mapped_column(String(32))
+    review_status: Mapped[str] = mapped_column(String(24), default="PENDING")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint("pack_id", "pack_version", "hero_id", "asset_kind", name="uq_expedition_art_review"),)
+
+
+class ExpeditionActiveArtPackORM(Base):
+    __tablename__ = "orm_expedition_active_art_pack"
+    singleton_id: Mapped[str] = mapped_column(String(16), primary_key=True, default="active")
+    pack_id: Mapped[str] = mapped_column(String(96), default="")
+    version: Mapped[str] = mapped_column(String(32), default="")
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    previous_pack_id: Mapped[str] = mapped_column(String(96), default="")
+    previous_version: Mapped[str] = mapped_column(String(32), default="")
