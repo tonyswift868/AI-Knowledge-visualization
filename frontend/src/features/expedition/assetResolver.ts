@@ -1,8 +1,13 @@
 import type { AssetKind, ExpeditionAsset, Hero } from "./api"
 
+export function fallbackAssetUrl(heroId: string, kind: AssetKind) {
+  const filename = kind === "skill_cutin" ? "skill_cut_in" : kind
+  return `/assets/expedition/heroes/${heroId}/${filename}.svg`
+}
+
 const fallback = (heroId: string, kind: AssetKind): ExpeditionAsset => ({
   asset_id: `hero:${heroId}:${kind}`,
-  url: `/assets/expedition/heroes/${heroId}/${kind}.svg`,
+  url: fallbackAssetUrl(heroId, kind),
   width: 0,
   height: 0,
   focal_point: { x: 0.5, y: 0.4 },

@@ -14,6 +14,10 @@ data/presets/*
 data/uploads/*
 data/local_import_snapshots/*
 data/archive_previews/*
+data/expedition_art_pack_previews/*
+
+# Installed/local art-pack payloads are binary runtime state, not source.
+content/expedition_art_packs/*
 
 # Local dependencies and generated frontend output
 frontend/node_modules/
@@ -26,6 +30,8 @@ backups/
 test-results/
 playwright-report/
 artifacts/pre_completion_backup/
+artifacts/expedition_art_pipeline_v1_acceptance/
+artifacts/expedition_v1_acceptance_tuning/
 
 # Local handoff document; do not publish with the project
 CODEX_MENTORFLOW_ACCEPTANCE_REPORT_FOR_GPT.md

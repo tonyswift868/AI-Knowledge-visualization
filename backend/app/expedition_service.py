@@ -65,14 +65,22 @@ def _seed(session) -> ExpeditionProfileORM:
     for index in range(1, 6):
         slot_id = f"slot_{index}"
         if not session.query(TrainingSlotORM).filter_by(profile_id=profile.id, slot_id=slot_id).first(): session.add(TrainingSlotORM(id=_id("slot"), profile_id=profile.id, slot_id=slot_id, level=1, spent_exp=0))
-    for hero_id in ("leishan", "jinxiao"):
+    starter_heroes = ("jinxiao", "leishan", "gulu", "shuangli", "zhenchui")
+    for hero_id in starter_heroes:
         if not session.query(HeroOwnershipORM).filter_by(profile_id=profile.id, hero_id=hero_id).first():
             own = HeroOwnershipORM(id=_id("hero"), profile_id=profile.id, hero_id=hero_id, stars=1, fragments=0, awakened=False); session.add(own); session.flush(); session.add(HeroStarProgressORM(id=_id("star"), ownership_id=own.id, current_stars=1, fragments=0)); session.add(HeroAwakeningORM(id=_id("awakening"), ownership_id=own.id, unlocked=False))
     if not session.query(LineupPresetORM).filter_by(profile_id=profile.id).first():
         lineup = LineupPresetORM(lineup_id=_id("lineup"), profile_id=profile.id, name="初始远征队", stance="balanced", active=True); session.add(lineup); session.flush()
-        for index, hero_id in enumerate(("jinxiao", "__empty_slot_2", "leishan", "__empty_slot_4", "__empty_slot_5"), 1):
+        for index, hero_id in enumerate(starter_heroes, 1):
             session.add(LineupMemberORM(id=_id("member"), lineup_id=lineup.lineup_id, slot_id=f"slot_{index}", hero_id=hero_id))
         profile.active_lineup_id = lineup.lineup_id
+    else:
+        active_lineup = session.get(LineupPresetORM, profile.active_lineup_id) if profile.active_lineup_id else None
+        if active_lineup and active_lineup.name == "初始远征队":
+            existing_members = session.query(LineupMemberORM).filter_by(lineup_id=active_lineup.lineup_id).order_by(LineupMemberORM.slot_id).all()
+            if len(existing_members) == 5 and sum(bool(member.hero_id and not member.hero_id.startswith("__empty_")) for member in existing_members) < 5:
+                for member, hero_id in zip(existing_members, starter_heroes):
+                    member.hero_id = hero_id
     _register_assets(session)
     session.flush(); return profile
 
@@ -341,11 +349,19 @@ def stage_definition(number: int) -> dict[str, Any]:
     init_orm()
     with SessionLocal() as session:
         cached = session.get(ExpeditionStageDefinitionCacheORM, number)
-        if cached: result = cached.definition; session.commit(); return result
+        if cached and isinstance(cached.definition, dict) and isinstance(cached.definition.get("difficulty"), dict):
+            result = cached.definition
+            session.commit()
+            return result
         enemy_ids = stage_enemy_ids(number)
         boss = BOSSES[(number // 10 - 1) % len(BOSSES)] if number % 10 == 0 else None
         result = {"stage_number": number, "seed": seed, "chapter": (number - 1) // 50 + 1, "theme": ["雾港档案", "星轨温室", "逆光剧场", "深层回廊"][(number - 1) // 50 % 4], "affix": ["无", "灼热回响", "脆弱护盾", "能量潮汐"][(number - 1) % 4], "enemy_ids": enemy_ids, "boss": boss, "difficulty": stage_difficulty(number), "rewards": {"tickets": 1 + number // 10, "equipment_material": 2 + number // 5, "pet_egg": number % 25 == 0}}
-        session.add(ExpeditionStageDefinitionCacheORM(stage_number=number, seed=seed, definition=result)); session.commit(); return result
+        if cached:
+            cached.seed = seed
+            cached.definition = result
+        else:
+            session.add(ExpeditionStageDefinitionCacheORM(stage_number=number, seed=seed, definition=result))
+        session.commit(); return result
 
 
 def stages() -> dict[str, Any]:

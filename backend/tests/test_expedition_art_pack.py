@@ -9,10 +9,12 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app import expedition_art_pack as art
+from app import main
 from app.expedition_data import HEROES
 from app.orm import Base
 
@@ -29,7 +31,7 @@ def _png(width: int, height: int, *, alpha: bool = True) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def _fixture_zip(*, pack_id: str = "mentorflow_expedition_art_v1", version: str = "1.0.0", missing: str | None = None, bad_hash: str | None = None, extra: bool = False, traversal: bool = False) -> bytes:
+def _fixture_zip(*, pack_id: str = "mentorflow_expedition_art_v1", version: str = "1.0.0", missing: str | None = None, bad_hash: str | None = None, extra: bool = False, traversal: bool = False, bad_mime: bool = False, bad_dimensions: bool = False, bad_alpha: bool = False, duplicate_asset: bool = False, unknown_hero: bool = False, zip_bomb: bool = False) -> bytes:
     root = "expedition_art_pack_v1/"
     files: dict[str, bytes] = {}
     assets: list[dict[str, str]] = []
@@ -60,13 +62,22 @@ def _fixture_zip(*, pack_id: str = "mentorflow_expedition_art_v1", version: str 
         files[root + metadata_path] = json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode()
         assets.append({"hero_id": hero_id, "asset_kind": "metadata", "path": metadata_path})
         for kind, (width, height) in dimensions.items():
-            path = f"heroes/{hero_folder}/{kind}.png"
+            if bad_dimensions and hero_id == HEROES[0]["hero_id"] and kind == "portrait":
+                width, height = 64, 64
+            extension = ".webp" if bad_mime and hero_id == HEROES[0]["hero_id"] and kind == "portrait" else ".png"
+            path = f"heroes/{hero_folder}/{kind}{extension}"
             if missing == f"{hero_id}:{kind}":
                 continue
-            files[root + path] = _png(width, height)
+            files[root + path] = _png(width, height, alpha=not (bad_alpha and hero_id == HEROES[0]["hero_id"] and kind == "portrait"))
             assets.append({"hero_id": hero_id, "asset_kind": kind, "path": path})
     if traversal:
         assets.append({"hero_id": HEROES[0]["hero_id"], "asset_kind": "portrait", "path": "../escape.png"})
+    if duplicate_asset:
+        assets.append({"hero_id": HEROES[0]["hero_id"], "asset_kind": "portrait", "path": f"heroes/{HEROES[0]['hero_id']}/portrait.png"})
+    if unknown_hero:
+        unknown_path = "heroes/unknown_hero/portrait.png"
+        files[root + unknown_path] = _png(256, 256)
+        assets.append({"hero_id": "unknown_hero", "asset_kind": "portrait", "path": unknown_path})
     manifest = {
         "pack_id": pack_id,
         "version": version,
@@ -93,6 +104,8 @@ def _fixture_zip(*, pack_id: str = "mentorflow_expedition_art_v1", version: str 
         files[root + "unexpected.bin"] = b"unexpected"
     if traversal:
         files[root + "../escape.png"] = _png(256, 256)
+    if zip_bomb:
+        files[root + "bomb.bin"] = b"0" * 1_000_000
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path, value in files.items():
@@ -143,6 +156,28 @@ def test_preview_rejects_untrusted_archive(kwargs, code):
         assert exc.value.code == code
 
 
+@pytest.mark.parametrize(
+    "kwargs, code",
+    [
+        ({"bad_mime": True}, "ART_PACK_MIME_MISMATCH"),
+        ({"bad_dimensions": True}, "ART_PACK_DIMENSION_INVALID"),
+        ({"bad_alpha": True}, "ART_PACK_ALPHA_REQUIRED"),
+        ({"duplicate_asset": True}, "ART_PACK_DUPLICATE_ASSET"),
+        ({"unknown_hero": True}, "ART_PACK_UNKNOWN_HERO"),
+        ({"zip_bomb": True}, "ART_PACK_COMPRESSION_RATIO"),
+    ],
+)
+def test_preview_rejects_media_and_archive_boundary_cases(kwargs, code):
+    if code in {"ART_PACK_MIME_MISMATCH", "ART_PACK_DIMENSION_INVALID", "ART_PACK_ALPHA_REQUIRED"}:
+        report = art.validate_art_pack(_fixture_zip(**kwargs))
+        assert report["valid"] is False
+        assert any(item.get("code") == code for item in report["errors"])
+    else:
+        with pytest.raises(art.ArtPackError) as exc:
+            art.validate_art_pack(_fixture_zip(**kwargs))
+        assert exc.value.code == code
+
+
 def test_install_review_activate_resolve_and_rollback(art_runtime):
     first = art.preview_bytes(_fixture_zip(version="1.0.0"), "DEV_ART_PACK_FIXTURE.zip")
     installed = art.install_preview(first["preview_id"], confirm=True)
@@ -181,3 +216,23 @@ def test_fallback_is_explicit_when_no_official_pack(art_runtime):
     assert resolved["fallback_used"] is True
     assert resolved["assets"]["portrait"]["url"].endswith(".svg")
     assert resolved["assets"]["portrait"]["version"] == "fallback"
+
+
+def test_art_pack_api_preview_install_and_registry_boundaries(art_runtime, monkeypatch):
+    monkeypatch.setattr(main, "init_orm", art.init_orm)
+    monkeypatch.setattr(main.db, "init_db", lambda: None)
+    with TestClient(main.app) as client:
+        response = client.post("/api/expedition/art-packs/preview", files={"file": ("DEV_ART_PACK_FIXTURE.zip", _fixture_zip(), "application/zip")})
+        assert response.status_code == 200, response.text
+        preview = response.json()
+        assert preview["valid"] is True
+        installed = client.post("/api/expedition/art-packs/install", json={"preview_id": preview["preview_id"], "confirm": True})
+        assert installed.status_code == 200, installed.text
+        listed = client.get("/api/expedition/art-packs")
+        assert listed.status_code == 200
+        assert listed.json()["items"][0]["status"] == "INSTALLED"
+        assets = client.get(f"/api/expedition/heroes/{HEROES[0]['hero_id']}/assets")
+        assert assets.status_code == 200
+        assert assets.json()["fallback_used"] is True
+        invalid = client.get("/api/expedition/art-assets/../etc/passwd")
+        assert invalid.status_code in {400, 404}

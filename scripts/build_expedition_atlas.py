@@ -13,8 +13,7 @@ from pathlib import Path
 
 
 def build(source: Path, output: Path, max_width: int = 2048) -> dict:
-    icons = sorted(source.rglob("skill_icon.webp")) + sorted(source.rglob("skill_icon.png")) + sorted(source.rglob("*.json"))
-    icons = [path for path in icons if path.name != "metadata.json"]
+    icons = sorted(source.rglob("skill_icon.webp")) + sorted(source.rglob("skill_icon.png"))
     cell = 256
     per_page = max(1, max_width // cell)
     pages: list[dict] = []

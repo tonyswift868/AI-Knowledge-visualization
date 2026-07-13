@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import io
 import json
 import re
 import shutil
@@ -48,18 +47,17 @@ ART_DIMENSION_RULES = {
     "skill_cutin": (256, 128, 4096, 2048),
     "skill_icon": (64, 64, 1024, 1024),
 }
-PACK_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
-VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
-ART_DIMENSION_RULES = {
-    "portrait": (256, 256, 4096, 4096),
-    "avatar": (128, 128, 2048, 2048),
-    "skill_cutin": (256, 128, 4096, 2048),
-    "skill_icon": (64, 64, 1024, 1024),
-}
+MAX_COMPRESSION_RATIO = 200
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = PROJECT_ROOT / "content" / "expedition_art_packs"
 PREVIEW_ROOT = PROJECT_ROOT / "data" / "expedition_art_pack_previews"
 EXPECTED_HERO_IDS = tuple(hero["hero_id"] for hero in HEROES)
+ALLOWED_PACK_SOURCES = {"upstream_approved_art", "dev_art_fixture"}
+
+
+def _fallback_asset_url(hero_id: str, kind: str) -> str:
+    filename = "skill_cut_in" if kind == "skill_cutin" else kind
+    return f"/assets/expedition/heroes/{hero_id}/{filename}.svg"
 
 
 class ArtPackError(Exception):
@@ -81,7 +79,6 @@ def _id(prefix: str) -> str:
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
 
 
 def _safe_component(value: str, label: str, pattern: re.Pattern[str]) -> str:
@@ -187,9 +184,20 @@ def _validate_metadata(metadata: dict[str, Any], hero_id: str) -> dict[str, Any]
     if not 0 <= x <= 1 or not 0 <= y <= 1:
         raise ArtPackError("ART_PACK_METADATA_INVALID", "portrait_focal_point 必须在 0 到 1 之间")
     facing = str(metadata.get("facing") or "right")
+    for field in ("source", "author", "license"):
+        if not str(metadata.get(field) or "").strip():
+            raise ArtPackError("ART_PACK_METADATA_INVALID", f"metadata.{field} cannot be empty")
     if facing not in {"left", "right"}:
         raise ArtPackError("ART_PACK_METADATA_INVALID", "facing 只能是 left 或 right")
     offset = metadata.get("battle_offset") or {}
+    try:
+        battle_scale = float(metadata.get("battle_scale", 1.0))
+        float(offset.get("x", 0))
+        float(offset.get("y", 0))
+    except (TypeError, ValueError):
+        raise ArtPackError("ART_PACK_METADATA_INVALID", "battle_scale/offset must be numeric")
+    if not 0.1 <= battle_scale <= 4:
+        raise ArtPackError("ART_PACK_METADATA_INVALID", "battle_scale out of safe range")
     return {**metadata, "hero_id": hero_id, "portrait_focal_point": {"x": x, "y": y}, "battle_offset": {"x": float(offset.get("x", 0)), "y": float(offset.get("y", 0))}, "battle_scale": float(metadata.get("battle_scale", 1.0)), "facing": facing}
 
 
@@ -206,6 +214,7 @@ def _manifest_assets(manifest: dict[str, Any], root: str, names: set[str]) -> tu
         raise ArtPackError("ART_PACK_ASSETS_REQUIRED", "manifest.assets 不能为空")
     assets: dict[str, dict[str, Any]] = {}
     metadata_paths: dict[str, str] = {}
+    seen_by_hero_kind: set[tuple[str, str]] = set()
     for raw in raw_assets:
         if not isinstance(raw, dict):
             raise ArtPackError("ART_PACK_ASSET_ENTRY_INVALID", "manifest.assets 中存在无效条目")
@@ -222,11 +231,25 @@ def _manifest_assets(manifest: dict[str, Any], root: str, names: set[str]) -> tu
         if full_path in assets:
             raise ArtPackError("ART_PACK_DUPLICATE_ASSET", "manifest 重复引用同一资源", details={"path": full_path})
         if kind == "metadata":
+            key = (hero_id, kind)
+            if key in seen_by_hero_kind:
+                raise ArtPackError("ART_PACK_DUPLICATE_ASSET", "同一角色不能重复声明 metadata")
+            seen_by_hero_kind.add(key)
+            if PurePosixPath(raw_path).parts != ("heroes", hero_id, "metadata.json"):
+                raise ArtPackError("ART_PACK_ASSET_PATH_INVALID", "metadata 必须位于 heroes/{hero_id}/metadata.json", details={"path": raw_path})
             if not hero_id:
                 raise ArtPackError("ART_PACK_METADATA_INVALID", "metadata 资源必须声明 hero_id")
             metadata_paths[hero_id] = full_path
             assets[full_path] = {**raw, "hero_id": hero_id, "asset_kind": kind, "path": full_path}
         elif kind in ART_KINDS:
+            key = (hero_id, kind)
+            if key in seen_by_hero_kind:
+                raise ArtPackError("ART_PACK_DUPLICATE_ASSET", "同一角色不能重复声明同类资源", details={"hero_id": hero_id, "asset_kind": kind})
+            seen_by_hero_kind.add(key)
+            path_parts = PurePosixPath(raw_path).parts
+            extension = PurePosixPath(raw_path).suffix.lower()
+            if path_parts[:2] != ("heroes", hero_id) or PurePosixPath(raw_path).stem != kind or extension not in ALLOWED_IMAGE_EXTENSIONS:
+                raise ArtPackError("ART_PACK_ASSET_PATH_INVALID", "角色资源必须位于 heroes/{hero_id}/{asset_kind}.webp 或 .png", details={"path": raw_path})
             if not hero_id:
                 raise ArtPackError("ART_PACK_ASSET_ENTRY_INVALID", "角色资源必须声明 hero_id")
             assets[full_path] = {**raw, "hero_id": hero_id, "asset_kind": kind, "path": full_path}
@@ -266,6 +289,9 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
         total += int(raw_info.file_size)
         if len(infos) > MAX_FILES:
             raise ArtPackError("ART_PACK_TOO_MANY_FILES", "美术包文件数量超过限制")
+        compressed = max(1, int(raw_info.compress_size))
+        if raw_info.file_size > compressed * MAX_COMPRESSION_RATIO:
+            raise ArtPackError("ART_PACK_COMPRESSION_RATIO", "ZIP 压缩比超过安全上限", details={"path": name, "ratio": round(raw_info.file_size / compressed, 2)})
         if raw_info.file_size > MAX_SINGLE_BYTES or total > MAX_TOTAL_BYTES:
             raise ArtPackError("ART_PACK_EXPANDED_TOO_LARGE", "美术包解压后超过限制")
     root, manifest_path = _root_and_manifest(list(infos))
@@ -274,8 +300,8 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
         manifest = json.loads(manifest_raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ArtPackError("ART_PACK_MANIFEST_INVALID", "manifest.json 不是有效 UTF-8 JSON") from exc
-    if not isinstance(manifest, dict) or manifest.get("source") != "upstream_approved_art":
-        raise ArtPackError("ART_PACK_MANIFEST_INVALID", "manifest.source 必须为 upstream_approved_art")
+    if not isinstance(manifest, dict) or manifest.get("source") not in ALLOWED_PACK_SOURCES:
+        raise ArtPackError("ART_PACK_MANIFEST_INVALID", "manifest.source 必须为 upstream_approved_art 或 dev_art_fixture")
     pack_id = _safe_component(str(manifest.get("pack_id") or ""), "pack_id", PACK_COMPONENT_RE)
     version = _safe_component(str(manifest.get("version") or ""), "version", VERSION_RE)
     _reject_active_content(manifest_raw, manifest_path)
@@ -353,7 +379,7 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
     for path in list(assets) + list(metadata_paths.values()):
         if path not in normalized_checksums:
             errors.append({"path": path, "error": "SHA256SUMS.json 缂哄皯鏂囦欢 hash", "code": "ART_PACK_CHECKSUM_MISSING"})
-    report = {"valid": not errors, "archive_name": archive_name, "pack_id": pack_id, "version": version, "manifest": manifest, "manifest_hash": manifest_hash, "root": root, "asset_count": len(rows), "hero_count": len(metadata_by_hero), "assets": rows, "metadata_paths": list(metadata_paths.values()), "metadata": metadata_by_hero, "attribution": attribution, "checksums": normalized_checksums, "errors": errors, "checked_at": _now().isoformat(), "fallback": {"available": True, "source": "generated_svg"}}
+    report = {"valid": not errors, "status": "VALIDATED" if not errors else "REJECTED", "archive_name": archive_name, "pack_id": pack_id, "version": version, "manifest": manifest, "manifest_hash": manifest_hash, "root": root, "asset_count": len(rows), "hero_count": len(metadata_by_hero), "assets": rows, "metadata_paths": list(metadata_paths.values()), "metadata": metadata_by_hero, "attribution": attribution, "checksums": normalized_checksums, "errors": errors, "checked_at": _now().isoformat(), "fallback": {"available": True, "source": "generated_svg"}}
     return report
 
 
@@ -546,7 +572,7 @@ def hero_assets(hero_id: str) -> dict[str, Any]:
             for row in rows:
                 result[row.asset_kind] = {"asset_id": row.asset_id, "url": f"/api/expedition/art-assets/{row.asset_id}/file", "width": row.width, "height": row.height, "focal_point": row.focal_point, "scale": row.scale, "offset": row.offset, "fallback_used": False, "version": row.pack_version}
     for kind in ART_KINDS:
-        result.setdefault(kind, {"asset_id": f"hero:{hero_id}:{kind}", "url": f"/assets/expedition/heroes/{hero_id}/{kind}.svg", "width": 0, "height": 0, "focal_point": {"x": 0.5, "y": 0.4}, "scale": 1.0, "offset": {"x": 0, "y": 0}, "fallback_used": True, "version": "fallback"})
+        result.setdefault(kind, {"asset_id": f"hero:{hero_id}:{kind}", "url": _fallback_asset_url(hero_id, kind), "width": 0, "height": 0, "focal_point": {"x": 0.5, "y": 0.4}, "scale": 1.0, "offset": {"x": 0, "y": 0}, "fallback_used": True, "version": "fallback"})
     return {"hero_id": hero_id, "assets": result, "fallback_used": any(item["fallback_used"] for item in result.values())}
 
 

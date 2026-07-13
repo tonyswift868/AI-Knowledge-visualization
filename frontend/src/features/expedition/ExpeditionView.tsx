@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { ArrowRight, BookOpen, Box, CheckCircle2, Coins, Crosshair, Crown, Gem, Palette, RotateCcw, Save, Shield, Sparkles, Swords, Upload, Users, WandSparkles } from "lucide-react"
 import { BattleReplay } from "./BattleReplay"
 import { expeditionApi, type ArtPackVersion, type AssetKind, type BattleEvent, type BattleUnit, type ExpeditionProfile, type GachaBanner, type Hero, type Lineup, type Stage, unwrapProfile } from "./api"
-import { resolveExpeditionAsset } from "./assetResolver"
+import { fallbackAssetUrl, resolveExpeditionAsset } from "./assetResolver"
 import "./expedition.css"
 import "./expedition-art.css"
 
@@ -11,7 +11,7 @@ const slots = ["slot_1", "slot_2", "slot_3", "slot_4", "slot_5"]
 const slotLabels: Record<string, string> = { slot_1: "右 · 前排", slot_2: "上 · 机动", slot_3: "中 · 核心", slot_4: "下 · 支援", slot_5: "左 · 后排" }
 
 function errorText(error: unknown) { return error instanceof Error ? error.message : "操作失败，请稍后再试" }
-function heroPortrait(hero?: Hero, size = "medium", kind: AssetKind = "portrait") { const asset = resolveExpeditionAsset(hero, kind); return <div className={`expedition-hero-portrait ${size} ${asset.fallback_used ? "fallback-asset" : "official-asset"}`} data-asset-version={asset.version}><img src={asset.url} alt="" onError={event => { const target = event.currentTarget; if (!target.dataset.fallback) { target.dataset.fallback = "1"; target.src = `/assets/expedition/heroes/${hero?.hero_id || "jinxiao"}/${kind}.svg` } else target.style.display = "none" }} /><span>{hero?.name?.slice(0, 1) || "?"}</span></div> }
+function heroPortrait(hero?: Hero, size = "medium", kind: AssetKind = "portrait") { const asset = resolveExpeditionAsset(hero, kind); return <div className={`expedition-hero-portrait ${size} ${asset.fallback_used ? "fallback-asset" : "official-asset"}`} data-asset-version={asset.version}><img src={asset.url} alt="" onError={event => { const target = event.currentTarget; if (!target.dataset.fallback) { target.dataset.fallback = "1"; target.src = fallbackAssetUrl(hero?.hero_id || "jinxiao", kind) } else target.style.display = "none" }} /><span>{hero?.name?.slice(0, 1) || "?"}</span></div> }
 
 export function ExpeditionView() {
   const [view, setView] = useState<View>("home")
@@ -74,7 +74,7 @@ export function ExpeditionView() {
     {view === "gacha" && <Gacha banners={banners} profile={profile} result={pullResult} onPull={pull} heroes={heroes} />}
     {view === "stages" && <Stages stage={stage} stageNumber={stageNumber} setStageNumber={setStageNumber} onChallenge={challenge} busy={busy} battle={battle} events={events} heroes={heroes} />}
     {view === "inventory" && <Inventory equipment={equipment} pets={pets} />}
-    {view === "art-review" && <ArtReview heroes={heroes} packs={artPacks} active={activeArtPack} onRefresh={load} />}
+    {view === "art-review" && <><ArtReview heroes={heroes} packs={artPacks} active={activeArtPack} onRefresh={load} /><ArtReviewDiagnostics heroes={heroes} packs={artPacks} active={activeArtPack} /></>}
   </div>
 }
 
@@ -90,7 +90,7 @@ function Tab({ active, icon, label, onClick }: { active: boolean; icon: ReactNod
   return <button className={`expedition-tab ${active ? "active" : ""}`} onClick={onClick}>{icon}<span>{label}</span></button>
 }
 
-function Heroes({ heroes, selected, onSelect }: { heroes: Hero[]; selected?: Hero; onSelect: (hero: Hero) => void }) { return <div className="expedition-section-grid"><section className="expedition-panel expedition-hero-list"><PanelTitle icon={<Users size={16} />} title="角色图鉴" action={`${heroes.filter(hero => hero.owned).length} / ${heroes.length} 已获得`} /><div className="expedition-hero-cards">{heroes.map(hero => <button key={hero.hero_id} className={`expedition-hero-card ${hero.owned ? "owned" : "locked"} ${selected?.hero_id === hero.hero_id ? "selected" : ""}`} onClick={() => onSelect(hero)}>{heroPortrait(hero)}<span><b>{hero.name}</b><small>{hero.role} · {hero.rarity}</small><i>{hero.owned ? `★ ${hero.stars}` : "尚未获得"}</i></span></button>)}</div></section><section className="expedition-panel expedition-hero-detail">{selected ? <><div className="expedition-detail-head">{heroPortrait(selected, "large")}<div><span className="expedition-kicker">HERO DETAIL · {selected.rarity.toUpperCase()}</span><h2>{selected.name}</h2><p>{selected.role} · {selected.tags?.join(" / ")}</p></div></div><div className="expedition-skill-grid">{[selected.active_skill, selected.passive_one, selected.passive_two, selected.awakening].filter(Boolean).map(skill => <article key={skill!.skill_id}><img src={resolveExpeditionAsset(selected, "skill_icon").url} alt="" onError={event => { event.currentTarget.src = `/assets/expedition/heroes/${selected.hero_id}/skill_icon.svg` }} /><span>{skill!.name}</span><p>{skill!.summary}</p></article>)}</div><div className="expedition-weakness"><b>设计中的解法空间</b><span>{selected.weakness || "通过站位、护盾、净化、命中与节奏调整应对"}</span></div></> : <div className="expedition-empty">选择一个角色查看技能与克制解法。</div>}</section></div> }
+function Heroes({ heroes, selected, onSelect }: { heroes: Hero[]; selected?: Hero; onSelect: (hero: Hero) => void }) { return <div className="expedition-section-grid"><section className="expedition-panel expedition-hero-list"><PanelTitle icon={<Users size={16} />} title="角色图鉴" action={`${heroes.filter(hero => hero.owned).length} / ${heroes.length} 已获得`} /><div className="expedition-hero-cards">{heroes.map(hero => <button key={hero.hero_id} className={`expedition-hero-card ${hero.owned ? "owned" : "locked"} ${selected?.hero_id === hero.hero_id ? "selected" : ""}`} onClick={() => onSelect(hero)}>{heroPortrait(hero)}<span><b>{hero.name}</b><small>{hero.role} · {hero.rarity}</small><i>{hero.owned ? `★ ${hero.stars}` : "尚未获得"}</i></span></button>)}</div></section><section className="expedition-panel expedition-hero-detail">{selected ? <><div className="expedition-detail-head">{heroPortrait(selected, "large")}<div><span className="expedition-kicker">HERO DETAIL · {selected.rarity.toUpperCase()}</span><h2>{selected.name}</h2><p>{selected.role} · {selected.tags?.join(" / ")}</p></div></div><div className="expedition-skill-grid">{[selected.active_skill, selected.passive_one, selected.passive_two, selected.awakening].filter(Boolean).map(skill => <article key={skill!.skill_id}><img src={resolveExpeditionAsset(selected, "skill_icon").url} alt="" onError={event => { event.currentTarget.src = fallbackAssetUrl(selected.hero_id, "skill_icon") }} /><span>{skill!.name}</span><p>{skill!.summary}</p></article>)}</div><div className="expedition-weakness"><b>设计中的解法空间</b><span>{selected.weakness || "通过站位、护盾、净化、命中与节奏调整应对"}</span></div></> : <div className="expedition-empty">选择一个角色查看技能与克制解法。</div>}</section></div> }
 
 function Formation({ heroes, lineups, draft, setDraft, onSave, onActivate }: { heroes: Hero[]; lineups: Lineup[]; draft: Lineup | null; setDraft: (lineup: Lineup) => void; onSave: () => void; onActivate: (id: string) => void }) {
   const [dragged, setDragged] = useState<string | null>(null)
@@ -154,4 +154,61 @@ function ArtReview({ heroes, packs, active, onRefresh }: { heroes: Hero[]; packs
   const install = async () => { const previewId = String(preview?.preview_id || ""); if (!previewId) return; try { setBusy(true); await expeditionApi.installArtPack(previewId, true); setNotice("美术包已安装，等待逐项人工审核"); setPreview(null); await onRefresh() } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }
   const mark = async (heroId: string, kind: AssetKind, status: "APPROVED" | "NEEDS_REDO") => { if (!pack) return; try { setBusy(true); await expeditionApi.reviewArtAsset(pack.pack_id, pack.version, heroId, kind, status); await onRefresh() } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }
   return <div className="expedition-art-review"><section className="expedition-panel"><PanelTitle icon={<Palette size={16} />} title="远征美术审核" action="上游 ZIP · 逐项确认 · 可回滚" /><p className="expedition-footnote">正式包未激活时，所有页面继续使用标记为“开发期基础美术”的 SVG fallback。上传后先预览，再安装；未完成 24 × 4 项审核不能激活。</p><div className="art-review-import"><label><Upload size={15} />选择 Expedition_Art_Pack_V1.zip<input type="file" accept=".zip,application/zip" onChange={event => setFile(event.target.files?.[0] || null)} /></label><button className="expedition-primary" onClick={() => void runPreview()} disabled={!file || busy}>安全预览</button>{preview && <div className={`art-review-preview ${previewValid ? "valid" : "invalid"}`}><b>{previewValid ? "预览通过" : "预览拒绝"}</b><span>{String(preview.pack_id || "—")} · {String(preview.version || "—")} · {String(preview.asset_count || 0)} 项资源</span>{previewValid && <button className="expedition-small-button" onClick={() => void install()} disabled={busy}>确认安装</button>}</div>}</div>{notice && <div className="expedition-notice" role="status">{notice}</div>}</section><section className="expedition-panel"><PanelTitle icon={<CheckCircle2 size={16} />} title="版本状态" action={active ? `Active · ${active.version}` : "当前使用 fallback"} />{packs.length ? <div className="art-pack-version-list">{packs.map(item => <article key={`${item.pack_id}-${item.version}`}><div><b>{item.pack_id} · {item.version}</b><small>{item.status} · 审核 {item.reviewed_assets}/{item.required_reviews}</small></div><div className="art-pack-actions"><button className="expedition-small-button" disabled={item.status !== "VALIDATED" || busy} onClick={() => void expeditionApi.activateArtPack(item.pack_id, item.version).then(onRefresh).catch(error => setNotice(errorText(error)))}>激活</button>{active?.pack_id === item.pack_id && active.version === item.version && <button className="expedition-small-button" disabled={busy} onClick={() => void expeditionApi.rollbackArtPack(item.pack_id, item.version).then(onRefresh).catch(error => setNotice(errorText(error)))}>回滚</button>}</div></article>)}</div> : <div className="expedition-empty">暂无已安装版本。当前所有角色继续使用 SVG fallback。</div>}</section><section className="expedition-panel"><PanelTitle icon={<Users size={16} />} title="24 名角色联系表" action={active ? "正式包/回退状态" : "开发期基础美术"} /><div className="art-contact-sheet">{heroes.map(hero => <article key={hero.hero_id}><div className="art-contact-head">{heroPortrait(hero, "small")}<div><b>{hero.name}</b><small>{hero.hero_id}</small></div></div><div className="art-contact-assets">{(["portrait", "avatar", "skill_cutin", "skill_icon"] as AssetKind[]).map(kind => { const item = review(hero.hero_id, kind); const asset = resolveExpeditionAsset(hero, kind); return <div key={kind} className="art-review-asset"><img src={asset.url} alt={`${hero.name} ${kind}`} onError={event => { event.currentTarget.src = `/assets/expedition/heroes/${hero.hero_id}/${kind}.svg` }} /><span>{kind} · {item?.review_status || (asset.fallback_used ? "FALLBACK" : "ACTIVE")}</span>{pack && <div><button disabled={busy} onClick={() => void mark(hero.hero_id, kind, "APPROVED")}>通过</button><button disabled={busy} onClick={() => void mark(hero.hero_id, kind, "NEEDS_REDO")}>重做</button></div>}</div> })}</div></article>)}</div></section></div>
+}
+
+function ArtReviewDiagnostics({ heroes, packs, active }: { heroes: Hero[]; packs: ArtPackVersion[]; active: ArtPackVersion | null }) {
+  const pack = packs[0]
+  const previous = packs.find(item => item.pack_id !== pack?.pack_id || item.version !== pack?.version)
+  const assets = pack?.validation_result?.assets || []
+  const metadata = pack?.validation_result?.metadata || {}
+  const errors = pack?.validation_result?.errors || []
+  const download = (name: string, content: string, type = "application/json") => {
+    const url = URL.createObjectURL(new Blob([content], { type }))
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = name
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadBlob = (name: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = name
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportContactSheet = async () => {
+    const cellWidth = 180
+    const cellHeight = 150
+    const canvas = document.createElement("canvas")
+    canvas.width = cellWidth * 4
+    canvas.height = cellHeight * 6
+    const context = canvas.getContext("2d")
+    if (!context) return
+    context.fillStyle = "#0b1719"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    for (let index = 0; index < heroes.length; index += 1) {
+      const hero = heroes[index]
+      const asset = resolveExpeditionAsset(hero, "portrait")
+      const image = new Image()
+      image.src = asset.url
+      await new Promise<void>(resolve => { image.onload = () => resolve(); image.onerror = () => resolve() })
+      const x = (index % 4) * cellWidth
+      const y = Math.floor(index / 4) * cellHeight
+      if (image.naturalWidth) context.drawImage(image, x + 8, y + 8, 164, 112)
+      context.fillStyle = "#dcebe5"
+      context.font = "12px sans-serif"
+      context.fillText(`${hero.name} · ${hero.hero_id}`, x + 8, y + 137)
+    }
+    canvas.toBlob(blob => { if (blob) downloadBlob("mentorflow-contact-sheet.png", blob) }, "image/png")
+  }
+  const assetFor = (heroId: string, kind: AssetKind) => assets.find(item => item.hero_id === heroId && item.asset_kind === kind)
+  const reviewFor = (heroId: string, kind: AssetKind) => pack?.reviews?.find(item => item.hero_id === heroId && item.asset_kind === kind)
+  return <section className="expedition-panel art-review-diagnostics" data-testid="art-review-diagnostics">
+    <div className="expedition-panel-title"><div><Palette size={16} /><h3>审核诊断与版本对比</h3></div><span>{active ? `当前 Active · ${active.version}` : "当前使用 SVG fallback"}</span></div>
+    <div className="art-review-toolbar"><button className="expedition-small-button" disabled={!pack} onClick={() => pack && download(`${pack.pack_id}-${pack.version}-review.json`, JSON.stringify(pack.validation_result || pack, null, 2))}>下载审核报告 JSON</button><button className="expedition-small-button" disabled={!heroes.length} onClick={() => void exportContactSheet()}>导出 contact sheet PNG</button><span>{previous ? `上一版本：${previous.pack_id} · ${previous.version}` : "上一版本：无"}</span></div>
+    {errors.length > 0 && <div className="art-review-errors" role="alert"><b>预览/校验错误</b>{errors.map((item, index) => <span key={`${item.path}-${index}`}>{item.code || "ERROR"} · {item.path || "—"} · {item.error || "校验失败"}</span>)}</div>}
+    {pack ? <div className="art-review-table-wrap"><table className="art-review-table"><thead><tr><th>角色 / hero_id</th><th>资源</th><th>尺寸 / MIME / 透明</th><th>SHA256</th><th>来源 / 作者 / 许可</th><th>状态 / 对比</th></tr></thead><tbody>{heroes.map(hero => { const meta = metadata[hero.hero_id] || {}; return <tr key={hero.hero_id}><td><b>{hero.name}</b><code>{hero.hero_id}</code></td><td><div className="art-review-kind-list">{(["portrait", "avatar", "skill_cutin", "skill_icon"] as AssetKind[]).map(kind => { const item = assetFor(hero.hero_id, kind); const review = reviewFor(hero.hero_id, kind); const old = previous?.validation_result?.assets?.find(candidate => candidate.hero_id === hero.hero_id && candidate.asset_kind === kind); const changed = old && item && old.sha256 !== item.sha256; return <span key={kind}><b>{kind}</b><small>{item?.path || "缺失"}</small><em>{review?.review_status || (item ? "PENDING" : "FALLBACK")}</em>{changed && <i>与上一版不同</i>}</span> })}</div></td><td><div className="art-review-kind-list">{(["portrait", "avatar", "skill_cutin", "skill_icon"] as AssetKind[]).map(kind => { const item = assetFor(hero.hero_id, kind); return <span key={kind}>{item ? `${item.width}×${item.height} · ${item.mime} · ${item.has_alpha ? "有透明通道" : "无透明通道"}` : "fallback"}</span> })}</div></td><td><div className="art-review-kind-list">{(["portrait", "avatar", "skill_cutin", "skill_icon"] as AssetKind[]).map(kind => <code key={kind}>{assetFor(hero.hero_id, kind)?.sha256?.slice(0, 16) || "fallback"}</code>)}</div></td><td><small>{meta.source || pack.source || "—"}</small><small>{meta.author || "—"}</small><small>{meta.license || "—"}</small></td><td><b>{active?.pack_id === pack.pack_id && active.version === pack.version ? "正式资源" : "待激活/回退"}</b><small>{previous ? `对比 ${previous.version}` : "首个版本"}</small></td></tr> })}</tbody></table></div> : <div className="expedition-empty">尚无已安装美术包；24 名角色均使用明确标记的开发期基础 SVG fallback。</div>}
+  </section>
 }

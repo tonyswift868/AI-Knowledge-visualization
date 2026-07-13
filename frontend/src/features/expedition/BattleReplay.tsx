@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { AssetKind, BattleEvent, BattleUnit, Hero } from "./api"
-import { resolveExpeditionAsset } from "./assetResolver"
+import { fallbackAssetUrl, resolveExpeditionAsset } from "./assetResolver"
 
 type Props = { events: BattleEvent[]; winner?: string; stageNumber?: number; units?: BattleUnit[]; heroes?: Hero[] }
 type ReplayScene = any
@@ -14,7 +14,7 @@ const eventLabel: Record<string, string> = {
 }
 
 function fallbackUrl(heroId: string, kind: AssetKind) {
-  return "/assets/expedition/heroes/" + heroId + "/" + kind + ".svg"
+  return fallbackAssetUrl(heroId, kind)
 }
 
 function assetKeys(hero: Hero, kind: AssetKind) {
@@ -74,7 +74,7 @@ export function BattleReplay({ events, winner, stageNumber, units = [], heroes =
         }
 
         preload() {
-          const imageCount = this.replayHeroes.length * 3
+          const imageCount = this.replayHeroes.length * 6
           let loaded = 0
           this.load.on("progress", (value: number) => setLoadProgress(Math.round(value * 100)))
           this.load.on("loaderror", (file: any) => this.onWarning?.("资源加载失败，已回退：" + (file?.key || "unknown")))
@@ -181,7 +181,7 @@ export function BattleReplay({ events, winner, stageNumber, units = [], heroes =
 
         private eventDuration(event: BattleEvent) {
           if (this.compactMotion) return 100
-          const base = event.event_type === "SKILL_CAST" ? 480 : event.event_type === "CRITICAL" ? 260 : 220
+          const base = event.event_type === "SKILL_CAST" ? 360 : event.event_type === "CRITICAL" ? 260 : 220
           return Math.max(45, Math.round(base / this.replaySpeed))
         }
 
@@ -295,13 +295,19 @@ export function BattleReplay({ events, winner, stageNumber, units = [], heroes =
             this.cutin.icon.setVisible(true)
           }
           this.cutin.text.setText((hero?.name || event.actor_id) + "  ·  " + (skill?.name || event.source_skill_id || "技能发动"))
-          this.cutin.panel.setVisible(true)
-          this.cutin.text.setVisible(true)
-          this.cutin.panel.x = this.compactMotion ? 340 : 650
-          this.cutin.text.x = this.cutin.panel.x
-          const cutinTargets = [this.cutin.panel, this.cutin.text, this.cutin.image, this.cutin.icon].filter(Boolean)
-          this.tweens.add({ targets: cutinTargets, x: 340, duration: this.compactMotion ? 100 : 260, ease: "Cubic.easeOut" })
-          this.time.delayedCall(this.eventDuration(event), () => this.tweens.add({ targets: cutinTargets, alpha: 0, duration: this.compactMotion ? 0 : 150, onComplete: () => {
+            this.cutin.panel.setVisible(true)
+            this.cutin.text.setVisible(true)
+            this.cutin.panel.x = this.compactMotion ? 340 : 650
+            this.cutin.text.x = this.cutin.panel.x
+            const textTargets = [this.cutin.panel, this.cutin.text]
+            const imageTargets = [this.cutin.image, this.cutin.icon].filter(Boolean)
+            if (this.cutin.image) this.cutin.image.x = this.compactMotion ? 145 : -90
+            if (this.cutin.icon) this.cutin.icon.x = this.compactMotion ? 48 : -60
+            this.tweens.add({ targets: textTargets, x: 340, duration: this.compactMotion ? 100 : 260, ease: "Cubic.easeOut" })
+            if (this.cutin.image) this.tweens.add({ targets: this.cutin.image, x: 145, duration: this.compactMotion ? 100 : 260, ease: "Cubic.easeOut" })
+            if (this.cutin.icon) this.tweens.add({ targets: this.cutin.icon, x: 48, duration: this.compactMotion ? 100 : 260, ease: "Cubic.easeOut" })
+            const fadeTargets = [this.cutin.panel, this.cutin.text, this.cutin.image, this.cutin.icon].filter(Boolean)
+            this.time.delayedCall(this.eventDuration(event), () => this.tweens.add({ targets: fadeTargets, alpha: 0, duration: this.compactMotion ? 0 : 150, onComplete: () => {
             this.cutin.panel.setVisible(false).setAlpha(1)
             this.cutin.text.setVisible(false).setAlpha(1)
             this.cutin.image?.setVisible(false).setAlpha(1)

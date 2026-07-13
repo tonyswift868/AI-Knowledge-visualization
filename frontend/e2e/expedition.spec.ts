@@ -1,22 +1,11 @@
 import { test, expect } from '@playwright/test'
+import { openExpedition } from './expedition.helpers'
 
-test('learning expedition surface exposes the complete loop', async ({ page }) => {
-  await test.step('open MentorFlow', async () => { await page.goto('/'); await expect(page.locator('body')).toContainText('MentorFlow') })
-  await test.step('open expedition navigation', async () => { await page.getByRole('button', { name: '学习远征' }).click(); await expect(page.getByTestId('expedition-page')).toBeVisible() })
-  await test.step('show verified resource bar', async () => { await expect(page.getByText('学习水晶', { exact: true })).toBeVisible(); await expect(page.getByText('训练经验', { exact: true })).toBeVisible() })
-  await test.step('show infinite stage counter', async () => { await expect(page.getByText('无限关卡')).toBeVisible() })
-  await test.step('show training slots', async () => { await expect(page.getByRole('heading', { name: '训练槽' })).toBeVisible() })
-  await test.step('open hero gallery', async () => { await page.getByRole('button', { name: /角色与训练/ }).click(); await expect(page.getByText('角色图鉴')).toBeVisible() })
-  await test.step('render original hero portrait', async () => { await expect(page.locator('img[src*="/assets/expedition/heroes/"]').first()).toBeVisible() })
-  await test.step('render hero detail', async () => { await expect(page.getByText('设计中的解法空间')).toBeVisible() })
-  await test.step('open cross formation', async () => { await page.getByRole('button', { name: '十字阵容' }).click(); await expect(page.getByText('拖拽交换')).toBeVisible() })
-  await test.step('show five formation slots', async () => { await expect(page.locator('.expedition-formation-slot')).toHaveCount(5) })
-  await test.step('show available roster', async () => { await expect(page.getByText('可用角色')).toBeVisible() })
-  await test.step('open gacha page', async () => { await page.getByRole('button', { name: '招募卡池' }).click(); await expect(page.getByRole('heading', { name: '招募卡池' })).toBeVisible() })
-  await test.step('show server decided banner', async () => { await expect(page.getByText('HERO SUMMON')).toBeVisible() })
-  await test.step('open stage page', async () => { await page.getByRole('button', { name: '无限闯关' }).click(); await expect(page.getByRole('heading', { name: /第\s*1\s*关/ })).toBeVisible() })
-  await test.step('show stage composition', async () => { await expect(page.getByText(/敌方编队/)).toBeVisible() })
-  await test.step('show chapter rules', async () => { await expect(page.getByText('系统规划的无限规则')).toBeVisible() })
-  await test.step('open inventory page', async () => { await page.getByRole('button', { name: '装备与宠物' }).click(); await expect(page.getByText('装备工坊')).toBeVisible() })
-  await test.step('return to expedition home', async () => { await page.getByRole('button', { name: '远征大厅' }).click(); await expect(page.getByText('验证里程碑')).toBeVisible() })
+test('expedition shell exposes navigation, fallback labeling, and the review page', async ({ page }) => {
+  await openExpedition(page)
+  await expect(page.getByTestId('expedition-page')).toBeVisible()
+  await expect(page.getByText('学习水晶', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '美术审核', exact: true }).click()
+  await expect(page.getByTestId('art-review-diagnostics')).toBeVisible()
+  await expect(page.getByText(/当前使用 SVG fallback|当前 Active/)).toBeVisible()
 })

@@ -37,7 +37,7 @@ from . import catalog_repository
 from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, submit_learning_run
 from .adaptive_narrative import AdaptiveNarrativeError, activate_blueprint, adaptive_context, analyze_task_profile, compile_adaptation, generate_dynamic_scene, generate_scene_contract, get_blueprint, get_current_contract, list_artifacts, list_contracts, list_story_objects
 from .expedition_service import ExpeditionError, activate_lineup, assets as expedition_asset, awaken as expedition_awaken, battle as expedition_battle, challenge_stage, claim_milestone, claim_stage, delete_lineup, equipment as expedition_equipment, equip_equipment, equip_pet, get_ledger as expedition_ledger, get_profile as expedition_profile, gacha_banners, gacha_history, gacha_pull, hero_detail, lineups as expedition_lineups, list_heroes, milestones as expedition_milestones, pets as expedition_pets, reset_equipment, reset_slot, save_lineup, star_up, stage_definition, stages as expedition_stages, training_slots, unequip_equipment, upgrade_equipment, upgrade_slot
-from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
+from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as resolve_expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = PROJECT_ROOT / "data" / "presets"
@@ -1595,7 +1595,7 @@ def expedition_art_pack_review(pack_id: str, version: str, hero_id: str, asset_k
 @app.get("/api/expedition/art-assets/{asset_id:path}/file")
 def expedition_art_asset_file(asset_id: str):
     try:
-        path = expedition_art_asset_file(asset_id)
+        path = resolve_expedition_art_asset_file(asset_id)
         return FileResponse(path, media_type="image/webp" if path.suffix.lower() == ".webp" else "image/png")
     except ArtPackError as exc: _art_pack_error(exc)
 
