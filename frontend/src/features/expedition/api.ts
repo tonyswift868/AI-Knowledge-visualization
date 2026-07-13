@@ -36,7 +36,7 @@ export type Hero = {
 export type AssetKind = "portrait" | "avatar" | "skill_cutin" | "skill_icon"
 export type ExpeditionAsset = { asset_id: string; url: string; width: number; height: number; focal_point: { x: number; y: number }; scale: number; offset: { x: number; y: number }; fallback_used: boolean; version: string }
 
-export type ArtPackVersion = { pack_id: string; version: string; status: string; installed_at?: string | null; activated_at?: string | null; manifest_hash: string; hero_count: number; source: string; validation_result?: { assets?: Array<{ hero_id: string; asset_kind: AssetKind; path: string; width: number; height: number; mime: string; sha256: string }> }; reviewed_assets: number; required_reviews: number; previous_active_pack_id?: string; previous_active_version?: string; reviews?: Array<{ hero_id: string; asset_kind: AssetKind; review_status: string; review_note: string; reviewed_at?: string | null }> }
+export type ArtPackVersion = { pack_id: string; version: string; status: string; installed_at?: string | null; activated_at?: string | null; manifest_hash: string; hero_count: number; source: string; validation_result?: { assets?: Array<{ hero_id: string; asset_kind: AssetKind; path: string; width: number; height: number; mime: string; sha256: string }>; metadata?: Record<string, { source?: string; author?: string; license?: string }>; attribution?: Record<string, unknown> }; reviewed_assets: number; required_reviews: number; previous_active_pack_id?: string; previous_active_version?: string; reviews?: Array<{ hero_id: string; asset_kind: AssetKind; review_status: string; review_note: string; reviewed_at?: string | null }> }
 
 export type LineupMember = { slot_id: string; hero_id: string }
 export type Lineup = {
@@ -75,12 +75,30 @@ export type BattleEvent = {
   actor_id: string
   target_ids: string[]
   source_skill_id?: string | null
-  numeric_values?: Record<string, number>
+  numeric_values?: Record<string, number | string>
   status_ids?: string[]
   is_critical?: boolean
   is_miss?: boolean
   animation_hint?: string
   timestamp_offset?: number
+  actor_hero_id?: string
+  target_hero_ids?: string[]
+}
+
+export type BattleUnit = {
+  id: string
+  hero_id: string
+  name: string
+  side: "ally" | "enemy"
+  position: number
+  hp: number
+  max_hp: number
+  shield: number
+  energy: number
+  statuses: Record<string, { stacks?: number; duration?: number }>
+  damage?: number
+  healing?: number
+  alive: boolean
 }
 
 export type BattleSummary = {
@@ -88,7 +106,7 @@ export type BattleSummary = {
   stage_number: number
   winner: string
   event_count?: number
-  result?: { winner?: string; rounds?: number; units?: Record<string, unknown> }
+  result?: { winner?: string; rounds?: number; units?: BattleUnit[] }
 }
 
 async function expeditionRequest<T>(path: string, init?: RequestInit): Promise<T> {

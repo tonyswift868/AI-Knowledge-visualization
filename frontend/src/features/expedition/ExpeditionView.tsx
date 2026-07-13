@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { ArrowRight, BookOpen, Box, CheckCircle2, Coins, Crosshair, Crown, Gem, Palette, RotateCcw, Save, Shield, Sparkles, Swords, Upload, Users, WandSparkles } from "lucide-react"
 import { BattleReplay } from "./BattleReplay"
-import { expeditionApi, type ArtPackVersion, type AssetKind, type BattleEvent, type ExpeditionProfile, type GachaBanner, type Hero, type Lineup, type Stage, unwrapProfile } from "./api"
+import { expeditionApi, type ArtPackVersion, type AssetKind, type BattleEvent, type BattleUnit, type ExpeditionProfile, type GachaBanner, type Hero, type Lineup, type Stage, unwrapProfile } from "./api"
 import { resolveExpeditionAsset } from "./assetResolver"
 import "./expedition.css"
+import "./expedition-art.css"
 
 type View = "home" | "heroes" | "formation" | "gacha" | "stages" | "inventory" | "art-review"
 const slots = ["slot_1", "slot_2", "slot_3", "slot_4", "slot_5"]
@@ -30,7 +31,7 @@ export function ExpeditionView() {
   const [draftLineup, setDraftLineup] = useState<Lineup | null>(null)
   const [pullResult, setPullResult] = useState<Array<Record<string, unknown>>>([])
   const [events, setEvents] = useState<BattleEvent[]>([])
-  const [battle, setBattle] = useState<{ battle_id: string; winner: string; stage_number: number } | null>(null)
+  const [battle, setBattle] = useState<{ battle_id: string; winner: string; stage_number: number; units: BattleUnit[] } | null>(null)
   const [notice, setNotice] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -59,7 +60,7 @@ export function ExpeditionView() {
     try { setBusy(true); const result = await expeditionApi.saveLineup({ lineup_id: draftLineup.lineup_id, name: draftLineup.name, stance: draftLineup.stance, members: draftLineup.members, expected_revision: draftLineup.revision }); setLineups(current => current.map(item => item.lineup_id === result.item.lineup_id ? result.item : item)); setDraftLineup(result.item); setNotice("阵容已保存；战斗开始后会锁定阵容") } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) }
   }
   async function pull(banner: GachaBanner, count: 1 | 10) { try { setBusy(true); const result = await expeditionApi.pull(banner.banner_id, count); setPullResult(result.results); await refreshProfile(); await load(); setView("gacha") } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }
-  async function challenge() { try { setBusy(true); const result = await expeditionApi.challenge(stageNumber); const replay = await expeditionApi.battleEvents(result.battle_id); setEvents(replay.events); setBattle({ battle_id: result.battle_id, winner: result.result?.winner || "", stage_number: stageNumber }); await load(); setNotice(result.result?.winner === "ally" ? "关卡已通关，战斗事件已落盘" : "本次挑战失败，可以调整阵容后重试"); } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }
+  async function challenge() { try { setBusy(true); const result = await expeditionApi.challenge(stageNumber); const replay = await expeditionApi.battleEvents(result.battle_id); setEvents(replay.events); setBattle({ battle_id: result.battle_id, winner: result.result?.winner || "", stage_number: stageNumber, units: result.result?.units || [] }); await load(); setNotice(result.result?.winner === "ally" ? "关卡已通关，战斗事件已落盘" : "本次挑战失败，可以调整阵容后重试"); } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }
   async function claimMilestone(id: string) { try { await expeditionApi.claimMilestone(id); setNotice("里程碑奖励已领取"); await load() } catch (error) { setNotice(errorText(error)) } }
 
   return <div className="expedition-page" data-testid="expedition-page">
@@ -70,8 +71,8 @@ export function ExpeditionView() {
     {view === "home" && <Home profile={profile} heroes={ownedHeroes} milestones={milestones} ledger={ledger} onView={selectView} onClaim={claimMilestone} slots={profile?.training_slots || []} onUpgrade={upgradeSlot} />}
     {view === "heroes" && <Heroes heroes={heroes} selected={selectedHero} onSelect={hero => { setSelectedHeroId(hero.hero_id); void expeditionApi.hero(hero.hero_id).then(detail => setHeroes(current => current.map(item => item.hero_id === detail.hero_id ? { ...item, ...detail } : item))).catch(() => {}) }} />}
     {view === "formation" && <Formation heroes={ownedHeroes} lineups={lineups} draft={draftLineup} setDraft={setDraftLineup} onSave={saveFormation} onActivate={async id => { try { await expeditionApi.activateLineup(id); setNotice("已切换为主动阵容"); await load() } catch (error) { setNotice(errorText(error)) } }} />}
-    {view === "gacha" && <Gacha banners={banners} profile={profile} result={pullResult} onPull={pull} />}
-    {view === "stages" && <Stages stage={stage} stageNumber={stageNumber} setStageNumber={setStageNumber} onChallenge={challenge} busy={busy} battle={battle} events={events} />}
+    {view === "gacha" && <Gacha banners={banners} profile={profile} result={pullResult} onPull={pull} heroes={heroes} />}
+    {view === "stages" && <Stages stage={stage} stageNumber={stageNumber} setStageNumber={setStageNumber} onChallenge={challenge} busy={busy} battle={battle} events={events} heroes={heroes} />}
     {view === "inventory" && <Inventory equipment={equipment} pets={pets} />}
     {view === "art-review" && <ArtReview heroes={heroes} packs={artPacks} active={activeArtPack} onRefresh={load} />}
   </div>
@@ -99,9 +100,9 @@ function Formation({ heroes, lineups, draft, setDraft, onSave, onActivate }: { h
   return <div className="expedition-section-grid formation-grid"><section className="expedition-panel"><PanelTitle icon={<Shield size={16} />} title="十字阵容" action="拖拽交换 · 点击分配" /><div className="expedition-formation-board">{slots.map(slot => { const hero = heroFor(draft?.members.find(member => member.slot_id === slot)?.hero_id || ""); return <button key={slot} className={`expedition-formation-slot ${slot} ${hero ? "filled" : "empty"}`} draggable={Boolean(hero)} onDragStart={() => setDragged(slot)} onDragOver={event => event.preventDefault()} onDrop={() => { if (dragged) swap(dragged, slot); setDragged(null) }} onClick={() => { const next = heroes.find(candidate => candidate.hero_id !== hero?.hero_id); if (next) assign(slot, next.hero_id) }}>{hero ? <>{heroPortrait(hero, "small")}<b>{hero.name}</b></> : <><span>+</span><b>空位</b></>}<small>{slotLabels[slot]}</small></button> })}</div><div className="expedition-stance-row"><label>战术姿态<select value={draft?.stance || "balanced"} onChange={event => draft && setDraft({ ...draft, stance: event.target.value })}><option value="balanced">均衡 · 50/50 行动</option><option value="vanguard">先锋 · 先手与承伤</option><option value="fortify">固守 · 护盾与稳定</option></select></label><button className="expedition-primary" onClick={onSave} disabled={!draft}><Save size={15} />保存阵容</button></div></section><section className="expedition-panel"><PanelTitle icon={<Users size={16} />} title="可用角色" action={`${heroes.length} 名`} /><div className="expedition-roster-pool">{heroes.map(hero => <button key={hero.hero_id} draggable onDragStart={() => setDragged(hero.hero_id)} onClick={() => { const empty = draft?.members.find(member => !member.hero_id); if (empty) assign(empty.slot_id, hero.hero_id) }}>{heroPortrait(hero, "small")}<span>{hero.name}</span></button>)}</div><div className="expedition-lineup-list"><b>已保存阵容</b>{lineups.map(lineup => <button key={lineup.lineup_id} className={lineup.active ? "active" : ""} onClick={() => setDraft(lineup)}><span>{lineup.name}</span><small>{lineup.active ? "主动" : "点击编辑"}</small>{lineup.active && <em>✓</em>}</button>)}</div></section></div>
 }
 
-function Gacha({ banners, profile, result, onPull }: { banners: GachaBanner[]; profile: ExpeditionProfile | null; result: Array<Record<string, unknown>>; onPull: (banner: GachaBanner, count: 1 | 10) => void }) { return <div className="expedition-section-grid"><section className="expedition-panel"><PanelTitle icon={<Gem size={16} />} title="招募卡池" action={`余额 ${profile?.crystals || 0} 水晶`} /><div className="expedition-gacha-grid">{banners.map(banner => <article className="expedition-gacha-card" key={banner.banner_id}><div className="expedition-gacha-art"><WandSparkles size={32} /></div><span className="expedition-kicker">{banner.banner_type === "character" ? "HERO SUMMON" : "EQUIPMENT SUMMON"}</span><h3>{banner.name}</h3><p>后台种子决定结果；十连保底稀有度，重复角色转化为碎片。</p><small>传奇保底 {banner.pity_limit} 抽 · 不开放付费入口</small><div><button className="expedition-secondary" onClick={() => onPull(banner, 1)}>单抽 · {banner.cost_single}</button><button className="expedition-primary" onClick={() => onPull(banner, 10)}>十连 · {banner.cost_ten}</button></div></article>)}</div></section><section className="expedition-panel"><PanelTitle icon={<Sparkles size={16} />} title="最近结果" action={result.length ? `${result.length} 个结果` : "等待招募"} />{result.length ? <div className="expedition-pull-results">{result.map((item, index) => <div key={`${String(item.hero_id || item.equipment_id)}-${index}`}>{item.type === "hero" ? <span className="result-orb hero">✦</span> : <span className="result-orb gear">◆</span>}<b>{String(item.hero_id || item.equipment_id)}</b><small>{String(item.rarity)} · {item.new ? "新角色" : "重复转碎片"}</small></div>)}</div> : <div className="expedition-empty">完成已验证学习，水晶会在这里用于角色、装备与未来的养成选择。</div>}</section></div> }
+function Gacha({ banners, profile, result, onPull, heroes }: { banners: GachaBanner[]; profile: ExpeditionProfile | null; result: Array<Record<string, unknown>>; onPull: (banner: GachaBanner, count: 1 | 10) => void; heroes: Hero[] }) { return <div className="expedition-section-grid"><section className="expedition-panel"><PanelTitle icon={<Gem size={16} />} title="招募卡池" action={`余额 ${profile?.crystals || 0} 水晶`} /><div className="expedition-gacha-grid">{banners.map(banner => <article className="expedition-gacha-card" key={banner.banner_id}><div className="expedition-gacha-art"><WandSparkles size={32} /></div><span className="expedition-kicker">{banner.banner_type === "character" ? "HERO SUMMON" : "EQUIPMENT SUMMON"}</span><h3>{banner.name}</h3><p>后台种子决定结果；十连保底稀有度，重复角色转化为碎片。</p><small>传奇保底 {banner.pity_limit} 抽 · 不开放付费入口</small><div><button className="expedition-secondary" onClick={() => onPull(banner, 1)}>单抽 · {banner.cost_single}</button><button className="expedition-primary" onClick={() => onPull(banner, 10)}>十连 · {banner.cost_ten}</button></div></article>)}</div></section><section className="expedition-panel"><PanelTitle icon={<Sparkles size={16} />} title="最近结果" action={result.length ? `${result.length} 个结果` : "等待招募"} />{result.length ? <div className="expedition-pull-results">{result.map((item, index) => <div key={`${String(item.hero_id || item.equipment_id)}-${index}`}>{item.type === "hero" && heroPortrait(heroes.find(hero => hero.hero_id === String(item.hero_id)), "small", "avatar")}{item.type === "hero" ? <span className="result-orb hero">✦</span> : <span className="result-orb gear">◆</span>}<b>{String(item.hero_id || item.equipment_id)}</b><small>{String(item.rarity)} · {item.new ? "新角色" : "重复转碎片"}</small></div>)}</div> : <div className="expedition-empty">完成已验证学习，水晶会在这里用于角色、装备与未来的养成选择。</div>}</section></div> }
 
-function Stages({ stage, stageNumber, setStageNumber, onChallenge, busy, battle, events }: { stage: Stage | null; stageNumber: number; setStageNumber: (n: number) => void; onChallenge: () => void; busy: boolean; battle: { battle_id: string; winner: string; stage_number: number } | null; events: BattleEvent[] }) { return <div className="expedition-stage-page"><section className="expedition-panel expedition-stage-hero"><div><span className="expedition-kicker">INFINITE EXPEDITION · CHAPTER {stage?.chapter || 1}</span><h2>第 {stageNumber} 关 · {stage?.theme || "档案回廊"}</h2><p>{stage?.affix || "每 10 关首领，每 50 关章节机制；没有体力消耗，也没有失败惩罚。"}</p><div className="expedition-stage-meta"><span>敌方编队 {stage?.enemy_ids?.join(" · ") || "等待生成"}</span>{stage?.boss && <b>首领：{stage.boss.name}</b>}</div></div><div className="expedition-stage-controls"><label>跳转查看<input type="number" min={1} value={stageNumber} onChange={event => setStageNumber(Math.max(1, Number(event.target.value) || 1))} /></label><button className="expedition-primary" onClick={onChallenge} disabled={busy}><Swords size={15} />{busy ? "战斗写入中" : "开始挑战"}</button></div></section>{stage?.boss && <section className="expedition-boss-card"><Crown size={20} /><div><b>{stage.boss.name}</b><p>{stage.boss.mechanic}</p><small>可用解法：{stage.boss.strategies?.join(" / ")}</small></div></section>}<section className="expedition-panel expedition-stage-rules"><PanelTitle icon={<Sparkles size={16} />} title="系统规划的无限规则" action="不重置、不排名、不强制付费" /><div className="expedition-rule-grid"><span><b>每 10 关</b>首领模板变化</span><span><b>每 50 关</b>章节机制与新敌人</span><span><b>每 100 关</b>背景池与组合变化</span><span><b>每 500 关</b>里程碑奖励</span></div></section>{battle && <BattleReplay events={events} winner={battle.winner} stageNumber={battle.stage_number} />}</div> }
+function Stages({ stage, stageNumber, setStageNumber, onChallenge, busy, battle, events, heroes }: { stage: Stage | null; stageNumber: number; setStageNumber: (n: number) => void; onChallenge: () => void; busy: boolean; battle: { battle_id: string; winner: string; stage_number: number; units: BattleUnit[] } | null; events: BattleEvent[]; heroes: Hero[] }) { return <div className="expedition-stage-page"><section className="expedition-panel expedition-stage-hero"><div><span className="expedition-kicker">INFINITE EXPEDITION · CHAPTER {stage?.chapter || 1}</span><h2>第 {stageNumber} 关 · {stage?.theme || "档案回廊"}</h2><p>{stage?.affix || "每 10 关首领，每 50 关章节机制；没有体力消耗，也没有失败惩罚。"}</p><div className="expedition-stage-meta"><span>敌方编队 {stage?.enemy_ids?.join(" · ") || "等待生成"}</span>{stage?.boss && <b>首领：{stage.boss.name}</b>}</div></div><div className="expedition-stage-controls"><label>跳转查看<input type="number" min={1} value={stageNumber} onChange={event => setStageNumber(Math.max(1, Number(event.target.value) || 1))} /></label><button className="expedition-primary" onClick={onChallenge} disabled={busy}><Swords size={15} />{busy ? "战斗写入中" : "开始挑战"}</button></div></section>{stage?.boss && <section className="expedition-boss-card"><Crown size={20} /><div><b>{stage.boss.name}</b><p>{stage.boss.mechanic}</p><small>可用解法：{stage.boss.strategies?.join(" / ")}</small></div></section>}<section className="expedition-panel expedition-stage-rules"><PanelTitle icon={<Sparkles size={16} />} title="系统规划的无限规则" action="不重置、不排名、不强制付费" /><div className="expedition-rule-grid"><span><b>每 10 关</b>首领模板变化</span><span><b>每 50 关</b>章节机制与新敌人</span><span><b>每 100 关</b>背景池与组合变化</span><span><b>每 500 关</b>里程碑奖励</span></div></section>{battle && <BattleReplay events={events} winner={battle.winner} stageNumber={battle.stage_number} units={battle.units} heroes={heroes} />}</div> }
 
 function Inventory({ equipment, pets }: { equipment: { definitions: Array<Record<string, unknown>>; instances: Array<Record<string, unknown>> }; pets: { definitions: Array<Record<string, unknown>>; owned: Array<Record<string, unknown>> } }) { return <div className="expedition-section-grid"><section className="expedition-panel"><PanelTitle icon={<Box size={16} />} title="装备工坊" action="武器 · 防具 · 核心" /><div className="expedition-inventory-list">{equipment.definitions.map(item => <article key={String(item.equipment_id)}><span className="inventory-icon">◆</span><div><b>{String(item.name)}</b><small>{String(item.slot)} · {String(item.quality)}</small><p>{String(item.effect || "固定主属性，开放效果")}</p></div></article>)}{!equipment.definitions.length && <div className="expedition-empty">装备目录正在等待后端数据。</div>}</div></section><section className="expedition-panel"><PanelTitle icon={<WandSparkles size={16} />} title="宠物图鉴" action={`${pets.owned.length} / ${pets.definitions.length} 已拥有`} /><div className="expedition-inventory-list">{pets.definitions.map(item => <article key={String(item.pet_id)}><span className="inventory-icon pet">✦</span><div><b>{String(item.name)}</b><small>{pets.owned.some(pet => pet.pet_id === item.pet_id) ? "已拥有" : "待解锁"}</small><p>{String(item.passive || "陪伴型被动")}</p></div></article>)}</div></section></div> }
 
@@ -111,6 +112,42 @@ function ArtReview({ heroes, packs, active, onRefresh }: { heroes: Hero[]; packs
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const pack = packs[0]
+  const validationAssets = pack?.validation_result?.assets || []
+  const report = () => {
+    if (!pack) return
+    const blob = new Blob([JSON.stringify(pack.validation_result || pack, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = pack.pack_id + "-" + pack.version + "-review.json"
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportContactSheet = async () => {
+    const cellWidth = 180
+    const cellHeight = 150
+    const canvas = document.createElement("canvas")
+    canvas.width = cellWidth * 4
+    canvas.height = cellHeight * 6
+    const context = canvas.getContext("2d")
+    if (!context) return
+    context.fillStyle = "#0b1719"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    for (let index = 0; index < heroes.length; index += 1) {
+      const hero = heroes[index]
+      const asset = resolveExpeditionAsset(hero, "portrait")
+      const image = new Image()
+      image.src = asset.url
+      await new Promise<void>(resolve => { image.onload = () => resolve(); image.onerror = () => resolve() })
+      const x = (index % 4) * cellWidth
+      const y = Math.floor(index / 4) * cellHeight
+      if (image.naturalWidth) context.drawImage(image, x + 8, y + 8, 164, 112)
+      context.fillStyle = "#dcebe5"
+      context.font = "12px sans-serif"
+      context.fillText(hero.name + " · " + hero.hero_id, x + 8, y + 137)
+    }
+    canvas.toBlob(blob => { if (!blob) return; const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "mentorflow-contact-sheet.png"; anchor.click(); URL.revokeObjectURL(url) }, "image/png")
+  }
   const previewValid = preview?.valid === true
   const review = (heroId: string, kind: AssetKind) => pack?.reviews?.find(item => item.hero_id === heroId && item.asset_kind === kind)
   const runPreview = async () => { if (!file) return; try { setBusy(true); setNotice(""); setPreview(await expeditionApi.previewArtPack(file)); } catch (error) { setNotice(errorText(error)) } finally { setBusy(false) } }

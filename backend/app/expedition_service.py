@@ -389,11 +389,30 @@ def battle(battle_id: str, events: bool = False) -> dict[str, Any]:
         row = session.get(BattleRecordORM, battle_id)
         if not row: raise ExpeditionError("BATTLE_NOT_FOUND", "战斗不存在", 404)
         payload = {"battle_id": row.battle_id, "stage_number": row.stage_number, "lineup_id": row.lineup_id, "seed": row.seed, "status": row.status, "winner": row.winner, "result": row.result, "created_at": row.created_at.isoformat()}
-        if events: payload["events"] = [_event_public(x) for x in session.query(BattleEventLogORM).filter_by(battle_id=battle_id).order_by(BattleEventLogORM.event_index).all()]
+        if events:
+            units = {str(item.get("id")): item for item in (row.result.get("units") or []) if isinstance(item, dict)}
+            payload["events"] = [_event_public(x, units) for x in session.query(BattleEventLogORM).filter_by(battle_id=battle_id).order_by(BattleEventLogORM.event_index).all()]
         session.commit(); return payload
 
 
-def _event_public(row: BattleEventLogORM) -> dict[str, Any]: return {"event_index": row.event_index, "event_type": row.event_type, "actor_id": row.actor_id, "target_ids": row.target_ids, "source_skill_id": row.source_skill_id, "numeric_values": row.numeric_values, "status_ids": row.status_ids, "is_critical": row.is_critical, "is_miss": row.is_miss, "animation_hint": row.animation_hint, "timestamp_offset": row.timestamp_offset, "rng_trace": row.rng_trace}
+def _event_public(row: BattleEventLogORM, units: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    units = units or {}
+    return {
+        "event_index": row.event_index,
+        "event_type": row.event_type,
+        "actor_id": row.actor_id,
+        "target_ids": row.target_ids,
+        "source_skill_id": row.source_skill_id,
+        "numeric_values": row.numeric_values,
+        "status_ids": row.status_ids,
+        "is_critical": row.is_critical,
+        "is_miss": row.is_miss,
+        "animation_hint": row.animation_hint,
+        "timestamp_offset": row.timestamp_offset,
+        "rng_trace": row.rng_trace,
+        "actor_hero_id": units.get(row.actor_id, {}).get("hero_id", ""),
+        "target_hero_ids": [units.get(target_id, {}).get("hero_id", target_id) for target_id in (row.target_ids or [])],
+    }
 
 
 def claim_milestone(milestone_id: str) -> dict[str, Any]:

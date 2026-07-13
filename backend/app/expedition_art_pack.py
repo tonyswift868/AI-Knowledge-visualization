@@ -9,6 +9,8 @@ path supplied by the browser.
 from __future__ import annotations
 
 import hashlib
+import io
+import io
 import json
 import re
 import shutil
@@ -38,6 +40,22 @@ MAX_SINGLE_BYTES = 25 * 1024 * 1024
 MAX_TOTAL_BYTES = 300 * 1024 * 1024
 MAX_DEPTH = 10
 PREVIEW_TTL_SECONDS = 30 * 60
+PACK_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
+VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+ART_DIMENSION_RULES = {
+    "portrait": (256, 256, 4096, 4096),
+    "avatar": (128, 128, 2048, 2048),
+    "skill_cutin": (256, 128, 4096, 2048),
+    "skill_icon": (64, 64, 1024, 1024),
+}
+PACK_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
+VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+ART_DIMENSION_RULES = {
+    "portrait": (256, 256, 4096, 4096),
+    "avatar": (128, 128, 2048, 2048),
+    "skill_cutin": (256, 128, 4096, 2048),
+    "skill_icon": (64, 64, 1024, 1024),
+}
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = PROJECT_ROOT / "content" / "expedition_art_packs"
 PREVIEW_ROOT = PROJECT_ROOT / "data" / "expedition_art_pack_previews"
@@ -64,6 +82,19 @@ def _id(prefix: str) -> str:
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+
+
+def _safe_component(value: str, label: str, pattern: re.Pattern[str]) -> str:
+    value = str(value or "")
+    if not pattern.fullmatch(value):
+        raise ArtPackError("ART_PACK_IDENTIFIER_INVALID", f"{label} contains unsupported characters")
+    return value
+
+
+def _reject_active_content(data: bytes, path: str) -> None:
+    lowered = data[:2 * 1024 * 1024].lower()
+    if any(marker in lowered for marker in (b"<script", b"<html", b"<svg", b"javascript:", b"data:text/html", b"http://", b"https://")):
+        raise ArtPackError("ART_PACK_ACTIVE_CONTENT", "art pack contains executable or remote content", details={"path": path})
 
 def _safe_member(raw: str) -> str:
     if not raw or "\x00" in raw:
@@ -164,7 +195,7 @@ def _validate_metadata(metadata: dict[str, Any], hero_id: str) -> dict[str, Any]
 
 def _manifest_assets(manifest: dict[str, Any], root: str, names: set[str]) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
     required = manifest.get("required_hero_ids")
-    if sorted(required or []) != sorted(EXPECTED_HERO_IDS):
+    if not isinstance(required, list) or sorted(str(item) for item in required) != sorted(EXPECTED_HERO_IDS):
         raise ArtPackError("ART_PACK_HERO_COVERAGE_INVALID", "manifest 必须准确覆盖当前 24 个 hero_id", details={"expected": list(EXPECTED_HERO_IDS), "actual": required})
     if int(manifest.get("hero_count") or 0) != len(EXPECTED_HERO_IDS):
         raise ArtPackError("ART_PACK_HERO_COUNT_INVALID", "manifest.hero_count 必须为 24")
@@ -181,6 +212,8 @@ def _manifest_assets(manifest: dict[str, Any], root: str, names: set[str]) -> tu
         hero_id = str(raw.get("hero_id") or "")
         kind = str(raw.get("asset_kind") or raw.get("asset_type") or "")
         raw_path = str(raw.get("path") or raw.get("relative_path") or "")
+        if "://" in raw_path or raw_path.lower().endswith((".svg", ".html", ".htm", ".js")):
+            raise ArtPackError("ART_PACK_ACTIVE_CONTENT", "缇庢湳璧勬簮涓嶅厑璁稿閮ㄦ垨鍙墽琛屾枃浠舵柵寰?", details={"path": raw_path})
         full_path = _safe_member(root + raw_path if root else raw_path)
         if hero_id and hero_id not in EXPECTED_HERO_IDS:
             raise ArtPackError("ART_PACK_UNKNOWN_HERO", "美术包含未知 hero_id", details={"hero_id": hero_id})
@@ -216,7 +249,7 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
     if len(data) > MAX_PACK_BYTES:
         raise ArtPackError("ART_PACK_TOO_LARGE", "美术包超过 100 MB 限制")
     try:
-        zf = zipfile.ZipFile(__import__("io").BytesIO(data))
+        zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
         raise ArtPackError("ART_PACK_INVALID_ZIP", "美术包不是有效 ZIP") from exc
     infos: dict[str, zipfile.ZipInfo] = {}
@@ -243,6 +276,9 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
         raise ArtPackError("ART_PACK_MANIFEST_INVALID", "manifest.json 不是有效 UTF-8 JSON") from exc
     if not isinstance(manifest, dict) or manifest.get("source") != "upstream_approved_art":
         raise ArtPackError("ART_PACK_MANIFEST_INVALID", "manifest.source 必须为 upstream_approved_art")
+    pack_id = _safe_component(str(manifest.get("pack_id") or ""), "pack_id", PACK_COMPONENT_RE)
+    version = _safe_component(str(manifest.get("version") or ""), "version", VERSION_RE)
+    _reject_active_content(manifest_raw, manifest_path)
     assets, metadata_paths = _manifest_assets(manifest, root, set(infos))
     allowed = {manifest_path}
     if root:
@@ -250,15 +286,40 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
     else:
         allowed.update({"attribution.json", "SHA256SUMS.json"})
     allowed.update(assets)
+    attribution_path = root + "attribution.json" if root else "attribution.json"
+    checksum_path = root + "SHA256SUMS.json" if root else "SHA256SUMS.json"
+    if attribution_path not in infos or checksum_path not in infos:
+        raise ArtPackError("ART_PACK_PROVENANCE_REQUIRED", "缇庢湳鍖呭繀椤绘彁渚?attribution.json 鍜?SHA256SUMS.json")
     extras = sorted(set(infos) - allowed)
     if extras:
         raise ArtPackError("ART_PACK_EXTRA_FILE", "存在未在 manifest 中声明的文件", details={"paths": extras[:20]})
+    try:
+        attribution = json.loads(_read_zip_file(zf, infos[attribution_path]).decode("utf-8"))
+        checksums = json.loads(_read_zip_file(zf, infos[checksum_path]).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ArtPackError("ART_PACK_PROVENANCE_INVALID", "attribution.json 鎴?SHA256SUMS.json 鏃犳硶瑙ｆ瀽") from exc
+    checksum_entries = checksums.get("files") if isinstance(checksums, dict) and isinstance(checksums.get("files"), dict) else checksums
+    if not isinstance(attribution, dict) or not isinstance(checksum_entries, dict):
+        raise ArtPackError("ART_PACK_PROVENANCE_INVALID", "attribution.json 鍜?SHA256SUMS.json 鏍煎紡涓嶆纭?")
+    normalized_checksums: dict[str, str] = {}
+    for raw_path, raw_hash in checksum_entries.items():
+        checksum_key = _safe_member(str(raw_path))
+        if root and not checksum_key.startswith(root):
+            checksum_key = root + checksum_key
+        value = raw_hash.get("sha256") if isinstance(raw_hash, dict) else raw_hash
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            raise ArtPackError("ART_PACK_CHECKSUM_INVALID", "SHA256SUMS.json 鍖呭惈鏃犳晥 hash", details={"path": str(raw_path)})
+        normalized_checksums[checksum_key] = value.lower()
     rows: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     metadata_by_hero: dict[str, dict[str, Any]] = {}
     for hero_id, path in metadata_paths.items():
         try:
-            metadata = json.loads(_read_zip_file(zf, infos[path]).decode("utf-8"))
+            metadata_bytes = _read_zip_file(zf, infos[path])
+            _reject_active_content(metadata_bytes, path)
+            if normalized_checksums.get(path) != _sha256(metadata_bytes):
+                raise ArtPackError("ART_PACK_HASH_MISMATCH", "metadata.json SHA256 涓嶅尮閰?", details={"path": path})
+            metadata = json.loads(metadata_bytes.decode("utf-8"))
             metadata_by_hero[hero_id] = _validate_metadata(metadata, hero_id)
         except (UnicodeDecodeError, json.JSONDecodeError, ArtPackError) as exc:
             errors.append({"path": path, "error": getattr(exc, "message", str(exc))})
@@ -269,10 +330,17 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
             extension = PurePosixPath(path).suffix.lower()
             if extension not in ALLOWED_IMAGE_EXTENSIONS:
                 raise ArtPackError("ART_PACK_IMAGE_TYPE_UNSUPPORTED", "正式资源只能使用 WebP 或 PNG", details={"path": path})
-            image = _image_info(_read_zip_file(zf, infos[path]), extension)
+            image_bytes = _read_zip_file(zf, infos[path])
+            image = _image_info(image_bytes, extension)
+            min_width, min_height, max_width, max_height = ART_DIMENSION_RULES[entry["asset_kind"]]
+            if not (min_width <= image["width"] <= max_width and min_height <= image["height"] <= max_height):
+                raise ArtPackError("ART_PACK_DIMENSION_INVALID", "缇庢湳璧勬簮灏哄涓嶅湪鍏佽鑼冨洿", details={"path": path, "width": image["width"], "height": image["height"], "expected": [min_width, min_height, max_width, max_height]})
+            _reject_active_content(image_bytes, path)
             if not image["has_alpha"]:
                 raise ArtPackError("ART_PACK_ALPHA_REQUIRED", "角色资源必须包含透明通道", details={"path": path})
-            data_hash = _sha256(_read_zip_file(zf, infos[path]))
+            data_hash = _sha256(image_bytes)
+            if normalized_checksums.get(path) != data_hash:
+                raise ArtPackError("ART_PACK_HASH_MISMATCH", "SHA256SUMS.json 涓殑璧勬簮 hash 涓嶅尮閰?", details={"path": path})
             expected = entry.get("sha256")
             if isinstance(expected, dict):
                 expected = expected.get("value") or expected.get("hash")
@@ -282,7 +350,10 @@ def validate_art_pack(data: bytes, archive_name: str = "art-pack.zip") -> dict[s
         except ArtPackError as exc:
             errors.append({"path": path, "error": exc.message, "code": exc.code, "details": exc.details})
     manifest_hash = _sha256(manifest_raw)
-    report = {"valid": not errors, "archive_name": archive_name, "pack_id": manifest.get("pack_id"), "version": manifest.get("version"), "manifest": manifest, "manifest_hash": manifest_hash, "root": root, "asset_count": len(rows), "hero_count": len(metadata_by_hero), "assets": rows, "metadata": metadata_by_hero, "errors": errors, "checked_at": _now().isoformat(), "fallback": {"available": True, "source": "generated_svg"}}
+    for path in list(assets) + list(metadata_paths.values()):
+        if path not in normalized_checksums:
+            errors.append({"path": path, "error": "SHA256SUMS.json 缂哄皯鏂囦欢 hash", "code": "ART_PACK_CHECKSUM_MISSING"})
+    report = {"valid": not errors, "archive_name": archive_name, "pack_id": pack_id, "version": version, "manifest": manifest, "manifest_hash": manifest_hash, "root": root, "asset_count": len(rows), "hero_count": len(metadata_by_hero), "assets": rows, "metadata_paths": list(metadata_paths.values()), "metadata": metadata_by_hero, "attribution": attribution, "checksums": normalized_checksums, "errors": errors, "checked_at": _now().isoformat(), "fallback": {"available": True, "source": "generated_svg"}}
     return report
 
 
@@ -336,13 +407,13 @@ def install_preview(preview_id: str, confirm: bool = False) -> dict[str, Any]:
     staging = PACK_ROOT / f".staging-{uuid.uuid4().hex}"
     staging.mkdir(parents=True, exist_ok=False)
     try:
-        with zipfile.ZipFile(__import__("io").BytesIO(data)) as zf:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
             names = [_safe_member(info.filename) for info in zf.infolist() if not info.is_dir()]
             root = report["root"]
-            allowed = {root + "manifest.json" if root else "manifest.json", "attribution.json", "SHA256SUMS.json"}
-            if root:
-                allowed.update({root + "attribution.json", root + "SHA256SUMS.json"})
+            allowed = {root + "manifest.json" if root else "manifest.json"}
+            allowed.update({root + "attribution.json", root + "SHA256SUMS.json"} if root else {"attribution.json", "SHA256SUMS.json"})
             allowed.update(item["path"] for item in report["assets"])
+            allowed.update(report.get("metadata_paths", []))
             for info in zf.infolist():
                 if info.is_dir():
                     continue
@@ -366,7 +437,7 @@ def install_preview(preview_id: str, confirm: bool = False) -> dict[str, Any]:
             session.add(row)
             for item in report["assets"]:
                 metadata = item.get("metadata") or {}
-                session.add(ExpeditionHeroAssetORM(id=_id("asset"), pack_id=pack_id, pack_version=version, hero_id=item["hero_id"], asset_kind=item["asset_kind"], asset_id=f"art:{pack_id}:{version}:{item['hero_id']}:{item['asset_kind']}", path=item["path"], mime=item["mime"], width=item["width"], height=item["height"], focal_point=metadata.get("portrait_focal_point", {"x": 0.5, "y": 0.4}), scale=float(metadata.get("battle_scale", 1.0)), offset=metadata.get("battle_offset", {"x": 0, "y": 0}), sha256=item["sha256"], source=str(report["manifest"].get("source"))))
+                session.add(ExpeditionHeroAssetORM(id=_id("asset"), pack_id=pack_id, pack_version=version, hero_id=item["hero_id"], asset_kind=item["asset_kind"], asset_id=f"art:{pack_id}:{version}:{item['hero_id']}:{item['asset_kind']}", path=_relative(str(report["root"]), item["path"]), mime=item["mime"], width=item["width"], height=item["height"], focal_point=metadata.get("portrait_focal_point", {"x": 0.5, "y": 0.4}), scale=float(metadata.get("battle_scale", 1.0)), offset=metadata.get("battle_offset", {"x": 0, "y": 0}), sha256=item["sha256"], source=str(report["manifest"].get("source"))))
             for item in report["assets"]:
                 session.add(ExpeditionArtReviewORM(id=_id("review"), pack_id=pack_id, pack_version=version, hero_id=item["hero_id"], asset_kind=item["asset_kind"], review_status="PENDING"))
             session.commit()
@@ -488,13 +559,7 @@ def asset_file(asset_id: str) -> Path:
         if not row:
             raise ArtPackError("ASSET_NOT_FOUND", "正式美术资源不存在", 404)
         root = (PACK_ROOT / row.pack_id / row.pack_version).resolve()
-        path = (root / row.path.split("/", 1)[-1] if row.path.startswith(row.pack_id + "/") else root / row.path)
-        # The stored path is normalized to the archive root; fallback to the
-        # installed root-relative location if the upstream pack used a wrapper.
-        path = path.resolve()
-        if root not in path.parents or not path.is_file():
-            candidates = list(root.rglob(Path(row.path).name))
-            path = candidates[0].resolve() if candidates else path
+        path = (root / row.path).resolve()
         if root not in path.parents or not path.is_file():
             raise ArtPackError("ASSET_FILE_MISSING", "正式美术文件缺失，应该回退到 fallback", 404)
         return path
