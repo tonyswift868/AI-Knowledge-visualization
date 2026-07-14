@@ -1,0 +1,7 @@
+{
+  "provider": "OpenAI built-in image generation",
+  "source": "dev_art_fixture",
+  "third_party_assets": false,
+  "external_urls": [],
+  "status": "generated_pending_review"
+}

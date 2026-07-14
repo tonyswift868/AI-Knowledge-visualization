@@ -21,6 +21,8 @@ content/expedition_art_packs/*
 !content/expedition_art_packs/mentorflow_expedition_art_v1/
 !content/expedition_art_packs/mentorflow_expedition_art_v1/1.0.0/
 !content/expedition_art_packs/mentorflow_expedition_art_v1/1.0.0/**
+!content/expedition_art_packs/mentorflow_expedition_art_v1/1.1.0/
+!content/expedition_art_packs/mentorflow_expedition_art_v1/1.1.0/**
 
 # Local dependencies and generated frontend output
 frontend/node_modules/
@@ -37,6 +39,8 @@ artifacts/expedition_art_pipeline_v1_acceptance/
 artifacts/expedition_v1_acceptance_tuning/
 artifacts/official_art_source_map.json
 artifacts/official_art_sources/
+artifacts/expedition_art_pack_v1_1_sources/
+artifacts/expedition_art_pack_v1_1_acceptance/
 artifacts/q*.png
 artifacts/test_quant.png
 

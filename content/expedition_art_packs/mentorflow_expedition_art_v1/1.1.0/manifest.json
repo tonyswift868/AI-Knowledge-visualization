@@ -1,0 +1,2507 @@
+{
+  "pack_id": "mentorflow_expedition_art_v1",
+  "version": "1.1.0",
+  "previous_version": "1.0.0",
+  "status": "generated_pending_review",
+  "human_review_required": true,
+  "upstream_approved_art": false,
+  "style_name": "Modern Fantasy Light Cyber Card Art",
+  "provider": "OpenAI built-in image generation",
+  "hero_count": 24,
+  "required_hero_ids": [
+    "jinxiao",
+    "chengyin",
+    "yaye",
+    "leishan",
+    "xianlv",
+    "gulu",
+    "shuangli",
+    "tuantuan",
+    "zhenchui",
+    "yaoge",
+    "xueji",
+    "mochai",
+    "huidun",
+    "shashi",
+    "jinglan",
+    "lan_ying",
+    "jiqiao7",
+    "leiyuan",
+    "zhiyuan",
+    "xuanjia",
+    "lingxi",
+    "heluo",
+    "mianxing",
+    "naipaolong"
+  ],
+  "design_hero_ids": [
+    "jin_xiao",
+    "cheng_yin",
+    "ya_ye",
+    "lei_shan",
+    "xian_lv",
+    "jun_wang_gu_lu",
+    "shuang_li",
+    "tuan_tuan_shou",
+    "zhen_chui",
+    "yao_ge",
+    "xue_ji",
+    "mo_cai",
+    "hui_dun",
+    "sha_shi",
+    "jing_lan",
+    "lan_ying",
+    "ji_qiao_07",
+    "lei_wan",
+    "zhi_yuan",
+    "xuan_jia",
+    "ling_xi",
+    "he_luo",
+    "mian_xing",
+    "nai_pao_long"
+  ],
+  "folder_order": [
+    "01_jin_xiao",
+    "02_cheng_yin",
+    "03_ya_ye",
+    "04_lei_shan",
+    "05_xian_lv",
+    "06_jun_wang_gu_lu",
+    "07_shuang_li",
+    "08_tuan_tuan_shou",
+    "09_zhen_chui",
+    "10_yao_ge",
+    "11_xue_ji",
+    "12_mo_cai",
+    "13_hui_dun",
+    "14_sha_shi",
+    "15_jing_lan",
+    "16_lan_ying",
+    "17_ji_qiao_07",
+    "18_lei_wan",
+    "19_zhi_yuan",
+    "20_xuan_jia",
+    "21_ling_xi",
+    "22_he_luo",
+    "23_mian_xing",
+    "24_nai_pao_long"
+  ],
+  "asset_kinds": [
+    "portrait",
+    "battle_portrait",
+    "avatar",
+    "card_art",
+    "skill_cutin",
+    "skill_icon",
+    "expression_neutral",
+    "expression_smile",
+    "expression_hurt",
+    "expression_awaken",
+    "core_prop"
+  ],
+  "preserved_asset_kinds": [
+    "portrait",
+    "battle_portrait",
+    "card_art"
+  ],
+  "repaired_asset_kinds": [
+    "avatar",
+    "expression_neutral",
+    "expression_smile",
+    "expression_hurt",
+    "expression_awaken",
+    "skill_cutin",
+    "skill_icon",
+    "core_prop"
+  ],
+  "assets": [
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "portrait",
+      "files": [
+        "01_jin_xiao/portrait.png",
+        "01_jin_xiao/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "01_jin_xiao/battle_portrait.png",
+        "01_jin_xiao/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "avatar",
+      "files": [
+        "01_jin_xiao/avatar.png",
+        "01_jin_xiao/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "card_art",
+      "files": [
+        "01_jin_xiao/card_art.png",
+        "01_jin_xiao/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "01_jin_xiao/skill_cutin.png",
+        "01_jin_xiao/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "skill_icon",
+      "files": [
+        "01_jin_xiao/skill_icon.png",
+        "01_jin_xiao/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "01_jin_xiao/expression_neutral.png",
+        "01_jin_xiao/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "expression_smile",
+      "files": [
+        "01_jin_xiao/expression_smile.png",
+        "01_jin_xiao/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "01_jin_xiao/expression_hurt.png",
+        "01_jin_xiao/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "01_jin_xiao/expression_awaken.png",
+        "01_jin_xiao/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "jinxiao",
+      "design_hero_id": "jin_xiao",
+      "asset_kind": "core_prop",
+      "files": [
+        "01_jin_xiao/core_prop.png",
+        "01_jin_xiao/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "portrait",
+      "files": [
+        "02_cheng_yin/portrait.png",
+        "02_cheng_yin/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "02_cheng_yin/battle_portrait.png",
+        "02_cheng_yin/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "avatar",
+      "files": [
+        "02_cheng_yin/avatar.png",
+        "02_cheng_yin/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "card_art",
+      "files": [
+        "02_cheng_yin/card_art.png",
+        "02_cheng_yin/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "02_cheng_yin/skill_cutin.png",
+        "02_cheng_yin/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "skill_icon",
+      "files": [
+        "02_cheng_yin/skill_icon.png",
+        "02_cheng_yin/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "02_cheng_yin/expression_neutral.png",
+        "02_cheng_yin/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "expression_smile",
+      "files": [
+        "02_cheng_yin/expression_smile.png",
+        "02_cheng_yin/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "02_cheng_yin/expression_hurt.png",
+        "02_cheng_yin/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "02_cheng_yin/expression_awaken.png",
+        "02_cheng_yin/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "chengyin",
+      "design_hero_id": "cheng_yin",
+      "asset_kind": "core_prop",
+      "files": [
+        "02_cheng_yin/core_prop.png",
+        "02_cheng_yin/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "portrait",
+      "files": [
+        "03_ya_ye/portrait.png",
+        "03_ya_ye/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "03_ya_ye/battle_portrait.png",
+        "03_ya_ye/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "avatar",
+      "files": [
+        "03_ya_ye/avatar.png",
+        "03_ya_ye/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "card_art",
+      "files": [
+        "03_ya_ye/card_art.png",
+        "03_ya_ye/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "03_ya_ye/skill_cutin.png",
+        "03_ya_ye/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "skill_icon",
+      "files": [
+        "03_ya_ye/skill_icon.png",
+        "03_ya_ye/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "03_ya_ye/expression_neutral.png",
+        "03_ya_ye/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "expression_smile",
+      "files": [
+        "03_ya_ye/expression_smile.png",
+        "03_ya_ye/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "03_ya_ye/expression_hurt.png",
+        "03_ya_ye/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "03_ya_ye/expression_awaken.png",
+        "03_ya_ye/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "yaye",
+      "design_hero_id": "ya_ye",
+      "asset_kind": "core_prop",
+      "files": [
+        "03_ya_ye/core_prop.png",
+        "03_ya_ye/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "portrait",
+      "files": [
+        "04_lei_shan/portrait.png",
+        "04_lei_shan/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "04_lei_shan/battle_portrait.png",
+        "04_lei_shan/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "avatar",
+      "files": [
+        "04_lei_shan/avatar.png",
+        "04_lei_shan/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "card_art",
+      "files": [
+        "04_lei_shan/card_art.png",
+        "04_lei_shan/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "04_lei_shan/skill_cutin.png",
+        "04_lei_shan/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "skill_icon",
+      "files": [
+        "04_lei_shan/skill_icon.png",
+        "04_lei_shan/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "04_lei_shan/expression_neutral.png",
+        "04_lei_shan/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "expression_smile",
+      "files": [
+        "04_lei_shan/expression_smile.png",
+        "04_lei_shan/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "04_lei_shan/expression_hurt.png",
+        "04_lei_shan/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "04_lei_shan/expression_awaken.png",
+        "04_lei_shan/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "leishan",
+      "design_hero_id": "lei_shan",
+      "asset_kind": "core_prop",
+      "files": [
+        "04_lei_shan/core_prop.png",
+        "04_lei_shan/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "portrait",
+      "files": [
+        "05_xian_lv/portrait.png",
+        "05_xian_lv/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "05_xian_lv/battle_portrait.png",
+        "05_xian_lv/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "avatar",
+      "files": [
+        "05_xian_lv/avatar.png",
+        "05_xian_lv/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "card_art",
+      "files": [
+        "05_xian_lv/card_art.png",
+        "05_xian_lv/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "05_xian_lv/skill_cutin.png",
+        "05_xian_lv/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "skill_icon",
+      "files": [
+        "05_xian_lv/skill_icon.png",
+        "05_xian_lv/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "05_xian_lv/expression_neutral.png",
+        "05_xian_lv/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "expression_smile",
+      "files": [
+        "05_xian_lv/expression_smile.png",
+        "05_xian_lv/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "05_xian_lv/expression_hurt.png",
+        "05_xian_lv/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "05_xian_lv/expression_awaken.png",
+        "05_xian_lv/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "xianlv",
+      "design_hero_id": "xian_lv",
+      "asset_kind": "core_prop",
+      "files": [
+        "05_xian_lv/core_prop.png",
+        "05_xian_lv/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "portrait",
+      "files": [
+        "06_jun_wang_gu_lu/portrait.png",
+        "06_jun_wang_gu_lu/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "06_jun_wang_gu_lu/battle_portrait.png",
+        "06_jun_wang_gu_lu/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "avatar",
+      "files": [
+        "06_jun_wang_gu_lu/avatar.png",
+        "06_jun_wang_gu_lu/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "card_art",
+      "files": [
+        "06_jun_wang_gu_lu/card_art.png",
+        "06_jun_wang_gu_lu/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "06_jun_wang_gu_lu/skill_cutin.png",
+        "06_jun_wang_gu_lu/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "skill_icon",
+      "files": [
+        "06_jun_wang_gu_lu/skill_icon.png",
+        "06_jun_wang_gu_lu/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "06_jun_wang_gu_lu/expression_neutral.png",
+        "06_jun_wang_gu_lu/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "expression_smile",
+      "files": [
+        "06_jun_wang_gu_lu/expression_smile.png",
+        "06_jun_wang_gu_lu/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "06_jun_wang_gu_lu/expression_hurt.png",
+        "06_jun_wang_gu_lu/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "06_jun_wang_gu_lu/expression_awaken.png",
+        "06_jun_wang_gu_lu/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "gulu",
+      "design_hero_id": "jun_wang_gu_lu",
+      "asset_kind": "core_prop",
+      "files": [
+        "06_jun_wang_gu_lu/core_prop.png",
+        "06_jun_wang_gu_lu/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "portrait",
+      "files": [
+        "07_shuang_li/portrait.png",
+        "07_shuang_li/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "07_shuang_li/battle_portrait.png",
+        "07_shuang_li/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "avatar",
+      "files": [
+        "07_shuang_li/avatar.png",
+        "07_shuang_li/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "card_art",
+      "files": [
+        "07_shuang_li/card_art.png",
+        "07_shuang_li/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "07_shuang_li/skill_cutin.png",
+        "07_shuang_li/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "skill_icon",
+      "files": [
+        "07_shuang_li/skill_icon.png",
+        "07_shuang_li/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "07_shuang_li/expression_neutral.png",
+        "07_shuang_li/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "expression_smile",
+      "files": [
+        "07_shuang_li/expression_smile.png",
+        "07_shuang_li/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "07_shuang_li/expression_hurt.png",
+        "07_shuang_li/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "07_shuang_li/expression_awaken.png",
+        "07_shuang_li/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "shuangli",
+      "design_hero_id": "shuang_li",
+      "asset_kind": "core_prop",
+      "files": [
+        "07_shuang_li/core_prop.png",
+        "07_shuang_li/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "portrait",
+      "files": [
+        "08_tuan_tuan_shou/portrait.png",
+        "08_tuan_tuan_shou/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "08_tuan_tuan_shou/battle_portrait.png",
+        "08_tuan_tuan_shou/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "avatar",
+      "files": [
+        "08_tuan_tuan_shou/avatar.png",
+        "08_tuan_tuan_shou/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "card_art",
+      "files": [
+        "08_tuan_tuan_shou/card_art.png",
+        "08_tuan_tuan_shou/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "08_tuan_tuan_shou/skill_cutin.png",
+        "08_tuan_tuan_shou/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "skill_icon",
+      "files": [
+        "08_tuan_tuan_shou/skill_icon.png",
+        "08_tuan_tuan_shou/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "08_tuan_tuan_shou/expression_neutral.png",
+        "08_tuan_tuan_shou/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "expression_smile",
+      "files": [
+        "08_tuan_tuan_shou/expression_smile.png",
+        "08_tuan_tuan_shou/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "08_tuan_tuan_shou/expression_hurt.png",
+        "08_tuan_tuan_shou/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "08_tuan_tuan_shou/expression_awaken.png",
+        "08_tuan_tuan_shou/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "tuantuan",
+      "design_hero_id": "tuan_tuan_shou",
+      "asset_kind": "core_prop",
+      "files": [
+        "08_tuan_tuan_shou/core_prop.png",
+        "08_tuan_tuan_shou/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "portrait",
+      "files": [
+        "09_zhen_chui/portrait.png",
+        "09_zhen_chui/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "09_zhen_chui/battle_portrait.png",
+        "09_zhen_chui/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "avatar",
+      "files": [
+        "09_zhen_chui/avatar.png",
+        "09_zhen_chui/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "card_art",
+      "files": [
+        "09_zhen_chui/card_art.png",
+        "09_zhen_chui/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "09_zhen_chui/skill_cutin.png",
+        "09_zhen_chui/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "skill_icon",
+      "files": [
+        "09_zhen_chui/skill_icon.png",
+        "09_zhen_chui/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "09_zhen_chui/expression_neutral.png",
+        "09_zhen_chui/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "expression_smile",
+      "files": [
+        "09_zhen_chui/expression_smile.png",
+        "09_zhen_chui/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "09_zhen_chui/expression_hurt.png",
+        "09_zhen_chui/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "09_zhen_chui/expression_awaken.png",
+        "09_zhen_chui/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "zhenchui",
+      "design_hero_id": "zhen_chui",
+      "asset_kind": "core_prop",
+      "files": [
+        "09_zhen_chui/core_prop.png",
+        "09_zhen_chui/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "portrait",
+      "files": [
+        "10_yao_ge/portrait.png",
+        "10_yao_ge/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "10_yao_ge/battle_portrait.png",
+        "10_yao_ge/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "avatar",
+      "files": [
+        "10_yao_ge/avatar.png",
+        "10_yao_ge/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "card_art",
+      "files": [
+        "10_yao_ge/card_art.png",
+        "10_yao_ge/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "10_yao_ge/skill_cutin.png",
+        "10_yao_ge/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "skill_icon",
+      "files": [
+        "10_yao_ge/skill_icon.png",
+        "10_yao_ge/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "10_yao_ge/expression_neutral.png",
+        "10_yao_ge/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "expression_smile",
+      "files": [
+        "10_yao_ge/expression_smile.png",
+        "10_yao_ge/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "10_yao_ge/expression_hurt.png",
+        "10_yao_ge/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "10_yao_ge/expression_awaken.png",
+        "10_yao_ge/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "yaoge",
+      "design_hero_id": "yao_ge",
+      "asset_kind": "core_prop",
+      "files": [
+        "10_yao_ge/core_prop.png",
+        "10_yao_ge/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "portrait",
+      "files": [
+        "11_xue_ji/portrait.png",
+        "11_xue_ji/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "11_xue_ji/battle_portrait.png",
+        "11_xue_ji/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "avatar",
+      "files": [
+        "11_xue_ji/avatar.png",
+        "11_xue_ji/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "card_art",
+      "files": [
+        "11_xue_ji/card_art.png",
+        "11_xue_ji/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "11_xue_ji/skill_cutin.png",
+        "11_xue_ji/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "skill_icon",
+      "files": [
+        "11_xue_ji/skill_icon.png",
+        "11_xue_ji/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "11_xue_ji/expression_neutral.png",
+        "11_xue_ji/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "expression_smile",
+      "files": [
+        "11_xue_ji/expression_smile.png",
+        "11_xue_ji/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "11_xue_ji/expression_hurt.png",
+        "11_xue_ji/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "11_xue_ji/expression_awaken.png",
+        "11_xue_ji/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "xueji",
+      "design_hero_id": "xue_ji",
+      "asset_kind": "core_prop",
+      "files": [
+        "11_xue_ji/core_prop.png",
+        "11_xue_ji/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "portrait",
+      "files": [
+        "12_mo_cai/portrait.png",
+        "12_mo_cai/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "12_mo_cai/battle_portrait.png",
+        "12_mo_cai/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "avatar",
+      "files": [
+        "12_mo_cai/avatar.png",
+        "12_mo_cai/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "card_art",
+      "files": [
+        "12_mo_cai/card_art.png",
+        "12_mo_cai/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "12_mo_cai/skill_cutin.png",
+        "12_mo_cai/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "skill_icon",
+      "files": [
+        "12_mo_cai/skill_icon.png",
+        "12_mo_cai/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "12_mo_cai/expression_neutral.png",
+        "12_mo_cai/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "expression_smile",
+      "files": [
+        "12_mo_cai/expression_smile.png",
+        "12_mo_cai/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "12_mo_cai/expression_hurt.png",
+        "12_mo_cai/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "12_mo_cai/expression_awaken.png",
+        "12_mo_cai/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "mochai",
+      "design_hero_id": "mo_cai",
+      "asset_kind": "core_prop",
+      "files": [
+        "12_mo_cai/core_prop.png",
+        "12_mo_cai/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "portrait",
+      "files": [
+        "13_hui_dun/portrait.png",
+        "13_hui_dun/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "13_hui_dun/battle_portrait.png",
+        "13_hui_dun/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "avatar",
+      "files": [
+        "13_hui_dun/avatar.png",
+        "13_hui_dun/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "card_art",
+      "files": [
+        "13_hui_dun/card_art.png",
+        "13_hui_dun/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "13_hui_dun/skill_cutin.png",
+        "13_hui_dun/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "skill_icon",
+      "files": [
+        "13_hui_dun/skill_icon.png",
+        "13_hui_dun/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "13_hui_dun/expression_neutral.png",
+        "13_hui_dun/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "expression_smile",
+      "files": [
+        "13_hui_dun/expression_smile.png",
+        "13_hui_dun/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "13_hui_dun/expression_hurt.png",
+        "13_hui_dun/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "13_hui_dun/expression_awaken.png",
+        "13_hui_dun/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "huidun",
+      "design_hero_id": "hui_dun",
+      "asset_kind": "core_prop",
+      "files": [
+        "13_hui_dun/core_prop.png",
+        "13_hui_dun/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "portrait",
+      "files": [
+        "14_sha_shi/portrait.png",
+        "14_sha_shi/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "14_sha_shi/battle_portrait.png",
+        "14_sha_shi/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "avatar",
+      "files": [
+        "14_sha_shi/avatar.png",
+        "14_sha_shi/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "card_art",
+      "files": [
+        "14_sha_shi/card_art.png",
+        "14_sha_shi/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "14_sha_shi/skill_cutin.png",
+        "14_sha_shi/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "skill_icon",
+      "files": [
+        "14_sha_shi/skill_icon.png",
+        "14_sha_shi/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "14_sha_shi/expression_neutral.png",
+        "14_sha_shi/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "expression_smile",
+      "files": [
+        "14_sha_shi/expression_smile.png",
+        "14_sha_shi/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "14_sha_shi/expression_hurt.png",
+        "14_sha_shi/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "14_sha_shi/expression_awaken.png",
+        "14_sha_shi/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "shashi",
+      "design_hero_id": "sha_shi",
+      "asset_kind": "core_prop",
+      "files": [
+        "14_sha_shi/core_prop.png",
+        "14_sha_shi/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "portrait",
+      "files": [
+        "15_jing_lan/portrait.png",
+        "15_jing_lan/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "15_jing_lan/battle_portrait.png",
+        "15_jing_lan/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "avatar",
+      "files": [
+        "15_jing_lan/avatar.png",
+        "15_jing_lan/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "card_art",
+      "files": [
+        "15_jing_lan/card_art.png",
+        "15_jing_lan/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "15_jing_lan/skill_cutin.png",
+        "15_jing_lan/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "skill_icon",
+      "files": [
+        "15_jing_lan/skill_icon.png",
+        "15_jing_lan/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "15_jing_lan/expression_neutral.png",
+        "15_jing_lan/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "expression_smile",
+      "files": [
+        "15_jing_lan/expression_smile.png",
+        "15_jing_lan/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "15_jing_lan/expression_hurt.png",
+        "15_jing_lan/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "15_jing_lan/expression_awaken.png",
+        "15_jing_lan/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "jinglan",
+      "design_hero_id": "jing_lan",
+      "asset_kind": "core_prop",
+      "files": [
+        "15_jing_lan/core_prop.png",
+        "15_jing_lan/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "portrait",
+      "files": [
+        "16_lan_ying/portrait.png",
+        "16_lan_ying/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "16_lan_ying/battle_portrait.png",
+        "16_lan_ying/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "avatar",
+      "files": [
+        "16_lan_ying/avatar.png",
+        "16_lan_ying/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "card_art",
+      "files": [
+        "16_lan_ying/card_art.png",
+        "16_lan_ying/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "16_lan_ying/skill_cutin.png",
+        "16_lan_ying/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "skill_icon",
+      "files": [
+        "16_lan_ying/skill_icon.png",
+        "16_lan_ying/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "16_lan_ying/expression_neutral.png",
+        "16_lan_ying/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "expression_smile",
+      "files": [
+        "16_lan_ying/expression_smile.png",
+        "16_lan_ying/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "16_lan_ying/expression_hurt.png",
+        "16_lan_ying/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "16_lan_ying/expression_awaken.png",
+        "16_lan_ying/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "lan_ying",
+      "design_hero_id": "lan_ying",
+      "asset_kind": "core_prop",
+      "files": [
+        "16_lan_ying/core_prop.png",
+        "16_lan_ying/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "portrait",
+      "files": [
+        "17_ji_qiao_07/portrait.png",
+        "17_ji_qiao_07/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "17_ji_qiao_07/battle_portrait.png",
+        "17_ji_qiao_07/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "avatar",
+      "files": [
+        "17_ji_qiao_07/avatar.png",
+        "17_ji_qiao_07/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "card_art",
+      "files": [
+        "17_ji_qiao_07/card_art.png",
+        "17_ji_qiao_07/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "17_ji_qiao_07/skill_cutin.png",
+        "17_ji_qiao_07/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "skill_icon",
+      "files": [
+        "17_ji_qiao_07/skill_icon.png",
+        "17_ji_qiao_07/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "17_ji_qiao_07/expression_neutral.png",
+        "17_ji_qiao_07/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "expression_smile",
+      "files": [
+        "17_ji_qiao_07/expression_smile.png",
+        "17_ji_qiao_07/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "17_ji_qiao_07/expression_hurt.png",
+        "17_ji_qiao_07/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "17_ji_qiao_07/expression_awaken.png",
+        "17_ji_qiao_07/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "jiqiao7",
+      "design_hero_id": "ji_qiao_07",
+      "asset_kind": "core_prop",
+      "files": [
+        "17_ji_qiao_07/core_prop.png",
+        "17_ji_qiao_07/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "portrait",
+      "files": [
+        "18_lei_wan/portrait.png",
+        "18_lei_wan/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "18_lei_wan/battle_portrait.png",
+        "18_lei_wan/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "avatar",
+      "files": [
+        "18_lei_wan/avatar.png",
+        "18_lei_wan/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "card_art",
+      "files": [
+        "18_lei_wan/card_art.png",
+        "18_lei_wan/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "18_lei_wan/skill_cutin.png",
+        "18_lei_wan/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "skill_icon",
+      "files": [
+        "18_lei_wan/skill_icon.png",
+        "18_lei_wan/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "18_lei_wan/expression_neutral.png",
+        "18_lei_wan/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "expression_smile",
+      "files": [
+        "18_lei_wan/expression_smile.png",
+        "18_lei_wan/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "18_lei_wan/expression_hurt.png",
+        "18_lei_wan/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "18_lei_wan/expression_awaken.png",
+        "18_lei_wan/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "leiyuan",
+      "design_hero_id": "lei_wan",
+      "asset_kind": "core_prop",
+      "files": [
+        "18_lei_wan/core_prop.png",
+        "18_lei_wan/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "portrait",
+      "files": [
+        "19_zhi_yuan/portrait.png",
+        "19_zhi_yuan/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "19_zhi_yuan/battle_portrait.png",
+        "19_zhi_yuan/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "avatar",
+      "files": [
+        "19_zhi_yuan/avatar.png",
+        "19_zhi_yuan/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "card_art",
+      "files": [
+        "19_zhi_yuan/card_art.png",
+        "19_zhi_yuan/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "19_zhi_yuan/skill_cutin.png",
+        "19_zhi_yuan/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "skill_icon",
+      "files": [
+        "19_zhi_yuan/skill_icon.png",
+        "19_zhi_yuan/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "19_zhi_yuan/expression_neutral.png",
+        "19_zhi_yuan/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "expression_smile",
+      "files": [
+        "19_zhi_yuan/expression_smile.png",
+        "19_zhi_yuan/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "19_zhi_yuan/expression_hurt.png",
+        "19_zhi_yuan/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "19_zhi_yuan/expression_awaken.png",
+        "19_zhi_yuan/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "zhiyuan",
+      "design_hero_id": "zhi_yuan",
+      "asset_kind": "core_prop",
+      "files": [
+        "19_zhi_yuan/core_prop.png",
+        "19_zhi_yuan/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "portrait",
+      "files": [
+        "20_xuan_jia/portrait.png",
+        "20_xuan_jia/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "20_xuan_jia/battle_portrait.png",
+        "20_xuan_jia/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "avatar",
+      "files": [
+        "20_xuan_jia/avatar.png",
+        "20_xuan_jia/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "card_art",
+      "files": [
+        "20_xuan_jia/card_art.png",
+        "20_xuan_jia/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "20_xuan_jia/skill_cutin.png",
+        "20_xuan_jia/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "skill_icon",
+      "files": [
+        "20_xuan_jia/skill_icon.png",
+        "20_xuan_jia/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "20_xuan_jia/expression_neutral.png",
+        "20_xuan_jia/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "expression_smile",
+      "files": [
+        "20_xuan_jia/expression_smile.png",
+        "20_xuan_jia/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "20_xuan_jia/expression_hurt.png",
+        "20_xuan_jia/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "20_xuan_jia/expression_awaken.png",
+        "20_xuan_jia/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "xuanjia",
+      "design_hero_id": "xuan_jia",
+      "asset_kind": "core_prop",
+      "files": [
+        "20_xuan_jia/core_prop.png",
+        "20_xuan_jia/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "portrait",
+      "files": [
+        "21_ling_xi/portrait.png",
+        "21_ling_xi/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "21_ling_xi/battle_portrait.png",
+        "21_ling_xi/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "avatar",
+      "files": [
+        "21_ling_xi/avatar.png",
+        "21_ling_xi/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "card_art",
+      "files": [
+        "21_ling_xi/card_art.png",
+        "21_ling_xi/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "21_ling_xi/skill_cutin.png",
+        "21_ling_xi/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "skill_icon",
+      "files": [
+        "21_ling_xi/skill_icon.png",
+        "21_ling_xi/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "21_ling_xi/expression_neutral.png",
+        "21_ling_xi/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "expression_smile",
+      "files": [
+        "21_ling_xi/expression_smile.png",
+        "21_ling_xi/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "21_ling_xi/expression_hurt.png",
+        "21_ling_xi/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "21_ling_xi/expression_awaken.png",
+        "21_ling_xi/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "lingxi",
+      "design_hero_id": "ling_xi",
+      "asset_kind": "core_prop",
+      "files": [
+        "21_ling_xi/core_prop.png",
+        "21_ling_xi/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "portrait",
+      "files": [
+        "22_he_luo/portrait.png",
+        "22_he_luo/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "22_he_luo/battle_portrait.png",
+        "22_he_luo/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "avatar",
+      "files": [
+        "22_he_luo/avatar.png",
+        "22_he_luo/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "card_art",
+      "files": [
+        "22_he_luo/card_art.png",
+        "22_he_luo/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "22_he_luo/skill_cutin.png",
+        "22_he_luo/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "skill_icon",
+      "files": [
+        "22_he_luo/skill_icon.png",
+        "22_he_luo/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "22_he_luo/expression_neutral.png",
+        "22_he_luo/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "expression_smile",
+      "files": [
+        "22_he_luo/expression_smile.png",
+        "22_he_luo/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "22_he_luo/expression_hurt.png",
+        "22_he_luo/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "22_he_luo/expression_awaken.png",
+        "22_he_luo/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "heluo",
+      "design_hero_id": "he_luo",
+      "asset_kind": "core_prop",
+      "files": [
+        "22_he_luo/core_prop.png",
+        "22_he_luo/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "portrait",
+      "files": [
+        "23_mian_xing/portrait.png",
+        "23_mian_xing/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "23_mian_xing/battle_portrait.png",
+        "23_mian_xing/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "avatar",
+      "files": [
+        "23_mian_xing/avatar.png",
+        "23_mian_xing/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "card_art",
+      "files": [
+        "23_mian_xing/card_art.png",
+        "23_mian_xing/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "23_mian_xing/skill_cutin.png",
+        "23_mian_xing/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "skill_icon",
+      "files": [
+        "23_mian_xing/skill_icon.png",
+        "23_mian_xing/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "23_mian_xing/expression_neutral.png",
+        "23_mian_xing/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "expression_smile",
+      "files": [
+        "23_mian_xing/expression_smile.png",
+        "23_mian_xing/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "23_mian_xing/expression_hurt.png",
+        "23_mian_xing/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "23_mian_xing/expression_awaken.png",
+        "23_mian_xing/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "mianxing",
+      "design_hero_id": "mian_xing",
+      "asset_kind": "core_prop",
+      "files": [
+        "23_mian_xing/core_prop.png",
+        "23_mian_xing/core_prop.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "portrait",
+      "files": [
+        "24_nai_pao_long/portrait.png",
+        "24_nai_pao_long/portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "battle_portrait",
+      "files": [
+        "24_nai_pao_long/battle_portrait.png",
+        "24_nai_pao_long/battle_portrait.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "avatar",
+      "files": [
+        "24_nai_pao_long/avatar.png",
+        "24_nai_pao_long/avatar.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "card_art",
+      "files": [
+        "24_nai_pao_long/card_art.png",
+        "24_nai_pao_long/card_art.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "skill_cutin",
+      "files": [
+        "24_nai_pao_long/skill_cutin.png",
+        "24_nai_pao_long/skill_cutin.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "skill_icon",
+      "files": [
+        "24_nai_pao_long/skill_icon.png",
+        "24_nai_pao_long/skill_icon.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "expression_neutral",
+      "files": [
+        "24_nai_pao_long/expression_neutral.png",
+        "24_nai_pao_long/expression_neutral.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "expression_smile",
+      "files": [
+        "24_nai_pao_long/expression_smile.png",
+        "24_nai_pao_long/expression_smile.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "expression_hurt",
+      "files": [
+        "24_nai_pao_long/expression_hurt.png",
+        "24_nai_pao_long/expression_hurt.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "expression_awaken",
+      "files": [
+        "24_nai_pao_long/expression_awaken.png",
+        "24_nai_pao_long/expression_awaken.webp"
+      ]
+    },
+    {
+      "hero_id": "naipaolong",
+      "design_hero_id": "nai_pao_long",
+      "asset_kind": "core_prop",
+      "files": [
+        "24_nai_pao_long/core_prop.png",
+        "24_nai_pao_long/core_prop.webp"
+      ]
+    }
+  ],
+  "root_files": [
+    "HERO_INDEX.md",
+    "README_FOR_CODEX.md",
+    "attribution.json",
+    "face_diversity_contact_sheet.png",
+    "portrait_contact_sheet.png"
+  ],
+  "license_notes": [
+    "Original assets generated for MentorFlow; no third-party commercial assets or external URLs.",
+    "Human review is required before activation."
+  ],
+  "source": "dev_art_fixture"
+}
