@@ -24,9 +24,13 @@ function Invoke-Checked {
         [scriptblock]$Command
     )
     $log = Join-Path $EvidenceDirectory "$Label.txt"
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $Command 2>&1 | Tee-Object -FilePath $log
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Label failed with exit code $LASTEXITCODE. See $log"
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorAction
+    if ($exitCode -ne 0) {
+        throw "$Label failed with exit code $exitCode. See $log"
     }
 }
 
@@ -68,7 +72,7 @@ finally {
     Pop-Location
 }
 
-Write-Output "W6 FAST-TRACK 2 HTTP acceptance passed. Evidence: $EvidenceDirectory"
+Write-Output "W6 FAST-TRACK 2 acceptance passed. Evidence: $EvidenceDirectory"
 if (-not $IncludeLegacyBrowser) {
     Write-Output "Legacy browser checks were not requested; pass -IncludeLegacyBrowser after updating stale demo selectors."
 }

@@ -5,8 +5,17 @@ const proof = 'I explain the reason with an example and evidence, then list the 
 
 async function openDemo(page: any) {
   await page.goto('/')
+  const apiResponses: string[] = []
+  page.on('response', (response: any) => {
+    if (response.url().includes('/api/')) apiResponses.push(`${response.request().method()} ${response.status()} ${response.url()}`)
+  })
   await page.locator('.hero-actions button.secondary').click()
-  await expect(page.locator('.plan-body')).toBeVisible()
+  try {
+    await expect(page.locator('.plan-body')).toBeVisible({ timeout: 30_000 })
+  } catch (error) {
+    const toast = await page.locator('.toast').textContent().catch(() => '')
+    throw new Error(`Demo did not reach plan view. toast=${toast || '<none>'}; responses=${apiResponses.join(' | ')}; cause=${String(error)}`)
+  }
 }
 
 test('home exposes the scenario learning run and server completion gate', async ({ page }) => {
@@ -15,20 +24,28 @@ test('home exposes the scenario learning run and server completion gate', async 
   await expect(page.locator('.hero-actions button')).toHaveCount(2)
   await openDemo(page)
   await page.locator('.title-actions button.primary').click()
-  await page.locator('nav button').nth(3).click()
-  await expect(page.locator('.lesson-stage')).toBeVisible()
-  await expect(page.locator('.answer-panel')).toBeVisible()
-  await page.locator('.choice-card').first().click()
+  await page.getByTestId('nav-flow').click()
+  await expect(page.getByTestId('flow-stage-import')).toHaveAttribute('aria-current', 'step')
+  await page.getByTestId('flow-stage-knowledge').click()
+  const flow = page.locator('main .content > section')
+  await expect(page.getByTestId('flow-stage-knowledge')).toHaveAttribute('aria-current', 'step')
+  const mapHeaderButton = flow.locator('header button').first()
+  if (await mapHeaderButton.isVisible()) await mapHeaderButton.click()
+  await expect(page.getByTestId('flow-stage-planning')).toBeEnabled()
+  await page.getByTestId('flow-stage-planning').click()
+  await expect(page.getByTestId('flow-stage-today')).toBeEnabled()
+  await page.getByTestId('flow-stage-today').click()
+  await flow.locator('section button').first().click()
+  await expect(page.getByTestId('flow-stage-tutor')).toHaveAttribute('aria-current', 'step')
   for (let index = 0; index < 6; index += 1) {
-    await expect(page.locator('.answer-panel textarea')).toBeVisible()
-    await page.locator('.answer-panel textarea').fill(proof)
-    await page.locator('.answer-panel .primary').click()
-    if (index < 5) await expect(page.locator('.answer-panel')).toBeVisible()
+    await expect(page.getByTestId('tutor-answer')).toBeVisible()
+    await page.getByTestId('tutor-answer').fill(proof)
+    await page.getByTestId('tutor-submit').click()
   }
-  await expect(page.locator('.verification-note.passed')).toBeVisible()
-  await expect(page.locator('.complete-button')).toBeEnabled()
-  await page.locator('.complete-button').click()
-  await page.locator('nav button').nth(4).click()
+  await expect(page.getByTestId('tutor-submit')).toBeDisabled()
+  await expect(flow.locator('footer button').first()).toBeEnabled()
+  await flow.locator('footer button').first().click()
+  await page.getByTestId('nav-progress').click()
   await expect(page.locator('.stats-grid')).toBeVisible()
 })
 
@@ -221,7 +238,18 @@ test('real provider mock remains connected through tutor', async ({ page }) => {
 test('real provider failure is visible and never becomes Fake', async ({ page }) => {
   const server = createServer((request, response) => { if (request.url?.endsWith('/chat/completions')) { response.writeHead(401, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: 'unauthorized' })); return } response.writeHead(404); response.end() })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const address = server.address(); const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`
-  try { await page.goto('/'); await page.locator('nav button').nth(5).click(); await page.getByLabel('Provider').selectOption('openai-compatible'); await page.getByLabel('Base URL').fill(baseUrl); await page.getByLabel('Model').fill('bad-model'); await page.getByLabel('API Key').fill('bad-key'); await page.getByRole('button', { name: /OpenAI Compatible/ }).click(); await expect(page.locator('.provider-form')).toBeVisible() } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+  try {
+    await page.goto('/')
+    await page.getByTestId('nav-settings').click()
+    await page.getByLabel('Provider').selectOption('openai-compatible')
+    await page.getByLabel('Base URL').fill(baseUrl)
+    await page.getByLabel('Model').fill('bad-model')
+    await page.getByLabel('API Key').fill('bad-key')
+    await page.getByRole('button', { name: /OpenAI Compatible/ }).click()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.locator('.diagnostic-panel pre')).toContainText('"provider": "openai-compatible"')
+    await expect(page.locator('.diagnostic-panel pre')).not.toContainText('"provider": "fake"')
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
 })
 
 const normalZipBase64 = 'UEsDBBQAAAAIAEwE7Fzr2X4VGwAAABkAAAANAAAAbm90ZXMvamF2YS5tZFNW8Arz5eJyLctMSc1LTlVIK8rPVYjyDNADAFBLAwQUAAAACABMBOxcViQN2g8AAAANAAAACwAAAHNyYy9tYWluLnB5KyjKzCvRUCpOTEtV0gQAUEsBAhQAFAAAAAgATATsXOvZfhUbAAAAGQAAAA0AAAAAAAAAAAAAAIABAAAAAG5vdGVzL2phdmEubWRQSwECFAAUAAAACABMBOxcViQN2g8AAAANAAAACwAAAAAAAAAAAAAAgAFGAAAAc3JjL21haW4ucHlQSwUGAAAAAAIAAgB0AAAAfgAAAAAA'
@@ -229,7 +257,7 @@ const evilZipBase64 = 'UEsDBBQAAAAIAEwE7FxSMfuNBgAAAAQAAAAMAAAALi4vZXNjYXBlLm1kS
 
 async function openDemoSourcePanel(page: any) {
   await openDemo(page)
-  await page.locator('nav button').nth(1).click()
+  await page.getByTestId('nav-create').click()
   await page.locator('.stepper button').nth(1).click()
   await expect(page.locator('.source-import-panel')).toBeVisible()
 }

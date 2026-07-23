@@ -177,7 +177,7 @@ export function LearningFlow({
   return <section aria-label="学习主流程">
     <nav aria-label="学习流程阶段">
       <ol>{STAGES.map(([id, label], index) => <li key={id}>
-        <button type="button" disabled={!accessible[id]} aria-current={stage === id ? 'step' : undefined} onClick={() => setStage(id)}>
+        <button type="button" data-testid={`flow-stage-${id}`} disabled={!accessible[id]} aria-current={stage === id ? 'step' : undefined} onClick={() => setStage(id)}>
           <span>{index + 1}</span>{label}
         </button>
       </li>)}</ol>

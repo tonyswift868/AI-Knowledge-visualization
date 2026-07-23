@@ -37,6 +37,8 @@ const API = "/api";
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
 const PRESETS_STORAGE_KEY = "mentorflow_create_presets_v1";
 const DAILY_SETTINGS_KEY = "mentorflow_daily_refresh_v1";
+const toLocalIsoDate = (value: Date) =>
+  `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 type Workspace = {
   id: string;
   title: string;
@@ -169,8 +171,8 @@ export function App() {
     description: "把一个目标拆成今天能完成的动作",
     goal_statement: "在截止日期前掌握一项可验证的能力",
     motivation: "我希望真正做出成果，而不是只看过资料。",
-    start_date: new Date().toISOString().slice(0, 10),
-    deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+    start_date: toLocalIsoDate(new Date()),
+    deadline: toLocalIsoDate(new Date(Date.now() + 14 * 86400000)),
     minutes_per_day: 30,
     days_per_week: 5,
     current_level: "beginner",
@@ -279,8 +281,8 @@ export function App() {
     setBusy(true);
     try {
       const demoStart = new Date();
-      const demoStartDate = demoStart.toISOString().slice(0, 10);
-      const demoDeadline = new Date(demoStart.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+      const demoStartDate = toLocalIsoDate(demoStart);
+      const demoDeadline = toLocalIsoDate(new Date(demoStart.getTime() + 14 * 86400000));
       const w = await request<Workspace>("/workspaces", {
         method: "POST",
         body: JSON.stringify({
@@ -499,6 +501,7 @@ export function App() {
           ].map(([key, Icon, label]: any) => (
             <button
               className={tab === key ? "active" : ""}
+              data-testid={`nav-${key}`}
               onClick={() => key === "story" ? openCampaign() : setTab(key)}
               key={key}
             >

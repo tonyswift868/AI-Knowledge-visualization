@@ -204,13 +204,14 @@ export function TutorView({
         <h3>提交本阶段成果</h3>
         <p>用自己的话作答；只有 Evaluator 通过后才会进入下一阶段或结束今天。</p>
         <textarea
+          data-testid="tutor-answer"
           aria-label="本阶段回答"
           value={response}
           onChange={event => setResponse(event.target.value)}
           disabled={submitting || session.status === 'passed'}
           placeholder="写出判断、步骤、依据和检查方法"
         />
-        <button type="button" disabled={submitting || !response.trim() || session.status === 'passed'} onClick={() => void submitResponse()}>
+        <button type="button" data-testid="tutor-submit" disabled={submitting || !response.trim() || session.status === 'passed'} onClick={() => void submitResponse()}>
           {submitting ? '正在评估…' : session.status === 'passed' ? '已通过' : '提交并进入下一阶段'}
         </button>
       </section>
