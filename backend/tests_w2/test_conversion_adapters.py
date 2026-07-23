@@ -162,7 +162,7 @@ def test_cancellation_disabled_adapter_and_unsupported_format_are_explicit() -> 
     assert disabled.failure.details["adapter"] == "native-markdown"
 
     unsupported = ConversionRegistry().convert_safe(
-        ConversionSource(name="book.epub", data=b"not supported")
+        ConversionSource(name="book.pages", data=b"not supported")
     )
     assert unsupported.status == "failed"
     assert unsupported.failure.code == "UNSUPPORTED_FORMAT"
