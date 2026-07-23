@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import zipfile
 from functools import lru_cache
@@ -20,6 +21,7 @@ from typing import Any
 
 DEFAULT_GAME_ROOT = Path(os.getenv("MENTORFLOW_KKS_GAME_ROOT", r"E:\BaiduNetdiskDownload\lahdxydj\KoikatuSunshine"))
 MOD_ROOT = Path(os.getenv("MENTORFLOW_KKS_MOD_ROOT", str(DEFAULT_GAME_ROOT / "mods")))
+ZIPMOD_INDEX_PATH = Path(os.getenv("MENTORFLOW_KKS_ZIPMOD_INDEX", str(Path(__file__).resolve().parents[2] / "data" / "kks-assets" / "zipmod-index-v1.csv")))
 
 
 def mod_stamp() -> float:
@@ -27,6 +29,13 @@ def mod_stamp() -> float:
 
     try:
         return max((path.stat().st_mtime for path in MOD_ROOT.rglob("*.zipmod")), default=0.0)
+    except OSError:
+        return 0.0
+
+
+def _root_stamp(root: Path) -> float:
+    try:
+        return max((path.stat().st_mtime for path in root.rglob("*.zipmod")), default=0.0)
     except OSError:
         return 0.0
 
@@ -68,13 +77,59 @@ def _rows(root: str, stamp: float) -> dict[str, tuple[dict[str, Any], ...]]:
     return {key: tuple(value) for key, value in result.items()}
 
 
-def resolve_mod_assets(asset_ids: list[int | str]) -> dict[str, list[dict[str, Any]]]:
-    """Return all locally installed CSV definitions for the requested IDs."""
+@lru_cache(maxsize=2)
+def _indexed_rows(index_path: str, mtime_ns: int, size: int) -> dict[str, tuple[dict[str, Any], ...]]:
+    """Load the offline index once; unlike ``_rows`` this never touches MOD_ROOT."""
+    result: dict[str, list[dict[str, Any]]] = {}
+    try:
+        with Path(index_path).open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                asset_id = str(row.get("asset_id") or row.get("ID") or "").strip()
+                if not asset_id:
+                    continue
+                values: dict[str, Any] = dict(row)
+                raw = row.get("row_json")
+                if raw:
+                    try:
+                        decoded = json.loads(raw)
+                        if isinstance(decoded, dict):
+                            values.update(decoded)
+                    except json.JSONDecodeError:
+                        pass
+                values["asset_id"] = asset_id
+                values["zipmod"] = row.get("archive_relpath", "")
+                values["csv"] = row.get("list_csv", "")
+                result.setdefault(asset_id, []).append(values)
+    except (OSError, UnicodeError, csv.Error):
+        return {}
+    return {key: tuple(value) for key, value in result.items()}
 
-    rows = _rows(str(MOD_ROOT.resolve()) if MOD_ROOT.exists() else str(MOD_ROOT), mod_stamp())
+
+def _offline_index_rows(index_path: Path) -> dict[str, tuple[dict[str, Any], ...]]:
+    if not index_path.is_file():
+        return {}
+    try:
+        stat = index_path.stat()
+    except OSError:
+        return {}
+    return _indexed_rows(str(index_path.resolve()), int(stat.st_mtime_ns), int(stat.st_size))
+
+
+def resolve_mod_assets(asset_ids: list[int | str], *, index_path: Path = ZIPMOD_INDEX_PATH, root: Path | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Return requested assets from the offline index.
+
+    ``root`` is an explicit offline-maintenance escape hatch for tooling and
+    tests.  Web callers leave it unset, so no request performs a recursive
+    ``*.zipmod`` scan.
+    """
+    if root is not None:
+        rows = _rows(str(root.resolve()) if root.exists() else str(root), _root_stamp(root))
+    else:
+        rows = _offline_index_rows(index_path)
     return {str(asset_id): list(rows.get(str(asset_id), ())) for asset_id in asset_ids if str(asset_id) in rows}
 
 
-def known_mod_asset_ids() -> set[str]:
-    rows = _rows(str(MOD_ROOT.resolve()) if MOD_ROOT.exists() else str(MOD_ROOT), mod_stamp())
+def known_mod_asset_ids(*, index_path: Path = ZIPMOD_INDEX_PATH, root: Path | None = None) -> set[str]:
+    rows = _rows(str(root.resolve()) if root.exists() else str(root), _root_stamp(root)) if root is not None else _offline_index_rows(index_path)
     return set(rows)
