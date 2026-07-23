@@ -68,6 +68,8 @@ export function TutorView({
   const [session, setSession] = useState<TutorSession | null>(initialSession)
   const [loading, setLoading] = useState(Boolean(task) && !initialSession)
   const [busyAction, setBusyAction] = useState<TeacherAction | ''>('')
+  const [response, setResponse] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -112,12 +114,29 @@ export function TutorView({
       const next = await api.act(session, action)
       setSession(next)
       onSessionChange?.(next)
-      if (action === 'close_day') onDayClosed?.(next)
+      if (action === 'close_day' && next.status === 'passed') onDayClosed?.(next)
       if (action === 'offer_self_study') onSelfStudy?.(next)
     } catch (value) {
       setError(actionErrorMessage(value))
     } finally {
       setBusyAction('')
+    }
+  }
+
+  async function submitResponse() {
+    if (!session || !response.trim()) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const next = await api.submit(session, response.trim())
+      setSession(next)
+      setResponse('')
+      onSessionChange?.(next)
+      if (next.status === 'passed') onDayClosed?.(next)
+    } catch (value) {
+      setError(actionErrorMessage(value))
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -181,9 +200,24 @@ export function TutorView({
           </li>)}</ol>}
       </section>
 
+      <section aria-label="提交学习成果">
+        <h3>提交本阶段成果</h3>
+        <p>用自己的话作答；只有 Evaluator 通过后才会进入下一阶段或结束今天。</p>
+        <textarea
+          aria-label="本阶段回答"
+          value={response}
+          onChange={event => setResponse(event.target.value)}
+          disabled={submitting || session.status === 'passed'}
+          placeholder="写出判断、步骤、依据和检查方法"
+        />
+        <button type="button" disabled={submitting || !response.trim() || session.status === 'passed'} onClick={() => void submitResponse()}>
+          {submitting ? '正在评估…' : session.status === 'passed' ? '已通过' : '提交并进入下一阶段'}
+        </button>
+      </section>
+
       <footer>
-        <button type="button" disabled={Boolean(busyAction)} onClick={() => void act('close_day')}>
-          {busyAction === 'close_day' ? '正在收尾…' : '结束今天'}
+        <button type="button" disabled={Boolean(busyAction) || session.status !== 'passed'} onClick={() => onDayClosed?.(session)}>
+          {session.status === 'passed' ? '结束今天' : '通过后结束今天'}
         </button>
         <button type="button" disabled={Boolean(busyAction)} onClick={() => void act('offer_self_study')}>
           {busyAction === 'offer_self_study' ? '正在准备…' : '继续自主学习'}

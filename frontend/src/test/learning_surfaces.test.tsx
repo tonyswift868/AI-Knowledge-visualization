@@ -95,7 +95,8 @@ describe('learning feature surfaces', () => {
 
   it('exposes structured teacher actions, student dimensions and no-KKS fallback', async () => {
     const closed = { ...tutorSession, revision: 4, last_teacher_action: 'close_day' as const }
-    const api = { start: vi.fn(), act: vi.fn().mockResolvedValue(closed) }
+    const submitted = { ...tutorSession, revision: 4, phase: 'worked_example' }
+    const api = { start: vi.fn(), act: vi.fn().mockResolvedValue(closed), submit: vi.fn().mockResolvedValue(submitted) }
     const onDayClosed = vi.fn()
     render(<TutorView workspaceId="ws-1" task={{ id: 'task-1', title: '图基础' }} api={api as any} initialSession={tutorSession} onDayClosed={onDayClosed} />)
 
@@ -105,9 +106,10 @@ describe('learning feature surfaces', () => {
     expect(screen.getByRole('button', { name: '生活类比' })).toBeInTheDocument()
     expect(screen.getByText('把队列当成栈')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '结束今天' }))
-    await waitFor(() => expect(api.act).toHaveBeenCalledWith(tutorSession, 'close_day'))
-    expect(onDayClosed).toHaveBeenCalledWith(closed)
+    expect(screen.getByRole('button', { name: '通过后结束今天' })).toBeDisabled()
+    fireEvent.change(screen.getByRole('textbox', { name: '本阶段回答' }), { target: { value: '我说明判断、步骤和证据。' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交并进入下一阶段' }))
+    await waitFor(() => expect(api.submit).toHaveBeenCalledWith(tutorSession, '我说明判断、步骤和证据。'))
   })
 
   it('moves through import, map, plan, today and tutor with real injected contracts', async () => {

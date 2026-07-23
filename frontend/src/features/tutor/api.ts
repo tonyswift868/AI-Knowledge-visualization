@@ -126,6 +126,18 @@ export const tutorApi = {
     }).then(response => json<TutorSession>(response))
     return { ...result, last_teacher_action: action }
   },
+  submit: async (session: TutorSession, response: string): Promise<TutorSession> => {
+    return fetch(`/api/learning-runs/${encodeURIComponent(session.run_id)}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        response,
+        evidence: response,
+        expected_revision: session.revision,
+        idempotency_key: `tutor-submit:${session.run_id}:${session.revision}`,
+      }),
+    }).then(value => json<TutorSession>(value))
+  },
 }
 
 export type TutorApi = typeof tutorApi
