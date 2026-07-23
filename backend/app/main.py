@@ -94,6 +94,7 @@ def fail(code: str, message: str, status: int = 400, details: dict | None = None
 
 
 def preset_directory(requested: str | None = None) -> Path:
+    allowed_roots = {DEFAULT_PRESET_DIR.resolve(), PRESET_SETTINGS_FILE.parent.resolve()}
     directory = Path(requested).expanduser() if requested else DEFAULT_PRESET_DIR
     if not requested and PRESET_SETTINGS_FILE.exists():
         try:
@@ -103,6 +104,8 @@ def preset_directory(requested: str | None = None) -> Path:
         except (OSError, ValueError, TypeError):
             directory = DEFAULT_PRESET_DIR
     directory = directory.resolve()
+    if not any(directory == root or root in directory.parents for root in allowed_roots):
+        fail("PRESET_DIRECTORY_NOT_ALLOWED", "预设目录必须位于项目数据目录内", 400, {"allowed_roots": sorted(str(root) for root in allowed_roots)})
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
@@ -985,6 +988,40 @@ async def test_provider_session_route(session_id: str):
 @app.delete("/api/provider-sessions/{session_id}")
 def delete_provider_session_route(session_id: str):
     return {"deleted": delete_provider_session(session_id)}
+
+
+def kks_runtime_unavailable() -> None:
+    fail(
+        "KKS_RUNTIME_UNAVAILABLE",
+        "KKS 教师运行时尚未恢复，当前可继续使用无角色教师模式",
+        503,
+        {"available": False, "fallback": "teacher_without_avatar"},
+    )
+
+
+@app.get("/api/koikatsu/capability")
+def koikatsu_capability():
+    return {"available": False, "code": "KKS_RUNTIME_UNAVAILABLE", "fallback": "teacher_without_avatar"}
+
+
+@app.get("/api/teacher-avatars")
+def list_teacher_avatars_unavailable():
+    kks_runtime_unavailable()
+
+
+@app.get("/api/teacher-avatars/today")
+def today_teacher_avatar_unavailable():
+    kks_runtime_unavailable()
+
+
+@app.post("/api/teacher-avatars/import")
+async def import_teacher_avatar_unavailable():
+    kks_runtime_unavailable()
+
+
+@app.patch("/api/teacher-avatars/{model_id}/morph")
+def update_teacher_avatar_unavailable(model_id: str):
+    kks_runtime_unavailable()
 
 
 @app.post("/api/providers/test")

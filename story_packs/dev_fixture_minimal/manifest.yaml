@@ -9,7 +9,7 @@ supported_duration_days: [1, 7]
 content_rating: dev-fixture
 entry_scene_id: dev_intro
 ending_scene_ids: [dev_assessment, dev_postgame]
-checksum: sha256:f9e6ac7d816b4421eec9f7dcd5c792a6e9626f33518b01a33cd0d8a9952b68bb
+checksum: sha256:bbe1fa6f8949400bd85fb671d033ec956bd4ca396ba6be28978e1866a78df468
 created_at: '2026-07-12T00:00:00Z'
 provenance_notes:
   - DEV FIXTURE — NOT PRODUCTION STORY ASSET

@@ -217,6 +217,12 @@ export function App() {
       .catch(() => {});
   }, []);
   useEffect(() => {
+    const sessionId = providerState.providerSessionId;
+    if (!sessionId || !providerState.verified) return;
+    request(`/provider-sessions/${encodeURIComponent(sessionId)}`)
+      .catch(() => useMentorStore.getState().setLastError("Provider Session 已失效，请重新绑定模型"));
+  }, [providerState.providerSessionId, providerState.verified]);
+  useEffect(() => {
     if (toast) {
       const t = setTimeout(() => setToast(""), 3200);
       return () => clearTimeout(t);
@@ -1974,7 +1980,7 @@ export function Settings() {
   };
   const diagnostics = JSON.stringify({ ...providerDiagnostic(state), api_key: undefined }, null, 2);
   return <>
-    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>API Key 会自动保存到当前浏览器本机，不进入数据库、不上传到预设文件；ProviderSession 只在后端进程内存中短暂有效。</p></div></div>
+    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>API Key 仅在当前页面内存中使用，不写入浏览器存储、不进入数据库、不上传到预设文件；ProviderSession 只在后端进程内存中短暂有效。</p></div></div>
     <div className="settings-grid">
       <section className="card provider-form">
         <div className="card-kicker"><Settings2 size={16} />模型 Provider</div>
@@ -1986,6 +1992,7 @@ export function Settings() {
         </>}
         <div className="key-note"><ShieldCheck size={16} /><span>{state.provider === "fake" ? "Fake 只用于明确的 Demo Workspace。" : "真实请求失败时不会自动切换到 Fake。"}</span><button onClick={() => state.setApiKey("")}>清除 Key</button></div>
         <button className="primary" onClick={test}>{state.provider === "fake" ? "测试 Fake Provider" : `测试 ${labels[state.provider]}`} <Check size={16} /></button>
+        {state.lastError && <div className="provider-error" role="alert">{state.lastError.includes("重新绑定") ? state.lastError : `${state.lastError} · 请重新绑定模型`}</div>}
         {message && <div className="success-note">{message}</div>}
       </section>
       <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 不写数据库、不进 URL、不进响应", "真实 Workspace 必须绑定已验证 ProviderSession", "真实请求失败不会静默回退 Fake", "Demo Workspace 明确使用 Fake Provider"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>

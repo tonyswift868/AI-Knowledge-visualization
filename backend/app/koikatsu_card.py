@@ -304,3 +304,6 @@ def parse_koikatsu_sunshine_card(content: bytes) -> dict[str, Any]:
         },
     }
 
+# Compatibility name used by the registry. The full native card editor is not
+# available in this checkout; keep the parser as the single honest fallback.
+inspect_koikatsu_sunshine_card = parse_koikatsu_sunshine_card

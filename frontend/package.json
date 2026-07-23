@@ -9,6 +9,7 @@
     "test": "vitest run --pool=threads --maxWorkers=1 --no-file-parallelism"
   },
   "dependencies": {
+    "@pixiv/three-vrm": "^3.4.0",
     "@vitejs/plugin-react": "6.0.3",
     "lucide-react": "1.24.0",
     "phaser": "3.90.0",
@@ -16,6 +17,8 @@
     "react-dom": "19.2.7",
     "react-markdown": "10.1.0",
     "react-router-dom": "7.18.1",
+    "three": "^0.180.0",
+    "three-stdlib": "^2.36.0",
     "typescript": "7.0.2",
     "vite": "8.1.4",
     "zustand": "5.0.14"
@@ -27,6 +30,7 @@
     "@testing-library/user-event": "14.6.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@types/three": "^0.180.0",
     "jsdom": "29.1.1",
     "vitest": "4.1.10"
   }

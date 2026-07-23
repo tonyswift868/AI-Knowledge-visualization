@@ -22,7 +22,7 @@ COVERAGE_PATH = Path(os.getenv(
     str(PROJECT_ROOT / "data" / "kks-assets" / "runtime-coverage-v1.sqlite3"),
 ))
 COVERAGE_SCHEMA_VERSION = "1"
-VALID_STATUSES = frozenset({"ready", "partial", "error", "unsupported-male"})
+VALID_STATUSES = frozenset({"pending", "ready", "partial", "error", "unsupported-male"})
 
 
 def _connect(path: Path = COVERAGE_PATH) -> sqlite3.Connection:
@@ -95,17 +95,95 @@ def snapshot_is_current(
     try:
         with sqlite3.connect(path, timeout=1.0) as connection:
             row = connection.execute(
-                "SELECT relative_path, mtime_ns, size, pipeline_fingerprint FROM cards WHERE card_id = ?",
+                "SELECT relative_path, mtime_ns, size, pipeline_fingerprint, status FROM cards WHERE card_id = ?",
                 (str(snapshot.get("card_id") or ""),),
             ).fetchone()
     except sqlite3.Error:
         return False
-    return bool(row and (
+    return bool(row and str(row[4]) not in {"pending", "unsupported-male"} and (
         str(row[0]) == str(snapshot.get("relative_path") or "")
         and int(row[1]) == int(snapshot.get("mtime_ns") or -1)
         and int(row[2]) == int(snapshot.get("size") or -1)
         and str(row[3]) == pipeline_fingerprint
     ))
+
+
+def reconcile_snapshots(
+    snapshots: Iterable[dict[str, Any]],
+    pipeline_fingerprint: str,
+    *,
+    path: Path = COVERAGE_PATH,
+) -> dict[str, int]:
+    """Reconcile the immutable card inventory into pending/terminal coverage rows."""
+    incoming = list(snapshots)
+    inserted = changed = unchanged = unsupported_male = 0
+    with _connect(path) as connection:
+        existing = {
+            str(row[0]): row for row in connection.execute(
+                "SELECT card_id, relative_path, mtime_ns, size, pipeline_fingerprint, status FROM cards"
+            )
+        }
+        for snapshot in incoming:
+            card_id = str(snapshot["card_id"])
+            old = existing.get(card_id)
+            current = bool(old and str(old[1]) == str(snapshot.get("relative_path") or "")
+                and int(old[2]) == int(snapshot.get("mtime_ns") or -1)
+                and int(old[3]) == int(snapshot.get("size") or -1)
+                and str(old[4]) == pipeline_fingerprint)
+            if current:
+                unchanged += 1
+                continue
+            if old:
+                changed += 1
+            else:
+                inserted += 1
+            folder = str(snapshot.get("folder") or "")
+            if folder.lower() == "male":
+                now = time.time_ns()
+                connection.execute(
+                    """INSERT INTO cards (
+                        card_id, relative_path, folder, filename, mtime_ns, size,
+                        pipeline_fingerprint, status, checked_at_ns,
+                        missing_reasons_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'unsupported-male', ?, ?)
+                    ON CONFLICT(card_id) DO UPDATE SET
+                        relative_path=excluded.relative_path, folder=excluded.folder,
+                        filename=excluded.filename, mtime_ns=excluded.mtime_ns,
+                        size=excluded.size, pipeline_fingerprint=excluded.pipeline_fingerprint,
+                        status='unsupported-male', checked_at_ns=excluded.checked_at_ns,
+                        missing_reasons_json=excluded.missing_reasons_json""",
+                    (card_id, str(snapshot.get("relative_path") or ""), folder,
+                     str(snapshot.get("filename") or ""), int(snapshot.get("mtime_ns") or 0),
+                     int(snapshot.get("size") or 0), pipeline_fingerprint, now,
+                     '{"unsupported-male": 1}'),
+                )
+                unsupported_male += 1
+                continue
+            now = time.time_ns()
+            connection.execute(
+                """INSERT INTO cards (
+                    card_id, relative_path, folder, filename, mtime_ns, size,
+                    pipeline_fingerprint, status, checked_at_ns, attempt_count,
+                    retry_after_ns
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0)
+                ON CONFLICT(card_id) DO UPDATE SET
+                    relative_path=excluded.relative_path, folder=excluded.folder,
+                    filename=excluded.filename, mtime_ns=excluded.mtime_ns,
+                    size=excluded.size, pipeline_fingerprint=excluded.pipeline_fingerprint,
+                    status='pending', checked_at_ns=excluded.checked_at_ns,
+                    retry_after_ns=0, last_error=''""",
+                (card_id, str(snapshot.get("relative_path") or ""), folder,
+                 str(snapshot.get("filename") or ""), int(snapshot.get("mtime_ns") or 0),
+                 int(snapshot.get("size") or 0), pipeline_fingerprint, now),
+            )
+        current_ids = {str(item["card_id"]) for item in incoming}
+        stale = [card_id for card_id in existing if card_id not in current_ids]
+        if stale:
+            connection.executemany("DELETE FROM cards WHERE card_id = ?", ((value,) for value in stale))
+    return {
+        "inserted": inserted, "changed": changed, "unchanged": unchanged,
+        "unsupported_male": unsupported_male, "deleted": len(stale) if 'stale' in locals() else 0,
+    }
 
 
 def record_manifest(
@@ -230,7 +308,7 @@ def pending_card_ids(
         rows = connection.execute(
             """
             SELECT card_id FROM cards
-            WHERE status IN ('partial', 'error') AND retry_after_ns <= ?
+            WHERE status IN ('pending', 'partial', 'error') AND retry_after_ns <= ?
             ORDER BY CASE status WHEN 'partial' THEN 0 ELSE 1 END,
                      attempt_count, relative_path COLLATE NOCASE, relative_path
             LIMIT ?
@@ -238,6 +316,33 @@ def pending_card_ids(
             (int(now_ns if now_ns is not None else time.time_ns()), max(1, min(int(limit), 1000))),
         )
     return [str(row[0]) for row in rows]
+
+
+def lease_pending_cards(
+    *,
+    limit: int,
+    lease_seconds: int,
+    path: Path = COVERAGE_PATH,
+    now_ns: int | None = None,
+) -> list[str]:
+    now = int(now_ns if now_ns is not None else time.time_ns())
+    lease_until = now + max(1, int(lease_seconds)) * 1_000_000_000
+    with _connect(path) as connection:
+        rows = connection.execute(
+            """SELECT card_id FROM cards
+               WHERE status IN ('pending', 'partial', 'error') AND retry_after_ns <= ?
+               ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'partial' THEN 1 ELSE 2 END,
+                        attempt_count, relative_path COLLATE NOCASE, relative_path
+               LIMIT ?""",
+            (now, max(1, min(int(limit), 1000))),
+        ).fetchall()
+        ids = [str(row[0]) for row in rows]
+        for card_id in ids:
+            connection.execute(
+                "UPDATE cards SET attempt_count=attempt_count+1, retry_after_ns=? WHERE card_id=?",
+                (lease_until, card_id),
+            )
+    return ids
 
 
 def prune_missing_card_ids(

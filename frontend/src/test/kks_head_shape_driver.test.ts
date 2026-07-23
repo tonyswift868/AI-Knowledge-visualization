@@ -8,8 +8,9 @@ import {
 
 const nativeDriver = nativeDriverJson as unknown as KksHeadShapeDriverData
 const sliders = (value = 0.5) => Array(52).fill(value) as number[]
+const nativeDriverAvailable = nativeDriverJson && (nativeDriverJson as { available?: boolean }).available !== false
 
-describe('native KKS female head shape driver', () => {
+describe.skipIf(!nativeDriverAvailable)('native KKS female head shape driver', () => {
   it('evaluates all 59 original face destination bones', () => {
     const result = evaluateKksHeadShape(nativeDriver, sliders())
     expect(Object.keys(result)).toEqual([...KKS_HEAD_TARGET_BONES])

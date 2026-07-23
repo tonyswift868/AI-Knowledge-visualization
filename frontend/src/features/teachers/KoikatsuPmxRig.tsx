@@ -11,6 +11,19 @@ type Props = {
   onError?: (message: string) => void
 }
 
+export type RuntimeClothingNode = { source_property?: string; stateNode?: string; clothesStates?: number[] }
+
+/** Pure state predicate retained for the contract tests while native KKS runtime is unavailable. */
+export function isRuntimeClothingNodeVisible(item: RuntimeClothingNode): boolean {
+  const property = item.source_property?.split(".").pop() || ""
+  const node = item.stateNode || ""
+  const states = item.clothesStates || []
+  if (property === "ClothesBra" || property === "ClothesShorts") return property === "ClothesBra" ? true : node === "n_bot_c" || node === ""
+  if (property === "ClothesTop") return node === (states[0] ? "n_top_b" : "n_top_a")
+  if (property === "ClothesBot") return node === (states[1] ? "n_bot_b" : "n_bot_a")
+  return true
+}
+
 /** Renders a KKBP export without reusing the generic VRM skeleton. */
 export function KoikatsuPmxRig({ modelUrl, cameraPreset = "body", cameraZoom = 1, cameraResetToken = 0, className, onError }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null)

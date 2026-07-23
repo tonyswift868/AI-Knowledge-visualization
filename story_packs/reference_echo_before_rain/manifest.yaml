@@ -15,7 +15,7 @@ ending_scene_ids:
 - echo_ending_complete
 - echo_ending_archive
 - echo_postgame
-checksum: sha256:8d3f1123d2fa6f900fba4c6d9ca5eb87ff52415071d9d8701878254d61628d3a
+checksum: sha256:67e9a02914497d14bbc1b4ab9693b6382ce195e5acc276a3cb47470023ee28c6
 created_at: '2026-07-12T00:00:00Z'
 provenance_notes:
 - Built-in reference content supplied with the final completion bundle.

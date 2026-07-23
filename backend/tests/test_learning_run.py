@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 
 def _workspace_with_task(client):
     workspace = client.post("/api/workspaces", json={"title": "Learning Run Idempotency"}).json()
     goal = {
         "goal_statement": "完成一个可验证的学习回合",
         "motivation": "验证持久化学习状态",
-        "deadline": "2026-07-16",
+        "deadline": (date.today() + timedelta(days=7)).isoformat(),
         "minutes_per_day": 30,
         "days_per_week": 5,
         "preferred_weekdays": [1, 2, 3, 4, 5],

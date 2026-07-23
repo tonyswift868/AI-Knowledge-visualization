@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 
 PROOF = "I explain the reason with an example and evidence, then list the steps and workflow and make a decision."
 
 
-def _make_workspace(client, title: str, goal: str, material: str, deadline: str = "2026-07-20"):
+def _make_workspace(client, title: str, goal: str, material: str, deadline: str | None = None):
+    deadline = deadline or (date.today() + timedelta(days=7)).isoformat()
     workspace = client.post("/api/workspaces", json={"title": title}).json()
     assert client.post(f"/api/workspaces/{workspace['id']}/sources/text", json={"title": "学习资料", "text": material}).status_code == 200
     assert client.post(f"/api/workspaces/{workspace['id']}/goal", json={"goal_statement": goal, "motivation": "adaptive compiler", "deadline": deadline, "minutes_per_day": 30, "days_per_week": 5, "preferred_weekdays": [1, 2, 3, 4, 5], "current_level": "beginner", "expected_output": "可验证成果", "unavailable_dates": [], "success_criteria": ["完成并解释"]}).status_code == 200

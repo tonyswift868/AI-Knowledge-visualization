@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -144,3 +146,55 @@ def test_file_presets_can_use_a_configured_directory(client, tmp_path, monkeypat
     listed = client.get("/api/presets", params={"directory": str(directory)})
     assert listed.status_code == 200
     assert listed.json()["presets"][0]["form"]["title"] == "Top 150"
+
+
+def test_file_presets_reject_directory_outside_approved_data_root(client, tmp_path, monkeypatch):
+    from app import main as main_module
+    monkeypatch.setattr(main_module, "PRESET_SETTINGS_FILE", tmp_path / "preset_settings.json")
+    outside = tmp_path.parent / "mentorflow-outside-presets"
+    response = client.post("/api/presets", json={"name": "escape", "directory": str(outside), "form": {}})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+
+
+def test_file_presets_reject_symlink_escape(client, tmp_path, monkeypatch):
+    from app import main as main_module
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    monkeypatch.setattr(main_module, "PRESET_SETTINGS_FILE", data_root / "preset_settings.json")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = data_root / "linked-presets"
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Windows symlink escape fixture unavailable; not an acceptance: {exc}")
+    response = client.post("/api/presets", json={"name": "symlink-escape", "directory": str(link), "form": {}})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+
+
+def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
+    from app import main as main_module
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    monkeypatch.setattr(main_module, "PRESET_SETTINGS_FILE", data_root / "preset_settings.json")
+    outside = tmp_path / "junction-outside"
+    outside.mkdir()
+    junction = data_root / "junction-presets"
+    result = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(outside)], capture_output=True, text=True)
+    if result.returncode != 0:
+        pytest.fail(f"Windows junction escape fixture could not be created: {result.stdout} {result.stderr}")
+    response = client.post("/api/presets", json={"name": "junction-escape", "directory": str(junction), "form": {}})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+
+
+def test_kks_routes_report_explicit_unavailable_capability(client):
+    capability = client.get("/api/koikatsu/capability")
+    assert capability.status_code == 200
+    assert capability.json() == {"available": False, "code": "KKS_RUNTIME_UNAVAILABLE", "fallback": "teacher_without_avatar"}
+    response = client.get("/api/teacher-avatars")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "KKS_RUNTIME_UNAVAILABLE"
+    assert response.json()["error"]["details"]["fallback"] == "teacher_without_avatar"

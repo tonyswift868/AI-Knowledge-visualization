@@ -30,13 +30,7 @@ export type ProviderStore = PersistedProvider & {
 }
 
 const STORAGE_KEY = 'mentorflow_provider_state'
-const API_KEY_STORAGE_PREFIX = 'mentorflow_api_key_v1:'
 const defaultState: PersistedProvider = { mode: 'demo', provider: 'fake', baseUrl: '', model: 'fake', providerSessionId: null, verified: false, expiresAt: null, latencyMs: null, lastTestedAt: null }
-
-function apiKeyStorageKey(provider: ProviderId) { return `${API_KEY_STORAGE_PREFIX}${provider}` }
-function readApiKey(provider: ProviderId) {
-  try { return localStorage.getItem(apiKeyStorageKey(provider)) || '' } catch { return '' }
-}
 
 function readPersisted(): PersistedProvider {
   try {
@@ -55,17 +49,18 @@ function persist(state: ProviderStore) {
 const persisted = readPersisted()
 export const useMentorStore = create<ProviderStore>((set, get) => ({
   ...persisted,
-  apiKey: readApiKey(persisted.provider),
+  // Provider keys are runtime-only and must never be persisted in browser storage.
+  apiKey: '',
   lastError: '',
   activeWorkspaceId: null,
   setWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
-  setProvider: (provider) => { const sameProvider = get().provider === provider; set({ provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: provider === 'fake' ? '' : readApiKey(provider), verified: false, providerSessionId: provider === 'fake' || !sameProvider ? null : get().providerSessionId, lastError: '' }); persist(get()) },
+  setProvider: (provider) => { const sameProvider = get().provider === provider; set({ provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: '', verified: false, providerSessionId: provider === 'fake' || !sameProvider ? null : get().providerSessionId, lastError: '' }); persist(get()) },
   setBaseUrl: (baseUrl) => { set({ baseUrl, verified: false, lastError: '' }); persist(get()) },
   setModel: (model) => { set({ model, verified: false, lastError: '' }); persist(get()) },
-  setApiKey: (apiKey) => { try { if (apiKey) localStorage.setItem(apiKeyStorageKey(get().provider), apiKey); else localStorage.removeItem(apiKeyStorageKey(get().provider)); } catch { /* storage can be unavailable */ } set({ apiKey, verified: false, lastError: '' }) },
+  setApiKey: (apiKey) => { set({ apiKey, verified: false, lastError: '' }) },
   setProviderSession: (value) => { set({ ...value, provider: value.provider || get().provider, mode: value.provider === 'fake' ? 'demo' : 'real', lastError: '' }); persist(get()) },
   setLastError: (lastError) => set({ lastError, verified: false }),
-  clearProvider: () => { try { (['openai-compatible', 'gemini', 'claude'] as ProviderId[]).forEach(provider => localStorage.removeItem(apiKeyStorageKey(provider))) } catch { /* storage can be unavailable */ } set({ ...defaultState, apiKey: '', lastError: '' }); persist(get()) },
+  clearProvider: () => { set({ ...defaultState, apiKey: '', lastError: '' }); persist(get()) },
 }))
 
 export function providerDiagnostic(state: ProviderStore) {
