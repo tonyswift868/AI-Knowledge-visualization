@@ -67,7 +67,7 @@ def create_learning_run(task_id: str) -> dict[str, Any]:
             return _public(session, existing)
         task_type = str(task.get("task_type") or ""); initial_phase = "final_assessment" if task_type in {"final", "final_assessment", "final_task"} else ("spaced_recall" if task_type == "review" else "explanation")
         phase_order = FINAL_PHASES if initial_phase == "final_assessment" else (REVIEW_PHASES if initial_phase == "spaced_recall" else PHASES)
-        run = LearningRunORM(id=_id("learning_run"), workspace_id=workspace_id, task_id=task_id, lesson_id=str(task.get("lesson_id") or ""), phase=initial_phase, status="active", state={"run_type": "final" if initial_phase == "final_assessment" else ("review" if initial_phase == "spaced_recall" else "first_pass"), "hints_used": 0, "independent_passes": 0, "attempts": [], "evidence": [], "phase_history": [initial_phase], "external_execution_status": "not_executed", "phase_order": phase_order, "standard_task_minutes": max(1, int(task.get("standard_task_minutes") or task.get("estimated_minutes") or 30))}, revision=0, created_at=_now(), updated_at=_now())
+        run = LearningRunORM(id=_id("learning_run"), workspace_id=workspace_id, task_id=task_id, lesson_id=str(task.get("lesson_id") or ""), phase=initial_phase, status="active", state={"run_type": "final" if initial_phase == "final_assessment" else ("review" if initial_phase == "spaced_recall" else "first_pass"), "hints_used": 0, "phase_hint_counts": {initial_phase: 0}, "independent_passes": 0, "attempts": [], "evidence": [], "phase_history": [initial_phase], "external_execution_status": "not_executed", "phase_order": phase_order, "standard_task_minutes": max(1, int(task.get("standard_task_minutes") or task.get("estimated_minutes") or 30))}, revision=0, created_at=_now(), updated_at=_now())
         session.add(run); session.commit(); session.refresh(run)
         return _public(session, run)
 
@@ -111,6 +111,9 @@ def request_hint(run_id: str) -> dict[str, Any]:
         run = _run(session, run_id)
         if run.phase == "daily_variant_test": raise LearningRunError("HINT_NOT_ALLOWED", "变式测试不允许提示", status_code=409)
         state = copy.deepcopy(run.state or {}); state["hints_used"] = int(state.get("hints_used", 0)) + 1
+        phase_hint_counts = dict(state.get("phase_hint_counts") or {})
+        phase_hint_counts[run.phase] = int(phase_hint_counts.get(run.phase, 0)) + 1
+        state["phase_hint_counts"] = phase_hint_counts
         run.state = state; run.revision += 1; run.updated_at = _now()
         session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="hint", phase=run.phase, content="提示：先写出你能确认的条件、步骤和一个检查方法。", grounding={"hint_level": state["hints_used"]}, created_at=_now()))
         session.commit(); session.refresh(run)
@@ -145,7 +148,7 @@ def submit_learning_run(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
         if run.last_idempotency_key == idem and run.last_response:
             return copy.deepcopy(run.last_response)
         if body.get("expected_revision") is not None and int(body["expected_revision"]) != run.revision: raise LearningRunError("LEARNING_RUN_REVISION_CONFLICT", "Learning Run 已更新，请刷新", status_code=409)
-        state = copy.deepcopy(run.state or {}); phase = run.phase; evidence = str(body.get("evidence") or ""); used_hint = bool(body.get("used_hint", False)) or int(state.get("hints_used", 0)) > 0
+        state = copy.deepcopy(run.state or {}); phase = run.phase; evidence = str(body.get("evidence") or ""); phase_hint_counts = state.get("phase_hint_counts") or {}; used_hint = bool(body.get("used_hint", False)) or int(phase_hint_counts.get(phase, 0)) > 0
         next_phase = {"explanation": "worked_example", "worked_example": "guided_practice", "guided_practice": "faded_guidance", "faded_guidance": "independent_attempt"}.get(phase)
         evaluation = None
         if phase in {"independent_attempt", "daily_variant_test", "transfer_test", "final_assessment"}:
