@@ -30,6 +30,7 @@ from .url_fetcher_secure import fetch_safe
 from .core_errors import app_error_body, AppError
 from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
+from .knowledge_map_service import KnowledgeMapServiceError, generate_current_map, get_current_map, get_map_revision
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
 from .voice_runtime import synthesize_voice
@@ -487,9 +488,8 @@ async def feasibility_analyze(workspace_id: str, request: Request, body: dict[st
         result = analyze(workspace_id, goal["payload"])
         recommended_minutes = result.get("recommended_minutes_per_day")
         if recommended_minutes and goal["payload"].get("minutes_per_day") != recommended_minutes:
-            allocated_goal = {**goal["payload"], "minutes_per_day": recommended_minutes}
-            set_goal(workspace_id, GoalProfile.model_validate(allocated_goal))
-            result["minutes_per_day_applied"] = recommended_minutes
+            result["suggested_goal_patch"] = {"minutes_per_day": recommended_minutes}
+            result["minutes_per_day_applied"] = None
         if session.provider == "fake":
             result["generation_meta"] = generation_meta(session, latency_ms=0)
         else:
@@ -518,6 +518,17 @@ def confirm_feasibility(workspace_id: str, body: FeasibilityConfirmIn):
     require_workspace(workspace_id); items = db.rows("assessments", "workspace_id", workspace_id)
     if not items: fail("FEASIBILITY_REQUIRED", "请先运行可行性分析")
     item = items[-1]; data = json.loads(item["payload"]); data["user_confirmed"] = body.confirmed
+    data["selected_option"] = body.selected_option
+    if body.minutes_per_day is not None:
+        if body.selected_option != "increase_daily_minutes":
+            fail("FEASIBILITY_OPTION_MISMATCH", "只有选择增加每日投入时才能修改每日分钟数")
+        current_goal = get_goal(workspace_id)
+        if not current_goal:
+            fail("GOAL_REQUIRED", "请先填写目标")
+        updated_goal = {**current_goal["payload"], "minutes_per_day": body.minutes_per_day}
+        updated_goal.pop("id", None)
+        set_goal(workspace_id, GoalProfile.model_validate(updated_goal))
+        data["applied_goal_patch"] = {"minutes_per_day": body.minutes_per_day}
     with db.connection() as conn: conn.execute("UPDATE assessments SET payload=?, user_confirmed=? WHERE id=?", (json.dumps(data, ensure_ascii=False), int(body.confirmed), item["id"]))
     try:
         from .orm import SessionLocal, FeasibilityORM
@@ -1037,6 +1048,50 @@ async def test_provider(body: ProviderTestIn):
 def retrieval_search(workspace_id: str, q: str, top_k: int = 5):
     require_workspace(workspace_id)
     return {"query":q,"results":RetrievalService().search(workspace_id,q,top_k=max(1,min(top_k,20)))}
+
+
+@app.post("/api/workspaces/{workspace_id}/knowledge-map/regenerate")
+def regenerate_knowledge_map(workspace_id: str):
+    require_workspace(workspace_id)
+    try:
+        knowledge_map, changed = generate_current_map(workspace_id)
+        return {"changed": changed, "knowledge_map": knowledge_map.to_dict()}
+    except KnowledgeMapServiceError as exc:
+        fail(exc.code, exc.message, exc.status_code)
+
+
+@app.get("/api/workspaces/{workspace_id}/knowledge-map")
+def current_knowledge_map(workspace_id: str):
+    require_workspace(workspace_id)
+    try:
+        return {"knowledge_map": get_current_map(workspace_id).to_dict()}
+    except KnowledgeMapServiceError as exc:
+        fail(exc.code, exc.message, exc.status_code)
+
+
+@app.get("/api/workspaces/{workspace_id}/knowledge-map/quality")
+def knowledge_map_quality(workspace_id: str):
+    require_workspace(workspace_id)
+    try:
+        knowledge_map = get_current_map(workspace_id)
+        return {
+            "map_id": knowledge_map.map_id,
+            "revision": knowledge_map.revision,
+            "quality": knowledge_map.to_dict()["quality"],
+            "warnings": list(knowledge_map.warnings),
+        }
+    except KnowledgeMapServiceError as exc:
+        fail(exc.code, exc.message, exc.status_code)
+
+
+@app.get("/api/workspaces/{workspace_id}/knowledge-map/revisions/{revision}")
+def knowledge_map_revision(workspace_id: str, revision: int):
+    require_workspace(workspace_id)
+    try:
+        return {"knowledge_map": get_map_revision(workspace_id, revision).to_dict()}
+    except KnowledgeMapServiceError as exc:
+        fail(exc.code, exc.message, exc.status_code)
+
 
 @app.get("/api/workspaces/{workspace_id}/conflicts")
 def conflicts(workspace_id: str):

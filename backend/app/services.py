@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import db
+from .planning_policy import CapacityPolicy
+from .planning_scheduler import PlanningTask, TaskPhase, schedule_tasks, stable_task_id
 
 SUPPORTED = {".pdf", ".docx", ".md", ".txt", ".html", ".htm"}
 FORBIDDEN_PARTS = {".git", "node_modules", ".venv", "venv"}
@@ -291,24 +293,98 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
             module["lessons"].append(lesson); lessons.append(lesson)
         milestone["modules"].append(module); milestones.append(milestone)
     plan_start = date.fromisoformat(goal.get("start_date") or date.today().isoformat())
-    days = available_days(plan_start, date.fromisoformat(goal["deadline"]), goal["days_per_week"], set(goal.get("unavailable_dates", [])), goal.get("preferred_weekdays"))
+    plan_deadline = date.fromisoformat(goal["deadline"])
+    allowed_weekdays = set(goal.get("preferred_weekdays") or range(goal["days_per_week"]))
+    capacity_policy = CapacityPolicy(
+        daily_minutes=goal["minutes_per_day"],
+        weekly_minutes=goal["minutes_per_day"] * goal["days_per_week"],
+        recurring_blackout_weekdays=frozenset(set(range(7)) - allowed_weekdays),
+        blackout_dates=frozenset(date.fromisoformat(value) for value in goal.get("unavailable_dates", [])),
+    )
+    planning_tasks: list[PlanningTask] = []
+    task_metadata: dict[str, dict] = {}
+    first_pass_ids: list[str] = []
+    review_ids: list[str] = []
+    for lesson in lessons:
+        first_id = stable_task_id(workspace_id, lesson["id"], TaskPhase.FIRST_PASS)
+        review_id = stable_task_id(workspace_id, lesson["id"], TaskPhase.REVIEW)
+        first_pass_ids.append(first_id)
+        review_ids.append(review_id)
+        planning_tasks.append(PlanningTask(
+            stable_id=first_id,
+            title=f"学习：{lesson['title']}",
+            estimated_minutes=lesson["estimated_minutes"],
+            phase=TaskPhase.FIRST_PASS,
+            expected_output=lesson["objective"],
+            acceptance=lesson["completion_criteria"],
+        ))
+        planning_tasks.append(PlanningTask(
+            stable_id=review_id,
+            title=f"复习：{lesson['title']}",
+            estimated_minutes=max(10, lesson["estimated_minutes"] // 2),
+            phase=TaskPhase.REVIEW,
+            prerequisites=(first_id,),
+            expected_output="在低提示条件下复述并应用",
+            acceptance="完成主动回忆和一个变式",
+        ))
+        task_metadata[first_id] = {"lesson_id": lesson["id"], "task_type": "lesson", "scene_title": lesson["title"]}
+        task_metadata[review_id] = {"lesson_id": lesson["id"], "task_type": "review", "scene_title": lesson["title"]}
+    final_id = stable_task_id(workspace_id, "final-deliverable", TaskPhase.REVIEW)
+    planning_tasks.append(PlanningTask(
+        stable_id=final_id,
+        title="最终任务：提交可核验成果",
+        estimated_minutes=min(45, goal["minutes_per_day"]),
+        phase=TaskPhase.REVIEW,
+        prerequisites=tuple(review_ids or first_pass_ids),
+        splittable=False,
+        expected_output=goal["expected_output"],
+        acceptance=goal["expected_output"],
+    ))
+    task_metadata[final_id] = {"lesson_id": "", "task_type": "final_task", "scene_title": goal["expected_output"]}
+    schedule = schedule_tasks(
+        planning_tasks,
+        start=plan_start,
+        end=plan_deadline,
+        capacity_policy=capacity_policy,
+        first_pass_ratio=0.45,
+        create_bridges=False,
+    )
+    tasks_by_day: dict[date, list[dict]] = {}
+    for scheduled in schedule.tasks:
+        meta = task_metadata[scheduled.source_task_id]
+        ordinal = len(tasks_by_day) + 1
+        task = {
+            "id": uid("task"),
+            "stable_task_id": scheduled.stable_id,
+            "source_task_id": scheduled.source_task_id,
+            "study_day_id": "",
+            "lesson_id": meta["lesson_id"],
+            "title": scheduled.title,
+            "task_type": meta["task_type"],
+            "phase": scheduled.phase.value,
+            "estimated_minutes": scheduled.minutes,
+            "priority": "high" if meta["task_type"] in {"review", "final_task"} else "normal",
+            "completion_criteria": scheduled.acceptance,
+            "expected_output": scheduled.expected_output,
+            "prerequisites": list(scheduled.prerequisites),
+            "chunk_index": scheduled.chunk_index,
+            "chunk_count": scheduled.chunk_count,
+            "scene": scene_for_task(meta["scene_title"], meta["task_type"], ordinal),
+            "status": "not_started",
+        }
+        tasks_by_day.setdefault(scheduled.scheduled_date, []).append(task)
     study_days = []
-    task_index = 0
-    for idx, day in enumerate(days):
-        tasks = []
-        if idx == len(days) - 2:
-            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": "复习队列：回顾薄弱知识点", "task_type": "review", "estimated_minutes": min(30, goal["minutes_per_day"]), "priority": "high", "completion_criteria": "完成错题复述", "scene": scene_for_task("薄弱知识点复盘", "review", idx + 1), "status": "not_started"})
-        elif idx == len(days) - 1:
-            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": "最终任务：提交可核验成果", "task_type": "final_task", "estimated_minutes": min(45, goal["minutes_per_day"]), "priority": "high", "completion_criteria": goal["expected_output"], "scene": scene_for_task(goal["expected_output"], "final_task", idx + 1), "status": "not_started"})
-        elif task_index < len(lessons):
-            lesson = lessons[task_index]
-            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": lesson["id"], "title": f"学习：{lesson['title']}", "task_type": "lesson", "estimated_minutes": lesson["estimated_minutes"], "priority": "high" if idx < 3 else "normal", "completion_criteria": lesson["completion_criteria"], "scene": scene_for_task(lesson["title"], "lesson", idx + 1), "status": "not_started"})
-            task_index += 1
-        else:
-            practice_title = f"剧情支线：{goal['goal_statement'][:24]} · 主动回忆"
-            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": practice_title, "task_type": "practice", "estimated_minutes": min(30, goal["minutes_per_day"]), "priority": "normal", "completion_criteria": "用自己的话复述一个关键点，并给出一个新例子", "scene": scene_for_task(practice_title, "practice", idx + 1), "status": "not_started"})
-        if tasks: study_days.append({"id": uid("day"), "date": day.isoformat(), "planned_minutes": goal["minutes_per_day"], "carry_over_minutes": 0, "status": "planned", "tasks": tasks})
-    plan = {"id": plan_id, "workspace_id": workspace_id, "version": version, "title": f"{goal['goal_statement'][:30]} · 个性化路线", "goal": goal["goal_statement"], "start_date": goal.get("start_date") or plan_start.isoformat(), "deadline": goal["deadline"], "status": "draft", "rationale": "先建立知识地图，再进行主动回忆和综合产出；最后两天保留复习与交付缓冲。", "risk_summary": assessment["risks"], "source_coverage": len(chunks), "source_coverage_rate": assessment.get("source_sufficiency", 0), "milestones": milestones, "study_days": study_days, "success_criteria": goal.get("success_criteria") or ["完成最终任务并提交可核验成果"], "created_at": db.now()}
+    for day, tasks in sorted(tasks_by_day.items()):
+        study_days.append({
+            "id": uid("day"),
+            "date": day.isoformat(),
+            "planned_minutes": sum(task["estimated_minutes"] for task in tasks),
+            "capacity_minutes": schedule.capacities[day],
+            "carry_over_minutes": 0,
+            "status": "planned",
+            "tasks": tasks,
+        })
+    plan = {"id": plan_id, "workspace_id": workspace_id, "version": version, "title": f"{goal['goal_statement'][:30]} · 个性化路线", "goal": goal["goal_statement"], "start_date": goal.get("start_date") or plan_start.isoformat(), "deadline": goal["deadline"], "status": "draft", "rationale": "按有效容量分配：前 45% 完成第一轮，后 55% 用于复习、变式和最终交付。", "risk_summary": assessment["risks"], "source_coverage": len(chunks), "source_coverage_rate": assessment.get("source_sufficiency", 0), "milestones": milestones, "study_days": study_days, "phase_allocation": {"first_pass_ratio": round(schedule.first_pass_ratio, 3), "first_pass_capacity_minutes": schedule.first_pass_capacity_minutes, "review_capacity_minutes": schedule.review_capacity_minutes}, "success_criteria": goal.get("success_criteria") or ["完成最终任务并提交可核验成果"], "created_at": db.now()}
     with db.connection() as conn:
         conn.execute("INSERT INTO plans VALUES (?,?,?,?,?,?,?)", (plan_id, workspace_id, version, json.dumps(plan, ensure_ascii=False), "draft", plan["created_at"], ""))
         for day in study_days:
@@ -316,10 +392,9 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
             for task in day["tasks"]:
                 task["study_day_id"] = day["id"]
                 conn.execute("INSERT INTO tasks VALUES (?,?,?,?)", (task["id"], day["id"], task["lesson_id"], json.dumps(task, ensure_ascii=False)))
-    unscheduled_lessons=lessons[task_index:]
-    plan["capacity_status"]="insufficient" if unscheduled_lessons else "sufficient"
-    plan["unscheduled_minutes"]=sum(x["estimated_minutes"] for x in unscheduled_lessons)
-    plan["unscheduled_lessons"]=[{"id":x["id"],"title":x["title"]} for x in unscheduled_lessons]
+    plan["capacity_status"]="insufficient" if schedule.unscheduled else "sufficient"
+    plan["unscheduled_minutes"]=sum(x.estimated_minutes for x in schedule.unscheduled)
+    plan["unscheduled_lessons"]=[{"id":x.stable_id,"title":x.title,"phase":x.phase.value} for x in schedule.unscheduled]
     plan["options"]=assessment.get("options",[])
     try:
         from .orm import SessionLocal, PlanORM, MilestoneORM, ModuleORM, LessonORM, BlockORM, DayORM, TaskORM, ProgressORM, init_orm

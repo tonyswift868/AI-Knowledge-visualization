@@ -2,11 +2,38 @@ from __future__ import annotations
 from datetime import datetime, date, timezone
 from typing import Any
 from pathlib import Path
+import os
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-ROOT=Path(__file__).resolve().parents[2]; DATA=ROOT/'data'; ORM_DB=DATA/'mentorflow_v2.db'
-engine=create_engine(f'sqlite:///{ORM_DB}',connect_args={'check_same_thread':False}); SessionLocal=sessionmaker(engine,expire_on_commit=False)
+ROOT=Path(__file__).resolve().parents[2]; DATA=ROOT/'data'
+ORM_DB=Path(os.getenv("MENTORFLOW_ORM_DB", str(DATA/'mentorflow_v2.db'))).expanduser().resolve()
+
+def _create_engine(database_path: Path):
+    return create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False})
+
+engine=_create_engine(ORM_DB)
+_session_factory=sessionmaker(engine,expire_on_commit=False)
+
+def SessionLocal(*args, **kwargs):
+    """Return a session from the currently configured ORM database.
+
+    Keeping this as a stable proxy prevents modules that import SessionLocal
+    from retaining a stale sessionmaker when tests switch to an isolated DB.
+    """
+    return _session_factory(*args, **kwargs)
+
+def configure_orm(database_path: str | Path):
+    """Switch the process-local ORM database without touching the old file."""
+    global ORM_DB, engine, _session_factory
+    next_path=Path(database_path).expanduser().resolve()
+    next_path.parent.mkdir(parents=True, exist_ok=True)
+    previous_engine=engine
+    ORM_DB=next_path
+    engine=_create_engine(next_path)
+    _session_factory=sessionmaker(engine,expire_on_commit=False)
+    previous_engine.dispose()
+    return engine
 def utcnow(): return datetime.now(timezone.utc)
 class Base(DeclarativeBase): pass
 class WorkspaceORM(Base):
@@ -83,6 +110,16 @@ class NarrativeContinuitySnapshotORM(Base):
     __tablename__='orm_narrative_continuity_snapshots'; id:Mapped[str]=mapped_column(String(64),primary_key=True); campaign_id:Mapped[str]=mapped_column(ForeignKey('orm_narrative_campaigns.id',ondelete='CASCADE'),unique=True); snapshot:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); revision:Mapped[int]=mapped_column(Integer,default=0); validator_warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow)
 class GeneratedNarrativeSceneORM(Base):
     __tablename__='orm_generated_narrative_scenes'; id:Mapped[str]=mapped_column(String(64),primary_key=True); campaign_id:Mapped[str]=mapped_column(ForeignKey('orm_narrative_campaigns.id',ondelete='CASCADE'),index=True); contract_id:Mapped[str]=mapped_column(ForeignKey('orm_scene_contracts.id',ondelete='CASCADE'),index=True); scene:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); validator_result:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); generation_meta:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); status:Mapped[str]=mapped_column(String(24),default='ready'); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('campaign_id','contract_id',name='uq_orm_generated_scene_contract'),)
+class SourceRevisionORM(Base):
+    __tablename__='orm_source_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); source_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); source_hash:Mapped[str]=mapped_column(String(128)); status:Mapped[str]=mapped_column(String(24),default='ready'); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('source_id','revision',name='uq_orm_source_revision'),)
+class ConversionManifestORM(Base):
+    __tablename__='orm_conversion_manifests'; id:Mapped[str]=mapped_column(String(96),primary_key=True); source_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_source_revisions.id',ondelete='CASCADE'),index=True); adapter_name:Mapped[str]=mapped_column(String(80)); adapter_version:Mapped[str]=mapped_column(String(32)); mime_type:Mapped[str]=mapped_column(String(120),default=''); source_path:Mapped[str]=mapped_column(Text,default=''); content_hash:Mapped[str]=mapped_column(String(128)); metadata_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); status:Mapped[str]=mapped_column(String(24),default='ready'); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow)
+class KnowledgeMapRevisionORM(Base):
+    __tablename__='orm_knowledge_map_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); map_id:Mapped[str]=mapped_column(String(64),index=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); is_current:Mapped[bool]=mapped_column(Boolean,default=True,index=True); generation_mode:Mapped[str]=mapped_column(String(40)); provider_used:Mapped[bool]=mapped_column(Boolean,default=False); source_revisions:Mapped[list[Any]]=mapped_column(JSON,default=list); quality:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); fingerprint:Mapped[str]=mapped_column(String(128)); warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('workspace_id','revision',name='uq_orm_knowledge_map_revision'),)
+class KnowledgeNodeORM(Base):
+    __tablename__='orm_knowledge_nodes'; id:Mapped[str]=mapped_column(String(160),primary_key=True); map_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_knowledge_map_revisions.id',ondelete='CASCADE'),index=True); node_id:Mapped[str]=mapped_column(String(64),index=True); source_id:Mapped[str]=mapped_column(String(64),index=True); semantic_key:Mapped[str]=mapped_column(String(240)); label:Mapped[str]=mapped_column(String(240)); summary:Mapped[str]=mapped_column(Text); kind:Mapped[str]=mapped_column(String(40)); revision:Mapped[int]=mapped_column(Integer); status:Mapped[str]=mapped_column(String(24)); content_hash:Mapped[str]=mapped_column(String(128)); source_refs:Mapped[list[Any]]=mapped_column(JSON,default=list); history:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); __table_args__=(UniqueConstraint('map_revision_id','node_id',name='uq_orm_knowledge_node_revision'),)
+class KnowledgeEdgeORM(Base):
+    __tablename__='orm_knowledge_edges'; id:Mapped[str]=mapped_column(String(160),primary_key=True); map_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_knowledge_map_revisions.id',ondelete='CASCADE'),index=True); edge_id:Mapped[str]=mapped_column(String(64),index=True); source_node_id:Mapped[str]=mapped_column(String(64)); target_node_id:Mapped[str]=mapped_column(String(64)); relation:Mapped[str]=mapped_column(String(40)); source_refs:Mapped[list[Any]]=mapped_column(JSON,default=list); __table_args__=(UniqueConstraint('map_revision_id','edge_id',name='uq_orm_knowledge_edge_revision'),)
 def init_orm():
     DATA.mkdir(parents=True, exist_ok=True)
     # Register the optional global expedition models before creating tables.

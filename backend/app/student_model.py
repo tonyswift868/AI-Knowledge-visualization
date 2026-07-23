@@ -8,16 +8,16 @@ from typing import Any, Mapping
 
 
 MISCONCEPTION_REMEDIATIONS: dict[str, tuple[str, ...]] = {
-    "concept_gap": ("explain", "worked_example", "practice"),
-    "recognition_failure": ("diagnose", "analogy", "practice"),
-    "boundary_error": ("feedback", "worked_example", "variant"),
-    "calculation_error": ("feedback", "practice", "retry"),
-    "procedure_error": ("worked_example", "practice", "retry"),
+    "concept_gap": ("explain", "worked_example", "faded_practice"),
+    "recognition_failure": ("diagnose", "analogy", "guided_question"),
+    "boundary_error": ("misconception_feedback", "worked_example", "variant_test"),
+    "calculation_error": ("misconception_feedback", "faded_practice", "retry"),
+    "procedure_error": ("worked_example", "faded_practice", "retry"),
     "retrieval_failure": ("review", "hint", "retry"),
-    "guessing": ("diagnose", "feedback", "retry"),
-    "hint_dependency": ("faded_guidance", "practice", "retry"),
-    "transfer_failure": ("analogy", "variant", "retry"),
-    "overload": ("explain", "practice", "close_day"),
+    "guessing": ("diagnose", "misconception_feedback", "retry"),
+    "hint_dependency": ("guided_question", "faded_practice", "retry"),
+    "transfer_failure": ("analogy", "variant_test", "retry"),
+    "overload": ("explain", "encourage", "close_day"),
 }
 MISCONCEPTION_TYPES = tuple(MISCONCEPTION_REMEDIATIONS)
 
@@ -60,13 +60,14 @@ def initial_student_state(raw: Mapping[str, Any] | None = None) -> StudentState:
     allowed = {field.name for field in StudentState.__dataclass_fields__.values()}  # type: ignore[attr-defined]
     values = {key: value for key, value in source.items() if key in allowed and key not in {"events"}}
     misconceptions = tuple(x for x in values.get("misconceptions", ()) if x in MISCONCEPTION_REMEDIATIONS)
+    events = tuple(dict(item) for item in source.get("events", ()) if isinstance(item, Mapping))
     return StudentState(
         mastery=_clamp(values.get("mastery", 0)), confidence=_clamp(values.get("confidence", 0)),
         retrievability=_clamp(values.get("retrievability", 0)), hint_dependence=_clamp(values.get("hint_dependence", 0)),
         transfer=_clamp(values.get("transfer", 0)), learning_velocity=_clamp(values.get("learning_velocity", 0)),
         misconceptions=misconceptions, attempts=max(0, int(values.get("attempts", 0))),
         independent_attempts=max(0, int(values.get("independent_attempts", 0))), hint_requests=max(0, int(values.get("hint_requests", 0))),
-        successful_attempts=max(0, int(values.get("successful_attempts", 0))), events=(),
+        successful_attempts=max(0, int(values.get("successful_attempts", 0))), events=events,
     )
 
 

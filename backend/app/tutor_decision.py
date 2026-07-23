@@ -37,21 +37,21 @@ def deterministic_fallback(state: StudentState, phase: str, *, target: str = "cu
         return _action("close_day", phase, target, criteria=(), fallback="close_day", reason="run already complete")
     if phase == "daily_variant_test":
         if state.misconceptions:
-            return _action("remediation", phase, target, criteria=("修复一个明确误解并给出检查方法",), fallback="retry", reason="variant failed with misconception")
-        return _action("test", phase, target, criteria=("独立完成变式并提供证据",), fallback="retry", reason="variant test has no hint path")
+            return _action("misconception_feedback", phase, target, criteria=(), fallback="retry", reason="variant failed with misconception")
+        return _action("variant_test", phase, target, criteria=("独立完成变式并提供证据",), fallback="retry", reason="variant test has no hint path")
     if state.misconceptions:
         sequence = remediation_for(state.misconceptions[0])
-        return _action("remediation", phase, target, criteria=("说明修复后的判断和证据",), fallback="retry", reason=f"remediate {state.misconceptions[0]}", payload={"misconception": state.misconceptions[0], "remedy_sequence": list(sequence)})
+        return _action("misconception_feedback", phase, target, criteria=(), fallback="retry", reason=f"remediate {state.misconceptions[0]}", payload={"misconception": state.misconceptions[0], "remedy_sequence": list(sequence)})
     if phase == "explanation":
         return _action("explain", phase, target, criteria=(), fallback="diagnose", reason="start with a grounded explanation")
     if phase == "worked_example":
         return _action("worked_example", phase, target, criteria=("指出示例中的关键步骤",), fallback="explain", reason="move from explanation to example")
     if phase in {"guided_practice", "faded_guidance"}:
-        return _action("practice", phase, target, criteria=("完成下一步并说明依据",), fallback="worked_example", reason="practice before independence")
+        return _action("faded_practice", phase, target, criteria=("完成下一步并说明依据",), fallback="worked_example", reason="practice before independence")
     if phase == "independent_attempt":
-        return _action("test", phase, target, criteria=("独立完成任务并提供证据",), fallback="remediation", reason="independent checkpoint")
+        return _action("independent_task", phase, target, criteria=("独立完成任务并提供证据",), fallback="misconception_feedback", reason="independent checkpoint")
     if phase in {"spaced_recall", "mixed_review", "transfer_test"}:
-        return _action("review" if phase != "transfer_test" else "variant", phase, target, criteria=("召回并迁移关键方法",), fallback="remediation", reason="review/transfer checkpoint")
+        return _action("review" if phase != "transfer_test" else "variant_test", phase, target, criteria=("召回并迁移关键方法",), fallback="misconception_feedback", reason="review/transfer checkpoint")
     return _action("diagnose", phase, target, criteria=("确认当前卡点和下一步",), fallback="explain", reason="unknown phase safe fallback")
 
 

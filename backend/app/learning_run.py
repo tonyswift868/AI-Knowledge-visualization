@@ -13,6 +13,8 @@ from .narrative_runtime import publish_learning_event
 from .orm import LearningRunMessageORM, LearningRunORM, SessionLocal, init_orm
 from .services import tutor
 from .adaptive_narrative import create_learning_artifact
+from .student_model import initial_student_state, reduce_event
+from .tutor_decision import decide_after_submission, decide_next_action
 
 
 PHASES = ["explanation", "worked_example", "guided_practice", "faded_guidance", "independent_attempt", "daily_variant_test", "passed"]
@@ -67,7 +69,10 @@ def create_learning_run(task_id: str) -> dict[str, Any]:
             return _public(session, existing)
         task_type = str(task.get("task_type") or ""); initial_phase = "final_assessment" if task_type in {"final", "final_assessment", "final_task"} else ("spaced_recall" if task_type == "review" else "explanation")
         phase_order = FINAL_PHASES if initial_phase == "final_assessment" else (REVIEW_PHASES if initial_phase == "spaced_recall" else PHASES)
-        run = LearningRunORM(id=_id("learning_run"), workspace_id=workspace_id, task_id=task_id, lesson_id=str(task.get("lesson_id") or ""), phase=initial_phase, status="active", state={"run_type": "final" if initial_phase == "final_assessment" else ("review" if initial_phase == "spaced_recall" else "first_pass"), "hints_used": 0, "phase_hint_counts": {initial_phase: 0}, "independent_passes": 0, "attempts": [], "evidence": [], "phase_history": [initial_phase], "external_execution_status": "not_executed", "phase_order": phase_order, "standard_task_minutes": max(1, int(task.get("standard_task_minutes") or task.get("estimated_minutes") or 30))}, revision=0, created_at=_now(), updated_at=_now())
+        student = initial_student_state()
+        target_node = str(task.get("knowledge_node_id") or task.get("lesson_id") or task_id)
+        teacher_action = decide_next_action(student, initial_phase, target_node=target_node).to_dict()
+        run = LearningRunORM(id=_id("learning_run"), workspace_id=workspace_id, task_id=task_id, lesson_id=str(task.get("lesson_id") or ""), phase=initial_phase, status="active", state={"run_type": "final" if initial_phase == "final_assessment" else ("review" if initial_phase == "spaced_recall" else "first_pass"), "hints_used": 0, "phase_hint_counts": {initial_phase: 0}, "independent_passes": 0, "attempts": [], "evidence": [], "phase_history": [initial_phase], "external_execution_status": "not_executed", "phase_order": phase_order, "standard_task_minutes": max(1, int(task.get("standard_task_minutes") or task.get("estimated_minutes") or 30)), "student_state": student.to_dict(), "teacher_action": teacher_action}, revision=0, created_at=_now(), updated_at=_now())
         session.add(run); session.commit(); session.refresh(run)
         return _public(session, run)
 
@@ -114,6 +119,22 @@ def request_hint(run_id: str) -> dict[str, Any]:
         phase_hint_counts = dict(state.get("phase_hint_counts") or {})
         phase_hint_counts[run.phase] = int(phase_hint_counts.get(run.phase, 0)) + 1
         state["phase_hint_counts"] = phase_hint_counts
+        student = reduce_event(initial_student_state(state.get("student_state")), {"type": "hint_requested", "phase": run.phase})
+        state["student_state"] = student.to_dict()
+        state["teacher_action"] = {
+            "action": {
+                "action_type": "hint",
+                "target_node": run.lesson_id or run.task_id,
+                "evidence_refs": [],
+                "expected_response": "说明你能确认的条件、步骤和检查方法。",
+                "success_criteria": ["提交可观察的下一步"],
+                "fallback": "guided_question",
+                "kks_state": {"phase": run.phase},
+                "payload": {"hint_level": state["hints_used"]},
+            },
+            "source": "learning_run",
+            "reason": "user requested a bounded hint",
+        }
         run.state = state; run.revision += 1; run.updated_at = _now()
         session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="hint", phase=run.phase, content="提示：先写出你能确认的条件、步骤和一个检查方法。", grounding={"hint_level": state["hints_used"]}, created_at=_now()))
         session.commit(); session.refresh(run)
@@ -149,12 +170,16 @@ def submit_learning_run(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
             return copy.deepcopy(run.last_response)
         if body.get("expected_revision") is not None and int(body["expected_revision"]) != run.revision: raise LearningRunError("LEARNING_RUN_REVISION_CONFLICT", "Learning Run 已更新，请刷新", status_code=409)
         state = copy.deepcopy(run.state or {}); phase = run.phase; evidence = str(body.get("evidence") or ""); phase_hint_counts = state.get("phase_hint_counts") or {}; used_hint = bool(body.get("used_hint", False)) or int(phase_hint_counts.get(phase, 0)) > 0
+        student = initial_student_state(state.get("student_state"))
         next_phase = {"explanation": "worked_example", "worked_example": "guided_practice", "guided_practice": "faded_guidance", "faded_guidance": "independent_attempt"}.get(phase)
         evaluation = None
         if phase in {"independent_attempt", "daily_variant_test", "transfer_test", "final_assessment"}:
             evaluation = evaluate_submission(response, evidence, independent=True, used_hint=used_hint, phase=phase)
             state.setdefault("attempts", []).append({"phase": phase, "score": evaluation["score"], "passed": evaluation["passed"], "used_hint": used_hint})
+            student = reduce_event(student, {"type": "transfer_completed" if phase == "transfer_test" else "assessment_completed", "phase": phase, "score": evaluation["score"], "used_hint": used_hint, "independent": True, "response": response, "feedback": evaluation.get("feedback", ""), "misconception": evaluation.get("misconception")})
+            state["student_state"] = student.to_dict()
             if not evaluation["passed"]:
+                state["teacher_action"] = decide_after_submission(student, phase, passed=False, target_node=run.lesson_id or run.task_id).to_dict()
                 run.status = "failed"; run.state = state; run.revision += 1; run.updated_at = _now(); session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="evaluator", phase=phase, content=evaluation["feedback"], grounding=evaluation, idempotency_key=f"{idem}:evaluator"[:160], created_at=_now())); result = {**_public(session, run), "evaluation": evaluation}; run.last_idempotency_key = idem; run.last_response = result; session.commit(); session.refresh(run); return result
             if phase == "independent_attempt":
                 state["independent_passes"] = int(state.get("independent_passes", 0)) + 1; next_phase = "daily_variant_test"
@@ -167,6 +192,8 @@ def submit_learning_run(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
         if phase == "spaced_recall": next_phase = "mixed_review"
         if phase == "mixed_review": next_phase = "transfer_test"
         run.phase = next_phase or phase; run.state = state; state.setdefault("phase_history", []).append(run.phase); run.revision += 1; run.updated_at = _now(); run.status = "passed" if run.phase in {"passed", "review_passed", "final_passed"} else "active"
+        state["student_state"] = student.to_dict()
+        state["teacher_action"] = decide_after_submission(student, run.phase, passed=run.status == "passed", target_node=run.lesson_id or run.task_id).to_dict()
         session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="system", phase=run.phase, content=f"阶段已完成，进入 {run.phase}。" if run.phase != "passed" else "全部学习阶段已由 Evaluator 确认。", grounding=evaluation or {}, idempotency_key=f"{idem}:system"[:160], created_at=_now()))
         session.flush(); result = _public(session, run); run.last_idempotency_key = idem; run.last_response = {**result, "evaluation": evaluation}; session.commit(); session.refresh(run)
     if run.phase in {"passed", "review_passed", "final_passed"}:

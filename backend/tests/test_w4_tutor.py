@@ -17,7 +17,7 @@ from app.tutor_decision import (
 
 def _valid_action(action_type: str) -> dict:
     item = {"action_type": action_type, "target_node": "node-1", "fallback": "retry"}
-    if action_type not in {"analogy", "explain", "feedback", "close_day", "offer_self_study"}:
+    if action_type not in {"analogy", "explain", "misconception_feedback", "encourage", "close_day", "offer_self_study"}:
         item["success_criteria"] = ["submit an observable answer"]
     return item
 
@@ -37,8 +37,8 @@ def test_teacher_action_contract_has_fifteen_types_and_normalizes_aliases():
     [
         ("not-json", "INVALID_JSON"),
         ({"action_type": "unknown", "target_node": "node-1"}, "UNKNOWN_ACTION"),
-        ({"action_type": "test", "success_criteria": ["answer"]}, "TARGET_REQUIRED"),
-        ({"action_type": "test", "target_node": "node-1", "success_criteria": ["answer"], "payload": {"nested": {"reward": 1}}}, "PRIVILEGED_WRITE"),
+        ({"action_type": "independent_task", "success_criteria": ["answer"]}, "TARGET_REQUIRED"),
+        ({"action_type": "independent_task", "target_node": "node-1", "success_criteria": ["answer"], "payload": {"nested": {"reward": 1}}}, "PRIVILEGED_WRITE"),
         ({"action_type": "hint", "target_node": "node-1", "success_criteria": ["answer"]}, "HINT_NOT_ALLOWED"),
     ],
 )
@@ -69,20 +69,20 @@ def test_decision_engine_falls_back_deterministically_and_has_remediation_retry_
     assert malformed.source == "fallback"
     assert malformed.action.action_type == "explain"
 
-    privileged = decide_next_action(state, "independent_attempt", provider_output={"action_type": "test", "target_node": "node-1", "success_criteria": ["answer"], "payload": {"passed": True}}, target_node="node-1")
+    privileged = decide_next_action(state, "independent_attempt", provider_output={"action_type": "independent_task", "target_node": "node-1", "success_criteria": ["answer"], "payload": {"passed": True}}, target_node="node-1")
     assert privileged.source == "fallback"
-    assert privileged.action.action_type == "test"
+    assert privileged.action.action_type == "independent_task"
 
     failed = reduce_event(state, {"type": "answer_submitted", "score": 0.1, "misconception": "transfer_failure"})
     remediation = decide_after_submission(failed, "independent_attempt", passed=False, target_node="node-1")
-    assert remediation.action.action_type == "remediation"
+    assert remediation.action.action_type == "misconception_feedback"
     assert remediation.action.payload["misconception"] == "transfer_failure"
     retry = decide_after_remediation(failed, "independent_attempt", target_node="node-1")
     assert retry.action.action_type == "retry"
 
-    assert deterministic_fallback(state, "daily_variant_test").action.action_type == "test"
+    assert deterministic_fallback(state, "daily_variant_test").action.action_type == "variant_test"
     assert deterministic_fallback(state, "passed").action.action_type == "close_day"
-    assert offer_self_study(state, "guided_practice", approved=False).action.action_type == "practice"
+    assert offer_self_study(state, "guided_practice", approved=False).action.action_type == "faded_practice"
     assert offer_self_study(state, "guided_practice", approved=True).action.action_type == "offer_self_study"
 
 

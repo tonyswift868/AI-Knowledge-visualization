@@ -17,20 +17,30 @@ ACTION_TYPES = (
     "explain",
     "analogy",
     "worked_example",
-    "question",
+    "guided_question",
     "hint",
-    "feedback",
-    "practice",
-    "test",
+    "misconception_feedback",
+    "faded_practice",
+    "independent_task",
+    "variant_test",
     "review",
-    "remediation",
+    "encourage",
     "retry",
-    "variant",
     "offer_self_study",
     "close_day",
 )
 
-_ALIASES = {"example": "worked_example", "close": "close_day", "self_study": "offer_self_study"}
+_ALIASES = {
+    "example": "worked_example",
+    "question": "guided_question",
+    "feedback": "misconception_feedback",
+    "practice": "faded_practice",
+    "test": "independent_task",
+    "variant": "variant_test",
+    "remediation": "misconception_feedback",
+    "close": "close_day",
+    "self_study": "offer_self_study",
+}
 _FORBIDDEN_KEYS = {
     "passed", "pass", "reward", "rewards", "reward_id", "status", "run_status",
     "learning_run_passed", "expedition_reward", "core_state", "write_state",
@@ -119,9 +129,10 @@ def validate_teacher_action(raw: Mapping[str, Any] | TeacherAction, *, phase: st
     if not target:
         raise TeacherActionValidationError("TARGET_REQUIRED", "Teacher Action 必须指定目标知识节点")
     criteria = _strings(candidate.get("success_criteria"), "success_criteria")
-    if action_type not in {"analogy", "explain", "feedback", "close_day", "offer_self_study"} and not criteria:
+    if action_type not in {"analogy", "explain", "misconception_feedback", "encourage", "close_day", "offer_self_study"} and not criteria:
         raise TeacherActionValidationError("CRITERIA_REQUIRED", "该动作必须包含 success_criteria")
     fallback = str(candidate.get("fallback") or "retry").strip().lower()
+    fallback = _ALIASES.get(fallback, fallback)
     if fallback not in ACTION_TYPES:
         raise TeacherActionValidationError("INVALID_FALLBACK", "fallback 必须是合法 Teacher Action")
     evidence = _strings(candidate.get("evidence_refs"), "evidence_refs")

@@ -192,6 +192,41 @@ def test_one_bad_file_does_not_abort_other_files(client):
     assert any(item["relative_path"] == "bad.docx" for item in result["failed"])
 
 
+def test_partial_archive_can_retry_only_failed_items(client, monkeypatch):
+    ws = workspace(client)
+    body = preview(client, ws, {"good.md": "valid", "bad.docx": b"PK\x03\x04not a real docx"}).json()
+    selected = [item["id"] for item in body["tree"] if item["status"] == "supported"]
+    first = client.post(
+        f"/api/workspaces/{ws}/sources/archive/import",
+        json={"preview_id": body["preview_id"], "selected_file_ids": selected},
+    ).json()
+    assert first["status"] == "partial"
+    assert first["retryable_file_ids"]
+    assert (Path(db.DATA_DIR) / "archive_previews" / body["preview_id"]).exists()
+
+    from app import ingestion_secure
+
+    original_parse = ingestion_secure.parse_file
+
+    def repaired_parse(path):
+        if Path(path).name == "bad.docx":
+            return ([{"text": "repaired document", "page": 1, "heading": ""}], "ready", 1)
+        return original_parse(path)
+
+    monkeypatch.setattr(ingestion_secure, "parse_file", repaired_parse)
+    second = client.post(
+        f"/api/workspaces/{ws}/sources/archive/import",
+        json={"preview_id": body["preview_id"], "selected_file_ids": first["retryable_file_ids"]},
+    )
+    assert second.status_code == 200
+    retry = second.json()
+    assert retry["status"] == "imported"
+    assert retry["archive_source_id"] == first["archive_source_id"]
+    assert [item["relative_path"] for item in retry["imported"]] == ["bad.docx"]
+    assert not retry["failed"]
+    assert not (Path(db.DATA_DIR) / "archive_previews" / body["preview_id"]).exists()
+
+
 def test_ipynb_extracts_cells_without_execution(client, tmp_path):
     ws = workspace(client)
     marker = tmp_path / "should_not_exist.txt"

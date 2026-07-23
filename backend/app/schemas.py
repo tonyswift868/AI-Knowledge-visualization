@@ -98,6 +98,8 @@ class UrlSourceIn(BaseModel):
 
 class FeasibilityConfirmIn(BaseModel):
     confirmed: bool
+    selected_option: Literal["keep_current", "extend_deadline", "reduce_scope", "increase_daily_minutes"] = "keep_current"
+    minutes_per_day: int | None = Field(default=None, ge=10, le=480)
 
 
 class ProviderTestIn(BaseModel):

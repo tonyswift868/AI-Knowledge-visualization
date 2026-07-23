@@ -249,7 +249,7 @@ def _load_preview(preview_id: str, workspace_id: str) -> dict:
     row = db.row("archive_previews", "id", preview_id)
     if not row or row.get("workspace_id") != workspace_id:
         raise ArchiveError("ARCHIVE_PREVIEW_EXPIRED", "ZIP 预览不存在或已过期")
-    if row.get("status") != "ready" or datetime.fromisoformat(row["expires_at"]) <= _now():
+    if row.get("status") not in {"ready", "partial"} or datetime.fromisoformat(row["expires_at"]) <= _now():
         raise ArchiveError("ARCHIVE_PREVIEW_EXPIRED", "ZIP 预览不存在或已过期")
     path = Path(row["storage_path"])
     if not path.is_file() or path.stat().st_mtime_ns != int(row["archive_mtime_ns"]) or _archive_hash(path) != row["archive_hash"]:
@@ -258,6 +258,16 @@ def _load_preview(preview_id: str, workspace_id: str) -> dict:
 
 
 def _create_archive_source(workspace_id: str, row: dict) -> str:
+    existing = next(
+        (
+            item
+            for item in db.rows("sources", "workspace_id", workspace_id)
+            if item.get("archive_preview_id") == row["id"] and item.get("source_type") == "archive"
+        ),
+        None,
+    )
+    if existing:
+        return str(existing["id"])
     source_id, created = _new_id("source"), db.now()
     source = {"id": source_id, "workspace_id": workspace_id, "title": row["archive_name"], "source_type": "archive", "original_filename": row["archive_name"], "original_url": "", "local_path": "", "trust_level": "reference", "content_hash": row["archive_hash"], "status": "container", "parse_error": "", "page_count": 0, "text": "", "created_at": created, "updated_at": created, "archive_preview_id": row["id"], "archive_relative_path": "", "parent_archive_name": row["archive_name"], "language": ""}
     with db.connection() as conn:
@@ -302,8 +312,8 @@ def import_preview(workspace_id: str, preview_id: str, selected_file_ids: list[s
     if any(item_id not in by_id for item_id in selected_file_ids):
         raise ArchiveError("ARCHIVE_ITEM_NOT_IN_PREVIEW", "所选文件不属于当前 ZIP 预览")
     selected = [by_id[item_id] for item_id in selected_file_ids]
-    if any(item["status"] != "supported" for item in selected):
-        raise ArchiveError("ARCHIVE_ITEM_NOT_IN_PREVIEW", "只能选择支持导入的 ZIP 内文件")
+    if any(item["status"] not in {"supported", "failed"} for item in selected):
+        raise ArchiveError("ARCHIVE_ITEM_NOT_IN_PREVIEW", "只能选择尚未导入或上次失败的 ZIP 内文件")
     scan = scan_archive(Path(row["storage_path"]))
     fresh_by_path = {item["relative_path"]: item for item in scan["items"]}
     for item in selected:
@@ -323,18 +333,36 @@ def import_preview(workspace_id: str, preview_id: str, selected_file_ids: list[s
                 target = _extract_selected(Path(row["storage_path"]), item, destination)
                 parts, status, pages = parse_file(target)
                 if status != "ready":
-                    failed.append({"file_id": item["id"], "relative_path": item["relative_path"], "error": "文件需要 OCR，当前版本不生成假内容"})
+                    failure = {"file_id": item["id"], "relative_path": item["relative_path"], "error_code": "OCR_REQUIRED", "error": "文件需要 OCR，当前版本不生成假内容"}
+                    failed.append(failure)
+                    with db.connection() as conn:
+                        conn.execute("UPDATE archive_preview_items SET status='failed',reason=? WHERE id=?", (failure["error"], item["id"]))
                     continue
                 text = "\n\n".join(part["text"] for part in parts)
                 source = create_source(workspace_id, f"{row['archive_name']} / {item['relative_path']}", "archive_file", text, original_filename=item["relative_path"], page_count=pages, trust_level=trust_level, parts=parts, archive_preview_id=preview_id, archive_relative_path=item["relative_path"], parent_archive_name=row["archive_name"], language=item.get("language") or "")
                 imported.append({"file_id": item["id"], "relative_path": item["relative_path"], "source": source_detail(source["id"])})
+                with db.connection() as conn:
+                    conn.execute("UPDATE archive_preview_items SET status='imported',reason='' WHERE id=?", (item["id"],))
             except ValueError as exc:
                 if str(exc).startswith("DUPLICATE_SOURCE"):
                     duplicates.append({"file_id": item["id"], "relative_path": item["relative_path"], "reason": str(exc)})
+                    with db.connection() as conn:
+                        conn.execute("UPDATE archive_preview_items SET status='duplicate',reason=? WHERE id=?", ("内容已导入", item["id"]))
                 else:
-                    failed.append({"file_id": item["id"], "relative_path": item["relative_path"], "error": str(exc)})
+                    failure = {"file_id": item["id"], "relative_path": item["relative_path"], "error_code": "CONVERSION_FAILED", "error": "文件转换失败，请检查文件格式或仅重试此文件"}
+                    failed.append(failure)
+                    with db.connection() as conn:
+                        conn.execute("UPDATE archive_preview_items SET status='failed',reason=? WHERE id=?", (failure["error"], item["id"]))
+            except ArchiveError as exc:
+                failure = {"file_id": item["id"], "relative_path": item["relative_path"], "error_code": exc.code, "error": exc.message}
+                failed.append(failure)
+                with db.connection() as conn:
+                    conn.execute("UPDATE archive_preview_items SET status='failed',reason=? WHERE id=?", (failure["error"], item["id"]))
             except Exception as exc:
-                failed.append({"file_id": item["id"], "relative_path": item["relative_path"], "error": str(exc)})
+                failure = {"file_id": item["id"], "relative_path": item["relative_path"], "error_code": "CONVERSION_FAILED", "error": "文件转换失败，请检查文件格式或仅重试此文件"}
+                failed.append(failure)
+                with db.connection() as conn:
+                    conn.execute("UPDATE archive_preview_items SET status='failed',reason=? WHERE id=?", (failure["error"], item["id"]))
             finally:
                 if target:
                     try:
@@ -342,10 +370,12 @@ def import_preview(workspace_id: str, preview_id: str, selected_file_ids: list[s
                     except OSError:
                         pass
         ignored = [{"file_id": item["id"], "relative_path": item["relative_path"], "status": item["status"], "reason": item["reason"]} for item in items if item["status"] in {"ignored", "rejected"}]
+        preview_status = "partial" if failed else "imported"
         with db.connection() as conn:
-            conn.execute("UPDATE archive_previews SET status='imported' WHERE id=?", (preview_id,))
-        shutil.rmtree(_preview_directory(preview_id), ignore_errors=True)
-        return {"preview_id": preview_id, "archive_source_id": archive_source_id, "imported": imported, "duplicates": duplicates, "failed": failed, "ignored": ignored}
+            conn.execute("UPDATE archive_previews SET status=? WHERE id=?", (preview_status, preview_id))
+        if not failed:
+            shutil.rmtree(_preview_directory(preview_id), ignore_errors=True)
+        return {"preview_id": preview_id, "status": preview_status, "archive_source_id": archive_source_id, "imported": imported, "duplicates": duplicates, "failed": failed, "retryable_file_ids": [item["file_id"] for item in failed], "ignored": ignored}
     finally:
         shutil.rmtree(destination, ignore_errors=True)
 
@@ -363,7 +393,7 @@ def discard_preview(workspace_id: str, preview_id: str) -> bool:
 def cleanup_expired_previews() -> None:
     now = _now()
     with db.connection() as conn:
-        rows = [dict(row) for row in conn.execute("SELECT id,expires_at,storage_path,status FROM archive_previews WHERE status='ready'").fetchall()]
+        rows = [dict(row) for row in conn.execute("SELECT id,expires_at,storage_path,status FROM archive_previews WHERE status IN ('ready','partial')").fetchall()]
         for row in rows:
             try:
                 expired = datetime.fromisoformat(row["expires_at"]) <= now

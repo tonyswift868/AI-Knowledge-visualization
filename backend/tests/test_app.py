@@ -116,6 +116,19 @@ def test_feasibility_system_allocates_daily_minutes_with_buffer(client):
     assert result["recommended_minutes_per_day"] >= result["base_minutes_per_day"]
     assert result["buffer_rate"] == 0.2
     saved_goal = client.get(f"/api/workspaces/{ws['id']}").json()["goal"]["payload"]
+    assert saved_goal["minutes_per_day"] == 30
+    assert result["minutes_per_day_applied"] is None
+    assert result["suggested_goal_patch"]["minutes_per_day"] == result["recommended_minutes_per_day"]
+    confirmed = client.post(
+        f"/api/workspaces/{ws['id']}/feasibility/confirm",
+        json={
+            "confirmed": True,
+            "selected_option": "increase_daily_minutes",
+            "minutes_per_day": result["recommended_minutes_per_day"],
+        },
+    )
+    assert confirmed.status_code == 200
+    saved_goal = client.get(f"/api/workspaces/{ws['id']}").json()["goal"]["payload"]
     assert saved_goal["minutes_per_day"] == result["recommended_minutes_per_day"]
 
 
