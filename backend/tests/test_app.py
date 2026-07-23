@@ -206,7 +206,11 @@ def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
 def test_kks_routes_report_explicit_unavailable_capability(client):
     capability = client.get("/api/koikatsu/capability")
     assert capability.status_code == 200
-    assert capability.json() == {"available": False, "code": "KKS_RUNTIME_UNAVAILABLE", "fallback": "teacher_without_avatar"}
+    assert capability.json()["available"] is False
+    assert capability.json()["code"] == "KKS_RUNTIME_UNAVAILABLE"
+    assert capability.json()["fallback"] == "teacher_without_avatar"
+    assert capability.json()["status"] == "unavailable"
+    assert capability.json()["runtime_version_hash"]
     response = client.get("/api/teacher-avatars")
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "KKS_RUNTIME_UNAVAILABLE"

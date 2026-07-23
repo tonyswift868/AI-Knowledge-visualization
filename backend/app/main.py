@@ -31,11 +31,14 @@ from .core_errors import app_error_body, AppError
 from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
 from .knowledge_map_service import KnowledgeMapServiceError, generate_current_map, get_current_map, get_map_revision
+from .koikatsu_card_index import card_index_metadata, lookup_card
+from .koikatsu_mod_assets import resolve_mod_assets
+from .koikatsu_runtime import get_runtime_capability, get_runtime_manifest, get_runtime_readiness
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
 from .voice_runtime import synthesize_voice
 from . import catalog_repository
-from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, submit_learning_run
+from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, retry_pending_expedition_reward, submit_learning_run
 from .adaptive_narrative import AdaptiveNarrativeError, activate_blueprint, adaptive_context, analyze_task_profile, compile_adaptation, generate_dynamic_scene, generate_scene_contract, get_blueprint, get_current_contract, list_artifacts, list_contracts, list_story_objects
 from .expedition_service import ExpeditionError, activate_lineup, assets as expedition_asset, awaken as expedition_awaken, battle as expedition_battle, challenge_stage, claim_milestone, claim_stage, delete_lineup, equipment as expedition_equipment, equip_equipment, equip_pet, get_ledger as expedition_ledger, get_profile as expedition_profile, gacha_banners, gacha_history, gacha_pull, hero_detail, lineups as expedition_lineups, list_heroes, milestones as expedition_milestones, pets as expedition_pets, reset_equipment, reset_slot, save_lineup, star_up, stage_definition, stages as expedition_stages, training_slots, unequip_equipment, upgrade_equipment, upgrade_slot
 from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as resolve_expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
@@ -630,6 +633,12 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     if body.get("new_deadline"): goal_data["deadline"]=body["new_deadline"]
     if body.get("new_minutes_per_day"): goal_data["minutes_per_day"]=body["new_minutes_per_day"]
     if body.get("new_preferred_weekdays") is not None: goal_data["preferred_weekdays"]=body["new_preferred_weekdays"]
+    if body.get("absence_date"):
+        try:
+            date.fromisoformat(str(body["absence_date"]))
+        except ValueError:
+            fail("ABSENCE_DATE_INVALID", "absence_date 必须是 ISO 日期")
+        goal_data["unavailable_dates"] = sorted(set(goal_data.get("unavailable_dates", [])) | {str(body["absence_date"])})
     if goal_data != goal["payload"]:
         set_goal(item["workspace_id"], GoalProfile.model_validate(goal_data))
     try:
@@ -645,15 +654,22 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
         set_job(jid,status="failed",progress=100,error=exc.code,message="Provider 失败"); fail(exc.code,exc.message,exc.status,exc.details)
     new = build_plan(item["workspace_id"], goal_data, assessment["payload"])
     new["generation_meta"] = replan_meta
-    old_tasks={t.get("title"):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}; new_tasks={t.get("title"):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
-    old_dates={t.get("title"):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
-    new_dates={t.get("title"):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
+    task_key=lambda task: task.get("source_task_id") or task.get("stable_task_id") or task.get("title")
+    old_tasks={task_key(t):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}; new_tasks={task_key(t):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
+    old_dates={task_key(t):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
+    new_dates={task_key(t):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
     for key,old_task in old_tasks.items():
         if key in new_tasks and old_task.get("status")=="completed":
             new_tasks[key].update({"status":"completed","completed_at":old_task.get("completed_at"),"actual_minutes":old_task.get("actual_minutes",old_task.get("estimated_minutes",0)),"completion_evidence":old_task.get("completion_evidence","")})
     for task in new_tasks.values():
         sync_task_orm(task)
-    diff={"reason":body.get("reason","manual"),"moved_tasks":[{"task":key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary")}
+    failed_task_id = str(body.get("failed_task_id") or "")
+    failed_task = next((task for task in new_tasks.values() if task.get("id") == failed_task_id or task.get("source_task_id") == failed_task_id or task.get("stable_task_id") == failed_task_id), None)
+    if failed_task:
+        failed_task["status"] = "retry_scheduled"
+        failed_task["last_failure_reason"] = str(body.get("failure_reason") or "learning_run_failed")[:500]
+        sync_task_orm(failed_task)
+    diff={"reason":body.get("reason") or ("temporary_leave" if body.get("absence_date") else "failed_attempt" if failed_task_id else "manual"),"moved_tasks":[{"task":key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary"),"absence_date":body.get("absence_date"),"failed_task_id":failed_task_id or None}
     new["diff"]=diff
     with db.connection() as conn:
         conn.execute("UPDATE plans SET status='archived' WHERE id=?",(plan_id,))
@@ -668,7 +684,7 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     except Exception: pass
     set_job(jid,status="succeeded",stage="saving",progress=100,message="Replan saved")
     new["job_id"]=jid
-    return {"plan":new,"changes":diff,"previous_version":previous.get("version")}
+    return {"plan":new,"changes":diff,"previous_plan_id":plan_id,"previous_version":previous.get("version"),"undo":{"method":"POST","path":f"/api/plans/{plan_id}/activate"}}
 
 
 @app.post("/api/plans/{plan_id}/export")
@@ -715,8 +731,30 @@ def active_plan(workspace_id: str) -> dict | None:
     return plan
 
 
+def _decorate_task_access(plan: dict[str, Any], day: dict[str, Any] | None, *, allow_advance: bool) -> None:
+    if not day:
+        return
+    completed_stable_ids={task.get("source_task_id") or task.get("stable_task_id") for candidate in plan.get("study_days",[]) for task in candidate.get("tasks",[]) if task.get("learning_run_passed") is True or task.get("status")=="completed"}
+    scheduled_date=date.fromisoformat(day["date"])
+    for task in day.get("tasks",[]):
+        prerequisites=set(task.get("prerequisites") or [])
+        if prerequisites-completed_stable_ids:
+            task["access"]="blocked_prerequisite"
+        elif scheduled_date > date.today():
+            days_ahead=(scheduled_date-date.today()).days
+            task["access"]="available_advance" if allow_advance and days_ahead <= 2 else "locked_future"
+        elif scheduled_date < date.today():
+            task["access"]="past_due"
+        else:
+            task["access"]="available_today"
+        task["can_start"]=task["access"] in {"available_today","available_advance","past_due"}
+        task["can_advance"]=task["access"]=="available_advance"
+        task["locked"]=not task["can_start"]
+        task["lock_reason"]=task["access"] if task["locked"] else None
+
+
 @app.get("/api/workspaces/{workspace_id}/today")
-def today(workspace_id: str):
+def today(workspace_id: str, allow_advance: bool = False):
     require_workspace(workspace_id); plan = active_plan(workspace_id); today_str = __import__("datetime").date.today().isoformat()
     day = next((x for x in plan.get("study_days", []) if x["date"] == today_str), None)
     if not day and plan.get("study_days"): day = next((x for x in plan["study_days"] if x["date"] >= today_str), plan["study_days"][-1])
@@ -724,11 +762,17 @@ def today(workspace_id: str):
         lessons={lesson["id"]:lesson for milestone in plan.get("milestones",[]) for module in milestone.get("modules",[]) for lesson in module.get("lessons",[])}
         for task in day.get("tasks",[]):
             if task.get("lesson_id") in lessons: task["lesson"]=lessons[task["lesson_id"]]
+        _decorate_task_access(plan, day, allow_advance=allow_advance)
     return {"date": today_str, "day": day, "plan_id": plan.get("id")}
 
 
 @app.get("/api/workspaces/{workspace_id}/calendar")
-def calendar(workspace_id: str): require_workspace(workspace_id); return active_plan(workspace_id).get("study_days", [])
+def calendar(workspace_id: str):
+    require_workspace(workspace_id)
+    plan=active_plan(workspace_id)
+    for day in plan.get("study_days", []):
+        _decorate_task_access(plan, day, allow_advance=True)
+    return plan.get("study_days", [])
 
 
 @app.get("/api/workspaces/{workspace_id}/progress")
@@ -785,6 +829,9 @@ def start_task_v2(task_id: str):
     for ws in db.rows('workspaces','status','active'):
         plan=active_plan(ws['id']); day,task=find_task(plan,task_id)
         if task:
+            _decorate_task_access(plan, day, allow_advance=True)
+            if not task.get("can_start"):
+                fail("TASK_LOCKED", "任务尚未开放，需先完成前置任务或等待计划日期", 409, {"access": task.get("access"), "task_id": task_id})
             task['status']='in_progress'; task['started_at']=db.now()
             with db.connection() as conn:conn.execute('UPDATE plans SET payload=? WHERE id=?',(json.dumps(plan,ensure_ascii=False),plan['id']))
             sync_task_orm(task)
@@ -844,8 +891,14 @@ def learning_run_submit(run_id: str, request: Request, body: dict[str, Any]):
 
 
 @app.post("/api/learning-runs/{run_id}/request-hint")
-def learning_run_hint(run_id: str, request: Request):
-    try: return {"request_id": request.state.request_id, **request_hint(run_id)}
+def learning_run_hint(run_id: str, request: Request, body: dict[str, Any] | None = None):
+    try: return {"request_id": request.state.request_id, **request_hint(run_id, body)}
+    except LearningRunError as exc: _learning_run_error(exc)
+
+
+@app.post("/api/learning-runs/{run_id}/retry-expedition-reward")
+def learning_run_reward_retry(run_id: str, request: Request):
+    try: return {"request_id": request.state.request_id, **retry_pending_expedition_reward(run_id)}
     except LearningRunError as exc: _learning_run_error(exc)
 
 @app.post("/api/tasks/{task_id}/complete-legacy")
@@ -1012,7 +1065,38 @@ def kks_runtime_unavailable() -> None:
 
 @app.get("/api/koikatsu/capability")
 def koikatsu_capability():
-    return {"available": False, "code": "KKS_RUNTIME_UNAVAILABLE", "fallback": "teacher_without_avatar"}
+    return get_runtime_capability()
+
+
+@app.get("/api/koikatsu/readiness")
+def koikatsu_readiness():
+    return get_runtime_readiness()
+
+
+@app.get("/api/koikatsu/runtime-manifest")
+def koikatsu_runtime_manifest():
+    return get_runtime_manifest()
+
+
+@app.get("/api/koikatsu/card-index")
+def koikatsu_card_index():
+    return card_index_metadata()
+
+
+@app.get("/api/koikatsu/cards/{card_id}")
+def koikatsu_card_lookup(card_id: str):
+    item = lookup_card(card_id)
+    if item is None:
+        fail("KKS_CARD_NOT_INDEXED", "角色卡不在离线索引中", 404, {"card_id": card_id})
+    return item
+
+
+@app.post("/api/koikatsu/mod-assets/resolve")
+def koikatsu_mod_assets(body: dict[str, Any]):
+    asset_ids = body.get("asset_ids") or []
+    if not isinstance(asset_ids, list) or len(asset_ids) > 200:
+        fail("KKS_ASSET_IDS_INVALID", "asset_ids 必须是不超过 200 项的列表")
+    return {"assets": resolve_mod_assets(asset_ids), "lookup": "offline_index_only"}
 
 
 @app.get("/api/teacher-avatars")

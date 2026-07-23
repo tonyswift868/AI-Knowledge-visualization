@@ -39,7 +39,7 @@ const STUDENT_DIMENSIONS: Array<[keyof StudentState, string, boolean]> = [
   ['mastery', '掌握度', false],
   ['confidence', '信心', false],
   ['retrievability', '可提取性', false],
-  ['hint_dependence', '提示依赖', true],
+  ['hint_dependence', '提示依赖', false],
   ['transfer_ability', '迁移能力', false],
   ['learning_velocity', '学习速度', false],
 ]
@@ -97,7 +97,10 @@ export function TutorView({
   }, [task?.id, initialSession])
 
   const student = useMemo(
-    () => session?.state?.student_state || session?.state?.student_model || {},
+    () => {
+      const value = session?.state?.student_state || session?.state?.student_model || {}
+      return { ...value, transfer_ability: value.transfer_ability ?? (value as StudentState & { transfer?: number }).transfer }
+    },
     [session],
   )
 

@@ -91,7 +91,15 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 function unwrapPlan(value: any): PlanningPlan {
-  return (value?.payload || value) as PlanningPlan
+  const plan = (value?.payload || value) as PlanningPlan & { phase_allocation?: { first_pass_ratio?: number } }
+  if (!plan.phase_policy && plan.phase_allocation) {
+    const firstPass = plan.phase_allocation.first_pass_ratio
+    plan.phase_policy = {
+      first_pass_ratio: firstPass,
+      review_ratio: typeof firstPass === 'number' ? 1 - firstPass : undefined,
+    }
+  }
+  return plan
 }
 
 export const planningApi = {

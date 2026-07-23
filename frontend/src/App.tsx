@@ -31,6 +31,7 @@ import { StoryCatalogView } from "./features/story-catalog/StoryCatalogView";
 import { speakBrowser } from "./features/voice/browserVoice";
 import { createLearningRun, requestLearningHint, submitLearningRun } from "./features/learning-run/api";
 import { ExpeditionView } from "./features/expedition/ExpeditionView";
+import { LearningFlow } from "./features/learning/LearningFlow";
 
 const API = "/api";
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
@@ -148,7 +149,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "create" | "plan" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition"
+    "home" | "create" | "plan" | "flow" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition"
   >("home");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [ws, setWs] = useState<Workspace | null>(null);
@@ -488,6 +489,7 @@ export function App() {
             ["home", Gauge, "总览"],
             ["create", Plus, "创建计划"],
             ["plan", CalendarDays, "计划日历"],
+            ["flow", Brain, "学习主流程"],
             ["learn", BookOpen, "今日学习"],
             ["progress", Brain, "进度与掌握"],
             ["expedition", Sparkles, "学习远征"],
@@ -531,6 +533,8 @@ export function App() {
                   ? "创建计划"
                   : tab === "plan"
                     ? "计划日历"
+                    : tab === "flow"
+                      ? "学习主流程"
                     : tab === "story"
                       ? "学习剧场"
                       : tab === "catalog"
@@ -651,6 +655,15 @@ export function App() {
                 if (ws) await request(`/workspaces/${ws.id}`, { method: "PATCH", body: JSON.stringify({ allow_external_knowledge: enabled }) });
               }}
             />
+          )}{" "}
+          {tab === "flow" && (
+            ws
+              ? <LearningFlow
+                  workspaceId={ws.id}
+                  onRequestImport={() => setTab("create")}
+                  onDayClosed={() => { void refreshDailyState(false); }}
+                />
+              : <section className="empty-state"><h2>请先创建或选择学习空间</h2><button className="primary" onClick={() => setTab("create")}>创建学习空间</button></section>
           )}{" "}
           {tab === "progress" && (
             <Progress progress={progress} plan={plan} completed={completed} />

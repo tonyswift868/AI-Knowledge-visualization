@@ -74,7 +74,7 @@ async function readResponse<T>(response: Response): Promise<T> {
       error?.details,
     )
   }
-  return (body?.map || body) as T
+  return (body?.knowledge_map || body?.map || body) as T
 }
 
 export const knowledgeApi = {

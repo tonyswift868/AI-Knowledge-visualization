@@ -101,7 +101,7 @@ describe('learning feature surfaces', () => {
 
     expect(screen.getByText('3D 教师不可用时仍可完整学习')).toBeInTheDocument()
     expect(screen.getByText('掌握度').parentElement).toHaveTextContent('60%')
-    expect(screen.getByText('提示依赖').parentElement).toHaveTextContent('80%')
+    expect(screen.getByText('提示依赖').parentElement).toHaveTextContent('20%')
     expect(screen.getByRole('button', { name: '生活类比' })).toBeInTheDocument()
     expect(screen.getByText('把队列当成栈')).toBeInTheDocument()
 
