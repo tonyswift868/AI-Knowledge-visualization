@@ -215,3 +215,27 @@ def test_kks_routes_report_explicit_unavailable_capability(client):
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "KKS_RUNTIME_UNAVAILABLE"
     assert response.json()["error"]["details"]["fallback"] == "teacher_without_avatar"
+    assert response.json()["error"]["details"]["operation"] == "native_avatar"
+    inspect = client.post("/api/teacher-avatars/koikatsu/inspect")
+    assert inspect.status_code == 503
+    assert inspect.json()["error"]["details"]["operation"] == "inspect_card"
+    export = client.post("/api/teacher-avatars/koikatsu/export")
+    assert export.status_code == 503
+    assert export.json()["error"]["details"]["operation"] == "export_card"
+
+
+def test_goal_intent_receipt_preserves_input_and_asks_at_most_one_question(client):
+    workspace = client.post("/api/workspaces", json={"title": "Intent receipt"}).json()
+    response = client.post(
+        f"/api/workspaces/{workspace['id']}/goal/intent-receipt",
+        json={
+            "original_text": "Learn graph algorithms",
+            "normalized": {"goal_statement": "Learn graph algorithms"},
+        },
+    )
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["original_text"] == "Learn graph algorithms"
+    assert receipt["normalized"]["goal_statement"] == "Learn graph algorithms"
+    assert receipt["missing_critical_fields"]
+    assert len(receipt["clarification_questions"]) == 1

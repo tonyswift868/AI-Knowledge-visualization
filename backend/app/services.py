@@ -305,9 +305,13 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
     task_metadata: dict[str, dict] = {}
     first_pass_ids: list[str] = []
     review_ids: list[str] = []
-    for lesson in lessons:
-        first_id = stable_task_id(workspace_id, lesson["id"], TaskPhase.FIRST_PASS)
-        review_id = stable_task_id(workspace_id, lesson["id"], TaskPhase.REVIEW)
+    for lesson_index, lesson in enumerate(lessons, 1):
+        # Lesson row ids are regenerated with each plan version. Derive task
+        # identity from stable semantic inputs so replan can preserve validated
+        # work instead of treating every task as removed and re-added.
+        lesson_key = f"lesson:{lesson_index}:{lesson['title']}"
+        first_id = stable_task_id(workspace_id, lesson_key, TaskPhase.FIRST_PASS)
+        review_id = stable_task_id(workspace_id, lesson_key, TaskPhase.REVIEW)
         first_pass_ids.append(first_id)
         review_ids.append(review_id)
         planning_tasks.append(PlanningTask(
@@ -355,6 +359,7 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
         ordinal = len(tasks_by_day) + 1
         task = {
             "id": uid("task"),
+            "semantic_task_key": f"{meta['task_type']}:{meta['scene_title']}:{scheduled.chunk_index}",
             "stable_task_id": scheduled.stable_id,
             "source_task_id": scheduled.source_task_id,
             "study_day_id": "",

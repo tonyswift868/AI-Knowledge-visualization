@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { MMDLoader } from "three-stdlib"
+import { createOnDemandRenderScheduler } from "./kksSwitchLifecycle"
 
 type Props = {
   modelUrl: string
@@ -27,9 +28,10 @@ export function isRuntimeClothingNodeVisible(item: RuntimeClothingNode): boolean
 /** Renders a KKBP export without reusing the generic VRM skeleton. */
 export function KoikatsuPmxRig({ modelUrl, cameraPreset = "body", cameraZoom = 1, cameraResetToken = 0, className, onError }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const invalidateRef = useRef<() => void>(() => {})
   const controls = useRef({ zoom: cameraZoom, reset: cameraResetToken, yaw: 0, pitch: 0 })
-  useEffect(() => { controls.current.zoom = cameraZoom }, [cameraZoom])
-  useEffect(() => { controls.current = { ...controls.current, reset: cameraResetToken, yaw: 0, pitch: 0 } }, [cameraResetToken])
+  useEffect(() => { controls.current.zoom = cameraZoom; invalidateRef.current() }, [cameraZoom])
+  useEffect(() => { controls.current = { ...controls.current, reset: cameraResetToken, yaw: 0, pitch: 0 }; invalidateRef.current() }, [cameraResetToken])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -44,34 +46,52 @@ export function KoikatsuPmxRig({ modelUrl, cameraPreset = "body", cameraZoom = 1
     renderer.domElement.style.touchAction = "none"
     mount.replaceChildren(renderer.domElement)
     mount.dataset.modelState = "loading"
+    mount.dataset.renderCount = "0"
     scene.add(new THREE.HemisphereLight(0xf6f7ff, 0x191425, 2.4))
     const key = new THREE.DirectionalLight(0xffead3, 3.1); key.position.set(2, 3, 3); scene.add(key)
     const rim = new THREE.DirectionalLight(0x80b7ff, 1.8); rim.position.set(-3, 2, -2); scene.add(rim)
 
     let mesh: THREE.SkinnedMesh | null = null
     let disposed = false
+    const renderScene = () => {
+      const control = controls.current
+      const distance = baseDistance / Math.max(.5, control.zoom)
+      camera.position.set(Math.sin(control.yaw) * distance, targetY + Math.sin(control.pitch) * distance * .6, Math.cos(control.yaw) * distance)
+      camera.lookAt(0, targetY, 0)
+      renderer.render(scene, camera)
+      mount.dataset.renderCount = String(Number(mount.dataset.renderCount || "0") + 1)
+    }
+    const scheduler = createOnDemandRenderScheduler(renderScene)
+    invalidateRef.current = scheduler.invalidate
     const loader = new MMDLoader()
     loader.load(modelUrl, loaded => {
-      if (disposed) return
+      if (disposed) {
+        loaded.geometry.dispose()
+        const staleMaterials = Array.isArray(loaded.material) ? loaded.material : [loaded.material]
+        staleMaterials.forEach(material => material.dispose())
+        return
+      }
       mesh = loaded
       const box = new THREE.Box3().setFromObject(mesh)
       const center = box.getCenter(new THREE.Vector3())
       mesh.position.set(-center.x, -box.min.y, -center.z)
       scene.add(mesh)
       mount.dataset.modelState = "ready"
+      scheduler.invalidate()
     }, undefined, error => { mount.dataset.modelState = "error"; onError?.(error.message || "恋活 PMX 模型加载失败") })
 
-    const resize = () => { const width = Math.max(1, mount.clientWidth), height = Math.max(1, mount.clientHeight); renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix() }
+    const resize = () => { const width = Math.max(1, mount.clientWidth), height = Math.max(1, mount.clientHeight); renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix(); scheduler.invalidate() }
     const observer = new ResizeObserver(resize); observer.observe(mount); resize()
     let pointerId = -1, x = 0, y = 0
     const down = (event: PointerEvent) => { pointerId = event.pointerId; x = event.clientX; y = event.clientY; renderer.domElement.setPointerCapture(pointerId) }
-    const move = (event: PointerEvent) => { if (event.pointerId !== pointerId) return; controls.current.yaw -= (event.clientX - x) * .012; controls.current.pitch = THREE.MathUtils.clamp(controls.current.pitch + (event.clientY - y) * .008, -.55, .55); x = event.clientX; y = event.clientY }
+    const move = (event: PointerEvent) => { if (event.pointerId !== pointerId) return; controls.current.yaw -= (event.clientX - x) * .012; controls.current.pitch = THREE.MathUtils.clamp(controls.current.pitch + (event.clientY - y) * .008, -.55, .55); x = event.clientX; y = event.clientY; scheduler.invalidate() }
     const up = (event: PointerEvent) => { if (event.pointerId !== pointerId) return; if (renderer.domElement.hasPointerCapture(pointerId)) renderer.domElement.releasePointerCapture(pointerId); pointerId = -1 }
     renderer.domElement.addEventListener("pointerdown", down); renderer.domElement.addEventListener("pointermove", move); renderer.domElement.addEventListener("pointerup", up); renderer.domElement.addEventListener("pointercancel", up)
-    let frame = 0
-    const render = () => { frame = requestAnimationFrame(render); const control = controls.current, distance = baseDistance / Math.max(.5, control.zoom); camera.position.set(Math.sin(control.yaw) * distance, targetY + Math.sin(control.pitch) * distance * .6, Math.cos(control.yaw) * distance); camera.lookAt(0, targetY, 0); renderer.render(scene, camera) }
-    render()
-    return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); renderer.domElement.removeEventListener("pointerdown", down); renderer.domElement.removeEventListener("pointermove", move); renderer.domElement.removeEventListener("pointerup", up); renderer.domElement.removeEventListener("pointercancel", up); if (mesh) { mesh.geometry.dispose(); const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]; materials.forEach(material => material.dispose()) }; renderer.dispose(); renderer.domElement.remove() }
+    const visibility = () => scheduler.setVisible(!document.hidden)
+    document.addEventListener("visibilitychange", visibility)
+    visibility()
+    scheduler.invalidate()
+    return () => { disposed = true; invalidateRef.current = () => {}; scheduler.dispose(); document.removeEventListener("visibilitychange", visibility); observer.disconnect(); renderer.domElement.removeEventListener("pointerdown", down); renderer.domElement.removeEventListener("pointermove", move); renderer.domElement.removeEventListener("pointerup", up); renderer.domElement.removeEventListener("pointercancel", up); if (mesh) { mesh.geometry.dispose(); const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]; materials.forEach(material => material.dispose()) }; renderer.dispose(); renderer.domElement.remove() }
   }, [modelUrl, cameraPreset, onError])
   return <div className={className} ref={mountRef} aria-label="恋活 PMX 教师模型预览" data-model-state="loading" />
 }

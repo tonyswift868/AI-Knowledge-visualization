@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db
-from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
+from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalIntentAnalyzeIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
 from .services import analyze, available_days, build_plan, create_source, inspect_local, parse_text, safe_path, scene_for_task, source_detail, tutor, uid, normalize
 from .orm import init_orm
 from .ingestion_secure import create_preview, consume_preview, parse_file, chunks as secure_chunks
@@ -31,6 +31,7 @@ from .core_errors import app_error_body, AppError
 from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
 from .knowledge_map_service import KnowledgeMapServiceError, generate_current_map, get_current_map, get_map_revision
+from .goal_intent import build_goal_intent_receipt
 from .koikatsu_card_index import card_index_metadata, lookup_card
 from .koikatsu_mod_assets import resolve_mod_assets
 from .koikatsu_runtime import get_runtime_capability, get_runtime_manifest, get_runtime_readiness
@@ -480,6 +481,16 @@ def patch_goal(workspace_id: str, body: GoalPatch):
     return set_goal(workspace_id, GoalProfile.model_validate(data))
 
 
+@app.post("/api/workspaces/{workspace_id}/goal/intent-receipt")
+def analyze_goal_intent(workspace_id: str, body: GoalIntentAnalyzeIn):
+    require_workspace(workspace_id)
+    return build_goal_intent_receipt(
+        body.original_text,
+        normalized=body.normalized,
+        already_answered_fields=body.already_answered_fields,
+    ).to_dict()
+
+
 @app.post("/api/workspaces/{workspace_id}/feasibility/analyze")
 async def feasibility_analyze(workspace_id: str, request: Request, body: dict[str, Any] | None = None):
     require_workspace(workspace_id); goal = get_goal(workspace_id)
@@ -593,13 +604,28 @@ def get_plan(plan_id: str):
     if not item: fail("PLAN_NOT_FOUND", "计划不存在", 404)
     plan=item["payload"]
     try:
-        from .orm import SessionLocal, TaskORM, DayORM
+        from .orm import SessionLocal, TaskORM, DayORM, LearningRunORM
         with SessionLocal() as session:
             states={row.id:row for row in session.query(TaskORM).join(DayORM,TaskORM.day_id==DayORM.id).filter(DayORM.plan_id==plan_id).all()}
+            passed_runs={
+                row.task_id: row
+                for row in session.query(LearningRunORM)
+                .filter(LearningRunORM.status=="passed")
+                .all()
+            }
             for day in plan.get("study_days",[]):
                 for task in day.get("tasks",[]):
                     row=states.get(task.get("id"))
                     if row: task.update({"status":row.status,"actual_minutes":row.actual_minutes,"completion_evidence":row.evidence})
+                    if task.get("id") in passed_runs:
+                        run_state=passed_runs[task["id"]].state or {}
+                        evidence=run_state.get("evidence") or []
+                        task.update({
+                            "status": "completed",
+                            "learning_run_passed": True,
+                            "scene_completed": True,
+                            "completion_evidence": task.get("completion_evidence") or (evidence[-1] if evidence else ""),
+                        })
     except Exception: pass
     return plan
 
@@ -654,13 +680,20 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
         set_job(jid,status="failed",progress=100,error=exc.code,message="Provider 失败"); fail(exc.code,exc.message,exc.status,exc.details)
     new = build_plan(item["workspace_id"], goal_data, assessment["payload"])
     new["generation_meta"] = replan_meta
-    task_key=lambda task: task.get("source_task_id") or task.get("stable_task_id") or task.get("title")
+    task_key=lambda task: task.get("semantic_task_key") or f"{task.get('task_type','task')}:{task.get('title','')}:{task.get('chunk_index',1)}"
     old_tasks={task_key(t):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}; new_tasks={task_key(t):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
     old_dates={task_key(t):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
     new_dates={task_key(t):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
     for key,old_task in old_tasks.items():
-        if key in new_tasks and old_task.get("status")=="completed":
-            new_tasks[key].update({"status":"completed","completed_at":old_task.get("completed_at"),"actual_minutes":old_task.get("actual_minutes",old_task.get("estimated_minutes",0)),"completion_evidence":old_task.get("completion_evidence","")})
+        if key in new_tasks and (old_task.get("learning_run_passed") is True or old_task.get("status")=="completed"):
+            new_tasks[key].update({
+                "status": "completed",
+                "learning_run_passed": old_task.get("learning_run_passed") is True,
+                "scene_completed": old_task.get("scene_completed") is True,
+                "completed_at": old_task.get("completed_at"),
+                "actual_minutes": old_task.get("actual_minutes", old_task.get("estimated_minutes", 0)),
+                "completion_evidence": old_task.get("completion_evidence", ""),
+            })
     for task in new_tasks.values():
         sync_task_orm(task)
     failed_task_id = str(body.get("failed_task_id") or "")
@@ -719,14 +752,30 @@ def active_plan(workspace_id: str) -> dict | None:
                 task["scene"] = scene_for_task(task.get("title", "今日学习任务"), task.get("task_type", "lesson"), scene_ordinal)
             scene_ordinal += 1
     try:
-        from .orm import SessionLocal, TaskORM, DayORM, PlanORM
+        from .orm import SessionLocal, TaskORM, DayORM, PlanORM, LearningRunORM
         with SessionLocal() as session:
             states={row.id:row for row in session.query(TaskORM).join(DayORM,TaskORM.day_id==DayORM.id).join(PlanORM,DayORM.plan_id==PlanORM.id).filter(PlanORM.workspace_id==workspace_id).all()}
+            passed_runs={
+                row.task_id: row
+                for row in session.query(LearningRunORM)
+                .filter(LearningRunORM.workspace_id==workspace_id, LearningRunORM.status=="passed")
+                .all()
+            }
             for day in plan.get("study_days",[]):
                 for task in day.get("tasks",[]):
                     row=states.get(task.get("id"))
                     if row:
                         task.update({"status":row.status,"started_at":row.started_at.isoformat() if row.started_at else task.get("started_at"),"completed_at":row.completed_at.isoformat() if row.completed_at else task.get("completed_at"),"actual_minutes":row.actual_minutes,"completion_evidence":row.evidence})
+                    passed_run=passed_runs.get(task.get("id"))
+                    if passed_run:
+                        run_state=passed_run.state or {}
+                        evidence=run_state.get("evidence") or []
+                        task.update({
+                            "status": "completed",
+                            "learning_run_passed": True,
+                            "scene_completed": True,
+                            "completion_evidence": task.get("completion_evidence") or (evidence[-1] if evidence else ""),
+                        })
     except Exception: pass
     return plan
 
@@ -1054,12 +1103,20 @@ def delete_provider_session_route(session_id: str):
     return {"deleted": delete_provider_session(session_id)}
 
 
-def kks_runtime_unavailable() -> None:
+def kks_runtime_unavailable(operation: str = "native_avatar") -> None:
+    readiness = get_runtime_readiness()
     fail(
-        "KKS_RUNTIME_UNAVAILABLE",
+        readiness["code"],
         "KKS 教师运行时尚未恢复，当前可继续使用无角色教师模式",
         503,
-        {"available": False, "fallback": "teacher_without_avatar"},
+        {
+            "available": False,
+            "status": readiness["status"],
+            "reason": readiness["reason"],
+            "operation": operation,
+            "fallback": "teacher_without_avatar",
+            "operations": readiness.get("operations", {}),
+        },
     )
 
 
@@ -1111,12 +1168,22 @@ def today_teacher_avatar_unavailable():
 
 @app.post("/api/teacher-avatars/import")
 async def import_teacher_avatar_unavailable():
-    kks_runtime_unavailable()
+    kks_runtime_unavailable("import_avatar")
+
+
+@app.post("/api/teacher-avatars/koikatsu/inspect")
+async def inspect_koikatsu_card_unavailable():
+    kks_runtime_unavailable("inspect_card")
+
+
+@app.post("/api/teacher-avatars/koikatsu/export")
+async def export_koikatsu_card_unavailable():
+    kks_runtime_unavailable("export_card")
 
 
 @app.patch("/api/teacher-avatars/{model_id}/morph")
 def update_teacher_avatar_unavailable(model_id: str):
-    kks_runtime_unavailable()
+    kks_runtime_unavailable("update_morph")
 
 
 @app.post("/api/providers/test")

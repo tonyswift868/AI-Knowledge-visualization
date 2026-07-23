@@ -122,6 +122,15 @@ def runtime_readiness(*, manifest_path: Path | None = None) -> dict[str, Any]:
     ready = all(bool(checks.get(name, {}).get("exists")) for name in required)
     status = "ready" if ready else ("partial" if present else "unavailable")
     code = {"ready": "KKS_RUNTIME_READY", "partial": "KKS_RUNTIME_PARTIAL", "unavailable": "KKS_RUNTIME_UNAVAILABLE"}[status]
+    operations = {
+        "card_lookup": bool(checks.get("card_index", {}).get("exists")),
+        "mod_lookup": bool(checks.get("zipmod_index", {}).get("exists")),
+        "render_preview": bool(checks.get("base_model", {}).get("exists")),
+        "inspect_card": False,
+        "import_avatar": False,
+        "export_card": False,
+        "update_morph": False,
+    }
     return {
         "available": ready,
         "status": status,
@@ -130,6 +139,7 @@ def runtime_readiness(*, manifest_path: Path | None = None) -> dict[str, Any]:
         "reason": "all required local artifacts are present" if ready else "missing: " + ", ".join(manifest["missing_artifacts"]) if manifest["missing_artifacts"] else "runtime manifest is invalid",
         "runtime_version_hash": manifest["runtime_version_hash"],
         "index_version": manifest["pipeline_fingerprint"],
+        "operations": operations,
         "manifest": manifest,
     }
 
@@ -137,7 +147,7 @@ def runtime_readiness(*, manifest_path: Path | None = None) -> dict[str, Any]:
 def runtime_capability(*, manifest_path: Path | None = None) -> dict[str, Any]:
     """Public capability payload suitable for a future API route."""
     readiness = runtime_readiness(manifest_path=manifest_path)
-    return {key: readiness[key] for key in ("available", "status", "code", "fallback", "reason", "runtime_version_hash", "index_version")}
+    return {key: readiness[key] for key in ("available", "status", "code", "fallback", "reason", "runtime_version_hash", "index_version", "operations")}
 
 
 # Explicit aliases make the integration point discoverable without coupling a

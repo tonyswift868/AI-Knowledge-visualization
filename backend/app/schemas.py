@@ -76,6 +76,12 @@ class GoalPatch(BaseModel):
     success_criteria: list[str] | None = None
 
 
+class GoalIntentAnalyzeIn(BaseModel):
+    original_text: str = Field(min_length=1, max_length=4_000)
+    normalized: dict[str, Any] = Field(default_factory=dict)
+    already_answered_fields: list[str] = Field(default_factory=list, max_length=16)
+
+
 class TextSourceIn(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=200_000)
