@@ -1,0 +1,10 @@
+{
+  "default": "dragonbones-shizuku-prototype",
+  "renderers": ["dragonbones2d", "spine2d", "kks3d"],
+  "teachers": [
+    {
+      "id": "dragonbones-shizuku-prototype",
+      "manifest": "/teacher2d/dragonbones/shizuku/manifest.json"
+    }
+  ]
+}
