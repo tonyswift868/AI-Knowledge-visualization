@@ -358,54 +358,16 @@ def schedule_by_capacity(
             "独立应用",
         ),
     )
-    initial_minutes_by_item = [
-        sum(
-            int(item["mastery_estimate"][estimate_key])
-            for _, estimate_key, _ in phase_specs
-        )
+    remaining_total = sum(
+        int(item["mastery_estimate"][estimate_key])
         for item in item_list
-    ]
-    remaining_total = sum(initial_minutes_by_item)
-    for point_sequence, (item, item_total) in enumerate(
-        zip(item_list, initial_minutes_by_item), start=1
-    ):
-        while day_cursor < len(active_indexes):
-            remaining_days = len(active_indexes) - day_cursor
-            day = calendar[active_indexes[day_cursor]]
-            capacity_left = int(day["capacity_minutes"]) - int(day["planned_task_minutes"])
-            current_load = int(day["planned_task_minutes"])
-            target = min(
-                int(day["capacity_minutes"]),
-                max(
-                    1,
-                    (
-                        remaining_total
-                        + current_load
-                        + remaining_days
-                        - 1
-                    )
-                    // remaining_days,
-                ),
-            )
-            day["balanced_target_minutes"] = target
-            adding_is_worse_than_closing = (
-                abs(target - current_load)
-                < abs(target - (current_load + item_total))
-            )
-            if (
-                current_load > 0
-                and remaining_days > 1
-                and (
-                    item_total > capacity_left
-                    or (
-                        current_load + item_total > target
-                        and adding_is_worse_than_closing
-                    )
-                )
-            ):
-                day_cursor += 1
-                continue
-            break
+        for _, estimate_key, _ in phase_specs
+    )
+    for point_sequence, item in enumerate(item_list, start=1):
+        # Learning phases are deliberately splittable across dates.  Fill the
+        # day's balanced target before moving on; otherwise an item larger than
+        # today's remainder can strand usable minutes and make a mathematically
+        # feasible system allocation look infeasible.
         for phase, estimate_key, phase_label in phase_specs:
             remaining = int(item["mastery_estimate"][estimate_key])
             phase_tasks: list[dict[str, Any]] = []
@@ -416,7 +378,18 @@ def schedule_by_capacity(
                     break
                 day = calendar[active_indexes[day_cursor]]
                 day_limit = int(day["capacity_minutes"])
-                capacity_left = day_limit - day["planned_task_minutes"]
+                current_load = int(day["planned_task_minutes"])
+                remaining_days = len(active_indexes) - day_cursor
+                balanced_target = min(
+                    day_limit,
+                    max(
+                        current_load,
+                        (remaining_total + current_load + remaining_days - 1)
+                        // remaining_days,
+                    ),
+                )
+                day["balanced_target_minutes"] = balanced_target
+                capacity_left = balanced_target - current_load
                 if capacity_left <= 0:
                     day_cursor += 1
                     continue
@@ -438,10 +411,10 @@ def schedule_by_capacity(
                 phase_tasks.append(task)
                 day["planned_task_minutes"] += minutes
                 remaining -= minutes
+                remaining_total -= minutes
                 part += 1
                 if remaining:
                     day_cursor += 1
             for task in phase_tasks:
                 task["phase_part_count"] = len(phase_tasks)
-        remaining_total -= item_total
     return calendar, unscheduled

@@ -6,6 +6,14 @@ from typing import Any
 import httpx
 
 
+PROVIDER_TIMEOUT = httpx.Timeout(
+    timeout=90.0,
+    connect=10.0,
+    write=30.0,
+    pool=10.0,
+)
+
+
 class ProviderError(Exception):
     def __init__(self, code: str, message: str, status: int = 502, details: dict[str, Any] | None = None):
         super().__init__(message)
@@ -63,7 +71,11 @@ class HTTPProvider(Provider):
 
     async def request(self, *args: Any, **kwargs: Any) -> httpx.Response:
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            # Semantic extraction and grounded teaching prompts are materially
+            # larger than the lightweight connection probe. Keep connection
+            # failures fast, while allowing a real model enough time to finish
+            # a bounded response without forcing a Fake fallback.
+            async with httpx.AsyncClient(timeout=PROVIDER_TIMEOUT) as client:
                 return await client.request(*args, **kwargs)
         except httpx.TimeoutException as exc:
             raise ProviderError("PROVIDER_TIMEOUT", "Provider 请求超时", 504) from exc

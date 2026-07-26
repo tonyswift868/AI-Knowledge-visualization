@@ -558,3 +558,42 @@ def test_system_estimate_and_scheduler_balance_minutes_not_item_counts():
     ]
     assert max(loads) - min(loads) < hard["total_mastery_task_minutes"]
     assert len(set(point_counts)) > 1
+
+
+def test_scheduler_does_not_strand_capacity_between_splittable_learning_units():
+    items = [
+        {
+            "id": f"point-{index}",
+            "name": f"陌生资料单元 {index}",
+            "mastery_estimate": {
+                "understand_minutes": 5,
+                "recall_minutes": 5,
+                "guided_practice_minutes": 5,
+                "independent_application_minutes": 8,
+                "review_minutes": 5,
+                "total_mastery_task_minutes": 28,
+            },
+            "source_evidence": [{"chunk_id": f"chunk-{index}"}],
+            "acceptance_method": "能够独立解释并应用",
+        }
+        for index in range(1, 5)
+    ]
+    calendar, unscheduled = schedule_by_capacity(
+        items,
+        {
+            "start_date": "2026-07-27",
+            "deadline": "2026-08-06",
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 20,
+            "initial_learning_period_ratio": 0.5,
+        },
+    )
+
+    initial_days = [
+        day for day in calendar if day["study_phase"] == "initial_learning"
+    ]
+    assert sum(day["capacity_minutes"] for day in initial_days) == 120
+    assert sum(day["planned_task_minutes"] for day in initial_days) == 92
+    assert unscheduled == 0

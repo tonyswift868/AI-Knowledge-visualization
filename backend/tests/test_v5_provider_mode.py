@@ -78,6 +78,14 @@ def test_provider_session_real_request_payload_and_response_metadata(client, mon
     assert request.headers["authorization"] == "Bearer v5-secret"
 
 
+def test_provider_timeout_allows_long_generation_but_keeps_connect_failures_fast():
+    timeout = provider_service.PROVIDER_TIMEOUT
+    assert timeout.read == 90.0
+    assert timeout.connect == 10.0
+    assert timeout.write == 30.0
+    assert timeout.pool == 10.0
+
+
 def test_api_key_not_in_legacy_db_or_provider_session_response(client, monkeypatch, tmp_path):
     install_mock_provider(monkeypatch)
     result = make_real_session(client)
