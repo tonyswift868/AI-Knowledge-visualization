@@ -491,13 +491,11 @@ export function App() {
         <nav>
           {[
             ["home", Gauge, "总览"],
-            ["create", Plus, "创建计划"],
-            ["plan", CalendarDays, "计划日历"],
+            ["active", CalendarDays, "学习任务"],
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
             ["expedition", Sparkles, "学习远征"],
             ["settings", Settings2, "Provider 设置"],
-            ["active", Brain, "主动教学链"],
           ].map(([key, Icon, label]: any) => (
             <button
               className={tab === key ? "active" : ""}
@@ -546,8 +544,10 @@ export function App() {
                       ? "学习远征"
                     : tab === "learn"
                       ? "今日学习"
-                      : tab === "progress"
+                    : tab === "progress"
                         ? "进度与掌握"
+                    : tab === "active"
+                      ? "学习任务"
                         : "设置"}
             </b>
           </div>
@@ -567,13 +567,13 @@ export function App() {
               onCreate={() => {
                 setWs(null);
                 setAllowExternalKnowledge(false);
-      setPlan(null);
-      setAssessment(null);
-      setTab("create");
+                setPlan(null);
+                setAssessment(null);
+                setTab("active");
                 setStepState(0);
                 setMaxStep(0);
               }}
-              onContinue={() => setTab("learn")}
+              onContinue={() => setTab("active")}
               onDemo={createDemo}
             />
           )}{" "}

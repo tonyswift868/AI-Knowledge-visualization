@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { activeRequest, activeSnapshot, uploadActiveMaterial } from "./api";
+import {
+  activeLearningTasks,
+  activeRequest,
+  activeSnapshot,
+  type ActiveLearningTaskSummary,
+  uploadActiveMaterial,
+} from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
 import "./active-teaching.css";
 
@@ -23,6 +29,8 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     }
   });
   const [snapshot, setSnapshot] = useState<any>(null);
+  const [learningTasks, setLearningTasks] = useState<ActiveLearningTaskSummary[]>([]);
+  const [creatingNewTask, setCreatingNewTask] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [goal, setGoal] = useState("完全掌握上传资料，并能用可验证的方式独立应用");
   const [level, setLevel] = useState("beginner");
@@ -51,7 +59,10 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
 
   const refresh = async () => {
     const requestSequence = ++refreshSequence.current;
-    const next = await activeSnapshot(activeWorkspaceId);
+    const [next, taskItems] = await Promise.all([
+      activeSnapshot(activeWorkspaceId),
+      activeLearningTasks(),
+    ]);
     let problemItems: any[] = [];
     try {
       const problemPayload = await activeRequest(
@@ -62,7 +73,19 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       problemItems = [];
     }
     if (requestSequence !== refreshSequence.current) return;
+    setLearningTasks(taskItems);
+    if (
+      !next.receipt
+      && !(next.materials || []).length
+      && taskItems.length
+      && !taskItems.some((item) => item.workspace_id === activeWorkspaceId)
+      && !creatingNewTask
+    ) {
+      setActiveWorkspaceId(taskItems[0].workspace_id);
+      return;
+    }
     setSnapshot(next);
+    if (next.receipt || (next.materials || []).length) setCreatingNewTask(false);
     setProblems(problemItems);
     setProblemId((current) =>
       problemItems.some((item: any) => item.id === current)
@@ -222,6 +245,55 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     return current;
   };
 
+  const createNewTask = () => {
+    const suffix =
+      globalThis.crypto?.randomUUID?.().slice(0, 8)
+      || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    setSnapshot(null);
+    setFile(null);
+    setGoal("完全掌握上传资料，并能用可验证的方式独立应用");
+    setCreatingNewTask(true);
+    setActiveWorkspaceId(`learning-task-${suffix}`);
+  };
+
+  const enterCalendarTask = async (task: any) => {
+    let current = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/sessions/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+      },
+    );
+    if (current.state?.active_task_id !== task.id) {
+      current = await activeRequest(
+        `/sessions/${encodeURIComponent(current.session_id)}/focus`,
+        {
+          method: "POST",
+          body: JSON.stringify({ task_id: task.id }),
+        },
+      );
+    }
+    for (let step = 0; step < 4 && !current.state?.autonomy?.awaiting_learner; step += 1) {
+      current = await activeRequest(
+        `/sessions/${encodeURIComponent(current.session_id)}/teach-next`,
+        {
+          method: "POST",
+          body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+        },
+      );
+    }
+    window.setTimeout(
+      () => {
+        const workbench = document.getElementById("active-teacher-workbench");
+        if (typeof workbench?.scrollIntoView === "function") {
+          workbench.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      },
+      0,
+    );
+    return current;
+  };
+
   const toggleWeekday = (day: number) => {
     setStudyWeekdays((current) =>
       current.includes(day)
@@ -323,60 +395,68 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     <section className="active-chain" data-testid="active-teaching-chain">
       <header className="active-chain__hero">
         <div>
-          <span className="active-chain__eyebrow">通用主动式 AI 教学链</span>
-          <h2>上传任意学习资料，生成可追溯知识地图与掌握计划</h2>
-          <p>资料内容决定知识结构、验收方式和任务估时；页面不内置具体课程或固定指标。</p>
+          <span className="active-chain__eyebrow">统一学习任务中心</span>
+          <h2>创建一次，之后从日历直接进入每天的学习</h2>
+          <p>每个任务独立保存计划、知识地图、教师记忆和本地 RAG；切换任务不会串资料。</p>
         </div>
-        <label>
-          验收空间 ID
-          <input data-testid="active-workspace-id" value={activeWorkspaceId} onChange={(event) => setActiveWorkspaceId(event.target.value)} />
-        </label>
+        <button data-testid="active-new-task" onClick={createNewTask}>＋ 新建学习任务</button>
       </header>
 
       {error && <div className="active-chain__error" role="alert">{error}</div>}
       {busy && <div className="active-chain__busy">正在执行：{busy}</div>}
 
-      <div className="active-chain__grid">
-        <article className="active-chain__card">
-          <span className="active-chain__step">01 · 资料摄取</span>
-          <h3>上传并解析学习资料</h3>
-          <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-          <button data-testid="active-upload" disabled={!file || Boolean(busy)} onClick={() => run("上传、分析并规划", uploadAndAnalyze)}>上传并自动生成知识地图与计划</button>
-          <div data-testid="active-material-count">资料 {materials.length} 份</div>
-          <div className="active-chain__receipt" data-testid="active-local-knowledge-base">
-            <b>本地 RAG 知识库：{localKnowledgeBase?.status === "ready" ? "可用" : "等待资料"}</b>
-            <span>
-              {localKnowledgeBase?.material_count || 0} 份资料 · {localKnowledgeBase?.chunk_count || 0} 个可引用分块 ·
-              {localKnowledgeBase?.indexed_characters || 0} 字符
-            </span>
-              <span>
-                {localKnowledgeBase?.scope === "current_plan"
-                  ? `当前计划独立 · 冻结 ${(localKnowledgeBase?.material_ids || []).length} 份资料`
-                  : "计划建立后自动冻结资料范围"}
-                {" · "}无需联网 · 混合召回（词项、中文片段、标题权重与来源分散）
-              </span>
+      <div className="active-task-hub" data-testid="active-task-hub">
+        <aside className="active-task-hub__rail">
+          <div className="active-task-hub__title">
+            <b>我的学习任务</b>
+            <span>{learningTasks.length} 个独立计划</span>
           </div>
-          {materials.map((item: any) => (
-            <div className="active-chain__receipt" key={item.id}>
-              <b>{item.original_filename}</b>
-              <span>{item.size_bytes} bytes · SHA-256 {item.sha256.slice(0, 12)}…</span>
-              <span>{item.chunk_count} chunks · {item.parser_name}</span>
-              {item.original_filename.toLowerCase().endsWith(".json") && graph.knowledge_points.length > 0 && (
-                <button
-                  disabled={Boolean(busy)}
-                  onClick={() => run("导入资料内的可执行题目规格", () => importProblemSpecs(item.id))}
-                >
-                  导入经来源验证的题目与测试
-                </button>
-              )}
-            </div>
-          ))}
-        </article>
+          {learningTasks.length === 0 && (
+            <p>还没有任务。上传第一份资料后，系统会自动建立计划。</p>
+          )}
+          {learningTasks.map((item) => {
+            const progress = item.task_count
+              ? Math.round(item.completed_task_count / item.task_count * 100)
+              : 0;
+            return (
+              <button
+                className={item.workspace_id === activeWorkspaceId ? "is-active" : ""}
+                data-testid={`active-task-switch-${item.workspace_id}`}
+                key={item.workspace_id}
+                onClick={() => {
+                  setCreatingNewTask(false);
+                  setActiveWorkspaceId(item.workspace_id);
+                }}
+              >
+                <span><b>{item.title}</b><em>{item.status === "learning" ? "学习中" : item.status === "planned" ? "已规划" : "待完善"}</em></span>
+                <small>{item.knowledge_point_count} 个知识点 · {item.completed_task_count}/{item.task_count} 项</small>
+                <i><span style={{ width: `${progress}%` }} /></i>
+              </button>
+            );
+          })}
+        </aside>
+        <section className="active-task-hub__current">
+          <span>当前任务</span>
+          <h3>{snapshot?.receipt?.learning_goal || "创建一个新的学习任务"}</h3>
+          {plan ? (
+            <p>
+              计划 {plan.feasible ? "可执行" : "需要调整"} ·
+              {graph.knowledge_points.length} 个知识点 ·
+              每个可学习日约 {plan.daily_task_minutes_budget} 分钟
+            </p>
+          ) : (
+            <p>填写目标、期限并上传资料，系统一次完成知识地图、估时和排程。</p>
+          )}
+          <code data-testid="active-workspace-id">{activeWorkspaceId}</code>
+        </section>
+      </div>
 
-        <article className="active-chain__card">
-          <span className="active-chain__step">02 · 创建掌握计划</span>
-          <h3>告诉系统目标和真实可用时间</h3>
-          <p className="active-chain__muted">你不需要猜每天该学多少分钟。系统会先评估资料，再把任务分配到可用日期。</p>
+      <div className="active-chain__grid">
+        <article className="active-chain__card active-chain__creator-card">
+          <span className="active-chain__step">01 · 一次创建</span>
+          <h3>{plan ? "任务资料与学习条件" : "上传资料，系统自动完成知识地图和计划"}</h3>
+          <p className="active-chain__muted">只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。</p>
+          <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           <label>学习目标<textarea data-testid="active-goal" value={goal} onChange={(event) => setGoal(event.target.value)} /></label>
           <div className="active-chain__row">
             <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
@@ -392,27 +472,6 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
             </b>
             <small>前 50% 可学习日期完成第一遍，后 50% 进入滚动复习；生成知识地图后会按真实知识量再次校准。</small>
           </div>
-          <fieldset>
-            <legend>每周可学习日（未选日期为固定休息日）</legend>
-            <div className="active-chain__row" data-testid="active-study-weekdays">
-              {["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map((label, index) => (
-                <label key={label}>
-                  <input
-                    type="checkbox"
-                    checked={studyWeekdays.includes(index)}
-                    onChange={() => toggleWeekday(index)}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <div className="active-chain__row">
-            <label>额外不可学习日期（逗号分隔）<input data-testid="active-unavailable-dates" value={unavailableDates} onChange={(event) => setUnavailableDates(event.target.value)} /></label>
-            <label>短时学习日<input data-testid="active-short-date" type="date" value={shortDate} onChange={(event) => setShortDate(event.target.value)} /></label>
-            <label>短时日分钟<input data-testid="active-short-minutes" type="number" value={shortMinutes} onChange={(event) => setShortMinutes(Number(event.target.value))} /></label>
-          </div>
-          <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
           <label>
             AI 教师人设
             <textarea
@@ -431,22 +490,78 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               placeholder="例如：游戏、做饭、购物、篮球；教师会优先从这些生活经验举例"
             />
           </label>
-          <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+          <details className="active-chain__advanced">
+            <summary>高级时间与学习偏好（可选）</summary>
+            <fieldset>
+              <legend>每周可学习日（未选日期为固定休息日）</legend>
+              <div className="active-chain__row" data-testid="active-study-weekdays">
+                {["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map((label, index) => (
+                  <label key={label}>
+                    <input
+                      type="checkbox"
+                      checked={studyWeekdays.includes(index)}
+                      onChange={() => toggleWeekday(index)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="active-chain__row">
+              <label>额外不可学习日期（逗号分隔）<input data-testid="active-unavailable-dates" value={unavailableDates} onChange={(event) => setUnavailableDates(event.target.value)} /></label>
+              <label>短时学习日<input data-testid="active-short-date" type="date" value={shortDate} onChange={(event) => setShortDate(event.target.value)} /></label>
+              <label>短时日分钟<input data-testid="active-short-minutes" type="number" value={shortMinutes} onChange={(event) => setShortMinutes(Number(event.target.value))} /></label>
+            </div>
+            <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
+            <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+          </details>
+          <button
+            data-testid="active-upload"
+            disabled={!file || Boolean(busy)}
+            onClick={() => run("创建学习任务", uploadAndAnalyze)}
+          >
+            创建任务并自动生成知识地图与计划
+          </button>
           <button
             data-testid="active-save-receipt"
             disabled={!materials.length || Boolean(busy)}
-            onClick={() => run("保存学习条件并分析资料", async () => {
+            onClick={() => run("更新任务条件与计划", async () => {
               await saveReceipt();
               await generateKnowledgeMap();
+              await generateMasteryPlan();
             })}
           >
-            保存条件并生成知识地图
+            更新当前任务的知识地图与计划
           </button>
+          <div data-testid="active-material-count">已保存资料 {materials.length} 份</div>
+          <div className="active-chain__receipt" data-testid="active-local-knowledge-base">
+            <b>当前任务 RAG：{localKnowledgeBase?.status === "ready" ? "可用" : "等待资料"}</b>
+            <span>
+              {localKnowledgeBase?.material_count || 0} 份资料 · {localKnowledgeBase?.chunk_count || 0} 个可引用分块 ·
+              {localKnowledgeBase?.indexed_characters || 0} 字符
+            </span>
+            <span>
+              {localKnowledgeBase?.scope === "current_plan"
+                ? `已冻结到计划 ${localKnowledgeBase?.plan_id || ""}，不会检索其他任务`
+                : "计划建立后自动冻结资料范围"}
+            </span>
+          </div>
+          {materials.map((item: any) => (
+            <div className="active-chain__receipt" key={item.id}>
+              <b>{item.original_filename}</b>
+              <span>{item.chunk_count} chunks · SHA-256 {item.sha256.slice(0, 12)}…</span>
+              {item.original_filename.toLowerCase().endsWith(".json") && graph.knowledge_points.length > 0 && (
+                <button disabled={Boolean(busy)} onClick={() => run("导入资料内的可执行题目规格", () => importProblemSpecs(item.id))}>
+                  导入经来源验证的题目与测试
+                </button>
+              )}
+            </div>
+          ))}
         </article>
 
         <article className="active-chain__card">
-          <span className="active-chain__step">03 · 知识图谱</span>
-          <h3>生成有来源的知识点与依赖</h3>
+          <span className="active-chain__step">02 · 计划知识地图</span>
+          <h3>先看清要学什么，再进入日历</h3>
           <button data-testid="active-generate-graph" disabled={!snapshot?.receipt || Boolean(busy)} onClick={() => run("从资料生成知识地图", generateKnowledgeMap)}>从上传资料生成知识地图</button>
           <div className="active-chain__receipt" data-testid="active-extraction-mode">
             <b>抽取模式：{graph.extraction?.mode || "尚未生成"}</b>
@@ -487,30 +602,32 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               ))}
             </div>
           )}
-          {graph.knowledge_points.slice(0, 4).map((point: any) => (
-            <div className="active-chain__receipt" key={point.id}>
-              <b>{point.name}</b>
-              <span>{point.difficulty} · 完全掌握 {point.mastery_estimate?.total_mastery_task_minutes || point.estimated_task_minutes} 标准任务分钟 · 掌握度 {(point.current_mastery * 100).toFixed(0)}%</span>
-              {point.mastery_estimate && (
-                <>
-                  <span>
-                    理解 {point.mastery_estimate.understand_minutes} · 回忆 {point.mastery_estimate.recall_minutes} ·
-                    引导练习 {point.mastery_estimate.guided_practice_minutes} · 独立应用 {point.mastery_estimate.independent_application_minutes} ·
-                    复习 {point.mastery_estimate.review_minutes}
-                  </span>
-                  <span>
-                    估时依据 {point.mastery_estimate.basis || "legacy"} ·
-                    置信度 {point.mastery_estimate.confidence || "未知"}
-                  </span>
-                </>
-              )}
-            </div>
-          ))}
+          <div className="active-chain__knowledge-map" data-testid="active-knowledge-map">
+            {graph.knowledge_points.map((point: any) => {
+              const prerequisites = graph.edges
+                .filter((edge: any) => edge.dependent_id === point.id)
+                .map((edge: any) => graph.knowledge_points.find((candidate: any) => candidate.id === edge.prerequisite_id)?.name)
+                .filter(Boolean);
+              return (
+                <div className="active-chain__knowledge-node" key={point.id}>
+                  <span>{prerequisites.length ? `前置：${prerequisites.join("、")}` : "起点知识"}</span>
+                  <b>{point.name}</b>
+                  <small>
+                    {point.difficulty} ·
+                    {point.mastery_estimate?.total_mastery_task_minutes || point.estimated_task_minutes} 分钟 ·
+                    掌握 {(point.current_mastery * 100).toFixed(0)}%
+                  </small>
+                  <i style={{ width: `${Math.max(4, point.current_mastery * 100)}%` }} />
+                </div>
+              );
+            })}
+            {!graph.knowledge_points.length && <p>创建计划后，知识结构会完整显示在这里。</p>}
+          </div>
         </article>
 
         <article className="active-chain__card">
-          <span className="active-chain__step">04 · 依赖计划</span>
-          <h3>按知识依赖与可用时间生成计划</h3>
+          <span className="active-chain__step">03 · 每日计划日历</span>
+          <h3>点击任意首学任务，直接进入对应课程</h3>
           <button data-testid="active-generate-plan" disabled={!graph.knowledge_points.length || Boolean(busy)} onClick={() => run("生成完全掌握计划", generateMasteryPlan)}>生成完全掌握计划</button>
           {plan && (
             <>
@@ -539,7 +656,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                 <div className="active-chain__calendar" data-testid="active-plan-calendar">
                   {plan.calendar
                     .map((day: any) => (
-                    <div className={`active-chain__day ${day.capacity_minutes === 0 ? "is-rest" : ""}`} key={day.date}>
+                    <div className={`active-chain__day ${day.capacity_minutes === 0 ? "is-rest" : ""} ${day.tasks.some((task: any) => task.id === session?.state?.active_task_id) ? "is-current" : ""}`} key={day.date}>
                       <b>{day.date}</b>
                       <span>{day.availability_reason}</span>
                       <span>{day.study_phase === "initial_learning" ? "首学阶段" : day.study_phase === "review" ? "复习阶段" : "休息"}</span>
@@ -562,9 +679,23 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                         补救 {day.tasks.filter((task: any) => task.task_type === "remediation").length}
                       </span>
                       {day.tasks.map((task: any, taskIndex: number) => (
-                        <small key={task.id || `${day.date}-${task.knowledge_point_id}-${task.learning_phase}-${taskIndex}`}>
-                          {task.title} · {task.estimated_task_minutes} 分钟 · {task.status}
-                        </small>
+                        task.task_type === "initial_learning" ? (
+                          <button
+                            className="active-chain__calendar-task"
+                            data-testid={`active-calendar-task-${task.id}`}
+                            disabled={Boolean(busy)}
+                            key={task.id || `${day.date}-${task.knowledge_point_id}-${task.learning_phase}-${taskIndex}`}
+                            onClick={() => run(`进入 ${task.title}`, () => enterCalendarTask(task))}
+                          >
+                            <b>{task.title}</b>
+                            <small>{task.estimated_task_minutes} 分钟 · {task.status}</small>
+                            <span>进入学习 →</span>
+                          </button>
+                        ) : (
+                          <small key={task.id || `${day.date}-${task.knowledge_point_id}-${task.learning_phase}-${taskIndex}`}>
+                            {task.title} · {task.estimated_task_minutes} 分钟 · {task.status}
+                          </small>
+                        )
                       ))}
                       {(day.projected_review_items || []).slice(0, 4).map((item: any) => (
                         <small key={`projected-${day.date}-${item.knowledge_point_id}`}>
@@ -583,9 +714,9 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
         </article>
       </div>
 
-      <article className="active-chain__teacher">
+      <article className="active-chain__teacher" id="active-teacher-workbench">
         <div className="active-chain__teacher-head">
-          <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>知识简报 → 检索讲解 → 邀请提问 → 引导练习 → 补救</h3></div>
+          <div><span className="active-chain__step">04 · 今日学习</span><h3>当前任务专属教师 · 计划 RAG 与记忆不会串线</h3></div>
           <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTeacherLedLesson)}>开始今日课程（教师主动带学）</button>
           {session && <button data-testid="active-replan" disabled={Boolean(busy)} onClick={() => run("滚动未完成任务", () => activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/replan`, {
             method: "POST",

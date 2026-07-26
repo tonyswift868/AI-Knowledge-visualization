@@ -1,9 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 
 const root = process.cwd();
 const python = path.resolve(root, "../.venv/Scripts/python.exe");
+const activeTestRoot = path.resolve(root, "../test-results/active-teaching");
+mkdirSync(activeTestRoot, { recursive: true });
 
 export default defineConfig({
   testDir: "./e2e",
@@ -26,6 +29,11 @@ export default defineConfig({
     {
       command: `"${python}" -m uvicorn app.main:app --host 127.0.0.1 --port 8010`,
       cwd: path.resolve(root, "../backend"),
+      env: {
+        ...process.env,
+        MENTORFLOW_ORM_DB: path.resolve(activeTestRoot, "active-teaching-e2e.db"),
+        MENTORFLOW_ACTIVE_UPLOAD_ROOT: path.resolve(activeTestRoot, "active-teaching-uploads"),
+      },
       url: "http://127.0.0.1:8010/api/health",
       reuseExistingServer: false,
       timeout: 120_000,

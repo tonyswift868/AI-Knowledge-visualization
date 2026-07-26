@@ -2,9 +2,70 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 
 
+test("unified task hub creates once, switches plans, and enters learning from calendar", async ({ page }) => {
+  test.setTimeout(180_000);
+  const pythonMaterial = path.resolve(
+    process.cwd(),
+    "../demo/generic_python_learning_material.md",
+  );
+  const physicsMaterial = path.resolve(
+    process.cwd(),
+    "../demo/generic_physics_learning_material.md",
+  );
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/");
+  await page.getByTestId("nav-active").click();
+
+  await page.getByTestId("active-new-task").click();
+  const pythonWorkspace = (await page.getByTestId("active-workspace-id").textContent())!;
+  await page.getByTestId("active-goal").fill("学会整数列表求和");
+  await page.getByTestId("active-material-file").setInputFiles(pythonMaterial);
+  await page.getByTestId("active-upload").click();
+  await expect(page.getByTestId("active-plan-feasible")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("active-knowledge-map")).toContainText("整数列表求和");
+  await expect(page.getByTestId(`active-task-switch-${pythonWorkspace}`)).toBeVisible();
+
+  await page.getByTestId("active-new-task").click();
+  const physicsWorkspace = (await page.getByTestId("active-workspace-id").textContent())!;
+  expect(physicsWorkspace).not.toBe(pythonWorkspace);
+  await page.getByTestId("active-goal").fill("理解牛顿运动定律和受力图");
+  await page.getByTestId("active-material-file").setInputFiles(physicsMaterial);
+  await page.getByTestId("active-upload").click();
+  await expect(page.getByTestId("active-plan-feasible")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("active-knowledge-map")).toContainText("牛顿运动定律");
+  await expect(page.getByTestId(`active-task-switch-${physicsWorkspace}`)).toBeVisible();
+  await expect(page.getByTestId(`active-task-switch-${pythonWorkspace}`)).toBeVisible();
+
+  await page.getByTestId(`active-task-switch-${pythonWorkspace}`).click();
+  await expect(page.getByTestId("active-workspace-id")).toHaveText(pythonWorkspace);
+  await expect(page.getByTestId("active-knowledge-map")).toContainText("整数列表求和");
+  await page.locator('[data-testid^="active-calendar-task-"]').first().click();
+  await expect(page.getByTestId("active-conversation-history")).toContainText(
+    "整数列表求和",
+    { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("active-local-knowledge-base")).toContainText(
+    "不会检索其他任务",
+  );
+
+  await page.getByTestId(`active-task-switch-${physicsWorkspace}`).click();
+  await expect(page.getByTestId("active-workspace-id")).toHaveText(physicsWorkspace);
+  await expect(page.getByTestId("active-knowledge-map")).toContainText("牛顿运动定律");
+  await page.locator('[data-testid^="active-calendar-task-"]').first().click();
+  await expect(page.getByTestId("active-conversation-history")).toContainText(
+    "牛顿运动定律",
+    { timeout: 30_000 },
+  );
+  expect(consoleErrors).toEqual([]);
+});
+
+
 test("arbitrary material drives plan, remediation, verified practice, and persistence", async ({ page }) => {
   test.setTimeout(180_000);
-  const workspaceId = `generic-e2e-${Date.now()}`;
   const materialPath = path.resolve(
     process.cwd(),
     "../demo/generic_python_learning_material.md",
@@ -21,7 +82,8 @@ test("arbitrary material drives plan, remediation, verified practice, and persis
   await page.goto("/");
   await page.getByTestId("nav-active").click();
   await expect(page.getByTestId("active-teaching-chain")).toBeVisible();
-  await page.getByTestId("active-workspace-id").fill(workspaceId);
+  await page.getByTestId("active-new-task").click();
+  const generatedWorkspaceId = (await page.getByTestId("active-workspace-id").textContent())!;
   await expect(page.getByTestId("active-system-allocation")).toContainText("系统分配每日投入");
   await expect(page.getByTestId("active-daily-minutes")).toHaveCount(0);
   await page.getByTestId("active-foundation").selectOption("zero_foundation");
@@ -97,7 +159,7 @@ test("arbitrary material drives plan, remediation, verified practice, and persis
 
   await page.reload();
   await page.getByTestId("nav-active").click();
-  await expect(page.getByTestId("active-workspace-id")).toHaveValue(workspaceId);
+  await expect(page.getByTestId("active-workspace-id")).toHaveText(generatedWorkspaceId);
   await expect(page.getByTestId("active-session-state")).toContainText(
     "check_understanding",
   );

@@ -307,6 +307,88 @@ def test_system_allocation_plan_scoped_rag_and_teacher_memory(tmp_path):
         assert restored["state"]["teacher_memory"]["plan_id"] == alpha_plan["id"]
 
 
+def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
+    configure_orm(tmp_path / "unified-task-hub.db")
+    created: dict[str, dict] = {}
+    with TestClient(app) as client:
+        for workspace, topic in (
+            ("task-cooking", "切洋葱时保持刀尖稳定并用指节引导刀身。"),
+            ("task-cycling", "骑车刹车时前后刹协同，并逐渐增加制动力。"),
+        ):
+            material = client.post(
+                f"/api/active-teaching/workspaces/{workspace}/materials",
+                files={
+                    "file": (
+                        f"{workspace}.md",
+                        f"# {workspace}\n{topic}".encode("utf-8"),
+                        "text/markdown",
+                    )
+                },
+            ).json()
+            receipt = client.put(
+                f"/api/active-teaching/workspaces/{workspace}/receipt",
+                json={
+                    **_receipt(material["id"], daily_minutes=60, deadline_days=7),
+                    "learning_goal": f"掌握 {workspace}",
+                },
+            )
+            assert receipt.status_code == 200, receipt.text
+            assert client.post(
+                f"/api/active-teaching/workspaces/{workspace}/knowledge-graph/generate"
+            ).status_code == 200
+            plan = client.post(
+                f"/api/active-teaching/workspaces/{workspace}/plans/generate"
+            ).json()
+            session = client.post(
+                f"/api/active-teaching/workspaces/{workspace}/sessions/start"
+            ).json()
+            created[workspace] = {"plan": plan, "session": session}
+
+        task_index = client.get("/api/active-teaching/workspaces")
+        assert task_index.status_code == 200, task_index.text
+        indexed = {
+            item["workspace_id"]: item for item in task_index.json()["items"]
+        }
+        assert set(indexed) == {"task-cooking", "task-cycling"}
+        assert indexed["task-cooking"]["title"] == "掌握 task-cooking"
+        assert indexed["task-cooking"]["status"] == "learning"
+        assert indexed["task-cooking"]["knowledge_point_count"] > 0
+        assert (
+            indexed["task-cooking"]["session_id"]
+            == created["task-cooking"]["session"]["session_id"]
+        )
+
+        cooking_tasks = created["task-cooking"]["plan"]["tasks"]
+        focused_task = cooking_tasks[-1]
+        focused = client.post(
+            f"/api/active-teaching/sessions/{created['task-cooking']['session']['session_id']}/focus",
+            json={"task_id": focused_task["id"]},
+        )
+        assert focused.status_code == 200, focused.text
+        focused_state = focused.json()["state"]
+        assert focused_state["active_task_id"] == focused_task["id"]
+        assert (
+            focused_state["current_knowledge_point_id"]
+            == focused_task["knowledge_point_id"]
+        )
+        assert (
+            focused_state["teacher_memory"]["plan_id"]
+            == created["task-cooking"]["plan"]["id"]
+        )
+        assert focused_state["autonomy"]["reason"] == "calendar_task_selected"
+
+        foreign_task = created["task-cycling"]["plan"]["tasks"][0]
+        rejected = client.post(
+            f"/api/active-teaching/sessions/{created['task-cooking']['session']['session_id']}/focus",
+            json={"task_id": foreign_task["id"]},
+        )
+        assert rejected.status_code == 409
+        assert (
+            rejected.json()["error"]["code"]
+            == "ACTIVE_TASK_OUTSIDE_SESSION_PLAN"
+        )
+
+
 def test_deadline_capacity_reports_unscheduled_minutes(tmp_path):
     configure_orm(tmp_path / "active-capacity.db")
     large = "\n\n".join(

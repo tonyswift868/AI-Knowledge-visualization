@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import mimetypes
+import os
 import re
 import shutil
 import sqlite3
@@ -23,7 +24,12 @@ from .provider_service import ProviderError
 
 router = APIRouter(prefix="/api/active-teaching", tags=["active-teaching"])
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-UPLOAD_ROOT = PROJECT_ROOT / "data" / "active_teaching" / "uploads"
+UPLOAD_ROOT = Path(
+    os.getenv(
+        "MENTORFLOW_ACTIVE_UPLOAD_ROOT",
+        str(PROJECT_ROOT / "data" / "active_teaching" / "uploads"),
+    )
+).expanduser().resolve()
 SUPPORTED_SUFFIXES = {
     ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx",
     ".csv", ".json", ".yaml", ".yml", ".xml", ".rtf",
@@ -2523,6 +2529,7 @@ async def start_session(
             "remediation_stack": [],
             "route_index": 0,
             "route_length": len(tasks),
+            "active_task_id": first["id"],
             "mastery_evidence": [],
             "next_action": "explain_current_point",
             "estimated_task_minutes": first["estimated_task_minutes"],
@@ -3396,6 +3403,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                         (next_task["knowledge_point_id"],),
                     ).fetchone()
                     state["route_index"] = route_index
+                    state["active_task_id"] = next_task["id"]
                     state["current_knowledge_point_id"] = next_point["id"]
                     state["current_teaching_step"] = "explain"
                     state["next_action"] = "show_example"
@@ -3516,6 +3524,74 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
     with _connect() as connection:
+        return _public_session(connection, session_id)
+
+
+@router.post("/sessions/{session_id}/focus")
+def focus_session_task(
+    session_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    """Move an existing plan-scoped teacher to a selected calendar task.
+
+    The session, memory and retrieval scope stay bound to the same plan.  A
+    task from another plan is therefore rejected instead of silently changing
+    the teacher's knowledge base.
+    """
+    task_id = str(body.get("task_id") or "").strip()
+    if not task_id:
+        _error("ACTIVE_TASK_REQUIRED", "请选择要进入的日历任务", 422)
+    with _connect() as connection:
+        session = connection.execute(
+            "SELECT * FROM active_teaching_sessions WHERE id=?", (session_id,)
+        ).fetchone()
+        if not session:
+            _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
+        tasks = _task_rows(connection, session["plan_id"])
+        route_index = next(
+            (index for index, task in enumerate(tasks) if task["id"] == task_id),
+            None,
+        )
+        if route_index is None:
+            _error(
+                "ACTIVE_TASK_OUTSIDE_SESSION_PLAN",
+                "所选任务不属于当前教师会话的计划，不能混用另一任务的知识库或记忆。",
+                409,
+            )
+        task = tasks[route_index]
+        state = json.loads(session["state"])
+        state["route_index"] = route_index
+        state["route_length"] = len(tasks)
+        state["current_knowledge_point_id"] = task["knowledge_point_id"]
+        state["current_teaching_step"] = "daily_briefing"
+        state["next_action"] = "explain_current_point"
+        state["estimated_task_minutes"] = task["estimated_task_minutes"]
+        state["active_task_id"] = task["id"]
+        state["today_remaining_task_minutes"] = int(
+            connection.execute(
+                """SELECT COALESCE(SUM(estimated_task_minutes-completed_task_minutes),0)
+                   FROM active_plan_tasks
+                   WHERE plan_id=? AND day_date=? AND status<>'completed'""",
+                (session["plan_id"], task["day_date"]),
+            ).fetchone()[0]
+        )
+        state["today_plan"] = _daily_route_summary(
+            connection, session["plan_id"], task["day_date"]
+        )
+        state["autonomy"] = {
+            "mode": "teacher_led_until_learner_input",
+            "awaiting_learner": False,
+            "reason": "calendar_task_selected",
+        }
+        teacher_memory = dict(state.get("teacher_memory") or {})
+        teacher_memory["last_interaction"] = "calendar_task_selected"
+        state["teacher_memory"] = teacher_memory
+        connection.execute(
+            """UPDATE active_teaching_sessions
+               SET state=?,updated_at=? WHERE id=?""",
+            (json.dumps(state, ensure_ascii=False), _now(), session_id),
+        )
+        connection.commit()
         return _public_session(connection, session_id)
 
 
@@ -4580,3 +4656,113 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
                 _completion_report(connection, session_row["id"]) if session_row else None
             ),
         }
+
+
+@router.get("/workspaces")
+def list_learning_workspaces() -> dict[str, Any]:
+    """Return the durable task index for the unified learning workspace."""
+    with _connect() as connection:
+        workspace_ids = [
+            row["workspace_id"]
+            for row in connection.execute(
+                """SELECT workspace_id FROM active_materials
+                   UNION SELECT workspace_id FROM active_receipts
+                   UNION SELECT workspace_id FROM active_plans
+                   ORDER BY workspace_id"""
+            ).fetchall()
+        ]
+        items: list[dict[str, Any]] = []
+        for workspace_id in workspace_ids:
+            receipt_row = connection.execute(
+                "SELECT payload,updated_at FROM active_receipts WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()
+            receipt = json.loads(receipt_row["payload"]) if receipt_row else {}
+            plan = connection.execute(
+                """SELECT * FROM active_plans
+                   WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1""",
+                (workspace_id,),
+            ).fetchone()
+            session = (
+                connection.execute(
+                    """SELECT id,updated_at FROM active_teaching_sessions
+                       WHERE plan_id=? ORDER BY updated_at DESC LIMIT 1""",
+                    (plan["id"],),
+                ).fetchone()
+                if plan
+                else None
+            )
+            counts = connection.execute(
+                """SELECT COUNT(*) AS material_count,
+                          COALESCE(SUM(CASE WHEN status='ready' THEN 1 ELSE 0 END),0)
+                              AS ready_material_count
+                   FROM active_materials WHERE workspace_id=?""",
+                (workspace_id,),
+            ).fetchone()
+            point_count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM active_knowledge_points WHERE workspace_id=?",
+                    (workspace_id,),
+                ).fetchone()[0]
+            )
+            task_counts = {"total": 0, "completed": 0}
+            next_task = None
+            if plan:
+                task_row = connection.execute(
+                    """SELECT id,title,day_date,estimated_task_minutes,status,
+                              task_type,learning_phase
+                       FROM active_plan_tasks
+                       WHERE plan_id=? AND status<>'completed'
+                       ORDER BY day_date,task_order,id LIMIT 1""",
+                    (plan["id"],),
+                ).fetchone()
+                if task_row:
+                    next_task = dict(task_row)
+                count_row = connection.execute(
+                    """SELECT COUNT(*) AS total,
+                              COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END),0)
+                                  AS completed
+                       FROM active_plan_tasks WHERE plan_id=?""",
+                    (plan["id"],),
+                ).fetchone()
+                task_counts = {
+                    "total": int(count_row["total"]),
+                    "completed": int(count_row["completed"]),
+                }
+            updated_candidates = [
+                str(value)
+                for value in (
+                    receipt_row["updated_at"] if receipt_row else "",
+                    plan["created_at"] if plan else "",
+                    session["updated_at"] if session else "",
+                )
+                if value
+            ]
+            items.append(
+                {
+                    "workspace_id": workspace_id,
+                    "title": str(
+                        receipt.get("learning_goal")
+                        or (next_task["title"] if next_task else workspace_id)
+                    ),
+                    "status": (
+                        "learning"
+                        if session
+                        else "planned"
+                        if plan
+                        else "setting_up"
+                    ),
+                    "material_count": int(counts["material_count"]),
+                    "ready_material_count": int(counts["ready_material_count"]),
+                    "knowledge_point_count": point_count,
+                    "plan_id": plan["id"] if plan else None,
+                    "plan_feasible": bool(plan["feasible"]) if plan else None,
+                    "session_id": session["id"] if session else None,
+                    "task_count": task_counts["total"],
+                    "completed_task_count": task_counts["completed"],
+                    "next_task": next_task,
+                    "updated_at": max(updated_candidates) if updated_candidates else "",
+                }
+            )
+        items.sort(key=lambda item: (item["updated_at"], item["workspace_id"]), reverse=True)
+        return {"items": items}

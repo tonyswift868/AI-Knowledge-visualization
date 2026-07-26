@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 from fastapi.testclient import TestClient
-from app import db, orm
+from app import active_teaching, db, orm
 from app.main import app
 
 @pytest.fixture(autouse=True)
@@ -13,6 +13,7 @@ def isolated_databases(tmp_path_factory, monkeypatch):
     database_dir = tmp_path_factory.mktemp("mentorflow-databases")
     monkeypatch.setattr(db, "DB_PATH", database_dir / "legacy.db")
     monkeypatch.setattr(db, "DATA_DIR", database_dir)
+    monkeypatch.setattr(active_teaching, "UPLOAD_ROOT", database_dir / "active-uploads")
     db.init_db()
     orm.configure_orm(database_dir / "mentorflow_v2.db")
     orm.init_orm()

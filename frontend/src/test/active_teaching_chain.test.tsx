@@ -172,12 +172,13 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     await waitFor(() => expect(screen.getByTestId("active-material-count")).toHaveTextContent("资料 1 份"));
-    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("本地 RAG 知识库：可用");
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("当前任务 RAG：可用");
     expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("3 个可引用分块");
     expect(screen.getByText(/预留复习 12 分钟/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /上传任意学习资料/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /创建一次/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-edge-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("active-knowledge-map")).toHaveTextContent("资料内知识点");
     expect(screen.getByTestId("active-material-assessment")).toHaveTextContent(
       "通用资料评估",
     );
@@ -279,6 +280,54 @@ describe("ActiveTeachingChainView", () => {
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["uploaded_generic_1"]);
     });
+  });
+
+  it("switches durable tasks and enters a clicked calendar task", async () => {
+    const index = {
+      items: [{
+        workspace_id: "generic-active",
+        title: "掌握任意上传资料",
+        status: "learning",
+        material_count: 1,
+        knowledge_point_count: 1,
+        plan_id: "plan_1",
+        session_id: "session_1",
+        task_count: 1,
+        completed_task_count: 0,
+        next_task: snapshot.plan.calendar[0].tasks[0],
+        updated_at: "2026-07-25T00:00:00Z",
+      }],
+    };
+    const focused = {
+      ...snapshot.session,
+      state: {
+        ...snapshot.session.state,
+        active_task_id: "task_1",
+        autonomy: { awaiting_learner: true, reason: "calendar_task_selected" },
+      },
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const value = String(url);
+      let payload: any = snapshot;
+      if (value === "/api/active-teaching/workspaces") payload = index;
+      if (value.endsWith("/sessions/start") && init?.method === "POST") payload = snapshot.session;
+      if (value.endsWith("/focus") && init?.method === "POST") payload = focused;
+      return Promise.resolve({ ok: true, json: async () => payload });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    expect(await screen.findByTestId("active-task-hub")).toHaveTextContent("掌握任意上传资料");
+    fireEvent.click(await screen.findByTestId("active-calendar-task-task_1"));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/sessions/session_1/focus",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ task_id: "task_1" }),
+        }),
+      ),
+    );
   });
 
   it("restores a verified code draft and runs the real practice endpoint", async () => {
