@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -108,6 +108,73 @@ export function providerRequestContext(): Record<string, string> {
   return sessionId ? { provider_session_id: sessionId } : {};
 }
 
+let providerReconnectInFlight: Promise<any> | null = null;
+
+export function reconnectSavedProvider(): Promise<any> {
+  if (providerReconnectInFlight) return providerReconnectInFlight;
+  const state = useMentorStore.getState();
+  if (state.provider === "fake" || !state.apiKey.trim()) {
+    return Promise.resolve(null);
+  }
+  providerReconnectInFlight = (async () => {
+    if (state.providerSessionId) {
+      try {
+        const current = await request<any>(
+          `/provider-sessions/${encodeURIComponent(state.providerSessionId)}`,
+        );
+        if (
+          current.verified
+          && (!current.expires_at || new Date(current.expires_at).getTime() > Date.now())
+        ) {
+          useMentorStore.getState().setProviderSession({
+            providerSessionId: current.provider_session_id,
+            provider: state.provider,
+            baseUrl: state.baseUrl,
+            model: state.model,
+            verified: true,
+            expiresAt: current.expires_at,
+            latencyMs: current.latency_ms,
+            lastTestedAt: current.last_tested_at,
+          });
+          return current;
+        }
+      } catch {
+        // Backend restarts discard the in-memory session. Recreate it below
+        // from the browser-local provider configuration and credential.
+      }
+    }
+    const baseUrl = state.baseUrl.trim()
+      || (state.provider === "openai-compatible" ? "https://api.deepseek.com" : "");
+    const created = await request<any>("/provider-sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: state.provider,
+        base_url: baseUrl,
+        model: state.model,
+        api_key: state.apiKey,
+      }),
+    });
+    const result = await request<any>(
+      `/provider-sessions/${encodeURIComponent(created.provider_session_id)}/test`,
+      { method: "POST" },
+    );
+    useMentorStore.getState().setProviderSession({
+      providerSessionId: result.provider_session_id,
+      provider: state.provider,
+      baseUrl,
+      model: state.model,
+      verified: true,
+      expiresAt: result.expires_at,
+      latencyMs: result.latency_ms,
+      lastTestedAt: result.last_tested_at,
+    });
+    return result;
+  })().finally(() => {
+    providerReconnectInFlight = null;
+  });
+  return providerReconnectInFlight;
+}
+
 const characters = [
   { id: "warm", name: "温柔陪伴型", icon: "☁", desc: "温和鼓励，小步行动" },
   {
@@ -154,13 +221,33 @@ export function App() {
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
     "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
-  >("home");
+  >(() => {
+    try {
+      const saved = localStorage.getItem("mentorflow_last_tab_v1");
+      return [
+        "home",
+        "story",
+        "catalog",
+        "learn",
+        "progress",
+        "settings",
+        "expedition",
+        "teachers",
+        "active",
+      ].includes(saved || "")
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
+        : "home";
+    } catch {
+      return "home";
+    }
+  });
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [ws, setWs] = useState<Workspace | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [today, setToday] = useState<any>(null);
   const [progress, setProgress] = useState<any>(null);
   const [toast, setToast] = useState("");
+  const [activeCreateRequest, setActiveCreateRequest] = useState(0);
   const [step, setStepState] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -191,6 +278,15 @@ export function App() {
   const [chatText, setChatText] = useState("");
   const [allowExternalKnowledge, setAllowExternalKnowledge] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mentorflow_last_tab_v1", tab);
+    } catch {
+      // Navigation remains usable when browser storage is unavailable.
+    }
+  }, [tab]);
+  const autoConnectFailureRef = useRef("");
   function setStep(next: number) {
     setMaxStep((current) => Math.max(current, next));
     setStepState(next);
@@ -222,11 +318,36 @@ export function App() {
       .catch(() => {});
   }, []);
   useEffect(() => {
-    const sessionId = providerState.providerSessionId;
-    if (!sessionId || !providerState.verified) return;
-    request(`/provider-sessions/${encodeURIComponent(sessionId)}`)
-      .catch(() => useMentorStore.getState().setLastError("Provider Session 已失效，请重新绑定模型"));
-  }, [providerState.providerSessionId, providerState.verified]);
+    if (providerState.provider === "fake" || !providerState.apiKey.trim()) return;
+    const configKey = [
+      providerState.provider,
+      providerState.baseUrl,
+      providerState.model,
+      providerState.apiKey,
+    ].join("\n");
+    if (!providerState.verified && autoConnectFailureRef.current === configKey) return;
+    let cancelled = false;
+    reconnectSavedProvider()
+      .then(() => {
+        if (!cancelled) autoConnectFailureRef.current = "";
+      })
+      .catch((reason: any) => {
+        if (cancelled) return;
+        autoConnectFailureRef.current = configKey;
+        useMentorStore.getState().setLastError(
+          `已保存配置，但自动连接失败：${reason?.message || "请检查 Provider 配置"}`,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    providerState.apiKey,
+    providerState.baseUrl,
+    providerState.model,
+    providerState.provider,
+    providerState.verified,
+  ]);
   useEffect(() => {
     if (toast) {
       const t = setTimeout(() => setToast(""), 3200);
@@ -236,8 +357,14 @@ export function App() {
   useEffect(() => {
     if (!providerState.expiresAt || !providerState.verified) return;
     const remaining = new Date(providerState.expiresAt).getTime() - Date.now();
-    if (remaining <= 0) { useMentorStore.getState().setLastError("模型会话已失效，请重新连接"); return; }
-    const timer = window.setTimeout(() => useMentorStore.getState().setLastError("模型会话已失效，请重新连接"), remaining);
+    if (remaining <= 0) {
+      useMentorStore.getState().setLastError("模型会话已过期，正在自动重新连接");
+      return;
+    }
+    const timer = window.setTimeout(
+      () => useMentorStore.getState().setLastError("模型会话已过期，正在自动重新连接"),
+      remaining,
+    );
     return () => window.clearTimeout(timer);
   }, [providerState.expiresAt, providerState.verified]);
   async function selectWs(item: Workspace) {
@@ -517,12 +644,19 @@ export function App() {
                 setAllowExternalKnowledge(false);
                 setPlan(null);
                 setAssessment(null);
+                setActiveCreateRequest((current) => current + 1);
                 setTab("active");
                 setStepState(0);
                 setMaxStep(0);
               }}
-              onContinue={() => setTab("active")}
-              onBrowseTasks={() => setTab("active")}
+              onContinue={() => {
+                setActiveCreateRequest(0);
+                setTab("active");
+              }}
+              onBrowseTasks={() => {
+                setActiveCreateRequest(0);
+                setTab("active");
+              }}
             />
           )}{" "}
           {tab === "story" && (
@@ -573,7 +707,13 @@ export function App() {
           )}{" "}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
-          {tab === "active" && <ActiveTeachingChainView workspaceId={ws?.id || "general-learning"} />}
+          {tab === "active" && (
+            <ActiveTeachingChainView
+              workspaceId={ws?.id || "general-learning"}
+              createRequest={activeCreateRequest}
+              onCreateRequestConsumed={() => setActiveCreateRequest(0)}
+            />
+          )}
           {tab === "settings" && <Settings />}
         </div>
       </main>
@@ -1929,7 +2069,7 @@ export function Settings() {
   };
   const diagnostics = JSON.stringify({ ...providerDiagnostic(state), api_key: undefined }, null, 2);
   return <>
-    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>配置和 API Key 会自动保存到当前浏览器本机；Key 不写入项目文件、不进入数据库，也不会出现在诊断信息中。ProviderSession 仍只在后端进程内存中短暂有效。</p></div></div>
+    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>配置和 API Key 会自动保存到当前浏览器本机，并在启动、过期或后端重启后自动恢复连接；Key 不写入项目文件或数据库，也不会出现在诊断信息中。</p></div></div>
     <div className="settings-grid">
       <section className="card provider-form">
         <div className="card-kicker"><Settings2 size={16} />模型 Provider</div>
@@ -1949,16 +2089,16 @@ export function Settings() {
               : state.verified
                 ? "真实 Provider 已验证；Key 仅保存在当前浏览器本机。"
                 : state.apiKey
-                  ? "Key 已保存到当前浏览器本机，但尚未验证；真实请求失败时不会切换到 Fake。"
+                  ? "Key 已保存；系统会自动连接，失败时仍不会切换到 Fake。"
                   : "尚未填写 API Key；当前不能建立真实 ProviderSession，也不会冒充真实 AI。"}
           </span>
           <button disabled={!state.apiKey} onClick={() => state.setApiKey("")}>清除 Key</button>
         </div>
         <button className="primary" onClick={test}>{state.provider === "fake" ? "测试 Fake Provider" : `测试 ${labels[state.provider]}`} <Check size={16} /></button>
-        {state.lastError && <div className="provider-error" role="alert">{state.lastError.includes("重新绑定") ? state.lastError : `${state.lastError} · 请重新绑定模型`}</div>}
+        {state.lastError && <div className="provider-error" role="alert">{state.lastError}</div>}
         {message && <div className="success-note">{message}</div>}
       </section>
-      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅保存于当前浏览器本机，不写项目文件或数据库", "API Key 不进 URL、诊断信息或接口响应", "真实 Workspace 必须绑定已验证 ProviderSession", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
+      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅保存于当前浏览器本机，不写项目文件或数据库", "API Key 不进 URL、诊断信息或接口响应", "应用会自动恢复已保存的真实 Provider 连接", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
     </div>
   </>
 }

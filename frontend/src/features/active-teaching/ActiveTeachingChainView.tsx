@@ -15,8 +15,48 @@ const isoAfterDays = (days: number) => {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 };
 const ACTIVE_WORKSPACE_KEY = "mentorflow_active_teaching_workspace_v1";
+const ACTIVE_DRAFT_PREFIX = "mentorflow_active_task_draft_v1:";
 
-export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }) {
+type ActiveTaskDraft = {
+  goal?: string;
+  level?: string;
+  startDate?: string;
+  deadline?: string;
+  studyWeekdays?: number[];
+  unavailableDates?: string;
+  shortDate?: string;
+  shortMinutes?: number;
+  notes?: string;
+  learningStyle?: string;
+  teacherPersona?: string;
+  learnerInterests?: string;
+  message?: string;
+  reviewAnswer?: string;
+  code?: string;
+  updatedAt?: string;
+};
+
+const draftStorageKey = (workspaceId: string) =>
+  `${ACTIVE_DRAFT_PREFIX}${workspaceId}`;
+
+const readTaskDraft = (workspaceId: string): ActiveTaskDraft | null => {
+  try {
+    const raw = localStorage.getItem(draftStorageKey(workspaceId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export function ActiveTeachingChainView({
+  workspaceId,
+  createRequest = 0,
+  onCreateRequestConsumed,
+}: {
+  workspaceId: string;
+  createRequest?: number;
+  onCreateRequestConsumed?: () => void;
+}) {
   const providerSessionId = useMentorStore((state) => state.providerSessionId);
   const providerVerified = useMentorStore((state) => state.verified);
   const providerId = useMentorStore((state) => state.provider);
@@ -32,7 +72,9 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   const [snapshot, setSnapshot] = useState<any>(null);
   const [learningTasks, setLearningTasks] = useState<ActiveLearningTaskSummary[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [creatingNewTask, setCreatingNewTask] = useState(false);
+  const [creatingNewTask, setCreatingNewTask] = useState(() =>
+    Boolean(readTaskDraft(activeWorkspaceId)),
+  );
   const [file, setFile] = useState<File | null>(null);
   const [goal, setGoal] = useState("完全掌握上传资料，并能用可验证的方式独立应用");
   const [level, setLevel] = useState("beginner");
@@ -57,6 +99,8 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   const [hint, setHint] = useState<any>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [draftLoadedWorkspace, setDraftLoadedWorkspace] = useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
   const refreshSequence = useRef(0);
 
   const refresh = async () => {
@@ -94,7 +138,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
         ? current
         : problemItems[0]?.id || "",
     );
-    if (next.receipt) {
+    if (next.receipt && !readTaskDraft(activeWorkspaceId)) {
       setGoal(next.receipt.learning_goal);
       setLevel(next.receipt.current_level);
       setStartDate(next.receipt.start_date || isoAfterDays(0));
@@ -114,6 +158,31 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   };
 
   useEffect(() => {
+    setDraftLoadedWorkspace(null);
+    setDraftSavedAt("");
+    const draft = readTaskDraft(activeWorkspaceId);
+    if (draft) {
+      if (typeof draft.goal === "string") setGoal(draft.goal);
+      if (typeof draft.level === "string") setLevel(draft.level);
+      if (typeof draft.startDate === "string") setStartDate(draft.startDate);
+      if (typeof draft.deadline === "string") setDeadline(draft.deadline);
+      if (Array.isArray(draft.studyWeekdays)) setStudyWeekdays(draft.studyWeekdays);
+      if (typeof draft.unavailableDates === "string") setUnavailableDates(draft.unavailableDates);
+      if (typeof draft.shortDate === "string") setShortDate(draft.shortDate);
+      if (typeof draft.shortMinutes === "number") setShortMinutes(draft.shortMinutes);
+      if (typeof draft.notes === "string") setNotes(draft.notes);
+      if (typeof draft.learningStyle === "string") setLearningStyle(draft.learningStyle);
+      if (typeof draft.teacherPersona === "string") setTeacherPersona(draft.teacherPersona);
+      if (typeof draft.learnerInterests === "string") setLearnerInterests(draft.learnerInterests);
+      if (typeof draft.message === "string") setMessage(draft.message);
+      if (typeof draft.reviewAnswer === "string") setReviewAnswer(draft.reviewAnswer);
+      if (typeof draft.code === "string") setCode(draft.code);
+      if (typeof draft.updatedAt === "string") setDraftSavedAt(draft.updatedAt);
+    }
+    setDraftLoadedWorkspace(activeWorkspaceId);
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspaceId);
     } catch {
@@ -121,6 +190,60 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     }
     refresh().catch(() => setSnapshot(null));
   }, [activeWorkspaceId, showArchived]);
+
+  useEffect(() => {
+    if (
+      draftLoadedWorkspace !== activeWorkspaceId
+      || snapshot?.workspace_id !== activeWorkspaceId
+    ) return;
+    const timer = window.setTimeout(() => {
+      const updatedAt = new Date().toISOString();
+      const draft: ActiveTaskDraft = {
+        goal,
+        level,
+        startDate,
+        deadline,
+        studyWeekdays,
+        unavailableDates,
+        shortDate,
+        shortMinutes,
+        notes,
+        learningStyle,
+        teacherPersona,
+        learnerInterests,
+        message,
+        reviewAnswer,
+        code,
+        updatedAt,
+      };
+      try {
+        localStorage.setItem(draftStorageKey(activeWorkspaceId), JSON.stringify(draft));
+        setDraftSavedAt(updatedAt);
+      } catch {
+        setError("浏览器阻止了本机草稿保存，请检查站点存储权限。");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeWorkspaceId,
+    code,
+    deadline,
+    draftLoadedWorkspace,
+    goal,
+    learnerInterests,
+    learningStyle,
+    level,
+    message,
+    notes,
+    reviewAnswer,
+    shortDate,
+    shortMinutes,
+    snapshot?.workspace_id,
+    startDate,
+    studyWeekdays,
+    teacherPersona,
+    unavailableDates,
+  ]);
 
   const run = async (label: string, operation: () => Promise<any>) => {
     setBusy(label);
@@ -260,6 +383,12 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     setCreatingNewTask(true);
     setActiveWorkspaceId(`learning-task-${suffix}`);
   };
+
+  useEffect(() => {
+    if (!createRequest) return;
+    createNewTask();
+    onCreateRequestConsumed?.();
+  }, [createRequest]);
 
   const toggleTaskArchive = async (item: ActiveLearningTaskSummary) => {
     const archived = !item.archived;
@@ -504,6 +633,11 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       <div className="active-chain__grid">
         <article className="active-chain__card active-chain__creator-card">
           <span className="active-chain__step">01 · 设置学习任务</span>
+          <span className="active-chain__autosave" data-testid="active-draft-status">
+            {draftSavedAt
+              ? `草稿已自动保存 · ${new Date(draftSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : "你填写的内容会自动保存在当前浏览器"}
+          </span>
           <h3>{plan ? "任务资料与学习条件" : "上传资料，系统自动完成知识地图和计划"}</h3>
           <p className="active-chain__muted">只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。</p>
           <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />

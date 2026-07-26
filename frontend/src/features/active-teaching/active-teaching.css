@@ -7,10 +7,11 @@
 .active-chain__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .active-chain__card { display: grid; align-content: start; gap: 12px; background: #fff; border: 1px solid #dde7e1; border-radius: 18px; padding: 20px; }
 .active-chain__creator-card { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.active-chain__creator-card > h3, .active-chain__creator-card > p, .active-chain__creator-card > .active-chain__step,
+.active-chain__creator-card > h3, .active-chain__creator-card > p,
 .active-chain__creator-card > .active-chain__allocation, .active-chain__creator-card > .active-chain__advanced,
 .active-chain__creator-card > button, .active-chain__creator-card > [data-testid="active-material-count"],
 .active-chain__creator-card > .active-chain__receipt { grid-column: 1 / -1; }
+.active-chain__autosave { justify-self: end; align-self: center; color: #4f7865; font-size: 12px; }
 .active-chain__card h3 { margin: 0; }
 .active-chain label { display: grid; gap: 6px; color: #53635c; font-size: 13px; }
 .active-chain input, .active-chain textarea, .active-chain select { width: 100%; box-sizing: border-box; border: 1px solid #ccd9d1; border-radius: 10px; padding: 10px 12px; background: #fff; color: #17231f; }
@@ -86,6 +87,7 @@
   .active-chain__grid { grid-template-columns: 1fr; }
   .active-chain__creator-card, .active-task-hub { grid-template-columns: 1fr; }
   .active-chain__creator-card > * { grid-column: 1; }
+  .active-chain__autosave { justify-self: start; }
   .active-chain__hero, .active-chain__teacher-head { align-items: stretch; flex-direction: column; }
   .active-chain__composer { grid-template-columns: 1fr; }
 }

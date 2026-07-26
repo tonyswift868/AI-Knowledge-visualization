@@ -73,8 +73,18 @@ test("home exposes one task path and archived tasks can be restored", async ({ p
   await page.goto("/");
   await expect(page.getByTestId("nav-create")).toHaveCount(0);
   await expect(page.getByTestId("nav-plan")).toHaveCount(0);
-  await page.getByRole("button", { name: "查看已有任务" }).click();
+  await page.getByRole("button", { name: "新建学习任务" }).click();
   await expect(page.getByTestId("active-teaching-chain")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "创建一个新的学习任务" })).toBeVisible();
+  const draftGoal = `刷新后仍保留的草稿 ${Date.now()}`;
+  await page.getByTestId("active-goal").fill(draftGoal);
+  await page.getByTestId("active-teacher-persona").fill("耐心主动、每一步都检查理解");
+  await expect(page.getByTestId("active-draft-status")).toContainText("草稿已自动保存");
+  await page.reload();
+  await expect(page.getByTestId("active-goal")).toHaveValue(draftGoal);
+  await expect(page.getByTestId("active-teacher-persona")).toHaveValue(
+    "耐心主动、每一步都检查理解",
+  );
 
   await page.getByTestId("active-new-task").click();
   const workspaceId = (await page.getByTestId("active-workspace-id").textContent())!;

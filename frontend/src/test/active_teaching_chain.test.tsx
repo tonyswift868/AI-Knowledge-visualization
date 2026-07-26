@@ -165,6 +165,7 @@ describe("ActiveTeachingChainView", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    localStorage.clear();
   });
 
   it("renders generic traceability, separated time fields, and persisted remediation state", async () => {
@@ -243,6 +244,39 @@ describe("ActiveTeachingChainView", () => {
       expect(body.material_ids).toEqual(["material_1"]);
       expect(JSON.stringify(body)).not.toMatch(/leetcode|hot150|面试经典/iu);
     });
+  });
+
+  it("auto-saves and restores every editable task draft field per workspace", async () => {
+    const draftSnapshot = { ...snapshot, workspace_id: "draft-case-active" };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => draftSnapshot });
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(<ActiveTeachingChainView workspaceId="draft-case" />);
+    await screen.findByTestId("active-draft-status");
+
+    fireEvent.change(screen.getByTestId("active-goal"), {
+      target: { value: "刷新后仍保留的学习目标" },
+    });
+    fireEvent.change(screen.getByTestId("active-teacher-persona"), {
+      target: { value: "耐心但主动的教师" },
+    });
+    fireEvent.change(screen.getByTestId("active-learner-interests"), {
+      target: { value: "游戏、做饭" },
+    });
+
+    await waitFor(() => {
+      const raw = localStorage.getItem(
+        "mentorflow_active_task_draft_v1:draft-case-active",
+      );
+      expect(raw).toContain("刷新后仍保留的学习目标");
+      expect(raw).toContain("耐心但主动的教师");
+      expect(raw).toContain("游戏、做饭");
+    });
+
+    view.unmount();
+    render(<ActiveTeachingChainView workspaceId="draft-case" />);
+    expect(await screen.findByDisplayValue("刷新后仍保留的学习目标")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("耐心但主动的教师")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("游戏、做饭")).toBeInTheDocument();
   });
 
   it("turns one uploaded arbitrary file into receipt, knowledge map, and plan automatically", async () => {
