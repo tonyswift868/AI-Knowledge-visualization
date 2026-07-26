@@ -34,7 +34,6 @@ query studyPlanV2Detail($slug: String!) {
 """
 
 DIFFICULTY = {"EASY": "简单", "MEDIUM": "中等", "HARD": "困难"}
-MINUTES = {"EASY": 20, "MEDIUM": 30, "HARD": 45}
 
 
 def main() -> None:
@@ -83,7 +82,6 @@ def main() -> None:
                 f"主题：{topic}",
                 f"知识点：识别并应用“{topic}”中的 {title} 解题模式。",
                 f"难度：{DIFFICULTY.get(difficulty, difficulty)}",
-                f"预计任务分钟：{MINUTES.get(difficulty, 30)}",
                 (
                     "验收：能独立说明输入输出、核心不变量、时间与空间复杂度，"
                     "写出通过边界测试的实现，并在延迟复习中无提示复现。"

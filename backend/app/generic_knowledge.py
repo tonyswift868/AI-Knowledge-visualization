@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
-from collections import Counter, defaultdict, deque
+from collections import defaultdict, deque
 from datetime import date, timedelta
 from typing import Any, Iterable
 
@@ -135,7 +135,8 @@ def mastery_time_estimate(
     difficulty: str,
     current_level: str,
     explicit_minutes: int | None = None,
-) -> dict[str, int | str]:
+    explicit_minutes_source: str | None = None,
+) -> dict[str, Any]:
     """Estimate standard task minutes, never actual elapsed time.
 
     The estimate is deterministic and inspectable. A real provider may propose
@@ -143,29 +144,39 @@ def mastery_time_estimate(
     """
     difficulty_value = str(difficulty or "medium").casefold()
     difficulty_factor = (
-        1.45
+        1.58
         if any(item in difficulty_value for item in ("hard", "困难", "高级"))
-        else 0.78
+        else 0.72
         if any(item in difficulty_value for item in ("easy", "简单", "基础"))
-        else 1.0
+        else 1.08
     )
     level_value = str(current_level or "beginner").casefold()
     level_factor = (
         1.45
         if any(item in level_value for item in ("zero", "beginner", "零基础", "初级"))
-        else 0.78
+        else 0.82
         if any(item in level_value for item in ("advanced", "高级", "专家"))
         else 1.0
     )
     information_units = max(1.0, min(8.0, len(text.strip()) / 700.0))
-    base = int(explicit_minutes or round((22 + information_units * 10) * difficulty_factor * level_factor))
+    base = int(
+        explicit_minutes
+        or round((15 + information_units * 8) * difficulty_factor * level_factor)
+    )
     base = max(15, min(360, base))
-    understand = max(5, round(base * 0.24))
-    recall = max(5, round(base * 0.13))
-    guided = max(5, round(base * 0.20))
-    independent = max(8, round(base * 0.28))
+    understand = max(5, round(base * 0.30))
+    recall = max(5, round(base * 0.12))
+    guided = max(5, round(base * 0.23))
+    independent = max(8, round(base * 0.25))
     review = max(5, base - understand - recall - guided - independent)
     total_mastery = understand + recall + guided + independent + review
+    explicit_basis = str(explicit_minutes_source or "").strip()
+    if explicit_minutes is not None:
+        basis = explicit_basis or "provider_proposed_duration"
+        confidence = "high" if explicit_basis == "source_provided_duration" else "medium"
+    else:
+        basis = "system_estimate:content_volume+difficulty+learner_level"
+        confidence = "medium"
     return {
         "understand_minutes": understand,
         "recall_minutes": recall,
@@ -173,7 +184,15 @@ def mastery_time_estimate(
         "independent_application_minutes": independent,
         "review_minutes": review,
         "total_mastery_task_minutes": total_mastery,
-        "basis": "content_volume+difficulty+learner_level",
+        "basis": basis,
+        "confidence": confidence,
+        "is_source_provided_duration": explicit_basis == "source_provided_duration",
+        "signals": {
+            "content_units": round(information_units, 2),
+            "difficulty_factor": difficulty_factor,
+            "learner_level_factor": level_factor,
+            "explicit_minutes": explicit_minutes,
+        },
     }
 
 
@@ -230,6 +249,7 @@ def validate_provider_map(
             difficulty=str(raw.get("difficulty") or "medium"),
             current_level=current_level,
             explicit_minutes=explicit_minutes,
+            explicit_minutes_source="provider_proposed_duration" if explicit_minutes else None,
         )
         nodes.append(
             {
@@ -326,13 +346,6 @@ def schedule_by_capacity(
         if day["capacity_minutes"] > 0 and day["study_phase"] == "initial_learning"
     ]
     item_list = list(items)
-    balance_across_period = receipt.get("initial_learning_period_ratio") is not None
-    points_per_day = (
-        int(len(item_list) / len(active_indexes) + 0.999999)
-        if balance_across_period and active_indexes
-        else 0
-    )
-    day_point_counts: Counter[int] = Counter()
     day_cursor = 0
     unscheduled = 0
     phase_specs = (
@@ -345,30 +358,54 @@ def schedule_by_capacity(
             "独立应用",
         ),
     )
-    for point_sequence, item in enumerate(item_list, start=1):
-        if (
-            points_per_day
-            and day_cursor < len(active_indexes)
-            and day_point_counts[day_cursor] >= points_per_day
-        ):
-            day_cursor += 1
-        item_total = sum(
+    initial_minutes_by_item = [
+        sum(
             int(item["mastery_estimate"][estimate_key])
             for _, estimate_key, _ in phase_specs
         )
-        if day_cursor < len(active_indexes):
-            current_day = calendar[active_indexes[day_cursor]]
-            current_limit = int(
-                current_day.get("balanced_target_minutes")
-                or current_day["capacity_minutes"]
+        for item in item_list
+    ]
+    remaining_total = sum(initial_minutes_by_item)
+    for point_sequence, (item, item_total) in enumerate(
+        zip(item_list, initial_minutes_by_item), start=1
+    ):
+        while day_cursor < len(active_indexes):
+            remaining_days = len(active_indexes) - day_cursor
+            day = calendar[active_indexes[day_cursor]]
+            capacity_left = int(day["capacity_minutes"]) - int(day["planned_task_minutes"])
+            current_load = int(day["planned_task_minutes"])
+            target = min(
+                int(day["capacity_minutes"]),
+                max(
+                    1,
+                    (
+                        remaining_total
+                        + current_load
+                        + remaining_days
+                        - 1
+                    )
+                    // remaining_days,
+                ),
+            )
+            day["balanced_target_minutes"] = target
+            adding_is_worse_than_closing = (
+                abs(target - current_load)
+                < abs(target - (current_load + item_total))
             )
             if (
-                current_day["planned_task_minutes"] > 0
-                and current_limit - current_day["planned_task_minutes"] < item_total
+                current_load > 0
+                and remaining_days > 1
+                and (
+                    item_total > capacity_left
+                    or (
+                        current_load + item_total > target
+                        and adding_is_worse_than_closing
+                    )
+                )
             ):
                 day_cursor += 1
-        if day_cursor < len(active_indexes):
-            day_point_counts[day_cursor] += 1
+                continue
+            break
         for phase, estimate_key, phase_label in phase_specs:
             remaining = int(item["mastery_estimate"][estimate_key])
             phase_tasks: list[dict[str, Any]] = []
@@ -378,9 +415,7 @@ def schedule_by_capacity(
                     unscheduled += remaining
                     break
                 day = calendar[active_indexes[day_cursor]]
-                day_limit = int(
-                    day.get("balanced_target_minutes") or day["capacity_minutes"]
-                )
+                day_limit = int(day["capacity_minutes"])
                 capacity_left = day_limit - day["planned_task_minutes"]
                 if capacity_left <= 0:
                     day_cursor += 1
@@ -408,4 +443,5 @@ def schedule_by_capacity(
                     day_cursor += 1
             for task in phase_tasks:
                 task["phase_part_count"] = len(phase_tasks)
+        remaining_total -= item_total
     return calendar, unscheduled

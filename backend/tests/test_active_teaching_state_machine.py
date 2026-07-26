@@ -83,8 +83,16 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
         opening = client.get(
             f"/api/active-teaching/sessions/{session_id}"
         ).json()
-        assert opening["messages"][-1]["action"] == "explain"
+        assert opening["messages"][-1]["action"] == "daily_briefing"
         assert opening["state"]["autonomy"]["awaiting_learner"] is False
+
+        explanation = client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={},
+        )
+        assert explanation.status_code == 200, explanation.text
+        assert explanation.json()["messages"][-1]["action"] == "explain"
+        assert explanation.json()["state"]["autonomy"]["awaiting_learner"] is False
 
         example = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
@@ -105,8 +113,9 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
             "awaiting_learner": True,
             "reason": "learner_evidence_required",
         }
-        assert len(check.json()["messages"]) == 3
+        assert len(check.json()["messages"]) == 4
         assert check.json()["state"]["today_plan"]["task_count"] > 0
+        assert check.json()["state"]["today_plan"]["knowledge_point_count"] > 0
 
 
 def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_path, monkeypatch):
@@ -134,6 +143,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
                 }
             assert prompt["rules"]
             assert prompt["fixed_action"] in {
+                "daily_briefing",
                 "explain",
                 "remediation_explain",
                 "resume_main_route",
@@ -153,11 +163,11 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
         )
         assert started.status_code == 200, started.text
         body = started.json()
-        assert body["messages"][-1]["content"] == "表达层输出：explain"
-        assert body["messages"][-1]["action"] == "explain"
+        assert body["messages"][-1]["content"] == "表达层输出：daily_briefing"
+        assert body["messages"][-1]["action"] == "daily_briefing"
         assert body["messages"][-1]["citations"]
         assert body["state"]["teacher_generation"]["scope"] == "expression_only"
-        assert body["state"]["current_teaching_step"] == "explain"
+        assert body["state"]["current_teaching_step"] == "daily_briefing"
 
         confused = client.post(
             f"/api/active-teaching/sessions/{body['session_id']}/advance",
@@ -277,6 +287,10 @@ def test_provider_high_score_cannot_bypass_required_grounded_prechecks(tmp_path,
         ).json()
         session_id = started["session_id"]
         client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={"provider_session_id": provider_session.id},
+        )
+        client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
             json={"message": "继续", "provider_session_id": provider_session.id},
         )
@@ -307,9 +321,13 @@ def test_remediation_pauses_and_restores_route_with_persistence(tmp_path):
     with TestClient(app) as client:
         plan_id, session_id = _bootstrap(client)
         opening = client.get(f"/api/active-teaching/sessions/{session_id}").json()
-        assert opening["state"]["current_teaching_step"] == "explain"
-        assert opening["messages"][0]["action"] == "explain"
+        assert opening["state"]["current_teaching_step"] == "daily_briefing"
+        assert opening["messages"][0]["action"] == "daily_briefing"
         assert opening["messages"][0]["citations"]
+        client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={},
+        )
 
         missing_event = client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
@@ -457,6 +475,10 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
             json={"provider_session_id": provider_session.id},
         ).json()
         session_id = started["session_id"]
+        client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={"provider_session_id": provider_session.id},
+        )
         client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
             json={"message": "继续", "provider_session_id": provider_session.id},

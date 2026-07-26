@@ -208,7 +208,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
         body: JSON.stringify({ provider_session_id: realProviderSessionId }),
       },
     );
-    for (let step = 0; step < 2 && !current.state?.autonomy?.awaiting_learner; step += 1) {
+    for (let step = 0; step < 4 && !current.state?.autonomy?.awaiting_learner; step += 1) {
       current = await activeRequest(
         `/sessions/${encodeURIComponent(current.session_id)}/teach-next`,
         {
@@ -445,11 +445,17 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               <b>{point.name}</b>
               <span>{point.difficulty} · 完全掌握 {point.mastery_estimate?.total_mastery_task_minutes || point.estimated_task_minutes} 标准任务分钟 · 掌握度 {(point.current_mastery * 100).toFixed(0)}%</span>
               {point.mastery_estimate && (
-                <span>
-                  理解 {point.mastery_estimate.understand_minutes} · 回忆 {point.mastery_estimate.recall_minutes} ·
-                  引导练习 {point.mastery_estimate.guided_practice_minutes} · 独立应用 {point.mastery_estimate.independent_application_minutes} ·
-                  复习 {point.mastery_estimate.review_minutes}
-                </span>
+                <>
+                  <span>
+                    理解 {point.mastery_estimate.understand_minutes} · 回忆 {point.mastery_estimate.recall_minutes} ·
+                    引导练习 {point.mastery_estimate.guided_practice_minutes} · 独立应用 {point.mastery_estimate.independent_application_minutes} ·
+                    复习 {point.mastery_estimate.review_minutes}
+                  </span>
+                  <span>
+                    估时依据 {point.mastery_estimate.basis || "legacy"} ·
+                    置信度 {point.mastery_estimate.confidence || "未知"}
+                  </span>
+                </>
               )}
             </div>
           ))}
@@ -510,7 +516,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                         </span>
                       )}
                       <span>
-                        首学 {day.tasks.filter((task: any) => task.task_type === "initial_learning").length} ·
+                        首学知识点 {new Set(day.tasks.filter((task: any) => task.task_type === "initial_learning").map((task: any) => task.knowledge_point_id)).size} ·
                         复习 {day.tasks.filter((task: any) => task.task_type === "review").length} ·
                         补救 {day.tasks.filter((task: any) => task.task_type === "remediation").length}
                       </span>
@@ -538,7 +544,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
 
       <article className="active-chain__teacher">
         <div className="active-chain__teacher-head">
-          <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>讲解 → 示例 → 检测 → 补救 → 恢复路线</h3></div>
+          <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>知识简报 → 检索讲解 → 示例 → 检测 → 补救</h3></div>
           <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTeacherLedLesson)}>开始今日课程（教师主动带学）</button>
           {session && <button data-testid="active-replan" disabled={Boolean(busy)} onClick={() => run("滚动未完成任务", () => activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/replan`, {
             method: "POST",
@@ -565,8 +571,8 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
             {session.state.today_plan && (
               <div className="active-chain__receipt" data-testid="active-today-plan">
                 <b>{session.state.today_plan.date} · 今日课程</b>
-                <span>{session.state.today_plan.task_count} 个任务 · {session.state.today_plan.task_minutes} 标准任务分钟</span>
-                <span>教师会依次执行讲解、最小例子、理解检查、补救和独立验收。</span>
+                <span>{session.state.today_plan.knowledge_point_count ?? session.state.today_plan.task_count} 个知识点 · {session.state.today_plan.task_minutes} 标准任务分钟</span>
+                <span>教师会先建立知识框架，再实时检索资料完成讲解、最小例子、理解检查、补救和独立验收。</span>
               </div>
             )}
             {(session.state.replan_history || []).length > 0 && (

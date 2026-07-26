@@ -6,7 +6,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Merge Sorted Array 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/merge-sorted-array/
 
@@ -15,7 +14,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Remove Element 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/remove-element/
 
@@ -24,7 +22,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Remove Duplicates from Sorted Array 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/remove-duplicates-from-sorted-array/
 
@@ -33,7 +30,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Remove Duplicates from Sorted Array II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/remove-duplicates-from-sorted-array-ii/
 
@@ -42,7 +38,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Majority Element 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/majority-element/
 
@@ -51,7 +46,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Rotate Array 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/rotate-array/
 
@@ -60,7 +54,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Best Time to Buy and Sell Stock 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/best-time-to-buy-and-sell-stock/
 
@@ -69,7 +62,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Best Time to Buy and Sell Stock II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/best-time-to-buy-and-sell-stock-ii/
 
@@ -78,7 +70,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Jump Game 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/jump-game/
 
@@ -87,7 +78,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Jump Game II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/jump-game-ii/
 
@@ -96,7 +86,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 H-Index 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/h-index/
 
@@ -105,7 +94,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Insert Delete GetRandom O(1) 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/insert-delete-getrandom-o1/
 
@@ -114,7 +102,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Product of Array Except Self 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/product-of-array-except-self/
 
@@ -123,7 +110,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Gas Station 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/gas-station/
 
@@ -132,7 +118,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Candy 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/candy/
 
@@ -141,7 +126,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Trapping Rain Water 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/trapping-rain-water/
 
@@ -150,7 +134,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Roman to Integer 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/roman-to-integer/
 
@@ -159,7 +142,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Integer to Roman 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/integer-to-roman/
 
@@ -168,7 +150,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Length of Last Word 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/length-of-last-word/
 
@@ -177,7 +158,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Longest Common Prefix 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/longest-common-prefix/
 
@@ -186,7 +166,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Reverse Words in a String 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/reverse-words-in-a-string/
 
@@ -195,7 +174,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Zigzag Conversion 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/zigzag-conversion/
 
@@ -204,7 +182,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Find the Index of the First Occurrence in a String 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-the-index-of-the-first-occurrence-in-a-string/
 
@@ -213,7 +190,6 @@
 主题：数组 / 字符串
 知识点：识别并应用“数组 / 字符串”中的 Text Justification 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/text-justification/
 
@@ -222,7 +198,6 @@
 主题：双指针
 知识点：识别并应用“双指针”中的 Valid Palindrome 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/valid-palindrome/
 
@@ -231,7 +206,6 @@
 主题：双指针
 知识点：识别并应用“双指针”中的 Is Subsequence 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/is-subsequence/
 
@@ -240,7 +214,6 @@
 主题：双指针
 知识点：识别并应用“双指针”中的 Two Sum II - Input Array Is Sorted 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/two-sum-ii-input-array-is-sorted/
 
@@ -249,7 +222,6 @@
 主题：双指针
 知识点：识别并应用“双指针”中的 Container With Most Water 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/container-with-most-water/
 
@@ -258,7 +230,6 @@
 主题：双指针
 知识点：识别并应用“双指针”中的 3Sum 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/3sum/
 
@@ -267,7 +238,6 @@
 主题：滑动窗口
 知识点：识别并应用“滑动窗口”中的 Minimum Size Subarray Sum 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-size-subarray-sum/
 
@@ -276,7 +246,6 @@
 主题：滑动窗口
 知识点：识别并应用“滑动窗口”中的 Longest Substring Without Repeating Characters 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/longest-substring-without-repeating-characters/
 
@@ -285,7 +254,6 @@
 主题：滑动窗口
 知识点：识别并应用“滑动窗口”中的 Substring with Concatenation of All Words 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/substring-with-concatenation-of-all-words/
 
@@ -294,7 +262,6 @@
 主题：滑动窗口
 知识点：识别并应用“滑动窗口”中的 Minimum Window Substring 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-window-substring/
 
@@ -303,7 +270,6 @@
 主题：矩阵
 知识点：识别并应用“矩阵”中的 Valid Sudoku 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/valid-sudoku/
 
@@ -312,7 +278,6 @@
 主题：矩阵
 知识点：识别并应用“矩阵”中的 Spiral Matrix 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/spiral-matrix/
 
@@ -321,7 +286,6 @@
 主题：矩阵
 知识点：识别并应用“矩阵”中的 Rotate Image 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/rotate-image/
 
@@ -330,7 +294,6 @@
 主题：矩阵
 知识点：识别并应用“矩阵”中的 Set Matrix Zeroes 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/set-matrix-zeroes/
 
@@ -339,7 +302,6 @@
 主题：矩阵
 知识点：识别并应用“矩阵”中的 Game of Life 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/game-of-life/
 
@@ -348,7 +310,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Ransom Note 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/ransom-note/
 
@@ -357,7 +318,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Isomorphic Strings 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/isomorphic-strings/
 
@@ -366,7 +326,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Word Pattern 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/word-pattern/
 
@@ -375,7 +334,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Valid Anagram 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/valid-anagram/
 
@@ -384,7 +342,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Group Anagrams 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/group-anagrams/
 
@@ -393,7 +350,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Two Sum 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/two-sum/
 
@@ -402,7 +358,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Happy Number 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/happy-number/
 
@@ -411,7 +366,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Contains Duplicate II 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/contains-duplicate-ii/
 
@@ -420,7 +374,6 @@
 主题：哈希表
 知识点：识别并应用“哈希表”中的 Longest Consecutive Sequence 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/longest-consecutive-sequence/
 
@@ -429,7 +382,6 @@
 主题：区间
 知识点：识别并应用“区间”中的 Summary Ranges 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/summary-ranges/
 
@@ -438,7 +390,6 @@
 主题：区间
 知识点：识别并应用“区间”中的 Merge Intervals 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/merge-intervals/
 
@@ -447,7 +398,6 @@
 主题：区间
 知识点：识别并应用“区间”中的 Insert Interval 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/insert-interval/
 
@@ -456,7 +406,6 @@
 主题：区间
 知识点：识别并应用“区间”中的 Minimum Number of Arrows to Burst Balloons 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-number-of-arrows-to-burst-balloons/
 
@@ -465,7 +414,6 @@
 主题：栈
 知识点：识别并应用“栈”中的 Valid Parentheses 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/valid-parentheses/
 
@@ -474,7 +422,6 @@
 主题：栈
 知识点：识别并应用“栈”中的 Simplify Path 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/simplify-path/
 
@@ -483,7 +430,6 @@
 主题：栈
 知识点：识别并应用“栈”中的 Min Stack 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/min-stack/
 
@@ -492,7 +438,6 @@
 主题：栈
 知识点：识别并应用“栈”中的 Evaluate Reverse Polish Notation 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/evaluate-reverse-polish-notation/
 
@@ -501,7 +446,6 @@
 主题：栈
 知识点：识别并应用“栈”中的 Basic Calculator 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/basic-calculator/
 
@@ -510,7 +454,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Linked List Cycle 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/linked-list-cycle/
 
@@ -519,7 +462,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Add Two Numbers 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/add-two-numbers/
 
@@ -528,7 +470,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Merge Two Sorted Lists 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/merge-two-sorted-lists/
 
@@ -537,7 +478,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Copy List with Random Pointer 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/copy-list-with-random-pointer/
 
@@ -546,7 +486,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Reverse Linked List II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/reverse-linked-list-ii/
 
@@ -555,7 +494,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Reverse Nodes in k-Group 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/reverse-nodes-in-k-group/
 
@@ -564,7 +502,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Remove Nth Node From End of List 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/remove-nth-node-from-end-of-list/
 
@@ -573,7 +510,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Remove Duplicates from Sorted List II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/remove-duplicates-from-sorted-list-ii/
 
@@ -582,7 +518,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Rotate List 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/rotate-list/
 
@@ -591,7 +526,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 Partition List 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/partition-list/
 
@@ -600,7 +534,6 @@
 主题：链表
 知识点：识别并应用“链表”中的 LRU Cache 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/lru-cache/
 
@@ -609,7 +542,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Maximum Depth of Binary Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/maximum-depth-of-binary-tree/
 
@@ -618,7 +550,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Same Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/same-tree/
 
@@ -627,7 +558,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Invert Binary Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/invert-binary-tree/
 
@@ -636,7 +566,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Symmetric Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/symmetric-tree/
 
@@ -645,7 +574,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Construct Binary Tree from Preorder and Inorder Traversal 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/construct-binary-tree-from-preorder-and-inorder-traversal/
 
@@ -654,7 +582,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Construct Binary Tree from Inorder and Postorder Traversal 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/construct-binary-tree-from-inorder-and-postorder-traversal/
 
@@ -663,7 +590,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Populating Next Right Pointers in Each Node II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/populating-next-right-pointers-in-each-node-ii/
 
@@ -672,7 +598,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Flatten Binary Tree to Linked List 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/flatten-binary-tree-to-linked-list/
 
@@ -681,7 +606,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Path Sum 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/path-sum/
 
@@ -690,7 +614,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Sum Root to Leaf Numbers 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/sum-root-to-leaf-numbers/
 
@@ -699,7 +622,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Binary Tree Maximum Path Sum 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/binary-tree-maximum-path-sum/
 
@@ -708,7 +630,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Binary Search Tree Iterator 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/binary-search-tree-iterator/
 
@@ -717,7 +638,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Count Complete Tree Nodes 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/count-complete-tree-nodes/
 
@@ -726,7 +646,6 @@
 主题：二叉树
 知识点：识别并应用“二叉树”中的 Lowest Common Ancestor of a Binary Tree 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/lowest-common-ancestor-of-a-binary-tree/
 
@@ -735,7 +654,6 @@
 主题：二叉树层次遍历
 知识点：识别并应用“二叉树层次遍历”中的 Binary Tree Right Side View 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/binary-tree-right-side-view/
 
@@ -744,7 +662,6 @@
 主题：二叉树层次遍历
 知识点：识别并应用“二叉树层次遍历”中的 Average of Levels in Binary Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/average-of-levels-in-binary-tree/
 
@@ -753,7 +670,6 @@
 主题：二叉树层次遍历
 知识点：识别并应用“二叉树层次遍历”中的 Binary Tree Level Order Traversal 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/binary-tree-level-order-traversal/
 
@@ -762,7 +678,6 @@
 主题：二叉树层次遍历
 知识点：识别并应用“二叉树层次遍历”中的 Binary Tree Zigzag Level Order Traversal 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/binary-tree-zigzag-level-order-traversal/
 
@@ -771,7 +686,6 @@
 主题：二叉搜索树
 知识点：识别并应用“二叉搜索树”中的 Minimum Absolute Difference in BST 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-absolute-difference-in-bst/
 
@@ -780,7 +694,6 @@
 主题：二叉搜索树
 知识点：识别并应用“二叉搜索树”中的 Kth Smallest Element in a BST 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/kth-smallest-element-in-a-bst/
 
@@ -789,7 +702,6 @@
 主题：二叉搜索树
 知识点：识别并应用“二叉搜索树”中的 Validate Binary Search Tree 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/validate-binary-search-tree/
 
@@ -798,7 +710,6 @@
 主题：图
 知识点：识别并应用“图”中的 Number of Islands 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/number-of-islands/
 
@@ -807,7 +718,6 @@
 主题：图
 知识点：识别并应用“图”中的 Surrounded Regions 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/surrounded-regions/
 
@@ -816,7 +726,6 @@
 主题：图
 知识点：识别并应用“图”中的 Clone Graph 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/clone-graph/
 
@@ -825,7 +734,6 @@
 主题：图
 知识点：识别并应用“图”中的 Evaluate Division 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/evaluate-division/
 
@@ -834,7 +742,6 @@
 主题：图
 知识点：识别并应用“图”中的 Course Schedule 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/course-schedule/
 
@@ -843,7 +750,6 @@
 主题：图
 知识点：识别并应用“图”中的 Course Schedule II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/course-schedule-ii/
 
@@ -852,7 +758,6 @@
 主题：图的广度优先搜索
 知识点：识别并应用“图的广度优先搜索”中的 Snakes and Ladders 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/snakes-and-ladders/
 
@@ -861,7 +766,6 @@
 主题：图的广度优先搜索
 知识点：识别并应用“图的广度优先搜索”中的 Minimum Genetic Mutation 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-genetic-mutation/
 
@@ -870,7 +774,6 @@
 主题：图的广度优先搜索
 知识点：识别并应用“图的广度优先搜索”中的 Word Ladder 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/word-ladder/
 
@@ -879,7 +782,6 @@
 主题：字典树
 知识点：识别并应用“字典树”中的 Implement Trie (Prefix Tree) 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/implement-trie-prefix-tree/
 
@@ -888,7 +790,6 @@
 主题：字典树
 知识点：识别并应用“字典树”中的 Design Add and Search Words Data Structure 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/design-add-and-search-words-data-structure/
 
@@ -897,7 +798,6 @@
 主题：字典树
 知识点：识别并应用“字典树”中的 Word Search II 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/word-search-ii/
 
@@ -906,7 +806,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Letter Combinations of a Phone Number 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/letter-combinations-of-a-phone-number/
 
@@ -915,7 +814,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Combinations 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/combinations/
 
@@ -924,7 +822,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Permutations 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/permutations/
 
@@ -933,7 +830,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Combination Sum 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/combination-sum/
 
@@ -942,7 +838,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 N-Queens II 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/n-queens-ii/
 
@@ -951,7 +846,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Generate Parentheses 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/generate-parentheses/
 
@@ -960,7 +854,6 @@
 主题：回溯
 知识点：识别并应用“回溯”中的 Word Search 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/word-search/
 
@@ -969,7 +862,6 @@
 主题：分治
 知识点：识别并应用“分治”中的 Convert Sorted Array to Binary Search Tree 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/convert-sorted-array-to-binary-search-tree/
 
@@ -978,7 +870,6 @@
 主题：分治
 知识点：识别并应用“分治”中的 Sort List 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/sort-list/
 
@@ -987,7 +878,6 @@
 主题：分治
 知识点：识别并应用“分治”中的 Construct Quad Tree 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/construct-quad-tree/
 
@@ -996,7 +886,6 @@
 主题：分治
 知识点：识别并应用“分治”中的 Merge k Sorted Lists 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/merge-k-sorted-lists/
 
@@ -1005,7 +894,6 @@
 主题：Kadane 算法
 知识点：识别并应用“Kadane 算法”中的 Maximum Subarray 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/maximum-subarray/
 
@@ -1014,7 +902,6 @@
 主题：Kadane 算法
 知识点：识别并应用“Kadane 算法”中的 Maximum Sum Circular Subarray 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/maximum-sum-circular-subarray/
 
@@ -1023,7 +910,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Search Insert Position 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/search-insert-position/
 
@@ -1032,7 +918,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Search a 2D Matrix 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/search-a-2d-matrix/
 
@@ -1041,7 +926,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Find Peak Element 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-peak-element/
 
@@ -1050,7 +934,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Search in Rotated Sorted Array 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/search-in-rotated-sorted-array/
 
@@ -1059,7 +942,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Find First and Last Position of Element in Sorted Array 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-first-and-last-position-of-element-in-sorted-array/
 
@@ -1068,7 +950,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Find Minimum in Rotated Sorted Array 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-minimum-in-rotated-sorted-array/
 
@@ -1077,7 +958,6 @@
 主题：二分查找
 知识点：识别并应用“二分查找”中的 Median of Two Sorted Arrays 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/median-of-two-sorted-arrays/
 
@@ -1086,7 +966,6 @@
 主题：堆
 知识点：识别并应用“堆”中的 Kth Largest Element in an Array 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/kth-largest-element-in-an-array/
 
@@ -1095,7 +974,6 @@
 主题：堆
 知识点：识别并应用“堆”中的 IPO 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/ipo/
 
@@ -1104,7 +982,6 @@
 主题：堆
 知识点：识别并应用“堆”中的 Find K Pairs with Smallest Sums 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-k-pairs-with-smallest-sums/
 
@@ -1113,7 +990,6 @@
 主题：堆
 知识点：识别并应用“堆”中的 Find Median from Data Stream 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/find-median-from-data-stream/
 
@@ -1122,7 +998,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Add Binary 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/add-binary/
 
@@ -1131,7 +1006,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Reverse Bits 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/reverse-bits/
 
@@ -1140,7 +1014,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Number of 1 Bits 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/number-of-1-bits/
 
@@ -1149,7 +1022,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Single Number 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/single-number/
 
@@ -1158,7 +1030,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Single Number II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/single-number-ii/
 
@@ -1167,7 +1038,6 @@
 主题：位运算
 知识点：识别并应用“位运算”中的 Bitwise AND of Numbers Range 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/bitwise-and-of-numbers-range/
 
@@ -1176,7 +1046,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Palindrome Number 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/palindrome-number/
 
@@ -1185,7 +1054,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Plus One 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/plus-one/
 
@@ -1194,7 +1062,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Factorial Trailing Zeroes 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/factorial-trailing-zeroes/
 
@@ -1203,7 +1070,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Sqrt(x) 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/sqrtx/
 
@@ -1212,7 +1078,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Pow(x, n) 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/powx-n/
 
@@ -1221,7 +1086,6 @@
 主题：数学
 知识点：识别并应用“数学”中的 Max Points on a Line 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/max-points-on-a-line/
 
@@ -1230,7 +1094,6 @@
 主题：一维动态规划
 知识点：识别并应用“一维动态规划”中的 Climbing Stairs 解题模式。
 难度：简单
-预计任务分钟：20
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/climbing-stairs/
 
@@ -1239,7 +1102,6 @@
 主题：一维动态规划
 知识点：识别并应用“一维动态规划”中的 House Robber 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/house-robber/
 
@@ -1248,7 +1110,6 @@
 主题：一维动态规划
 知识点：识别并应用“一维动态规划”中的 Word Break 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/word-break/
 
@@ -1257,7 +1118,6 @@
 主题：一维动态规划
 知识点：识别并应用“一维动态规划”中的 Coin Change 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/coin-change/
 
@@ -1266,7 +1126,6 @@
 主题：一维动态规划
 知识点：识别并应用“一维动态规划”中的 Longest Increasing Subsequence 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/longest-increasing-subsequence/
 
@@ -1275,7 +1134,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Triangle 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/triangle/
 
@@ -1284,7 +1142,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Minimum Path Sum 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/minimum-path-sum/
 
@@ -1293,7 +1150,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Unique Paths II 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/unique-paths-ii/
 
@@ -1302,7 +1158,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Longest Palindromic Substring 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/longest-palindromic-substring/
 
@@ -1311,7 +1166,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Interleaving String 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/interleaving-string/
 
@@ -1320,7 +1174,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Edit Distance 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/edit-distance/
 
@@ -1329,7 +1182,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Best Time to Buy and Sell Stock III 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/best-time-to-buy-and-sell-stock-iii/
 
@@ -1338,7 +1190,6 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Best Time to Buy and Sell Stock IV 解题模式。
 难度：困难
-预计任务分钟：45
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/best-time-to-buy-and-sell-stock-iv/
 
@@ -1347,6 +1198,5 @@
 主题：多维动态规划
 知识点：识别并应用“多维动态规划”中的 Maximal Square 解题模式。
 难度：中等
-预计任务分钟：30
 验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。
 官方题目：https://leetcode.cn/problems/maximal-square/

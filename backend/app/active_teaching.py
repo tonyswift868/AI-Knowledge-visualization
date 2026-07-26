@@ -1230,17 +1230,27 @@ def _topological_points(
         if edge["prerequisite_id"] in by_id and edge["dependent_id"] in by_id:
             outgoing[edge["prerequisite_id"]].append(edge["dependent_id"])
             indegree[edge["dependent_id"]] += 1
-    difficulty_rank = {
-        "easy": 0, "简单": 0, "基础": 0,
-        "medium": 1, "中等": 1,
-        "hard": 2, "困难": 2, "高级": 2,
-    }
+    def source_order(row: sqlite3.Row) -> tuple[int, int, str]:
+        try:
+            evidence = json.loads(row["source_evidence"])
+        except (KeyError, TypeError, json.JSONDecodeError):
+            evidence = []
+        positions = [
+            (
+                int(item.get("paragraph") or item.get("paragraph_start") or 0),
+                int(item.get("char_start") or 0),
+            )
+            for item in evidence
+            if isinstance(item, dict)
+        ]
+        paragraph, char_start = min(positions, default=(0, 0))
+        return paragraph, char_start, str(row["name"])
     ready = [
         node_id
         for node_id, value in indegree.items()
         if value == 0
     ]
-    ready.sort(key=lambda item: (difficulty_rank.get(str(by_id[item]["difficulty"]).casefold(), 1), by_id[item]["name"]))
+    ready.sort(key=lambda item: source_order(by_id[item]))
     ordered: list[sqlite3.Row] = []
     while ready:
         node_id = ready.pop(0)
@@ -1249,12 +1259,7 @@ def _topological_points(
             indegree[target] -= 1
             if indegree[target] == 0:
                 ready.append(target)
-                ready.sort(
-                    key=lambda item: (
-                        difficulty_rank.get(str(by_id[item]["difficulty"]).casefold(), 1),
-                        by_id[item]["name"],
-                    )
-                )
+                ready.sort(key=lambda item: source_order(by_id[item]))
     if len(ordered) != len(points):
         _error("KNOWLEDGE_DEPENDENCY_CYCLE", "知识依赖存在循环，无法生成计划", 422)
     return ordered
@@ -2215,18 +2220,63 @@ def _daily_route_summary(
     connection: sqlite3.Connection, plan_id: str, day_date: str
 ) -> dict[str, Any]:
     rows = connection.execute(
-        """SELECT id,title,estimated_task_minutes,status
+        """SELECT id,knowledge_point_id,title,estimated_task_minutes,status
            FROM active_plan_tasks
            WHERE plan_id=? AND day_date=? AND task_type='initial_learning'
            ORDER BY task_order,id""",
         (plan_id, day_date),
     ).fetchall()
+    point_ids = list(dict.fromkeys(str(row["knowledge_point_id"]) for row in rows))
     return {
         "date": day_date,
         "task_count": len(rows),
+        "knowledge_point_count": len(point_ids),
+        "knowledge_point_ids": point_ids,
         "task_minutes": sum(int(row["estimated_task_minutes"]) for row in rows),
+        "teaching_order": [
+            "knowledge_briefing",
+            "grounded_explanation",
+            "guided_example",
+            "learner_practice",
+            "assessment_or_remediation",
+        ],
         "tasks": [dict(row) for row in rows],
     }
+
+
+def _daily_briefing(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    plan_id: str,
+    day_date: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    summary = _daily_route_summary(connection, plan_id, day_date)
+    point_ids = summary["knowledge_point_ids"]
+    points = [
+        connection.execute(
+            "SELECT * FROM active_knowledge_points WHERE id=?", (point_id,)
+        ).fetchone()
+        for point_id in point_ids
+    ]
+    points = [point for point in points if point is not None]
+    names = [str(point["name"]) for point in points]
+    query = " ".join(names[:12])
+    citations = _search(connection, workspace_id, query) if query else []
+    for point in points[:5]:
+        citations = _merge_citations(
+            citations, json.loads(point["source_evidence"])
+        )
+    preview = "、".join(names[:6])
+    if len(names) > 6:
+        preview += f"等 {len(names)} 个知识点"
+    content = (
+        f"今天不是直接让你做题。我们先建立完成今日任务需要的知识框架：{preview}。"
+        f"\n\n今日计划约 {summary['task_minutes']} 个标准任务分钟。"
+        "我会先检索资料讲清概念和先修关系，再示范最小例子，然后让你完成一个小练习；"
+        "我会根据你的回答决定补讲、降低难度或继续，而不是照着资料念。"
+    )
+    return content, citations
 
 
 def _grade_understanding(message: str, point: sqlite3.Row) -> tuple[float, list[str]]:
@@ -2380,7 +2430,7 @@ async def start_session(
         state = {
             "current_learning_goal": receipt["learning_goal"],
             "current_knowledge_point_id": first["knowledge_point_id"],
-            "current_teaching_step": "explain",
+            "current_teaching_step": "daily_briefing",
             "today_remaining_task_minutes": receipt["daily_task_minutes"],
             "completed_tasks": [],
             "pending_reviews": [],
@@ -2389,14 +2439,14 @@ async def start_session(
             "route_index": 0,
             "route_length": len(tasks),
             "mastery_evidence": [],
-            "next_action": "show_example",
+            "next_action": "explain_current_point",
             "estimated_task_minutes": first["estimated_task_minutes"],
             "completed_task_minutes": 0,
             "actual_elapsed_minutes": 0.0,
             "autonomy": {
                 "mode": "teacher_led_until_learner_input",
                 "awaiting_learner": False,
-                "reason": "teacher_opening",
+                "reason": "daily_knowledge_briefing",
             },
             "today_plan": _daily_route_summary(
                 connection, plan_row["id"], first["day_date"]
@@ -2410,10 +2460,15 @@ async def start_session(
                VALUES (?,?,?,?,?,?,?)""",
             (session_id, workspace_id, plan_row["id"], json.dumps(state, ensure_ascii=False), started, started, 0.0),
         )
-        opening, citations = _opening(connection, first)
+        opening, citations = _daily_briefing(
+            connection,
+            workspace_id=workspace_id,
+            plan_id=plan_row["id"],
+            day_date=first["day_date"],
+        )
         opening, teacher_generation = await _render_teacher_content(
             draft=opening,
-            action="explain",
+            action="daily_briefing",
             citations=citations,
             provider_session_id=str(body.get("provider_session_id") or "").strip() or None,
             state=state,
@@ -2425,7 +2480,9 @@ async def start_session(
             "UPDATE active_teaching_sessions SET state=? WHERE id=?",
             (json.dumps(state, ensure_ascii=False), session_id),
         )
-        _record_message(connection, session_id, "teacher", "explain", opening, citations)
+        _record_message(
+            connection, session_id, "teacher", "daily_briefing", opening, citations
+        )
         connection.commit()
         return _public_session(connection, session_id)
 
@@ -2464,7 +2521,13 @@ async def teach_next(
             json.loads(point["source_evidence"]),
         )
         step = str(state.get("current_teaching_step") or "explain")
-        if step == "explain":
+        if step == "daily_briefing":
+            action = "explain"
+            content, citations = _opening(connection, task)
+            state["current_teaching_step"] = "explain"
+            state["next_action"] = "show_example"
+            awaiting = False
+        elif step == "explain":
             action = "example"
             content = (
                 f"我先替你把“{point['name']}”拆成一个最小例子。"

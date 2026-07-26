@@ -113,6 +113,7 @@ def _structural_nodes(
             difficulty=difficulty,
             current_level=current_level,
             explicit_minutes=explicit,
+            explicit_minutes_source="source_provided_duration" if explicit else None,
         )
         explanation = active_teaching._extract_field(
             chunk["text"], ("知识点", "解释", "explanation")

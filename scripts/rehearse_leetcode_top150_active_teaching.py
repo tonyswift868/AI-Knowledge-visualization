@@ -13,7 +13,7 @@ from app.main import app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MATERIAL = PROJECT_ROOT / "data" / "demo_materials" / "leetcode_top_interview_150_20260726.md"
 REPORT = PROJECT_ROOT / "reports" / "leetcode_top150_active_rehearsal_20260726.json"
-WORKSPACE = "leetcode-top150-rehearsal-20260726-v9"
+WORKSPACE = "leetcode-top150-rehearsal-20260726-v11"
 
 
 def ensure_ok(response, label: str) -> dict:
@@ -107,9 +107,28 @@ def main() -> None:
                     task["title"].split(" · ", 1)[0] for task in day["tasks"]
                 )
             ),
+            "knowledge_point_count": len(
+                {
+                    task["knowledge_point_id"]
+                    for task in day["tasks"]
+                    if task.get("knowledge_point_id")
+                }
+            ),
         }
         for day in plan["calendar"]
     ]
+    difficulty_by_name = {
+        point["name"]: point["difficulty"] for point in graph["knowledge_points"]
+    }
+    for day in days:
+        day["difficulty_counts"] = {
+            difficulty: sum(
+                1
+                for title in day["problem_titles"]
+                if difficulty_by_name.get(title) == difficulty
+            )
+            for difficulty in sorted(set(difficulty_by_name.values()))
+        }
     report = {
         "workspace_id": WORKSPACE,
         "source": {

@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.orm import configure_orm
-from app.generic_knowledge import calendar_capacities
+from app.generic_knowledge import (
+    calendar_capacities,
+    mastery_time_estimate,
+    schedule_by_capacity,
+)
 from app.provider_runtime import (
     create_provider_session,
     create_verified_demo_session,
@@ -502,3 +506,55 @@ def test_fifteen_day_cycle_reserves_first_eight_days_for_initial_learning():
         "2026-08-09",
         "2026-08-10",
     ]
+
+
+def test_system_estimate_and_scheduler_balance_minutes_not_item_counts():
+    easy = mastery_time_estimate(
+        text="基础概念和一个短例子",
+        difficulty="简单",
+        current_level="zero_foundation",
+    )
+    hard = mastery_time_estimate(
+        text="复杂约束、多阶段推导和边界分析",
+        difficulty="困难",
+        current_level="zero_foundation",
+    )
+    assert hard["total_mastery_task_minutes"] > easy["total_mastery_task_minutes"] * 1.5
+    assert easy["basis"].startswith("system_estimate:")
+    assert easy["is_source_provided_duration"] is False
+
+    difficulties = ["困难", "困难", "简单", "简单", "简单", "简单"]
+    items = [
+        {
+            "id": f"point-{index}",
+            "name": f"知识点 {index}",
+            "mastery_estimate": mastery_time_estimate(
+                text=f"第 {index} 项学习内容",
+                difficulty=difficulty,
+                current_level="zero_foundation",
+            ),
+            "source_evidence": [{"chunk_id": f"chunk-{index}"}],
+            "acceptance_method": "能够独立解释并应用",
+        }
+        for index, difficulty in enumerate(difficulties, start=1)
+    ]
+    calendar, unscheduled = schedule_by_capacity(
+        items,
+        {
+            "start_date": "2026-07-27",
+            "deadline": "2026-07-29",
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 300,
+            "initial_learning_period_ratio": 0.9,
+        },
+    )
+    active = [day for day in calendar if day["study_phase"] == "initial_learning"]
+    assert unscheduled == 0
+    loads = [day["planned_task_minutes"] for day in active]
+    point_counts = [
+        len({task["knowledge_point_id"] for task in day["tasks"]}) for day in active
+    ]
+    assert max(loads) - min(loads) < hard["total_mastery_task_minutes"]
+    assert len(set(point_counts)) > 1
