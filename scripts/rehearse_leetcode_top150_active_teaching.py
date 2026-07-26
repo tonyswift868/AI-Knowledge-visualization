@@ -13,7 +13,7 @@ from app.main import app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MATERIAL = PROJECT_ROOT / "data" / "demo_materials" / "leetcode_top_interview_150_20260726.md"
 REPORT = PROJECT_ROOT / "reports" / "leetcode_top150_active_rehearsal_20260726.json"
-WORKSPACE = "leetcode-top150-rehearsal-20260726-v8"
+WORKSPACE = "leetcode-top150-rehearsal-20260726-v9"
 
 
 def ensure_ok(response, label: str) -> dict:
@@ -40,8 +40,8 @@ def main() -> None:
                         "前半周期完成 LeetCode 面试经典 150 第一遍，"
                         "后半周期在 AI 教师带领下滚动复习并形成独立解题能力"
                     ),
-                    "current_level": "beginner",
-                    "current_foundation": "beginner",
+                    "current_level": "zero_foundation",
+                    "current_foundation": "zero_foundation",
                     "target_level": "complete_mastery",
                     "start_date": "2026-07-27",
                     "deadline": "2026-08-10",
