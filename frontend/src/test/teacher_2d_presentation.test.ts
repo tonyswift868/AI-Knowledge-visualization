@@ -10,11 +10,25 @@ const manifest = {
   animationAliases: { idle: "idle_00", questioning: "tap_body_00" },
 } as const
 
+const imageManifest = {
+  id: "v9", displayName: "V9", renderer: "image2d", skeleton: "dom-css-v1",
+  textures: ["/teaching.png", "/swimsuit.png"], armature: "v9", defaultAnimation: "idle",
+  imageStates: { teaching: "/teaching.png", swimsuit: "/swimsuit.png" },
+  animationAliases: { idle: "idle", explaining: "explain" },
+} as const
+
 describe("replaceable Teacher2D presentation boundary", () => {
   it("validates a local DragonBones manifest and maps only real animation names", () => {
     expect(validateTeacher2DManifest(manifest).armature).toBe("shizuku")
     expect(resolveTeacherAnimation(manifest, "questioning", ["idle_00", "tap_body_00"])).toBe("tap_body_00")
     expect(resolveTeacherAnimation(manifest, "praising", ["idle_00"])).toBe("idle_00")
+  })
+
+  it("validates the V9 image manifest and keeps both approved forms", () => {
+    const validated = validateTeacher2DManifest(imageManifest)
+    expect(validated.renderer).toBe("image2d")
+    expect(validated.imageStates).toEqual({ teaching: "/teaching.png", swimsuit: "/swimsuit.png" })
+    expect(resolveTeacherAnimation(validated, "explaining", ["idle", "explain"])).toBe("explain")
   })
 
   it("normalizes the legacy listening state without coupling business code to a runtime", () => {

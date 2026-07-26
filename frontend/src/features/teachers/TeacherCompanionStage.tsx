@@ -43,7 +43,7 @@ export function TeacherCompanionPortrait({
   spineManifestUrl?: string
   state?: TeacherCompanionState
 }) {
-  const [runtime, setRuntime] = useState<"dragonbones" | "error" | "loading">("loading")
+  const [runtime, setRuntime] = useState<"image2d" | "dragonbones" | "error" | "loading">("loading")
   const stateLabel: Record<TeacherCompanionState, string> = {
     loading: "加载",
     idle: "专注",
@@ -65,8 +65,8 @@ export function TeacherCompanionPortrait({
     <section
       className={`teacher-companion-portrait state-${state}`}
       data-testid="teacher-companion-portrait"
-      data-visual-mode="2d-skeleton"
-      data-runtime-target="dragonbones2d"
+      data-visual-mode="2d-image"
+      data-runtime-target="image2d"
       data-teacher-state={state}
       aria-label={`今日 AI 教师 ${teacherName}`}
     >
@@ -84,7 +84,7 @@ export function TeacherCompanionPortrait({
         <div className="teacher-companion-shadow" aria-hidden="true" />
       </div>
       <div className="teacher-companion-status">
-        <i /><span>{stateLabel[state]}模式 · {runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span>
+        <i /><span>{stateLabel[state]}模式 · {runtime === "image2d" ? "V9 轻量动态" : runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span>
       </div>
     </section>
   )
@@ -98,9 +98,10 @@ export function TeacherCompanionStage({
   spineManifestUrl?: string
 }) {
   const [mood, setMood] = useState<TeacherMood>("calm")
-  const [runtime, setRuntime] = useState<"dragonbones" | "error" | "loading">("loading")
+  const [runtime, setRuntime] = useState<"image2d" | "dragonbones" | "error" | "loading">("loading")
   const [message, setMessage] = useState("")
   const [lastQuestion, setLastQuestion] = useState("")
+  const [teacherSkin, setTeacherSkin] = useState<"teaching" | "swimsuit">("teaching")
   const copy = moodCopy[mood]
   const animationState: TeacherAnimationState = mood === "encouraging"
     ? "encouraging"
@@ -127,8 +128,8 @@ export function TeacherCompanionStage({
     <section
       className={`teacher-companion-stage mood-${mood}`}
       data-testid="teacher-companion-stage"
-      data-visual-mode="2d-skeleton"
-      data-runtime-target="dragonbones2d"
+      data-visual-mode="2d-image"
+      data-runtime-target="image2d"
       aria-label="2D AI 教师互动舞台"
     >
       <div className="teacher-companion-atmosphere" aria-hidden="true">
@@ -176,9 +177,9 @@ export function TeacherCompanionStage({
 
       <div className="teacher-companion-character">
         <div className="teacher-companion-halo" aria-hidden="true" />
-        <Teacher2DStage teacherName={teacherName} state={animationState} onRuntimeChange={setRuntime} />
+        <Teacher2DStage teacherName={teacherName} state={animationState} skin={teacherSkin} onSkinChange={setTeacherSkin} onRuntimeChange={setRuntime} />
         <div className="teacher-companion-shadow" aria-hidden="true" />
-        <div className="teacher-companion-status"><i /><span>{copy.label}模式 · {runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span></div>
+        <div className="teacher-companion-status"><i /><span>{copy.label}模式 · {runtime === "image2d" ? "V9 轻量动态" : runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span></div>
       </div>
 
       <nav className="teacher-companion-actions" aria-label="教师表现控制">
@@ -191,8 +192,8 @@ export function TeacherCompanionStage({
         <button type="button" className={mood === "explaining" ? "active" : ""} onClick={() => setMood("explaining")}>
           <Play size={17} /><span>讲解</span>
         </button>
-        <button type="button" disabled title="接入授权的 Spine 换装资源后启用">
-          <Palette size={17} /><span>换装</span>
+        <button type="button" className={teacherSkin === "swimsuit" ? "active" : ""} aria-label="切换教师形态" aria-pressed={teacherSkin === "swimsuit"} onClick={() => setTeacherSkin(value => value === "teaching" ? "swimsuit" : "teaching")}>
+          <Palette size={17} /><span>形态</span>
         </button>
       </nav>
     </section>

@@ -1,6 +1,6 @@
 import type { Teacher2DManifest, TeacherPresentationState } from "./teacherPresentationTypes"
 
-export const DEFAULT_TEACHER_MANIFEST_URL = "/teacher2d/dragonbones/shizuku/manifest.json"
+export const DEFAULT_TEACHER_MANIFEST_URL = "/teacher2d/original-ai-teacher-blonde-fang/manifest.json"
 
 const states: readonly TeacherPresentationState[] = [
   "loading", "idle", "greeting", "thinking", "talking", "explaining", "questioning",
@@ -14,11 +14,16 @@ export function validateTeacher2DManifest(value: unknown): Teacher2DManifest {
   for (const key of requiredStrings) {
     if (typeof candidate[key] !== "string" || !candidate[key]) throw new Error(`2D 教师清单缺少 ${String(key)}`)
   }
-  if (candidate.renderer !== "dragonbones2d") throw new Error(`当前适配器不支持 ${candidate.renderer}`)
+  if (candidate.renderer !== "dragonbones2d" && candidate.renderer !== "image2d") throw new Error(`当前适配器不支持 ${candidate.renderer}`)
   if (!Array.isArray(candidate.textures) || candidate.textures.length === 0 || candidate.textures.some(url => typeof url !== "string" || !url)) {
     throw new Error("2D 教师清单缺少纹理页")
   }
   if (candidate.animationAliases && typeof candidate.animationAliases !== "object") throw new Error("animationAliases 必须是对象")
+  if (candidate.renderer === "image2d") {
+    if (!candidate.imageStates || typeof candidate.imageStates.teaching !== "string" || typeof candidate.imageStates.swimsuit !== "string") {
+      throw new Error("image2d 教师清单缺少 teaching/swimsuit 双形态")
+    }
+  }
   return candidate as Teacher2DManifest
 }
 

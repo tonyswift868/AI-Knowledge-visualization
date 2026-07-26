@@ -10,7 +10,9 @@
 - Original texture paths: `Pixi/Demos/resource/shizuku/shizuku.1024/texture_00.png` through `texture_03.png`
 - Local runtime source: `Pixi/Demos/8.x/libs/dragonBones/dragonBones.js`, vendored byte-for-byte as `frontend/public/vendor/dragonbones/dragonBones.js`
 - Runtime receipt: `frontend/public/vendor/dragonbones/SOURCE.md`; adjacent MIT license: `frontend/public/vendor/dragonbones/LICENSE`
-- Local use: open-source prototype AI teacher / runtime integration only. It is not MentorFlow's final character art.
+- Local use: optional fallback and adapter reference only. The default MentorFlow
+  teacher is the project-owned V9 `image2d` pair; Shizuku is not product
+  character art and is not loaded by the default Learning Run.
 - Not used: no GameKee character assets, network requests, textures, skeleton files, or commercial game materials.
 
 The official skeleton contains five `textureAtlas` entries but the selected upstream commit contains four PNG pages. MentorFlow preserves that evidence and reports the mismatch; no replacement texture is included.

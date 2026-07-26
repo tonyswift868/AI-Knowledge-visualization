@@ -20,9 +20,9 @@ describe("original AI teacher mother-image review", () => {
   it("shows the independent blonde fang teaching state with removable outerwear", () => {
     render(<TeacherMotherImageReview candidate="blonde-fang-teaching" />)
 
-    expect(screen.getByRole("heading", { name: "金发虎牙教师 · 兔子教学态" })).toBeInTheDocument()
-    expect(screen.getByText(/更白肤色 · 明显虎牙 · 高级兔子套装/)).toBeInTheDocument()
-    expect(screen.getByRole("img", { name: /兔耳外套教学态全身母图/ })).toHaveAttribute(
+    expect(screen.getByRole("heading", { name: "金发虎牙教师 · 小熊软糖教学态" })).toBeInTheDocument()
+    expect(screen.getByText(/更白肤色 · 明显虎牙 · 小熊软糖外套/)).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /小熊软糖外套教学态全身母图/ })).toHaveAttribute(
       "src",
       "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-teaching-heart-key.png",
     )

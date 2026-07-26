@@ -1,55 +1,115 @@
-# Teacher2D runtime
+# Teacher 2D runtime
 
-MentorFlow 当前把 DragonBonesJS MIT 运行时和官方 Shizuku 示例作为可替换的 2D AI 教师站位实现。它是 prototype，不是最终原创美术；KKS/Three.js 代码仍保留，默认不会和这个 Pixi 舞台同时初始化。
+MentorFlow currently uses the approved V9 teaching/swimsuit mother images as
+the default AI teacher. The default renderer is a low-cost DOM/CSS `image2d`
+adapter. It preserves the finished artwork, avoids the old Koikatsu/PMX GPU
+cost, and keeps the teaching brain independent from the visual runtime.
+
+DragonBonesJS and its official Shizuku sample remain in the repository as a
+licensed fallback and adapter reference. They are no longer the default
+teacher or the product's character art.
 
 ## Runtime boundary
 
-业务页面只使用 `Teacher2DStage` 和 `TeacherPresentationController`。控制器通过 `Teacher2DRenderer` 接口选择适配器：
+Business pages only use:
 
-- `DragonBonesTeacherAdapter`：当前默认，加载项目内的骨架 JSON、四张本地纹理和 vendored DragonBonesJS Pixi 8 runtime。
-- `PlaceholderTeacherAdapter`：future `spine2d` / `none` 的安全占位，不接触 DragonBones 对象。
+- `Teacher2DStage`
+- `TeacherPresentationController`
+- the `Teacher2DRenderer` interface
 
-每个舞台只创建一个 `PIXI.Application` 和一个 armature。适配器使用自己的 Pixi ticker，并在卸载时移除 ticker、ResizeObserver、事件、canvas、armature、DragonBones data 和纹理缓存。页面隐藏时暂停，恢复时继续；React StrictMode 的第一次挂载会在第二次挂载前完整卸载。
+The controller selects a renderer from the manifest:
 
-Learning Run 的 2D 路径不会加载或初始化旧版 Koikatsu/PMX 模块。旧版导入编辑器保留在角色库的折叠迁移工具内，并通过 `React.lazy` 独立分包；真实浏览器进入 Learning Run 时只出现一个 DragonBones canvas，也没有 Koikatsu/PMX/MMD 网络请求。
+- `ImageTeacherAdapter`: current default; preloads the two V9 PNGs and renders
+  them without WebGL.
+- `DragonBonesTeacherAdapter`: optional MIT-licensed skeleton sample.
+- `PlaceholderTeacherAdapter`: safe boundary for unsupported/future runtimes.
 
-## Local prototype
+Changing the mother image or adopting a later Spine/DragonBones rig does not
+change Learning Run, provider calls, teaching state, or the AI response flow.
 
-- Manifest: `/teacher2d/dragonbones/shizuku/manifest.json`
-- Skeleton: `/teacher2d/dragonbones/shizuku/shizuku_ske.json`
-- Armature: `shizuku`
-- PixiJS: exact `8.9.2`
-- DragonBonesJS source commit: `64b6c69ae35777c2404be68c9192e2c56906079e`
-- Local runtime: `/vendor/dragonbones/dragonBones.js`
-- Runtime source: `Pixi/Demos/8.x/libs/dragonBones/dragonBones.js` (byte-for-byte identical at the recorded commit)
+## Current V9 manifest
 
-The skeleton reports version `5.6`, bounds `{x:-640,y:-1380,width:1280,height:1380}`, one default skin, and 489 real animation names. The complete authoritative list is the `armature[0].animation[*].name` sequence in the local skeleton JSON; the production toolbar enumerates the same runtime list without inventing names. The first interaction animations are `idle_00`, `idle_01`, `idle_02`, `flick_head_00..02`, `tap_body_00..02`, `pinch_in_00..02`, `pinch_out_00..02`, and `shake_00..02`; the remainder are the official parameter/material tracks (`PARAM_*`, `B_*`, `D_*`).
+- Manifest:
+  `/teacher2d/original-ai-teacher-blonde-fang/manifest.json`
+- Teaching form:
+  `teacher-blonde-fang-v9-teaching-heart-key.png`
+- Swimsuit form:
+  `teacher-blonde-fang-v9-swimsuit-heart-key.png`
+- Renderer: `image2d`
+- WebGL: disabled
+- Forms: `teaching`, `swimsuit`
 
-The official skeleton advertises five atlas pages, including `texture_04.png`, while the official repository snapshot ships only `texture_00.png` through `texture_03.png`. The adapter loads the four shipped pages exactly as the official Pixi EyeTracking demo does, logs the discrepancy once, and does not fabricate a fifth texture.
+Both forms retain the requested shared character identity, heart/key jewellery,
+leg-band design, and the revised teaching-form zipper detail.
 
-## Semantic states
+## Interaction and motion
 
-The manifest maps only names present in the real runtime:
+The lightweight renderer provides:
 
-| state | real animation | behavior |
-| --- | --- | --- |
-| idle | `idle_00` | loop |
-| greeting | `flick_head_00` | one-shot, returns to idle |
-| thinking | `idle_01` | loop |
-| talking / explaining | `idle_02` | shared loop fallback |
-| questioning | `tap_body_00` | one-shot, returns to idle |
-| praising | `pinch_in_00` | one-shot, returns to idle |
-| encouraging | `shake_00` | one-shot, returns to idle |
-| confused | `shake_01` | one-shot, returns to idle |
-| ending | `flick_head_02` | one-shot, returns to idle |
+- continuous slow breathing and small centre-of-gravity movement;
+- pointer-following lean using bounded CSS variables;
+- head, torso, and lower-body click zones with different reactions;
+- semantic motions for idle, greeting, thinking, talking, explaining,
+  questioning, praising, encouraging, confused, and ending;
+- pause, mirror, scale, reset, and manual action controls;
+- a visible teaching/swimsuit form control;
+- a 1.05-second form transition using an outgoing silhouette, light sweep,
+  energy ring, and incoming-form reveal;
+- `prefers-reduced-motion` handling;
+- page and renderer lifecycle cleanup without a second 3D runtime.
 
-Missing mappings fall back to `idle_00`; repeated state/animation requests do not restart the current animation. Learning Run already supplies `thinking`, `explaining`, and result-driven `encouraging` states to the compact stage. The full teacher page uses the same controller and exposes manual mood controls.
+The motion is intentionally whole-image motion. It is not represented as
+independent arm, mouth, hair, breast, or cloth bones. Those local deformations
+require an approved layered PSD and a real mesh/bone rig.
 
-桌面 Learning Run 使用约 58/42 的内容/教师分栏；窄屏改为单列，教师舞台可折叠。工具栏支持真实动画选择、缩放、镜像、复位、暂停和调试。手动动作与点击动作按运行时的真实时长播放，结束后回到 `idle_00`；`prefers-reduced-motion` 用户默认暂停。
+## Teaching-state mapping
 
-## Replacing the prototype
+| Teaching state | Lightweight action |
+| --- | --- |
+| idle | breathe |
+| greeting / ending | wave |
+| thinking | think |
+| talking | talk |
+| explaining | explain |
+| questioning | question |
+| praising | cheer |
+| encouraging | heart |
+| confused | confused |
 
-1. Put the user-owned DragonBones skeleton and its texture pages under a new `frontend/public/teacher2d/<id>/` directory.
-2. Copy the source license and write a manifest with the real `armature`, default animation, texture URLs, and aliases only for names present in that skeleton.
-3. Add the manifest to `frontend/public/teacher2d/catalog.json`.
-4. Keep the page code unchanged; select the new manifest URL at the controller boundary. A future Spine implementation adds `SpineTeacherAdapter` without changing Learning Run or provider state.
+Learning Run derives these states from actual product state: request in
+progress, model response, active question, correct result, retry result, and
+errors. The image layer never decides teaching content.
+
+## Replacing the current mother images
+
+If a revised pair keeps approximately the same transparent full-body framing:
+
+1. Place the two approved PNGs under a new
+   `frontend/public/teacher2d/<teacher-id>/` directory.
+2. Copy and update the V9 manifest with the new `textures` and `imageStates`
+   URLs.
+3. Point `DEFAULT_TEACHER_MANIFEST_URL` at the new manifest.
+4. Run the image-adapter tests, production build, and real-browser visual gate.
+
+No layer separation is required for a mother-image replacement in this
+lightweight mode. Separation becomes necessary only when upgrading to
+independent limb, face, hair, cloth, or physics animation.
+
+## Verification
+
+Focused checks:
+
+```powershell
+cd frontend
+npm.cmd exec -- vitest run src/test/image_teacher_adapter.test.ts src/test/teacher_2d_presentation.test.ts src/test/teacher_companion_stage.test.tsx src/test/teacher_mother_image_review.test.tsx --pool=forks --maxWorkers=1 --no-file-parallelism
+npm.cmd run build
+```
+
+Real-browser acceptance must confirm:
+
+- both forms load without broken requests;
+- the teacher is fully visible in the library and Learning Run;
+- pointer movement changes `--look-x` and `--look-y`;
+- click zones enter a visible reaction state;
+- the form control activates the transition before the incoming image settles;
+- browser console contains no errors.

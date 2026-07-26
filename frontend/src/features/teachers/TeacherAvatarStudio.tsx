@@ -28,11 +28,11 @@ const motherImageCandidates: Record<TeacherMotherImageId, {
   },
   "blonde-fang-teaching": {
     eyebrow: "MOTHER IMAGE REVIEW · TEACHER 02 · TEACHING",
-    title: "金发虎牙教师 · 兔子教学态",
-    description: "日常教学使用兔耳外套、可爱分层裙、长袜与玛丽珍鞋；服装将作为可关闭的覆盖层制作。",
-    traits: "更白肤色 · 明显虎牙 · 高级兔子套装",
+    title: "金发虎牙教师 · 小熊软糖教学态",
+    description: "日常教学使用小熊软糖短外套、可爱百褶裙、长袜与玛丽珍鞋；爱心钥匙项链、造型拉链和腿环已经同步到双形态。",
+    traits: "更白肤色 · 明显虎牙 · 小熊软糖外套",
     src: "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-teaching-heart-key.png",
-    alt: "第二名原创金发虎牙成年 AI 教师兔耳外套教学态全身母图",
+    alt: "第二名原创金发虎牙成年 AI 教师小熊软糖外套教学态全身母图",
   },
   "blonde-fang-swimsuit": {
     eyebrow: "MOTHER IMAGE REVIEW · TEACHER 02 · CHAT",
@@ -46,6 +46,7 @@ const motherImageCandidates: Record<TeacherMotherImageId, {
 
 export function TeacherMotherImageReview({ candidate = "auburn" }: { candidate?: TeacherMotherImageId }) {
   const teacher = motherImageCandidates[candidate]
+  const approved = candidate !== "auburn"
   return (
     <section className="teacher-mother-review" aria-label="原创 AI 教师母图审稿">
       <div className="teacher-mother-review-copy">
@@ -54,7 +55,7 @@ export function TeacherMotherImageReview({ candidate = "auburn" }: { candidate?:
         <p>{teacher.description}</p>
         <dl>
           <div><dt>人物设定</dt><dd>{teacher.traits}</dd></div>
-          <div><dt>当前状态</dt><dd>透明母图候选 · 等待审稿</dd></div>
+          <div><dt>当前状态</dt><dd>{approved ? "V9 正式母图 · 已接入轻量动态" : "透明母图候选 · 等待审稿"}</dd></div>
           <div><dt>确认之后</dt><dd>拆分五官、头发、四肢、躯干与衣服</dd></div>
         </dl>
       </div>
@@ -64,7 +65,7 @@ export function TeacherMotherImageReview({ candidate = "auburn" }: { candidate?:
           src={teacher.src}
           alt={teacher.alt}
         />
-        <span className="teacher-mother-review-status">母图候选 · 未绑定骨骼</span>
+        <span className="teacher-mother-review-status">{approved ? "V9 正式母图 · 轻量动态已接入" : "母图候选 · 未绑定骨骼"}</span>
       </div>
     </section>
   )
@@ -286,15 +287,15 @@ export function TeacherAvatarStudio({
   return <section className={`teacher-avatar-studio ${compact ? "compact" : ""}`}>
       <div className="teacher-avatar-heading">
       <div><span>{compact ? "LICENSED AVATAR ROSTER" : "2D AI TEACHER COMPANION"}</span><h2>{compact ? "今日教师模型" : "AI 教师角色库"}</h2><p>{compact ? "当前教师的课程展示模型。" : "以高质量 2D 角色、教学状态和自然互动构成教师陪伴体验。"}</p></div>
-        <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看 DragonBonesJS 源码 <ExternalLink size={14} /></a>
+        <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看备用 DragonBones 方案 <ExternalLink size={14} /></a>
     </div>
 
       {!compact && <div className="teacher-review-switch" role="group" aria-label="教师视觉审稿模式">
         <button type="button" className={reviewMode === "mother-auburn" ? "active" : ""} aria-pressed={reviewMode === "mother-auburn"} onClick={() => setReviewMode("mother-auburn")}>教师 01 · 红发</button>
-        <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 兔子教学态</button>
+        <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 小熊教学态</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-swimsuit" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-swimsuit"} onClick={() => setReviewMode("mother-blonde-fang-swimsuit")}>教师 02 · 泳装聊天态</button>
-        <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>现有骨骼占位</button>
-        <span>先锁定外观，再拆层绑定；切换不会修改任何角色资产。</span>
+        <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>V9 轻量动态</button>
+        <span>当前使用正式母图进行低显存互动；以后拆层时可替换渲染器，不影响教师大脑。</span>
       </div>}
 
       {!compact && (reviewMode !== "skeleton"

@@ -13,7 +13,7 @@ export class TeacherPresentationController {
   private mounted = false
   private semanticState: TeacherPresentationState = "loading"
   private snapshot: TeacherRendererSnapshot = {
-    status: "loading", renderer: "dragonbones2d", semanticState: "loading", animations: [], skins: [], canvasWidth: 0, canvasHeight: 0, webgl: false, loadedTextures: [],
+    status: "loading", renderer: "image2d", semanticState: "loading", animations: [], skins: [], canvasWidth: 0, canvasHeight: 0, webgl: false, loadedTextures: [],
   }
 
   constructor(options: TeacherPresentationControllerOptions) { this.onSnapshot = options.onSnapshot }
@@ -33,7 +33,7 @@ export class TeacherPresentationController {
       })
       await this.renderer.load(manifest)
       if (!this.mounted) return
-      this.publish({ status: "ready", armature: manifest.armature, animations: this.renderer.listAnimations(), skins: this.renderer.listSkins(), semanticState: this.semanticState })
+      this.publish({ status: "ready", renderer: manifest.renderer, armature: manifest.armature, animations: this.renderer.listAnimations(), skins: this.renderer.listSkins(), semanticState: this.semanticState })
       this.setState(this.semanticState)
     } catch (error) {
       if (!this.mounted) return
@@ -52,6 +52,7 @@ export class TeacherPresentationController {
   playAnimation(name: string, loop = false): void { this.renderer?.playAnimation(name, loop) }
   setScale(value: number): void { this.renderer?.setScale(value) }
   setMirror(value: boolean): void { this.renderer?.setMirror(value) }
+  setSkin(value: string): void { this.renderer?.setSkin(value) }
   pause(): void { this.renderer?.pause(); this.publish({ status: "ready" }) }
   resume(): void { this.renderer?.resume(); this.publish({ status: "ready" }) }
   reset(): void { this.renderer?.setScale(1); this.renderer?.setMirror(false); this.setState("idle") }

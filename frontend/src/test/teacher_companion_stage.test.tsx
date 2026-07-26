@@ -36,6 +36,7 @@ function fakeController(
     setState: vi.fn(),
     setScale: vi.fn(),
     setMirror: vi.fn(),
+    setSkin: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     reset: vi.fn(),
@@ -46,12 +47,12 @@ function fakeController(
 }
 
 describe("2D teacher companion stage", () => {
-  it("uses the live DragonBones renderer boundary", () => {
+  it("uses the lightweight V9 image renderer boundary", () => {
     render(<TeacherCompanionStage teacherName="艾莉丝" />)
     const stage = screen.getByTestId("teacher-companion-stage")
-    expect(stage).toHaveAttribute("data-visual-mode", "2d-skeleton")
-    expect(stage).toHaveAttribute("data-runtime-target", "dragonbones2d")
-    expect(screen.getByTestId("teacher-2d-stage")).toHaveAttribute("data-renderer-kind", "dragonbones2d")
+    expect(stage).toHaveAttribute("data-visual-mode", "2d-image")
+    expect(stage).toHaveAttribute("data-runtime-target", "image2d")
+    expect(screen.getByTestId("teacher-2d-stage")).toHaveAttribute("data-renderer-kind", "image2d")
   })
 
   it("switches presentation state without invoking the legacy 3D renderer", () => {
@@ -60,6 +61,9 @@ describe("2D teacher companion stage", () => {
     expect(screen.getByTestId("teacher-companion-stage")).toHaveClass("mood-encouraging")
     expect(screen.getByText(/不用急着一次答对/)).toBeInTheDocument()
     expect(screen.getByTestId("teacher-2d-stage")).toHaveAttribute("data-semantic-state", "encouraging")
+    const formButton = screen.getByRole("button", { name: "切换教师形态" })
+    fireEvent.click(formButton)
+    expect(formButton).toHaveAttribute("aria-pressed", "true")
   })
 
   it("accepts a question and enters explanation mode", () => {
@@ -92,6 +96,36 @@ describe("2D teacher companion stage", () => {
     expect(stage).not.toHaveClass("collapsed")
     fireEvent.click(screen.getByRole("button", { name: "显示或隐藏教师调试信息" }))
     expect(screen.getByTestId("teacher-2d-debug")).toBeInTheDocument()
+  })
+
+  it("switches the V9 form through the visible toolbar without remounting", async () => {
+    const setSkin = vi.fn()
+    const mount = vi.fn()
+    const controllerFactory = (options: TeacherPresentationControllerOptions) => fakeController(options, {
+      mount: vi.fn(async () => {
+        mount()
+        options.onSnapshot({
+          status: "ready",
+          renderer: "image2d",
+          armature: "teacher-blonde-fang-v9",
+          currentAnimation: "idle",
+          semanticState: "idle",
+          animations: ["idle", "heart"],
+          skins: ["teaching", "swimsuit"],
+          canvasWidth: 420,
+          canvasHeight: 680,
+          webgl: false,
+          loadedTextures: ["/teaching.png", "/swimsuit.png"],
+        })
+      }),
+      setSkin,
+    })
+    render(<Teacher2DStage controllerFactory={controllerFactory} />)
+
+    const picker = await screen.findByLabelText("教师形态")
+    fireEvent.change(picker, { target: { value: "swimsuit" } })
+    expect(setSkin).toHaveBeenCalledWith("swimsuit")
+    expect(mount).toHaveBeenCalledTimes(1)
   })
 
   it("keeps surrounding learning UI available when the model fails", async () => {

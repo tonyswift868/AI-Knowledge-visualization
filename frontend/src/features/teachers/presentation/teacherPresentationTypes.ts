@@ -1,4 +1,4 @@
-export type TeacherRendererKind = "dragonbones2d" | "spine2d" | "kks3d" | "none"
+export type TeacherRendererKind = "image2d" | "dragonbones2d" | "spine2d" | "kks3d" | "none"
 
 export type TeacherPresentationState =
   | "loading"
@@ -31,6 +31,10 @@ export type Teacher2DManifest = {
   initialScale?: number
   initialOffsetX?: number
   initialOffsetY?: number
+  imageStates?: {
+    teaching: string
+    swimsuit: string
+  }
 }
 
 export type TeacherRendererSnapshot = {
