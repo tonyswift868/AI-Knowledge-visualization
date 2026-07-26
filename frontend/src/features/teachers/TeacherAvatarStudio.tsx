@@ -1,12 +1,74 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { Check, ExternalLink, FileDown, RotateCcw, Upload } from "lucide-react"
 import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarMorph } from "./api"
-import { KoikatsuCardEditor } from "./KoikatsuCardEditor"
 import { ParametricCardPreview } from "./ParametricCardPreview"
-import { TeacherCompanionPortrait, TeacherCompanionStage } from "./TeacherCompanionStage"
-import type { TeacherAnimationState } from "./SpineTeacherPlayer"
+import { TeacherCompanionPortrait, TeacherCompanionStage, type TeacherCompanionState } from "./TeacherCompanionStage"
 import { friendlyKksDisplayName } from "./kksDisplayNames"
 import "./teacher-avatar.css"
+
+const KoikatsuCardEditor = lazy(() => import("./KoikatsuCardEditor").then(module => ({ default: module.KoikatsuCardEditor })))
+
+export type TeacherMotherImageId = "auburn" | "blonde-fang-teaching" | "blonde-fang-swimsuit"
+
+const motherImageCandidates: Record<TeacherMotherImageId, {
+  eyebrow: string
+  title: string
+  description: string
+  traits: string
+  src: string
+  alt: string
+}> = {
+  auburn: {
+    eyebrow: "MOTHER IMAGE REVIEW · TEACHER 01",
+    title: "红发成年 AI 教师母图",
+    description: "确认成熟头身、职业装、材质光影与露趾全身构图。母图尚未拆层，也没有绑定骨骼。",
+    traits: "红棕长发 · 成熟曲线 · 职业装",
+    src: "/teacher2d/original-ai-teacher/teacher-master-v1-alpha2.png",
+    alt: "第一名原创成年 AI 教师全身母图，完整展示成熟身材与露趾鞋",
+  },
+  "blonde-fang-teaching": {
+    eyebrow: "MOTHER IMAGE REVIEW · TEACHER 02 · TEACHING",
+    title: "金发虎牙教师 · 兔子教学态",
+    description: "日常教学使用兔耳外套、可爱分层裙、长袜与玛丽珍鞋；服装将作为可关闭的覆盖层制作。",
+    traits: "更白肤色 · 明显虎牙 · 高级兔子套装",
+    src: "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-teaching-heart-key.png",
+    alt: "第二名原创金发虎牙成年 AI 教师兔耳外套教学态全身母图",
+  },
+  "blonde-fang-swimsuit": {
+    eyebrow: "MOTHER IMAGE REVIEW · TEACHER 02 · CHAT",
+    title: "金发虎牙教师 · 泳装聊天态",
+    description: "学习之余关闭外套、裙子、袜子和鞋的覆盖层，显示同一角色的白蓝泳装与赤足露趾形态。",
+    traits: "同一身份 · 白蓝泳装 · 胸腿光泽",
+    src: "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-swimsuit-heart-key.png",
+    alt: "第二名原创金发虎牙成年 AI 教师白蓝泳装聊天态全身母图，赤足露趾",
+  },
+}
+
+export function TeacherMotherImageReview({ candidate = "auburn" }: { candidate?: TeacherMotherImageId }) {
+  const teacher = motherImageCandidates[candidate]
+  return (
+    <section className="teacher-mother-review" aria-label="原创 AI 教师母图审稿">
+      <div className="teacher-mother-review-copy">
+        <span>{teacher.eyebrow}</span>
+        <h3>{teacher.title}</h3>
+        <p>{teacher.description}</p>
+        <dl>
+          <div><dt>人物设定</dt><dd>{teacher.traits}</dd></div>
+          <div><dt>当前状态</dt><dd>透明母图候选 · 等待审稿</dd></div>
+          <div><dt>确认之后</dt><dd>拆分五官、头发、四肢、躯干与衣服</dd></div>
+        </dl>
+      </div>
+      <div className="teacher-mother-review-stage">
+        <div className="teacher-mother-review-halo" aria-hidden="true" />
+        <img
+          src={teacher.src}
+          alt={teacher.alt}
+        />
+        <span className="teacher-mother-review-status">母图候选 · 未绑定骨骼</span>
+      </div>
+    </section>
+  )
+}
 
 // `blink` is an eye-open amount in the PMX rig (1 = open, 0 = closed).
 // Keeping the default at zero made a freshly reset teacher look half-asleep
@@ -44,10 +106,10 @@ export function TeacherAvatarStudio({
   workspaceId = "default",
   compact = false,
   presentationState = "idle",
-}: {
+  }: {
   workspaceId?: string
   compact?: boolean
-  presentationState?: TeacherAnimationState
+  presentationState?: TeacherCompanionState
 }) {
   const [items, setItems] = useState<TeacherAvatar[]>([])
   const [characterPacks, setCharacterPacks] = useState<KksCharacterPack[]>([])
@@ -63,6 +125,7 @@ export function TeacherAvatarStudio({
   const configuredSpineManifestUrl = useMemo(() => resolveSpineTeacherManifestUrl(), [])
   const [spineTeacher, setSpineTeacher] = useState<SpineTeacher | null>(null)
   const [spineNotice, setSpineNotice] = useState("")
+  const [reviewMode, setReviewMode] = useState<`mother-${TeacherMotherImageId}` | "skeleton">("mother-blonde-fang-teaching")
   // Prefer a native Koikatsu/KKBP export when one is available.  PMX keeps
   // the game's actual body and skeleton instead of falling back to the
   // generic VRM rig that caused the old bone distortions.
@@ -221,12 +284,22 @@ export function TeacherAvatarStudio({
   }
 
   return <section className={`teacher-avatar-studio ${compact ? "compact" : ""}`}>
-    <div className="teacher-avatar-heading">
+      <div className="teacher-avatar-heading">
       <div><span>{compact ? "LICENSED AVATAR ROSTER" : "2D AI TEACHER COMPANION"}</span><h2>{compact ? "今日教师模型" : "AI 教师角色库"}</h2><p>{compact ? "当前教师的课程展示模型。" : "以高质量 2D 角色、教学状态和自然互动构成教师陪伴体验。"}</p></div>
-      <a href="https://github.com/EsotericSoftware/spine-runtimes" target="_blank" rel="noreferrer">查看 Spine 运行时 <ExternalLink size={14} /></a>
+        <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看 DragonBonesJS 源码 <ExternalLink size={14} /></a>
     </div>
 
-      {!compact && <TeacherCompanionStage teacherName={spineTeacher?.display_name || "艾莉丝"} spineManifestUrl={configuredSpineManifestUrl || spineTeacher?.manifest_url} />}
+      {!compact && <div className="teacher-review-switch" role="group" aria-label="教师视觉审稿模式">
+        <button type="button" className={reviewMode === "mother-auburn" ? "active" : ""} aria-pressed={reviewMode === "mother-auburn"} onClick={() => setReviewMode("mother-auburn")}>教师 01 · 红发</button>
+        <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 兔子教学态</button>
+        <button type="button" className={reviewMode === "mother-blonde-fang-swimsuit" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-swimsuit"} onClick={() => setReviewMode("mother-blonde-fang-swimsuit")}>教师 02 · 泳装聊天态</button>
+        <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>现有骨骼占位</button>
+        <span>先锁定外观，再拆层绑定；切换不会修改任何角色资产。</span>
+      </div>}
+
+      {!compact && (reviewMode !== "skeleton"
+        ? <TeacherMotherImageReview candidate={reviewMode === "mother-auburn" ? "auburn" : reviewMode === "mother-blonde-fang-swimsuit" ? "blonde-fang-swimsuit" : "blonde-fang-teaching"} />
+        : <TeacherCompanionStage teacherName={spineTeacher?.display_name || "艾莉丝"} spineManifestUrl={configuredSpineManifestUrl || spineTeacher?.manifest_url} />)}
 
       {!compact && <form className="spine-teacher-import" onSubmit={event => { event.preventDefault(); void importSpineTeacher(event.currentTarget) }}>
         <header>
@@ -251,7 +324,9 @@ export function TeacherAvatarStudio({
       {!compact && <details className="teacher-legacy-tools">
         <summary>旧版 3D / 恋活导入工具</summary>
         <p>仅用于迁移已有角色卡。当前 AI 教师展示默认使用 2D 角色舞台。</p>
-        <KoikatsuCardEditor modelUrl={koikatsuModelUrlOverride !== undefined ? koikatsuModelUrlOverride : (koikatsuBase?.model_url || undefined)} modelFormat={koikatsuBase?.format === "runtime-pack" ? undefined : koikatsuBase?.format} previewMorph={morph} onMorphChange={setMorph} onNativeCardChange={setKoikatsuNativeCardActive} onModelUrlChange={setKoikatsuModelUrlOverride} onPreviewChange={setKoikatsuCardPreviewUrl} show3dPreview={false} />
+        <Suspense fallback={<div className="teacher-avatar-empty" role="status">正在加载旧版 3D 导入工具…</div>}>
+          <KoikatsuCardEditor modelUrl={koikatsuModelUrlOverride !== undefined ? koikatsuModelUrlOverride : (koikatsuBase?.model_url || undefined)} modelFormat={koikatsuBase?.format === "runtime-pack" ? undefined : koikatsuBase?.format} previewMorph={morph} onMorphChange={setMorph} onNativeCardChange={setKoikatsuNativeCardActive} onModelUrlChange={setKoikatsuModelUrlOverride} onPreviewChange={setKoikatsuCardPreviewUrl} show3dPreview={false} />
+        </Suspense>
       </details>}
 
     {!compact && <section className="teacher-avatar-sources" aria-label="模型来源网站">

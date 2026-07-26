@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { BookOpenText, Heart, MessageCircle, Palette, Play, Send, Sparkles } from "lucide-react"
-import { SpineTeacherPlayer, type TeacherAnimationState } from "./SpineTeacherPlayer"
+import type { TeacherAnimationState } from "./SpineTeacherPlayer"
+import { Teacher2DStage } from "./presentation/Teacher2DStage"
+import type { TeacherPresentationState } from "./presentation/teacherPresentationTypes"
 
 type TeacherMood = "calm" | "encouraging" | "explaining"
+export type TeacherCompanionState = TeacherAnimationState | TeacherPresentationState
 
 const moodCopy: Record<TeacherMood, { label: string; line: string }> = {
   calm: {
@@ -35,32 +38,35 @@ export function TeacherCompanionPortrait({
   teacherName = "艾莉丝",
   spineManifestUrl,
   state = "idle",
-}: {
+  }: {
   teacherName?: string
   spineManifestUrl?: string
-  state?: TeacherAnimationState
+  state?: TeacherCompanionState
 }) {
-  const [runtime, setRuntime] = useState<"illustration" | "spine" | "error">("illustration")
-  const stateLabel: Record<TeacherAnimationState, string> = {
+  const [runtime, setRuntime] = useState<"dragonbones" | "error" | "loading">("loading")
+  const stateLabel: Record<TeacherCompanionState, string> = {
+    loading: "加载",
     idle: "专注",
     listening: "倾听",
+    greeting: "问候",
     thinking: "思考",
+    talking: "回应",
     explaining: "讲解",
+    questioning: "提问",
+    praising: "表扬",
     encouraging: "鼓励",
+    confused: "困惑",
+    ending: "收尾",
+    error: "错误",
+    hidden: "收起",
   }
-
-  useEffect(() => {
-    for (const src of Object.values(illustrationByState)) {
-      const image = new Image()
-      image.src = src
-    }
-  }, [])
 
   return (
     <section
       className={`teacher-companion-portrait state-${state}`}
       data-testid="teacher-companion-portrait"
-      data-visual-mode="2d-illustration"
+      data-visual-mode="2d-skeleton"
+      data-runtime-target="dragonbones2d"
       data-teacher-state={state}
       aria-label={`今日 AI 教师 ${teacherName}`}
     >
@@ -74,17 +80,11 @@ export function TeacherCompanionPortrait({
       </div>
       <div className="teacher-companion-character">
         <div className="teacher-companion-halo" aria-hidden="true" />
-        <SpineTeacherPlayer
-          manifestUrl={spineManifestUrl}
-          state={state}
-          fallbackSrc={illustrationForTeacherState(state)}
-          fallbackAlt={`${teacherName}，原创成人 AI 教师立绘`}
-          onRuntimeChange={setRuntime}
-        />
+        <Teacher2DStage teacherName={teacherName} state={state} compact onRuntimeChange={setRuntime} />
         <div className="teacher-companion-shadow" aria-hidden="true" />
       </div>
       <div className="teacher-companion-status">
-        <i /><span>{stateLabel[state]}模式 · {runtime === "spine" ? "Spine 4.1" : "原创立绘"}</span>
+        <i /><span>{stateLabel[state]}模式 · {runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span>
       </div>
     </section>
   )
@@ -98,7 +98,7 @@ export function TeacherCompanionStage({
   spineManifestUrl?: string
 }) {
   const [mood, setMood] = useState<TeacherMood>("calm")
-  const [runtime, setRuntime] = useState<"illustration" | "spine" | "error">("illustration")
+  const [runtime, setRuntime] = useState<"dragonbones" | "error" | "loading">("loading")
   const [message, setMessage] = useState("")
   const [lastQuestion, setLastQuestion] = useState("")
   const copy = moodCopy[mood]
@@ -108,12 +108,6 @@ export function TeacherCompanionStage({
       ? "explaining"
       : "idle"
 
-  useEffect(() => {
-    for (const src of Object.values(illustrationByState)) {
-      const image = new Image()
-      image.src = src
-    }
-  }, [])
   const reply = useMemo(
     () => lastQuestion
       ? `我收到了：“${lastQuestion}”。接下来我会先确认你的目标，再用一个具体例子讲清楚。`
@@ -133,8 +127,8 @@ export function TeacherCompanionStage({
     <section
       className={`teacher-companion-stage mood-${mood}`}
       data-testid="teacher-companion-stage"
-      data-visual-mode="2d-illustration"
-      data-runtime-target="spine-player"
+      data-visual-mode="2d-skeleton"
+      data-runtime-target="dragonbones2d"
       aria-label="2D AI 教师互动舞台"
     >
       <div className="teacher-companion-atmosphere" aria-hidden="true">
@@ -182,15 +176,9 @@ export function TeacherCompanionStage({
 
       <div className="teacher-companion-character">
         <div className="teacher-companion-halo" aria-hidden="true" />
-        <SpineTeacherPlayer
-          manifestUrl={spineManifestUrl}
-          state={animationState}
-          fallbackSrc={illustrationForTeacherState(animationState)}
-          fallbackAlt={`${teacherName}，原创成人 AI 教师立绘`}
-          onRuntimeChange={setRuntime}
-        />
+        <Teacher2DStage teacherName={teacherName} state={animationState} onRuntimeChange={setRuntime} />
         <div className="teacher-companion-shadow" aria-hidden="true" />
-        <div className="teacher-companion-status"><i /><span>{copy.label}模式 · {runtime === "spine" ? "Spine 4.1" : "原创立绘"}</span></div>
+        <div className="teacher-companion-status"><i /><span>{copy.label}模式 · {runtime === "dragonbones" ? "DragonBones Shizuku" : runtime === "loading" ? "正在加载" : "资源错误"}</span></div>
       </div>
 
       <nav className="teacher-companion-actions" aria-label="教师表现控制">

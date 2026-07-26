@@ -16,9 +16,18 @@
   "armature": "shizuku",
   "defaultAnimation": "idle_00",
   "animationAliases": {
-    "idle": "idle_00"
+    "idle": "idle_00",
+    "greeting": "flick_head_00",
+    "thinking": "idle_01",
+    "talking": "idle_02",
+    "explaining": "idle_02",
+    "questioning": "tap_body_00",
+    "praising": "pinch_in_00",
+    "encouraging": "shake_00",
+    "confused": "shake_01",
+    "ending": "flick_head_02"
   },
-  "initialScale": 0.42,
+  "initialScale": 0.58,
   "initialOffsetX": 0,
   "initialOffsetY": 0,
   "notes": [

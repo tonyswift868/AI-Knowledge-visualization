@@ -1891,16 +1891,30 @@ function LearningRunInteractive({ today, task, workspaceId, chat, text, setText,
     catch (value: any) { setError(value.message); }
     finally { setBusy(false); }
   }
+  const teacherPresentationState = busy
+    ? "thinking"
+    : error
+      ? "error"
+      : quickQuizResult?.correct
+        ? "praising"
+        : quickQuizResult
+          ? "encouraging"
+          : quickQuiz
+            ? "questioning"
+            : teacherMessages.length
+              ? "talking"
+              : "idle";
   return <>
     <div className="page-title"><div><div className="eyebrow">TODAY · {today?.date || "—"}</div><h1>今天，完成一个小回合</h1><p>AI 教师模型与 Learning Run 共用当前学习空间；阶段验证和完成状态仍由服务器确认。</p></div><div className="streak"><span>当前任务</span><b>{today?.day?.tasks?.length || 0} 个</b><Leaf size={17} /></div></div>
-    <Suspense fallback={<div className="empty-mini">正在加载今日教师模型…</div>}><TeacherAvatarStudio workspaceId={workspaceId || "default"} compact presentationState={busy ? "thinking" : quickQuizResult?.correct ? "encouraging" : teacherMessages.length ? "explaining" : "idle"} /></Suspense>
-    <section className="persona-editor-card">
+    <div className="learning-run-presentation">
+      <div className="learning-run-content">
+        <section className="persona-editor-card">
       {activeScaffold && <div className="scaffold-card scaffold-stage"><span className="block-type">CURRENT TEACHING STEP</span><b>{activeScaffold.label}</b><p>{activeScaffold.analogy}</p><small>{activeScaffold.prompt}</small></div>}
       <div><span className="block-type">TEACHER PERSONA</span><b>写下你希望她怎么陪你学</b><small>只影响语气、比喻和互动方式；课程证据与评估规则不会被改写。</small></div>
       <textarea value={personaPrompt} onChange={(event) => setPersonaPrompt(event.target.value)} placeholder="例如：嘴上有点坏、喜欢用生活梗，但讲解要耐心；卡住时先给半步提示。" maxLength={2000} />
       <button className="secondary" onClick={savePersona} disabled={personaBusy}>{personaBusy ? "保存中…" : "保存人设"}</button>
-    </section>
-    <div className="learn-grid interactive-learn-grid">
+        </section>
+        <div className="learn-grid interactive-learn-grid">
       <aside className="today-rail"><div className="rail-title">今日任务 <span>{today?.day?.tasks?.length || 0}</span></div>{(today?.day?.tasks || []).map((item: any) => <div className={`rail-task ${task?.id === item.id ? "active" : ""}`} key={item.id}><span className={item.scene_completed === true ? "check-circle" : ""}>{item.scene_completed === true ? <Check size={12} /> : ""}</span><div><b>{item.title}</b><small>{item.estimated_minutes} 分钟</small></div></div>)}<div className="rail-progress"><span>Learning Run</span><b>{passed ? "已通过" : `${Math.min(phaseIndex + 1, phaseOrder.length)} / ${phaseOrder.length}`}</b><div><i style={{ width: passed ? "100%" : `${Math.max(8, ((phaseIndex + 1) / phaseOrder.length) * 100)}%` }} /></div></div></aside>
       <section className="lesson-stage interactive-stage">
         <div className="theater-header"><div className="theater-date"><span>DAY</span><b>{today?.date || "—"}</b><small>{scene.episode || "SCENE"}</small></div><div className="theater-location"><span>LOCATION</span><b>{scene.location || "夜航学习剧场"}</b><small>{scene.knowledge_focus || task?.title || "今日知识焦点"}</small></div><div className="scene-character" style={{ borderColor: character.color || "#8ed9bd" }}><CharacterPortrait character={character} className="scene-avatar" /><div><b>{character.name}</b><small>{character.title}</small></div></div></div>
@@ -1916,6 +1930,11 @@ function LearningRunInteractive({ today, task, workspaceId, chat, text, setText,
         {error && <div className="narrative-error"><CircleAlert size={15} />{error}</div>}
       </section>
       <aside className="tutor-panel"><div className="tutor-header"><CharacterPortrait character={character} className="tutor-avatar" /><div><b>{character.name} · 今日轮值</b><span>{character.specialty || character.title} · 基于已导入资料</span></div><span className="live-dot" /></div><div className="teacher-memory-strip"><b>共享学习记忆</b><span>{teacherMemory?.interaction_count || 0} 次交流 · {teacherMemory?.known_source_count || 0} 份资料 · {teacherMemory?.completed_quiz_count || 0} 次小测</span></div><div className="chat-messages">{teacherMessages.length === 0 && <div className="tutor-welcome"><Sparkles size={19} /><b>今天由{character.name}陪你学习</b><p>{character.role}。导师会每日轮换，但学习重点、引用资料和小测记录由所有导师共享。</p></div>}{teacherMessages.map((m: any, i: number) => <div className={`bubble ${m.role}`} key={m.id || i}><ReactMarkdown skipHtml>{m.content}</ReactMarkdown>{m.grounding?.status && <div className="grounding"><ShieldCheck size={13} /><b>{m.grounding.status}</b><div className="citation-list">{(m.grounding.citations || []).map((citation: any) => <CitationCard key={citation.chunk_id} citation={citation} />)}</div><span>{m.grounding.citations?.length || 0} 条引用</span></div>}</div>)}</div>{quickQuiz && !quickQuizResult && <div className="quick-quiz-card"><span>即时小测 · 引用对齐</span><b>{quickQuiz.question}</b>{quickQuiz.options.map((option: any) => <label key={option.id}><input type="radio" name={quickQuiz.quiz_id} checked={selectedQuizOption === option.id} onChange={() => setSelectedQuizOption(option.id)} /><em>{option.text}</em></label>)}<button className="primary" onClick={answerQuickQuiz} disabled={busy || !selectedQuizOption}>提交小测</button></div>}{quickQuizResult && <div className={`quiz-result ${quickQuizResult.correct ? "correct" : "retry"}`}><b>{quickQuizResult.correct ? "回答正确" : "再核对一次资料"}</b><span>{quickQuizResult.feedback}</span></div>}<div className="chat-compose"><textarea value={teacherText} onChange={e => setTeacherText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askTeacher(); } }} placeholder="向今日导师提问；离题也会温柔带回课程…" /><button onClick={askTeacher} disabled={busy || !teacherText.trim()}><Send size={16} /></button></div></aside>
+        </div>
+      </div>
+      <aside className="learning-run-teacher" aria-label="学习陪伴教师">
+        <Suspense fallback={<div className="empty-mini">正在加载今日教师模型…</div>}><TeacherAvatarStudio workspaceId={workspaceId || "default"} compact presentationState={teacherPresentationState} /></Suspense>
+      </aside>
     </div>
   </>;
 }

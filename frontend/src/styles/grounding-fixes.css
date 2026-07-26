@@ -31,3 +31,97 @@
 .narrative-backdrop[style]{background-size:cover;background-position:center;background-repeat:no-repeat;min-height:155px}
 .adaptive-brief{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.85fr);gap:14px;margin-bottom:16px;padding:16px 18px;border:1px solid #527b6b;border-radius:12px;background:linear-gradient(135deg,#17352f,#10221f)}.adaptive-brief h3{margin:7px 0;color:#e0eee8;font-size:15px}.adaptive-brief p{margin:0;color:#9fc1b2;font-size:11px}.adaptive-brief p b{color:#8ed9bd}.adaptive-brief-action{display:grid;gap:5px;padding-left:16px;border-left:1px solid #386056}.adaptive-brief-action span{font:9px 'DM Mono';color:#8ed9bd;text-transform:uppercase}.adaptive-brief-action b{color:#d4e8df;font-size:12px;line-height:1.5}.adaptive-brief-action small{color:#83a79a;font-size:10px}.story-object-mini{display:grid;gap:4px;padding:8px 0;border-top:1px solid #25423f}.story-object-mini b{color:#d8e9e2;font-size:11px}.story-object-mini small{color:#82a99a;font:9px 'DM Mono'}.artifact-result{display:grid;gap:5px;margin-top:14px;padding:13px;border:1px solid #4f8c73;border-radius:9px;background:#17372f;color:#b8d9ca}.artifact-result b{font-size:13px;color:#8ed9bd}.artifact-result p{margin:0;color:#a8c7b9;font-size:10px}
 .catalog-section{margin:24px 0}.catalog-section-heading{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px}.catalog-section-heading h2{margin:5px 0 0;font-size:20px}.catalog-section-heading>span{color:var(--mint);font:11px 'DM Mono'}.task-profile-summary{display:grid;gap:7px;margin:20px 0;padding:16px 18px;border:1px solid #365a51;border-radius:11px;background:#142a26;color:#c4ded3}.task-profile-summary div{display:flex;justify-content:space-between;gap:12px}.task-profile-summary b{font-size:13px;color:var(--mint)}.task-profile-summary span,.task-profile-summary p{margin:0;color:#9bb9ad;font-size:11px;line-height:1.6}.catalog-score{display:flex;align-items:baseline;gap:6px;color:var(--mint);margin-top:4px}.catalog-score b{font:700 24px 'DM Mono'}.catalog-score span{font-size:10px;color:#78978d}.catalog-reasons{display:grid;gap:5px;margin:13px 0;padding-left:17px;color:#a8c2b8;font-size:10px;line-height:1.5}.catalog-fit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}.catalog-fit-grid span{padding:7px;border:1px solid #294541;border-radius:6px;color:#7f9d93;font-size:9px}.catalog-fit-grid b{display:block;color:var(--mint);font:10px 'DM Mono';margin-top:3px}.catalog-meta{display:grid;gap:4px;color:#86a79b;font-size:10px;line-height:1.5}.catalog-blocked-reason{flex:auto!important;margin:12px 0 0!important;padding:9px 10px;border-radius:6px;background:#2b241c;color:#e3b37b!important;font-size:10px!important}.catalog-card.pack-required{border-color:#5d4d38;background:linear-gradient(145deg,#211f1a,#141b1b)}.catalog-empty{padding:24px;border:1px dashed #334c48;border-radius:9px;color:#8ea99f;font-size:11px}.catalog-total{margin-top:24px;color:#78978d;font:10px 'DM Mono';text-align:right}
+
+/* Fixed-sidebar sizing and the Learning Run presentation split live here so
+   they load after the legacy one-line app stylesheet. */
+html body{min-width:320px;overflow-x:hidden}
+.app-shell{min-width:0}
+.main{flex:none;width:calc(100% - 240px);min-width:0}
+
+.learning-run-presentation{
+  display:grid;
+  grid-template-columns:minmax(0,58fr) minmax(340px,42fr);
+  gap:18px;
+  align-items:start;
+}
+.learning-run-content,.learning-run-teacher{min-width:0}
+.learning-run-content .persona-editor-card{grid-template-columns:minmax(0,1fr);margin-top:0}
+.learning-run-content .persona-editor-card button{justify-self:start}
+.learning-run-content .interactive-learn-grid{grid-template-columns:minmax(0,1fr)}
+.learning-run-content .today-rail{
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:#10191b;
+}
+.learning-run-content .today-rail .rail-progress{margin-top:16px}
+.learning-run-content .interactive-stage,.learning-run-content .tutor-panel{min-height:0}
+.learning-run-teacher .teacher-avatar-studio.compact{
+  position:sticky;
+  top:18px;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.learning-run-teacher .teacher-avatar-studio.compact .teacher-companion-portrait{min-height:clamp(570px,calc(100vh - 150px),780px)}
+.learning-run-teacher .teacher-companion-portrait>.teacher-companion-character{inset:76px 0 0}
+.learning-run-teacher .teacher-companion-portrait>.teacher-companion-character>.teacher-2d-stage .teacher-2d-animation-picker{display:grid}
+.learning-run-teacher .teacher-2d-debug{
+  right:auto;
+  left:10px;
+  width:min(58%,280px);
+  max-width:calc(100% - 82px);
+  overflow-x:hidden;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  pointer-events:none;
+}
+.learning-run-teacher:has(.teacher-2d-stage.collapsed) .teacher-companion-portrait>.teacher-companion-character{inset:0}
+.learning-run-teacher .teacher-2d-stage.compact.collapsed .teacher-2d-heading{display:none}
+.learning-run-teacher .teacher-2d-stage.compact.collapsed .teacher-2d-toolbar{
+  top:50%;
+  right:12px;
+  bottom:auto;
+  left:auto;
+  transform:translateY(-50%);
+}
+.learning-run-teacher .teacher-2d-stage.compact.collapsed .teacher-2d-toolbar>*:not(:first-child){display:none}
+.learning-run-teacher:has(.teacher-2d-stage.collapsed) .teacher-avatar-studio.compact .teacher-companion-portrait{min-height:118px}
+.learning-run-teacher:has(.teacher-2d-stage.collapsed) .teacher-companion-status{display:none}
+
+@media(max-width:1050px){
+  .learning-run-presentation{grid-template-columns:minmax(0,1fr)}
+  .learning-run-teacher{order:-1}
+  .learning-run-teacher .teacher-avatar-studio.compact{position:static}
+  .learning-run-teacher .teacher-avatar-studio.compact .teacher-companion-portrait{min-height:500px}
+}
+
+@media(max-width:900px){
+  .app-shell{display:block}
+  .sidebar{position:relative;inset:auto;width:100%;min-height:auto;padding:12px 14px}
+  .brand{padding:0 4px 12px}
+  .space-label,.space-switch,.sidebar-bottom{display:none}
+  .sidebar nav{display:flex;gap:5px;overflow-x:auto;padding-bottom:2px}
+  .sidebar nav button{flex:none;white-space:nowrap}
+  .main{width:100%;margin-left:0}
+  .topbar{height:56px;padding:0 18px}
+  .content{padding:26px 20px 56px}
+  .page-title{align-items:flex-start;gap:14px}
+}
+
+@media(max-width:600px){
+  .content{padding:22px 14px 48px}
+  .top-actions{max-width:52%;overflow:hidden;white-space:nowrap}
+  .page-title{display:grid}
+  .page-title h1{font-size:29px}
+  .streak{justify-self:start}
+  .learning-run-presentation{gap:12px}
+  .learning-run-teacher .teacher-avatar-studio.compact .teacher-companion-portrait{min-height:430px}
+  .learning-run-teacher .teacher-companion-portrait>.teacher-companion-character{inset:58px 0 0}
+  .learning-run-teacher .teacher-2d-toolbar button,
+  .learning-run-teacher .teacher-2d-animation-picker{min-width:44px;min-height:44px}
+  .learning-run-content .lesson-stage{padding:18px 16px}
+  .theater-header{grid-template-columns:1fr}
+  .theater-date,.theater-location{border-right:0;border-bottom:1px solid #2a4442}
+  .scene-character{min-width:0}
+}
