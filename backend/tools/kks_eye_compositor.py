@@ -8,12 +8,12 @@ import math
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 MAX_INPUT_BYTES = 64 * 1024 * 1024
 MAX_EDGE = 2048
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _rgba(value: Any, label: str) -> tuple[float, float, float, float]:
@@ -75,6 +75,37 @@ def _gradient_mask(
     )
 
 
+def _highlight_layer(
+    texture: Image.Image,
+    output_size: tuple[int, int],
+    position_x: float,
+    position_y: float,
+    color: tuple[float, float, float, float],
+) -> Image.Image:
+    """Apply EyeLookMaterialControll's relative highlight UV offset."""
+
+    offset_x = 0.2 + (-0.2 - 0.2) * position_x
+    offset_y = 0.1 + (-0.1 - 0.1) * position_y
+    output_w, output_h = output_size
+    source_w, source_h = texture.size
+    shifted = texture.transform(
+        output_size,
+        Image.Transform.AFFINE,
+        (
+            source_w / output_w,
+            0.0,
+            offset_x * source_w,
+            0.0,
+            source_h / output_h,
+            -offset_y * source_h,
+        ),
+        resample=Image.Resampling.BILINEAR,
+        fillcolor=(0, 0, 0, 0),
+    )
+    solid = Image.new("RGBA", output_size, tuple(round(channel * 255.0) for channel in color))
+    return ImageChops.multiply(shifted, solid)
+
+
 def compose(main_path: str, mask_path: str, settings: dict[str, Any]) -> Image.Image:
     main = _open_texture(main_path)
     mask = _open_texture(mask_path)
@@ -107,7 +138,21 @@ def compose(main_path: str, mask_path: str, settings: dict[str, Any]) -> Image.I
             value = (multiplied + blend * (branch - multiplied)) * alpha_gate
             output[offset + channel] = round(min(1.0, max(0.0, value)) * 255.0)
         output[offset + 3] = base_bytes[offset + 3]
-    return Image.frombytes("RGBA", main.size, bytes(output))
+    result = Image.frombytes("RGBA", main.size, bytes(output))
+    for prefix in ("highlight_up", "highlight_down"):
+        path_value = settings.get(f"_{prefix}_path")
+        color_value = settings.get(f"{prefix}_color")
+        if not path_value or color_value is None:
+            continue
+        highlight = _open_texture(str(path_value))
+        color = _rgba(color_value, f"{prefix}_color")
+        position_x = _finite(settings.get(f"{prefix}_x", 0.5), f"{prefix}_x", -2.0, 2.0)
+        position_y = _finite(settings.get(f"{prefix}_y", 0.5), f"{prefix}_y", -2.0, 2.0)
+        result = Image.alpha_composite(
+            result,
+            _highlight_layer(highlight, result.size, position_x, position_y, color),
+        )
+    return result
 
 
 def main() -> None:

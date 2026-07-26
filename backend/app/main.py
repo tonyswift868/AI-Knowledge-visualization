@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import time
 from threading import Lock
@@ -11,14 +12,14 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, Request
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db
-from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalIntentAnalyzeIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
+from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
 from .services import analyze, available_days, build_plan, create_source, inspect_local, parse_text, safe_path, scene_for_task, source_detail, tutor, uid, normalize
 from .orm import init_orm
 from .ingestion_secure import create_preview, consume_preview, parse_file, chunks as secure_chunks
@@ -30,19 +31,24 @@ from .url_fetcher_secure import fetch_safe
 from .core_errors import app_error_body, AppError
 from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
-from .knowledge_map_service import KnowledgeMapServiceError, generate_current_map, get_current_map, get_map_revision
-from .goal_intent import build_goal_intent_receipt
-from .koikatsu_card_index import card_index_metadata, lookup_card
-from .koikatsu_mod_assets import resolve_mod_assets
-from .koikatsu_runtime import get_runtime_capability, get_runtime_manifest, get_runtime_readiness
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
 from .voice_runtime import synthesize_voice
 from . import catalog_repository
-from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, retry_pending_expedition_reward, submit_learning_run
+from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, submit_learning_run, submit_quick_quiz
 from .adaptive_narrative import AdaptiveNarrativeError, activate_blueprint, adaptive_context, analyze_task_profile, compile_adaptation, generate_dynamic_scene, generate_scene_contract, get_blueprint, get_current_contract, list_artifacts, list_contracts, list_story_objects
 from .expedition_service import ExpeditionError, activate_lineup, assets as expedition_asset, awaken as expedition_awaken, battle as expedition_battle, challenge_stage, claim_milestone, claim_stage, delete_lineup, equipment as expedition_equipment, equip_equipment, equip_pet, get_ledger as expedition_ledger, get_profile as expedition_profile, gacha_banners, gacha_history, gacha_pull, hero_detail, lineups as expedition_lineups, list_heroes, milestones as expedition_milestones, pets as expedition_pets, reset_equipment, reset_slot, save_lineup, star_up, stage_definition, stages as expedition_stages, training_slots, unequip_equipment, upgrade_equipment, upgrade_slot
 from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as resolve_expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
+from .teacher_avatar_registry import TeacherAvatarError, import_model as import_teacher_avatar, import_local_koikatsu_card as import_local_koikatsu_teacher_avatar, import_model_batch as import_teacher_avatar_batch, list_models as list_teacher_avatars, list_kks_character_packs, resolve_kks_character_pack, resolve_runtime_pack_asset, resolve_runtime_pack_manifest, resolve_model_file as resolve_teacher_avatar_file, today_model as todays_teacher_avatar, update_morph as update_teacher_avatar_morph
+from .teacher_avatar_cards import validate_card as validate_teacher_avatar_card
+from .koikatsu_card import KoikatsuCardError, inspect_koikatsu_sunshine_card, rewrite_koikatsu_sunshine_card
+from .koikatsu_teacher_registry import KoikatsuTeacherError, default_card as default_koikatsu_card, list_teachers as list_koikatsu_teachers, local_cards as list_local_koikatsu_cards, local_card_resources, resolve_card as resolve_koikatsu_teacher_card, resolve_local_card as resolve_local_koikatsu_card, resolve_local_export_asset, resolve_runtime_asset, resolve_shared_base_asset, resolve_shared_runtime_asset, resolve_web_model_asset, runtime_card_manifest, save_teacher as save_koikatsu_teacher, shared_neutral_template_manifest, validate_runtime_pack_head_contract
+from .teacher_avatar_card_presets import list_card_presets as list_teacher_avatar_card_presets
+from .teacher_avatar_presets import activate_preset as activate_teacher_avatar_preset, list_presets as list_teacher_avatar_presets, resolve_preview as resolve_teacher_avatar_preset_preview
+from .spine_teacher_registry import SpineTeacherError, active_teacher as active_spine_teacher, import_package as import_spine_teacher_package, public_manifest as spine_teacher_manifest, resolve_asset as resolve_spine_teacher_asset
+from .active_teaching import router as active_teaching_router
+from .generic_knowledge_api import router as generic_knowledge_router
+from .code_practice import router as code_practice_router
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = PROJECT_ROOT / "data" / "presets"
@@ -63,6 +69,9 @@ async def lifespan(_app):
     yield
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
+app.include_router(active_teaching_router)
+app.include_router(generic_knowledge_router)
+app.include_router(code_practice_router)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
@@ -99,7 +108,6 @@ def fail(code: str, message: str, status: int = 400, details: dict | None = None
 
 
 def preset_directory(requested: str | None = None) -> Path:
-    allowed_roots = {DEFAULT_PRESET_DIR.resolve(), PRESET_SETTINGS_FILE.parent.resolve()}
     directory = Path(requested).expanduser() if requested else DEFAULT_PRESET_DIR
     if not requested and PRESET_SETTINGS_FILE.exists():
         try:
@@ -109,8 +117,6 @@ def preset_directory(requested: str | None = None) -> Path:
         except (OSError, ValueError, TypeError):
             directory = DEFAULT_PRESET_DIR
     directory = directory.resolve()
-    if not any(directory == root or root in directory.parents for root in allowed_roots):
-        fail("PRESET_DIRECTORY_NOT_ALLOWED", "预设目录必须位于项目数据目录内", 400, {"allowed_roots": sorted(str(root) for root in allowed_roots)})
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
@@ -234,8 +240,8 @@ def create_workspace(body: WorkspaceIn):
             if provider_session.provider == "fake":
                 fail("PROVIDER_SESSION_REAL_REQUIRED", "真实 Workspace 不能使用 Fake Provider")
             provider_name, provider_model = provider_session.provider, provider_session.model
-    item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": db.now(), "updated_at": db.now()}
-    with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
+    item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "persona_prompt": body.persona_prompt.strip(), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": db.now(), "updated_at": db.now()}
+    with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,persona_prompt,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:persona_prompt,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
     try:
         from .orm import SessionLocal, WorkspaceORM
         with SessionLocal() as session:
@@ -261,6 +267,23 @@ def patch_workspace(workspace_id: str, body: WorkspacePatch):
     assignments = ", ".join(f"{k} = ?" for k in changes); values = [int(v) if isinstance(v, bool) else v for v in changes.values()]
     with db.connection() as conn: conn.execute(f"UPDATE workspaces SET {assignments}, updated_at = ? WHERE id = ?", (*values, db.now(), workspace_id))
     return require_workspace(workspace_id)
+
+
+@app.get("/api/workspaces/{workspace_id}/persona")
+def get_workspace_persona(workspace_id: str):
+    ws = require_workspace(workspace_id)
+    return {"workspace_id": workspace_id, "persona_prompt": str(ws.get("persona_prompt") or "")}
+
+
+@app.patch("/api/workspaces/{workspace_id}/persona")
+def patch_workspace_persona(workspace_id: str, body: dict[str, Any]):
+    require_workspace(workspace_id)
+    persona = str(body.get("persona_prompt") or "").strip()
+    if len(persona) > 2000:
+        fail("PERSONA_TOO_LONG", "鏁欏笀人设最多 2000 个字符", 422)
+    with db.connection() as conn:
+        conn.execute("UPDATE workspaces SET persona_prompt=?, updated_at=? WHERE id=?", (persona, db.now(), workspace_id))
+    return {"workspace_id": workspace_id, "persona_prompt": persona}
 
 
 @app.delete("/api/workspaces/{workspace_id}")
@@ -481,16 +504,6 @@ def patch_goal(workspace_id: str, body: GoalPatch):
     return set_goal(workspace_id, GoalProfile.model_validate(data))
 
 
-@app.post("/api/workspaces/{workspace_id}/goal/intent-receipt")
-def analyze_goal_intent(workspace_id: str, body: GoalIntentAnalyzeIn):
-    require_workspace(workspace_id)
-    return build_goal_intent_receipt(
-        body.original_text,
-        normalized=body.normalized,
-        already_answered_fields=body.already_answered_fields,
-    ).to_dict()
-
-
 @app.post("/api/workspaces/{workspace_id}/feasibility/analyze")
 async def feasibility_analyze(workspace_id: str, request: Request, body: dict[str, Any] | None = None):
     require_workspace(workspace_id); goal = get_goal(workspace_id)
@@ -502,8 +515,9 @@ async def feasibility_analyze(workspace_id: str, request: Request, body: dict[st
         result = analyze(workspace_id, goal["payload"])
         recommended_minutes = result.get("recommended_minutes_per_day")
         if recommended_minutes and goal["payload"].get("minutes_per_day") != recommended_minutes:
-            result["suggested_goal_patch"] = {"minutes_per_day": recommended_minutes}
-            result["minutes_per_day_applied"] = None
+            allocated_goal = {**goal["payload"], "minutes_per_day": recommended_minutes}
+            set_goal(workspace_id, GoalProfile.model_validate(allocated_goal))
+            result["minutes_per_day_applied"] = recommended_minutes
         if session.provider == "fake":
             result["generation_meta"] = generation_meta(session, latency_ms=0)
         else:
@@ -532,17 +546,6 @@ def confirm_feasibility(workspace_id: str, body: FeasibilityConfirmIn):
     require_workspace(workspace_id); items = db.rows("assessments", "workspace_id", workspace_id)
     if not items: fail("FEASIBILITY_REQUIRED", "请先运行可行性分析")
     item = items[-1]; data = json.loads(item["payload"]); data["user_confirmed"] = body.confirmed
-    data["selected_option"] = body.selected_option
-    if body.minutes_per_day is not None:
-        if body.selected_option != "increase_daily_minutes":
-            fail("FEASIBILITY_OPTION_MISMATCH", "只有选择增加每日投入时才能修改每日分钟数")
-        current_goal = get_goal(workspace_id)
-        if not current_goal:
-            fail("GOAL_REQUIRED", "请先填写目标")
-        updated_goal = {**current_goal["payload"], "minutes_per_day": body.minutes_per_day}
-        updated_goal.pop("id", None)
-        set_goal(workspace_id, GoalProfile.model_validate(updated_goal))
-        data["applied_goal_patch"] = {"minutes_per_day": body.minutes_per_day}
     with db.connection() as conn: conn.execute("UPDATE assessments SET payload=?, user_confirmed=? WHERE id=?", (json.dumps(data, ensure_ascii=False), int(body.confirmed), item["id"]))
     try:
         from .orm import SessionLocal, FeasibilityORM
@@ -604,28 +607,13 @@ def get_plan(plan_id: str):
     if not item: fail("PLAN_NOT_FOUND", "计划不存在", 404)
     plan=item["payload"]
     try:
-        from .orm import SessionLocal, TaskORM, DayORM, LearningRunORM
+        from .orm import SessionLocal, TaskORM, DayORM
         with SessionLocal() as session:
             states={row.id:row for row in session.query(TaskORM).join(DayORM,TaskORM.day_id==DayORM.id).filter(DayORM.plan_id==plan_id).all()}
-            passed_runs={
-                row.task_id: row
-                for row in session.query(LearningRunORM)
-                .filter(LearningRunORM.status=="passed")
-                .all()
-            }
             for day in plan.get("study_days",[]):
                 for task in day.get("tasks",[]):
                     row=states.get(task.get("id"))
                     if row: task.update({"status":row.status,"actual_minutes":row.actual_minutes,"completion_evidence":row.evidence})
-                    if task.get("id") in passed_runs:
-                        run_state=passed_runs[task["id"]].state or {}
-                        evidence=run_state.get("evidence") or []
-                        task.update({
-                            "status": "completed",
-                            "learning_run_passed": True,
-                            "scene_completed": True,
-                            "completion_evidence": task.get("completion_evidence") or (evidence[-1] if evidence else ""),
-                        })
     except Exception: pass
     return plan
 
@@ -659,12 +647,6 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     if body.get("new_deadline"): goal_data["deadline"]=body["new_deadline"]
     if body.get("new_minutes_per_day"): goal_data["minutes_per_day"]=body["new_minutes_per_day"]
     if body.get("new_preferred_weekdays") is not None: goal_data["preferred_weekdays"]=body["new_preferred_weekdays"]
-    if body.get("absence_date"):
-        try:
-            date.fromisoformat(str(body["absence_date"]))
-        except ValueError:
-            fail("ABSENCE_DATE_INVALID", "absence_date 必须是 ISO 日期")
-        goal_data["unavailable_dates"] = sorted(set(goal_data.get("unavailable_dates", [])) | {str(body["absence_date"])})
     if goal_data != goal["payload"]:
         set_goal(item["workspace_id"], GoalProfile.model_validate(goal_data))
     try:
@@ -680,29 +662,15 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
         set_job(jid,status="failed",progress=100,error=exc.code,message="Provider 失败"); fail(exc.code,exc.message,exc.status,exc.details)
     new = build_plan(item["workspace_id"], goal_data, assessment["payload"])
     new["generation_meta"] = replan_meta
-    task_key=lambda task: task.get("semantic_task_key") or f"{task.get('task_type','task')}:{task.get('title','')}:{task.get('chunk_index',1)}"
-    old_tasks={task_key(t):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}; new_tasks={task_key(t):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
-    old_dates={task_key(t):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
-    new_dates={task_key(t):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if task_key(t)}
+    old_tasks={t.get("title"):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}; new_tasks={t.get("title"):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
+    old_dates={t.get("title"):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
+    new_dates={t.get("title"):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
     for key,old_task in old_tasks.items():
-        if key in new_tasks and (old_task.get("learning_run_passed") is True or old_task.get("status")=="completed"):
-            new_tasks[key].update({
-                "status": "completed",
-                "learning_run_passed": old_task.get("learning_run_passed") is True,
-                "scene_completed": old_task.get("scene_completed") is True,
-                "completed_at": old_task.get("completed_at"),
-                "actual_minutes": old_task.get("actual_minutes", old_task.get("estimated_minutes", 0)),
-                "completion_evidence": old_task.get("completion_evidence", ""),
-            })
+        if key in new_tasks and old_task.get("status")=="completed":
+            new_tasks[key].update({"status":"completed","completed_at":old_task.get("completed_at"),"actual_minutes":old_task.get("actual_minutes",old_task.get("estimated_minutes",0)),"completion_evidence":old_task.get("completion_evidence","")})
     for task in new_tasks.values():
         sync_task_orm(task)
-    failed_task_id = str(body.get("failed_task_id") or "")
-    failed_task = next((task for task in new_tasks.values() if task.get("id") == failed_task_id or task.get("source_task_id") == failed_task_id or task.get("stable_task_id") == failed_task_id), None)
-    if failed_task:
-        failed_task["status"] = "retry_scheduled"
-        failed_task["last_failure_reason"] = str(body.get("failure_reason") or "learning_run_failed")[:500]
-        sync_task_orm(failed_task)
-    diff={"reason":body.get("reason") or ("temporary_leave" if body.get("absence_date") else "failed_attempt" if failed_task_id else "manual"),"moved_tasks":[{"task":key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary"),"absence_date":body.get("absence_date"),"failed_task_id":failed_task_id or None}
+    diff={"reason":body.get("reason","manual"),"moved_tasks":[{"task":key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary")}
     new["diff"]=diff
     with db.connection() as conn:
         conn.execute("UPDATE plans SET status='archived' WHERE id=?",(plan_id,))
@@ -717,7 +685,7 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     except Exception: pass
     set_job(jid,status="succeeded",stage="saving",progress=100,message="Replan saved")
     new["job_id"]=jid
-    return {"plan":new,"changes":diff,"previous_plan_id":plan_id,"previous_version":previous.get("version"),"undo":{"method":"POST","path":f"/api/plans/{plan_id}/activate"}}
+    return {"plan":new,"changes":diff,"previous_version":previous.get("version")}
 
 
 @app.post("/api/plans/{plan_id}/export")
@@ -752,58 +720,20 @@ def active_plan(workspace_id: str) -> dict | None:
                 task["scene"] = scene_for_task(task.get("title", "今日学习任务"), task.get("task_type", "lesson"), scene_ordinal)
             scene_ordinal += 1
     try:
-        from .orm import SessionLocal, TaskORM, DayORM, PlanORM, LearningRunORM
+        from .orm import SessionLocal, TaskORM, DayORM, PlanORM
         with SessionLocal() as session:
             states={row.id:row for row in session.query(TaskORM).join(DayORM,TaskORM.day_id==DayORM.id).join(PlanORM,DayORM.plan_id==PlanORM.id).filter(PlanORM.workspace_id==workspace_id).all()}
-            passed_runs={
-                row.task_id: row
-                for row in session.query(LearningRunORM)
-                .filter(LearningRunORM.workspace_id==workspace_id, LearningRunORM.status=="passed")
-                .all()
-            }
             for day in plan.get("study_days",[]):
                 for task in day.get("tasks",[]):
                     row=states.get(task.get("id"))
                     if row:
                         task.update({"status":row.status,"started_at":row.started_at.isoformat() if row.started_at else task.get("started_at"),"completed_at":row.completed_at.isoformat() if row.completed_at else task.get("completed_at"),"actual_minutes":row.actual_minutes,"completion_evidence":row.evidence})
-                    passed_run=passed_runs.get(task.get("id"))
-                    if passed_run:
-                        run_state=passed_run.state or {}
-                        evidence=run_state.get("evidence") or []
-                        task.update({
-                            "status": "completed",
-                            "learning_run_passed": True,
-                            "scene_completed": True,
-                            "completion_evidence": task.get("completion_evidence") or (evidence[-1] if evidence else ""),
-                        })
     except Exception: pass
     return plan
 
 
-def _decorate_task_access(plan: dict[str, Any], day: dict[str, Any] | None, *, allow_advance: bool) -> None:
-    if not day:
-        return
-    completed_stable_ids={task.get("source_task_id") or task.get("stable_task_id") for candidate in plan.get("study_days",[]) for task in candidate.get("tasks",[]) if task.get("learning_run_passed") is True or task.get("status")=="completed"}
-    scheduled_date=date.fromisoformat(day["date"])
-    for task in day.get("tasks",[]):
-        prerequisites=set(task.get("prerequisites") or [])
-        if prerequisites-completed_stable_ids:
-            task["access"]="blocked_prerequisite"
-        elif scheduled_date > date.today():
-            days_ahead=(scheduled_date-date.today()).days
-            task["access"]="available_advance" if allow_advance and days_ahead <= 2 else "locked_future"
-        elif scheduled_date < date.today():
-            task["access"]="past_due"
-        else:
-            task["access"]="available_today"
-        task["can_start"]=task["access"] in {"available_today","available_advance","past_due"}
-        task["can_advance"]=task["access"]=="available_advance"
-        task["locked"]=not task["can_start"]
-        task["lock_reason"]=task["access"] if task["locked"] else None
-
-
 @app.get("/api/workspaces/{workspace_id}/today")
-def today(workspace_id: str, allow_advance: bool = False):
+def today(workspace_id: str):
     require_workspace(workspace_id); plan = active_plan(workspace_id); today_str = __import__("datetime").date.today().isoformat()
     day = next((x for x in plan.get("study_days", []) if x["date"] == today_str), None)
     if not day and plan.get("study_days"): day = next((x for x in plan["study_days"] if x["date"] >= today_str), plan["study_days"][-1])
@@ -811,17 +741,11 @@ def today(workspace_id: str, allow_advance: bool = False):
         lessons={lesson["id"]:lesson for milestone in plan.get("milestones",[]) for module in milestone.get("modules",[]) for lesson in module.get("lessons",[])}
         for task in day.get("tasks",[]):
             if task.get("lesson_id") in lessons: task["lesson"]=lessons[task["lesson_id"]]
-        _decorate_task_access(plan, day, allow_advance=allow_advance)
     return {"date": today_str, "day": day, "plan_id": plan.get("id")}
 
 
 @app.get("/api/workspaces/{workspace_id}/calendar")
-def calendar(workspace_id: str):
-    require_workspace(workspace_id)
-    plan=active_plan(workspace_id)
-    for day in plan.get("study_days", []):
-        _decorate_task_access(plan, day, allow_advance=True)
-    return plan.get("study_days", [])
+def calendar(workspace_id: str): require_workspace(workspace_id); return active_plan(workspace_id).get("study_days", [])
 
 
 @app.get("/api/workspaces/{workspace_id}/progress")
@@ -878,9 +802,6 @@ def start_task_v2(task_id: str):
     for ws in db.rows('workspaces','status','active'):
         plan=active_plan(ws['id']); day,task=find_task(plan,task_id)
         if task:
-            _decorate_task_access(plan, day, allow_advance=True)
-            if not task.get("can_start"):
-                fail("TASK_LOCKED", "任务尚未开放，需先完成前置任务或等待计划日期", 409, {"access": task.get("access"), "task_id": task_id})
             task['status']='in_progress'; task['started_at']=db.now()
             with db.connection() as conn:conn.execute('UPDATE plans SET payload=? WHERE id=?',(json.dumps(plan,ensure_ascii=False),plan['id']))
             sync_task_orm(task)
@@ -928,8 +849,43 @@ def learning_run_get(run_id: str, request: Request):
 
 
 @app.post("/api/learning-runs/{run_id}/messages")
-def learning_run_message(run_id: str, request: Request, body: dict[str, Any]):
-    try: return {"request_id": request.state.request_id, **add_run_message(run_id, body)}
+async def learning_run_message(run_id: str, request: Request, body: dict[str, Any]):
+    try:
+        result = add_run_message(run_id, body)
+        # The deterministic scaffold is always created first. For a verified
+        # real workspace, let the configured model rewrite only the teaching
+        # prose; citations, phase order, and evaluator state stay server-owned.
+        workspace = require_workspace(result["workspace_id"])
+        if workspace.get("execution_mode") == "real":
+            session = provider_for_workspace(result["workspace_id"], request, body)
+            attach_workspace_provider(result["workspace_id"], session)
+            from .prompt_loader import load_prompt
+            teacher_message = next((item for item in reversed(result.get("messages", [])) if item.get("role") == "tutor"), {})
+            grounding = teacher_message.get("grounding") or {}
+            provider_output, meta = await call_bound_provider_json(session, [
+                {"role": "system", "content": load_prompt("tutor.md")},
+                {"role": "user", "content": json.dumps({"question": body.get("message", ""), "lesson": result.get("state", {}).get("lesson_title", ""), "phase": result.get("phase"), "scaffold": grounding.get("scaffold"), "evidence": grounding.get("citations", []), "persona_prompt": workspace.get("persona_prompt", ""), "teacher": result.get("state", {}).get("teacher", {})}, ensure_ascii=False)},
+            ])
+            if isinstance(provider_output, dict) and str(provider_output.get("message") or "").strip():
+                teacher_message["content"] = str(provider_output["message"])
+                grounding["provider_output"] = provider_output
+                grounding["generation_meta"] = meta
+                teacher_message["grounding"] = grounding
+                from .orm import LearningRunMessageORM, SessionLocal
+                with SessionLocal() as session_db:
+                    stored = session_db.get(LearningRunMessageORM, teacher_message.get("id"))
+                    if stored:
+                        stored.content = teacher_message["content"]
+                        stored.grounding = grounding
+                        session_db.commit()
+        return {"request_id": request.state.request_id, **result}
+    except ProviderError as exc: fail(exc.code, exc.message, exc.status, exc.details)
+    except LearningRunError as exc: _learning_run_error(exc)
+
+
+@app.post("/api/learning-runs/{run_id}/quick-quiz")
+def learning_run_quick_quiz(run_id: str, request: Request, body: dict[str, Any]):
+    try: return {"request_id": request.state.request_id, **submit_quick_quiz(run_id, body)}
     except LearningRunError as exc: _learning_run_error(exc)
 
 
@@ -940,14 +896,8 @@ def learning_run_submit(run_id: str, request: Request, body: dict[str, Any]):
 
 
 @app.post("/api/learning-runs/{run_id}/request-hint")
-def learning_run_hint(run_id: str, request: Request, body: dict[str, Any] | None = None):
-    try: return {"request_id": request.state.request_id, **request_hint(run_id, body)}
-    except LearningRunError as exc: _learning_run_error(exc)
-
-
-@app.post("/api/learning-runs/{run_id}/retry-expedition-reward")
-def learning_run_reward_retry(run_id: str, request: Request):
-    try: return {"request_id": request.state.request_id, **retry_pending_expedition_reward(run_id)}
+def learning_run_hint(run_id: str, request: Request):
+    try: return {"request_id": request.state.request_id, **request_hint(run_id)}
     except LearningRunError as exc: _learning_run_error(exc)
 
 @app.post("/api/tasks/{task_id}/complete-legacy")
@@ -997,7 +947,7 @@ async def message_session(session_id: str, body: dict[str, Any]):
     if bound_session.provider != "fake":
         try:
             from .prompt_loader import load_prompt
-            provider_output, meta = await call_bound_provider_json(bound_session, [{"role":"system","content":load_prompt("tutor.md")},{"role":"user","content":json.dumps({"question":user_text,"evidence":result.get("citations",[]),"status":result.get("status")},ensure_ascii=False)}])
+            provider_output, meta = await call_bound_provider_json(bound_session, [{"role":"system","content":load_prompt("tutor.md")},{"role":"user","content":json.dumps({"question":user_text,"evidence":result.get("citations",[]),"status":result.get("status"),"scaffold":result.get("scaffold"),"persona_prompt":(require_workspace(item["workspace_id"]).get("persona_prompt") or "")},ensure_ascii=False)}])
             result["provider_output"] = provider_output
             if provider_output.get("message"): result["message"] = str(provider_output["message"])
             result["generation_meta"] = meta
@@ -1103,89 +1053,6 @@ def delete_provider_session_route(session_id: str):
     return {"deleted": delete_provider_session(session_id)}
 
 
-def kks_runtime_unavailable(operation: str = "native_avatar") -> None:
-    readiness = get_runtime_readiness()
-    fail(
-        readiness["code"],
-        "KKS 教师运行时尚未恢复，当前可继续使用无角色教师模式",
-        503,
-        {
-            "available": False,
-            "status": readiness["status"],
-            "reason": readiness["reason"],
-            "operation": operation,
-            "fallback": "teacher_without_avatar",
-            "operations": readiness.get("operations", {}),
-        },
-    )
-
-
-@app.get("/api/koikatsu/capability")
-def koikatsu_capability():
-    return get_runtime_capability()
-
-
-@app.get("/api/koikatsu/readiness")
-def koikatsu_readiness():
-    return get_runtime_readiness()
-
-
-@app.get("/api/koikatsu/runtime-manifest")
-def koikatsu_runtime_manifest():
-    return get_runtime_manifest()
-
-
-@app.get("/api/koikatsu/card-index")
-def koikatsu_card_index():
-    return card_index_metadata()
-
-
-@app.get("/api/koikatsu/cards/{card_id}")
-def koikatsu_card_lookup(card_id: str):
-    item = lookup_card(card_id)
-    if item is None:
-        fail("KKS_CARD_NOT_INDEXED", "角色卡不在离线索引中", 404, {"card_id": card_id})
-    return item
-
-
-@app.post("/api/koikatsu/mod-assets/resolve")
-def koikatsu_mod_assets(body: dict[str, Any]):
-    asset_ids = body.get("asset_ids") or []
-    if not isinstance(asset_ids, list) or len(asset_ids) > 200:
-        fail("KKS_ASSET_IDS_INVALID", "asset_ids 必须是不超过 200 项的列表")
-    return {"assets": resolve_mod_assets(asset_ids), "lookup": "offline_index_only"}
-
-
-@app.get("/api/teacher-avatars")
-def list_teacher_avatars_unavailable():
-    kks_runtime_unavailable()
-
-
-@app.get("/api/teacher-avatars/today")
-def today_teacher_avatar_unavailable():
-    kks_runtime_unavailable()
-
-
-@app.post("/api/teacher-avatars/import")
-async def import_teacher_avatar_unavailable():
-    kks_runtime_unavailable("import_avatar")
-
-
-@app.post("/api/teacher-avatars/koikatsu/inspect")
-async def inspect_koikatsu_card_unavailable():
-    kks_runtime_unavailable("inspect_card")
-
-
-@app.post("/api/teacher-avatars/koikatsu/export")
-async def export_koikatsu_card_unavailable():
-    kks_runtime_unavailable("export_card")
-
-
-@app.patch("/api/teacher-avatars/{model_id}/morph")
-def update_teacher_avatar_unavailable(model_id: str):
-    kks_runtime_unavailable("update_morph")
-
-
 @app.post("/api/providers/test")
 async def test_provider(body: ProviderTestIn):
     try:
@@ -1199,50 +1066,6 @@ async def test_provider(body: ProviderTestIn):
 def retrieval_search(workspace_id: str, q: str, top_k: int = 5):
     require_workspace(workspace_id)
     return {"query":q,"results":RetrievalService().search(workspace_id,q,top_k=max(1,min(top_k,20)))}
-
-
-@app.post("/api/workspaces/{workspace_id}/knowledge-map/regenerate")
-def regenerate_knowledge_map(workspace_id: str):
-    require_workspace(workspace_id)
-    try:
-        knowledge_map, changed = generate_current_map(workspace_id)
-        return {"changed": changed, "knowledge_map": knowledge_map.to_dict()}
-    except KnowledgeMapServiceError as exc:
-        fail(exc.code, exc.message, exc.status_code)
-
-
-@app.get("/api/workspaces/{workspace_id}/knowledge-map")
-def current_knowledge_map(workspace_id: str):
-    require_workspace(workspace_id)
-    try:
-        return {"knowledge_map": get_current_map(workspace_id).to_dict()}
-    except KnowledgeMapServiceError as exc:
-        fail(exc.code, exc.message, exc.status_code)
-
-
-@app.get("/api/workspaces/{workspace_id}/knowledge-map/quality")
-def knowledge_map_quality(workspace_id: str):
-    require_workspace(workspace_id)
-    try:
-        knowledge_map = get_current_map(workspace_id)
-        return {
-            "map_id": knowledge_map.map_id,
-            "revision": knowledge_map.revision,
-            "quality": knowledge_map.to_dict()["quality"],
-            "warnings": list(knowledge_map.warnings),
-        }
-    except KnowledgeMapServiceError as exc:
-        fail(exc.code, exc.message, exc.status_code)
-
-
-@app.get("/api/workspaces/{workspace_id}/knowledge-map/revisions/{revision}")
-def knowledge_map_revision(workspace_id: str, revision: int):
-    require_workspace(workspace_id)
-    try:
-        return {"knowledge_map": get_map_revision(workspace_id, revision).to_dict()}
-    except KnowledgeMapServiceError as exc:
-        fail(exc.code, exc.message, exc.status_code)
-
 
 @app.get("/api/workspaces/{workspace_id}/conflicts")
 def conflicts(workspace_id: str):
@@ -1869,6 +1692,473 @@ def expedition_milestones_get(request: Request):
 def expedition_milestone_claim(milestone_id: str, request: Request):
     try: return {"request_id": request.state.request_id, **claim_milestone(milestone_id)}
     except ExpeditionError as exc: _expedition_error(exc)
+
+
+def _teacher_avatar_error(exc: TeacherAvatarError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+
+def _spine_teacher_error(exc: SpineTeacherError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+
+@app.get("/api/spine-teachers/active")
+def spine_teacher_active(request: Request):
+    try:
+        return {"request_id": request.state.request_id, "item": active_spine_teacher()}
+    except SpineTeacherError as exc:
+        _spine_teacher_error(exc)
+
+
+@app.post("/api/spine-teachers/import")
+async def spine_teacher_import(
+    request: Request,
+    file: UploadFile = File(...),
+    display_name: str = Form(""),
+    creator: str = Form(""),
+    spine_editor_license_confirmed: bool = Form(False),
+    character_rights_confirmed: bool = Form(False),
+    adult_character_confirmed: bool = Form(False),
+):
+    try:
+        item = import_spine_teacher_package(
+            file.filename or "teacher.zip",
+            await file.read(),
+            display_name=display_name,
+            creator=creator,
+            spine_editor_license_confirmed=spine_editor_license_confirmed,
+            character_rights_confirmed=character_rights_confirmed,
+            adult_character_confirmed=adult_character_confirmed,
+        )
+        return {"request_id": request.state.request_id, "item": item}
+    except SpineTeacherError as exc:
+        _spine_teacher_error(exc)
+
+
+@app.get("/api/spine-teachers/{teacher_id}/manifest")
+def spine_teacher_manifest_get(teacher_id: str, request: Request):
+    try:
+        return {"request_id": request.state.request_id, **spine_teacher_manifest(teacher_id)}
+    except SpineTeacherError as exc:
+        _spine_teacher_error(exc)
+
+
+@app.get("/api/spine-teachers/{teacher_id}/assets/{asset_name:path}")
+def spine_teacher_asset_get(teacher_id: str, asset_name: str):
+    try:
+        path, media_type = resolve_spine_teacher_asset(teacher_id, asset_name)
+        safe_name = path.name.encode("ascii", "ignore").decode() or "asset"
+        return FileResponse(path, media_type=media_type, headers={"Content-Disposition": f'inline; filename="{safe_name}"'})
+    except SpineTeacherError as exc:
+        _spine_teacher_error(exc)
+
+
+@app.get("/api/teacher-avatars")
+def teacher_avatar_list(request: Request):
+    try:
+        return {"request_id": request.state.request_id, **list_teacher_avatars()}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatar-character-packs")
+def teacher_avatar_character_pack_list(request: Request):
+    try:
+        return {"request_id": request.state.request_id, **list_kks_character_packs()}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatar-character-packs/{pack_id}/download")
+def teacher_avatar_character_pack_download(pack_id: str):
+    try:
+        path = resolve_kks_character_pack(pack_id)
+        return FileResponse(
+            path,
+            media_type="application/zip",
+            filename=path.name,
+        )
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/koikatsu-runtime-packs/{pack_id}/manifest")
+def koikatsu_runtime_pack_manifest(pack_id: str):
+    try:
+        path = resolve_runtime_pack_manifest(pack_id)
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        return validate_runtime_pack_head_contract(manifest, path.parent.parent)
+    except (TeacherAvatarError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        if isinstance(exc, TeacherAvatarError):
+            _teacher_avatar_error(exc)
+        raise HTTPException(status_code=503, detail={"code": "RUNTIME_PACK_INVALID", "message": "runtime pack manifest is unreadable"}) from exc
+
+
+@app.get("/api/koikatsu-runtime-packs/{pack_id}/asset/{asset_path:path}")
+def koikatsu_runtime_pack_asset(pack_id: str, asset_path: str):
+    try:
+        path = resolve_runtime_pack_asset(pack_id, asset_path)
+        return FileResponse(path, filename=path.name)
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatars/today")
+def teacher_avatar_today(request: Request, workspace_id: str = "default"):
+    try:
+        return {"request_id": request.state.request_id, **todays_teacher_avatar(workspace_id)}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatar-presets")
+def teacher_avatar_preset_list(
+    request: Request,
+    q: str = "",
+    tag: str = "",
+    limit: int = 48,
+    cursor: int = 0,
+):
+    try:
+        return {
+            "request_id": request.state.request_id,
+            **list_teacher_avatar_presets(query=q, tags=[tag] if tag else None, limit=limit, cursor=cursor),
+        }
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/teacher-avatar-presets/{preset_id}/activate")
+def teacher_avatar_preset_activate(preset_id: str, request: Request, body: dict[str, Any]):
+    try:
+        item = activate_teacher_avatar_preset(
+            preset_id,
+            adult_character_confirmed=body.get("adult_character_confirmed") is True,
+            attribution_confirmed=body.get("attribution_confirmed") is True,
+        )
+        return {"request_id": request.state.request_id, "item": item}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatar-presets/{preset_id}/preview")
+def teacher_avatar_preset_preview(preset_id: str):
+    try:
+        preview = resolve_teacher_avatar_preset_preview(preset_id)
+        return FileResponse(
+            preview,
+            media_type="image/webp" if preview.suffix.lower() == ".webp" else "image/png",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/teacher-avatar-cards/validate")
+async def teacher_avatar_card_validate(request: Request, file: UploadFile = File(...)):
+    try:
+        async with _KOIKATSU_CPU_LIMITER:
+            content = await _read_bounded_koikatsu_card(file)
+            card = await run_in_threadpool(
+                validate_teacher_avatar_card,
+                file.filename or "teacher-card.json",
+                content,
+            )
+        return {"request_id": request.state.request_id, "card": card}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/koikatsu-cards/inspect")
+async def koikatsu_card_inspect(file: UploadFile = File(...)):
+    try:
+        if not (file.filename or "").lower().endswith(".png"):
+            raise HTTPException(status_code=415, detail={"code": "CARD_FORMAT_UNSUPPORTED", "message": "请选择恋活角色卡 PNG 文件。"})
+        return {"filename": file.filename or "character.png", "card": inspect_koikatsu_sunshine_card(await file.read())}
+    except KoikatsuCardError as exc:
+        raise HTTPException(status_code=415, detail={"code": "KOIKATSU_CARD_INVALID", "message": f"无法读取恋活 Sunshine 角色卡：{exc}"}) from exc
+
+
+@app.post("/api/koikatsu-cards/export")
+async def koikatsu_card_export(
+    file: UploadFile = File(...),
+    body_values: str = Form("{}"),
+    face_values: str = Form("{}"),
+):
+    try:
+        parsed_body = json.loads(body_values)
+        parsed_face = json.loads(face_values)
+        if not isinstance(parsed_body, dict) or not isinstance(parsed_face, dict):
+            raise ValueError("slider values must be objects")
+        body = {str(key): float(value) for key, value in parsed_body.items()}
+        face = {int(key): float(value) for key, value in parsed_face.items()}
+        result = rewrite_koikatsu_sunshine_card(await file.read(), body_values=body, face_values=face)
+        output_name = f"{Path(file.filename or 'koikatsu-character').stem}-edited.png"
+        return Response(content=result, media_type="image/png", headers={"Content-Disposition": f'attachment; filename="{output_name}"'})
+    except (KoikatsuCardError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=415, detail={"code": "KOIKATSU_CARD_INVALID", "message": f"无法导出恋活角色卡：{exc}"}) from exc
+
+
+def _koikatsu_teacher_error(exc: KoikatsuTeacherError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+
+@app.get("/api/koikatsu-cards/default")
+def koikatsu_card_default():
+    try:
+        path = default_koikatsu_card()
+        return FileResponse(path, media_type="image/png", filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local")
+def koikatsu_local_card_list(q: str = "", limit: int = 24, offset: int = 0, asset_status: str = ""):
+    return list_local_koikatsu_cards(query=q, limit=limit, offset=offset, asset_status=asset_status)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}")
+def koikatsu_local_card(card_id: str):
+    try:
+        path = resolve_local_koikatsu_card(card_id)
+        return FileResponse(path, media_type="image/png", filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}/resources")
+def koikatsu_local_card_resources(card_id: str):
+    try:
+        return local_card_resources(card_id)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}/runtime-manifest")
+def koikatsu_local_card_runtime_manifest(card_id: str):
+    try:
+        return runtime_card_manifest(card_id)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}/runtime/{asset_path:path}")
+def koikatsu_local_card_runtime_asset(card_id: str, asset_path: str):
+    try:
+        path = resolve_runtime_asset(card_id, asset_path)
+        return FileResponse(path, filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/runtime-shared/{asset_path:path}")
+def koikatsu_shared_runtime_asset(asset_path: str):
+    try:
+        path = resolve_shared_runtime_asset(asset_path)
+        return FileResponse(path, filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/shared-base/neutral-template")
+def koikatsu_shared_neutral_template():
+    try:
+        return shared_neutral_template_manifest()
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/shared-base/{asset_name:path}")
+def koikatsu_shared_base_asset(asset_name: str):
+    try:
+        path = resolve_shared_base_asset(asset_name)
+        return FileResponse(path, filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}/model/{asset_name:path}")
+def koikatsu_local_export_asset(card_id: str, asset_name: str):
+    try:
+        path = resolve_local_export_asset(card_id, asset_name)
+        return FileResponse(path, filename=path.name)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-cards/local/{card_id}/web/{asset_path:path}")
+def koikatsu_local_web_model_asset(card_id: str, asset_path: str):
+    try:
+        path = resolve_web_model_asset(card_id, asset_path)
+        media_type = "model/gltf-binary" if path.suffix.lower() == ".glb" else None
+        return FileResponse(path, filename=path.name, media_type=media_type)
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-teachers")
+def koikatsu_teacher_list():
+    try:
+        return list_koikatsu_teachers()
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.post("/api/koikatsu-teachers")
+async def koikatsu_teacher_save(
+    file: UploadFile = File(...),
+    teacher_id: str = Form(""),
+    display_name: str = Form(""),
+    persona: str = Form(""),
+    teaching_style: str = Form(""),
+):
+    try:
+        item = await _read_and_run_bounded_koikatsu(
+            file,
+            save_koikatsu_teacher,
+            teacher_id=teacher_id,
+            display_name=display_name,
+            persona=persona,
+            teaching_style=teaching_style,
+        )
+        return {"item": item}
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/koikatsu-teachers/{teacher_id}/card")
+def koikatsu_teacher_card(teacher_id: str):
+    try:
+        return FileResponse(resolve_koikatsu_teacher_card(teacher_id), media_type="image/png", filename=f"{teacher_id}.png")
+    except KoikatsuTeacherError as exc:
+        _koikatsu_teacher_error(exc)
+
+
+@app.get("/api/teacher-avatar-card-presets")
+def teacher_avatar_card_preset_list(request: Request):
+    try:
+        return {"request_id": request.state.request_id, **list_teacher_avatar_card_presets()}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/teacher-avatars/import")
+async def teacher_avatar_import(
+    request: Request,
+    file: UploadFile = File(...),
+    display_name: str = Form(""),
+    creator: str = Form(""),
+    source_url: str = Form(""),
+    license_name: str = Form(""),
+    license_url: str = Form(""),
+    rights_confirmed: bool = Form(False),
+    adult_character_confirmed: bool = Form(False),
+):
+    try:
+        content = await file.read()
+        item = import_teacher_avatar(
+            file.filename or "avatar.vrm",
+            content,
+            display_name=display_name,
+            creator=creator,
+            source_url=source_url,
+            license_name=license_name,
+            license_url=license_url,
+            rights_confirmed=rights_confirmed,
+            adult_character_confirmed=adult_character_confirmed,
+        )
+        return {"request_id": request.state.request_id, "item": item}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/teacher-avatars/import/koikatsu-local/{card_id}")
+async def teacher_avatar_import_koikatsu_local(
+    request: Request,
+    card_id: str,
+    display_name: str = Form(""),
+    creator: str = Form(""),
+    source_url: str = Form(""),
+    license_name: str = Form(""),
+    license_url: str = Form(""),
+    rights_confirmed: bool = Form(False),
+    adult_character_confirmed: bool = Form(False),
+):
+    try:
+        item = import_local_koikatsu_teacher_avatar(
+            card_id,
+            display_name=display_name,
+            creator=creator,
+            source_url=source_url,
+            license_name=license_name,
+            license_url=license_url,
+            rights_confirmed=rights_confirmed,
+            adult_character_confirmed=adult_character_confirmed,
+        )
+        return {"request_id": request.state.request_id, "item": item}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.post("/api/teacher-avatars/import-batch")
+async def teacher_avatar_import_batch(
+    request: Request,
+    files: list[UploadFile] = File(..., alias="file"),
+    creator: str = Form(""),
+    source_url: str = Form(""),
+    license_name: str = Form(""),
+    license_url: str = Form(""),
+    rights_confirmed: bool = Form(False),
+    adult_character_confirmed: bool = Form(False),
+):
+    try:
+        payload = [(file.filename or "avatar.vrm", await file.read()) for file in files]
+        result = import_teacher_avatar_batch(
+            payload,
+            creator=creator,
+            source_url=source_url,
+            license_name=license_name,
+            license_url=license_url,
+            rights_confirmed=rights_confirmed,
+            adult_character_confirmed=adult_character_confirmed,
+        )
+        return {"request_id": request.state.request_id, **result}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatars/{model_id}/file")
+def teacher_avatar_file(model_id: str):
+    try:
+        path = resolve_teacher_avatar_file(model_id)
+        # PMX/GLB are loaded by the renderer, while image sidecars are loaded
+        # through <img>/TextureLoader.  `filename=` makes Starlette emit an
+        # attachment disposition, which browser clients may block as a
+        # download instead of decoding as an image. Keep the model endpoint
+        # inline as well so every local asset follows the same rule.
+        safe_name = path.name.encode("ascii", "ignore").decode() or "asset"
+        return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream", headers={"Content-Disposition": f'inline; filename="{safe_name}"'})
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher-avatars/{model_id}/file/{asset_name:path}")
+def teacher_avatar_asset_file(model_id: str, asset_name: str):
+    try:
+        path = resolve_teacher_avatar_file(model_id, asset_name)
+        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        safe_name = path.name.encode("ascii", "ignore").decode() or "asset"
+        return FileResponse(path, media_type=media_type, headers={"Content-Disposition": f'inline; filename="{safe_name}"'})
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
+
+
+@app.patch("/api/teacher-avatars/{model_id}/morph")
+def teacher_avatar_morph(model_id: str, request: Request, body: dict[str, Any]):
+    try:
+        return {"request_id": request.state.request_id, "item": update_teacher_avatar_morph(model_id, body)}
+    except TeacherAvatarError as exc:
+        _teacher_avatar_error(exc)
 
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"

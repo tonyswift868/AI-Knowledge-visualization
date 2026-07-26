@@ -1,0 +1,20 @@
+{
+  "format": "mentorflow.spine-teacher",
+  "runtime_version": "4.1",
+  "license": {
+    "spine_editor_license_confirmed": true,
+    "character_rights_confirmed": true
+  },
+  "skeleton": {
+    "binary": "teacher.skel",
+    "atlas": "teacher.atlas"
+  },
+  "animations": {
+    "idle": "idle",
+    "listening": "listen",
+    "thinking": "think",
+    "explaining": "talk",
+    "encouraging": "happy"
+  },
+  "skin": "default"
+}

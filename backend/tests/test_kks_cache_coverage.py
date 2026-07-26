@@ -94,3 +94,24 @@ def test_worker_lease_is_bounded_and_expired_lease_recovers(tmp_path: Path) -> N
     with sqlite3.connect(path) as connection:
         attempts = connection.execute("SELECT attempt_count FROM cards WHERE card_id='card-a'").fetchone()[0]
     assert attempts == 2
+
+
+def test_coverage_page_annotation_is_bounded_and_read_only(tmp_path: Path) -> None:
+    path = tmp_path / "coverage.sqlite3"
+    card = _card("card-a")
+    coverage.reconcile_snapshots([card], "contract", path=path)
+    before = path.stat().st_mtime_ns
+
+    assert coverage.coverage_states(["card-a", "missing"], path=path) == {"card-a": "pending"}
+    assert coverage.coverage_states(["card-a"], path=tmp_path / "missing.sqlite3") == {}
+    assert path.stat().st_mtime_ns == before
+
+
+def test_error_rows_can_be_explicitly_requeued_after_environment_fix(tmp_path: Path) -> None:
+    path = tmp_path / "coverage.sqlite3"
+    card = _card("card-a")
+    coverage.reconcile_snapshots([card], "contract", path=path)
+    coverage.record_failure(card, "old size limit", "contract", path=path, retry_after_ns=999)
+
+    assert coverage.reset_error_rows(path=path) == 1
+    assert coverage.pending_card_ids(limit=1, path=path, now_ns=0) == ["card-a"]

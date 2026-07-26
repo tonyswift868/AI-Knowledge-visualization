@@ -9,6 +9,7 @@
     "test": "vitest run --pool=threads --maxWorkers=1 --no-file-parallelism"
   },
   "dependencies": {
+    "@esotericsoftware/spine-player": "4.1.54",
     "@pixiv/three-vrm": "^3.4.0",
     "@vitejs/plugin-react": "6.0.3",
     "lucide-react": "1.24.0",

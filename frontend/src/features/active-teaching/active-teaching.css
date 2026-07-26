@@ -1,0 +1,45 @@
+.active-chain { display: grid; gap: 20px; color: #17231f; }
+.active-chain__hero, .active-chain__teacher { background: linear-gradient(135deg, #f7fbf2, #eef8f3); border: 1px solid #cfe2d5; border-radius: 22px; padding: 24px; }
+.active-chain__hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.active-chain__hero h2, .active-chain__teacher h3 { margin: 6px 0; }
+.active-chain__hero p { margin: 0; color: #5f6f68; }
+.active-chain__eyebrow, .active-chain__step { color: #397d5d; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.active-chain__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.active-chain__card { display: grid; align-content: start; gap: 12px; background: #fff; border: 1px solid #dde7e1; border-radius: 18px; padding: 20px; }
+.active-chain__card h3 { margin: 0; }
+.active-chain label { display: grid; gap: 6px; color: #53635c; font-size: 13px; }
+.active-chain input, .active-chain textarea, .active-chain select { width: 100%; box-sizing: border-box; border: 1px solid #ccd9d1; border-radius: 10px; padding: 10px 12px; background: #fff; color: #17231f; }
+.active-chain textarea { min-height: 74px; resize: vertical; }
+.active-chain button { border: 0; border-radius: 10px; padding: 10px 14px; background: #287657; color: #fff; font-weight: 700; cursor: pointer; }
+.active-chain button:disabled { opacity: .45; cursor: not-allowed; }
+.active-chain__row, .active-chain__metrics, .active-chain__state, .active-chain__time { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.active-chain__row > * { flex: 1; }
+.active-chain__metrics { align-items: baseline; padding: 12px; border-radius: 12px; background: #f3f7f4; }
+.active-chain__metrics strong { color: #226448; font-size: 22px; }
+.active-chain__receipt { display: grid; gap: 3px; padding: 10px 12px; border-left: 3px solid #74aa8d; background: #f7faf8; }
+.active-chain__receipt span, .active-chain__time { color: #64736c; font-size: 12px; }
+.active-chain__teacher-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.active-chain__state { margin: 16px 0; padding: 12px; border-radius: 12px; background: #1f3c31; color: #dff0e7; }
+.active-chain__message { background: #fff; border-radius: 14px; padding: 16px; }
+.active-chain__message > span { color: #397d5d; font-size: 12px; font-weight: 800; }
+.active-chain__message p { white-space: pre-wrap; line-height: 1.65; }
+.active-chain__message blockquote { margin: 10px 0 0; padding: 10px 14px; border-left: 3px solid #a5c7b3; background: #f3f8f5; }
+.active-chain__message small { display: block; margin-top: 6px; color: #6d7d75; }
+.active-chain__composer { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-top: 12px; }
+.active-chain__error, .active-chain__warning { padding: 12px; border-radius: 10px; background: #fff1ed; color: #a73e2e; }
+.active-chain__busy { padding: 10px 12px; border-radius: 10px; background: #edf7f1; color: #286a4f; }
+.active-chain__ok { padding: 12px; border-radius: 10px; background: #e8f7ee; color: #1f6d49; }
+.active-chain__muted { color: #64736c; font-size: 13px; }
+.active-chain__calendar { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 16px; }
+.active-chain__day { display: grid; gap: 4px; padding: 12px; border: 1px solid #cfe2d5; border-radius: 12px; background: #fff; font-size: 12px; }
+.active-chain__day b { font-size: 14px; }
+.active-chain__day.is-rest { background: #f1f2f1; color: #748079; }
+.active-chain__provider { margin-top: 14px; padding: 10px 12px; border: 1px solid #edcf9f; border-radius: 10px; background: #fff8ea; color: #7b5b24; font-size: 13px; }
+.active-chain__code { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid #cfe2d5; border-radius: 14px; background: #f8fbf9; }
+.active-chain__code textarea { min-height: 260px; background: #17231f; color: #e8f7ee; border-color: #345348; font: 13px/1.55 Consolas, "Cascadia Code", monospace; tab-size: 4; }
+.active-chain textarea.active-chain__code { min-height: 260px; background: #17231f; color: #e8f7ee; border-color: #345348; font: 13px/1.55 Consolas, "Cascadia Code", monospace; tab-size: 4; }
+@media (max-width: 900px) {
+  .active-chain__grid { grid-template-columns: 1fr; }
+  .active-chain__hero, .active-chain__teacher-head { align-items: stretch; flex-direction: column; }
+  .active-chain__composer { grid-template-columns: 1fr; }
+}

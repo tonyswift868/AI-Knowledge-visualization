@@ -36,7 +36,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS workspaces (
               id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT DEFAULT 'active',
-              character_id TEXT DEFAULT 'warm', allow_external_knowledge INTEGER DEFAULT 0,
+              character_id TEXT DEFAULT 'warm', allow_external_knowledge INTEGER DEFAULT 0, persona_prompt TEXT DEFAULT '',
               execution_mode TEXT DEFAULT 'demo', provider_name TEXT DEFAULT 'fake', provider_model TEXT DEFAULT '',
               created_at TEXT NOT NULL, updated_at TEXT NOT NULL
             );
@@ -117,6 +117,7 @@ def init_db() -> None:
             "execution_mode": "TEXT DEFAULT 'demo'",
             "provider_name": "TEXT DEFAULT 'fake'",
             "provider_model": "TEXT DEFAULT ''",
+            "persona_prompt": "TEXT DEFAULT ''",
         }.items():
             if name not in columns:
                 db.execute(f"ALTER TABLE workspaces ADD COLUMN {name} {definition}")

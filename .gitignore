@@ -28,12 +28,26 @@ content/expedition_art_packs/*
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+/node_modules/
+/.playwright-cli/
+/.pytest_cache/
+/.tmp-ilspy/
+/.tmp-kks-*/
+/tmp_*.png
+/output/
+
+# Consolidated Koikatsu 3D local state. Lightweight web drivers, card presets,
+# registry metadata and inventory documents remain versioned beside it.
+/legacy/koikatsu-3d/resources/runtime/
+/legacy/koikatsu-3d/resources/avatar-registry/
+/legacy/koikatsu-3d/local/
 
 # Local attachments, backups, and test output
 _codex_inputs/
 backups/
 test-results/
 playwright-report/
+/artifacts/local-caches/
 artifacts/pre_completion_backup/
 artifacts/expedition_art_pipeline_v1_acceptance/
 artifacts/expedition_v1_acceptance_tuning/

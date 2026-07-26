@@ -15,6 +15,7 @@ from .services import tutor, validate_citations
 from .adaptive_narrative import create_learning_artifact
 from .student_model import initial_student_state, reduce_event
 from .tutor_decision import decide_after_submission, decide_next_action
+from .teacher_rotation import QuizError, enrich_tutor_result, grade_quiz, memory_row, public_memory, teacher_for_day
 
 
 PHASES = ["explanation", "worked_example", "guided_practice", "faded_guidance", "independent_attempt", "daily_variant_test", "passed"]
@@ -62,11 +63,30 @@ def _public(session, run: LearningRunORM) -> dict[str, Any]:
     return {"run_id": run.id, "workspace_id": run.workspace_id, "task_id": run.task_id, "lesson_id": run.lesson_id, "phase": run.phase, "status": run.status, "revision": run.revision, "phase_order": state.get("phase_order", PHASES), "state": state, "messages": _messages(session, run.id), "created_at": run.created_at.isoformat(), "updated_at": run.updated_at.isoformat()}
 
 
+def _lesson_title(task: dict[str, Any]) -> str:
+    lesson = task.get("lesson") or {}
+    return str(lesson.get("title") or task.get("title") or "当前课程")
+
+
+def _ensure_teacher_state(session, run: LearningRunORM, task: dict[str, Any] | None = None) -> None:
+    state = copy.deepcopy(run.state or {})
+    today_key = _now().date().isoformat()
+    current_teacher = state.get("teacher") if isinstance(state.get("teacher"), dict) else {}
+    teacher = current_teacher if current_teacher.get("rotation_date") == today_key else teacher_for_day(run.workspace_id)
+    memory = memory_row(session, run.workspace_id)
+    state["teacher"] = teacher
+    state["teacher_memory"] = public_memory(memory.memory)
+    state["lesson_title"] = _lesson_title(task or {}) if task else state.get("lesson_title", "当前课程")
+    state["story_mode"] = False
+    run.state = state
+
+
 def create_learning_run(task_id: str) -> dict[str, Any]:
     workspace_id, task = _task_context(task_id); init_orm()
     with SessionLocal() as session:
         existing = session.query(LearningRunORM).filter_by(task_id=task_id).order_by(LearningRunORM.created_at.desc()).first()
         if existing and existing.status != "archived":
+            _ensure_teacher_state(session, existing, task); session.commit(); session.refresh(existing)
             return _public(session, existing)
         task_type = str(task.get("task_type") or ""); initial_phase = "final_assessment" if task_type in {"final", "final_assessment", "final_task"} else ("spaced_recall" if task_type == "review" else "explanation")
         phase_order = FINAL_PHASES if initial_phase == "final_assessment" else (REVIEW_PHASES if initial_phase == "spaced_recall" else PHASES)
@@ -74,6 +94,19 @@ def create_learning_run(task_id: str) -> dict[str, Any]:
         target_node = str(task.get("knowledge_node_id") or task.get("lesson_id") or task_id)
         teacher_action = decide_next_action(student, initial_phase, target_node=target_node).to_dict()
         run = LearningRunORM(id=_id("learning_run"), workspace_id=workspace_id, task_id=task_id, lesson_id=str(task.get("lesson_id") or ""), phase=initial_phase, status="active", state={"run_type": "final" if initial_phase == "final_assessment" else ("review" if initial_phase == "spaced_recall" else "first_pass"), "hints_used": 0, "phase_hint_counts": {initial_phase: 0}, "independent_passes": 0, "attempts": [], "evidence": [], "phase_history": [initial_phase], "external_execution_status": "not_executed", "phase_order": phase_order, "standard_task_minutes": max(1, int(task.get("standard_task_minutes") or task.get("estimated_minutes") or 30)), "student_state": student.to_dict(), "teacher_action": teacher_action}, revision=0, created_at=_now(), updated_at=_now())
+        _ensure_teacher_state(session, run, task)
+        state = copy.deepcopy(run.state or {})
+        teacher = state.get("teacher") or teacher_for_day(workspace_id)
+        if run.lesson_id:
+            opening = tutor(workspace_id, run.lesson_id, "开始今天的学习", phase=initial_phase, teacher=teacher)
+            opening["suppress_quiz"] = True
+            opening, memory_snapshot = enrich_tutor_result(session, workspace_id=workspace_id, run_id=run.id, lesson_title=str(state.get("lesson_title") or "当前课程"), teacher=teacher, user_message="开始今天的学习", result=opening)
+            if opening.get("scaffold") and "\n" in str(opening.get("message") or ""):
+                opening["message"] = str(opening["message"]).split("\n", 1)[-1].lstrip()
+            state["teacher_memory"] = memory_snapshot
+            state["quick_quiz"] = opening.get("quick_quiz")
+            session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run.id, role="tutor", phase=initial_phase, content=opening.get("message", ""), grounding=opening, idempotency_key="initial-scaffold", created_at=_now()))
+            run.state = state
         session.add(run); session.commit(); session.refresh(run)
         return _public(session, run)
 
@@ -83,6 +116,7 @@ def get_learning_run(run_id: str) -> dict[str, Any]:
     with SessionLocal() as session:
         run = session.get(LearningRunORM, run_id)
         if not run: raise LearningRunError("LEARNING_RUN_NOT_FOUND", "Learning Run 不存在", {"run_id": run_id}, 404)
+        _ensure_teacher_state(session, run); session.commit(); session.refresh(run)
         return _public(session, run)
 
 
@@ -227,11 +261,45 @@ def add_run_message(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
             return _public(session, run)
         if _is_terminal(run): raise LearningRunError("LEARNING_RUN_COMPLETED", "Learning Run 已完成", status_code=409)
         session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="user", phase=run.phase, content=text, grounding={}, idempotency_key=idem, created_at=_now()))
-        result = tutor(run.workspace_id, run.lesson_id, text, body.get("session_id"))
+        _ensure_teacher_state(session, run)
+        state = copy.deepcopy(run.state or {})
+        teacher = state.get("teacher") or teacher_for_day(run.workspace_id)
+        result = tutor(run.workspace_id, run.lesson_id, text, body.get("session_id"), phase=run.phase, teacher=teacher)
+        result, memory_snapshot = enrich_tutor_result(session, workspace_id=run.workspace_id, run_id=run.id, lesson_title=str(state.get("lesson_title") or "当前课程"), teacher=teacher, user_message=text, result=result)
+        if result.get("scaffold") and "\n" in str(result.get("message") or ""):
+            result["message"] = str(result["message"]).split("\n", 1)[-1].lstrip()
+        state["teacher"] = teacher
+        state["teacher_memory"] = memory_snapshot
+        state["quick_quiz"] = result.get("quick_quiz")
+        state.pop("quick_quiz_result", None)
+        run.state = state
         tutor_key = f"{idem}:tutor"[:160]
         session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="tutor", phase=run.phase, content=result.get("message", ""), grounding=result, idempotency_key=tutor_key, created_at=_now()))
         session.commit(); session.refresh(run)
         return _public(session, run)
+
+
+def submit_quick_quiz(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    quiz_id = str(body.get("quiz_id") or "").strip()
+    option_id = str(body.get("option_id") or "").strip()
+    if not quiz_id or not option_id:
+        raise LearningRunError("QUIZ_ANSWER_REQUIRED", "请选择一个小测答案")
+    init_orm()
+    with SessionLocal() as session:
+        run = _run(session, run_id)
+        try:
+            result = grade_quiz(session, workspace_id=run.workspace_id, run_id=run.id, quiz_id=quiz_id, option_id=option_id)
+        except QuizError:
+            raise LearningRunError("QUIZ_NOT_FOUND", "小测不存在或已经作答", status_code=404)
+        state = copy.deepcopy(run.state or {})
+        state["quick_quiz_result"] = result
+        state["teacher_memory"] = result["memory_snapshot"]
+        run.state = state
+        run.revision += 1
+        run.updated_at = _now()
+        session.add(LearningRunMessageORM(id=_id("learning_message"), run_id=run_id, role="quiz_feedback", phase=run.phase, content=result["feedback"], grounding={"status": "grounded", "citations": [result["citation"]], "quick_quiz_result": result}, idempotency_key=f"quiz:{quiz_id}"[:160], created_at=_now()))
+        session.commit(); session.refresh(run)
+        return {**_public(session, run), "quick_quiz_result": result}
 
 
 def request_hint(run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:

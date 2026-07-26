@@ -10,6 +10,7 @@ class WorkspaceIn(BaseModel):
     description: str = Field(default="", max_length=400)
     character_id: str = "warm"
     allow_external_knowledge: bool = False
+    persona_prompt: str = Field(default="", max_length=2000)
     execution_mode: Literal["demo", "real"] = "demo"
     provider_session_id: str | None = None
 
@@ -19,6 +20,7 @@ class WorkspacePatch(BaseModel):
     description: str | None = Field(default=None, max_length=400)
     character_id: str | None = None
     allow_external_knowledge: bool | None = None
+    persona_prompt: str | None = Field(default=None, max_length=2000)
 
 
 class GoalProfile(BaseModel):

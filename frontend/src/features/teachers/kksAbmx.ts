@@ -23,6 +23,16 @@ const finite = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+/** Convert Unity Quaternion.Euler(x,y,z) to Three's equivalent intrinsic order. */
+export function unityEulerDegreesToQuaternion(rotation: readonly number[]): THREE.Quaternion {
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(finite(rotation[0], 0)),
+    THREE.MathUtils.degToRad(finite(rotation[1], 0)),
+    THREE.MathUtils.degToRad(finite(rotation[2], 0)),
+    "YXZ",
+  ))
+}
+
 /**
  * Evaluate ABMX once from an unmodified local-transform baseline.
  * Multiple effects use ABMX's public composition contract: scale/length
@@ -54,12 +64,7 @@ export function evaluateKksAbmxTransform(
       finite(modifier.rotation?.[2], 0),
     ))
   })
-  const delta = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(rotation.x),
-    THREE.MathUtils.degToRad(rotation.y),
-    THREE.MathUtils.degToRad(rotation.z),
-    "ZXY",
-  ))
+  const delta = unityEulerDegreesToQuaternion([rotation.x, rotation.y, rotation.z])
   return {
     scale: baseline.scale.clone().multiply(scale),
     rotation: baseline.rotation.clone().multiply(delta),

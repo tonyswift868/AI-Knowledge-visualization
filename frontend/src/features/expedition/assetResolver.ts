@@ -1,7 +1,7 @@
 import type { AssetKind, ExpeditionAsset, Hero } from "./api"
 
 export function fallbackAssetUrl(heroId: string, kind: AssetKind) {
-  const filename = kind === "skill_cutin" ? "skill_cut_in" : kind
+  const filename = kind === "skill_cutin" ? "skill_cut_in" : kind === "battle_portrait" ? "portrait" : kind
   return `/assets/expedition/heroes/${heroId}/${filename}.svg`
 }
 
@@ -20,7 +20,7 @@ const fallback = (heroId: string, kind: AssetKind): ExpeditionAsset => ({
 /** One resolver for every React surface and the Phaser adapter. */
 export function resolveExpeditionAsset(hero: Pick<Hero, "hero_id" | "assets"> | undefined, kind: AssetKind): ExpeditionAsset {
   if (!hero) return fallback("jinxiao", kind)
-  return hero.assets?.[kind] || fallback(hero.hero_id, kind)
+  return hero.assets?.[kind] || (kind === "battle_portrait" ? hero.assets?.portrait : undefined) || fallback(hero.hero_id, kind)
 }
 
 export function withAssetFallback(heroId: string, kind: AssetKind, asset: ExpeditionAsset | undefined): ExpeditionAsset {

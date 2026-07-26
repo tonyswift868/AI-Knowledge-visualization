@@ -1,0 +1,46 @@
+{
+  "project_name": "MentorFlow / AI-Knowledge visualization",
+  "project_root": "E:\\aiPlay\\AI-Knowledge visualization",
+  "branch": "recovery/session-replay-20260723",
+  "base_commit": "becc82b2f28cb08f6faa71c16f2661a4439de0ac",
+  "recovery_target": "2026-07-22 pre-Spark Koikatsu universal native template state",
+  "services": {
+    "frontend": "http://127.0.0.1:5173/",
+    "backend": "http://127.0.0.1:8000/"
+  },
+  "verified": {
+    "local_card_count": 1529,
+    "shared_native_items": 19,
+    "frontend_build": "pass",
+    "frontend_targeted_assertions": 77,
+    "backend_targeted_assertions": 21,
+    "card_resource_api": "HTTP 200",
+    "runtime_manifest_api": "HTTP 200 cache-only"
+  },
+  "critical_files": [
+    "frontend/src/features/teachers/KoikatsuPmxRig.tsx",
+    "frontend/src/features/teachers/KoikatsuCardEditor.tsx",
+    "frontend/src/features/teachers/kksBodyShapeDriver.ts",
+    "frontend/src/features/teachers/kksHeadShapeDriver.ts",
+    "backend/app/koikatsu_card.py",
+    "backend/app/koikatsu_teacher_registry.py",
+    "backend/tools/kks_runtime_skin_export.py",
+    "scripts/prewarm_kks_runtime.py",
+    "data/kks-assets/shared-base/neutral-body/manifest.json",
+    "data/kks-assets/shared-base/neutral-head/manifest.json"
+  ],
+  "known_blockers": [
+    "native head geometry/ShapeAnime atomic commit failed",
+    "backend/tests/test_kks_runtime.py imports obsolete build_card_index API",
+    "main.py and koikatsu_teacher_registry.py have no historical whole-file SHA",
+    "some recovered backend Chinese error strings remain mojibake"
+  ],
+  "performance_contract": [
+    "No Unity conversion during HTTP card selection",
+    "Use offline prewarm for runtime assets",
+    "Use SQLite indexes instead of request-time directory scans",
+    "Do not batch-prewarm all 1529 cards without explicit approval"
+  ],
+  "external_asset_root": "E:\\BaiduNetdiskDownload\\lahdxydj\\KoikatuSunshine",
+  "handoff_rule": "Preserve the universal shared rig; fix template-wide contracts, never per-card compatibility branches."
+}

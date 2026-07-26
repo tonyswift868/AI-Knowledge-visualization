@@ -30,6 +30,8 @@ describe("KKS unavailable fallback contract", () => {
     fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } })
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("KKS_RUNTIME_UNAVAILABLE"))
     expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // The editor also warms the local-card catalog on mount; the inspected
+    // file is the second request and must still surface the native error.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

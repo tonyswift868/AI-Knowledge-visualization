@@ -57,6 +57,77 @@ HEROES = [
     _hero("naipaolong", "奶泡龙", "鼓舞 / 抗暴 / 残局辅助", _stats(1180, 68, 70, .07, .06, .04), ["inspire", "shield", "anti_crit"], _dmg("naipaolong_normal", "泡泡", .60, extra=[{"op": "heal", "target": "lowest_ally", "power": .10}]), _skill("naipaolong_active", "泡泡鼓舞", "全队护盾、低血充能和命中鼓舞", [{"op": "shield", "target": "allies", "max_hp_ratio": .04}, {"op": "modify_energy", "target": "below_half_allies", "amount": 10}, {"op": "modify_stat", "target": "not_acted_allies", "stat": "HIT", "amount": .08}], "heal"), "己方首次受到暴击时补盾", "自身直接伤害降低", "护盾破裂后恢复能量", "没有爆发和控制，需要搭配核心"),
 ]
 
+# Every role has a readable combat vocabulary. These names are also used by
+# the battle replay so a passive or awakening never falls back to a generic
+# label such as “核心被动”.
+HERO_NAMING = {
+    "jinxiao": ("余烬回响", "断线猎火", "赤线觉醒"),
+    "chengyin": ("潮汐和弦", "澄明余音", "静海回生"),
+    "yaye": ("夜行刻印", "鸦影回锋", "无月终幕"),
+    "leishan": ("山脉意志", "磐石壁垒", "地脉觉醒"),
+    "xianlv": ("弦上共鸣", "终止和弦", "星弦觉醒"),
+    "gulu": ("孢子护幕", "菌潮扩散", "王冠绽放"),
+    "shuangli": ("霜痕", "寒潮三叠", "极夜霜华"),
+    "tuantuan": ("柔软守望", "滚滚护航", "团圆结界"),
+    "zhenchui": ("震荡蓄力", "地鸣重锤", "裂地觉醒"),
+    "yaoge": ("回声集结", "终曲鼓舞", "曜歌天穹"),
+    "xueji": ("棘刺回响", "血色收割", "荆冠觉醒"),
+    "mochai": ("墨痕封锁", "禁令落款", "无声法庭"),
+    "huidun": ("辉光护体", "圣盾裁决", "不破誓约"),
+    "shashi": ("沙漏余刻", "错拍回环", "时间断面"),
+    "jinglan": ("镜面映射", "返照成双", "万象归镜"),
+    "lan_ying": ("兰息", "逆向药理", "青荧转生"),
+    "jiqiao7": ("机芯迭代", "蜂群部署", "七号协议"),
+    "leiyuan": ("电荷积累", "雷环跳跃", "万雷归一"),
+    "zhiyuan": ("纸鸢留痕", "落线成锋", "天际猎签"),
+    "xuanjia": ("玄甲蓄势", "回铠反震", "山河不动"),
+    "lingxi": ("灵潮感知", "潮汐静域", "心灯不灭"),
+    "heluo": ("赤命赌局", "孤注坠星", "血契终章"),
+    "mianxing": ("星尘扰动", "失焦星幕", "梦境闭环"),
+    "naipaolong": ("泡沫节拍", "泡泡鼓舞", "奶油终场"),
+}
+
+for _hero_definition in HEROES:
+    _hero_id = _hero_definition["hero_id"]
+    _passive_one, _passive_two, _awakening = HERO_NAMING[_hero_id]
+    _hero_definition["passive_one"].update(skill_id=f"{_hero_id}_passive_one", name=_passive_one)
+    _hero_definition["passive_two"].update(skill_id=f"{_hero_id}_passive_two", name=_passive_two)
+    _hero_definition["awakening"].update(skill_id=f"{_hero_id}_awakening", name=_awakening)
+
+# The starter party is deliberately readable: each active skill has a clear
+# job and a different combat shape. In particular 烬绡's ultimate is a real
+# row burst, not a cosmetic 1.05x normal attack.
+HERO_ACTIVE_REWORKS = {
+    "jinxiao": _skill("jinxiao_active", "焚界·断线", "横排爆燃并留下灼烧，随后短暂提高自身暴击率", [
+        {"op": "direct_damage", "target": "row", "multiplier": 1.55},
+        {"op": "apply_status", "target": "row", "status": "burn", "stacks": 1},
+        {"op": "modify_stat", "target": "self", "stat": "CRIT_RATE", "amount": .10, "duration": 1},
+    ], "fire"),
+    "leishan": _skill("leishan_active", "磐石·回响", "为自己与相邻队友架起护盾，并短暂提升防御", [
+        {"op": "shield", "target": "self_and_adjacent", "max_hp_ratio": .14},
+        {"op": "modify_stat", "target": "self_and_adjacent", "stat": "DEF", "amount": .10, "duration": 2},
+    ], "shield"),
+    "gulu": _skill("gulu_active", "菌潮·三连孢", "对随机敌人连续播撒孢子，命中后叠加中毒", [
+        {"op": "repeat", "count": 3, "effect": {"op": "direct_damage", "target": "random_enemy", "multiplier": .72}},
+        {"op": "apply_status", "target": "random_enemies", "status": "poison", "stacks": 1, "count": 2},
+    ], "poison"),
+    "shuangli": _skill("shuangli_active", "霜华·三叠", "三次寒霜打击，最后一击有机会冻结目标", [
+        {"op": "repeat", "count": 3, "effect": {"op": "direct_damage", "target": "random_enemy", "multiplier": .66}},
+        {"op": "apply_status", "target": "random_enemies", "status": "chill", "stacks": 1, "count": 2},
+        {"op": "chance", "probability": .30, "then": {"op": "apply_status", "target": "random_enemy", "status": "freeze", "stacks": 1}},
+    ], "ice"),
+    "zhenchui": _skill("zhenchui_active", "地鸣·裂阵", "重击前排并震荡相邻目标，附带短暂眩晕机会", [
+        {"op": "direct_damage", "target": "front", "multiplier": 1.35},
+        {"op": "direct_damage", "target": "front_adjacent", "multiplier": .65},
+        {"op": "chance", "probability": .35, "then": {"op": "apply_status", "target": "front", "status": "stun", "stacks": 1}},
+    ], "impact"),
+}
+
+for _hero_definition in HEROES:
+    _replacement = HERO_ACTIVE_REWORKS.get(_hero_definition["hero_id"])
+    if _replacement:
+        _hero_definition["active_skill"] = _replacement
+
 # A small fixed rarity catalog keeps the banner data-driven while avoiding any
 # runtime rarity roll or client-controlled result.
 for _index, _hero_definition in enumerate(HEROES):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import nativeDriverJson from '../../public/assets/kks/kks-head-shape-driver-0.json'
+import nativeDriverJson from '../../../legacy/koikatsu-3d/resources/web/kks-head-shape-driver-0.json'
 import {
   evaluateKksHeadShape,
   KKS_HEAD_TARGET_BONES,

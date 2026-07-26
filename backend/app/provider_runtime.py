@@ -53,8 +53,8 @@ def create_provider_session(config: dict[str, Any]) -> dict[str, Any]:
     provider = "openai_compatible" if raw_provider == "openai-compatible" else raw_provider
     effective_config = {**config}
     if provider == "openai_compatible":
-        effective_config["base_url"] = str(config.get("base_url") or "https://api.deepseek.com/v1")
-        effective_config["model"] = str(config.get("model") or "deepseek-chat")
+        effective_config["base_url"] = str(config.get("base_url") or "https://api.deepseek.com")
+        effective_config["model"] = str(config.get("model") or "deepseek-v4-pro")
     if provider != "fake":
         get_provider(effective_config)
     created = _now()

@@ -1,0 +1,86 @@
+{
+  "project_name": "MentorFlow",
+  "project_root": "E:\\aiPlay\\AI-Knowledge visualization",
+  "restoration_kind": "evidence-backed true pre-Spark restoration",
+  "generated_at": "2026-07-24T12:46:09+08:00",
+  "current_branch": "recovery/session-replay-20260723",
+  "source_cutoff": {
+    "session": "rollout-2026-07-15T11-21-45-019f63cb-6ecc-70d2-87ff-f660f3e4c0b4.jsonl",
+    "jsonl_line": 2786,
+    "turn_id": "9dff917f-74f6-4071-abfe-e6d5a7b97b32",
+    "timestamp": "2026-07-15T10:23:50.601Z"
+  },
+  "entrypoints": [
+    {
+      "kind": "backend",
+      "command": "E:\\aiPlay\\AI-Knowledge visualization\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+      "working_directory": "E:\\aiPlay\\AI-Knowledge visualization\\backend"
+    },
+    {
+      "kind": "frontend",
+      "command": "npm.cmd run dev -- --host 127.0.0.1 --port 5173",
+      "working_directory": "E:\\aiPlay\\AI-Knowledge visualization\\frontend"
+    }
+  ],
+  "ports": [5173, 8000],
+  "restored_capabilities": [
+    "simplified primary navigation",
+    "shared global expedition training",
+    "free draggable 3x3 five-hero formation",
+    "5v5 academy battlefield replay",
+    "action, hit, counter and defeated battle presentation",
+    "universal Koikatsu white-model/card editor entry",
+    "daily teacher rotation",
+    "shared teacher memory",
+    "citation quick quiz",
+    "independent teacher questions",
+    "Persona and teaching scaffold"
+  ],
+  "verification": {
+    "frontend_build": {
+      "status": "passed",
+      "command": "npm.cmd run build",
+      "result": "2260 modules transformed"
+    },
+    "backend_targeted_tests": {
+      "status": "passed",
+      "command": "python -m pytest tests/test_expedition.py tests/test_teacher_rotation.py tests/test_learning_run.py -q",
+      "result": "19 passed, 1 deprecation warning"
+    },
+    "browser": {
+      "status": "passed",
+      "checks": [
+        "sidebar structure",
+        "AI teacher WebGL canvas and 1529-card catalog",
+        "shared training",
+        "nine formation cells and five draggable heroes",
+        "challenge event persistence",
+        "rendered 5v5 academy battle canvas"
+      ]
+    },
+    "historical_battle_png": {
+      "count": 26,
+      "hash_mismatches": 0
+    }
+  },
+  "critical_file_sha256": {
+    "frontend/src/App.tsx": "ab9f7f58c07c3c7692c9e5faf06fe0c9f723e98546f2956a37c719b322880a78",
+    "frontend/src/features/expedition/ExpeditionView.tsx": "74b7c5426af0bba97cad4427669beafb51491e637d5f1001c5a1f183fea61342",
+    "frontend/src/features/expedition/BattleReplay.tsx": "eae9b383b90634772860779f6f429aea8ab3aa152aec7ecff79acc95e79830cb",
+    "frontend/src/features/expedition/expedition.css": "e816eae7e3fb3a1d6aea1908c5bcaed679d2f6d7d200474402b38eb830d08c3b",
+    "frontend/src/features/teachers/KoikatsuPmxRig.tsx": "0c58a17da0d6918db29ae8ee79c37f0850f884b9c64e3530ca10c2ec414f9a6e",
+    "backend/app/expedition_engine.py": "90c236593b4a7557d2fd157261e85e5e3d2a31be81992b7475d605f687206b98",
+    "backend/app/expedition_service.py": "6d4dc8daa8ac25609c14a4af108ee79776619496baf6294d5561fdbee4f4ab3b",
+    "backend/app/learning_run.py": "bed5de4b52171a3999a8705e944d4187f822b40c70a77aa28d578564c8d873a0",
+    "backend/app/teacher_rotation.py": "df7d12014f91af2a5840dd4510884470132a867ffec70e517dfdc062c6144446",
+    "backend/app/services.py": "d2423a30b37b4552831bdec04e803ef7142c13f288d1e88aa00d793a2397c7f3",
+    "frontend/public/assets/expedition/battle/academy-duel-v1.png": "be2ab2dc2d06859259b8dd0dc7c9862e7cc2824864f925291382d27a73f4bfd4"
+  },
+  "known_boundaries": [
+    "The Koikatsu web renderer is Three.js/WebGL plus offline-extracted assets, not embedded Unity.",
+    "Historical evidence does not establish an autonomous idle-animation feature.",
+    "The worktree remains intentionally dirty and must not be cleaned or reset.",
+    "Browser challenge acceptance advanced local demo expedition progress; this is runtime data, not source drift."
+  ],
+  "recovery_backup": "E:/aiPlay/开发指南/study RAG/recovery_backups/before_true_prespark_20260724_121346"
+}

@@ -8,6 +8,8 @@ import type {
 export interface KksHeadShapeDriverData {
   version: number
   headId: number
+  /** Optional curve-profile identity for exact custom drivers. */
+  profile?: string | number
   sliderCount: number
   categories: readonly KksShapeCategory[]
   animation: Readonly<Record<string, readonly KksShapeKeyframe[]>>
@@ -39,7 +41,7 @@ export const KKS_HEAD_TARGET_BONES = [
 
 const zero = (): KksMutableVec3 => [0, 0, 0]
 const one = (): KksMutableVec3 => [1, 1, 1]
-const clamp01 = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0.5))
+const finiteRate = (value: number) => Number.isFinite(value) ? value : 0.5
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const lerpAngle = (a: number, b: number, t: number) => {
   let delta = (b - a) % 360
@@ -48,10 +50,40 @@ const lerpAngle = (a: number, b: number, t: number) => {
   return a + delta * t
 }
 
-function sampleCurve(frames: readonly KksShapeKeyframe[], value: number): SourceTransform {
+const keepsClampedRotationOutsideNativeRange = (name: string) => (
+  (/thigh/i.test(name) && /01/.test(name))
+  || (/^cf_a_bust/i.test(name) && /_size$/i.test(name))
+)
+
+/** Match KKS AnimationKeyInfo plus SliderUnlocker's outside-range extrapolation. */
+function sampleCurve(name: string, frames: readonly KksShapeKeyframe[], value: number): SourceTransform {
   if (frames.length === 0) return { p: zero(), r: zero(), s: one() }
   if (frames.length === 1) return { p: [...frames[0].position], r: [...frames[0].rotation], s: [...frames[0].scale] }
-  const key = clamp01(value) * (frames.length - 1)
+  const rate = finiteRate(value)
+  if (rate < 0 || rate > 1) {
+    const first = frames[0]
+    const second = frames[1]
+    const last = frames[frames.length - 1]
+    const rotation = first.rotation.map((start, axis) => {
+      if (keepsClampedRotationOutsideNativeRange(name)) {
+        return rate < 0 ? first.rotation[axis] : last.rotation[axis]
+      }
+      const firstStep = second.rotation[axis] - start
+      let span = last.rotation[axis] - start
+      const positive = firstStep >= 0
+      if (span > 0 && !positive) span -= 360
+      else if (span < 0 && positive) span += 360
+      return rate < 0
+        ? start - span * Math.abs(rate)
+        : last.rotation[axis] + span * Math.abs(rate - 1)
+    }) as KksMutableVec3
+    return {
+      p: first.position.map((start, axis) => lerp(start, last.position[axis], rate)) as KksMutableVec3,
+      r: rotation,
+      s: first.scale.map((start, axis) => lerp(start, last.scale[axis], rate)) as KksMutableVec3,
+    }
+  }
+  const key = rate * (frames.length - 1)
   const lo = Math.floor(key)
   const hi = Math.min(frames.length - 1, lo + 1)
   const t = key - lo
@@ -68,6 +100,31 @@ const emptyPatch = (): KksLocalTransformPatch => ({
   position: [null, null, null], rotation: [null, null, null], scale: [null, null, null],
 })
 
+/**
+ * Resolve ShapeHeadInfoFemale's cf_J_FaceBase lossy-scale cancellation.
+ *
+ * KKS evaluates this after the body driver has changed cf_s_head.  The parent
+ * scale is therefore skeleton-specific and must be sampled by the runtime;
+ * baking [sourceX, 1, 1] into the curve evaluator distorts typeBone=1 cards.
+ */
+export function resolveKksFaceBaseScale(
+  sourceScaleX: number,
+  parentWorldScale: readonly [number, number, number],
+  headCorrectValue = 1,
+): KksMutableVec3 {
+  const [parentX, parentY, parentZ] = parentWorldScale
+  const finite = [sourceScaleX, parentX, parentY, parentZ, headCorrectValue].every(Number.isFinite)
+  if (!finite || Math.abs(parentX) < 1e-8 || Math.abs(parentY) < 1e-8 || Math.abs(parentZ) < 1e-8) {
+    return [sourceScaleX, 1, 1]
+  }
+  const correctedWorldY = parentY * headCorrectValue
+  return [
+    correctedWorldY / parentX + sourceScaleX - 1,
+    correctedWorldY / parentY,
+    correctedWorldY / parentZ,
+  ]
+}
+
 /** Exact browser port of KKS ShapeHeadInfoFemale.Update for its 59 face bones. */
 export function evaluateKksHeadShape(
   data: KksHeadShapeDriverData,
@@ -81,7 +138,7 @@ export function evaluateKksHeadShape(
     const target = sources.get(category.source)
     const frames = data.animation[category.source]
     if (!target || !frames?.length) continue
-    const sampled = sampleCurve(frames, sliders[category.slider] ?? 0.5)
+    const sampled = sampleCurve(category.source, frames, sliders[category.slider] ?? 0.5)
     for (let axis = 0; axis < 3; axis += 1) {
       if (category.position[axis]) target.p[axis] = sampled.p[axis]
       if (category.rotation[axis]) target.r[axis] = sampled.r[axis]
@@ -99,9 +156,9 @@ export function evaluateKksHeadShape(
   const R = (i: number, x?: number, y?: number, z?: number) => apply(t(i).rotation, [x, y, z])
   const S = (i: number, x?: number, y?: number, z?: number) => apply(t(i).scale, [x, y, z])
 
-  // ShapeHeadInfoFemale uses these values directly. The parent head scale is
-  // uniform in the female carrier, so FaceBase's lossy-scale cancellation is
-  // exactly [source X, 1, 1] here.
+  // The pure curve result retains the native source X.  The runtime replaces
+  // all three axes with resolveKksFaceBaseScale after body shape evaluation,
+  // because carrier and native skeletons can have different parent scales.
   S(0, s(0).s[0], 1, 1)
   P(1, undefined, undefined, s(1).p[2])
   P(2, undefined, s(2).p[1], s(2).p[2])

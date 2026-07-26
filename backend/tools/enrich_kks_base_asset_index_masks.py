@@ -121,7 +121,10 @@ def main() -> None:
         )
         os.replace(temporary, args.index)
     finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
     print(json.dumps({"mask_rows": len(mask_rows), "changed_rows": changed}))
 
 

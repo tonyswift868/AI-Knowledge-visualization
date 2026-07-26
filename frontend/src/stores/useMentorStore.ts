@@ -30,37 +30,75 @@ export type ProviderStore = PersistedProvider & {
 }
 
 const STORAGE_KEY = 'mentorflow_provider_state'
-const defaultState: PersistedProvider = { mode: 'demo', provider: 'fake', baseUrl: '', model: 'fake', providerSessionId: null, verified: false, expiresAt: null, latencyMs: null, lastTestedAt: null }
+const API_KEY_STORAGE_PREFIX = 'mentorflow_api_key_v1:'
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
+const defaultState: PersistedProvider = { mode: 'real', provider: 'openai-compatible', baseUrl: DEEPSEEK_BASE_URL, model: DEEPSEEK_DEFAULT_MODEL, providerSessionId: null, verified: false, expiresAt: null, latencyMs: null, lastTestedAt: null }
+
+function apiKeyStorageKey(provider: ProviderId) {
+  return `${API_KEY_STORAGE_PREFIX}${provider}`
+}
 
 function readPersisted(): PersistedProvider {
   try {
-    const parsed = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}')
-    return { ...defaultState, ...parsed, apiKey: undefined } as PersistedProvider
+    const raw = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY) || '{}'
+    const parsed = JSON.parse(raw)
+    const value = { ...defaultState, ...parsed } as PersistedProvider
+    const isDeepSeek = value.provider === 'openai-compatible' && (!value.baseUrl || value.baseUrl.includes('api.deepseek.com'))
+    if (isDeepSeek) {
+      value.baseUrl = DEEPSEEK_BASE_URL
+      if (!value.model || value.model === 'fake' || value.model === 'deepseek-chat' || value.model === 'deepseek-reasoner') value.model = DEEPSEEK_DEFAULT_MODEL
+    }
+    return value
   } catch {
     return defaultState
   }
 }
 
+function readApiKey(provider: ProviderId) {
+  try {
+    return localStorage.getItem(apiKeyStorageKey(provider)) || ''
+  } catch {
+    return ''
+  }
+}
+
 function persist(state: ProviderStore) {
   const value: PersistedProvider = { mode: state.mode, provider: state.provider, baseUrl: state.baseUrl, model: state.model, providerSessionId: state.providerSessionId, verified: state.verified, expiresAt: state.expiresAt, latencyMs: state.latencyMs, lastTestedAt: state.lastTestedAt }
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  sessionStorage.removeItem(STORAGE_KEY)
 }
 
 const persisted = readPersisted()
 export const useMentorStore = create<ProviderStore>((set, get) => ({
   ...persisted,
-  // Provider keys are runtime-only and must never be persisted in browser storage.
-  apiKey: '',
+  // BYOK credentials stay on this browser only and are never sent to project files or the database.
+  apiKey: readApiKey(persisted.provider),
   lastError: '',
   activeWorkspaceId: null,
   setWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
-  setProvider: (provider) => { const sameProvider = get().provider === provider; set({ provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: '', verified: false, providerSessionId: provider === 'fake' || !sameProvider ? null : get().providerSessionId, lastError: '' }); persist(get()) },
+  setProvider: (provider) => {
+    const sameProvider = get().provider === provider
+    const deepSeekDefaults = provider === 'openai-compatible' && !sameProvider
+      ? { baseUrl: DEEPSEEK_BASE_URL, model: DEEPSEEK_DEFAULT_MODEL }
+      : {}
+    set({ ...deepSeekDefaults, provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: readApiKey(provider), verified: false, providerSessionId: sameProvider ? get().providerSessionId : null, lastError: '' })
+    persist(get())
+  },
   setBaseUrl: (baseUrl) => { set({ baseUrl, verified: false, lastError: '' }); persist(get()) },
   setModel: (model) => { set({ model, verified: false, lastError: '' }); persist(get()) },
-  setApiKey: (apiKey) => { set({ apiKey, verified: false, lastError: '' }) },
+  setApiKey: (apiKey) => {
+    set({ apiKey, verified: false, lastError: '' })
+    if (apiKey) localStorage.setItem(apiKeyStorageKey(get().provider), apiKey)
+    else localStorage.removeItem(apiKeyStorageKey(get().provider))
+  },
   setProviderSession: (value) => { set({ ...value, provider: value.provider || get().provider, mode: value.provider === 'fake' ? 'demo' : 'real', lastError: '' }); persist(get()) },
   setLastError: (lastError) => set({ lastError, verified: false }),
-  clearProvider: () => { set({ ...defaultState, apiKey: '', lastError: '' }); persist(get()) },
+  clearProvider: () => {
+    for (const provider of ['fake', 'openai-compatible', 'gemini', 'claude'] as ProviderId[]) localStorage.removeItem(apiKeyStorageKey(provider))
+    set({ ...defaultState, apiKey: '', lastError: '' })
+    persist(get())
+  },
 }))
 
 export function providerDiagnostic(state: ProviderStore) {

@@ -12,8 +12,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import db
-from .planning_policy import CapacityPolicy
-from .planning_scheduler import PlanningTask, TaskPhase, schedule_tasks, stable_task_id
 
 SUPPORTED = {".pdf", ".docx", ".md", ".txt", ".html", ".htm"}
 FORBIDDEN_PARTS = {".git", "node_modules", ".venv", "venv"}
@@ -218,6 +216,7 @@ def analyze(workspace_id: str, goal: dict) -> dict:
               "recommendations": ["保留截止日前的复习和最终任务缓冲"],
               "suggested_success_criteria": ["完成最终任务并提交可核验成果"], "user_confirmed": False, "created_at": db.now()}
     result["options"] = ([{"type":"extend_deadline","label":"延长截止日期"},{"type":"reduce_scope","label":"缩小目标范围"},{"type":"increase_daily_minutes","label":"增加每日投入"}] if at_risk else [])
+    result["allocation_preview"] = {"first_pass_ratio": 0.4, "first_pass_days": max(1, math.ceil(len(days) * 0.4)) if days else 1, "review_strategy": "rolling_spaced_review", "note": "首轮先建立概念和示例，后续日期自动滚动安排回忆、混合复习和迁移。"}
     aid = uid("assessment")
     with db.connection() as conn:
         conn.execute("INSERT INTO assessments VALUES (?,?,?,?,?)", (aid, workspace_id, json.dumps(result, ensure_ascii=False), 0, result["created_at"]))
@@ -262,6 +261,18 @@ def scene_for_task(title: str, task_type: str, ordinal: int) -> dict:
     return {"type": "branching_learning_scene", "episode": f"EP.{ordinal:02d}", "title": f"第 {ordinal} 幕 · {title}", "setting": setting, "objective": objective, "location": preset.get("world", {}).get("title", "夜航学习剧场"), "knowledge_focus": title, "character": character, "choices": choices}
 
 
+def _build_knowledge_map(lessons: list[dict], chunks: list[dict]) -> dict:
+    """Return a deterministic, evidence-linked map for the teaching UI."""
+    nodes = []
+    edges = []
+    for index, lesson in enumerate(lessons):
+        refs = lesson.get("blocks", [{}])[0].get("evidence_refs", [])
+        nodes.append({"id": lesson["id"], "label": lesson["title"], "kind": "lesson", "ordinal": index + 1, "source_refs": refs})
+        if index:
+            edges.append({"from": lessons[index - 1]["id"], "to": lesson["id"], "relation": "prerequisite"})
+    return {"version": 1, "nodes": nodes, "edges": edges, "source_chunk_count": len(chunks), "generated_at": db.now()}
+
+
 def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
     sources = db.rows("sources", "workspace_id", workspace_id)
     chunks = []
@@ -293,103 +304,47 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
             module["lessons"].append(lesson); lessons.append(lesson)
         milestone["modules"].append(module); milestones.append(milestone)
     plan_start = date.fromisoformat(goal.get("start_date") or date.today().isoformat())
-    plan_deadline = date.fromisoformat(goal["deadline"])
-    allowed_weekdays = set(goal.get("preferred_weekdays") or range(goal["days_per_week"]))
-    capacity_policy = CapacityPolicy(
-        daily_minutes=goal["minutes_per_day"],
-        weekly_minutes=goal["minutes_per_day"] * goal["days_per_week"],
-        recurring_blackout_weekdays=frozenset(set(range(7)) - allowed_weekdays),
-        blackout_dates=frozenset(date.fromisoformat(value) for value in goal.get("unavailable_dates", [])),
-    )
-    planning_tasks: list[PlanningTask] = []
-    task_metadata: dict[str, dict] = {}
-    first_pass_ids: list[str] = []
-    review_ids: list[str] = []
-    for lesson_index, lesson in enumerate(lessons, 1):
-        # Lesson row ids are regenerated with each plan version. Derive task
-        # identity from stable semantic inputs so replan can preserve validated
-        # work instead of treating every task as removed and re-added.
-        lesson_key = f"lesson:{lesson_index}:{lesson['title']}"
-        first_id = stable_task_id(workspace_id, lesson_key, TaskPhase.FIRST_PASS)
-        review_id = stable_task_id(workspace_id, lesson_key, TaskPhase.REVIEW)
-        first_pass_ids.append(first_id)
-        review_ids.append(review_id)
-        planning_tasks.append(PlanningTask(
-            stable_id=first_id,
-            title=f"学习：{lesson['title']}",
-            estimated_minutes=lesson["estimated_minutes"],
-            phase=TaskPhase.FIRST_PASS,
-            expected_output=lesson["objective"],
-            acceptance=lesson["completion_criteria"],
-        ))
-        planning_tasks.append(PlanningTask(
-            stable_id=review_id,
-            title=f"复习：{lesson['title']}",
-            estimated_minutes=max(10, lesson["estimated_minutes"] // 2),
-            phase=TaskPhase.REVIEW,
-            prerequisites=(first_id,),
-            expected_output="在低提示条件下复述并应用",
-            acceptance="完成主动回忆和一个变式",
-        ))
-        task_metadata[first_id] = {"lesson_id": lesson["id"], "task_type": "lesson", "scene_title": lesson["title"]}
-        task_metadata[review_id] = {"lesson_id": lesson["id"], "task_type": "review", "scene_title": lesson["title"]}
-    final_id = stable_task_id(workspace_id, "final-deliverable", TaskPhase.REVIEW)
-    planning_tasks.append(PlanningTask(
-        stable_id=final_id,
-        title="最终任务：提交可核验成果",
-        estimated_minutes=min(45, goal["minutes_per_day"]),
-        phase=TaskPhase.REVIEW,
-        prerequisites=tuple(review_ids or first_pass_ids),
-        splittable=False,
-        expected_output=goal["expected_output"],
-        acceptance=goal["expected_output"],
-    ))
-    task_metadata[final_id] = {"lesson_id": "", "task_type": "final_task", "scene_title": goal["expected_output"]}
-    schedule = schedule_tasks(
-        planning_tasks,
-        start=plan_start,
-        end=plan_deadline,
-        capacity_policy=capacity_policy,
-        first_pass_ratio=0.45,
-        create_bridges=False,
-    )
-    tasks_by_day: dict[date, list[dict]] = {}
-    for scheduled in schedule.tasks:
-        meta = task_metadata[scheduled.source_task_id]
-        ordinal = len(tasks_by_day) + 1
-        task = {
-            "id": uid("task"),
-            "semantic_task_key": f"{meta['task_type']}:{meta['scene_title']}:{scheduled.chunk_index}",
-            "stable_task_id": scheduled.stable_id,
-            "source_task_id": scheduled.source_task_id,
-            "study_day_id": "",
-            "lesson_id": meta["lesson_id"],
-            "title": scheduled.title,
-            "task_type": meta["task_type"],
-            "phase": scheduled.phase.value,
-            "estimated_minutes": scheduled.minutes,
-            "priority": "high" if meta["task_type"] in {"review", "final_task"} else "normal",
-            "completion_criteria": scheduled.acceptance,
-            "expected_output": scheduled.expected_output,
-            "prerequisites": list(scheduled.prerequisites),
-            "chunk_index": scheduled.chunk_index,
-            "chunk_count": scheduled.chunk_count,
-            "scene": scene_for_task(meta["scene_title"], meta["task_type"], ordinal),
-            "status": "not_started",
-        }
-        tasks_by_day.setdefault(scheduled.scheduled_date, []).append(task)
+    days = available_days(plan_start, date.fromisoformat(goal["deadline"]), goal["days_per_week"], set(goal.get("unavailable_dates", [])), goal.get("preferred_weekdays"))
     study_days = []
-    for day, tasks in sorted(tasks_by_day.items()):
-        study_days.append({
-            "id": uid("day"),
-            "date": day.isoformat(),
-            "planned_minutes": sum(task["estimated_minutes"] for task in tasks),
-            "capacity_minutes": schedule.capacities[day],
-            "carry_over_minutes": 0,
-            "status": "planned",
-            "tasks": tasks,
-        })
-    plan = {"id": plan_id, "workspace_id": workspace_id, "version": version, "title": f"{goal['goal_statement'][:30]} · 个性化路线", "goal": goal["goal_statement"], "start_date": goal.get("start_date") or plan_start.isoformat(), "deadline": goal["deadline"], "status": "draft", "rationale": "按有效容量分配：前 45% 完成第一轮，后 55% 用于复习、变式和最终交付。", "risk_summary": assessment["risks"], "source_coverage": len(chunks), "source_coverage_rate": assessment.get("source_sufficiency", 0), "milestones": milestones, "study_days": study_days, "phase_allocation": {"first_pass_ratio": round(schedule.first_pass_ratio, 3), "first_pass_capacity_minutes": schedule.first_pass_capacity_minutes, "review_capacity_minutes": schedule.review_capacity_minutes}, "success_criteria": goal.get("success_criteria") or ["完成最终任务并提交可核验成果"], "created_at": db.now()}
+    task_index = 0
+    for idx, day in enumerate(days):
+        tasks = []
+        if idx == len(days) - 2:
+            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": "复习队列：回顾薄弱知识点", "task_type": "review", "estimated_minutes": min(30, goal["minutes_per_day"]), "priority": "high", "completion_criteria": "完成错题复述", "scene": scene_for_task("薄弱知识点复盘", "review", idx + 1), "status": "not_started"})
+        elif idx == len(days) - 1:
+            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": "最终任务：提交可核验成果", "task_type": "final_task", "estimated_minutes": min(45, goal["minutes_per_day"]), "priority": "high", "completion_criteria": goal["expected_output"], "scene": scene_for_task(goal["expected_output"], "final_task", idx + 1), "status": "not_started"})
+        elif task_index < len(lessons):
+            lesson = lessons[task_index]
+            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": lesson["id"], "title": f"学习：{lesson['title']}", "task_type": "lesson", "estimated_minutes": lesson["estimated_minutes"], "priority": "high" if idx < 3 else "normal", "completion_criteria": lesson["completion_criteria"], "scene": scene_for_task(lesson["title"], "lesson", idx + 1), "status": "not_started"})
+            task_index += 1
+        else:
+            practice_title = f"剧情支线：{goal['goal_statement'][:24]} · 主动回忆"
+            tasks.append({"id": uid("task"), "study_day_id": "", "lesson_id": "", "title": practice_title, "task_type": "practice", "estimated_minutes": min(30, goal["minutes_per_day"]), "priority": "normal", "completion_criteria": "用自己的话复述一个关键点，并给出一个新例子", "scene": scene_for_task(practice_title, "practice", idx + 1), "status": "not_started"})
+        if tasks: study_days.append({"id": uid("day"), "date": day.isoformat(), "planned_minutes": goal["minutes_per_day"], "carry_over_minutes": 0, "status": "planned", "tasks": tasks})
+    # Replace the legacy one-pass ordering with an explicit first-pass and
+    # rolling-review schedule. Keeping this transformation here preserves the
+    # existing lesson/block generation and ORM compatibility.
+    total_days = len(study_days)
+    first_pass_days = max(1, min(total_days, math.ceil(total_days * 0.4))) if total_days else 1
+    final_day_index = total_days - 1 if total_days >= 3 else None
+    first_pass_end = min(first_pass_days, final_day_index if final_day_index is not None else total_days)
+    review_strategies = ["spaced_recall", "mixed_review", "transfer_test"]
+    task_index = 0
+    for idx, day_payload in enumerate(study_days):
+        if final_day_index is not None and idx == final_day_index:
+            task = {"id": uid("task"), "study_day_id": day_payload["id"], "lesson_id": "", "title": "Final assessment · submit a verifiable result", "task_type": "final_task", "estimated_minutes": min(45, goal["minutes_per_day"]), "priority": "high", "completion_criteria": goal["expected_output"], "scene": scene_for_task(goal["expected_output"], "final_task", idx + 1), "status": "not_started", "learning_pass": "final_assessment"}
+            day_payload["tasks"] = [task]
+            continue
+        if idx < first_pass_end and task_index < len(lessons):
+            lesson = lessons[task_index]
+            day_payload["tasks"] = [{"id": uid("task"), "study_day_id": day_payload["id"], "lesson_id": lesson["id"], "title": f"Learn: {lesson['title']}", "task_type": "lesson", "estimated_minutes": lesson["estimated_minutes"], "priority": "high" if idx < 3 else "normal", "completion_criteria": lesson["completion_criteria"], "scene": scene_for_task(lesson["title"], "lesson", idx + 1), "status": "not_started", "learning_pass": "first_pass"}]
+            task_index += 1
+        elif idx >= first_pass_end:
+            strategy = review_strategies[(idx - first_pass_end) % len(review_strategies)]
+            review_lesson = lessons[(idx - first_pass_end) % len(lessons)] if lessons else None
+            title = f"Rolling review · {strategy} · {(review_lesson or {}).get('title', goal['goal_statement'][:20])}"
+            day_payload["tasks"] = [{"id": uid("task"), "study_day_id": day_payload["id"], "lesson_id": (review_lesson or {}).get("id", ""), "title": title, "task_type": "review", "review_strategy": strategy, "estimated_minutes": min(30, goal["minutes_per_day"]), "priority": "high", "completion_criteria": "Recall the key steps, then transfer them to a new example.", "scene": scene_for_task(title, "review", idx + 1), "status": "not_started", "learning_pass": "rolling_review"}]
+    plan = {"id": plan_id, "workspace_id": workspace_id, "version": version, "title": f"{goal['goal_statement'][:30]} · 个性化路线", "goal": goal["goal_statement"], "start_date": goal.get("start_date") or plan_start.isoformat(), "deadline": goal["deadline"], "status": "draft", "rationale": "先建立知识地图，再进行主动回忆和综合产出；最后两天保留复习与交付缓冲。", "risk_summary": assessment["risks"], "source_coverage": len(chunks), "source_coverage_rate": assessment.get("source_sufficiency", 0), "milestones": milestones, "study_days": study_days, "success_criteria": goal.get("success_criteria") or ["完成最终任务并提交可核验成果"], "created_at": db.now()}
     with db.connection() as conn:
         conn.execute("INSERT INTO plans VALUES (?,?,?,?,?,?,?)", (plan_id, workspace_id, version, json.dumps(plan, ensure_ascii=False), "draft", plan["created_at"], ""))
         for day in study_days:
@@ -397,10 +352,18 @@ def build_plan(workspace_id: str, goal: dict, assessment: dict) -> dict:
             for task in day["tasks"]:
                 task["study_day_id"] = day["id"]
                 conn.execute("INSERT INTO tasks VALUES (?,?,?,?)", (task["id"], day["id"], task["lesson_id"], json.dumps(task, ensure_ascii=False)))
-    plan["capacity_status"]="insufficient" if schedule.unscheduled else "sufficient"
-    plan["unscheduled_minutes"]=sum(x.estimated_minutes for x in schedule.unscheduled)
-    plan["unscheduled_lessons"]=[{"id":x.stable_id,"title":x.title,"phase":x.phase.value} for x in schedule.unscheduled]
+    plan["allocation"] = {"first_pass_ratio": 0.4, "first_pass_days": first_pass_end, "first_pass_minutes": sum(int(day.get("planned_minutes", 0)) for day in study_days[:first_pass_end]), "review_days": max(0, total_days - first_pass_end - (1 if final_day_index is not None else 0)), "review_minutes": sum(int(day.get("planned_minutes", 0)) for day in study_days[first_pass_end:(final_day_index if final_day_index is not None else total_days)]), "final_assessment_days": 1 if final_day_index is not None else 0, "review_strategy": "rolling_spaced_review"}
+    plan["knowledge_map"] = _build_knowledge_map(lessons, chunks)
+    plan["rationale"] = "首轮学习约占可用学习日的 40%，之后按间隔回忆、混合复习和迁移练习滚动巩固，最后保留一次综合验收。"
+    with db.connection() as conn:
+        conn.execute("UPDATE plans SET payload=? WHERE id=?", (json.dumps(plan, ensure_ascii=False), plan_id))
+    unscheduled_lessons=lessons[task_index:]
+    plan["capacity_status"]="insufficient" if unscheduled_lessons else "sufficient"
+    plan["unscheduled_minutes"]=sum(x["estimated_minutes"] for x in unscheduled_lessons)
+    plan["unscheduled_lessons"]=[{"id":x["id"],"title":x["title"]} for x in unscheduled_lessons]
     plan["options"]=assessment.get("options",[])
+    with db.connection() as conn:
+        conn.execute("UPDATE plans SET payload=? WHERE id=?", (json.dumps(plan, ensure_ascii=False), plan_id))
     try:
         from .orm import SessionLocal, PlanORM, MilestoneORM, ModuleORM, LessonORM, BlockORM, DayORM, TaskORM, ProgressORM, init_orm
         init_orm()
@@ -437,9 +400,29 @@ def validate_citations(workspace_id: str, citations: list[dict]) -> tuple[list[d
     return valid, warnings
 
 
-def tutor(workspace_id: str, lesson_id: str, message: str, session_id: str | None = None) -> dict:
+def _teaching_scaffold(lesson: dict, persona_prompt: str = "", phase: str = "explanation") -> dict:
+    title = str(lesson.get("title") or "当前知识点")
+    if phase == "explanation":
+        return {"step": "explain", "label": "先建立直觉", "analogy": f"把「{title}」想成整理一只抽屉：先分区，再决定每件东西放哪儿。", "example": f"我会先用资料里的一个小例子拆解「{title}」，标出输入、关键判断和结果。", "prompt": "先不用答题，只告诉我：这个类比里哪一步最像当前知识点？"}
+    if phase == "worked_example":
+        return {"step": "worked_example", "label": "老师示范一遍", "analogy": "像一起看导航，不要求你马上独立开车。", "example": f"我先演示「{title}」的最小例子，再把最后一个判断留给你。", "prompt": "请指出示例中最关键的一个判断，并说说为什么。"}
+    if phase in {"guided_practice", "faded_guidance"}:
+        return {"step": "guided_practice", "label": "带着你做", "analogy": "像扶着自行车后座逐渐松手，卡住时再扶一下。", "example": f"围绕「{title}」完成一个更小的变体：先写目标，再写第一步。", "prompt": "先写出目标和第一步，剩下的我帮你检查。"}
+    if phase == "spaced_recall":
+        return {"step": "spaced_recall", "label": "先从记忆里找回来", "analogy": "像把暂时放回抽屉的工具重新摸出来，不看说明书也先试着说说用途。", "example": f"关于「{title}」，先回忆关键步骤，再对照资料补缺口。", "prompt": "先说出你还记得的一个关键步骤，不要求完整。"}
+    if phase == "mixed_review":
+        return {"step": "mixed_review", "label": "混合旧新知识", "analogy": "像把两道看起来相似的菜放在一起辨味道，重点是说清楚什么时候用哪一种。", "example": f"把「{title}」和最近学过的另一个概念放在一起比较。", "prompt": "说出两者最容易混淆的地方，以及一个区分办法。"}
+    if phase == "transfer_test":
+        return {"step": "transfer_test", "label": "迁移到新场景", "analogy": "换一条路也能到目的地，才算真的会了，不是只记住原路线。", "example": f"把「{title}」用到一个资料中没有原样出现的新例子。", "prompt": "先描述新场景和你会保留的关键判断。"}
+    if phase == "final_assessment":
+        return {"step": "final_assessment", "label": "最后综合验收", "analogy": "像把工具箱带到真实现场，先检查条件，再选择工具。", "example": f"综合使用「{title}」完成最终产出，先写计划再动手。", "prompt": "先列出你的判断依据和执行步骤，答案可以稍后提交。"}
+    return {"step": "independent", "label": "独立尝试", "analogy": "现在轮到你自己走一小段，我只在必要时递提示。", "example": f"请独立完成「{title}」的变体，并附上一个可验证的理由。", "prompt": "提交你的思路、步骤和证据；不确定也可以先交草稿。"}
+
+
+def tutor(workspace_id: str, lesson_id: str, message: str, session_id: str | None = None, phase: str = "explanation", teacher: dict | None = None) -> dict:
     from .prompt_loader import load_prompt
     tutor_prompt = load_prompt("tutor.md")
+    persona_prompt = str((db.row("workspaces", "id", workspace_id) or {}).get("persona_prompt") or "")
     plan_rows = db.rows("plans", "workspace_id", workspace_id)
     plan = json.loads(plan_rows[-1]["payload"]) if plan_rows else {}
     lesson = next((l for m in plan.get("milestones", []) for mod in m["modules"] for l in mod["lessons"] if l["id"] == lesson_id), None)
@@ -451,6 +434,12 @@ def tutor(workspace_id: str, lesson_id: str, message: str, session_id: str | Non
     except Exception:
         hits=[]
     if not hits or max((x.get("score",0) for x in hits),default=0)<=0:
+        scaffold = _teaching_scaffold(lesson, persona_prompt, phase)
+        scaffold["persona_instructions"] = persona_prompt[:200]
+        if teacher:
+            scaffold["character_hook"] = f"{teacher.get('name', '今日导师')}的口头禅：{teacher.get('catchphrase') or teacher.get('specialty') or teacher.get('role') or '把复杂问题拆成小步骤'}。"
+            scaffold["example"] = f"{scaffold['character_hook']}\n{scaffold['example']}"
+        return {"message": f"我先不要求你答题。把「{lesson['title']}」想成一个日常动作：{scaffold['analogy']}\n\n{scaffold['example']}\n\n{scaffold['prompt']}（资料证据还不够，我会先陪你建立直觉。）", "status": "insufficient", "confidence": .15, "citations": [], "suggested_next_action": {"type": "scaffold", "text": scaffold["prompt"]}, "scaffold": scaffold, "persona_applied": bool(persona_prompt), "progress_update": {"lesson_id": lesson_id, "mastery_delta": 0}, "warnings": ["当前问题还没有命中可引用证据"]}
         return {"message":"当前问题在已导入资料中没有足够证据，我不会把无关资料冒充答案。你可以补充资料或缩小问题。","status":"insufficient","confidence":.15,"citations":[],"suggested_next_action":{"type":"question","text":"请提出一个能在当前资料中核验的问题。"},"progress_update":{"lesson_id":lesson_id,"mastery_delta":0},"warnings":["检索没有找到相关证据"]}
     citations=[{"source_id":x["source_id"],"chunk_id":x["chunk_id"],"source_title":x["source_title"],"page_start":x.get("page_start"),"page_end":x.get("page_end"),"heading":x.get("heading",""),"quote":x["quote"]} for x in hits]
     from .grounding_service import critic as grounding_critic
@@ -459,4 +448,18 @@ def tutor(workspace_id: str, lesson_id: str, message: str, session_id: str | Non
     warnings = [] if critic_result["passed"] else critic_result["errors"]
     status = "grounded" if valid else "insufficient"
     response = {"message": f"{message[:120]}\n\n我们先把问题拆成一个可验证动作：请结合「{lesson['title']}」用自己的话回答课程检查问题。回答后我会按证据、清晰度和是否能独立完成来反馈。", "status": status, "confidence": .86 if valid else .35, "citations": valid, "suggested_next_action": {"type": "question", "text": "请用自己的话解释关键概念，并给出一个例子。"}, "progress_update": {"lesson_id": lesson_id, "mastery_delta": .05}, "warnings": warnings, "prompt_loaded": bool(tutor_prompt)}
+    scaffold = _teaching_scaffold(lesson, persona_prompt, phase)
+    scaffold["persona_instructions"] = persona_prompt[:200]
+    if teacher:
+        scaffold["character_hook"] = f"{teacher.get('name', '今日导师')}的口头禅：{teacher.get('catchphrase') or teacher.get('specialty') or teacher.get('role') or '把复杂问题拆成小步骤'}。"
+        scaffold["example"] = f"{scaffold['character_hook']}\n{scaffold['example']}"
+    if valid:
+        evidence_quote = str(valid[0].get("quote") or "").strip()[:180]
+        if evidence_quote:
+            scaffold["evidence_example"] = evidence_quote
+            scaffold["example"] = f"资料里的小例子：{evidence_quote}\n{scaffold['example']}"
+    response["scaffold"] = scaffold
+    response["persona_applied"] = bool(persona_prompt)
+    response["suggested_next_action"] = {"type": "scaffold", "text": scaffold["prompt"]}
+    response["message"] = f"{message[:120]}\n\n先别急着答题，我先把「{lesson['title']}」讲成一个直觉：{scaffold['analogy']}\n\n{scaffold['example']}\n\n{scaffold['prompt']}（我会按资料证据陪你一步步来，别想偷跳关，嘿。）"
     return response

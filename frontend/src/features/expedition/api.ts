@@ -7,6 +7,10 @@ export type ExpeditionProfile = {
   active_lineup_id?: string | null
   revision: number
   heroes_owned: number
+  daily_verified_minutes?: number
+  reward_cycle_key?: string
+  training: { level: number; available_exp: number; spent_exp: number; max_level: number; shared: boolean }
+  tickets?: { equipment?: number; character?: number }
   training_slots: Array<{ slot_id: string; level: number; spent_exp: number; max_level: number }>
   gacha_state?: Record<string, number>
 }
@@ -33,7 +37,7 @@ export type Hero = {
   fallback_used?: boolean
 }
 
-export type AssetKind = "portrait" | "avatar" | "skill_cutin" | "skill_icon"
+export type AssetKind = "portrait" | "battle_portrait" | "avatar" | "skill_cutin" | "skill_icon"
 export type ExpeditionAsset = { asset_id: string; url: string; width: number; height: number; focal_point: { x: number; y: number }; scale: number; offset: { x: number; y: number }; fallback_used: boolean; version: string }
 
 export type ArtPackVersion = { pack_id: string; version: string; status: string; installed_at?: string | null; activated_at?: string | null; manifest_hash: string; hero_count: number; source: string; validation_result?: { assets?: Array<{ hero_id: string; asset_kind: AssetKind; path: string; width: number; height: number; mime: string; has_alpha?: boolean; sha256: string }>; metadata?: Record<string, { source?: string; author?: string; license?: string }>; attribution?: Record<string, unknown>; errors?: Array<{ path?: string; code?: string; error?: string }> }; reviewed_assets: number; required_reviews: number; previous_active_pack_id?: string; previous_active_version?: string; reviews?: Array<{ hero_id: string; asset_kind: AssetKind; review_status: string; review_note: string; reviewed_at?: string | null }> }
@@ -91,6 +95,9 @@ export type BattleUnit = {
   name: string
   side: "ally" | "enemy"
   position: number
+  cell_id?: string
+  grid_row?: number
+  grid_col?: number
   hp: number
   max_hp: number
   shield: number
@@ -132,12 +139,12 @@ export const expeditionApi = {
     return payload.item
   },
   trainingSlots: () => expeditionRequest<{ items: ExpeditionProfile["training_slots"] }>("/training-slots"),
-  upgradeSlot: (slotId: string) => expeditionRequest<{ profile: ExpeditionProfile } | ExpeditionProfile>(`/training-slots/${slotId}/upgrade`, { method: "POST", body: JSON.stringify({ levels: 1 }) }),
+  upgradeSlot: (slotId = "shared") => expeditionRequest<{ profile: ExpeditionProfile } | ExpeditionProfile>(`/training-slots/${slotId}/upgrade`, { method: "POST", body: JSON.stringify({ levels: 1 }) }),
   lineups: () => expeditionRequest<{ items: Lineup[] }>("/lineups"),
   saveLineup: (body: { lineup_id?: string; name: string; stance: string; members: LineupMember[]; expected_revision?: number }) => expeditionRequest<{ item: Lineup }>(body.lineup_id ? `/lineups/${body.lineup_id}` : "/lineups", { method: body.lineup_id ? "PUT" : "POST", body: JSON.stringify(body) }),
   activateLineup: (lineupId: string) => expeditionRequest<{ item: Lineup }>(`/lineups/${lineupId}/activate`, { method: "POST", body: "{}" }),
   banners: () => expeditionRequest<{ items: GachaBanner[] }>("/gacha/banners"),
-  pull: (bannerId: string, count: 1 | 10) => expeditionRequest<{ results: Array<Record<string, unknown>>; cost: number; crystals: number }>("/gacha/pull", { method: "POST", body: JSON.stringify({ banner_id: bannerId, count, idempotency_key: `ui-${bannerId}-${count}-${Date.now()}-${Math.random().toString(36).slice(2)}` }) }),
+  pull: (bannerId: string, count: 1 | 10, currency: "crystals" | "ticket" = "crystals") => expeditionRequest<{ results: Array<Record<string, unknown>>; cost: number; crystals: number; tickets?: Record<string, number> }>("/gacha/pull", { method: "POST", body: JSON.stringify({ banner_id: bannerId, count, currency, idempotency_key: `ui-${currency}-${bannerId}-${count}-${Date.now()}-${Math.random().toString(36).slice(2)}` }) }),
   history: () => expeditionRequest<{ items: Array<Record<string, unknown>> }>("/gacha/history"),
   equipment: () => expeditionRequest<{ definitions: Array<Record<string, unknown>>; instances: Array<Record<string, unknown>> }>("/equipment"),
   pets: () => expeditionRequest<{ definitions: Array<Record<string, unknown>>; owned: Array<Record<string, unknown>> }>("/pets"),
@@ -145,7 +152,7 @@ export const expeditionApi = {
   stage: (stageNumber: number) => expeditionRequest<Stage>(`/stages/${stageNumber}`),
   challenge: (stageNumber: number) => expeditionRequest<BattleSummary & { stage: Stage }>(`/stages/${stageNumber}/challenge`, { method: "POST", body: "{}" }),
   battleEvents: (battleId: string) => expeditionRequest<{ events: BattleEvent[] }>(`/battles/${encodeURIComponent(battleId)}/events`),
-  milestones: () => expeditionRequest<{ items: Array<{ milestone_id: string; label: string; required_minutes: number; claimed: boolean }>; total_verified_minutes: number }>("/milestones"),
+  milestones: () => expeditionRequest<{ items: Array<{ milestone_id: string; label: string; required_minutes: number; claimed: boolean; ticket_type?: string; claimable_count?: number }>; total_verified_minutes: number; daily_verified_minutes?: number; tickets?: Record<string, number> }>("/milestones"),
   claimMilestone: (milestoneId: string) => expeditionRequest<Record<string, unknown>>(`/milestones/${encodeURIComponent(milestoneId)}/claim`, { method: "POST", body: "{}" }),
   heroAssets: (heroId: string) => expeditionRequest<{ hero_id: string; assets: Record<AssetKind, ExpeditionAsset>; fallback_used: boolean }>(`/heroes/${encodeURIComponent(heroId)}/assets`),
   artPacks: () => expeditionRequest<{ items: ArtPackVersion[]; fallback: { active: boolean } }>("/art-packs"),

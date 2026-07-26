@@ -44,3 +44,26 @@ def test_black_main_pixel_uses_native_alpha_gate(tmp_path: Path) -> None:
     })
 
     assert result.getpixel((0, 0)) == (0, 0, 0, 77)
+
+
+def test_neutral_highlight_is_alpha_composited_over_pupil(tmp_path: Path) -> None:
+    main = _save(tmp_path / "main.png", [(128, 0, 0, 255)], (1, 1))
+    mask = _save(tmp_path / "mask.png", [(0, 0, 0, 255)], (1, 1))
+    highlight = _save(tmp_path / "highlight.png", [(255, 255, 255, 128)], (1, 1))
+    result = compositor.compose(main, mask, {
+        "base_color": [1, 1, 1, 1],
+        "sub_color": [1, 0, 0, 1],
+        "gradient_blend": 0,
+        "gradient_offset_y": 0.5,
+        "gradient_scale": 0.5,
+        "_highlight_up_path": highlight,
+        "highlight_up_color": [1, 1, 1, 1],
+        "highlight_up_x": 0.5,
+        "highlight_up_y": 0.5,
+    })
+
+    red, green, blue, alpha = result.getpixel((0, 0))
+    assert red in range(191, 194)
+    assert green in range(127, 130)
+    assert blue in range(127, 130)
+    assert alpha == 255

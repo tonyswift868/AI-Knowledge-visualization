@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -20,6 +20,7 @@ import {
   Target,
   Trash2,
   Upload,
+  UserRoundCog,
   X,
 } from "lucide-react";
 import { CitationCard } from "./components/CitationCard";
@@ -29,10 +30,11 @@ import { providerDiagnostic, useMentorStore } from "./stores/useMentorStore";
 import { useNarrativeStore } from "./stores/useNarrativeStore";
 import { StoryCatalogView } from "./features/story-catalog/StoryCatalogView";
 import { speakBrowser } from "./features/voice/browserVoice";
-import { createLearningRun, requestLearningHint, submitLearningRun } from "./features/learning-run/api";
+import { createLearningRun, requestLearningHint, sendLearningRunMessage, submitLearningRun, submitQuickQuiz } from "./features/learning-run/api";
 import { ExpeditionView } from "./features/expedition/ExpeditionView";
-import { LearningFlow } from "./features/learning/LearningFlow";
+import { ActiveTeachingChainView } from "./features/active-teaching/ActiveTeachingChainView";
 
+const TeacherAvatarStudio = lazy(() => import("./features/teachers/TeacherAvatarStudio").then(module => ({ default: module.TeacherAvatarStudio })));
 const API = "/api";
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
 const PRESETS_STORAGE_KEY = "mentorflow_create_presets_v1";
@@ -151,7 +153,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "create" | "plan" | "flow" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition"
+    "home" | "create" | "plan" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
   >("home");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [ws, setWs] = useState<Workspace | null>(null);
@@ -491,13 +493,11 @@ export function App() {
             ["home", Gauge, "总览"],
             ["create", Plus, "创建计划"],
             ["plan", CalendarDays, "计划日历"],
-            ["flow", Brain, "学习主流程"],
-            ["learn", BookOpen, "今日学习"],
+            ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
             ["expedition", Sparkles, "学习远征"],
             ["settings", Settings2, "Provider 设置"],
-            ["story", Sparkles, "学习剧场"],
-            ["catalog", BookOpen, "选择故事"],
+            ["active", Brain, "主动教学链"],
           ].map(([key, Icon, label]: any) => (
             <button
               className={tab === key ? "active" : ""}
@@ -535,9 +535,9 @@ export function App() {
                 : tab === "create"
                   ? "创建计划"
                   : tab === "plan"
-                    ? "计划日历"
-                    : tab === "flow"
-                      ? "学习主流程"
+                   ? "计划日历"
+                    : tab === "teachers"
+                      ? "AI教师角色库"
                     : tab === "story"
                       ? "学习剧场"
                       : tab === "catalog"
@@ -646,6 +646,7 @@ export function App() {
           {tab === "learn" && (
               <LearningRunInteractive
               today={today}
+              workspaceId={ws?.id || "default"}
               task={currentTask}
               chat={chat}
               text={chatText}
@@ -659,19 +660,12 @@ export function App() {
               }}
             />
           )}{" "}
-          {tab === "flow" && (
-            ws
-              ? <LearningFlow
-                  workspaceId={ws.id}
-                  onRequestImport={() => setTab("create")}
-                  onDayClosed={() => { void refreshDailyState(false); }}
-                />
-              : <section className="empty-state"><h2>请先创建或选择学习空间</h2><button className="primary" onClick={() => setTab("create")}>创建学习空间</button></section>
-          )}{" "}
           {tab === "progress" && (
             <Progress progress={progress} plan={plan} completed={completed} />
           )}{" "}
           {tab === "expedition" && <ExpeditionView />}
+          {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
+          {tab === "active" && <ActiveTeachingChainView workspaceId={ws?.id || "general-learning"} />}
           {tab === "settings" && <Settings />}
         </div>
       </main>
@@ -1809,7 +1803,7 @@ function LearnInteractive({ today, task, chat, text, setText, send, complete, al
     <div className="learn-grid interactive-learn-grid">
       <aside className="today-rail"><div className="rail-title">今日任务 <span>{today?.day?.tasks?.length || 0}</span></div>{(today?.day?.tasks || []).map((item: any) => <div className={`rail-task ${task?.id === item.id ? "active" : ""}`} key={item.id}><span className={item.scene_completed === true ? "check-circle" : ""}>{item.scene_completed === true ? <Check size={12} /> : ""}</span><div><b>{item.title}</b><small>{item.estimated_minutes} 分钟</small></div></div>)}<div className="rail-progress"><span>今日投入</span><b>{today?.day?.planned_minutes || 0} min</b><div><i style={{ width: canComplete ? "100%" : phase === 0 ? "8%" : phase === 1 ? "55%" : "80%" }} /></div></div></aside>
       <section className="lesson-stage interactive-stage">
-        <div className="theater-header"><div className="theater-date"><span>DAY</span><b>{today?.date || "—"}</b><small>{scene.episode || "SCENE"}</small></div><div className="theater-location"><span>LOCATION</span><b>{scene.location || "夜航学习剧场"}</b><small>{scene.knowledge_focus || task?.title || "今日知识焦点"}</small></div><div className="scene-character" style={{ borderColor: character.color || "#8ed9bd" }}><CharacterPortrait character={character} className="scene-avatar" /><div><b>{character.name}</b><small>{character.title}</small></div></div></div>
+        <div className="theater-header"><div className="theater-date"><span>DAY</span><b>{today?.date || "—"}</b><small>DAILY CLASS</small></div><div className="theater-location"><span>COURSE</span><b>{task?.lesson?.title || task?.title || "今日课程"}</b><small>{scene.knowledge_focus || "资料对齐学习"}</small></div><div className="scene-character" style={{ borderColor: character.color || "#8ed9bd" }}><CharacterPortrait character={character} className="scene-avatar" /><div><b>{character.name}</b><small>{character.title} · {character.adult_age ? `${character.adult_age}岁` : "授权成年模型"}</small></div></div></div>
         <div className="lesson-top"><span className="pill green-pill">第 {Math.min(phase + 1, 3)} / 3 回合</span><span>{character.name} 引导 · 证据驱动</span></div>
         <h2>{scene.title || task?.lesson?.title || task?.title || "等待今天的课程"}</h2>
         <div className="story-card"><div className="story-character"><CharacterPortrait character={character} className="story-character-portrait" /><div><span className="block-type">{phase === 0 ? "场景开场" : phase === 1 ? "导师追问" : "回合结算"}</span><b>{character.name} · {character.title}</b><p>{phase === 0 ? scene.setting : phase === 1 ? `${scene.objective} ${checkpoint}` : "这一回合已经完成了理解验证。看看导师反馈，再决定是否提交今天的任务。"}</p></div></div></div>
@@ -1823,27 +1817,47 @@ function LearnInteractive({ today, task, chat, text, setText, send, complete, al
   </>;
 }
 
-function LearningRunInteractive({ today, task, chat, text, setText, send, complete, allowExternal, onAllowExternalChange }: any) {
+function LearningRunInteractive({ today, task, workspaceId, chat, text, setText, send, complete, allowExternal, onAllowExternalChange }: any) {
   const checkpoint = task?.lesson?.blocks?.find((block: any) => ["checkpoint", "question"].includes(block.block_type))?.content || "请用自己的话解释这个知识点，并举一个例子。";
   const [run, setRun] = useState<any>(null);
   const [answer, setAnswer] = useState("");
+  const [teacherText, setTeacherText] = useState("");
+  const [selectedQuizOption, setSelectedQuizOption] = useState("");
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [personaPrompt, setPersonaPrompt] = useState("");
+  const [personaBusy, setPersonaBusy] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    setRun(null); setAnswer(""); setSelectedChoice(null); setError("");
+    setRun(null); setAnswer(""); setTeacherText(""); setSelectedQuizOption(""); setSelectedChoice(null); setError("");
     if (task?.id) createLearningRun(task.id).then((value) => { if (!cancelled) setRun(value); }).catch((value: any) => { if (!cancelled) setError(value.message); });
     return () => { cancelled = true; };
   }, [task?.id]);
+  useEffect(() => {
+    if (!workspaceId || workspaceId === "default") return;
+    request<any>(`/workspaces/${workspaceId}/persona`).then((value) => setPersonaPrompt(value.persona_prompt || "")).catch(() => {});
+  }, [workspaceId]);
+  async function savePersona() {
+    if (!workspaceId || workspaceId === "default") return;
+    setPersonaBusy(true);
+    try { await request(`/workspaces/${workspaceId}/persona`, { method: "PATCH", body: JSON.stringify({ persona_prompt: personaPrompt }) }); }
+    catch (value: any) { setError(value.message); }
+    finally { setPersonaBusy(false); }
+  }
   const fallbackChoices = [
     { id: "map", label: "先看一个具体例子", detail: "从资料中找一个例子，和角色一起拆出关键线索。", prompt: `我选择先看例子。请围绕「${task?.title || "当前知识点"}」给我一个来自资料的例子。` },
     { id: "explain", label: "先用自己的话解释", detail: "先说出你的模型，再让导师追问缺口。", prompt: `我选择先解释。我先说明「${task?.title || "当前知识点"}」的理解，请继续追问我。` },
     { id: "challenge", label: "先接受一个小挑战", detail: "先做最小练习，再根据结果补齐概念。", prompt: `我选择先做挑战。请给我一个关于「${task?.title || "当前知识点"}」的最小练习，不要直接给答案。` },
   ];
   const scene = task?.scene || { title: task?.title || "今日学习场景", setting: "你正在把今天的知识变成一次可以完成和验证的行动。", objective: "先做出一个关键选择，再用证据证明理解。", choices: fallbackChoices };
-  const choices = scene.choices?.length ? scene.choices : fallbackChoices;
-  const character = scene.character || { id: "lumen", name: "导师", title: "学习伙伴", role: "陪你完成今天的回合", avatar: "✦", color: "#8ed9bd" };
+  const choices = fallbackChoices;
+  const character = run?.state?.teacher || scene.character || { id: "teacher", name: "今日导师", title: "学习伙伴", role: "陪你完成今天的学习回合", avatar: "师", color: "#8ed9bd" };
+  const teacherMessages = run?.messages || [];
+  const activeScaffold = [...teacherMessages].reverse().find((item: any) => item.grounding?.scaffold)?.grounding?.scaffold;
+  const quickQuiz = run?.state?.quick_quiz;
+  const quickQuizResult = run?.quick_quiz_result || run?.state?.quick_quiz_result;
+  const teacherMemory = run?.state?.teacher_memory;
   const phase = run?.phase || "explanation";
   const phaseOrder = run?.phase_order || ["explanation", "worked_example", "guided_practice", "faded_guidance", "independent_attempt", "daily_variant_test", "passed"];
   const phaseIndex = Math.max(0, phaseOrder.indexOf(phase));
@@ -1862,24 +1876,46 @@ function LearningRunInteractive({ today, task, chat, text, setText, send, comple
     setBusy(true); setError("");
     try { setRun(await requestLearningHint(run.run_id)); } catch (value: any) { setError(value.message); } finally { setBusy(false); }
   }
+  async function askTeacher() {
+    const message = teacherText.trim();
+    if (!run?.run_id || !message) return;
+    setBusy(true); setError("");
+    try { setRun(await sendLearningRunMessage(run.run_id, message, providerRequestContext().provider_session_id)); setTeacherText(""); setSelectedQuizOption(""); }
+    catch (value: any) { setError(value.message); }
+    finally { setBusy(false); }
+  }
+  async function answerQuickQuiz() {
+    if (!run?.run_id || !quickQuiz?.quiz_id || !selectedQuizOption) return;
+    setBusy(true); setError("");
+    try { setRun(await submitQuickQuiz(run.run_id, quickQuiz.quiz_id, selectedQuizOption)); }
+    catch (value: any) { setError(value.message); }
+    finally { setBusy(false); }
+  }
   return <>
-    <div className="page-title"><div><div className="eyebrow">TODAY · {today?.date || "—"}</div><h1>今天，完成一个小回合</h1><p>剧情负责调动注意力，Learning Run 负责逐阶段验证；完成由服务器确认。</p></div><div className="streak"><span>当前任务</span><b>{today?.day?.tasks?.length || 0} 个</b><Leaf size={17} /></div></div>
+    <div className="page-title"><div><div className="eyebrow">TODAY · {today?.date || "—"}</div><h1>今天，完成一个小回合</h1><p>AI 教师模型与 Learning Run 共用当前学习空间；阶段验证和完成状态仍由服务器确认。</p></div><div className="streak"><span>当前任务</span><b>{today?.day?.tasks?.length || 0} 个</b><Leaf size={17} /></div></div>
+    <Suspense fallback={<div className="empty-mini">正在加载今日教师模型…</div>}><TeacherAvatarStudio workspaceId={workspaceId || "default"} compact presentationState={busy ? "thinking" : quickQuizResult?.correct ? "encouraging" : teacherMessages.length ? "explaining" : "idle"} /></Suspense>
+    <section className="persona-editor-card">
+      {activeScaffold && <div className="scaffold-card scaffold-stage"><span className="block-type">CURRENT TEACHING STEP</span><b>{activeScaffold.label}</b><p>{activeScaffold.analogy}</p><small>{activeScaffold.prompt}</small></div>}
+      <div><span className="block-type">TEACHER PERSONA</span><b>写下你希望她怎么陪你学</b><small>只影响语气、比喻和互动方式；课程证据与评估规则不会被改写。</small></div>
+      <textarea value={personaPrompt} onChange={(event) => setPersonaPrompt(event.target.value)} placeholder="例如：嘴上有点坏、喜欢用生活梗，但讲解要耐心；卡住时先给半步提示。" maxLength={2000} />
+      <button className="secondary" onClick={savePersona} disabled={personaBusy}>{personaBusy ? "保存中…" : "保存人设"}</button>
+    </section>
     <div className="learn-grid interactive-learn-grid">
       <aside className="today-rail"><div className="rail-title">今日任务 <span>{today?.day?.tasks?.length || 0}</span></div>{(today?.day?.tasks || []).map((item: any) => <div className={`rail-task ${task?.id === item.id ? "active" : ""}`} key={item.id}><span className={item.scene_completed === true ? "check-circle" : ""}>{item.scene_completed === true ? <Check size={12} /> : ""}</span><div><b>{item.title}</b><small>{item.estimated_minutes} 分钟</small></div></div>)}<div className="rail-progress"><span>Learning Run</span><b>{passed ? "已通过" : `${Math.min(phaseIndex + 1, phaseOrder.length)} / ${phaseOrder.length}`}</b><div><i style={{ width: passed ? "100%" : `${Math.max(8, ((phaseIndex + 1) / phaseOrder.length) * 100)}%` }} /></div></div></aside>
       <section className="lesson-stage interactive-stage">
         <div className="theater-header"><div className="theater-date"><span>DAY</span><b>{today?.date || "—"}</b><small>{scene.episode || "SCENE"}</small></div><div className="theater-location"><span>LOCATION</span><b>{scene.location || "夜航学习剧场"}</b><small>{scene.knowledge_focus || task?.title || "今日知识焦点"}</small></div><div className="scene-character" style={{ borderColor: character.color || "#8ed9bd" }}><CharacterPortrait character={character} className="scene-avatar" /><div><b>{character.name}</b><small>{character.title}</small></div></div></div>
         <div className="lesson-top"><span className="pill green-pill">{phase.replaceAll("_", " ")}</span><span>{character.name} 引导 · 服务器验证</span></div>
-        <h2>{scene.title || task?.lesson?.title || task?.title || "等待今天的课程"}</h2>
-        <div className="story-card"><div className="story-character"><CharacterPortrait character={character} className="story-character-portrait" /><div><span className="block-type">{phaseCopy[phase] || "当前回合"}</span><b>{character.name} · {character.title}</b><p>{phase === "explanation" ? scene.setting : scene.objective}</p></div></div></div>
+        <h2>{task?.lesson?.title || task?.title || "等待今天的课程"}</h2>
+        <div className="story-card"><div className="story-character"><CharacterPortrait character={character} className="story-character-portrait" /><div><span className="block-type">{phaseCopy[phase] || "当前回合"}</span><b>{character.name} · {character.title}</b><p>{character.role}。{task?.lesson?.objective || "所有讲解、小测与反馈都以当前课程资料为准。"}</p></div></div></div>
         {phase === "explanation" && <div className="choice-panel"><div className="choice-heading"><b>你要怎么开始？</b><span>选择一个行动，再提交回合</span></div>{choices.map((choice: any, index: number) => <button className={`choice-card ${selectedChoice === choice.id ? "selected" : ""}`} key={choice.id} onClick={() => { setSelectedChoice(choice.id); setAnswer(choice.prompt); }} disabled={busy}><span className="choice-key">{String.fromCharCode(65 + index)}</span><span><b>{choice.label}</b><small>{choice.detail}</small></span><ArrowRight size={16} /></button>)}</div>}
         {run && !passed && <div className="answer-panel"><span className="block-type">{["independent_attempt", "daily_variant_test", "final_assessment"].includes(phase) ? "EVALUATOR · 你的作答" : "当前行动"}</span><h3>{phaseCopy[phase] || checkpoint}</h3><textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={phase === "daily_variant_test" ? "写出你的独立解答、判断和证据；今天不提供提示…" : "写下你的理解、步骤或选择理由…"} disabled={busy} /><div className="answer-actions"><button className="secondary" onClick={hint} disabled={busy || phase === "daily_variant_test" || phase === "final_assessment"}>需要一个提示</button><button className="primary" onClick={submit} disabled={!answer.trim() || busy}>{busy ? "处理中…" : "提交这一回合"}<Send size={15} /></button></div></div>}
         {run?.evaluation && <div className={`verification-note ${run.evaluation.passed ? "passed" : "failed"}`}><Check size={16} /><div><b>{run.evaluation.passed ? "Evaluator 已通过" : "还需要再组织一次"}</b><span>{run.evaluation.feedback} · 已覆盖 {run.evaluation.covered_criteria?.length || 0} 项标准</span></div></div>}
-        {passed && <div className="verification-note passed"><Check size={16} /><div><b>Learning Run 已完成</b><span>任务状态和剧情事件都由服务端同步完成。</span></div></div>}
-        {run?.artifact && <div className="artifact-result"><span className="block-type">成果已进入剧情</span><b>{run.artifact.artifact_type}</b><p>Evaluator 已验证，这份成果现在可以成为后续故事中的对象。</p></div>}
+        {passed && <div className="verification-note passed"><Check size={16} /><div><b>Learning Run 已完成</b><span>任务状态、学习证据和共享记忆已由服务端同步。</span></div></div>}
+        {run?.artifact && <div className="artifact-result"><span className="block-type">学习成果已保存</span><b>{run.artifact.artifact_type}</b><p>Evaluator 已验证，这份成果可用于后续复习与迁移练习。</p></div>}
         <button className="complete-button" onClick={() => task && complete(task.id, { evidence: JSON.stringify({ learning_run_id: run?.run_id, phase, answer }) })} disabled={!task || task.scene_completed === true || !passed}>{task?.scene_completed === true ? <><Check size={17} /> 已完成</> : passed ? <>记录今天的任务<ArrowRight size={16} /></> : <>先完成 Learning Run</>}</button>
         {error && <div className="narrative-error"><CircleAlert size={15} />{error}</div>}
       </section>
-      <aside className="tutor-panel"><div className="tutor-header"><CharacterPortrait character={character} className="tutor-avatar" /><div><b>{character.name} · AI导师</b><span>{character.title} · 基于当前资料</span></div><span className="live-dot" /></div><label className="external-knowledge-toggle"><input type="checkbox" checked={Boolean(allowExternal)} onChange={(e) => onAllowExternalChange?.(e.target.checked)} /> 允许 AI 补充知识 <small>仅在当前资料证据不足时单独标注</small></label><div className="chat-messages">{chat.length === 0 && <div className="tutor-welcome"><Sparkles size={19} /><b>每个阶段都要留下证据</b><p>{character.role}。先选行动，再回答；只有 Learning Run 通过后，今天的任务才会真正完成。</p></div>}{chat.map((m: any, i: number) => <div className={`bubble ${m.role}`} key={i}><ReactMarkdown skipHtml>{m.content}</ReactMarkdown>{m.grounding && <div className="grounding"><ShieldCheck size={13} /><b>{m.grounding.status}</b><div className="citation-list">{(m.grounding.citations || []).map((citation: any) => <CitationCard key={citation.chunk_id} citation={citation} />)}</div><span>{m.grounding.citations?.length || 0} 条引用</span>{m.grounding.generation_meta && <GenerationMeta meta={m.grounding.generation_meta} compact />}{m.grounding.supplemental && <div className="supplemental-box"><b>{m.grounding.supplemental.label}</b><p>{m.grounding.supplemental.text}</p></div>}</div>}</div>)}</div><div className="chat-compose"><textarea value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="也可以直接问导师…" /><button onClick={() => send()} disabled={!text.trim()}><Send size={16} /></button></div></aside>
+      <aside className="tutor-panel"><div className="tutor-header"><CharacterPortrait character={character} className="tutor-avatar" /><div><b>{character.name} · 今日轮值</b><span>{character.specialty || character.title} · 基于已导入资料</span></div><span className="live-dot" /></div><div className="teacher-memory-strip"><b>共享学习记忆</b><span>{teacherMemory?.interaction_count || 0} 次交流 · {teacherMemory?.known_source_count || 0} 份资料 · {teacherMemory?.completed_quiz_count || 0} 次小测</span></div><div className="chat-messages">{teacherMessages.length === 0 && <div className="tutor-welcome"><Sparkles size={19} /><b>今天由{character.name}陪你学习</b><p>{character.role}。导师会每日轮换，但学习重点、引用资料和小测记录由所有导师共享。</p></div>}{teacherMessages.map((m: any, i: number) => <div className={`bubble ${m.role}`} key={m.id || i}><ReactMarkdown skipHtml>{m.content}</ReactMarkdown>{m.grounding?.status && <div className="grounding"><ShieldCheck size={13} /><b>{m.grounding.status}</b><div className="citation-list">{(m.grounding.citations || []).map((citation: any) => <CitationCard key={citation.chunk_id} citation={citation} />)}</div><span>{m.grounding.citations?.length || 0} 条引用</span></div>}</div>)}</div>{quickQuiz && !quickQuizResult && <div className="quick-quiz-card"><span>即时小测 · 引用对齐</span><b>{quickQuiz.question}</b>{quickQuiz.options.map((option: any) => <label key={option.id}><input type="radio" name={quickQuiz.quiz_id} checked={selectedQuizOption === option.id} onChange={() => setSelectedQuizOption(option.id)} /><em>{option.text}</em></label>)}<button className="primary" onClick={answerQuickQuiz} disabled={busy || !selectedQuizOption}>提交小测</button></div>}{quickQuizResult && <div className={`quiz-result ${quickQuizResult.correct ? "correct" : "retry"}`}><b>{quickQuizResult.correct ? "回答正确" : "再核对一次资料"}</b><span>{quickQuizResult.feedback}</span></div>}<div className="chat-compose"><textarea value={teacherText} onChange={e => setTeacherText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askTeacher(); } }} placeholder="向今日导师提问；离题也会温柔带回课程…" /><button onClick={askTeacher} disabled={busy || !teacherText.trim()}><Send size={16} /></button></div></aside>
     </div>
   </>;
 }
@@ -1982,8 +2018,8 @@ function Progress({ progress, plan, completed }: any) {
 export function Settings() {
   const state = useMentorStore();
   const [message, setMessage] = useState("");
-  const labels: Record<string, string> = { fake: "Fake Provider", "openai-compatible": "OpenAI Compatible", gemini: "Gemini", claude: "Anthropic Claude" };
-  const defaultBaseUrl = state.provider === "openai-compatible" ? "https://api.deepseek.com/v1" : "";
+  const labels: Record<string, string> = { fake: "Fake Provider", "openai-compatible": "DeepSeek", gemini: "Gemini", claude: "Anthropic Claude" };
+  const defaultBaseUrl = state.provider === "openai-compatible" ? "https://api.deepseek.com" : "";
   const test = async () => {
     try {
       const baseUrl = state.baseUrl.trim() || defaultBaseUrl;
@@ -1996,22 +2032,24 @@ export function Settings() {
   };
   const diagnostics = JSON.stringify({ ...providerDiagnostic(state), api_key: undefined }, null, 2);
   return <>
-    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>API Key 仅在当前页面内存中使用，不写入浏览器存储、不进入数据库、不上传到预设文件；ProviderSession 只在后端进程内存中短暂有效。</p></div></div>
+    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>配置和 API Key 会自动保存到当前浏览器本机；Key 不写入项目文件、不进入数据库，也不会出现在诊断信息中。ProviderSession 仍只在后端进程内存中短暂有效。</p></div></div>
     <div className="settings-grid">
       <section className="card provider-form">
         <div className="card-kicker"><Settings2 size={16} />模型 Provider</div>
-        <label>Provider<select value={state.provider} onChange={e => state.setProvider(e.target.value as any)}><option value="fake">Fake Provider（仅 Demo）</option><option value="openai-compatible">OpenAI Compatible</option><option value="gemini">Google Gemini</option><option value="claude">Anthropic Claude</option></select></label>
+        <label>Provider<select value={state.provider} onChange={e => state.setProvider(e.target.value as any)}><option value="openai-compatible">DeepSeek（OpenAI Compatible）</option><option value="fake">Fake Provider（仅 Demo）</option><option value="gemini">Google Gemini</option><option value="claude">Anthropic Claude</option></select></label>
         {state.provider !== "fake" && <>
-          <label>Base URL<input value={state.baseUrl || defaultBaseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder="留空使用 https://api.deepseek.com/v1" /></label>
-          <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="deepseek-chat" /></label>
+          <label>Base URL<input value={state.baseUrl || defaultBaseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder="留空使用 https://api.deepseek.com" /></label>
+          {state.provider === "openai-compatible"
+            ? <label>Model<select value={state.model || "deepseek-v4-pro"} onChange={e => state.setModel(e.target.value)}><option value="deepseek-v4-pro">DeepSeek V4 Pro（默认）</option><option value="deepseek-v4-flash">DeepSeek V4 Flash</option></select></label>
+            : <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="输入 Provider 模型 ID" /></label>}
           <label>API Key<input type="password" value={state.apiKey} onChange={e => state.setApiKey(e.target.value)} placeholder="自动保存到当前浏览器本机" /></label>
         </>}
-        <div className="key-note"><ShieldCheck size={16} /><span>{state.provider === "fake" ? "Fake 只用于明确的 Demo Workspace。" : "真实请求失败时不会自动切换到 Fake。"}</span><button onClick={() => state.setApiKey("")}>清除 Key</button></div>
+        <div className="key-note"><ShieldCheck size={16} /><span>{state.provider === "fake" ? "Fake 只用于明确的 Demo Workspace。" : "已自动保存到当前浏览器本机；真实请求失败时不会切换到 Fake。"}</span><button onClick={() => state.setApiKey("")}>清除 Key</button></div>
         <button className="primary" onClick={test}>{state.provider === "fake" ? "测试 Fake Provider" : `测试 ${labels[state.provider]}`} <Check size={16} /></button>
         {state.lastError && <div className="provider-error" role="alert">{state.lastError.includes("重新绑定") ? state.lastError : `${state.lastError} · 请重新绑定模型`}</div>}
         {message && <div className="success-note">{message}</div>}
       </section>
-      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 不写数据库、不进 URL、不进响应", "真实 Workspace 必须绑定已验证 ProviderSession", "真实请求失败不会静默回退 Fake", "Demo Workspace 明确使用 Fake Provider"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
+      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅保存于当前浏览器本机，不写项目文件或数据库", "API Key 不进 URL、诊断信息或接口响应", "真实 Workspace 必须绑定已验证 ProviderSession", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
     </div>
   </>
 }

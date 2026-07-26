@@ -1,0 +1,64 @@
+{
+  "project_name": "MentorFlow / AI-Knowledge visualization",
+  "project_root": "E:\\aiPlay\\AI-Knowledge visualization",
+  "current_branch": "recovery/session-replay-20260723",
+  "base_commit": "becc82b2f28cb08f6faa71c16f2661a4439de0ac",
+  "restoration_basis": "MentorFlow_PRE_SPARK_RECOVERED_GPT_WEB_20260724_1126",
+  "restoration_kind": "last evidence-backed runnable pre-Spark recovery; not a byte-exact 2026-07-22 repository snapshot",
+  "snapshot_verification": {
+    "files_checked": 1734,
+    "missing": 0,
+    "different": 0,
+    "koikatsu_teacher_registry_sha256": "5738C08CE58E13DC36CF6D90DB5860D9401AB3A25AD25FAB703F38CCE963C23A"
+  },
+  "services": {
+    "frontend": "http://127.0.0.1:5173/",
+    "backend": "http://127.0.0.1:8000/",
+    "health": "ok"
+  },
+  "verified_state": {
+    "expedition_art_pack": "mentorflow_expedition_art_v1@1.0.0 ACTIVE",
+    "expedition_fallback": false,
+    "local_koikatsu_cards": 1529,
+    "first_card_runtime_status": "partial",
+    "first_card_runtime_items": 13,
+    "browser_expedition_art": "loaded official 1024x1536 assets",
+    "browser_teacher_model": "shared white model visible with head and body",
+    "frontend_tests": "59/59 passed",
+    "backend_expedition_tests": "20/20 passed",
+    "frontend_build": "passed"
+  },
+  "known_missing_or_degraded": [
+    "No complete byte-exact 2026-07-22 repository snapshot",
+    "Historical data/teacher_avatars registry and two Hayasaka PMX directories are missing",
+    "Per-card exact head geometry and ShapeAnime are not restored",
+    "KKS model has no real idle animation, blink, gesture, or expression state machine",
+    "First-card runtime manifest remains partial",
+    "Legacy lower model rotation pool is empty and uses a 2D parametric preview"
+  ],
+  "preserved_backup": {
+    "post_1126_experiment": "E:\\aiPlay\\开发指南\\study RAG\\recovery_backups\\post-1126-experiment-20260724-113616",
+    "database_before_art_restore": "E:\\aiPlay\\开发指南\\study RAG\\recovery_backups\\mentorflow_v2.before-artpack-restore.20260724-111156.db",
+    "database_backup_sha256": "BE7EFFA8F3A673D3B928C5B4648141667F4CA746786277D997B8F09F804B2FB9"
+  },
+  "critical_files": [
+    "docs/GPT_WEB_PRE_SPARK_RESTORATION_HANDOFF_20260724.md",
+    "frontend/src/features/expedition/BattleReplay.tsx",
+    "frontend/src/features/teachers/KoikatsuCardEditor.tsx",
+    "frontend/src/features/teachers/KoikatsuPmxRig.tsx",
+    "frontend/src/features/teachers/TeacherAvatarStudio.tsx",
+    "backend/app/expedition_art_pack.py",
+    "backend/app/koikatsu_teacher_registry.py",
+    "backend/app/teacher_avatar_registry.py",
+    "data/mentorflow_v2.db",
+    "data/kks-assets/shared-base/neutral-body/manifest.json",
+    "data/kks-assets/shared-base/neutral-head/manifest.json"
+  ],
+  "planning_constraints": [
+    "Preserve restored art, shared white model, card index, and on-demand rendering",
+    "Do not launch Koikatsu or Unity from HTTP request paths",
+    "Do not prewarm all 1529 cards without explicit approval",
+    "Do not fabricate missing PMX assets",
+    "Verify generic fixes on representative cards before broad rollout"
+  ]
+}
