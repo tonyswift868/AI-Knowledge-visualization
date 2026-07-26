@@ -76,6 +76,39 @@ def _bootstrap_without_session(client: TestClient) -> str:
     return material["id"]
 
 
+def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path):
+    configure_orm(tmp_path / "active-proactive-teacher.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        opening = client.get(
+            f"/api/active-teaching/sessions/{session_id}"
+        ).json()
+        assert opening["messages"][-1]["action"] == "explain"
+        assert opening["state"]["autonomy"]["awaiting_learner"] is False
+
+        example = client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={},
+        )
+        assert example.status_code == 200, example.text
+        assert example.json()["messages"][-1]["action"] == "example"
+        assert example.json()["state"]["autonomy"]["awaiting_learner"] is False
+
+        check = client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={},
+        )
+        assert check.status_code == 200, check.text
+        assert check.json()["messages"][-1]["action"] == "check_understanding"
+        assert check.json()["state"]["autonomy"] == {
+            "mode": "teacher_led_until_learner_input",
+            "awaiting_learner": True,
+            "reason": "learner_evidence_required",
+        }
+        assert len(check.json()["messages"]) == 3
+        assert check.json()["state"]["today_plan"]["task_count"] > 0
+
+
 def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_path, monkeypatch):
     configure_orm(tmp_path / "active-provider-teacher.db")
     reset_provider_sessions()

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.orm import configure_orm
+from app.generic_knowledge import calendar_capacities
 from app.provider_runtime import (
     create_provider_session,
     create_verified_demo_session,
@@ -469,3 +470,35 @@ def test_provider_batches_are_merged_globally_for_long_material(tmp_path, monkey
             "合并规范化同名节点" in warning
             for warning in body["extraction"]["warnings"]
         )
+def test_fifteen_day_cycle_reserves_first_eight_days_for_initial_learning():
+    calendar = calendar_capacities(
+        {
+            "start_date": "2026-07-27",
+            "deadline": "2026-08-10",
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 600,
+            "initial_learning_period_ratio": 0.5,
+        }
+    )
+    assert len(calendar) == 15
+    assert [day["date"] for day in calendar if day["study_phase"] == "initial_learning"] == [
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29",
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+    ]
+    assert [day["date"] for day in calendar if day["study_phase"] == "review"] == [
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+        "2026-08-08",
+        "2026-08-09",
+        "2026-08-10",
+    ]

@@ -110,17 +110,40 @@ def test_ingestion_graph_plan_and_retrieval_are_traceable(tmp_path):
         assert grounded.status_code == 200
         assert grounded.json()["status"] == "grounded"
         assert grounded.json()["citations"][0]["char_end"] > grounded.json()["citations"][0]["char_start"]
+        assert grounded.json()["citations"][0]["retrieval_mode"] == "local_hybrid_v1"
+        assert grounded.json()["citations"][0]["source_file"] == "leetcode-hot-150.md"
+        assert grounded.json()["retrieval"] == {
+            "status": "ready",
+            "retrieval_mode": "local_hybrid_v1",
+            "network_required": False,
+            "workspace_isolated": True,
+            "material_count": 1,
+            "chunk_count": 4,
+            "indexed_characters": sum(len(chunk["text"]) for chunk in material["chunks"]),
+        }
 
         unsupported = client.post(
             "/api/active-teaching/workspaces/leetcode/retrieve",
             json={"query": "量子纠缠实验的贝尔不等式"},
         )
         assert unsupported.status_code == 200
-        assert unsupported.json() == {
-            "status": "insufficient",
-            "answer": "资料中无法确认",
-            "citations": [],
-        }
+        assert unsupported.json()["status"] == "insufficient"
+        assert unsupported.json()["answer"] == "资料中无法确认"
+        assert unsupported.json()["citations"] == []
+        assert unsupported.json()["retrieval"]["retrieval_mode"] == "local_hybrid_v1"
+
+        isolated = client.post(
+            "/api/active-teaching/workspaces/another-workspace/retrieve",
+            json={"query": "双指针归并"},
+        )
+        assert isolated.status_code == 200
+        assert isolated.json()["status"] == "insufficient"
+        assert isolated.json()["retrieval"]["chunk_count"] == 0
+
+        snapshot = client.get("/api/active-teaching/workspaces/leetcode/snapshot")
+        assert snapshot.status_code == 200
+        assert snapshot.json()["local_knowledge_base"]["chunk_count"] == 4
+        assert snapshot.json()["local_knowledge_base"]["network_required"] is False
 
 
 def test_unsupported_and_parse_failure_are_explicit(tmp_path):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from datetime import date, timedelta
 from typing import Any, Iterable
 
@@ -165,13 +165,14 @@ def mastery_time_estimate(
     guided = max(5, round(base * 0.20))
     independent = max(8, round(base * 0.28))
     review = max(5, base - understand - recall - guided - independent)
+    total_mastery = understand + recall + guided + independent + review
     return {
         "understand_minutes": understand,
         "recall_minutes": recall,
         "guided_practice_minutes": guided,
         "independent_application_minutes": independent,
         "review_minutes": review,
-        "total_mastery_task_minutes": base,
+        "total_mastery_task_minutes": total_mastery,
         "basis": "content_volume+difficulty+learner_level",
     }
 
@@ -292,6 +293,23 @@ def calendar_capacities(receipt: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
         cursor += timedelta(days=1)
+    active_days = [item for item in result if item["capacity_minutes"] > 0]
+    raw_ratio = receipt.get("initial_learning_period_ratio")
+    ratio = (
+        max(0.1, min(0.9, float(raw_ratio)))
+        if raw_ratio is not None
+        else 1.0
+    )
+    initial_day_count = max(1, min(len(active_days), int(len(active_days) * ratio + 0.999999)))
+    initial_dates = {item["date"] for item in active_days[:initial_day_count]}
+    for item in result:
+        item["study_phase"] = (
+            "initial_learning"
+            if item["date"] in initial_dates
+            else "review"
+            if item["capacity_minutes"] > 0
+            else "rest"
+        )
     return result
 
 
@@ -302,7 +320,19 @@ def schedule_by_capacity(
         {**day, "planned_task_minutes": 0, "tasks": []}
         for day in calendar_capacities(receipt)
     ]
-    active_indexes = [index for index, day in enumerate(calendar) if day["capacity_minutes"] > 0]
+    active_indexes = [
+        index
+        for index, day in enumerate(calendar)
+        if day["capacity_minutes"] > 0 and day["study_phase"] == "initial_learning"
+    ]
+    item_list = list(items)
+    balance_across_period = receipt.get("initial_learning_period_ratio") is not None
+    points_per_day = (
+        int(len(item_list) / len(active_indexes) + 0.999999)
+        if balance_across_period and active_indexes
+        else 0
+    )
+    day_point_counts: Counter[int] = Counter()
     day_cursor = 0
     unscheduled = 0
     phase_specs = (
@@ -315,7 +345,30 @@ def schedule_by_capacity(
             "独立应用",
         ),
     )
-    for point_sequence, item in enumerate(items, start=1):
+    for point_sequence, item in enumerate(item_list, start=1):
+        if (
+            points_per_day
+            and day_cursor < len(active_indexes)
+            and day_point_counts[day_cursor] >= points_per_day
+        ):
+            day_cursor += 1
+        item_total = sum(
+            int(item["mastery_estimate"][estimate_key])
+            for _, estimate_key, _ in phase_specs
+        )
+        if day_cursor < len(active_indexes):
+            current_day = calendar[active_indexes[day_cursor]]
+            current_limit = int(
+                current_day.get("balanced_target_minutes")
+                or current_day["capacity_minutes"]
+            )
+            if (
+                current_day["planned_task_minutes"] > 0
+                and current_limit - current_day["planned_task_minutes"] < item_total
+            ):
+                day_cursor += 1
+        if day_cursor < len(active_indexes):
+            day_point_counts[day_cursor] += 1
         for phase, estimate_key, phase_label in phase_specs:
             remaining = int(item["mastery_estimate"][estimate_key])
             phase_tasks: list[dict[str, Any]] = []
@@ -325,7 +378,10 @@ def schedule_by_capacity(
                     unscheduled += remaining
                     break
                 day = calendar[active_indexes[day_cursor]]
-                capacity_left = day["capacity_minutes"] - day["planned_task_minutes"]
+                day_limit = int(
+                    day.get("balanced_target_minutes") or day["capacity_minutes"]
+                )
+                capacity_left = day_limit - day["planned_task_minutes"]
                 if capacity_left <= 0:
                     day_cursor += 1
                     continue

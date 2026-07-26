@@ -1,0 +1,1785 @@
+{
+  "workspace_id": "leetcode-top150-rehearsal-20260726-v8",
+  "source": {
+    "official_plan": "https://leetcode.cn/studyplan/top-interview-150/",
+    "material_path": "E:\\aiPlay\\AI-Knowledge visualization\\data\\demo_materials\\leetcode_top_interview_150_20260726.md",
+    "material_sha256": "56b7afb3f2d0a84d6ba25feb967c5fe1b373f88a3337568e0f53297ca7caa28e",
+    "material_count": 1,
+    "chunk_count": 150
+  },
+  "receipt": {
+    "learning_goal": "前半周期完成 LeetCode 面试经典 150 第一遍，后半周期在 AI 教师带领下滚动复习并形成独立解题能力",
+    "current_level": "beginner",
+    "current_foundation": "beginner",
+    "target_level": "complete_mastery",
+    "start_date": "2026-07-27",
+    "deadline": "2026-08-10",
+    "study_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "fixed_rest_weekdays": [],
+    "unavailable_dates": [],
+    "special_date_minutes": {},
+    "daily_task_minutes": 720,
+    "initial_learning_period_ratio": 0.5,
+    "preferred_learning_style": "教师主动从零讲解、最小例子、理解检查、补救、独立练习与滚动复习",
+    "notes": "15 天强化预演；标准任务分钟不冒充真实钟表耗时。",
+    "allow_schedule_suggestions": true,
+    "material_ids": [
+      "material_34f0605172cf49b68fc3"
+    ],
+    "updated_at": "2026-07-26T14:47:31.640358+00:00"
+  },
+  "graph": {
+    "knowledge_point_count": 150,
+    "dependency_count": 0,
+    "extraction_mode": "structural_fallback"
+  },
+  "plan": {
+    "feasible": true,
+    "warning": "",
+    "initial_learning_period_ratio": 0.5,
+    "phase_boundary": {
+      "initial_learning_dates": [
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29",
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03"
+      ],
+      "review_dates": [
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+        "2026-08-08",
+        "2026-08-09",
+        "2026-08-10"
+      ],
+      "initial_learning_capacity_minutes": 5760,
+      "review_capacity_minutes": 5040
+    },
+    "initial_learning_task_minutes": 4017,
+    "projected_review_task_minutes": 768,
+    "unscheduled_task_minutes": 0,
+    "days": [
+      {
+        "date": "2026-07-27",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 437,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Add Binary",
+          "Average of Levels in Binary Tree",
+          "Best Time to Buy and Sell Stock",
+          "Climbing Stairs",
+          "Contains Duplicate II",
+          "Convert Sorted Array to Binary Search Tree",
+          "Find the Index of the First Occurrence in a String",
+          "Happy Number",
+          "Invert Binary Tree",
+          "Is Subsequence",
+          "Isomorphic Strings",
+          "Length of Last Word",
+          "Linked List Cycle",
+          "Longest Common Prefix",
+          "Majority Element",
+          "Maximum Depth of Binary Tree",
+          "Merge Sorted Array",
+          "Merge Two Sorted Lists",
+          "Minimum Absolute Difference in BST"
+        ]
+      },
+      {
+        "date": "2026-07-28",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 437,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Number of 1 Bits",
+          "Palindrome Number",
+          "Path Sum",
+          "Plus One",
+          "Ransom Note",
+          "Remove Duplicates from Sorted Array",
+          "Remove Element",
+          "Reverse Bits",
+          "Roman to Integer",
+          "Same Tree",
+          "Search Insert Position",
+          "Single Number",
+          "Sqrt(x)",
+          "Summary Ranges",
+          "Symmetric Tree",
+          "Two Sum",
+          "Valid Anagram",
+          "Valid Palindrome",
+          "Valid Parentheses"
+        ]
+      },
+      {
+        "date": "2026-07-29",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 491,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Word Pattern",
+          "3Sum",
+          "Add Two Numbers",
+          "Best Time to Buy and Sell Stock II",
+          "Binary Search Tree Iterator",
+          "Binary Tree Level Order Traversal",
+          "Binary Tree Right Side View",
+          "Binary Tree Zigzag Level Order Traversal",
+          "Bitwise AND of Numbers Range",
+          "Clone Graph",
+          "Coin Change",
+          "Combination Sum",
+          "Combinations",
+          "Construct Binary Tree from Inorder and Postorder Traversal",
+          "Construct Binary Tree from Preorder and Inorder Traversal",
+          "Construct Quad Tree",
+          "Container With Most Water",
+          "Copy List with Random Pointer",
+          "Count Complete Tree Nodes"
+        ]
+      },
+      {
+        "date": "2026-07-30",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 494,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Course Schedule",
+          "Course Schedule II",
+          "Design Add and Search Words Data Structure",
+          "Edit Distance",
+          "Evaluate Division",
+          "Evaluate Reverse Polish Notation",
+          "Factorial Trailing Zeroes",
+          "Find First and Last Position of Element in Sorted Array",
+          "Find K Pairs with Smallest Sums",
+          "Find Minimum in Rotated Sorted Array",
+          "Find Peak Element",
+          "Flatten Binary Tree to Linked List",
+          "Game of Life",
+          "Gas Station",
+          "Generate Parentheses",
+          "Group Anagrams",
+          "H-Index",
+          "House Robber",
+          "Implement Trie (Prefix Tree)"
+        ]
+      },
+      {
+        "date": "2026-07-31",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 494,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Insert Delete GetRandom O(1)",
+          "Insert Interval",
+          "Integer to Roman",
+          "Interleaving String",
+          "Jump Game",
+          "Jump Game II",
+          "Kth Largest Element in an Array",
+          "Kth Smallest Element in a BST",
+          "LRU Cache",
+          "Letter Combinations of a Phone Number",
+          "Longest Consecutive Sequence",
+          "Longest Increasing Subsequence",
+          "Longest Palindromic Substring",
+          "Longest Substring Without Repeating Characters",
+          "Lowest Common Ancestor of a Binary Tree",
+          "Maximal Square",
+          "Maximum Subarray",
+          "Maximum Sum Circular Subarray",
+          "Merge Intervals"
+        ]
+      },
+      {
+        "date": "2026-08-01",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 494,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Min Stack",
+          "Minimum Genetic Mutation",
+          "Minimum Number of Arrows to Burst Balloons",
+          "Minimum Path Sum",
+          "Minimum Size Subarray Sum",
+          "Number of Islands",
+          "Partition List",
+          "Permutations",
+          "Populating Next Right Pointers in Each Node II",
+          "Pow(x, n)",
+          "Product of Array Except Self",
+          "Remove Duplicates from Sorted Array II",
+          "Remove Duplicates from Sorted List II",
+          "Remove Nth Node From End of List",
+          "Reverse Linked List II",
+          "Reverse Words in a String",
+          "Rotate Array",
+          "Rotate Image",
+          "Rotate List"
+        ]
+      },
+      {
+        "date": "2026-08-02",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 507,
+        "task_count": 76,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Search a 2D Matrix",
+          "Search in Rotated Sorted Array",
+          "Set Matrix Zeroes",
+          "Simplify Path",
+          "Single Number II",
+          "Snakes and Ladders",
+          "Sort List",
+          "Spiral Matrix",
+          "Sum Root to Leaf Numbers",
+          "Surrounded Regions",
+          "Triangle",
+          "Two Sum II - Input Array Is Sorted",
+          "Unique Paths II",
+          "Valid Sudoku",
+          "Validate Binary Search Tree",
+          "Word Break",
+          "Word Search",
+          "Zigzag Conversion",
+          "Basic Calculator"
+        ]
+      },
+      {
+        "date": "2026-08-03",
+        "study_phase": "initial_learning",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 663,
+        "task_count": 68,
+        "projected_review_task_minutes": 0,
+        "projected_review_items": [],
+        "problem_titles": [
+          "Best Time to Buy and Sell Stock III",
+          "Best Time to Buy and Sell Stock IV",
+          "Binary Tree Maximum Path Sum",
+          "Candy",
+          "Find Median from Data Stream",
+          "IPO",
+          "Max Points on a Line",
+          "Median of Two Sorted Arrays",
+          "Merge k Sorted Lists",
+          "Minimum Window Substring",
+          "N-Queens II",
+          "Reverse Nodes in k-Group",
+          "Substring with Concatenation of All Words",
+          "Text Justification",
+          "Trapping Rain Water",
+          "Word Ladder",
+          "Word Search II"
+        ]
+      },
+      {
+        "date": "2026-08-04",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 113,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_64e0a94f5ac2cc88a086",
+            "title": "Add Binary",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7d8468947fc42777bbf3",
+            "title": "Happy Number",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7116f9b9b1210e150d14",
+            "title": "Majority Element",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_dc51ecd28099db752733",
+            "title": "Path Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b140013ab99cec4a635f",
+            "title": "Same Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_313e8eea3f19db3f9599",
+            "title": "Valid Anagram",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f06d8570107b6cd74d0a",
+            "title": "Binary Search Tree Iterator",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_242c2d636751b9348493",
+            "title": "Combination Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_bfd7a5793e84a0e11a3c",
+            "title": "Count Complete Tree Nodes",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_cb34a3a102d38b6cfeef",
+            "title": "Factorial Trailing Zeroes",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2ae5086fbe32acde2582",
+            "title": "Gas Station",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_718b8e4119e6f705edff",
+            "title": "Insert Interval",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_09268b90fc9cfae21ff8",
+            "title": "LRU Cache",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_4d17b5e0460702274365",
+            "title": "Maximal Square",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_42f6f47ed154a86a784d",
+            "title": "Minimum Path Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_0fc5b1114bb34bc12174",
+            "title": "Product of Array Except Self",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_d80e964980177800e567",
+            "title": "Rotate Image",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_8484eb086331cc3c38c2",
+            "title": "Snakes and Ladders",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_6c82529478cd6de49222",
+            "title": "Unique Paths II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_07ab45e292e0ff34a2c7",
+            "title": "Best Time to Buy and Sell Stock III",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_443822cd54043ed91841",
+            "title": "Median of Two Sorted Arrays",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c4b137d3c191f619ab79",
+            "title": "Trapping Rain Water",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-05",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 113,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_0648fa1ca5edccf6ec7a",
+            "title": "Average of Levels in Binary Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b35c72897ec6a8c88564",
+            "title": "Invert Binary Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_4539109f37457dace10b",
+            "title": "Maximum Depth of Binary Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_88156b35b257c7661b0c",
+            "title": "Plus One",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_85d1b7279627c60c8909",
+            "title": "Search Insert Position",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c68c7a7471a40fedca32",
+            "title": "Valid Palindrome",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c618bbdf3bc2907a3b5b",
+            "title": "Binary Tree Level Order Traversal",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_963b2248e1bf7f91576e",
+            "title": "Combinations",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ab260404cd35d3f7f5d3",
+            "title": "Course Schedule",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f7b4d69d074d4c179472",
+            "title": "Find First and Last Position of Element in Sorted Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_68c4095f70c9e562932d",
+            "title": "Generate Parentheses",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_42a66f1622ffc0ada37f",
+            "title": "Integer to Roman",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7900ca389b1ba5a5970b",
+            "title": "Letter Combinations of a Phone Number",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_93c02ebec82c6c227854",
+            "title": "Maximum Subarray",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2d505dd278a688a068f8",
+            "title": "Minimum Size Subarray Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_524a6624d598d9a07d01",
+            "title": "Remove Duplicates from Sorted Array II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_042b9a79a64c72b13e8b",
+            "title": "Rotate List",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_fd00eae5c202a9ad04d6",
+            "title": "Sort List",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_54c970f07ae3505cc625",
+            "title": "Valid Sudoku",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c162a537a61ea16360ee",
+            "title": "Best Time to Buy and Sell Stock IV",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_9fb7eadc06fdb8122430",
+            "title": "Merge k Sorted Lists",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_03e63bda28cc7fe4aaae",
+            "title": "Word Ladder",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-06",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 113,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_478afcf348750e81a6cd",
+            "title": "Best Time to Buy and Sell Stock",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a5814be13e535745bd32",
+            "title": "Is Subsequence",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_777bc24408ae9d4c28a1",
+            "title": "Merge Sorted Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_5380aef8ec959414e18a",
+            "title": "Ransom Note",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7c4f8dc2bcab96863f61",
+            "title": "Single Number",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_303feb0b49079558e34e",
+            "title": "Valid Parentheses",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_1c95bd77738eff65a97b",
+            "title": "Binary Tree Right Side View",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a5df8da13b7e55dc0fce",
+            "title": "Construct Binary Tree from Inorder and Postorder Traversal",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ef457f3ce3d51254457e",
+            "title": "Course Schedule II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2b903f1667e4fd3c8c62",
+            "title": "Find K Pairs with Smallest Sums",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_54dcdd19dac9ca90fabf",
+            "title": "Group Anagrams",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_6e24053ba758203349b8",
+            "title": "Interleaving String",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_714a7bcc35689c16a944",
+            "title": "Longest Consecutive Sequence",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_97b026df1b04ac9adc40",
+            "title": "Maximum Sum Circular Subarray",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_12b32f869b4d334cf8f6",
+            "title": "Number of Islands",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_6423372e6aa63a3858ed",
+            "title": "Remove Duplicates from Sorted List II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_0e8d9155e4da08e59067",
+            "title": "Search a 2D Matrix",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_62cf370283c14fdcd182",
+            "title": "Spiral Matrix",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_969f5b422fb22cecdecc",
+            "title": "Validate Binary Search Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_38a8b911cf70ed828aaa",
+            "title": "Binary Tree Maximum Path Sum",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_59accb864c376d8f2d9d",
+            "title": "Minimum Window Substring",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_97e4393582358ca0f385",
+            "title": "Word Search II",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-07",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 107,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_a3b204b5d52f4c0eebe6",
+            "title": "Climbing Stairs",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_87d7bf45a53389fc0f43",
+            "title": "Isomorphic Strings",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_1fed7286ee299ae18109",
+            "title": "Merge Two Sorted Lists",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_030396a0c1b8f5be8989",
+            "title": "Remove Duplicates from Sorted Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_d2d87069086030156ecd",
+            "title": "Sqrt(x)",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_81bd4c9add5e0eda8be4",
+            "title": "Word Pattern",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_86cb01a6948a01cc0972",
+            "title": "Binary Tree Zigzag Level Order Traversal",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a49b8348f7b9ad6b93d3",
+            "title": "Construct Binary Tree from Preorder and Inorder Traversal",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_6cae9f8ed3280bd1821f",
+            "title": "Design Add and Search Words Data Structure",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_843c11ca944d6f28eca0",
+            "title": "Find Minimum in Rotated Sorted Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b904d893387f526927e7",
+            "title": "H-Index",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_cd9e1b6715e09ffd11a1",
+            "title": "Jump Game",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_778cfcd92dd27d1567e4",
+            "title": "Longest Increasing Subsequence",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c03831502452e83ba0b3",
+            "title": "Merge Intervals",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_5603549c5b4982c87aed",
+            "title": "Partition List",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_4e1409d550fd986584ff",
+            "title": "Remove Nth Node From End of List",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_eb2e88fd366a44c9aa48",
+            "title": "Search in Rotated Sorted Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_27813a6891d94f56f5f3",
+            "title": "Sum Root to Leaf Numbers",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_d919544a170b1c4b3195",
+            "title": "Word Break",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a11803e8c7be82bf7fa1",
+            "title": "Candy",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ee59b16dde2cee3e8c53",
+            "title": "N-Queens II",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-08",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 107,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_6a183e3084590cb331fe",
+            "title": "Contains Duplicate II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ab1cd5d9fe9864ee3982",
+            "title": "Length of Last Word",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_d8e96f715147739b013f",
+            "title": "Minimum Absolute Difference in BST",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_0612d96e944417e3fdfd",
+            "title": "Remove Element",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b19b45790eb0d3a8ff0f",
+            "title": "Summary Ranges",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_e64c779fe45d5063643b",
+            "title": "3Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_95f50ef3ca147e6a42bc",
+            "title": "Bitwise AND of Numbers Range",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_202f760cfde2814806c6",
+            "title": "Construct Quad Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_e62beece6e5064244b55",
+            "title": "Edit Distance",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_893eb45b3b9b692485a2",
+            "title": "Find Peak Element",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_1a90b306f33c1c1339ed",
+            "title": "House Robber",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f5190abb09eeec73c62b",
+            "title": "Jump Game II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_d209d142e94253baa0ec",
+            "title": "Longest Palindromic Substring",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2b4399e7049c64a4f0c2",
+            "title": "Min Stack",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ff2266582100cbf12670",
+            "title": "Permutations",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b203b18387a14abe3990",
+            "title": "Reverse Linked List II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_285468d5a72bd029682a",
+            "title": "Set Matrix Zeroes",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a1c876ac38f2b7533adf",
+            "title": "Surrounded Regions",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a9082510f10b25c31f45",
+            "title": "Word Search",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_553743c9949c55b1adb2",
+            "title": "Find Median from Data Stream",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7f8d764be978149b4314",
+            "title": "Reverse Nodes in k-Group",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-09",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 107,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_90527baff47a93094e2e",
+            "title": "Convert Sorted Array to Binary Search Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_c72f00c747e5718871c1",
+            "title": "Linked List Cycle",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7d1bdccdb1b6d1e8f84c",
+            "title": "Number of 1 Bits",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_8cedd1294579c8299cf0",
+            "title": "Reverse Bits",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_54a4d64ae66a81aa14cc",
+            "title": "Symmetric Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b5e87f7bce0e1124ebbe",
+            "title": "Add Two Numbers",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_42a106f6840e68d9918b",
+            "title": "Clone Graph",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_446efe5cc5a6695b5790",
+            "title": "Container With Most Water",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_96f9480a034eb83b3fe2",
+            "title": "Evaluate Division",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_306cb676dac901d50ad1",
+            "title": "Flatten Binary Tree to Linked List",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_74beb08d50fa40e2cd01",
+            "title": "Implement Trie (Prefix Tree)",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_a9198b9c99064ccce102",
+            "title": "Kth Largest Element in an Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_68806febaa36d679d99d",
+            "title": "Longest Substring Without Repeating Characters",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2769997b7b96361e54de",
+            "title": "Minimum Genetic Mutation",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_bfe84387387b8219bdef",
+            "title": "Populating Next Right Pointers in Each Node II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_da3f6af88d2fe1d879de",
+            "title": "Reverse Words in a String",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_bd2d8e5988307e63e703",
+            "title": "Simplify Path",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_5316895a293dfbc6457b",
+            "title": "Triangle",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ee434184c5f792ceec9f",
+            "title": "Zigzag Conversion",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f6d8aae1442637c382a1",
+            "title": "IPO",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_5aaad6d3b705e4b9a01c",
+            "title": "Substring with Concatenation of All Words",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      },
+      {
+        "date": "2026-08-10",
+        "study_phase": "review",
+        "capacity_minutes": 720,
+        "planned_task_minutes": 0,
+        "task_count": 0,
+        "projected_review_task_minutes": 108,
+        "projected_review_items": [
+          {
+            "knowledge_point_id": "kp_7699701fc243ca2e173c",
+            "title": "Find the Index of the First Occurrence in a String",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_1605a36eff0366ea8f6c",
+            "title": "Longest Common Prefix",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ce03abe68c3a0edd8176",
+            "title": "Palindrome Number",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_835bd2e6ab3100df3b65",
+            "title": "Roman to Integer",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_654b3613509d99cd60cc",
+            "title": "Two Sum",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_7466335c187eaf086723",
+            "title": "Best Time to Buy and Sell Stock II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_5790d0c0e399c63f4a2e",
+            "title": "Coin Change",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ed2e5fca8fc7063c2412",
+            "title": "Copy List with Random Pointer",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_361c1db001b749eb2e99",
+            "title": "Evaluate Reverse Polish Notation",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_2c5fdc92a51bbb8be002",
+            "title": "Game of Life",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_dc609f8f93e8a5d5a50d",
+            "title": "Insert Delete GetRandom O(1)",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_cd907ea8fb03c61876f1",
+            "title": "Kth Smallest Element in a BST",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_ffda7b3f5f8fed67b187",
+            "title": "Lowest Common Ancestor of a Binary Tree",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_0fbc075ed07278875028",
+            "title": "Minimum Number of Arrows to Burst Balloons",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_4118d57396b41cc89c11",
+            "title": "Pow(x, n)",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_6e85e83ec86655f830c2",
+            "title": "Rotate Array",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_b7513b11aa840aa57b98",
+            "title": "Single Number II",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_af1cd1be623fa048db82",
+            "title": "Two Sum II - Input Array Is Sorted",
+            "projected_review_task_minutes": 5,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_51688c2b2b3f0486d680",
+            "title": "Basic Calculator",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f6ef61a3b71e2a970887",
+            "title": "Max Points on a Line",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          },
+          {
+            "knowledge_point_id": "kp_f8bd472715e771f30f92",
+            "title": "Text Justification",
+            "projected_review_task_minutes": 6,
+            "status": "awaiting_initial_mastery"
+          }
+        ],
+        "problem_titles": []
+      }
+    ]
+  },
+  "teacher": {
+    "session_id": "active_session_b8ad5f99e980426dafba",
+    "autonomy": {
+      "mode": "teacher_led_until_learner_input",
+      "awaiting_learner": true,
+      "reason": "learner_evidence_required"
+    },
+    "today_plan": {
+      "date": "2026-07-27",
+      "task_count": 76,
+      "task_minutes": 437,
+      "tasks": [
+        {
+          "id": "active_task_57a2a73a279848ff8f26",
+          "title": "Add Binary · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_a150d6262adc4cbb915f",
+          "title": "Add Binary · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_20a0e1a39a574e5b88cc",
+          "title": "Add Binary · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_55de7d08f5184bddb591",
+          "title": "Add Binary · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_e7445a4db0ab47349be9",
+          "title": "Average of Levels in Binary Tree · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_07a55d9844384fec8867",
+          "title": "Average of Levels in Binary Tree · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_bfd7a34b4ad4445f8df5",
+          "title": "Average of Levels in Binary Tree · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_45ca543bb8a74e87a12d",
+          "title": "Average of Levels in Binary Tree · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_17164e5679204121bf7a",
+          "title": "Best Time to Buy and Sell Stock · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_ca54a6ccfed54ae3ae54",
+          "title": "Best Time to Buy and Sell Stock · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_69a82e37d07943cfb1bc",
+          "title": "Best Time to Buy and Sell Stock · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_f55d69b49da04cc0984e",
+          "title": "Best Time to Buy and Sell Stock · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_62144510dc964928a91d",
+          "title": "Climbing Stairs · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_1edb6350994d42968a40",
+          "title": "Climbing Stairs · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_0968ded3c9db4c61bd67",
+          "title": "Climbing Stairs · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_baef70ce727e4fff9762",
+          "title": "Climbing Stairs · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_424b5927e48e4d34a77b",
+          "title": "Contains Duplicate II · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_1e054c4a67af462ea29b",
+          "title": "Contains Duplicate II · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_24cd1f4862774c93a893",
+          "title": "Contains Duplicate II · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_83666cb9a49a45cea619",
+          "title": "Contains Duplicate II · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_896a38eac0584905b154",
+          "title": "Convert Sorted Array to Binary Search Tree · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_c848ce8fa1214c79b532",
+          "title": "Convert Sorted Array to Binary Search Tree · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_551bcdbf17bc45cca7d1",
+          "title": "Convert Sorted Array to Binary Search Tree · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_802a118bc8ae49efa798",
+          "title": "Convert Sorted Array to Binary Search Tree · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_196a4545d7f448e3bfbb",
+          "title": "Find the Index of the First Occurrence in a String · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_8837134cd108427da36d",
+          "title": "Find the Index of the First Occurrence in a String · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_ae9e2acad333410aab88",
+          "title": "Find the Index of the First Occurrence in a String · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_a04ef0fb2dd24386b207",
+          "title": "Find the Index of the First Occurrence in a String · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_e8e8eaf58702487d9cd1",
+          "title": "Happy Number · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_d0ff981238a74369a04f",
+          "title": "Happy Number · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_9badf5af85424cabab57",
+          "title": "Happy Number · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_7a8ecef06ad1493b8621",
+          "title": "Happy Number · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_7f8cdff9712041ac8064",
+          "title": "Invert Binary Tree · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_fef1dc90f62540fc80a8",
+          "title": "Invert Binary Tree · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_8dd5194fd2824829b3bd",
+          "title": "Invert Binary Tree · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_b2be631b980140ccb302",
+          "title": "Invert Binary Tree · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_afb5258921c94839a09d",
+          "title": "Is Subsequence · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_69a8d90e2906444c87f5",
+          "title": "Is Subsequence · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_7d2c174cc6714ca99c04",
+          "title": "Is Subsequence · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_81ea68319414463885d4",
+          "title": "Is Subsequence · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_1ce09e8f4d7148f6b090",
+          "title": "Isomorphic Strings · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_c2059858041a4248bed4",
+          "title": "Isomorphic Strings · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_08741db2b2f34f01bc5d",
+          "title": "Isomorphic Strings · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_c9141c6283fc410d84c7",
+          "title": "Isomorphic Strings · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_0b925fc6bea144598e40",
+          "title": "Length of Last Word · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_1ac72f2802f8473db95f",
+          "title": "Length of Last Word · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_d8b5a037944146928155",
+          "title": "Length of Last Word · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_891c1879148c4997b6a3",
+          "title": "Length of Last Word · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_0571a092d73b402abc32",
+          "title": "Linked List Cycle · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_3df195be4f2149cbb481",
+          "title": "Linked List Cycle · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_63fa956f622a4aa4b6d0",
+          "title": "Linked List Cycle · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_576accebdf094e539593",
+          "title": "Linked List Cycle · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_693071cac88b4050be0d",
+          "title": "Longest Common Prefix · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_122bc430074640b1956f",
+          "title": "Longest Common Prefix · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_c738a4c5d393426c84ca",
+          "title": "Longest Common Prefix · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_b0361238ed4542ad9fc3",
+          "title": "Longest Common Prefix · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_dc9db5168862403d9054",
+          "title": "Majority Element · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_8c5f50301ec34e26b360",
+          "title": "Majority Element · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_1b80218036f345618309",
+          "title": "Majority Element · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_5b81e3736e034f439121",
+          "title": "Majority Element · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_ebde84332e3442c4a9b0",
+          "title": "Maximum Depth of Binary Tree · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_699eca6f213b4a5c8ca8",
+          "title": "Maximum Depth of Binary Tree · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_6aa3459cf7594cbcaa0a",
+          "title": "Maximum Depth of Binary Tree · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_af85cfa042f243fb9b25",
+          "title": "Maximum Depth of Binary Tree · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_3a1c04f8625949c68fca",
+          "title": "Merge Sorted Array · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_7de6972031d0486491bd",
+          "title": "Merge Sorted Array · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_4512a01b85114a6d99cd",
+          "title": "Merge Sorted Array · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_33cb3486b9f44681babc",
+          "title": "Merge Sorted Array · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_611b0080f49149398003",
+          "title": "Merge Two Sorted Lists · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_2b0ad82b19de4e0083c3",
+          "title": "Merge Two Sorted Lists · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_f0f5ac0bd73e497fa401",
+          "title": "Merge Two Sorted Lists · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_92134eeb517d4c93a80a",
+          "title": "Merge Two Sorted Lists · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_9bac4bfd44354a179ef4",
+          "title": "Minimum Absolute Difference in BST · 理解",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_2b8a6c0c7c624b39952f",
+          "title": "Minimum Absolute Difference in BST · 回忆",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_a2ac2ad48bbb43bfbd76",
+          "title": "Minimum Absolute Difference in BST · 引导练习",
+          "estimated_task_minutes": 5,
+          "status": "planned"
+        },
+        {
+          "id": "active_task_73c7362ceb97420ea321",
+          "title": "Minimum Absolute Difference in BST · 独立应用",
+          "estimated_task_minutes": 8,
+          "status": "planned"
+        }
+      ]
+    },
+    "message_actions": [
+      "explain",
+      "example",
+      "check_understanding"
+    ],
+    "messages": [
+      {
+        "action": "explain",
+        "content": "今天先学习“Add Binary”。我会主动按“讲解→示例→检查理解→独立验收”推进。\n\n讲解：识别并应用“位运算”中的 Add Binary 解题模式\n\n本任务预计 5 任务分钟；验收条件：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现",
+        "citation_count": 3
+      },
+      {
+        "action": "example",
+        "content": "我先替你把“Add Binary”拆成一个最小例子。先只抓住资料确认的核心：识别并应用“位运算”中的 Add Binary 解题模式\n\n接下来我会主动检查你是否真的能复述关键关系，不需要你先想好问题。",
+        "citation_count": 3
+      },
+      {
+        "action": "check_understanding",
+        "content": "现在轮到一个很小的动作：请用自己的话说出“Add Binary”的核心思路，再说明你准备怎样满足验收条件：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现\n\n不用一次答得完美；答错后我会自动暂停主路线、降低解释层级再教一次。",
+        "citation_count": 3
+      }
+    ]
+  }
+}

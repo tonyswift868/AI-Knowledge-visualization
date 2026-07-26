@@ -29,6 +29,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   const [startDate, setStartDate] = useState(isoAfterDays(0));
   const [deadline, setDeadline] = useState(isoAfterDays(90));
   const [dailyMinutes, setDailyMinutes] = useState(120);
+  const [initialLearningPeriodRatio, setInitialLearningPeriodRatio] = useState(0.5);
   const [studyWeekdays, setStudyWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [unavailableDates, setUnavailableDates] = useState("");
   const [shortDate, setShortDate] = useState("");
@@ -74,6 +75,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       setStartDate(next.receipt.start_date || isoAfterDays(0));
       setDeadline(next.receipt.deadline);
       setDailyMinutes(next.receipt.daily_task_minutes);
+      setInitialLearningPeriodRatio(Number(next.receipt.initial_learning_period_ratio ?? 0.5));
       setStudyWeekdays(next.receipt.study_weekdays || [0, 1, 2, 3, 4, 5, 6]);
       setUnavailableDates((next.receipt.unavailable_dates || []).join(","));
       const special = Object.entries(next.receipt.special_date_minutes || {})[0] as [string, any] | undefined;
@@ -109,6 +111,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   };
 
   const materials = snapshot?.materials || [];
+  const localKnowledgeBase = snapshot?.local_knowledge_base;
   const graph = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
   const plan = snapshot?.plan;
   const session = snapshot?.session;
@@ -145,6 +148,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     unavailable_dates: unavailableDates.split(",").map((item) => item.trim()).filter(Boolean),
     special_date_minutes: shortDate ? { [shortDate]: shortMinutes } : {},
     daily_task_minutes: dailyMinutes,
+    initial_learning_period_ratio: initialLearningPeriodRatio,
     preferred_learning_style: learningStyle,
     notes,
     allow_schedule_suggestions: true,
@@ -194,6 +198,26 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     await generateKnowledgeMap();
     await generateMasteryPlan();
     setFile(null);
+  };
+
+  const startTeacherLedLesson = async () => {
+    let current = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/sessions/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+      },
+    );
+    for (let step = 0; step < 2 && !current.state?.autonomy?.awaiting_learner; step += 1) {
+      current = await activeRequest(
+        `/sessions/${encodeURIComponent(current.session_id)}/teach-next`,
+        {
+          method: "POST",
+          body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+        },
+      );
+    }
+    return current;
   };
 
   const toggleWeekday = (day: number) => {
@@ -317,6 +341,14 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
           <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           <button data-testid="active-upload" disabled={!file || Boolean(busy)} onClick={() => run("上传、分析并规划", uploadAndAnalyze)}>上传并自动生成知识地图与计划</button>
           <div data-testid="active-material-count">资料 {materials.length} 份</div>
+          <div className="active-chain__receipt" data-testid="active-local-knowledge-base">
+            <b>本地 RAG 知识库：{localKnowledgeBase?.status === "ready" ? "可用" : "等待资料"}</b>
+            <span>
+              {localKnowledgeBase?.material_count || 0} 份资料 · {localKnowledgeBase?.chunk_count || 0} 个可引用分块 ·
+              {localKnowledgeBase?.indexed_characters || 0} 字符
+            </span>
+            <span>工作区隔离 · 无需联网 · 混合召回（词项、中文片段、标题权重与来源分散）</span>
+          </div>
           {materials.map((item: any) => (
             <div className="active-chain__receipt" key={item.id}>
               <b>{item.original_filename}</b>
@@ -344,6 +376,19 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
           </div>
           <label>常规学习日任务分钟预算<input data-testid="active-daily-minutes" type="number" value={dailyMinutes} onChange={(event) => setDailyMinutes(Number(event.target.value))} /></label>
+          <label>
+            首学周期比例
+            <input
+              data-testid="active-initial-period-ratio"
+              type="number"
+              min="0.1"
+              max="0.9"
+              step="0.05"
+              value={initialLearningPeriodRatio}
+              onChange={(event) => setInitialLearningPeriodRatio(Number(event.target.value))}
+            />
+            <small>当前设置：前 {(initialLearningPeriodRatio * 100).toFixed(0)}% 日期首学，后 {((1 - initialLearningPeriodRatio) * 100).toFixed(0)}% 日期复习</small>
+          </label>
           <fieldset>
             <legend>每周可学习日（未选日期为固定休息日）</legend>
             <div className="active-chain__row" data-testid="active-study-weekdays">
@@ -450,7 +495,14 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                     <div className={`active-chain__day ${day.capacity_minutes === 0 ? "is-rest" : ""}`} key={day.date}>
                       <b>{day.date}</b>
                       <span>{day.availability_reason}</span>
+                      <span>{day.study_phase === "initial_learning" ? "首学阶段" : day.study_phase === "review" ? "复习阶段" : "休息"}</span>
                       <span>容量 {day.capacity_minutes} · 计划 {day.planned_task_minutes}</span>
+                      {day.study_phase === "review" && (
+                        <span>
+                          预留复习 {day.projected_review_task_minutes || 0} 分钟 ·
+                          预计覆盖 {(day.projected_review_items || []).length} 个知识点
+                        </span>
+                      )}
                       {day.expected_actual_elapsed_minutes_range && (
                         <span>
                           预计实际 {day.expected_actual_elapsed_minutes_range.min}–
@@ -467,6 +519,14 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                           {task.title} · {task.estimated_task_minutes} 分钟 · {task.status}
                         </small>
                       ))}
+                      {(day.projected_review_items || []).slice(0, 4).map((item: any) => (
+                        <small key={`projected-${day.date}-${item.knowledge_point_id}`}>
+                          预计复习：{item.title} · {item.projected_review_task_minutes} 分钟
+                        </small>
+                      ))}
+                      {(day.projected_review_items || []).length > 4 && (
+                        <small>另有 {(day.projected_review_items || []).length - 4} 个知识点；将按首学验收结果滚动调整</small>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -479,10 +539,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       <article className="active-chain__teacher">
         <div className="active-chain__teacher-head">
           <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>讲解 → 示例 → 检测 → 补救 → 恢复路线</h3></div>
-          <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动 AI 教师", () => activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/sessions/start`, {
-            method: "POST",
-            body: JSON.stringify({ provider_session_id: realProviderSessionId }),
-          }))}>启动 / 恢复 AI 教师</button>
+          <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTeacherLedLesson)}>开始今日课程（教师主动带学）</button>
           {session && <button data-testid="active-replan" disabled={Boolean(busy)} onClick={() => run("滚动未完成任务", () => activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/replan`, {
             method: "POST",
             body: JSON.stringify({
@@ -500,7 +557,18 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               <span>今日剩余 <b>{session.state.today_remaining_task_minutes}</b> 任务分钟</span>
               <span>补救栈 <b>{session.state.remediation_stack.length}</b></span>
               <span>实际耗时 <b>{session.actual_elapsed_minutes}</b> 分钟</span>
+              <span>检索 <b>{session.state.last_retrieval?.mode || "local_hybrid_v1"}</b></span>
+              <span>
+                教师状态 <b>{session.state.autonomy?.awaiting_learner ? "等待你的最小回答" : "主动讲授中"}</b>
+              </span>
             </div>
+            {session.state.today_plan && (
+              <div className="active-chain__receipt" data-testid="active-today-plan">
+                <b>{session.state.today_plan.date} · 今日课程</b>
+                <span>{session.state.today_plan.task_count} 个任务 · {session.state.today_plan.task_minutes} 标准任务分钟</span>
+                <span>教师会依次执行讲解、最小例子、理解检查、补救和独立验收。</span>
+              </div>
+            )}
             {(session.state.replan_history || []).length > 0 && (
               <div className="active-chain__receipt" data-testid="active-replan-summary">
                 <b>最近一次自动重排</b>

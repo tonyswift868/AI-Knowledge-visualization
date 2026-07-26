@@ -6,6 +6,15 @@ import { ActiveTeachingChainView } from "../features/active-teaching/ActiveTeach
 
 const snapshot = {
   workspace_id: "generic-active",
+  local_knowledge_base: {
+    status: "ready",
+    retrieval_mode: "local_hybrid_v1",
+    network_required: false,
+    workspace_isolated: true,
+    material_count: 1,
+    chunk_count: 3,
+    indexed_characters: 860,
+  },
   materials: [{
     id: "material_1",
     original_filename: "uploaded-material.md",
@@ -67,6 +76,19 @@ const snapshot = {
         estimated_task_minutes: 40,
         status: "planned",
       }],
+    }, {
+      date: "2026-07-26",
+      availability_reason: "regular",
+      study_phase: "review",
+      capacity_minutes: 120,
+      planned_task_minutes: 0,
+      projected_review_task_minutes: 12,
+      projected_review_items: [{
+        knowledge_point_id: "kp_1",
+        title: "资料内知识点",
+        projected_review_task_minutes: 12,
+      }],
+      tasks: [],
     }],
   },
   session: {
@@ -133,6 +155,9 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     await waitFor(() => expect(screen.getByTestId("active-material-count")).toHaveTextContent("资料 1 份"));
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("本地 RAG 知识库：可用");
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("3 个可引用分块");
+    expect(screen.getByText(/预留复习 12 分钟/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /上传任意学习资料/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-edge-count")).toHaveTextContent("1");

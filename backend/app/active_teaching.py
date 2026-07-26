@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import mimetypes
 import re
 import shutil
@@ -9,7 +10,7 @@ import sqlite3
 import uuid
 import csv
 import io
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -618,9 +619,12 @@ def _parse_file(path: Path) -> tuple[list[dict[str, Any]], int, str]:
 
 
 def _evidence(row: sqlite3.Row) -> dict[str, Any]:
+    keys = set(row.keys())
     return {
         "material_id": row["material_id"],
         "chunk_id": row["id"],
+        "source_file": row["original_filename"] if "original_filename" in keys else None,
+        "heading": row["heading"] if "heading" in keys else "",
         "page_start": row["page_start"],
         "page_end": row["page_end"],
         "paragraph_start": row["paragraph_start"],
@@ -829,6 +833,15 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         if not 0 <= special_minutes <= 720:
             _error("INVALID_SPECIAL_DATE_MINUTES", "特殊日期分钟数必须在 0 到 720 之间", 422)
         special_date_minutes[special_day.isoformat()] = special_minutes
+    raw_period_ratio = payload.get("initial_learning_period_ratio")
+    initial_learning_period_ratio: float | None = None
+    if raw_period_ratio is not None:
+        try:
+            initial_learning_period_ratio = float(raw_period_ratio)
+        except (TypeError, ValueError):
+            _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须是 0 到 1 之间的数字", 422)
+        if not 0.1 <= initial_learning_period_ratio <= 0.9:
+            _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须在 0.1 到 0.9 之间", 422)
     return {
         **payload,
         "start_date": start_date.isoformat(),
@@ -838,6 +851,7 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "fixed_rest_weekdays": fixed_rest_weekdays or sorted(set(range(7)) - set(weekdays)),
         "unavailable_dates": unavailable_dates,
         "special_date_minutes": special_date_minutes,
+        "initial_learning_period_ratio": initial_learning_period_ratio,
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
         "notes": str(payload.get("notes") or ""),
@@ -1449,6 +1463,18 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
                     "max": round(planned * elapsed_multipliers[1]),
                 }
             result["available_capacity_minutes"] = calendar_row["available_capacity_minutes"]
+    calendar = result.get("calendar") or []
+    result["initial_learning_period_ratio"] = receipt.get(
+        "initial_learning_period_ratio"
+    )
+    result["phase_boundary"] = {
+        "initial_learning_dates": [
+            day["date"] for day in calendar if day.get("study_phase") == "initial_learning"
+        ],
+        "review_dates": [
+            day["date"] for day in calendar if day.get("study_phase") == "review"
+        ],
+    }
     return result
 
 
@@ -1561,6 +1587,38 @@ def _refresh_plan_calendar(
             float(day["actual_elapsed_minutes"]) + float(row["actual_elapsed_minutes"]),
             3,
         )
+    review_days = [
+        day
+        for day in calendar
+        if day.get("study_phase") == "review" and day["capacity_minutes"] > 0
+    ]
+    if review_days:
+        points = connection.execute(
+            """SELECT point.*
+               FROM active_knowledge_points AS point
+               JOIN (
+                 SELECT knowledge_point_id, MIN(point_sequence) AS sequence
+                 FROM active_plan_tasks
+                 WHERE plan_id=? AND task_type='initial_learning'
+                 GROUP BY knowledge_point_id
+               ) AS planned ON planned.knowledge_point_id=point.id
+               ORDER BY planned.sequence,point.id""",
+            (plan_id,),
+        ).fetchall()
+        for index, point in enumerate(points):
+            day = review_days[index % len(review_days)]
+            item = {
+                "knowledge_point_id": point["id"],
+                "title": point["name"],
+                "projected_review_task_minutes": _review_total_minutes_for_point(
+                    connection, point
+                ),
+                "status": "awaiting_initial_mastery",
+            }
+            day.setdefault("projected_review_items", []).append(item)
+            day["projected_review_task_minutes"] = int(
+                day.get("projected_review_task_minutes") or 0
+            ) + int(item["projected_review_task_minutes"])
     if connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_plan_calendars'"
     ).fetchone():
@@ -1775,6 +1833,19 @@ def _materialize_review_occurrence(
     trigger_reason: str,
 ) -> str:
     """Create one auditable plan task for one review occurrence."""
+    plan_row = connection.execute(
+        "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+    ).fetchone()
+    if plan_row:
+        from .generic_knowledge import calendar_capacities
+
+        review_dates = [
+            day["date"]
+            for day in calendar_capacities(json.loads(plan_row["receipt"]))
+            if day.get("study_phase") == "review" and day["capacity_minutes"] > 0
+        ]
+        if review_dates and due_date < review_dates[0]:
+            due_date = review_dates[0]
     current_task_id = str(review["scheduled_task_id"] or "")
     if current_task_id:
         current = connection.execute(
@@ -2105,17 +2176,57 @@ async def _render_teacher_content(
     }
 
 
+def _merge_citations(
+    primary: list[dict[str, Any]], fallback: list[dict[str, Any]], limit: int = 5
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in [*primary, *fallback]:
+        key = str(item.get("chunk_id") or item.get("content_hash") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
 def _opening(connection: sqlite3.Connection, task: sqlite3.Row) -> tuple[str, list[dict[str, Any]]]:
     point = connection.execute(
         "SELECT * FROM active_knowledge_points WHERE id=?", (task["knowledge_point_id"],)
     ).fetchone()
-    citations = json.loads(point["source_evidence"])
+    stored_citations = json.loads(point["source_evidence"])
+    retrieved = _search(
+        connection,
+        task["workspace_id"],
+        f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+    )
+    citations = _merge_citations(retrieved, stored_citations)
     content = (
         f"今天先学习“{point['name']}”。我会主动按“讲解→示例→检查理解→独立验收”推进。"
         f"\n\n讲解：{point['explanation']}"
         f"\n\n本任务预计 {task['estimated_task_minutes']} 任务分钟；验收条件：{point['acceptance_method']}"
     )
     return content, citations
+
+
+def _daily_route_summary(
+    connection: sqlite3.Connection, plan_id: str, day_date: str
+) -> dict[str, Any]:
+    rows = connection.execute(
+        """SELECT id,title,estimated_task_minutes,status
+           FROM active_plan_tasks
+           WHERE plan_id=? AND day_date=? AND task_type='initial_learning'
+           ORDER BY task_order,id""",
+        (plan_id, day_date),
+    ).fetchall()
+    return {
+        "date": day_date,
+        "task_count": len(rows),
+        "task_minutes": sum(int(row["estimated_task_minutes"]) for row in rows),
+        "tasks": [dict(row) for row in rows],
+    }
 
 
 def _grade_understanding(message: str, point: sqlite3.Row) -> tuple[float, list[str]]:
@@ -2282,6 +2393,14 @@ async def start_session(
             "estimated_task_minutes": first["estimated_task_minutes"],
             "completed_task_minutes": 0,
             "actual_elapsed_minutes": 0.0,
+            "autonomy": {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": False,
+                "reason": "teacher_opening",
+            },
+            "today_plan": _daily_route_summary(
+                connection, plan_row["id"], first["day_date"]
+            ),
         }
         session_id = _id("active_session")
         started = _now()
@@ -2311,27 +2430,215 @@ async def start_session(
         return _public_session(connection, session_id)
 
 
-def _search(connection: sqlite3.Connection, workspace_id: str, query: str) -> list[dict[str, Any]]:
+@router.post("/sessions/{session_id}/teach-next")
+async def teach_next(
+    session_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    """Advance teacher-led delivery until learner evidence is required.
+
+    This endpoint never invents a learner response and never completes a task.
+    It lets the teacher proactively deliver the explanation/example and then
+    stop at an explicit learner check.
+    """
+    with _connect() as connection:
+        session = connection.execute(
+            "SELECT * FROM active_teaching_sessions WHERE id=?", (session_id,)
+        ).fetchone()
+        if not session:
+            _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
+        state = json.loads(session["state"])
+        tasks = _task_rows(connection, session["plan_id"])
+        route_index = min(int(state["route_index"]), len(tasks) - 1)
+        task = tasks[route_index]
+        point = connection.execute(
+            "SELECT * FROM active_knowledge_points WHERE id=?",
+            (task["knowledge_point_id"],),
+        ).fetchone()
+        citations = _merge_citations(
+            _search(
+                connection,
+                session["workspace_id"],
+                f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+            ),
+            json.loads(point["source_evidence"]),
+        )
+        step = str(state.get("current_teaching_step") or "explain")
+        if step == "explain":
+            action = "example"
+            content = (
+                f"我先替你把“{point['name']}”拆成一个最小例子。"
+                f"先只抓住资料确认的核心：{point['explanation'][:300]}"
+                "\n\n接下来我会主动检查你是否真的能复述关键关系，不需要你先想好问题。"
+            )
+            state["current_teaching_step"] = "example"
+            state["next_action"] = "check_understanding"
+            awaiting = False
+        elif step in {"example", "remediation_example"}:
+            action = "check_understanding"
+            content = (
+                f"现在轮到一个很小的动作：请用自己的话说出“{point['name']}”的核心思路，"
+                f"再说明你准备怎样满足验收条件：{point['acceptance_method']}"
+                "\n\n不用一次答得完美；答错后我会自动暂停主路线、降低解释层级再教一次。"
+            )
+            state["current_teaching_step"] = "check_understanding"
+            state["next_action"] = "evaluate_answer"
+            awaiting = True
+        elif step == "remediation_explain":
+            action = "remediation_example"
+            content = (
+                f"我们把“{point['name']}”再降一级，只练一个事实：{point['explanation'][:240]}"
+                "\n\n我会在下一步给你一个最小复述题，答错不会跳过，也不会丢失原路线。"
+            )
+            state["current_teaching_step"] = "remediation_example"
+            state["next_action"] = "remediation_recheck"
+            awaiting = False
+        else:
+            state["autonomy"] = {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": True,
+                "reason": "learner_evidence_required",
+            }
+            connection.execute(
+                "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+                (json.dumps(state, ensure_ascii=False), _now(), session_id),
+            )
+            connection.commit()
+            return _public_session(connection, session_id)
+        content, teacher_generation = await _render_teacher_content(
+            draft=content,
+            action=action,
+            citations=citations,
+            provider_session_id=(
+                str(body.get("provider_session_id") or "").strip()
+                or state.get("provider_session_id")
+            ),
+            state=state,
+        )
+        state["teacher_generation"] = teacher_generation
+        state["autonomy"] = {
+            "mode": "teacher_led_until_learner_input",
+            "awaiting_learner": awaiting,
+            "reason": "learner_evidence_required" if awaiting else "teacher_continues",
+        }
+        state["last_retrieval"] = {
+            "mode": "local_hybrid_v1",
+            "query_scope": "current_knowledge_point",
+            "citation_count": len(citations),
+        }
+        _record_message(connection, session_id, "teacher", action, content, citations)
+        connection.execute(
+            "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+            (json.dumps(state, ensure_ascii=False), _now(), session_id),
+        )
+        connection.commit()
+        return _public_session(connection, session_id)
+
+
+def _retrieval_terms(value: str) -> set[str]:
     terms: set[str] = set()
-    for item in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", query):
+    for item in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", value):
         lowered = item.casefold()
         if re.fullmatch(r"[\u4e00-\u9fff]+", lowered) and len(lowered) > 2:
             terms.update(lowered[index : index + 2] for index in range(len(lowered) - 1))
         elif len(lowered) > 1:
             terms.add(lowered)
+    return terms
+
+
+def _character_ngrams(value: str, size: int = 2) -> Counter[str]:
+    normalized = _normalise(value)
+    if not normalized:
+        return Counter()
+    if len(normalized) <= size:
+        return Counter({normalized: 1})
+    return Counter(normalized[index : index + size] for index in range(len(normalized) - size + 1))
+
+
+def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
+    if not left or not right:
+        return 0.0
+    shared = set(left) & set(right)
+    numerator = sum(left[key] * right[key] for key in shared)
+    denominator = math.sqrt(sum(value * value for value in left.values())) * math.sqrt(
+        sum(value * value for value in right.values())
+    )
+    return numerator / denominator if denominator else 0.0
+
+
+def _search(connection: sqlite3.Connection, workspace_id: str, query: str) -> list[dict[str, Any]]:
+    """Local, workspace-isolated hybrid retrieval with exact chunk citations.
+
+    The index intentionally has no network or model dependency: it combines
+    token coverage, Chinese character n-gram similarity, heading boosts and
+    source diversity.  It is more tolerant of phrasing changes than the old
+    substring gate while keeping every answer traceable to stored chunks.
+    """
+    terms = _retrieval_terms(query)
+    query_ngrams = _character_ngrams(query)
     if not terms:
         return []
-    minimum_score = 1 if len(terms) <= 2 else max(2, (len(terms) + 3) // 4)
-    scored = []
+    scored: list[tuple[float, sqlite3.Row, list[str]]] = []
     for row in connection.execute(
-        "SELECT * FROM active_chunks WHERE workspace_id=?", (workspace_id,)
+        """SELECT chunk.*, material.original_filename
+           FROM active_chunks AS chunk
+           JOIN active_materials AS material ON material.id=chunk.material_id
+           WHERE chunk.workspace_id=? AND material.status='ready'""",
+        (workspace_id,),
     ).fetchall():
-        haystack = row["text"].casefold()
-        score = sum(1 for term in terms if term in haystack)
-        if score >= minimum_score:
-            scored.append((score, row))
-    scored.sort(key=lambda item: (-item[0], item[1]["ordinal"]))
-    return [_evidence(row) | {"score": score} for score, row in scored[:5]]
+        text_terms = _retrieval_terms(f"{row['heading']} {row['text']}")
+        matched = sorted(terms & text_terms)
+        coverage = len(matched) / max(1, len(terms))
+        ngram_similarity = _cosine_similarity(query_ngrams, _character_ngrams(row["text"]))
+        heading_overlap = len(terms & _retrieval_terms(row["heading"])) / max(1, len(terms))
+        phrase_bonus = 0.18 if _normalise(query) and _normalise(query) in _normalise(row["text"]) else 0.0
+        score = coverage * 0.58 + ngram_similarity * 0.24 + heading_overlap * 0.18 + phrase_bonus
+        if matched and (coverage >= 0.12 or ngram_similarity >= 0.08):
+            scored.append((score, row, matched))
+    scored.sort(key=lambda item: (-item[0], item[1]["ordinal"], item[1]["id"]))
+
+    # Avoid five adjacent chunks from one file crowding out corroborating sources.
+    selected: list[tuple[float, sqlite3.Row, list[str]]] = []
+    per_material: Counter[str] = Counter()
+    for item in scored:
+        material_id = item[1]["material_id"]
+        if per_material[material_id] >= 3:
+            continue
+        selected.append(item)
+        per_material[material_id] += 1
+        if len(selected) == 5:
+            break
+    return [
+        _evidence(row)
+        | {
+            "score": round(score, 6),
+            "matched_terms": matched[:12],
+            "retrieval_mode": "local_hybrid_v1",
+        }
+        for score, row, matched in selected
+    ]
+
+
+def _knowledge_base_status(connection: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
+    row = connection.execute(
+        """SELECT COUNT(DISTINCT material.id) AS material_count,
+                  COUNT(chunk.id) AS chunk_count,
+                  COALESCE(SUM(LENGTH(chunk.text)), 0) AS indexed_characters
+           FROM active_materials AS material
+           LEFT JOIN active_chunks AS chunk ON chunk.material_id=material.id
+           WHERE material.workspace_id=? AND material.status='ready'""",
+        (workspace_id,),
+    ).fetchone()
+    chunk_count = int(row["chunk_count"] or 0)
+    return {
+        "status": "ready" if chunk_count else "empty",
+        "retrieval_mode": "local_hybrid_v1",
+        "network_required": False,
+        "workspace_isolated": True,
+        "material_count": int(row["material_count"] or 0),
+        "chunk_count": chunk_count,
+        "indexed_characters": int(row["indexed_characters"] or 0),
+    }
 
 
 def _matching_conflicts(
@@ -2390,7 +2697,20 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         point = connection.execute(
             "SELECT * FROM active_knowledge_points WHERE id=?", (task["knowledge_point_id"],)
         ).fetchone()
-        citations = json.loads(point["source_evidence"])
+        stored_citations = json.loads(point["source_evidence"])
+        citations = _merge_citations(
+            _search(
+                connection,
+                session["workspace_id"],
+                f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+            ),
+            stored_citations,
+        )
+        state["last_retrieval"] = {
+            "mode": "local_hybrid_v1",
+            "query_scope": "current_knowledge_point",
+            "citation_count": len(citations),
+        }
         active_remediation = (
             (state.get("remediation_stack") or [])[-1]
             if state.get("remediation_stack")
@@ -2650,6 +2970,23 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 )
                 if completes_independent_phase:
                     review_due = (date.today() + timedelta(days=1)).isoformat()
+                    plan_receipt = connection.execute(
+                        "SELECT receipt FROM active_plans WHERE id=?",
+                        (session["plan_id"],),
+                    ).fetchone()
+                    if plan_receipt:
+                        from .generic_knowledge import calendar_capacities
+
+                        review_dates = [
+                            day["date"]
+                            for day in calendar_capacities(
+                                json.loads(plan_receipt["receipt"])
+                            )
+                            if day.get("study_phase") == "review"
+                            and day["capacity_minutes"] > 0
+                        ]
+                        if review_dates and review_due < review_dates[0]:
+                            review_due = review_dates[0]
                     now = _now()
                     review_total_minutes = _review_total_minutes_for_point(
                         connection, point
@@ -3795,14 +4132,21 @@ def retrieve(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 "answer": f"资料存在冲突：{conflicts[0]['summary']}",
                 "citations": [conflicts[0]["evidence_a"], conflicts[0]["evidence_b"]],
                 "conflicts": conflicts,
+                "retrieval": _knowledge_base_status(connection, workspace_id),
             }
         hits = _search(connection, workspace_id, query)
         if not hits:
-            return {"status": "insufficient", "answer": "资料中无法确认", "citations": []}
+            return {
+                "status": "insufficient",
+                "answer": "资料中无法确认",
+                "citations": [],
+                "retrieval": _knowledge_base_status(connection, workspace_id),
+            }
         return {
             "status": "grounded",
             "answer": f"资料中可确认：{hits[0]['quote'][:300]}",
             "citations": hits,
+            "retrieval": _knowledge_base_status(connection, workspace_id),
         }
 
 
@@ -3835,6 +4179,7 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
             knowledge_graph = public_generic_graph(connection, workspace_id)
         return {
             "workspace_id": workspace_id,
+            "local_knowledge_base": _knowledge_base_status(connection, workspace_id),
             "materials": materials,
             "receipt": json.loads(receipt_row["payload"]) if receipt_row else None,
             "knowledge_graph": knowledge_graph,

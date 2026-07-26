@@ -502,9 +502,17 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         projected_review_minutes = sum(
             item["mastery_estimate"]["review_minutes"] for item in ordered
         )
-        total = sum(item["mastery_estimate"]["total_mastery_task_minutes"] for item in ordered)
+        raw_ratio = receipt.get("initial_learning_period_ratio")
+        configured_ratio = float(raw_ratio) if raw_ratio is not None else 1.0
+        total = initial_learning_minutes + projected_review_minutes
         capacity = sum(day["capacity_minutes"] for day in calendar)
-        unscheduled = max(initial_unscheduled, max(0, total - capacity))
+        review_capacity = sum(
+            day["capacity_minutes"] for day in calendar if day["study_phase"] == "review"
+        )
+        unscheduled = max(
+            initial_unscheduled,
+            max(0, total - capacity),
+        )
         plan_id = active_teaching._id("active_plan")
         warning = (
             f"当前学习周期容量不足，仍有 {unscheduled} 个标准任务分钟未排入。"
@@ -572,8 +580,24 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         result["total_mastery_task_minutes"] = total
         result["initial_learning_task_minutes"] = initial_learning_minutes
         result["projected_review_task_minutes"] = projected_review_minutes
+        result["initial_learning_period_ratio"] = configured_ratio
+        result["phase_boundary"] = {
+            "initial_learning_dates": [
+                day["date"] for day in calendar if day["study_phase"] == "initial_learning"
+            ],
+            "review_dates": [
+                day["date"] for day in calendar if day["study_phase"] == "review"
+            ],
+            "initial_learning_capacity_minutes": sum(
+                day["capacity_minutes"]
+                for day in calendar
+                if day["study_phase"] == "initial_learning"
+            ),
+            "review_capacity_minutes": review_capacity,
+        }
         result["review_scheduling_policy"] = (
-            "复习分钟计入完全掌握容量预测；只有最终独立应用阶段通过后才进入复习队列，"
-            "初始计划不为未学知识创建复习任务。"
+            f"前 {configured_ratio:.0%} 的可学习日期只安排首学；后 "
+            f"{1 - configured_ratio:.0%} 的可学习日期保留给复习。"
+            "复习任务在对应知识点独立应用通过后进入持久化复习队列。"
         )
         return result
