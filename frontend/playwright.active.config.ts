@@ -8,6 +8,9 @@ const python = path.resolve(root, "../.venv/Scripts/python.exe");
 export default defineConfig({
   testDir: "./e2e",
   timeout: 180_000,
+  expect: {
+    timeout: 30_000,
+  },
   fullyParallel: false,
   reporter: [["list"]],
   use: {

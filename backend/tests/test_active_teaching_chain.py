@@ -190,6 +190,123 @@ def test_unsupported_and_parse_failure_are_explicit(tmp_path):
         assert renamed_binary.json()["error"]["code"] == "MATERIAL_PARSE_FAILED"
 
 
+def test_system_allocation_plan_scoped_rag_and_teacher_memory(tmp_path):
+    configure_orm(tmp_path / "active-plan-scope.db")
+    workspace = "plan-scope"
+    today = date.today()
+    deadline = today + timedelta(days=20)
+    alpha_text = "# 冰箱整理\n冷藏食品按保质期排序，先到期的放在前面。"
+    beta_text = "# 自行车刹车\n刹车通过摩擦把运动能量转化为热量。"
+    with TestClient(app) as client:
+        alpha = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("alpha.md", alpha_text.encode("utf-8"), "text/markdown")},
+        ).json()
+        beta = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("beta.md", beta_text.encode("utf-8"), "text/markdown")},
+        ).json()
+        common = {
+            "learning_goal": "从零开始理解并独立解释",
+            "current_level": "zero_foundation",
+            "current_foundation": "zero_foundation",
+            "deadline": deadline.isoformat(),
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "preferred_learning_style": "生活例子后映射回原文",
+            "initial_learning_period_ratio": 0.5,
+            "teacher_persona": "像耐心的朋友，讲得生动但不替我作答",
+            "learner_interests": "做饭和骑车",
+        }
+        receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={
+                **common,
+                "allocation_mode": "system",
+                "daily_task_minutes": 720,
+                "material_ids": [alpha["id"], beta["id"]],
+            },
+        )
+        assert receipt.status_code == 200, receipt.text
+        assert receipt.json()["allocation_mode"] == "system"
+        assert receipt.json()["daily_task_minutes"] != 720
+        assert receipt.json()["allocation"]["recommended_minutes_per_day"] == receipt.json()["daily_task_minutes"]
+
+        generated_graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert generated_graph.status_code == 200
+        assessment = generated_graph.json()["assessment"]
+        assert assessment["scope"] == "selected_materials"
+        assert assessment["source"]["material_count"] == 2
+        assert assessment["knowledge_structure"]["evidence_coverage_ratio"] == 1
+        assert assessment["workload"]["total_mastery_task_minutes"] > 0
+        assert assessment["readiness"]["status"] == "usable_with_review"
+
+        alpha_receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={**common, "allocation_mode": "system", "material_ids": [alpha["id"]]},
+        )
+        assert alpha_receipt.status_code == 200
+        alpha_plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        ).json()
+        alpha_session = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        ).json()
+        assert alpha_session["state"]["teacher_persona"] == common["teacher_persona"]
+        assert alpha_session["state"]["teacher_memory"]["plan_id"] == alpha_plan["id"]
+        taught = client.post(
+            f"/api/active-teaching/sessions/{alpha_session['session_id']}/teach-next",
+            json={},
+        ).json()
+        assert "生活类比" in taught["messages"][-1]["content"]
+
+        beta_receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={**common, "allocation_mode": "system", "material_ids": [beta["id"]]},
+        )
+        assert beta_receipt.status_code == 200
+        beta_plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        ).json()
+        beta_session = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        ).json()
+        assert beta_session["session_id"] != alpha_session["session_id"]
+        assert beta_session["state"]["teacher_memory"]["plan_id"] == beta_plan["id"]
+        beta_snapshot = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/snapshot"
+        ).json()
+        assert beta_snapshot["local_knowledge_base"]["scope"] == "current_plan"
+        assert beta_snapshot["local_knowledge_base"]["material_ids"] == [beta["id"]]
+        assert beta_snapshot["local_knowledge_base"]["material_count"] == 1
+        assert beta_snapshot["local_knowledge_base"]["chunk_count"] == 1
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/retrieve",
+            json={"query": "保质期排序", "plan_id": alpha_plan["id"]},
+        ).json()["status"] == "grounded"
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/retrieve",
+            json={"query": "保质期排序", "plan_id": beta_plan["id"]},
+        ).json()["status"] == "insufficient"
+
+        from app import active_teaching
+        with active_teaching._connect() as connection:
+            assert active_teaching._search(
+                connection, workspace, "保质期排序", plan_id=alpha_plan["id"]
+            )
+            assert not active_teaching._search(
+                connection, workspace, "保质期排序", plan_id=beta_plan["id"]
+            )
+        restored = client.get(
+            f"/api/active-teaching/sessions/{alpha_session['session_id']}"
+        ).json()
+        assert restored["state"]["teacher_memory"]["plan_id"] == alpha_plan["id"]
+
+
 def test_deadline_capacity_reports_unscheduled_minutes(tmp_path):
     configure_orm(tmp_path / "active-capacity.db")
     large = "\n\n".join(

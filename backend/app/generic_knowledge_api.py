@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -391,6 +392,77 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
             "provider_meta": json.loads(latest["provider_meta"]),
             "warnings": json.loads(latest["warnings"]),
         }
+    receipt_row = connection.execute(
+        "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
+    ).fetchone()
+    receipt = json.loads(receipt_row["payload"]) if receipt_row else {}
+    material_ids = list(dict.fromkeys(str(item) for item in receipt.get("material_ids") or []))
+    if material_ids:
+        placeholders = ",".join("?" for _ in material_ids)
+        source_stats = connection.execute(
+            f"""SELECT COUNT(DISTINCT material_id) AS material_count,
+                       COUNT(*) AS chunk_count,
+                       COALESCE(SUM(char_end-char_start),0) AS source_characters
+                FROM active_chunks
+                WHERE workspace_id=? AND material_id IN ({placeholders})""",
+            [workspace_id, *material_ids],
+        ).fetchone()
+    else:
+        source_stats = {"material_count": 0, "chunk_count": 0, "source_characters": 0}
+    points = graph["knowledge_points"]
+    estimates = [item.get("mastery_estimate") or {} for item in points]
+    point_count = len(points)
+    dependency_count = len(graph["edges"])
+    isolated_count = sum(1 for item in points if item.get("isolated"))
+    evidence_covered = sum(1 for item in points if item.get("source_evidence"))
+    confidence_counts: dict[str, int] = {}
+    for estimate in estimates:
+        confidence = str(estimate.get("confidence") or "unknown")
+        confidence_counts[confidence] = confidence_counts.get(confidence, 0) + 1
+    total_minutes = sum(
+        int(estimate.get("total_mastery_task_minutes") or 0) for estimate in estimates
+    )
+    review_minutes = sum(int(estimate.get("review_minutes") or 0) for estimate in estimates)
+    extraction_mode = str((graph.get("extraction") or {}).get("mode") or "unknown")
+    risks: list[str] = []
+    if extraction_mode != "provider_grounded":
+        risks.append("当前是结构解析：可排程、可追溯，但语义依赖和知识点边界建议由真实 Provider 复核。")
+    if point_count and isolated_count / point_count > 0.5:
+        risks.append("超过一半知识点没有已验证前置依赖；系统不会凭章节顺序伪造依赖。")
+    if evidence_covered < point_count:
+        risks.append("存在缺少来源证据的知识点，不能进入主动教学。")
+    graph["assessment"] = {
+        "scope": "selected_materials",
+        "material_ids": material_ids,
+        "source": {
+            "material_count": int(source_stats["material_count"]),
+            "chunk_count": int(source_stats["chunk_count"]),
+            "source_characters": int(source_stats["source_characters"]),
+        },
+        "knowledge_structure": {
+            "knowledge_point_count": point_count,
+            "dependency_count": dependency_count,
+            "isolated_point_count": isolated_count,
+            "isolated_ratio": round(isolated_count / point_count, 4) if point_count else 0,
+            "evidence_coverage_ratio": round(evidence_covered / point_count, 4) if point_count else 0,
+        },
+        "workload": {
+            "total_mastery_task_minutes": total_minutes,
+            "initial_learning_task_minutes": max(0, total_minutes - review_minutes),
+            "review_task_minutes": review_minutes,
+            "estimate_confidence_counts": confidence_counts,
+        },
+        "readiness": {
+            "status": (
+                "ready"
+                if point_count and evidence_covered == point_count and extraction_mode == "provider_grounded"
+                else "usable_with_review"
+                if point_count and evidence_covered == point_count
+                else "blocked"
+            ),
+            "risks": risks,
+        },
+    }
     return graph
 
 
@@ -482,11 +554,18 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
             active_teaching._error("RECEIPT_REQUIRED", "请先保存学习条件", 409)
         receipt = json.loads(receipt_row["payload"])
         graph = public_generic_graph(connection, workspace_id)
-        points = graph["knowledge_points"]
+        material_ids = set(str(item) for item in receipt.get("material_ids") or [])
+        points = [
+            point for point in graph["knowledge_points"]
+            if str(point.get("material_id") or "") in material_ids
+        ]
         if not points:
             active_teaching._error("KNOWLEDGE_MAP_REQUIRED", "请先生成知识地图", 409)
+        placeholders = ",".join("?" for _ in material_ids)
         rows = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE workspace_id=?", (workspace_id,)
+            f"""SELECT * FROM active_knowledge_points
+                WHERE workspace_id=? AND material_id IN ({placeholders})""",
+            [workspace_id, *sorted(material_ids)],
         ).fetchall()
         dependencies = connection.execute(
             "SELECT * FROM active_dependencies WHERE workspace_id=?", (workspace_id,)
@@ -494,7 +573,6 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         ordered_rows = active_teaching._topological_points(rows, dependencies)
         by_id = {item["id"]: item for item in points}
         ordered = [by_id[row["id"]] for row in ordered_rows]
-        calendar, initial_unscheduled = schedule_by_capacity(ordered, receipt)
         initial_learning_minutes = sum(
             item["mastery_estimate"]["total_mastery_task_minutes"]
             - item["mastery_estimate"]["review_minutes"]
@@ -503,6 +581,43 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         projected_review_minutes = sum(
             item["mastery_estimate"]["review_minutes"] for item in ordered
         )
+        if receipt.get("allocation_mode") == "system":
+            # The learner supplies availability; the system owns the workload
+            # conversion. Recalculate after extraction because the knowledge
+            # map is more reliable than the upload-time structural estimate.
+            allocation_calendar = calendar_capacities(receipt)
+            initial_days = sum(
+                1 for day in allocation_calendar
+                if day["capacity_minutes"] > 0 and day["study_phase"] == "initial_learning"
+            )
+            review_days = sum(
+                1 for day in allocation_calendar
+                if day["capacity_minutes"] > 0 and day["study_phase"] == "review"
+            )
+            required_daily = max(
+                initial_learning_minutes / max(1, initial_days),
+                projected_review_minutes / max(1, review_days)
+                if review_days else
+                (initial_learning_minutes + projected_review_minutes) / max(1, initial_days),
+            )
+            recommended = max(20, min(480, math.ceil(required_daily * 1.1 / 5) * 5))
+            receipt["daily_task_minutes"] = recommended
+            receipt["allocation"] = {
+                **dict(receipt.get("allocation") or {}),
+                "mode": "system",
+                "estimated_total_minutes": initial_learning_minutes + projected_review_minutes,
+                "available_study_days": initial_days + review_days,
+                "initial_learning_days": initial_days,
+                "review_days": review_days,
+                "recommended_minutes_per_day": recommended,
+                "buffer_rate": 0.1,
+                "reason": "知识地图生成后，按首学与复习阶段容量重新计算。",
+            }
+            connection.execute(
+                "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
+                (json.dumps(receipt, ensure_ascii=False), _now(), workspace_id),
+            )
+        calendar, initial_unscheduled = schedule_by_capacity(ordered, receipt)
         raw_ratio = receipt.get("initial_learning_period_ratio")
         configured_ratio = float(raw_ratio) if raw_ratio is not None else 1.0
         total = initial_learning_minutes + projected_review_minutes
@@ -602,6 +717,7 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         result["projected_review_unscheduled_task_minutes"] = (
             projected_review_unscheduled
         )
+        result["source_assessment"] = graph.get("assessment") or {}
         result["review_scheduling_policy"] = (
             f"前 {configured_ratio:.0%} 的可学习日期用于完成完整第一遍；"
             "每天首学后的回顾属于当日巩固，不计入正式复习阶段。后 "

@@ -35,6 +35,23 @@ const snapshot = {
     preferred_learning_style: "主动讲解",
   },
   knowledge_graph: {
+    assessment: {
+      scope: "selected_materials",
+      source: { material_count: 1, chunk_count: 3, source_characters: 860 },
+      knowledge_structure: {
+        knowledge_point_count: 1,
+        dependency_count: 1,
+        isolated_point_count: 0,
+        isolated_ratio: 0,
+        evidence_coverage_ratio: 1,
+      },
+      workload: {
+        total_mastery_task_minutes: 50,
+        initial_learning_task_minutes: 40,
+        review_task_minutes: 10,
+      },
+      readiness: { status: "usable_with_review", risks: ["建议语义复核。"] },
+    },
     knowledge_points: [{
       id: "kp_1",
       name: "资料内知识点",
@@ -161,6 +178,12 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByRole("heading", { name: /上传任意学习资料/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-edge-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("active-material-assessment")).toHaveTextContent(
+      "通用资料评估",
+    );
+    expect(screen.getByTestId("active-material-assessment")).toHaveTextContent(
+      "证据覆盖 100%",
+    );
     expect(screen.getByTestId("active-plan-budget")).toHaveTextContent("120");
     expect(screen.getByText(/完全掌握预计 50 任务分钟/)).toBeInTheDocument();
     expect(screen.getAllByText(/完成任务分钟 0/).length).toBeGreaterThan(0);
@@ -201,12 +224,21 @@ describe("ActiveTeachingChainView", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     await screen.findByTestId("active-save-receipt");
+    expect(screen.queryByTestId("active-daily-minutes")).not.toBeInTheDocument();
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统分配每日投入");
+    fireEvent.change(screen.getByTestId("active-teacher-persona"), {
+      target: { value: "耐心、有趣，先用生活例子" },
+    });
     fireEvent.click(screen.getByTestId("active-save-receipt"));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(call).toBeTruthy();
       const body = JSON.parse(call![1].body);
       expect(body.target_level).toBe("complete_mastery");
+      expect(body.allocation_mode).toBe("system");
+      expect(body.initial_learning_period_ratio).toBe(0.5);
+      expect(body.teacher_persona).toBe("耐心、有趣，先用生活例子");
+      expect(body.daily_task_minutes).toBeUndefined();
       expect(body.material_ids).toEqual(["material_1"]);
       expect(JSON.stringify(body)).not.toMatch(/leetcode|hot150|面试经典/iu);
     });

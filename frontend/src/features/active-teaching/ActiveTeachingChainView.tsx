@@ -28,14 +28,14 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   const [level, setLevel] = useState("beginner");
   const [startDate, setStartDate] = useState(isoAfterDays(0));
   const [deadline, setDeadline] = useState(isoAfterDays(90));
-  const [dailyMinutes, setDailyMinutes] = useState(120);
-  const [initialLearningPeriodRatio, setInitialLearningPeriodRatio] = useState(0.5);
   const [studyWeekdays, setStudyWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [unavailableDates, setUnavailableDates] = useState("");
   const [shortDate, setShortDate] = useState("");
   const [shortMinutes, setShortMinutes] = useState(0);
   const [notes, setNotes] = useState("");
   const [learningStyle, setLearningStyle] = useState("主动讲解、示例、理解检查、练习与复习");
+  const [teacherPersona, setTeacherPersona] = useState("");
+  const [learnerInterests, setLearnerInterests] = useState("");
   const [message, setMessage] = useState("继续主动讲解");
   const [reviewAnswer, setReviewAnswer] = useState("");
   const [reviewAsOf, setReviewAsOf] = useState(isoAfterDays(0));
@@ -74,8 +74,6 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       setLevel(next.receipt.current_level);
       setStartDate(next.receipt.start_date || isoAfterDays(0));
       setDeadline(next.receipt.deadline);
-      setDailyMinutes(next.receipt.daily_task_minutes);
-      setInitialLearningPeriodRatio(Number(next.receipt.initial_learning_period_ratio ?? 0.5));
       setStudyWeekdays(next.receipt.study_weekdays || [0, 1, 2, 3, 4, 5, 6]);
       setUnavailableDates((next.receipt.unavailable_dates || []).join(","));
       const special = Object.entries(next.receipt.special_date_minutes || {})[0] as [string, any] | undefined;
@@ -85,6 +83,8 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       }
       setNotes(next.receipt.notes || "");
       setLearningStyle(next.receipt.preferred_learning_style);
+      setTeacherPersona(next.receipt.teacher_persona || "");
+      setLearnerInterests(next.receipt.learner_interests || "");
     }
   };
 
@@ -147,9 +147,11 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     fixed_rest_weekdays: [0, 1, 2, 3, 4, 5, 6].filter((day) => !studyWeekdays.includes(day)),
     unavailable_dates: unavailableDates.split(",").map((item) => item.trim()).filter(Boolean),
     special_date_minutes: shortDate ? { [shortDate]: shortMinutes } : {},
-    daily_task_minutes: dailyMinutes,
-    initial_learning_period_ratio: initialLearningPeriodRatio,
+    allocation_mode: "system",
+    initial_learning_period_ratio: 0.5,
     preferred_learning_style: learningStyle,
+    teacher_persona: teacherPersona,
+    learner_interests: learnerInterests,
     notes,
     allow_schedule_suggestions: true,
     material_ids: materialIds || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
@@ -347,7 +349,12 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               {localKnowledgeBase?.material_count || 0} 份资料 · {localKnowledgeBase?.chunk_count || 0} 个可引用分块 ·
               {localKnowledgeBase?.indexed_characters || 0} 字符
             </span>
-            <span>工作区隔离 · 无需联网 · 混合召回（词项、中文片段、标题权重与来源分散）</span>
+              <span>
+                {localKnowledgeBase?.scope === "current_plan"
+                  ? `当前计划独立 · 冻结 ${(localKnowledgeBase?.material_ids || []).length} 份资料`
+                  : "计划建立后自动冻结资料范围"}
+                {" · "}无需联网 · 混合召回（词项、中文片段、标题权重与来源分散）
+              </span>
           </div>
           {materials.map((item: any) => (
             <div className="active-chain__receipt" key={item.id}>
@@ -367,32 +374,24 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
         </article>
 
         <article className="active-chain__card">
-          <span className="active-chain__step">02 · 学习回执</span>
-          <h3>补充学习条件</h3>
+          <span className="active-chain__step">02 · 创建掌握计划</span>
+          <h3>告诉系统目标和真实可用时间</h3>
+          <p className="active-chain__muted">你不需要猜每天该学多少分钟。系统会先评估资料，再把任务分配到可用日期。</p>
           <label>学习目标<textarea data-testid="active-goal" value={goal} onChange={(event) => setGoal(event.target.value)} /></label>
           <div className="active-chain__row">
             <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
             <label>开始日期<input data-testid="active-start-date" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
           </div>
-          <label>常规学习日任务分钟预算<input data-testid="active-daily-minutes" type="number" value={dailyMinutes} onChange={(event) => setDailyMinutes(Number(event.target.value))} /></label>
-          <label>
-            首学周期比例
-            <input
-              data-testid="active-initial-period-ratio"
-              type="number"
-              min="0.1"
-              max="0.9"
-              step="0.05"
-              value={initialLearningPeriodRatio}
-              onChange={(event) => setInitialLearningPeriodRatio(Number(event.target.value))}
-            />
-            <small>
-              当前设置：前 {(initialLearningPeriodRatio * 100).toFixed(0)}% 日期完成完整第一遍，
-              后 {((1 - initialLearningPeriodRatio) * 100).toFixed(0)}% 日期才进入正式复习；
-              每天首学后的巩固不计入后半复习阶段。
-            </small>
-          </label>
+          <div className="active-chain__allocation" data-testid="active-system-allocation">
+            <span>系统分配每日投入</span>
+            <b>
+              {snapshot?.receipt?.allocation?.recommended_minutes_per_day
+                ? `${snapshot.receipt.allocation.recommended_minutes_per_day} 分钟 / 可学习日`
+                : "保存后自动计算"}
+            </b>
+            <small>前 50% 可学习日期完成第一遍，后 50% 进入滚动复习；生成知识地图后会按真实知识量再次校准。</small>
+          </div>
           <fieldset>
             <legend>每周可学习日（未选日期为固定休息日）</legend>
             <div className="active-chain__row" data-testid="active-study-weekdays">
@@ -414,6 +413,24 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
             <label>短时日分钟<input data-testid="active-short-minutes" type="number" value={shortMinutes} onChange={(event) => setShortMinutes(Number(event.target.value))} /></label>
           </div>
           <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
+          <label>
+            AI 教师人设
+            <textarea
+              data-testid="active-teacher-persona"
+              value={teacherPersona}
+              onChange={(event) => setTeacherPersona(event.target.value)}
+              placeholder="例如：温柔但不敷衍，擅长用生活梗和小故事，把我当零基础学生一步步带会。"
+            />
+          </label>
+          <label>
+            我的兴趣或熟悉场景
+            <input
+              data-testid="active-learner-interests"
+              value={learnerInterests}
+              onChange={(event) => setLearnerInterests(event.target.value)}
+              placeholder="例如：游戏、做饭、购物、篮球；教师会优先从这些生活经验举例"
+            />
+          </label>
           <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
           <button
             data-testid="active-save-receipt"
@@ -444,6 +461,32 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
             <strong data-testid="active-point-count">{graph.knowledge_points.length}</strong><span>知识点</span>
             <strong data-testid="active-edge-count">{graph.edges.length}</strong><span>前置依赖</span>
           </div>
+          {graph.assessment && (
+            <div className="active-chain__receipt" data-testid="active-material-assessment">
+              <b>
+                通用资料评估：
+                {graph.assessment.readiness?.status === "ready"
+                  ? "可直接生成计划"
+                  : graph.assessment.readiness?.status === "usable_with_review"
+                    ? "可排程，建议语义复核"
+                    : "暂不可排程"}
+              </b>
+              <span>
+                {graph.assessment.source?.material_count || 0} 份资料 ·
+                {graph.assessment.source?.chunk_count || 0} 个分块 ·
+                {graph.assessment.knowledge_structure?.knowledge_point_count || 0} 个知识点 ·
+                证据覆盖 {Math.round((graph.assessment.knowledge_structure?.evidence_coverage_ratio || 0) * 100)}%
+              </span>
+              <span>
+                系统估算完全掌握 {graph.assessment.workload?.total_mastery_task_minutes || 0} 任务分钟：
+                第一遍 {graph.assessment.workload?.initial_learning_task_minutes || 0} ·
+                复习 {graph.assessment.workload?.review_task_minutes || 0}
+              </span>
+              {(graph.assessment.readiness?.risks || []).map((risk: string) => (
+                <span key={risk}>{risk}</span>
+              ))}
+            </div>
+          )}
           {graph.knowledge_points.slice(0, 4).map((point: any) => (
             <div className="active-chain__receipt" key={point.id}>
               <b>{point.name}</b>
@@ -595,14 +638,20 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                 ))}
               </div>
             )}
-            {latestTeacher && (
-              <div className="active-chain__message" data-testid="active-latest-teacher">
-                <span>{latestTeacher.action}</span><p>{latestTeacher.content}</p>
-                {(latestTeacher.citations || []).map((citation: any) => (
-                  <blockquote key={citation.chunk_id}>{citation.quote}<small>段落 {citation.paragraph_start} · 字符 {citation.char_start}-{citation.char_end} · {citation.content_hash.slice(0, 12)}…</small></blockquote>
-                ))}
-              </div>
-            )}
+            <div className="active-chain__history" data-testid="active-conversation-history">
+              {(session.messages || []).slice(-6).map((item: any) => (
+                <div
+                  className={`active-chain__message ${item.role === "user" ? "is-user" : ""}`}
+                  data-testid={item.id === latestTeacher?.id ? "active-latest-teacher" : undefined}
+                  key={item.id}
+                >
+                  <span>{item.role === "user" ? "你" : item.action}</span><p>{item.content}</p>
+                  {(item.citations || []).map((citation: any) => (
+                    <blockquote key={citation.chunk_id}>{citation.quote}<small>段落 {citation.paragraph_start} · 字符 {citation.char_start}-{citation.char_end} · {citation.content_hash.slice(0, 12)}…</small></blockquote>
+                  ))}
+                </div>
+              ))}
+            </div>
             <div className="active-chain__composer">
               <input data-testid="active-teacher-input" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：我不理解，为什么？" />
               <button data-testid="active-send-teacher" disabled={!message || Boolean(busy)} onClick={() => run("推进教学", () => advance())}>发送</button>

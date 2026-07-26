@@ -783,7 +783,6 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "current_level",
         "deadline",
         "study_weekdays",
-        "daily_task_minutes",
         "preferred_learning_style",
         "material_ids",
     )
@@ -802,7 +801,7 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         _error("INVALID_START_DATE", "开始日期必须是 YYYY-MM-DD", 422)
     if start_date > deadline:
         _error("INVALID_DATE_RANGE", "开始日期不能晚于截止日期", 422)
-    minutes = int(payload["daily_task_minutes"])
+    minutes = int(payload.get("daily_task_minutes") or 30)
     if not 10 <= minutes <= 720:
         _error("INVALID_DAILY_TASK_MINUTES", "每日任务分钟预算必须在 10 到 720 之间", 422)
     weekdays = sorted({int(item) for item in payload["study_weekdays"]})
@@ -847,6 +846,10 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "start_date": start_date.isoformat(),
         "deadline": deadline.isoformat(),
         "daily_task_minutes": minutes,
+        "allocation_mode": (
+            "system" if str(payload.get("allocation_mode") or "").casefold() == "system"
+            else "manual"
+        ),
         "study_weekdays": weekdays,
         "fixed_rest_weekdays": fixed_rest_weekdays or sorted(set(range(7)) - set(weekdays)),
         "unavailable_dates": unavailable_dates,
@@ -855,6 +858,8 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
         "notes": str(payload.get("notes") or ""),
+        "teacher_persona": str(payload.get("teacher_persona") or "")[:2000],
+        "learner_interests": str(payload.get("learner_interests") or "")[:1000],
         "allow_schedule_suggestions": bool(payload.get("allow_schedule_suggestions", True)),
         "material_ids": list(dict.fromkeys(str(item) for item in payload["material_ids"])),
         "updated_at": _now(),
@@ -874,6 +879,34 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
         missing = sorted(set(receipt["material_ids"]) - known)
         if missing:
             _error("RECEIPT_MATERIAL_NOT_FOUND", "回执引用了不存在或解析失败的资料", 422, material_ids=missing)
+        if receipt["allocation_mode"] == "system":
+            study_dates = []
+            cursor = date.fromisoformat(receipt["start_date"])
+            deadline = date.fromisoformat(receipt["deadline"])
+            unavailable = set(receipt["unavailable_dates"])
+            while cursor <= deadline:
+                if cursor.weekday() in set(receipt["study_weekdays"]) and cursor.isoformat() not in unavailable:
+                    study_dates.append(cursor)
+                cursor += timedelta(days=1)
+            if not study_dates:
+                _error("NO_STUDY_DATES", "截止日期前没有可用学习日", 422)
+            placeholders = ",".join("?" for _ in receipt["material_ids"])
+            chunk_count = int(connection.execute(
+                f"""SELECT COUNT(*) FROM active_chunks
+                    WHERE workspace_id=? AND material_id IN ({placeholders})""",
+                [workspace_id, *receipt["material_ids"]],
+            ).fetchone()[0])
+            estimated_total = max(90, chunk_count * 8 + 120)
+            recommended = max(20, min(480, math.ceil(estimated_total * 1.2 / len(study_dates) / 5) * 5))
+            receipt["daily_task_minutes"] = recommended
+            receipt["allocation"] = {
+                "mode": "system",
+                "estimated_total_minutes": estimated_total,
+                "buffer_rate": 0.2,
+                "available_study_days": len(study_dates),
+                "recommended_minutes_per_day": recommended,
+                "reason": "根据所选资料、截止日期和真实可学习日自动分配；用户无需猜测每日分钟。",
+            }
         connection.execute(
             """INSERT INTO active_receipts(workspace_id,payload,updated_at) VALUES (?,?,?)
                ON CONFLICT(workspace_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at""",
@@ -1284,8 +1317,12 @@ def generate_plan(workspace_id: str) -> dict[str, Any]:
         if not receipt_row:
             _error("RECEIPT_REQUIRED", "请先填写学习回执", 409)
         receipt = json.loads(receipt_row["payload"])
+        material_ids = list(receipt.get("material_ids") or [])
+        placeholders = ",".join("?" for _ in material_ids)
         points = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE workspace_id=?", (workspace_id,)
+            f"""SELECT * FROM active_knowledge_points
+                WHERE workspace_id=? AND material_id IN ({placeholders})""",
+            [workspace_id, *material_ids],
         ).fetchall()
         if not points:
             _error("KNOWLEDGE_GRAPH_REQUIRED", "请先生成知识图谱", 409)
@@ -2172,11 +2209,17 @@ async def _render_teacher_content(
             "next_action": state.get("next_action"),
         },
         "source_grounded_draft": draft,
+        "teacher_persona": state.get("teacher_persona") or "",
+        "learner_context": state.get("learner_context") or {},
+        "persistent_memory": state.get("teacher_memory") or {},
         "allowed_evidence": evidence,
         "rules": [
             "Rewrite the draft as concise, supportive Chinese teaching language.",
             "Do not change the action, route, task completion, mastery, timing, or next action.",
             "Do not add factual claims beyond the draft and allowed evidence.",
+            "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
+            "Follow the user's teacher persona when it does not conflict with evidence or safety.",
+            "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",
             "Return JSON only with one string field named content.",
         ],
@@ -2225,7 +2268,7 @@ def _merge_citations(
     return merged
 
 
-def _opening(connection: sqlite3.Connection, task: sqlite3.Row) -> tuple[str, list[dict[str, Any]]]:
+def _opening(connection: sqlite3.Connection, task: sqlite3.Row, receipt: dict[str, Any] | None = None) -> tuple[str, list[dict[str, Any]]]:
     point = connection.execute(
         "SELECT * FROM active_knowledge_points WHERE id=?", (task["knowledge_point_id"],)
     ).fetchone()
@@ -2234,11 +2277,25 @@ def _opening(connection: sqlite3.Connection, task: sqlite3.Row) -> tuple[str, li
         connection,
         task["workspace_id"],
         f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+        plan_id=task["plan_id"],
     )
     citations = _merge_citations(retrieved, stored_citations)
+    zero_foundation = str((receipt or {}).get("current_foundation") or "").casefold() == "zero_foundation"
+    interests = str((receipt or {}).get("learner_interests") or "").strip()
+    familiar_scene = interests.split("、")[0] if interests else "日常任务"
+    analogy_text = (
+        f"先把“{point['name']}”放进你熟悉的“{familiar_scene}”场景里："
+        "先找出对象、条件、动作和可观察结果，再逐项映射回资料中的原概念。"
+        "这个类比只帮助理解结构，不会替资料补写事实；资料没有说明的结论，我会明确标成待验证。"
+    )
+    analogy = (
+        f"\n\n生活类比（帮助理解，不是资料原文）：{analogy_text}"
+        if zero_foundation else ""
+    )
     content = (
         f"今天先学习“{point['name']}”。我会主动按“讲解→示例→检查理解→独立验收”推进。"
         f"\n\n讲解：{point['explanation']}"
+        f"{analogy}"
         f"\n\n本任务预计 {task['estimated_task_minutes']} 任务分钟；验收条件：{point['acceptance_method']}"
     )
     return content, citations
@@ -2290,7 +2347,7 @@ def _daily_briefing(
     points = [point for point in points if point is not None]
     names = [str(point["name"]) for point in points]
     query = " ".join(names[:12])
-    citations = _search(connection, workspace_id, query) if query else []
+    citations = _search(connection, workspace_id, query, plan_id=plan_id) if query else []
     for point in points[:5]:
         citations = _merge_citations(
             citations, json.loads(point["source_evidence"])
@@ -2437,19 +2494,19 @@ async def start_session(
     body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
     with _connect() as connection:
-        existing = connection.execute(
-            """SELECT id FROM active_teaching_sessions
-               WHERE workspace_id=? ORDER BY started_at DESC LIMIT 1""",
-            (workspace_id,),
-        ).fetchone()
-        if existing:
-            return _public_session(connection, existing["id"])
         plan_row = connection.execute(
             "SELECT id,receipt FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1",
             (workspace_id,),
         ).fetchone()
         if not plan_row:
             _error("ACTIVE_PLAN_REQUIRED", "请先生成主动教学计划", 409)
+        existing = connection.execute(
+            """SELECT id FROM active_teaching_sessions
+               WHERE plan_id=? ORDER BY started_at DESC LIMIT 1""",
+            (plan_row["id"],),
+        ).fetchone()
+        if existing:
+            return _public_session(connection, existing["id"])
         tasks = _task_rows(connection, plan_row["id"])
         if not tasks:
             _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
@@ -2471,6 +2528,20 @@ async def start_session(
             "estimated_task_minutes": first["estimated_task_minutes"],
             "completed_task_minutes": 0,
             "actual_elapsed_minutes": 0.0,
+            "teacher_persona": receipt.get("teacher_persona") or "",
+            "learner_context": {
+                "foundation": receipt.get("current_foundation") or receipt.get("current_level"),
+                "interests": receipt.get("learner_interests") or "",
+                "preferred_learning_style": receipt.get("preferred_learning_style") or "",
+            },
+            "teacher_memory": {
+                "plan_id": plan_row["id"],
+                "material_ids": list(receipt.get("material_ids") or []),
+                "learner_questions": [],
+                "unresolved_points": [],
+                "explanations_that_helped": [],
+                "last_interaction": "",
+            },
             "autonomy": {
                 "mode": "teacher_led_until_learner_input",
                 "awaiting_learner": False,
@@ -2511,6 +2582,11 @@ async def start_session(
         _record_message(
             connection, session_id, "teacher", "daily_briefing", opening, citations
         )
+        state["teacher_memory"]["last_interaction"] = "daily_briefing"
+        connection.execute(
+            "UPDATE active_teaching_sessions SET state=? WHERE id=?",
+            (json.dumps(state, ensure_ascii=False), session_id),
+        )
         connection.commit()
         return _public_session(connection, session_id)
 
@@ -2545,13 +2621,17 @@ async def teach_next(
                 connection,
                 session["workspace_id"],
                 f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+                plan_id=session["plan_id"],
             ),
             json.loads(point["source_evidence"]),
         )
         step = str(state.get("current_teaching_step") or "explain")
         if step == "daily_briefing":
             action = "explain"
-            content, citations = _opening(connection, task)
+            plan_receipt = json.loads(connection.execute(
+                "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+            ).fetchone()["receipt"])
+            content, citations = _opening(connection, task, plan_receipt)
             state["current_teaching_step"] = "explain"
             state["next_action"] = "show_example"
             awaiting = False
@@ -2618,6 +2698,13 @@ async def teach_next(
             "query_scope": "current_knowledge_point",
             "citation_count": len(citations),
         }
+        teacher_memory = dict(state.get("teacher_memory") or {})
+        teacher_memory["last_interaction"] = action
+        teacher_memory["recent_turns"] = (
+            list(teacher_memory.get("recent_turns") or [])
+            + [{"role": "teacher", "action": action, "content": content[:600]}]
+        )[-12:]
+        state["teacher_memory"] = teacher_memory
         _record_message(connection, session_id, "teacher", action, content, citations)
         connection.execute(
             "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
@@ -2658,7 +2745,31 @@ def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
     return numerator / denominator if denominator else 0.0
 
 
-def _search(connection: sqlite3.Connection, workspace_id: str, query: str) -> list[dict[str, Any]]:
+def _plan_material_ids(
+    connection: sqlite3.Connection, workspace_id: str, plan_id: str | None
+) -> list[str]:
+    if not plan_id:
+        return []
+    plan_row = connection.execute(
+        "SELECT receipt FROM active_plans WHERE id=? AND workspace_id=?",
+        (plan_id, workspace_id),
+    ).fetchone()
+    if not plan_row:
+        return []
+    return list(
+        dict.fromkeys(
+            str(item) for item in (json.loads(plan_row["receipt"]).get("material_ids") or [])
+        )
+    )
+
+
+def _search(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    query: str,
+    *,
+    plan_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Local, workspace-isolated hybrid retrieval with exact chunk citations.
 
     The index intentionally has no network or model dependency: it combines
@@ -2671,12 +2782,20 @@ def _search(connection: sqlite3.Connection, workspace_id: str, query: str) -> li
     if not terms:
         return []
     scored: list[tuple[float, sqlite3.Row, list[str]]] = []
+    params: list[Any] = [workspace_id]
+    material_clause = ""
+    if plan_id:
+        material_ids = _plan_material_ids(connection, workspace_id, plan_id)
+        if not material_ids:
+            return []
+        material_clause = f" AND chunk.material_id IN ({','.join('?' for _ in material_ids)})"
+        params.extend(material_ids)
     for row in connection.execute(
-        """SELECT chunk.*, material.original_filename
+        f"""SELECT chunk.*, material.original_filename
            FROM active_chunks AS chunk
            JOIN active_materials AS material ON material.id=chunk.material_id
-           WHERE chunk.workspace_id=? AND material.status='ready'""",
-        (workspace_id,),
+           WHERE chunk.workspace_id=? AND material.status='ready'{material_clause}""",
+        params,
     ).fetchall():
         text_terms = _retrieval_terms(f"{row['heading']} {row['text']}")
         matched = sorted(terms & text_terms)
@@ -2711,15 +2830,25 @@ def _search(connection: sqlite3.Connection, workspace_id: str, query: str) -> li
     ]
 
 
-def _knowledge_base_status(connection: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
+def _knowledge_base_status(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    material_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    material_ids = list(dict.fromkeys(str(item) for item in (material_ids or [])))
+    material_clause = ""
+    params: list[Any] = [workspace_id]
+    if material_ids:
+        material_clause = f" AND material.id IN ({','.join('?' for _ in material_ids)})"
+        params.extend(material_ids)
     row = connection.execute(
-        """SELECT COUNT(DISTINCT material.id) AS material_count,
+        f"""SELECT COUNT(DISTINCT material.id) AS material_count,
                   COUNT(chunk.id) AS chunk_count,
                   COALESCE(SUM(LENGTH(chunk.text)), 0) AS indexed_characters
            FROM active_materials AS material
            LEFT JOIN active_chunks AS chunk ON chunk.material_id=material.id
-           WHERE material.workspace_id=? AND material.status='ready'""",
-        (workspace_id,),
+           WHERE material.workspace_id=? AND material.status='ready'{material_clause}""",
+        params,
     ).fetchone()
     chunk_count = int(row["chunk_count"] or 0)
     return {
@@ -2734,20 +2863,32 @@ def _knowledge_base_status(connection: sqlite3.Connection, workspace_id: str) ->
 
 
 def _matching_conflicts(
-    connection: sqlite3.Connection, workspace_id: str, query: str
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    query: str,
+    *,
+    plan_id: str | None = None,
 ) -> list[dict[str, Any]]:
     normalised_query = _normalise(query)
+    plan_materials = set(_plan_material_ids(connection, workspace_id, plan_id))
     output = []
     for row in connection.execute(
         "SELECT * FROM active_knowledge_conflicts WHERE workspace_id=? AND status='unresolved'",
         (workspace_id,),
     ).fetchall():
+        evidence_a = json.loads(row["evidence_a"])
+        evidence_b = json.loads(row["evidence_b"])
+        if plan_id and (
+            str(evidence_a.get("material_id") or "") not in plan_materials
+            or str(evidence_b.get("material_id") or "") not in plan_materials
+        ):
+            continue
         if _normalise(row["topic"]) in normalised_query or normalised_query in _normalise(row["topic"]):
             output.append(
                 {
                     **dict(row),
-                    "evidence_a": json.loads(row["evidence_a"]),
-                    "evidence_b": json.loads(row["evidence_b"]),
+                    "evidence_a": evidence_a,
+                    "evidence_b": evidence_b,
                 }
             )
     return output
@@ -2795,6 +2936,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 connection,
                 session["workspace_id"],
                 f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+                plan_id=session["plan_id"],
             ),
             stored_citations,
         )
@@ -2846,6 +2988,13 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             (elapsed, timing_task_id),
         )
         _record_message(connection, session_id, "user", "feedback", message, [])
+        teacher_memory = dict(state.get("teacher_memory") or {})
+        recent_turns = list(teacher_memory.get("recent_turns") or [])
+        if message:
+            recent_turns.append({"role": "learner", "content": message[:600]})
+        teacher_memory["recent_turns"] = recent_turns[-12:]
+        teacher_memory["last_learner_message"] = message[:600]
+        state["teacher_memory"] = teacher_memory
 
         lower = message.casefold()
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
@@ -2878,9 +3027,16 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             and not is_remediation
             and (not is_confused or is_question_window)
         )
-        question_hits = _search(connection, session["workspace_id"], message) if is_explicit_question else []
+        question_hits = _search(
+            connection, session["workspace_id"], message, plan_id=session["plan_id"]
+        ) if is_explicit_question else []
         question_conflicts = (
-            _matching_conflicts(connection, session["workspace_id"], message)
+            _matching_conflicts(
+                connection,
+                session["workspace_id"],
+                message,
+                plan_id=session["plan_id"],
+            )
             if is_explicit_question
             else []
         )
@@ -2923,6 +3079,8 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             content = (
                 f"你问得很好。先把它和当前知识点连起来：{point['explanation'][:240]}"
                 f"\n\n资料中直接相关的依据是：{question_hits[0]['quote'][:320]}"
+                "\n\n我只会把上面的原文当作已确认事实；如果你的问题要求的结论没有出现在证据里，"
+                "我会把它标成待验证，并带你补资料、设计验证或换一种可由现有资料回答的问法。"
                 "\n\n如果这还没有解决你卡住的那一步，请继续追问；"
                 "你确认清楚后再说“开始练习”，我不会机械跳到下一步。"
             )
@@ -3310,7 +3468,9 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                         f"评估说明：{evaluation.get('rationale') or '需要补足验收条件中的可观察证据。'}"
                     )
         else:
-            hits = _search(connection, session["workspace_id"], message)
+            hits = _search(
+                connection, session["workspace_id"], message, plan_id=session["plan_id"]
+            )
             if not hits:
                 action = "insufficient_evidence"
                 citations = []
@@ -3328,6 +3488,21 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             state=state,
         )
         state["teacher_generation"] = teacher_generation
+        teacher_memory = dict(state.get("teacher_memory") or {})
+        teacher_memory["last_interaction"] = action
+        if is_explicit_question and message:
+            questions = list(teacher_memory.get("learner_questions") or [])
+            questions.append(message[:400])
+            teacher_memory["learner_questions"] = questions[-20:]
+        if is_confused:
+            unresolved = list(teacher_memory.get("unresolved_points") or [])
+            unresolved.append(str(point["name"]))
+            teacher_memory["unresolved_points"] = list(dict.fromkeys(unresolved))[-20:]
+        teacher_memory["recent_turns"] = (
+            list(teacher_memory.get("recent_turns") or [])
+            + [{"role": "teacher", "action": action, "content": content[:600]}]
+        )[-12:]
+        state["teacher_memory"] = teacher_memory
         _record_message(connection, session_id, "teacher", action, content, citations)
         connection.execute(
             """UPDATE active_teaching_sessions
@@ -4310,31 +4485,43 @@ def completion_report(session_id: str) -> dict[str, Any]:
 @router.post("/workspaces/{workspace_id}/retrieve")
 def retrieve(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
     query = str(body.get("query") or "").strip()
+    plan_id = str(body.get("plan_id") or "").strip() or None
     if not query:
         _error("QUERY_REQUIRED", "检索问题不能为空", 422)
     with _connect() as connection:
-        conflicts = _matching_conflicts(connection, workspace_id, query)
+        plan_material_ids = _plan_material_ids(connection, workspace_id, plan_id)
+        if plan_id and not plan_material_ids:
+            _error("ACTIVE_PLAN_NOT_FOUND", "当前工作区中不存在该主动教学计划", 404)
+        conflicts = _matching_conflicts(
+            connection, workspace_id, query, plan_id=plan_id
+        )
         if conflicts:
             return {
                 "status": "conflict",
                 "answer": f"资料存在冲突：{conflicts[0]['summary']}",
                 "citations": [conflicts[0]["evidence_a"], conflicts[0]["evidence_b"]],
                 "conflicts": conflicts,
-                "retrieval": _knowledge_base_status(connection, workspace_id),
+                "retrieval": _knowledge_base_status(
+                    connection, workspace_id, plan_material_ids
+                ),
             }
-        hits = _search(connection, workspace_id, query)
+        hits = _search(connection, workspace_id, query, plan_id=plan_id)
         if not hits:
             return {
                 "status": "insufficient",
                 "answer": "资料中无法确认",
                 "citations": [],
-                "retrieval": _knowledge_base_status(connection, workspace_id),
+                "retrieval": _knowledge_base_status(
+                    connection, workspace_id, plan_material_ids
+                ),
             }
         return {
             "status": "grounded",
             "answer": f"资料中可确认：{hits[0]['quote'][:300]}",
             "citations": hits,
-            "retrieval": _knowledge_base_status(connection, workspace_id),
+            "retrieval": _knowledge_base_status(
+                connection, workspace_id, plan_material_ids
+            ),
         }
 
 
@@ -4354,10 +4541,14 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
             "SELECT id FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1",
             (workspace_id,),
         ).fetchone()
-        session_row = connection.execute(
-            "SELECT id FROM active_teaching_sessions WHERE workspace_id=? ORDER BY started_at DESC LIMIT 1",
-            (workspace_id,),
-        ).fetchone()
+        session_row = (
+            connection.execute(
+                "SELECT id FROM active_teaching_sessions WHERE plan_id=? ORDER BY started_at DESC LIMIT 1",
+                (plan_row["id"],),
+            ).fetchone()
+            if plan_row
+            else None
+        )
         knowledge_graph = _graph(connection, workspace_id)
         if connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_point_details'"
@@ -4365,9 +4556,21 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
             from .generic_knowledge_api import public_generic_graph
 
             knowledge_graph = public_generic_graph(connection, workspace_id)
+        plan_material_ids = (
+            _plan_material_ids(connection, workspace_id, plan_row["id"])
+            if plan_row
+            else []
+        )
         return {
             "workspace_id": workspace_id,
-            "local_knowledge_base": _knowledge_base_status(connection, workspace_id),
+            "local_knowledge_base": {
+                **_knowledge_base_status(
+                    connection, workspace_id, plan_material_ids
+                ),
+                "scope": "current_plan" if plan_row else "workspace",
+                "plan_id": plan_row["id"] if plan_row else None,
+                "material_ids": plan_material_ids,
+            },
             "materials": materials,
             "receipt": json.loads(receipt_row["payload"]) if receipt_row else None,
             "knowledge_graph": knowledge_graph,

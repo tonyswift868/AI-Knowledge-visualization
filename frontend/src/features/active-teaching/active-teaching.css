@@ -25,11 +25,17 @@
 .active-chain__message p { white-space: pre-wrap; line-height: 1.65; }
 .active-chain__message blockquote { margin: 10px 0 0; padding: 10px 14px; border-left: 3px solid #a5c7b3; background: #f3f8f5; }
 .active-chain__message small { display: block; margin-top: 6px; color: #6d7d75; }
+.active-chain__history { display: grid; gap: 10px; max-height: 620px; overflow: auto; padding-right: 4px; }
+.active-chain__message.is-user { margin-left: min(14%, 120px); background: #eaf5ef; border: 1px solid #c8dfd2; }
 .active-chain__composer { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-top: 12px; }
 .active-chain__error, .active-chain__warning { padding: 12px; border-radius: 10px; background: #fff1ed; color: #a73e2e; }
 .active-chain__busy { padding: 10px 12px; border-radius: 10px; background: #edf7f1; color: #286a4f; }
 .active-chain__ok { padding: 12px; border-radius: 10px; background: #e8f7ee; color: #1f6d49; }
 .active-chain__muted { color: #64736c; font-size: 13px; }
+.active-chain__allocation { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid #b9dac7; border-radius: 14px; background: linear-gradient(135deg, #edf8f1, #f8fbf2); }
+.active-chain__allocation span { color: #397d5d; font-size: 12px; font-weight: 800; }
+.active-chain__allocation b { color: #1f6045; font-size: 20px; }
+.active-chain__allocation small { color: #64736c; line-height: 1.55; }
 .active-chain__calendar { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 16px; }
 .active-chain__day { display: grid; gap: 4px; padding: 12px; border: 1px solid #cfe2d5; border-radius: 12px; background: #fff; font-size: 12px; }
 .active-chain__day b { font-size: 14px; }

@@ -22,7 +22,11 @@ test("arbitrary material drives plan, remediation, verified practice, and persis
   await page.getByTestId("nav-active").click();
   await expect(page.getByTestId("active-teaching-chain")).toBeVisible();
   await page.getByTestId("active-workspace-id").fill(workspaceId);
-  await page.getByTestId("active-daily-minutes").fill("120");
+  await expect(page.getByTestId("active-system-allocation")).toContainText("系统分配每日投入");
+  await expect(page.getByTestId("active-daily-minutes")).toHaveCount(0);
+  await page.getByTestId("active-foundation").selectOption("zero_foundation");
+  await page.getByTestId("active-teacher-persona").fill("耐心、有趣，先用生活例子再映射回资料");
+  await page.getByTestId("active-learner-interests").fill("游戏和做饭");
   await page.getByTestId("active-material-file").setInputFiles(materialPath);
   await page.getByTestId("active-upload").click();
 
@@ -36,7 +40,13 @@ test("arbitrary material drives plan, remediation, verified practice, and persis
   await expect(page.getByTestId("active-extraction-mode")).toContainText(
     "不冒充 AI 语义抽取",
   );
-  await expect(page.getByTestId("active-plan-budget")).toHaveText("120");
+  await expect(page.getByTestId("active-material-assessment")).toContainText(
+    "通用资料评估",
+  );
+  await expect(page.getByTestId("active-material-assessment")).toContainText(
+    "证据覆盖 100%",
+  );
+  await expect(page.getByTestId("active-plan-budget")).toHaveText("20");
   await expect(page.getByTestId("active-plan-feasible")).toBeVisible();
   await expect(page.getByTestId("active-expected-elapsed-range")).toContainText(
     "不是任务完成量",
@@ -44,10 +54,25 @@ test("arbitrary material drives plan, remediation, verified practice, and persis
   await expect(page.getByTestId("active-plan-calendar")).toContainText("首学");
 
   await page.getByTestId("active-start-teacher").click();
-  await expect(page.getByTestId("active-latest-teacher")).toContainText("explain");
+  await expect(page.getByTestId("active-conversation-history")).toContainText("explain", {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("active-conversation-history")).toContainText(
+    "生活类比（帮助理解，不是资料原文）",
+  );
+  await expect(page.getByTestId("active-conversation-history")).toContainText(
+    "这个类比只帮助理解结构，不会替资料补写事实",
+  );
+  await expect(page.getByTestId("active-latest-teacher")).toContainText("invite_questions");
   await expect(page.getByTestId("active-latest-teacher")).toContainText("字符");
 
-  await page.getByTestId("active-teacher-input").fill("我不理解，为什么这样做？");
+  await page.getByTestId("active-teacher-input").fill("开始练习");
+  await page.getByTestId("active-send-teacher").click();
+  await expect(page.getByTestId("active-session-state")).toContainText(
+    "check_understanding",
+  );
+
+  await page.getByTestId("active-teacher-input").fill("我不理解这一段");
   await page.getByTestId("active-send-teacher").click();
   await expect(page.getByTestId("active-session-state")).toContainText(
     "remediation_explain",
