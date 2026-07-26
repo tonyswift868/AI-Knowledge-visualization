@@ -2073,6 +2073,34 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         messages.append(item)
     state = json.loads(row["state"])
     _sync_pending_reviews(connection, session_id, state)
+    incomplete_initial = int(
+        connection.execute(
+            """SELECT COUNT(*) FROM active_plan_tasks
+               WHERE plan_id=? AND task_type='initial_learning'
+                 AND status<>'completed'""",
+            (row["plan_id"],),
+        ).fetchone()[0]
+    )
+    incomplete_initial_points = int(
+        connection.execute(
+            """SELECT COUNT(DISTINCT knowledge_point_id)
+               FROM active_plan_tasks
+               WHERE plan_id=? AND task_type='initial_learning'
+                 AND status<>'completed'""",
+            (row["plan_id"],),
+        ).fetchone()[0]
+    )
+    state["formal_review_gate"] = {
+        "unlocked": incomplete_initial == 0,
+        "incomplete_initial_task_count": incomplete_initial,
+        "incomplete_initial_knowledge_point_count": incomplete_initial_points,
+        "daily_consolidation_counts_as_formal_review": False,
+        "reason": (
+            "all_initial_learning_completed"
+            if incomplete_initial == 0
+            else "complete_first_pass_before_formal_review"
+        ),
+    }
     return {
         "session_id": row["id"],
         "workspace_id": row["workspace_id"],
@@ -2528,15 +2556,16 @@ async def teach_next(
             state["next_action"] = "show_example"
             awaiting = False
         elif step == "explain":
-            action = "example"
+            action = "invite_questions"
             content = (
-                f"我先替你把“{point['name']}”拆成一个最小例子。"
-                f"先只抓住资料确认的核心：{point['explanation'][:300]}"
-                "\n\n接下来我会主动检查你是否真的能复述关键关系，不需要你先想好问题。"
+                f"“{point['name']}”的核心已经讲完。先不要急着做题。"
+                "\n\n你可以直接问：为什么要这样做、哪一步最难、能不能换个例子、"
+                "边界条件是什么，或者把你卡住的原话贴出来。"
+                "\n\n我会结合当前资料重新检索并回答；你确认没有疑问后，再说“开始练习”。"
             )
-            state["current_teaching_step"] = "example"
-            state["next_action"] = "check_understanding"
-            awaiting = False
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            awaiting = True
         elif step in {"example", "remediation_example"}:
             action = "check_understanding"
             content = (
@@ -2822,12 +2851,32 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
         is_understood = bool(body.get("understood")) or any(marker in lower for marker in UNDERSTOOD_MARKERS)
         is_remediation = bool(state.get("remediation_stack"))
+        is_question_window = state.get("current_teaching_step") == "question_invitation"
+        wants_practice = is_question_window and (
+            bool(body.get("continue_to_practice"))
+            or lower.strip() in {"继续", "下一步"}
+            or any(
+                marker in lower
+                for marker in (
+                    "开始练习",
+                    "继续练习",
+                    "没有问题",
+                    "没问题",
+                    "没有疑问",
+                    "可以做题",
+                    "可以继续",
+                    "懂了",
+                    "明白了",
+                    "进入练习",
+                )
+            )
+        )
         action = "continue"
         is_explicit_question = (
-            ("?" in message or "？" in message)
-            and not is_confused
+            (("?" in message or "？" in message) or (is_question_window and not wants_practice))
             and not is_understood
             and not is_remediation
+            and (not is_confused or is_question_window)
         )
         question_hits = _search(connection, session["workspace_id"], message) if is_explicit_question else []
         question_conflicts = (
@@ -2844,15 +2893,62 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             content = (
                 f"资料存在冲突：{question_conflicts[0]['summary']}"
                 "我会保留两份原文证据，在冲突解决前不选择其中一项作为确定事实。"
+                "\n\n你可以继续追问；确认清楚后说“开始练习”。"
             )
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            state["autonomy"] = {
+                "mode": "teacher_led_question_dialogue",
+                "awaiting_learner": True,
+                "reason": "follow_up_question_invited",
+            }
         elif is_explicit_question and not question_hits:
             action = "insufficient_evidence"
             citations = []
-            content = "资料中无法确认。当前上传资料没有足够证据支持这个问题，我不会猜测或编造。"
+            content = (
+                "资料中无法确认。当前上传资料没有足够证据支持这个问题，我不会猜测或编造。"
+                "你可以换一种问法、补充资料，或者继续追问我能从现有资料确认的部分；"
+                "确认清楚后说“开始练习”。"
+            )
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            state["autonomy"] = {
+                "mode": "teacher_led_question_dialogue",
+                "awaiting_learner": True,
+                "reason": "follow_up_question_invited",
+            }
         elif is_explicit_question:
             action = "grounded_answer"
             citations = question_hits
-            content = f"根据上传资料，可确认的相关片段如下：{question_hits[0]['quote'][:240]}"
+            content = (
+                f"你问得很好。先把它和当前知识点连起来：{point['explanation'][:240]}"
+                f"\n\n资料中直接相关的依据是：{question_hits[0]['quote'][:320]}"
+                "\n\n如果这还没有解决你卡住的那一步，请继续追问；"
+                "你确认清楚后再说“开始练习”，我不会机械跳到下一步。"
+            )
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            state["autonomy"] = {
+                "mode": "teacher_led_question_dialogue",
+                "awaiting_learner": True,
+                "reason": "follow_up_question_invited",
+            }
+        elif is_question_window and wants_practice:
+            action = "guided_practice"
+            state["current_teaching_step"] = "check_understanding"
+            state["next_action"] = "evaluate_answer"
+            state["autonomy"] = {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": True,
+                "reason": "learner_practice_required",
+            }
+            content = (
+                f"好，现在进入“{point['name']}”的引导练习。"
+                f"\n\n先按这个核心开始：{point['explanation'][:260]}"
+                f"\n\n请你用自己的话说明思路，给出一个具体应用或关键步骤，"
+                f"并完成验收条件：{point['acceptance_method']}。"
+                "遇到任何一步不会，可以立刻提问，我会暂停验收并继续答疑。"
+            )
         elif is_confused and not is_remediation:
             state["unresolved_confusions"].append(
                 {"knowledge_point_id": point["id"], "message": message, "created_at": _now()}
@@ -2943,12 +3039,18 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 "。如果仍不理解，我会继续降低解释层级或标记需要额外资料。"
             )
         elif state["current_teaching_step"] == "explain":
-            state["current_teaching_step"] = "example"
-            state["next_action"] = "check_understanding"
-            action = "example"
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            state["autonomy"] = {
+                "mode": "teacher_led_question_dialogue",
+                "awaiting_learner": True,
+                "reason": "question_invited_before_practice",
+            }
+            action = "invite_questions"
             content = (
-                f"示例练习：针对“{point['name']}”，从材料中的解释出发构造一个最小具体场景，"
-                f"指出其中的关键事实或步骤，再按这个条件检查结果：{point['acceptance_method']}"
+                f"“{point['name']}”先讲到这里，我不会马上让你做题。"
+                "\n\n请告诉我哪一步还不清楚；你可以问为什么、要求换例子或追问边界条件。"
+                "我会检索资料回答。确认没有疑问后说“开始练习”。"
             )
         elif state["current_teaching_step"] == "example":
             state["current_teaching_step"] = "check_understanding"
@@ -3289,6 +3391,29 @@ async def start_review(
         ).fetchone()
         if not session:
             _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
+        incomplete_initial = connection.execute(
+            """SELECT COUNT(*) FROM active_plan_tasks
+               WHERE plan_id=? AND task_type='initial_learning'
+                 AND status<>'completed'""",
+            (session["plan_id"],),
+        ).fetchone()[0]
+        if incomplete_initial:
+            incomplete_initial_points = connection.execute(
+                """SELECT COUNT(DISTINCT knowledge_point_id)
+                   FROM active_plan_tasks
+                   WHERE plan_id=? AND task_type='initial_learning'
+                     AND status<>'completed'""",
+                (session["plan_id"],),
+            ).fetchone()[0]
+            _error(
+                "INITIAL_LEARNING_NOT_COMPLETE",
+                "正式复习只能在第一遍全部完成后开始；当天首学后的巩固不计入正式复习阶段。",
+                409,
+                incomplete_initial_task_count=int(incomplete_initial),
+                incomplete_initial_knowledge_point_count=int(
+                    incomplete_initial_points
+                ),
+            )
         review = connection.execute(
             """SELECT review.*,point.name AS knowledge_point_name,
                       point.acceptance_method,point.source_evidence

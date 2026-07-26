@@ -387,7 +387,11 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               value={initialLearningPeriodRatio}
               onChange={(event) => setInitialLearningPeriodRatio(Number(event.target.value))}
             />
-            <small>当前设置：前 {(initialLearningPeriodRatio * 100).toFixed(0)}% 日期首学，后 {((1 - initialLearningPeriodRatio) * 100).toFixed(0)}% 日期复习</small>
+            <small>
+              当前设置：前 {(initialLearningPeriodRatio * 100).toFixed(0)}% 日期完成完整第一遍，
+              后 {((1 - initialLearningPeriodRatio) * 100).toFixed(0)}% 日期才进入正式复习；
+              每天首学后的巩固不计入后半复习阶段。
+            </small>
           </label>
           <fieldset>
             <legend>每周可学习日（未选日期为固定休息日）</legend>
@@ -475,14 +479,8 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               </div>
               <div className="active-chain__time">
                 <span>完全掌握预计 {plan.total_mastery_task_minutes ?? plan.total_estimated_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 任务分钟</span>
-                <span>
-                  首学任务 {plan.initial_learning_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 分钟
-                  （{((plan.initial_learning_ratio ?? 0) * 100).toFixed(1)}%）
-                </span>
-                <span>
-                  通过独立验收后预计复习 {plan.projected_review_task_minutes ?? 0} 分钟
-                  （{((plan.projected_review_ratio ?? 0) * 100).toFixed(1)}%）
-                </span>
+                <span>第一遍预计 {plan.initial_learning_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 分钟</span>
+                <span>后半正式复习预计 {plan.projected_review_task_minutes ?? 0} 分钟；分钟占比不代表阶段占比</span>
                 {plan.expected_actual_elapsed_minutes_range && (
                   <span data-testid="active-expected-elapsed-range">
                     预计真实耗时范围 {plan.expected_actual_elapsed_minutes_range.min}–
@@ -544,7 +542,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
 
       <article className="active-chain__teacher">
         <div className="active-chain__teacher-head">
-          <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>知识简报 → 检索讲解 → 示例 → 检测 → 补救</h3></div>
+          <div><span className="active-chain__step">05 · 主动教学工作台</span><h3>知识简报 → 检索讲解 → 邀请提问 → 引导练习 → 补救</h3></div>
           <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTeacherLedLesson)}>开始今日课程（教师主动带学）</button>
           {session && <button data-testid="active-replan" disabled={Boolean(busy)} onClick={() => run("滚动未完成任务", () => activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/replan`, {
             method: "POST",
@@ -572,7 +570,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               <div className="active-chain__receipt" data-testid="active-today-plan">
                 <b>{session.state.today_plan.date} · 今日课程</b>
                 <span>{session.state.today_plan.knowledge_point_count ?? session.state.today_plan.task_count} 个知识点 · {session.state.today_plan.task_minutes} 标准任务分钟</span>
-                <span>教师会先建立知识框架，再实时检索资料完成讲解、最小例子、理解检查、补救和独立验收。</span>
+                <span>教师会先建立知识框架并检索讲解，然后主动邀请你多轮追问；确认没有疑问后才进入练习与验收。</span>
               </div>
             )}
             {(session.state.replan_history || []).length > 0 && (
@@ -621,7 +619,14 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                   onChange={(event) => setReviewAsOf(event.target.value)}
                 />
               </label>
-              {(session.state.pending_reviews || []).length === 0 && <span>当前没有待执行复习。</span>}
+              <span>
+                正式复习门禁：
+                {session.state.formal_review_gate?.unlocked
+                  ? "已完成第一遍，可以按后半阶段日历执行"
+                  : `未解锁，第一遍仍有 ${session.state.formal_review_gate?.incomplete_initial_knowledge_point_count ?? "未知"} 个知识点未完成`}
+                ；每天学习后的巩固不计入这里。
+              </span>
+              {(session.state.pending_reviews || []).length === 0 && <span>当前没有待执行的正式复习。</span>}
               {(session.state.pending_reviews || []).map((review: any) => (
                 <div key={review.id}>
                   <span>
@@ -633,7 +638,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                   </span>
                   <button
                     data-testid={`active-start-review-${review.id}`}
-                    disabled={Boolean(busy) || review.status === "in_progress"}
+                    disabled={Boolean(busy) || review.status === "in_progress" || !session.state.formal_review_gate?.unlocked}
                     onClick={() => run("启动到期复习", () => startReview(review.id))}
                   >
                     {review.status === "in_progress" ? "复习进行中" : "启动复习"}

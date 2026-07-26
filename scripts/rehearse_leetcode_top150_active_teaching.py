@@ -13,7 +13,7 @@ from app.main import app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MATERIAL = PROJECT_ROOT / "data" / "demo_materials" / "leetcode_top_interview_150_20260726.md"
 REPORT = PROJECT_ROOT / "reports" / "leetcode_top150_active_rehearsal_20260726.json"
-WORKSPACE = "leetcode-top150-rehearsal-20260726-v11"
+WORKSPACE = "leetcode-top150-rehearsal-20260726-v14"
 
 
 def ensure_ok(response, label: str) -> dict:
@@ -90,6 +90,20 @@ def main() -> None:
                 ),
                 "proactive teaching",
             )
+        session = ensure_ok(
+            client.post(
+                f"/api/active-teaching/sessions/{session['session_id']}/advance",
+                json={"message": "为什么 Merge Sorted Array 要从数组末尾开始处理？"},
+            ),
+            "grounded learner question",
+        )
+        session = ensure_ok(
+            client.post(
+                f"/api/active-teaching/sessions/{session['session_id']}/advance",
+                json={"message": "没有问题了，开始练习"},
+            ),
+            "question-to-practice transition",
+        )
 
     days = [
         {
@@ -148,7 +162,9 @@ def main() -> None:
             "feasible": bool(plan["feasible"]),
             "warning": plan["warning"],
             "initial_learning_period_ratio": plan["initial_learning_period_ratio"],
+            "formal_review_period_ratio": plan["formal_review_period_ratio"],
             "phase_boundary": plan["phase_boundary"],
+            "review_scheduling_policy": plan["review_scheduling_policy"],
             "initial_learning_task_minutes": plan["initial_learning_task_minutes"],
             "projected_review_task_minutes": plan["projected_review_task_minutes"],
             "unscheduled_task_minutes": plan["unscheduled_task_minutes"],
@@ -158,6 +174,7 @@ def main() -> None:
             "session_id": session["session_id"],
             "autonomy": session["state"]["autonomy"],
             "today_plan": session["state"]["today_plan"],
+            "formal_review_gate": session["state"]["formal_review_gate"],
             "message_actions": [message["action"] for message in session["messages"]],
             "messages": [
                 {

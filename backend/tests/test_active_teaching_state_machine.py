@@ -94,28 +94,41 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
         assert explanation.json()["messages"][-1]["action"] == "explain"
         assert explanation.json()["state"]["autonomy"]["awaiting_learner"] is False
 
-        example = client.post(
+        invitation = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
             json={},
         )
-        assert example.status_code == 200, example.text
-        assert example.json()["messages"][-1]["action"] == "example"
-        assert example.json()["state"]["autonomy"]["awaiting_learner"] is False
+        assert invitation.status_code == 200, invitation.text
+        assert invitation.json()["messages"][-1]["action"] == "invite_questions"
+        assert invitation.json()["state"]["current_teaching_step"] == "question_invitation"
+        assert invitation.json()["state"]["autonomy"]["awaiting_learner"] is True
+        assert invitation.json()["state"]["formal_review_gate"]["unlocked"] is False
 
-        check = client.post(
-            f"/api/active-teaching/sessions/{session_id}/teach-next",
-            json={},
+        answer = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "为什么这里要使用哈希映射？"},
         )
-        assert check.status_code == 200, check.text
-        assert check.json()["messages"][-1]["action"] == "check_understanding"
-        assert check.json()["state"]["autonomy"] == {
-            "mode": "teacher_led_until_learner_input",
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["messages"][-1]["action"] == "grounded_answer"
+        assert answer.json()["messages"][-1]["citations"]
+        assert answer.json()["state"]["current_teaching_step"] == "question_invitation"
+        assert answer.json()["state"]["autonomy"] == {
+            "mode": "teacher_led_question_dialogue",
             "awaiting_learner": True,
-            "reason": "learner_evidence_required",
+            "reason": "follow_up_question_invited",
         }
-        assert len(check.json()["messages"]) == 4
-        assert check.json()["state"]["today_plan"]["task_count"] > 0
-        assert check.json()["state"]["today_plan"]["knowledge_point_count"] > 0
+
+        practice = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "没有问题了，开始练习"},
+        )
+        assert practice.status_code == 200, practice.text
+        assert practice.json()["messages"][-1]["action"] == "guided_practice"
+        assert practice.json()["state"]["current_teaching_step"] == "check_understanding"
+        assert practice.json()["state"]["autonomy"]["reason"] == "learner_practice_required"
+        assert len(practice.json()["messages"]) == 7
+        assert practice.json()["state"]["today_plan"]["task_count"] > 0
+        assert practice.json()["state"]["today_plan"]["knowledge_point_count"] > 0
 
 
 def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_path, monkeypatch):
@@ -145,6 +158,9 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
             assert prompt["fixed_action"] in {
                 "daily_briefing",
                 "explain",
+                "invite_questions",
+                "grounded_answer",
+                "guided_practice",
                 "remediation_explain",
                 "resume_main_route",
                 "advance_route",
@@ -520,6 +536,29 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
             == due[0]["review_total_minutes"]
         )
 
+        locked = client.post(
+            f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/start",
+            json={
+                "as_of": due_day.isoformat(),
+                "provider_session_id": provider_session.id,
+            },
+        )
+        assert locked.status_code == 409
+        assert locked.json()["error"]["code"] == "INITIAL_LEARNING_NOT_COMPLETE"
+
+        from app import active_teaching
+
+        with active_teaching._connect() as connection:
+            connection.execute(
+                """UPDATE active_plan_tasks
+                   SET status='completed',
+                       completed_task_minutes=estimated_task_minutes
+                   WHERE plan_id=(SELECT plan_id FROM active_teaching_sessions WHERE id=?)
+                     AND task_type='initial_learning'""",
+                (session_id,),
+            )
+            connection.commit()
+
         early = client.post(
             f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/start",
             json={
@@ -631,8 +670,6 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
         assert third["review"]["status"] == "completed"
         assert third["review"]["interval_step"] == 3
         assert third["session"]["state"]["pending_reviews"] == []
-
-        from app import active_teaching
 
         with active_teaching._connect() as connection:
             assert connection.execute(

@@ -510,10 +510,10 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         review_capacity = sum(
             day["capacity_minutes"] for day in calendar if day["study_phase"] == "review"
         )
-        unscheduled = max(
-            initial_unscheduled,
-            max(0, total - capacity),
+        projected_review_unscheduled = max(
+            0, projected_review_minutes - review_capacity
         )
+        unscheduled = initial_unscheduled + projected_review_unscheduled
         plan_id = active_teaching._id("active_plan")
         warning = (
             f"当前学习周期容量不足，仍有 {unscheduled} 个标准任务分钟未排入。"
@@ -595,10 +595,18 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                 if day["study_phase"] == "initial_learning"
             ),
             "review_capacity_minutes": review_capacity,
+            "daily_consolidation_counts_as_formal_review": False,
+            "formal_review_requires_all_initial_learning_completed": True,
         }
+        result["formal_review_period_ratio"] = 1 - configured_ratio
+        result["projected_review_unscheduled_task_minutes"] = (
+            projected_review_unscheduled
+        )
         result["review_scheduling_policy"] = (
-            f"前 {configured_ratio:.0%} 的可学习日期只安排首学；后 "
-            f"{1 - configured_ratio:.0%} 的可学习日期保留给复习。"
-            "复习任务在对应知识点独立应用通过后进入持久化复习队列。"
+            f"前 {configured_ratio:.0%} 的可学习日期用于完成完整第一遍；"
+            "每天首学后的回顾属于当日巩固，不计入正式复习阶段。后 "
+            f"{1 - configured_ratio:.0%} 的可学习日期保留给正式滚动复习，"
+            "且只有全部首学任务完成后才解锁。复习任务会先进入持久化队列，"
+            "但不会在首学尚未完成时执行。"
         )
         return result

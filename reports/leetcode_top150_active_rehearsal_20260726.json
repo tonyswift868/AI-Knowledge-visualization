@@ -1,5 +1,5 @@
 {
-  "workspace_id": "leetcode-top150-rehearsal-20260726-v11",
+  "workspace_id": "leetcode-top150-rehearsal-20260726-v14",
   "source": {
     "official_plan": "https://leetcode.cn/studyplan/top-interview-150/",
     "material_path": "E:\\aiPlay\\AI-Knowledge visualization\\data\\demo_materials\\leetcode_top_interview_150_20260726.md",
@@ -32,9 +32,9 @@
     "notes": "15 天强化预演；标准任务分钟不冒充真实钟表耗时。",
     "allow_schedule_suggestions": true,
     "material_ids": [
-      "material_70ecd0ab043345de8bd1"
+      "material_403e154c473348169e6a"
     ],
-    "updated_at": "2026-07-26T15:09:18.566671+00:00"
+    "updated_at": "2026-07-26T15:41:33.189080+00:00"
   },
   "graph": {
     "knowledge_point_count": 150,
@@ -45,6 +45,7 @@
     "feasible": true,
     "warning": "",
     "initial_learning_period_ratio": 0.5,
+    "formal_review_period_ratio": 0.5,
     "phase_boundary": {
       "initial_learning_dates": [
         "2026-07-27",
@@ -66,8 +67,11 @@
         "2026-08-10"
       ],
       "initial_learning_capacity_minutes": 5760,
-      "review_capacity_minutes": 5040
+      "review_capacity_minutes": 5040,
+      "daily_consolidation_counts_as_formal_review": false,
+      "formal_review_requires_all_initial_learning_completed": true
     },
+    "review_scheduling_policy": "前 50% 的可学习日期用于完成完整第一遍；每天首学后的回顾属于当日巩固，不计入正式复习阶段。后 50% 的可学习日期保留给正式滚动复习，且只有全部首学任务完成后才解锁。复习任务会先进入持久化队列，但不会在首学尚未完成时执行。",
     "initial_learning_task_minutes": 4929,
     "projected_review_task_minutes": 768,
     "unscheduled_task_minutes": 0,
@@ -367,133 +371,133 @@
         "projected_review_task_minutes": 114,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_14ff6c4e6f79df539e39",
+            "knowledge_point_id": "kp_ad623564e764e05e8716",
             "title": "Merge Sorted Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c83f2ffd233237388610",
+            "knowledge_point_id": "kp_4f6664acd1225e465157",
             "title": "Best Time to Buy and Sell Stock II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ea8b4460aa5e940dd8f7",
+            "knowledge_point_id": "kp_35c39180c7cfb2338f38",
             "title": "Candy",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ee69039c76f3bd114302",
+            "knowledge_point_id": "kp_9df1dbc495f373176e31",
             "title": "Zigzag Conversion",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_da146e40879527c0f7af",
+            "knowledge_point_id": "kp_d8db5f9fbc4d15cad240",
             "title": "3Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_983a8dc5ad88abc49483",
+            "knowledge_point_id": "kp_4b8e572ed5b4e69c295c",
             "title": "Rotate Image",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_8204b232d83e0bd642dc",
+            "knowledge_point_id": "kp_e0855a2ea5a6b583a4fe",
             "title": "Group Anagrams",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_d3739685896b402953ed",
+            "knowledge_point_id": "kp_0e2b724f00e8cd15a2ba",
             "title": "Insert Interval",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_a0c3a74f2acd2c64dc57",
+            "knowledge_point_id": "kp_bf206899f8bd73a0420c",
             "title": "Linked List Cycle",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_984e129c0f41397c39cd",
+            "knowledge_point_id": "kp_71cdcb7da3b6d297acc2",
             "title": "Remove Duplicates from Sorted List II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_391c282fa3b0b61aaf19",
+            "knowledge_point_id": "kp_51d1d829f34d08bf90ee",
             "title": "Symmetric Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_9740c0d85ef9d8e452b9",
+            "knowledge_point_id": "kp_b4ed9a943d729da967c9",
             "title": "Binary Tree Maximum Path Sum",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_743a18d5693d674f10b5",
+            "knowledge_point_id": "kp_ac4fa86a0965aa330551",
             "title": "Binary Tree Zigzag Level Order Traversal",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_bbafebf37dd02c4dd6ef",
+            "knowledge_point_id": "kp_036c832682aae932d48f",
             "title": "Evaluate Division",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_5b3630f8a728320f40cc",
+            "knowledge_point_id": "kp_2c78bab37b21c82cd88b",
             "title": "Design Add and Search Words Data Structure",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_f7c50fe98b2c74824e57",
+            "knowledge_point_id": "kp_ad80acbea0a55a255357",
             "title": "Generate Parentheses",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4f214591cb49a0f71352",
+            "knowledge_point_id": "kp_21d975427f6bb0c09d9b",
             "title": "Maximum Sum Circular Subarray",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_2a782c6d7d1e83b6d3b0",
+            "knowledge_point_id": "kp_bf2c0bc0bc76d0316bf8",
             "title": "Median of Two Sorted Arrays",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_5e9e5a548fb576f48215",
+            "knowledge_point_id": "kp_3efeb664e58b765eb42d",
             "title": "Number of 1 Bits",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_65d82665fbb29c994f3c",
+            "knowledge_point_id": "kp_d9fae20b893bc4729afd",
             "title": "Sqrt(x)",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_a26bcf43489f4aa017c7",
+            "knowledge_point_id": "kp_e619ebe2f342a5a233aa",
             "title": "Longest Increasing Subsequence",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_bb6055567b204117b19d",
+            "knowledge_point_id": "kp_1533c2101b52f981c85d",
             "title": "Best Time to Buy and Sell Stock III",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
@@ -516,133 +520,133 @@
         "projected_review_task_minutes": 113,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_c5e46603ce433e533611",
+            "knowledge_point_id": "kp_48c5e9ac6fa735b5175f",
             "title": "Remove Element",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c9ff0ea1c436ff59e706",
+            "knowledge_point_id": "kp_ad336aff29e5a9bf8b9e",
             "title": "Jump Game",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_30aa340c5396d8520212",
+            "knowledge_point_id": "kp_56dab6096f1cbed455e7",
             "title": "Trapping Rain Water",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_6a5ea6518f2e3befc321",
+            "knowledge_point_id": "kp_3e77a26d2f770b11feff",
             "title": "Find the Index of the First Occurrence in a String",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b1833a27ae2c9b4c83f9",
+            "knowledge_point_id": "kp_b2a767bacf2a2daa3bb0",
             "title": "Minimum Size Subarray Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c4486be064249a7e69e8",
+            "knowledge_point_id": "kp_b10ad148ab9a00946f4d",
             "title": "Set Matrix Zeroes",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_0bf5c734aa76501650c8",
+            "knowledge_point_id": "kp_2690c07a37a857f4a1d5",
             "title": "Two Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_fe9033a4539eb8f73954",
+            "knowledge_point_id": "kp_1451ad78aca52e73c1ce",
             "title": "Minimum Number of Arrows to Burst Balloons",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_76fc3b67349f2cc83312",
+            "knowledge_point_id": "kp_2b9a8516ff5fdad7386d",
             "title": "Add Two Numbers",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ccd571259ac1f8da9a87",
+            "knowledge_point_id": "kp_6c6f5f1544aebd5682a0",
             "title": "Rotate List",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_18dc3d75e6c91a2d5789",
+            "knowledge_point_id": "kp_fd91ba4dce3bc0b74268",
             "title": "Construct Binary Tree from Preorder and Inorder Traversal",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_9f804ff1399a5d9a54b9",
+            "knowledge_point_id": "kp_314887159f4ba81bc97e",
             "title": "Binary Search Tree Iterator",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_903e297b177eeebd16e8",
+            "knowledge_point_id": "kp_86ba2f644ac8739be24a",
             "title": "Minimum Absolute Difference in BST",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_9f6d4137fd39823783ed",
+            "knowledge_point_id": "kp_93c24474c27dd6ac8291",
             "title": "Course Schedule",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_48e3770cd98d02694fcf",
+            "knowledge_point_id": "kp_b867db9a071a802e8be4",
             "title": "Word Search II",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4ee2e02c222204fdfd90",
+            "knowledge_point_id": "kp_c0e77f89a8921dce0400",
             "title": "Word Search",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e61ec3a2ecd1703f4f2b",
+            "knowledge_point_id": "kp_d7dd3b91aaaf77a46f32",
             "title": "Search Insert Position",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1639134a341418270ea7",
+            "knowledge_point_id": "kp_e2b1edd53ffa8a4f256a",
             "title": "Kth Largest Element in an Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4d0d7d1d9bcdfceeb4b2",
+            "knowledge_point_id": "kp_d4c7bc6d4491dd789375",
             "title": "Single Number",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_79d62145e293cf2d049a",
+            "knowledge_point_id": "kp_770bd3070797883de6b1",
             "title": "Pow(x, n)",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_6d0ee08807389439645f",
+            "knowledge_point_id": "kp_b72040267d1e565c6644",
             "title": "Triangle",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_3d17c4fe134c2011915b",
+            "knowledge_point_id": "kp_533620e17b151c251002",
             "title": "Best Time to Buy and Sell Stock IV",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
@@ -665,133 +669,133 @@
         "projected_review_task_minutes": 113,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_59e2406f39631c08e2c2",
+            "knowledge_point_id": "kp_7181b6dc60639e7e1899",
             "title": "Remove Duplicates from Sorted Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4eed1019d50e194b8bbd",
+            "knowledge_point_id": "kp_11c9f6bc30772eff4cab",
             "title": "Jump Game II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_16f675f2e568b7369a15",
+            "knowledge_point_id": "kp_7abac720570df3b12514",
             "title": "Roman to Integer",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_6606b2f8bebdce693a10",
+            "knowledge_point_id": "kp_0e1cb4ddb87398e2108e",
             "title": "Text Justification",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_413f8b5ee9acf59db775",
+            "knowledge_point_id": "kp_4caba7f6d5f7b9db02e2",
             "title": "Longest Substring Without Repeating Characters",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_47b18d505faa34baedf6",
+            "knowledge_point_id": "kp_a64c57f074b30c700be0",
             "title": "Game of Life",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_66886093371a74116826",
+            "knowledge_point_id": "kp_f2d1060501c99038d414",
             "title": "Happy Number",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7c5c947c1880f19d632e",
+            "knowledge_point_id": "kp_ca4185f6a4530d1d1c7c",
             "title": "Valid Parentheses",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_2b5d1cf27aaf3732fc13",
+            "knowledge_point_id": "kp_31719fb8059bd74d04d7",
             "title": "Merge Two Sorted Lists",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1f904181b574a127d8a3",
+            "knowledge_point_id": "kp_0c96bb4204e4be60b13b",
             "title": "Partition List",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_5e6b4c19b0a093f3f7e3",
+            "knowledge_point_id": "kp_47dc39caafab98d7cf5f",
             "title": "Construct Binary Tree from Inorder and Postorder Traversal",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_2f76e3a77f53a1f62311",
+            "knowledge_point_id": "kp_2acba68b5df079eeb685",
             "title": "Count Complete Tree Nodes",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_732f0ac4cf5211fc1640",
+            "knowledge_point_id": "kp_f7576647507f19d860d5",
             "title": "Kth Smallest Element in a BST",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_655d12e04b70275bf008",
+            "knowledge_point_id": "kp_0ad6b556221e6ed7b848",
             "title": "Course Schedule II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b1b444086107e6ef65b5",
+            "knowledge_point_id": "kp_067ea7ef5ed2ba453632",
             "title": "Letter Combinations of a Phone Number",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_66cbc20f2e568b5bfaa9",
+            "knowledge_point_id": "kp_9146ee55a954aca098d7",
             "title": "Convert Sorted Array to Binary Search Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_702ad66519e9053b4496",
+            "knowledge_point_id": "kp_bf6a6a949bd8388781e0",
             "title": "Search a 2D Matrix",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_8d7d4f828ffbc7e8cf87",
+            "knowledge_point_id": "kp_eac8517c33863617139b",
             "title": "IPO",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_9b0608f7d496349fda88",
+            "knowledge_point_id": "kp_38c81cf6125afffbb7e6",
             "title": "Single Number II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_6c499e8a6ff1224039a2",
+            "knowledge_point_id": "kp_e261937efa32a5a8a5fa",
             "title": "Max Points on a Line",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b88563241bd904d34a31",
+            "knowledge_point_id": "kp_cb1b6720b0f657acd375",
             "title": "Minimum Path Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7360be093a0294645fc8",
+            "knowledge_point_id": "kp_955b0614e40ec19f2928",
             "title": "Maximal Square",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
@@ -814,127 +818,127 @@
         "projected_review_task_minutes": 106,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_cafc5282400eed11fc52",
+            "knowledge_point_id": "kp_ee1f00af7d916c4bf746",
             "title": "Remove Duplicates from Sorted Array II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7a259b665f79987c9ba6",
+            "knowledge_point_id": "kp_77d4f0e43c7daab84c8c",
             "title": "H-Index",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1bffd9bfc4689df04c04",
+            "knowledge_point_id": "kp_295f8cb6cbfffa8c57a9",
             "title": "Integer to Roman",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1551f5c2aaec84139b47",
+            "knowledge_point_id": "kp_3e6b9ed8d5fbc7c16c41",
             "title": "Valid Palindrome",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_d813811c420ccb186c59",
+            "knowledge_point_id": "kp_f250291b1de4410e8b2f",
             "title": "Substring with Concatenation of All Words",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_0c4e74172229b1c1827a",
+            "knowledge_point_id": "kp_47576abbeab23629743a",
             "title": "Ransom Note",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1421ec8f11b27eec2c1d",
+            "knowledge_point_id": "kp_8b79134220ae086759b6",
             "title": "Contains Duplicate II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_24e8d9912a42cda337b5",
+            "knowledge_point_id": "kp_64e6c255b4432193aecb",
             "title": "Simplify Path",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e4508155ff56f9e1a626",
+            "knowledge_point_id": "kp_ef9d8b910822d13e45f9",
             "title": "Copy List with Random Pointer",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7de4a4fff7ca8b130122",
+            "knowledge_point_id": "kp_3274ec2ad62aca1d522c",
             "title": "LRU Cache",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_317042a396c640890e52",
+            "knowledge_point_id": "kp_a74a723dbbcfd5a99c0d",
             "title": "Populating Next Right Pointers in Each Node II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1339d28e1874a4a4f71a",
+            "knowledge_point_id": "kp_eae86fc030a242088590",
             "title": "Lowest Common Ancestor of a Binary Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_41ff6d73e24d15fd3540",
+            "knowledge_point_id": "kp_8202c56c60ee6c43e82c",
             "title": "Validate Binary Search Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ddb5eab1a22c015f0fb2",
+            "knowledge_point_id": "kp_4a230182a3c5c3866dbd",
             "title": "Snakes and Ladders",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_3f6d0a9aa223ee3bf3f8",
+            "knowledge_point_id": "kp_92f902d9c78505a31f15",
             "title": "Combinations",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1bee82444ea95b6ff46a",
+            "knowledge_point_id": "kp_dccf1ac1fbf139ff8d9d",
             "title": "Sort List",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_07ece4c6d9da98cf2ec4",
+            "knowledge_point_id": "kp_1de7d47f977cae33a16f",
             "title": "Find Peak Element",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_624b17165c1fbe17f875",
+            "knowledge_point_id": "kp_cea01a84652db3817e2d",
             "title": "Find K Pairs with Smallest Sums",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_724bb03d44c389028979",
+            "knowledge_point_id": "kp_7156eb24d73da82316aa",
             "title": "Bitwise AND of Numbers Range",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_26c4af0cd98bd1b3627f",
+            "knowledge_point_id": "kp_fd5816fe962c67524dcd",
             "title": "Climbing Stairs",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_d48b08371a4663f9f1b9",
+            "knowledge_point_id": "kp_127a45948517e5447498",
             "title": "Unique Paths II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
@@ -957,127 +961,127 @@
         "projected_review_task_minutes": 107,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_ccdb3be87b4762520db4",
+            "knowledge_point_id": "kp_87f97c1a5d690db004a1",
             "title": "Majority Element",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4639436247b84b1ac62c",
+            "knowledge_point_id": "kp_7d7b2d97e83e443b7f1c",
             "title": "Insert Delete GetRandom O(1)",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ffca5d9ebb25845f5b43",
+            "knowledge_point_id": "kp_eaf7b7318a2ba163e1e8",
             "title": "Length of Last Word",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_fdb9e8cdedf4f13c49e7",
+            "knowledge_point_id": "kp_c0c7f6f535f900259b17",
             "title": "Is Subsequence",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_a63f42bb0a8e65afa6ea",
+            "knowledge_point_id": "kp_d61523f553e80cd95aea",
             "title": "Minimum Window Substring",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_f1b9f9fe49d3805f787d",
+            "knowledge_point_id": "kp_1ce0b77b442754533619",
             "title": "Isomorphic Strings",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_a1468c481716447226bf",
+            "knowledge_point_id": "kp_bcba5f870d86c90f650b",
             "title": "Longest Consecutive Sequence",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_01c6737dbbaa09b44e5d",
+            "knowledge_point_id": "kp_97c51f2713f70582fb25",
             "title": "Min Stack",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_f3f6b23fc2395f4b082b",
+            "knowledge_point_id": "kp_e4f0ac643d678afc963b",
             "title": "Reverse Linked List II",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ff8313762f39f8a9a5f6",
+            "knowledge_point_id": "kp_576aa123b0406ea53732",
             "title": "Maximum Depth of Binary Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c06ab23b6eebf893d200",
+            "knowledge_point_id": "kp_a99d7047e96f0c7e8826",
             "title": "Flatten Binary Tree to Linked List",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_f55c2f21d3297c4745be",
+            "knowledge_point_id": "kp_7e5a5a773d5c586f0400",
             "title": "Binary Tree Right Side View",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1d91132c4c6094ca3cca",
+            "knowledge_point_id": "kp_490e9c6132070911b850",
             "title": "Number of Islands",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_5961ff129b555c3b7cad",
+            "knowledge_point_id": "kp_c524b059ece71ef012aa",
             "title": "Minimum Genetic Mutation",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e105a6b31a198d40f0a0",
+            "knowledge_point_id": "kp_5e8cf3d395b60c779c7d",
             "title": "Permutations",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_11f52b7f7b923667fecd",
+            "knowledge_point_id": "kp_da778952f860d0af73fc",
             "title": "Construct Quad Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_27d2df8de2e8c8a3bd0f",
+            "knowledge_point_id": "kp_2b762f27bf07c8d676f1",
             "title": "Search in Rotated Sorted Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_426c7dd2078dc51083df",
+            "knowledge_point_id": "kp_aec2ca6a3aa724b5f4f5",
             "title": "Find Median from Data Stream",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c77fd9209ad6f26fd9fd",
+            "knowledge_point_id": "kp_4c76a0bfdd515239f487",
             "title": "Palindrome Number",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_fd20ba1c8de57a532b88",
+            "knowledge_point_id": "kp_d9c222dda3f1b6ad7f6a",
             "title": "House Robber",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_46a042e23efe152285fa",
+            "knowledge_point_id": "kp_91821c5e13d9c09a0482",
             "title": "Longest Palindromic Substring",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
@@ -1100,127 +1104,127 @@
         "projected_review_task_minutes": 108,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_46725bc47d17470709f9",
+            "knowledge_point_id": "kp_ff29f69cd24790995ca3",
             "title": "Rotate Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e82fd019431682a7582a",
+            "knowledge_point_id": "kp_3d16747f9dcefe9a1c71",
             "title": "Product of Array Except Self",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c0596d35e8bf2b45cb91",
+            "knowledge_point_id": "kp_73826d6b1b1a4d8e60cf",
             "title": "Longest Common Prefix",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c3548a11e85383d9a2c9",
+            "knowledge_point_id": "kp_7709ea9a55932da7e7fc",
             "title": "Two Sum II - Input Array Is Sorted",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_753d4dbff0cfd0cc53dc",
+            "knowledge_point_id": "kp_7a2b9aa5944cf4d589b6",
             "title": "Valid Sudoku",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_96d762dd5d7cd66d6c1c",
+            "knowledge_point_id": "kp_6d98f03e6cd676c1b221",
             "title": "Word Pattern",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_58ab3678e0ba4a8de935",
+            "knowledge_point_id": "kp_9ccb9cde145899427d3d",
             "title": "Summary Ranges",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_144ab25cd1a0fc210d29",
+            "knowledge_point_id": "kp_742e75b8b17510c9aa71",
             "title": "Evaluate Reverse Polish Notation",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_727afb97eef66a3c0b45",
+            "knowledge_point_id": "kp_a11ede7b92508b51db37",
             "title": "Reverse Nodes in k-Group",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b2b40f84d423a993e3f0",
+            "knowledge_point_id": "kp_07faec2e3276e34e23bf",
             "title": "Same Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_47832dbdcd0380e74ee6",
+            "knowledge_point_id": "kp_7702f5efaac4cbf816a6",
             "title": "Path Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_1eb749b96b983cd983a6",
+            "knowledge_point_id": "kp_9105575605b2cb7b57e6",
             "title": "Average of Levels in Binary Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4bc84bfc332262829323",
+            "knowledge_point_id": "kp_1063b347ee60d2fc55d8",
             "title": "Surrounded Regions",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_819952c070f37db2d09c",
+            "knowledge_point_id": "kp_189a0306944c1a484134",
             "title": "Word Ladder",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_61ccdf704e281709eabd",
+            "knowledge_point_id": "kp_4a99db184c343296504c",
             "title": "Combination Sum",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_98d6968088c20297e525",
+            "knowledge_point_id": "kp_7b2c58d0a7c79eb8dc10",
             "title": "Merge k Sorted Lists",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_aa634041d6c46fc0e606",
+            "knowledge_point_id": "kp_8b3e1f3708d9b0a12f26",
             "title": "Find First and Last Position of Element in Sorted Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_0202457096474d27bcd1",
+            "knowledge_point_id": "kp_30b1558634e598dd656c",
             "title": "Add Binary",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_6c9edbfa0d44c74a58f0",
+            "knowledge_point_id": "kp_6b23393a5f535afe4982",
             "title": "Plus One",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b6ae28f39dd661428ce2",
+            "knowledge_point_id": "kp_46f8efe19978fc0797d4",
             "title": "Word Break",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_967c96f99393ecf63167",
+            "knowledge_point_id": "kp_450c29b8b959519f0f72",
             "title": "Interleaving String",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
@@ -1243,127 +1247,127 @@
         "projected_review_task_minutes": 107,
         "projected_review_items": [
           {
-            "knowledge_point_id": "kp_8bac8ced6d5e0ef10efc",
+            "knowledge_point_id": "kp_795cc65160f3a719bfb9",
             "title": "Best Time to Buy and Sell Stock",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b2811355331504267b28",
+            "knowledge_point_id": "kp_38ad936a95b00aa22f5b",
             "title": "Gas Station",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_c8de8db544912e261cc0",
+            "knowledge_point_id": "kp_975b8f8578e7b681f5c5",
             "title": "Reverse Words in a String",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_cb81b66210346d0cd7c5",
+            "knowledge_point_id": "kp_f5f941a48281194f7dbf",
             "title": "Container With Most Water",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_ba9d9d5420b49fc02750",
+            "knowledge_point_id": "kp_8c73eac0c2e1cd8e228c",
             "title": "Spiral Matrix",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_59f4f227ed367b6d9dbd",
+            "knowledge_point_id": "kp_9adabf49e227caad7cca",
             "title": "Valid Anagram",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_470af16ce03513e537fb",
+            "knowledge_point_id": "kp_e7cc42680eefd5eee1b3",
             "title": "Merge Intervals",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b5c38e7b96feb2ed1f6d",
+            "knowledge_point_id": "kp_f7c993f29b6f971f5fda",
             "title": "Basic Calculator",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_64ad9283686d17b56335",
+            "knowledge_point_id": "kp_6b023162b2005f8b87fd",
             "title": "Remove Nth Node From End of List",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7933604bf55007ed26a0",
+            "knowledge_point_id": "kp_6081acda307dc5e69480",
             "title": "Invert Binary Tree",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e622acb5c80564857cd4",
+            "knowledge_point_id": "kp_6c81ec5e0875bbc81004",
             "title": "Sum Root to Leaf Numbers",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_b958faead59816d77ee5",
+            "knowledge_point_id": "kp_f237e84a48400185138e",
             "title": "Binary Tree Level Order Traversal",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_47e52d30fb26f41148bc",
+            "knowledge_point_id": "kp_4b34aecf86d9c5f57e9c",
             "title": "Clone Graph",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_360236a1f63584300232",
+            "knowledge_point_id": "kp_65f234de875cb660a5f3",
             "title": "Implement Trie (Prefix Tree)",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7b2fc1908f1e560bbb64",
+            "knowledge_point_id": "kp_eacde213a105499a7577",
             "title": "N-Queens II",
             "projected_review_task_minutes": 6,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_e713c5b0cb1dbfe8e2dc",
+            "knowledge_point_id": "kp_9b9021d378904417b228",
             "title": "Maximum Subarray",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_7044e4943d444ccc4a9d",
+            "knowledge_point_id": "kp_339496a4830e63856b1b",
             "title": "Find Minimum in Rotated Sorted Array",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_850414c6fd804d35212d",
+            "knowledge_point_id": "kp_d0a338857b7fd028a3e8",
             "title": "Reverse Bits",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_4ac7a544552eb8584930",
+            "knowledge_point_id": "kp_9726dc5593d749c56612",
             "title": "Factorial Trailing Zeroes",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_69b1adadb6c31927d682",
+            "knowledge_point_id": "kp_a2d6062c0b4590a9f502",
             "title": "Coin Change",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
           },
           {
-            "knowledge_point_id": "kp_33f07b93d439ef65f041",
+            "knowledge_point_id": "kp_feaf78665ad807ac85c1",
             "title": "Edit Distance",
             "projected_review_task_minutes": 5,
             "status": "awaiting_initial_mastery"
@@ -1380,36 +1384,36 @@
     ]
   },
   "teacher": {
-    "session_id": "active_session_d5ff96e5a4a64921a46a",
+    "session_id": "active_session_8e231c9aa850429b8d60",
     "autonomy": {
       "mode": "teacher_led_until_learner_input",
       "awaiting_learner": true,
-      "reason": "learner_evidence_required"
+      "reason": "learner_practice_required"
     },
     "today_plan": {
       "date": "2026-07-27",
       "task_count": 76,
       "knowledge_point_count": 19,
       "knowledge_point_ids": [
-        "kp_14ff6c4e6f79df539e39",
-        "kp_c5e46603ce433e533611",
-        "kp_59e2406f39631c08e2c2",
-        "kp_cafc5282400eed11fc52",
-        "kp_ccdb3be87b4762520db4",
-        "kp_46725bc47d17470709f9",
-        "kp_8bac8ced6d5e0ef10efc",
-        "kp_c83f2ffd233237388610",
-        "kp_c9ff0ea1c436ff59e706",
-        "kp_4eed1019d50e194b8bbd",
-        "kp_7a259b665f79987c9ba6",
-        "kp_4639436247b84b1ac62c",
-        "kp_e82fd019431682a7582a",
-        "kp_b2811355331504267b28",
-        "kp_ea8b4460aa5e940dd8f7",
-        "kp_30aa340c5396d8520212",
-        "kp_16f675f2e568b7369a15",
-        "kp_1bffd9bfc4689df04c04",
-        "kp_ffca5d9ebb25845f5b43"
+        "kp_ad623564e764e05e8716",
+        "kp_48c5e9ac6fa735b5175f",
+        "kp_7181b6dc60639e7e1899",
+        "kp_ee1f00af7d916c4bf746",
+        "kp_87f97c1a5d690db004a1",
+        "kp_ff29f69cd24790995ca3",
+        "kp_795cc65160f3a719bfb9",
+        "kp_4f6664acd1225e465157",
+        "kp_ad336aff29e5a9bf8b9e",
+        "kp_11c9f6bc30772eff4cab",
+        "kp_77d4f0e43c7daab84c8c",
+        "kp_7d7b2d97e83e443b7f1c",
+        "kp_3d16747f9dcefe9a1c71",
+        "kp_38ad936a95b00aa22f5b",
+        "kp_35c39180c7cfb2338f38",
+        "kp_56dab6096f1cbed455e7",
+        "kp_7abac720570df3b12514",
+        "kp_295f8cb6cbfffa8c57a9",
+        "kp_eaf7b7318a2ba163e1e8"
       ],
       "task_minutes": 606,
       "teaching_order": [
@@ -1421,544 +1425,554 @@
       ],
       "tasks": [
         {
-          "id": "active_task_ac03ef938ff241848179",
-          "knowledge_point_id": "kp_14ff6c4e6f79df539e39",
+          "id": "active_task_c4f73dc81d7b4b59814c",
+          "knowledge_point_id": "kp_ad623564e764e05e8716",
           "title": "Merge Sorted Array · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_ebb37c12480546c4915a",
-          "knowledge_point_id": "kp_14ff6c4e6f79df539e39",
+          "id": "active_task_7bb0fbea8203468ab798",
+          "knowledge_point_id": "kp_ad623564e764e05e8716",
           "title": "Merge Sorted Array · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_c624e2f0a16c4e1a8f00",
-          "knowledge_point_id": "kp_14ff6c4e6f79df539e39",
+          "id": "active_task_edd40fe2fb00420d8f30",
+          "knowledge_point_id": "kp_ad623564e764e05e8716",
           "title": "Merge Sorted Array · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_27cad4d5f51446f1afa7",
-          "knowledge_point_id": "kp_14ff6c4e6f79df539e39",
+          "id": "active_task_914fa0df227344cc9b8b",
+          "knowledge_point_id": "kp_ad623564e764e05e8716",
           "title": "Merge Sorted Array · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_e96eb9dcc100457aa7b4",
-          "knowledge_point_id": "kp_c5e46603ce433e533611",
+          "id": "active_task_1660a02c19a246f18468",
+          "knowledge_point_id": "kp_48c5e9ac6fa735b5175f",
           "title": "Remove Element · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_731b30c4ac484886ba5e",
-          "knowledge_point_id": "kp_c5e46603ce433e533611",
+          "id": "active_task_32cc51065c1141f19447",
+          "knowledge_point_id": "kp_48c5e9ac6fa735b5175f",
           "title": "Remove Element · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_16fb38d7f0f94f2cb888",
-          "knowledge_point_id": "kp_c5e46603ce433e533611",
+          "id": "active_task_94c86049854d404b8edf",
+          "knowledge_point_id": "kp_48c5e9ac6fa735b5175f",
           "title": "Remove Element · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_d5c4a7123c3d42caba5e",
-          "knowledge_point_id": "kp_c5e46603ce433e533611",
+          "id": "active_task_6158b82474284fc1b442",
+          "knowledge_point_id": "kp_48c5e9ac6fa735b5175f",
           "title": "Remove Element · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_adb144b2c0014f33b43a",
-          "knowledge_point_id": "kp_59e2406f39631c08e2c2",
+          "id": "active_task_0d9fbb6c07fd4c798b6b",
+          "knowledge_point_id": "kp_7181b6dc60639e7e1899",
           "title": "Remove Duplicates from Sorted Array · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_ec9ea449b5064e2da66c",
-          "knowledge_point_id": "kp_59e2406f39631c08e2c2",
+          "id": "active_task_ca625a040e84418fbc73",
+          "knowledge_point_id": "kp_7181b6dc60639e7e1899",
           "title": "Remove Duplicates from Sorted Array · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_ec7a6cb1b613456e8e10",
-          "knowledge_point_id": "kp_59e2406f39631c08e2c2",
+          "id": "active_task_496758926e244c2ea0a6",
+          "knowledge_point_id": "kp_7181b6dc60639e7e1899",
           "title": "Remove Duplicates from Sorted Array · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_faa4194dc12b46e3ab90",
-          "knowledge_point_id": "kp_59e2406f39631c08e2c2",
+          "id": "active_task_b509c039636b47beb016",
+          "knowledge_point_id": "kp_7181b6dc60639e7e1899",
           "title": "Remove Duplicates from Sorted Array · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_c946d8d1c2a247e29b3a",
-          "knowledge_point_id": "kp_cafc5282400eed11fc52",
+          "id": "active_task_0d378df48a514bb69f43",
+          "knowledge_point_id": "kp_ee1f00af7d916c4bf746",
           "title": "Remove Duplicates from Sorted Array II · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_80dc4c084cfe4c9ca7bd",
-          "knowledge_point_id": "kp_cafc5282400eed11fc52",
+          "id": "active_task_ee604855be3c40a6aee3",
+          "knowledge_point_id": "kp_ee1f00af7d916c4bf746",
           "title": "Remove Duplicates from Sorted Array II · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_2164dd1cc27646fd9673",
-          "knowledge_point_id": "kp_cafc5282400eed11fc52",
+          "id": "active_task_4be0f54cfe2b4649b8f6",
+          "knowledge_point_id": "kp_ee1f00af7d916c4bf746",
           "title": "Remove Duplicates from Sorted Array II · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_8775d965501d4ac0bcc0",
-          "knowledge_point_id": "kp_cafc5282400eed11fc52",
+          "id": "active_task_f72270d12636420f820f",
+          "knowledge_point_id": "kp_ee1f00af7d916c4bf746",
           "title": "Remove Duplicates from Sorted Array II · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_2d44ebb86ff343fc98d6",
-          "knowledge_point_id": "kp_ccdb3be87b4762520db4",
+          "id": "active_task_f2ee5e0baf7746da99a1",
+          "knowledge_point_id": "kp_87f97c1a5d690db004a1",
           "title": "Majority Element · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_72b9888a89774027860d",
-          "knowledge_point_id": "kp_ccdb3be87b4762520db4",
+          "id": "active_task_47ec64704067433f8b80",
+          "knowledge_point_id": "kp_87f97c1a5d690db004a1",
           "title": "Majority Element · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_731a1905c4234f04a8ef",
-          "knowledge_point_id": "kp_ccdb3be87b4762520db4",
+          "id": "active_task_75ef0eae00754c0191f7",
+          "knowledge_point_id": "kp_87f97c1a5d690db004a1",
           "title": "Majority Element · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_ecbed6bce29b4b139609",
-          "knowledge_point_id": "kp_ccdb3be87b4762520db4",
+          "id": "active_task_758fb45b529b452f9ca5",
+          "knowledge_point_id": "kp_87f97c1a5d690db004a1",
           "title": "Majority Element · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_d64ab4dae67a4ade9911",
-          "knowledge_point_id": "kp_46725bc47d17470709f9",
+          "id": "active_task_948292c166c84ced8382",
+          "knowledge_point_id": "kp_ff29f69cd24790995ca3",
           "title": "Rotate Array · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_17d5b1934ae64cb2a7d2",
-          "knowledge_point_id": "kp_46725bc47d17470709f9",
+          "id": "active_task_a1f7001663e5420285fd",
+          "knowledge_point_id": "kp_ff29f69cd24790995ca3",
           "title": "Rotate Array · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_1d64d880efca40628869",
-          "knowledge_point_id": "kp_46725bc47d17470709f9",
+          "id": "active_task_627026a2d3e34d148d36",
+          "knowledge_point_id": "kp_ff29f69cd24790995ca3",
           "title": "Rotate Array · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_6d929c8b50204503a291",
-          "knowledge_point_id": "kp_46725bc47d17470709f9",
+          "id": "active_task_04de9bd7c3b94ea1b1e8",
+          "knowledge_point_id": "kp_ff29f69cd24790995ca3",
           "title": "Rotate Array · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_e4db6735ebac4163a44f",
-          "knowledge_point_id": "kp_8bac8ced6d5e0ef10efc",
+          "id": "active_task_928bf0a50c5f4939811c",
+          "knowledge_point_id": "kp_795cc65160f3a719bfb9",
           "title": "Best Time to Buy and Sell Stock · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_29c40b029d654c95a001",
-          "knowledge_point_id": "kp_8bac8ced6d5e0ef10efc",
+          "id": "active_task_65e0509f78254769a703",
+          "knowledge_point_id": "kp_795cc65160f3a719bfb9",
           "title": "Best Time to Buy and Sell Stock · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_f8ed1b3b84a045198638",
-          "knowledge_point_id": "kp_8bac8ced6d5e0ef10efc",
+          "id": "active_task_570d6711fe6d4b63a1df",
+          "knowledge_point_id": "kp_795cc65160f3a719bfb9",
           "title": "Best Time to Buy and Sell Stock · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_3575bfce044b4a25b22c",
-          "knowledge_point_id": "kp_8bac8ced6d5e0ef10efc",
+          "id": "active_task_404b374e46ab49b5ae09",
+          "knowledge_point_id": "kp_795cc65160f3a719bfb9",
           "title": "Best Time to Buy and Sell Stock · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_a553e409f35e420dab3c",
-          "knowledge_point_id": "kp_c83f2ffd233237388610",
+          "id": "active_task_dda5b7abec6640dab039",
+          "knowledge_point_id": "kp_4f6664acd1225e465157",
           "title": "Best Time to Buy and Sell Stock II · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_70fea4246b2744fd8093",
-          "knowledge_point_id": "kp_c83f2ffd233237388610",
+          "id": "active_task_592abc2372fe47c8ad53",
+          "knowledge_point_id": "kp_4f6664acd1225e465157",
           "title": "Best Time to Buy and Sell Stock II · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_4af317f6accb49c2b8c6",
-          "knowledge_point_id": "kp_c83f2ffd233237388610",
+          "id": "active_task_51781dcb8a7046f39102",
+          "knowledge_point_id": "kp_4f6664acd1225e465157",
           "title": "Best Time to Buy and Sell Stock II · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_14ae165e55874051ac65",
-          "knowledge_point_id": "kp_c83f2ffd233237388610",
+          "id": "active_task_26db5014c11b4c77bd15",
+          "knowledge_point_id": "kp_4f6664acd1225e465157",
           "title": "Best Time to Buy and Sell Stock II · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_371cace897474f22bc6f",
-          "knowledge_point_id": "kp_c9ff0ea1c436ff59e706",
+          "id": "active_task_8556ff336dfc45b7a481",
+          "knowledge_point_id": "kp_ad336aff29e5a9bf8b9e",
           "title": "Jump Game · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_9aadf6a8b2f645d382fb",
-          "knowledge_point_id": "kp_c9ff0ea1c436ff59e706",
+          "id": "active_task_14cb318ad08b41dca56e",
+          "knowledge_point_id": "kp_ad336aff29e5a9bf8b9e",
           "title": "Jump Game · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_1e1a87339630483597b1",
-          "knowledge_point_id": "kp_c9ff0ea1c436ff59e706",
+          "id": "active_task_75b5d471aa5745e18239",
+          "knowledge_point_id": "kp_ad336aff29e5a9bf8b9e",
           "title": "Jump Game · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_89179af0aa7b4d148f6b",
-          "knowledge_point_id": "kp_c9ff0ea1c436ff59e706",
+          "id": "active_task_e06f46f55f8f40619e10",
+          "knowledge_point_id": "kp_ad336aff29e5a9bf8b9e",
           "title": "Jump Game · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_d2615e5c8b21457ca582",
-          "knowledge_point_id": "kp_4eed1019d50e194b8bbd",
+          "id": "active_task_c60663c8f9bc4cba9520",
+          "knowledge_point_id": "kp_11c9f6bc30772eff4cab",
           "title": "Jump Game II · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_83aa30ed3411475a8c44",
-          "knowledge_point_id": "kp_4eed1019d50e194b8bbd",
+          "id": "active_task_7e394e90c5834cb5a1b8",
+          "knowledge_point_id": "kp_11c9f6bc30772eff4cab",
           "title": "Jump Game II · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_ca90ff1281ef4551afee",
-          "knowledge_point_id": "kp_4eed1019d50e194b8bbd",
+          "id": "active_task_1f4afc2fddd342b68ad0",
+          "knowledge_point_id": "kp_11c9f6bc30772eff4cab",
           "title": "Jump Game II · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_aab90a62b43a425c9fe9",
-          "knowledge_point_id": "kp_4eed1019d50e194b8bbd",
+          "id": "active_task_f8912df4f17542268604",
+          "knowledge_point_id": "kp_11c9f6bc30772eff4cab",
           "title": "Jump Game II · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_9cfac63111a44d12b59e",
-          "knowledge_point_id": "kp_7a259b665f79987c9ba6",
+          "id": "active_task_e2a447a213984a848f6b",
+          "knowledge_point_id": "kp_77d4f0e43c7daab84c8c",
           "title": "H-Index · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_4789ea8763884338b3eb",
-          "knowledge_point_id": "kp_7a259b665f79987c9ba6",
+          "id": "active_task_840003d570064a3c878a",
+          "knowledge_point_id": "kp_77d4f0e43c7daab84c8c",
           "title": "H-Index · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_753ee48015e64f849105",
-          "knowledge_point_id": "kp_7a259b665f79987c9ba6",
+          "id": "active_task_62b162218c174c17b4f3",
+          "knowledge_point_id": "kp_77d4f0e43c7daab84c8c",
           "title": "H-Index · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_84d0309a7fe744b2bc29",
-          "knowledge_point_id": "kp_7a259b665f79987c9ba6",
+          "id": "active_task_8dbcf8462e464f3ba7dc",
+          "knowledge_point_id": "kp_77d4f0e43c7daab84c8c",
           "title": "H-Index · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_9b6850d9ad8f462ba5d7",
-          "knowledge_point_id": "kp_4639436247b84b1ac62c",
+          "id": "active_task_2569b9f0eb0c421389ec",
+          "knowledge_point_id": "kp_7d7b2d97e83e443b7f1c",
           "title": "Insert Delete GetRandom O(1) · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_fd9a53f641684223a061",
-          "knowledge_point_id": "kp_4639436247b84b1ac62c",
+          "id": "active_task_f755711b0f41482f8c25",
+          "knowledge_point_id": "kp_7d7b2d97e83e443b7f1c",
           "title": "Insert Delete GetRandom O(1) · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_8c940d945b6b4235b6c0",
-          "knowledge_point_id": "kp_4639436247b84b1ac62c",
+          "id": "active_task_75fc50f73dc047d6b74d",
+          "knowledge_point_id": "kp_7d7b2d97e83e443b7f1c",
           "title": "Insert Delete GetRandom O(1) · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_5a12bc6649eb44b3ab4d",
-          "knowledge_point_id": "kp_4639436247b84b1ac62c",
+          "id": "active_task_34151caec48245c0b139",
+          "knowledge_point_id": "kp_7d7b2d97e83e443b7f1c",
           "title": "Insert Delete GetRandom O(1) · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_9b627ad2b3e748ed9e06",
-          "knowledge_point_id": "kp_e82fd019431682a7582a",
+          "id": "active_task_1c66ceece0dd4590a524",
+          "knowledge_point_id": "kp_3d16747f9dcefe9a1c71",
           "title": "Product of Array Except Self · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_d6dec07cc9014d7ea97f",
-          "knowledge_point_id": "kp_e82fd019431682a7582a",
+          "id": "active_task_231f287915bf475b8f49",
+          "knowledge_point_id": "kp_3d16747f9dcefe9a1c71",
           "title": "Product of Array Except Self · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_9dc3bc67ae4e433580f0",
-          "knowledge_point_id": "kp_e82fd019431682a7582a",
+          "id": "active_task_3616c93552d840089228",
+          "knowledge_point_id": "kp_3d16747f9dcefe9a1c71",
           "title": "Product of Array Except Self · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_eacf6d0050554b35b367",
-          "knowledge_point_id": "kp_e82fd019431682a7582a",
+          "id": "active_task_82194e3226a941a1b813",
+          "knowledge_point_id": "kp_3d16747f9dcefe9a1c71",
           "title": "Product of Array Except Self · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_e06c446c237348aba913",
-          "knowledge_point_id": "kp_b2811355331504267b28",
+          "id": "active_task_1c3008c0e5ee43a8adac",
+          "knowledge_point_id": "kp_38ad936a95b00aa22f5b",
           "title": "Gas Station · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_775d746fde7e424089e4",
-          "knowledge_point_id": "kp_b2811355331504267b28",
+          "id": "active_task_31f7a8a5a0844530b54d",
+          "knowledge_point_id": "kp_38ad936a95b00aa22f5b",
           "title": "Gas Station · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_a78a97fcc25e4d8da251",
-          "knowledge_point_id": "kp_b2811355331504267b28",
+          "id": "active_task_b98f57dd3d074d4da674",
+          "knowledge_point_id": "kp_38ad936a95b00aa22f5b",
           "title": "Gas Station · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_9b29f54757ac45e3adfb",
-          "knowledge_point_id": "kp_b2811355331504267b28",
+          "id": "active_task_6d89f79aa8ae457e898d",
+          "knowledge_point_id": "kp_38ad936a95b00aa22f5b",
           "title": "Gas Station · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_44e8e9c5a3ea45bf9883",
-          "knowledge_point_id": "kp_ea8b4460aa5e940dd8f7",
+          "id": "active_task_16d58d3599a14d18ae44",
+          "knowledge_point_id": "kp_35c39180c7cfb2338f38",
           "title": "Candy · 理解",
           "estimated_task_minutes": 16,
           "status": "planned"
         },
         {
-          "id": "active_task_ac762b9973824205acb3",
-          "knowledge_point_id": "kp_ea8b4460aa5e940dd8f7",
+          "id": "active_task_d0bef9932225446cbc06",
+          "knowledge_point_id": "kp_35c39180c7cfb2338f38",
           "title": "Candy · 回忆",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_e57798ed11444bcbadaf",
-          "knowledge_point_id": "kp_ea8b4460aa5e940dd8f7",
+          "id": "active_task_20a97f59434749d0af56",
+          "knowledge_point_id": "kp_35c39180c7cfb2338f38",
           "title": "Candy · 引导练习",
           "estimated_task_minutes": 12,
           "status": "planned"
         },
         {
-          "id": "active_task_a496827f0f8940468958",
-          "knowledge_point_id": "kp_ea8b4460aa5e940dd8f7",
+          "id": "active_task_8fb6e91cf81c4855a093",
+          "knowledge_point_id": "kp_35c39180c7cfb2338f38",
           "title": "Candy · 独立应用",
           "estimated_task_minutes": 13,
           "status": "planned"
         },
         {
-          "id": "active_task_491cf6b08c194fb29b58",
-          "knowledge_point_id": "kp_30aa340c5396d8520212",
+          "id": "active_task_3868ab3004b84fdfaf17",
+          "knowledge_point_id": "kp_56dab6096f1cbed455e7",
           "title": "Trapping Rain Water · 理解",
           "estimated_task_minutes": 16,
           "status": "planned"
         },
         {
-          "id": "active_task_6efdd06464ed4b379e98",
-          "knowledge_point_id": "kp_30aa340c5396d8520212",
+          "id": "active_task_f486e572374d4d3fa9bb",
+          "knowledge_point_id": "kp_56dab6096f1cbed455e7",
           "title": "Trapping Rain Water · 回忆",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_19bc10401d8444009a56",
-          "knowledge_point_id": "kp_30aa340c5396d8520212",
+          "id": "active_task_949c07e562684f56abfe",
+          "knowledge_point_id": "kp_56dab6096f1cbed455e7",
           "title": "Trapping Rain Water · 引导练习",
           "estimated_task_minutes": 12,
           "status": "planned"
         },
         {
-          "id": "active_task_7de47322ec624ba191c5",
-          "knowledge_point_id": "kp_30aa340c5396d8520212",
+          "id": "active_task_b1e7bb71701c481a830d",
+          "knowledge_point_id": "kp_56dab6096f1cbed455e7",
           "title": "Trapping Rain Water · 独立应用",
           "estimated_task_minutes": 13,
           "status": "planned"
         },
         {
-          "id": "active_task_62afae7593b945c2800d",
-          "knowledge_point_id": "kp_16f675f2e568b7369a15",
+          "id": "active_task_d948363427914f489cf8",
+          "knowledge_point_id": "kp_7abac720570df3b12514",
           "title": "Roman to Integer · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_b6edb6d3640140c6aff3",
-          "knowledge_point_id": "kp_16f675f2e568b7369a15",
+          "id": "active_task_6aec907ce9da4baa9e59",
+          "knowledge_point_id": "kp_7abac720570df3b12514",
           "title": "Roman to Integer · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_d380cfb71cbd4719872d",
-          "knowledge_point_id": "kp_16f675f2e568b7369a15",
+          "id": "active_task_00a147a1fdb041b3b0d0",
+          "knowledge_point_id": "kp_7abac720570df3b12514",
           "title": "Roman to Integer · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_e08e5413dcd24437aaaa",
-          "knowledge_point_id": "kp_16f675f2e568b7369a15",
+          "id": "active_task_2112babf14da4bb0b3a2",
+          "knowledge_point_id": "kp_7abac720570df3b12514",
           "title": "Roman to Integer · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_d2754fc3965a46a6a88e",
-          "knowledge_point_id": "kp_1bffd9bfc4689df04c04",
+          "id": "active_task_3c70d28688e84cc2bde1",
+          "knowledge_point_id": "kp_295f8cb6cbfffa8c57a9",
           "title": "Integer to Roman · 理解",
           "estimated_task_minutes": 11,
           "status": "planned"
         },
         {
-          "id": "active_task_3ee0ca7fb6ba49e5be04",
-          "knowledge_point_id": "kp_1bffd9bfc4689df04c04",
+          "id": "active_task_20c4a7f0fd4049f6857b",
+          "knowledge_point_id": "kp_295f8cb6cbfffa8c57a9",
           "title": "Integer to Roman · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_29beec4f57da41809f50",
-          "knowledge_point_id": "kp_1bffd9bfc4689df04c04",
+          "id": "active_task_c04c34b6461e4d97852f",
+          "knowledge_point_id": "kp_295f8cb6cbfffa8c57a9",
           "title": "Integer to Roman · 引导练习",
           "estimated_task_minutes": 8,
           "status": "planned"
         },
         {
-          "id": "active_task_84ab172ff2ef48baa60d",
-          "knowledge_point_id": "kp_1bffd9bfc4689df04c04",
+          "id": "active_task_8d687f4ec3b74ffca1f8",
+          "knowledge_point_id": "kp_295f8cb6cbfffa8c57a9",
           "title": "Integer to Roman · 独立应用",
           "estimated_task_minutes": 9,
           "status": "planned"
         },
         {
-          "id": "active_task_fe9a94320d674037bf5a",
-          "knowledge_point_id": "kp_ffca5d9ebb25845f5b43",
+          "id": "active_task_ffda248fdd8e464eb5c8",
+          "knowledge_point_id": "kp_eaf7b7318a2ba163e1e8",
           "title": "Length of Last Word · 理解",
           "estimated_task_minutes": 7,
           "status": "planned"
         },
         {
-          "id": "active_task_0712365f9de34384981c",
-          "knowledge_point_id": "kp_ffca5d9ebb25845f5b43",
+          "id": "active_task_b116ac424688455699a8",
+          "knowledge_point_id": "kp_eaf7b7318a2ba163e1e8",
           "title": "Length of Last Word · 回忆",
           "estimated_task_minutes": 5,
           "status": "planned"
         },
         {
-          "id": "active_task_f331a3b5fcb34009b440",
-          "knowledge_point_id": "kp_ffca5d9ebb25845f5b43",
+          "id": "active_task_e1f94939c5d240eab107",
+          "knowledge_point_id": "kp_eaf7b7318a2ba163e1e8",
           "title": "Length of Last Word · 引导练习",
           "estimated_task_minutes": 6,
           "status": "planned"
         },
         {
-          "id": "active_task_84692b64bb1e46a1bcfb",
-          "knowledge_point_id": "kp_ffca5d9ebb25845f5b43",
+          "id": "active_task_b1932e71e6ef4ab3985f",
+          "knowledge_point_id": "kp_eaf7b7318a2ba163e1e8",
           "title": "Length of Last Word · 独立应用",
           "estimated_task_minutes": 8,
           "status": "planned"
         }
       ]
     },
+    "formal_review_gate": {
+      "unlocked": false,
+      "incomplete_initial_task_count": 600,
+      "incomplete_initial_knowledge_point_count": 150,
+      "daily_consolidation_counts_as_formal_review": false,
+      "reason": "complete_first_pass_before_formal_review"
+    },
     "message_actions": [
       "daily_briefing",
       "explain",
-      "example",
-      "check_understanding"
+      "invite_questions",
+      "feedback",
+      "grounded_answer",
+      "feedback",
+      "guided_practice"
     ],
     "messages": [
       {
@@ -1972,13 +1986,28 @@
         "citation_count": 3
       },
       {
-        "action": "example",
-        "content": "我先替你把“Merge Sorted Array”拆成一个最小例子。先只抓住资料确认的核心：识别并应用“数组 / 字符串”中的 Merge Sorted Array 解题模式\n\n接下来我会主动检查你是否真的能复述关键关系，不需要你先想好问题。",
+        "action": "invite_questions",
+        "content": "“Merge Sorted Array”的核心已经讲完。先不要急着做题。\n\n你可以直接问：为什么要这样做、哪一步最难、能不能换个例子、边界条件是什么，或者把你卡住的原话贴出来。\n\n我会结合当前资料重新检索并回答；你确认没有疑问后，再说“开始练习”。",
         "citation_count": 3
       },
       {
-        "action": "check_understanding",
-        "content": "现在轮到一个很小的动作：请用自己的话说出“Merge Sorted Array”的核心思路，再说明你准备怎样满足验收条件：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现\n\n不用一次答得完美；答错后我会自动暂停主路线、降低解释层级再教一次。",
+        "action": "feedback",
+        "content": "为什么 Merge Sorted Array 要从数组末尾开始处理？",
+        "citation_count": 0
+      },
+      {
+        "action": "grounded_answer",
+        "content": "你问得很好。先把它和当前知识点连起来：识别并应用“数组 / 字符串”中的 Merge Sorted Array 解题模式\n\n资料中直接相关的依据是：## 001. Merge Sorted Array\r\n题单：面试经典 150 题\r\n来源：https://leetcode.cn/studyplan/top-interview-150/\r\n生成规则：仅保存公开题单元数据，不复制题目正文或题解。\r\n题号：88\r\n主题：数组 / 字符串\r\n知识点：识别并应用“数组 / 字符串”中的 Merge Sorted Array 解题模式。\r\n难度：简单\r\n验收：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。\r\n官方题目：https://leetcode.cn/problems/merge-sorted-array/\n\n如果这还没有解决你卡住的那一步，请继续追问；你确认清楚后再说“开始练习”，我不会机械跳到下一步。",
+        "citation_count": 3
+      },
+      {
+        "action": "feedback",
+        "content": "没有问题了，开始练习",
+        "citation_count": 0
+      },
+      {
+        "action": "guided_practice",
+        "content": "好，现在进入“Merge Sorted Array”的引导练习。\n\n先按这个核心开始：识别并应用“数组 / 字符串”中的 Merge Sorted Array 解题模式\n\n请你用自己的话说明思路，给出一个具体应用或关键步骤，并完成验收条件：能独立说明输入输出、核心不变量、时间与空间复杂度，写出通过边界测试的实现，并在延迟复习中无提示复现。遇到任何一步不会，可以立刻提问，我会暂停验收并继续答疑。",
         "citation_count": 3
       }
     ]
