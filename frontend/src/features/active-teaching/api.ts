@@ -10,6 +10,7 @@ export type ActiveSnapshot = {
 export type ActiveLearningTaskSummary = {
   workspace_id: string;
   title: string;
+  archived: boolean;
   status: "setting_up" | "planned" | "learning";
   material_count: number;
   knowledge_point_count: number;
@@ -40,9 +41,16 @@ export async function activeSnapshot(workspaceId: string): Promise<ActiveSnapsho
   return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/snapshot`);
 }
 
-export async function activeLearningTasks(): Promise<ActiveLearningTaskSummary[]> {
-  const payload = await activeRequest("/workspaces");
+export async function activeLearningTasks(includeArchived = false): Promise<ActiveLearningTaskSummary[]> {
+  const payload = await activeRequest(`/workspaces?include_archived=${includeArchived}`);
   return payload.items || [];
+}
+
+export async function setActiveLearningTaskArchived(workspaceId: string, archived: boolean) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
 }
 
 export async function uploadActiveMaterial(workspaceId: string, file: File) {

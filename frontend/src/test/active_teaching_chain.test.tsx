@@ -175,7 +175,7 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("当前任务 RAG：可用");
     expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("3 个可引用分块");
     expect(screen.getByText(/预留复习 12 分钟/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /创建一次/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /建立一次任务/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-edge-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-knowledge-map")).toHaveTextContent("资料内知识点");
@@ -287,6 +287,7 @@ describe("ActiveTeachingChainView", () => {
       items: [{
         workspace_id: "generic-active",
         title: "掌握任意上传资料",
+        archived: false,
         status: "learning",
         material_count: 1,
         knowledge_point_count: 1,
@@ -309,7 +310,7 @@ describe("ActiveTeachingChainView", () => {
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       const value = String(url);
       let payload: any = snapshot;
-      if (value === "/api/active-teaching/workspaces") payload = index;
+      if (value === "/api/active-teaching/workspaces?include_archived=false") payload = index;
       if (value.endsWith("/sessions/start") && init?.method === "POST") payload = snapshot.session;
       if (value.endsWith("/focus") && init?.method === "POST") payload = focused;
       return Promise.resolve({ ok: true, json: async () => payload });
@@ -325,6 +326,43 @@ describe("ActiveTeachingChainView", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ task_id: "task_1" }),
+        }),
+      ),
+    );
+  });
+
+  it("archives a learning task from the task rail without deleting it", async () => {
+    const index = {
+      items: [{
+        workspace_id: "generic-active",
+        title: "可整理的学习任务",
+        archived: false,
+        status: "planned",
+        material_count: 1,
+        knowledge_point_count: 1,
+        plan_id: "plan_1",
+        session_id: null,
+        task_count: 1,
+        completed_task_count: 0,
+        next_task: snapshot.plan.calendar[0].tasks[0],
+        updated_at: "2026-07-25T00:00:00Z",
+      }],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const value = String(url);
+      const payload = value.includes("/workspaces?") ? index : snapshot;
+      return Promise.resolve({ ok: true, json: async () => payload });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    fireEvent.click(await screen.findByTestId("active-task-archive-generic-active"));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/workspaces/generic-active",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ archived: true }),
         }),
       ),
     );

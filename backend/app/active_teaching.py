@@ -119,6 +119,11 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS active_workspace_settings (
+            workspace_id TEXT PRIMARY KEY,
+            archived INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS active_knowledge_points (
             id TEXT PRIMARY KEY,
             workspace_id TEXT NOT NULL,
@@ -4659,7 +4664,7 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
 
 
 @router.get("/workspaces")
-def list_learning_workspaces() -> dict[str, Any]:
+def list_learning_workspaces(include_archived: bool = False) -> dict[str, Any]:
     """Return the durable task index for the unified learning workspace."""
     with _connect() as connection:
         workspace_ids = [
@@ -4673,6 +4678,14 @@ def list_learning_workspaces() -> dict[str, Any]:
         ]
         items: list[dict[str, Any]] = []
         for workspace_id in workspace_ids:
+            settings_row = connection.execute(
+                """SELECT archived FROM active_workspace_settings
+                   WHERE workspace_id=?""",
+                (workspace_id,),
+            ).fetchone()
+            archived = bool(settings_row["archived"]) if settings_row else False
+            if archived and not include_archived:
+                continue
             receipt_row = connection.execute(
                 "SELECT payload,updated_at FROM active_receipts WHERE workspace_id=?",
                 (workspace_id,),
@@ -4697,6 +4710,11 @@ def list_learning_workspaces() -> dict[str, Any]:
                           COALESCE(SUM(CASE WHEN status='ready' THEN 1 ELSE 0 END),0)
                               AS ready_material_count
                    FROM active_materials WHERE workspace_id=?""",
+                (workspace_id,),
+            ).fetchone()
+            first_material = connection.execute(
+                """SELECT original_filename FROM active_materials
+                   WHERE workspace_id=? ORDER BY uploaded_at,id LIMIT 1""",
                 (workspace_id,),
             ).fetchone()
             point_count = int(
@@ -4741,9 +4759,15 @@ def list_learning_workspaces() -> dict[str, Any]:
             items.append(
                 {
                     "workspace_id": workspace_id,
+                    "archived": archived,
                     "title": str(
                         receipt.get("learning_goal")
-                        or (next_task["title"] if next_task else workspace_id)
+                        or (next_task["title"] if next_task else "")
+                        or (
+                            Path(first_material["original_filename"]).stem
+                            if first_material
+                            else workspace_id
+                        )
                     ),
                     "status": (
                         "learning"
@@ -4766,3 +4790,39 @@ def list_learning_workspaces() -> dict[str, Any]:
             )
         items.sort(key=lambda item: (item["updated_at"], item["workspace_id"]), reverse=True)
         return {"items": items}
+
+
+@router.patch("/workspaces/{workspace_id}")
+def update_learning_workspace(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Archive or restore a unified learning task without deleting its learning data."""
+    if "archived" not in payload or not isinstance(payload["archived"], bool):
+        _error(
+            "INVALID_WORKSPACE_UPDATE",
+            "archived 必须是布尔值",
+            422,
+        )
+    archived = bool(payload["archived"])
+    with _connect() as connection:
+        exists = connection.execute(
+            """SELECT 1 FROM active_materials WHERE workspace_id=?
+               UNION SELECT 1 FROM active_receipts WHERE workspace_id=?
+               UNION SELECT 1 FROM active_plans WHERE workspace_id=?
+               LIMIT 1""",
+            (workspace_id, workspace_id, workspace_id),
+        ).fetchone()
+        if not exists:
+            _error(
+                "LEARNING_WORKSPACE_NOT_FOUND",
+                "学习任务不存在",
+                404,
+            )
+        connection.execute(
+            """INSERT INTO active_workspace_settings(workspace_id,archived,updated_at)
+               VALUES(?,?,?)
+               ON CONFLICT(workspace_id) DO UPDATE SET
+                 archived=excluded.archived,
+                 updated_at=excluded.updated_at""",
+            (workspace_id, int(archived), _now()),
+        )
+        connection.commit()
+    return {"workspace_id": workspace_id, "archived": archived}

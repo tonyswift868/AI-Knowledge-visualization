@@ -3,6 +3,7 @@ import {
   activeLearningTasks,
   activeRequest,
   activeSnapshot,
+  setActiveLearningTaskArchived,
   type ActiveLearningTaskSummary,
   uploadActiveMaterial,
 } from "./api";
@@ -30,6 +31,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   });
   const [snapshot, setSnapshot] = useState<any>(null);
   const [learningTasks, setLearningTasks] = useState<ActiveLearningTaskSummary[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [creatingNewTask, setCreatingNewTask] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [goal, setGoal] = useState("完全掌握上传资料，并能用可验证的方式独立应用");
@@ -61,7 +63,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     const requestSequence = ++refreshSequence.current;
     const [next, taskItems] = await Promise.all([
       activeSnapshot(activeWorkspaceId),
-      activeLearningTasks(),
+      activeLearningTasks(showArchived),
     ]);
     let problemItems: any[] = [];
     try {
@@ -118,7 +120,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       // Private browsing may disable local storage; server state remains durable.
     }
     refresh().catch(() => setSnapshot(null));
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, showArchived]);
 
   const run = async (label: string, operation: () => Promise<any>) => {
     setBusy(label);
@@ -157,6 +159,9 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
   const latestTeacher = useMemo(
     () => [...(session?.messages || [])].reverse().find((item: any) => item.role === "teacher"),
     [session],
+  );
+  const activeTaskSummary = learningTasks.find(
+    (item) => item.workspace_id === activeWorkspaceId,
   );
 
   const receiptPayload = (materialIds?: string[]) => ({
@@ -254,6 +259,31 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
     setGoal("完全掌握上传资料，并能用可验证的方式独立应用");
     setCreatingNewTask(true);
     setActiveWorkspaceId(`learning-task-${suffix}`);
+  };
+
+  const toggleTaskArchive = async (item: ActiveLearningTaskSummary) => {
+    const archived = !item.archived;
+    setBusy(archived ? "归档学习任务" : "恢复学习任务");
+    setError("");
+    try {
+      await setActiveLearningTaskArchived(item.workspace_id, archived);
+      if (archived && item.workspace_id === activeWorkspaceId) {
+        const fallback = learningTasks.find(
+          (candidate) => candidate.workspace_id !== item.workspace_id && !candidate.archived,
+        );
+        if (fallback) {
+          setActiveWorkspaceId(fallback.workspace_id);
+        } else {
+          createNewTask();
+        }
+      } else {
+        await refresh();
+      }
+    } catch (reason: any) {
+      setError(reason?.message || "任务整理失败");
+    } finally {
+      setBusy("");
+    }
   };
 
   const enterCalendarTask = async (task: any) => {
@@ -396,7 +426,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       <header className="active-chain__hero">
         <div>
           <span className="active-chain__eyebrow">统一学习任务中心</span>
-          <h2>创建一次，之后从日历直接进入每天的学习</h2>
+          <h2>建立一次任务，之后每天点开就学</h2>
           <p>每个任务独立保存计划、知识地图、教师记忆和本地 RAG；切换任务不会串资料。</p>
         </div>
         <button data-testid="active-new-task" onClick={createNewTask}>＋ 新建学习任务</button>
@@ -408,8 +438,17 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
       <div className="active-task-hub" data-testid="active-task-hub">
         <aside className="active-task-hub__rail">
           <div className="active-task-hub__title">
-            <b>我的学习任务</b>
-            <span>{learningTasks.length} 个独立计划</span>
+            <div>
+              <b>我的学习任务</b>
+              <span>{learningTasks.filter((item) => !item.archived).length} 个进行中</span>
+            </div>
+            <button
+              className="active-task-hub__archive-toggle"
+              data-testid="active-show-archived"
+              onClick={() => setShowArchived((current) => !current)}
+            >
+              {showArchived ? "隐藏已归档" : "查看已归档"}
+            </button>
           </div>
           {learningTasks.length === 0 && (
             <p>还没有任务。上传第一份资料后，系统会自动建立计划。</p>
@@ -419,25 +458,36 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
               ? Math.round(item.completed_task_count / item.task_count * 100)
               : 0;
             return (
-              <button
+              <article
                 className={item.workspace_id === activeWorkspaceId ? "is-active" : ""}
-                data-testid={`active-task-switch-${item.workspace_id}`}
                 key={item.workspace_id}
-                onClick={() => {
-                  setCreatingNewTask(false);
-                  setActiveWorkspaceId(item.workspace_id);
-                }}
               >
-                <span><b>{item.title}</b><em>{item.status === "learning" ? "学习中" : item.status === "planned" ? "已规划" : "待完善"}</em></span>
-                <small>{item.knowledge_point_count} 个知识点 · {item.completed_task_count}/{item.task_count} 项</small>
-                <i><span style={{ width: `${progress}%` }} /></i>
-              </button>
+                <button
+                  className="active-task-hub__select"
+                  data-testid={`active-task-switch-${item.workspace_id}`}
+                  onClick={() => {
+                    setCreatingNewTask(false);
+                    setActiveWorkspaceId(item.workspace_id);
+                  }}
+                >
+                  <span><b>{item.title}</b><em>{item.archived ? "已归档" : item.status === "learning" ? "学习中" : item.status === "planned" ? "已规划" : "待完善"}</em></span>
+                  <small>{item.knowledge_point_count} 个知识点 · {item.completed_task_count}/{item.task_count} 项</small>
+                  <i><span style={{ width: `${progress}%` }} /></i>
+                </button>
+                <button
+                  className="active-task-hub__archive-action"
+                  data-testid={`active-task-archive-${item.workspace_id}`}
+                  onClick={() => toggleTaskArchive(item)}
+                >
+                  {item.archived ? "恢复" : "归档"}
+                </button>
+              </article>
             );
           })}
         </aside>
         <section className="active-task-hub__current">
           <span>当前任务</span>
-          <h3>{snapshot?.receipt?.learning_goal || "创建一个新的学习任务"}</h3>
+          <h3>{snapshot?.receipt?.learning_goal || activeTaskSummary?.title || "创建一个新的学习任务"}</h3>
           {plan ? (
             <p>
               计划 {plan.feasible ? "可执行" : "需要调整"} ·
@@ -453,7 +503,7 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
 
       <div className="active-chain__grid">
         <article className="active-chain__card active-chain__creator-card">
-          <span className="active-chain__step">01 · 一次创建</span>
+          <span className="active-chain__step">01 · 设置学习任务</span>
           <h3>{plan ? "任务资料与学习条件" : "上传资料，系统自动完成知识地图和计划"}</h3>
           <p className="active-chain__muted">只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。</p>
           <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />
@@ -621,12 +671,12 @@ export function ActiveTeachingChainView({ workspaceId }: { workspaceId: string }
                 </div>
               );
             })}
-            {!graph.knowledge_points.length && <p>创建计划后，知识结构会完整显示在这里。</p>}
+            {!graph.knowledge_points.length && <p>任务建立后，知识结构会完整显示在这里。</p>}
           </div>
         </article>
 
         <article className="active-chain__card">
-          <span className="active-chain__step">03 · 每日计划日历</span>
+          <span className="active-chain__step">03 · 每天安排</span>
           <h3>点击任意首学任务，直接进入对应课程</h3>
           <button data-testid="active-generate-plan" disabled={!graph.knowledge_points.length || Boolean(busy)} onClick={() => run("生成完全掌握计划", generateMasteryPlan)}>生成完全掌握计划</button>
           {plan && (

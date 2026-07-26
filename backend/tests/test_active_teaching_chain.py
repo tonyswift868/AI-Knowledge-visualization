@@ -412,6 +412,51 @@ def test_deadline_capacity_reports_unscheduled_minutes(tmp_path):
         assert "容量不足" in plan.json()["warning"]
 
 
+def test_learning_workspace_can_be_archived_and_restored_without_data_loss(tmp_path):
+    configure_orm(tmp_path / "active-archive.db")
+    with TestClient(app) as client:
+        material = client.post(
+            "/api/active-teaching/workspaces/archive-me/materials",
+            files={
+                "file": (
+                    "archive.md",
+                    "# 可恢复任务\n这份资料在归档后仍应完整保留。".encode("utf-8"),
+                    "text/markdown",
+                )
+            },
+        )
+        assert material.status_code == 200, material.text
+
+        archived = client.patch(
+            "/api/active-teaching/workspaces/archive-me",
+            json={"archived": True},
+        )
+        assert archived.status_code == 200, archived.text
+        assert archived.json()["archived"] is True
+        assert client.get("/api/active-teaching/workspaces").json()["items"] == []
+
+        all_items = client.get(
+            "/api/active-teaching/workspaces?include_archived=true"
+        ).json()["items"]
+        assert len(all_items) == 1
+        assert all_items[0]["workspace_id"] == "archive-me"
+        assert all_items[0]["title"] == "archive"
+        assert all_items[0]["archived"] is True
+
+        restored = client.patch(
+            "/api/active-teaching/workspaces/archive-me",
+            json={"archived": False},
+        )
+        assert restored.status_code == 200, restored.text
+        visible = client.get("/api/active-teaching/workspaces").json()["items"]
+        assert len(visible) == 1
+        assert visible[0]["archived"] is False
+        snapshot = client.get(
+            "/api/active-teaching/workspaces/archive-me/snapshot"
+        ).json()
+        assert snapshot["materials"][0]["id"] == material.json()["id"]
+
+
 def test_dependency_cycle_detection_and_source_conflicts(tmp_path):
     assert _cycle_nodes([("a", "b"), ("b", "c"), ("c", "a")]) == {"a", "b", "c"}
     configure_orm(tmp_path / "active-conflict.db")

@@ -44,15 +44,20 @@
 .active-task-hub { display: grid; grid-template-columns: minmax(240px, .72fr) minmax(0, 1.6fr); gap: 16px; }
 .active-task-hub__rail, .active-task-hub__current { border: 1px solid #d7e5dd; border-radius: 18px; background: #fff; padding: 16px; }
 .active-task-hub__rail { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
-.active-task-hub__title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.active-task-hub__title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.active-task-hub__title > div { display: grid; gap: 2px; }
 .active-task-hub__title span, .active-task-hub__rail p { color: #718078; font-size: 12px; }
-.active-task-hub__rail > button { display: grid; gap: 7px; text-align: left; color: #2a3b34; background: #f5f8f6; border: 1px solid transparent; }
-.active-task-hub__rail > button.is-active { color: #174d37; background: #e8f5ed; border-color: #8fc5a6; }
-.active-task-hub__rail button > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.active-task-hub__rail button em { color: #397d5d; font-size: 11px; font-style: normal; }
-.active-task-hub__rail button small { color: #687870; }
-.active-task-hub__rail button > i { height: 4px; overflow: hidden; border-radius: 999px; background: #dbe7df; }
-.active-task-hub__rail button > i span { display: block; height: 100%; background: #3f9470; }
+.active-chain button.active-task-hub__archive-toggle { padding: 5px 7px; color: #397d5d; background: transparent; font-size: 11px; }
+.active-task-hub__rail > article { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; color: #2a3b34; background: #f5f8f6; border: 1px solid transparent; border-radius: 10px; }
+.active-task-hub__rail > article.is-active { color: #174d37; background: #e8f5ed; border-color: #8fc5a6; }
+.active-chain button.active-task-hub__select { display: grid; gap: 7px; min-width: 0; padding: 10px 8px 10px 12px; text-align: left; color: inherit; background: transparent; }
+.active-task-hub__select > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.active-task-hub__select em { color: #397d5d; font-size: 11px; font-style: normal; }
+.active-task-hub__select small { overflow: hidden; color: #687870; text-overflow: ellipsis; white-space: nowrap; }
+.active-task-hub__select > i { height: 4px; overflow: hidden; border-radius: 999px; background: #dbe7df; }
+.active-task-hub__select > i span { display: block; height: 100%; background: #3f9470; }
+.active-chain button.active-task-hub__archive-action { align-self: stretch; padding: 8px; border-radius: 0 9px 9px 0; color: #687870; background: transparent; font-size: 11px; }
+.active-chain button.active-task-hub__archive-action:hover, .active-chain button.active-task-hub__archive-toggle:hover { color: #174d37; background: #dceee4; }
 .active-task-hub__current { display: grid; align-content: center; gap: 6px; background: linear-gradient(135deg, #f7fbf2, #eef8f3); }
 .active-task-hub__current > span { color: #397d5d; font-size: 12px; font-weight: 800; }
 .active-task-hub__current h3, .active-task-hub__current p { margin: 0; }

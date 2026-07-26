@@ -63,6 +63,36 @@ test("unified task hub creates once, switches plans, and enters learning from ca
   expect(consoleErrors).toEqual([]);
 });
 
+test("home exposes one task path and archived tasks can be restored", async ({ page }) => {
+  test.setTimeout(180_000);
+  const materialPath = path.resolve(
+    process.cwd(),
+    "../demo/generic_physics_learning_material.md",
+  );
+
+  await page.goto("/");
+  await expect(page.getByTestId("nav-create")).toHaveCount(0);
+  await expect(page.getByTestId("nav-plan")).toHaveCount(0);
+  await page.getByRole("button", { name: "查看已有任务" }).click();
+  await expect(page.getByTestId("active-teaching-chain")).toBeVisible();
+
+  await page.getByTestId("active-new-task").click();
+  const workspaceId = (await page.getByTestId("active-workspace-id").textContent())!;
+  await page.getByTestId("active-goal").fill("归档后仍能恢复的物理学习任务");
+  await page.getByTestId("active-material-file").setInputFiles(materialPath);
+  await page.getByTestId("active-upload").click();
+  await expect(page.getByTestId(`active-task-switch-${workspaceId}`)).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByTestId(`active-task-archive-${workspaceId}`).click();
+  await expect(page.getByTestId(`active-task-switch-${workspaceId}`)).toHaveCount(0);
+  await page.getByTestId("active-show-archived").click();
+  await expect(page.getByTestId(`active-task-switch-${workspaceId}`)).toContainText("已归档");
+  await page.getByTestId(`active-task-archive-${workspaceId}`).click();
+  await expect(page.getByTestId(`active-task-switch-${workspaceId}`)).not.toContainText("已归档");
+});
+
 
 test("arbitrary material drives plan, remediation, verified practice, and persistence", async ({ page }) => {
   test.setTimeout(180_000);

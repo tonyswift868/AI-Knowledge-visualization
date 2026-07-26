@@ -153,7 +153,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "create" | "plan" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
   >("home");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [ws, setWs] = useState<Workspace | null>(null);
@@ -279,49 +279,6 @@ export function App() {
   function setField(k: string, v: any) {
     setForm((x: any) => ({ ...x, [k]: v }));
   }
-  async function createDemo() {
-    setBusy(true);
-    try {
-      const demoStart = new Date();
-      const demoStartDate = toLocalIsoDate(demoStart);
-      const demoDeadline = toLocalIsoDate(new Date(demoStart.getTime() + 14 * 86400000));
-      const w = await request<Workspace>("/workspaces", {
-        method: "POST",
-        body: JSON.stringify({
-          title: form.title,
-          description: form.description,
-          character_id: form.character_id,
-          execution_mode: "demo",
-        }),
-      });
-      await request(`/workspaces/${w.id}/sources/text`, {
-        method: "POST",
-        body: JSON.stringify({
-          title: "Demo · 学习资料",
-          text: form.sourceText,
-          trust_level: "reference",
-        }),
-      });
-      await request(`/workspaces/${w.id}/goal`, {
-        method: "POST",
-        body: JSON.stringify({ ...form, start_date: demoStartDate, deadline: demoDeadline, unavailable_dates: [] }),
-      });
-      const assessment = await request<any>(`/workspaces/${w.id}/feasibility/analyze`, { method: "POST" });
-      await request(`/workspaces/${w.id}/feasibility/confirm`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
-      const demoPlan = await request<Plan>(`/workspaces/${w.id}/plans/generate`, { method: "POST", body: JSON.stringify({}) });
-      setAssessment(assessment);
-      setPlan(demoPlan);
-      setMaxStep(6);
-      setWorkspaces((x) => [w, ...x]);
-      await selectWs(w);
-      setTab("plan");
-      setToast("工作空间已创建，继续完成目标设置");
-    } catch (e: any) {
-      setToast(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function createWorkspace() {
     setBusy(true);
     try {
@@ -370,7 +327,7 @@ export function App() {
       const [nextToday, nextProgress] = await Promise.all([request<any>(`/workspaces/${ws.id}/today`), request<any>(`/workspaces/${ws.id}/progress`)]);
       setToday(nextToday);
       setProgress(nextProgress);
-      setTab("plan");
+      setTab("active");
       setToast("计划已生成：包含里程碑、日历任务和交付缓冲");
     } catch (e: any) {
       setToast(e.message);
@@ -465,8 +422,7 @@ export function App() {
       ),
     [allDays],
   );
-  const demoWorkspace = ws?.execution_mode === "demo";
-  const realVerified = !demoWorkspace && providerState.mode === "real" && providerState.verified;
+  const realVerified = providerState.mode === "real" && providerState.verified;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -530,11 +486,7 @@ export function App() {
             <b>
               {tab === "home"
                 ? "总览"
-                : tab === "create"
-                  ? "创建计划"
-                  : tab === "plan"
-                   ? "计划日历"
-                    : tab === "teachers"
+                : tab === "teachers"
                       ? "AI教师角色库"
                     : tab === "story"
                       ? "学习剧场"
@@ -551,19 +503,15 @@ export function App() {
                         : "设置"}
             </b>
           </div>
-          <div className="top-actions" title={demoWorkspace ? "当前正在预览固定演示结果" : providerState.lastError || undefined}>
+          <div className="top-actions" title={providerState.lastError || undefined}>
             <span className="status-dot" />
-            {demoWorkspace ? <><span>演示空间 · Fake Provider</span>{providerState.mode === "real" && providerState.verified && <span className="provider-runtime-badge">真实模式 · {providerState.provider} · {providerState.model} · 已验证</span>}</> : realVerified ? `真实模式 · ${providerState.provider} · ${providerState.model} · 已验证` : "尚未连接模型"}
+            {realVerified ? `真实模式 · ${providerState.provider} · ${providerState.model} · 已验证` : "尚未连接模型"}
             <div className="mini-avatar">M</div>
           </div>
         </header>
         <div className="content">
           {tab === "home" && (
             <Home
-              ws={ws}
-              plan={plan}
-              today={today}
-              progress={progress}
               onCreate={() => {
                 setWs(null);
                 setAllowExternalKnowledge(false);
@@ -574,47 +522,7 @@ export function App() {
                 setMaxStep(0);
               }}
               onContinue={() => setTab("active")}
-              onDemo={createDemo}
-            />
-          )}{" "}
-          {tab === "create" && (
-            <Create
-              step={step}
-              setStep={setStep}
-              maxStep={maxStep}
-              jumpToStep={jumpToStep}
-              form={form}
-              setField={setField}
-              setForm={setForm}
-              ws={ws}
-              plan={plan}
-              busy={busy}
-              create={createWorkspace}
-              analyze={analyze}
-              assessment={assessment}
-              generate={generate}
-              dailySettings={dailySettings}
-              setDailySettings={setDailySettings}
-              onRefreshDaily={() => refreshDailyState()}
-            />
-          )}{" "}
-          {tab === "plan" && (
-            <PlanView
-              plan={plan}
-              activate={activate}
-              onReplan={async (changes: any = {}) => {
-                if (plan) {
-                  const x = await request<any>(`/plans/${plan.id}/replan`, {
-                    method: "POST",
-                    body: JSON.stringify({ ...changes, ...providerRequestContext() }),
-                  });
-                  setPlan(x.plan);
-                  setToast("已生成新版本，旧计划仍保留");
-                }
-              }}
-              dailySettings={dailySettings}
-              setDailySettings={setDailySettings}
-              onRefreshDaily={() => refreshDailyState()}
+              onBrowseTasks={() => setTab("active")}
             />
           )}{" "}
           {tab === "story" && (
@@ -683,13 +591,9 @@ export function App() {
 }
 
 function Home({
-  ws,
-  plan,
-  today,
-  progress,
   onCreate,
   onContinue,
-  onDemo,
+  onBrowseTasks,
 }: any) {
   return (
     <>
@@ -710,12 +614,12 @@ function Home({
           <div className="hero-actions">
             <button className="primary" onClick={onCreate}>
               <Plus size={17} />
-              创建学习计划
+              新建学习任务
               <ArrowRight size={16} />
             </button>
-            <button className="secondary" onClick={onDemo}>
-              <Sparkles size={16} />
-              一键打开 Demo
+            <button className="secondary" onClick={onBrowseTasks}>
+              <CalendarDays size={16} />
+              查看已有任务
             </button>
           </div>
         </div>
@@ -733,79 +637,53 @@ function Home({
           </div>
           <div className="float-card fc-2">
             <Check size={15} />
-            <span>今日任务</span>
-            <b>{today?.day?.tasks?.length || 0} 项</b>
+            <span>资料到行动</span>
+            <b>一条链</b>
           </div>
         </div>
       </section>
       <div className="section-head">
         <div>
           <div className="eyebrow">YOUR SPACE</div>
-          <h2>{ws ? "继续你的学习轨迹" : "从一个清晰的目标开始"}</h2>
+          <h2>一个入口管理所有学习任务</h2>
         </div>
-        {ws && (
-          <button className="text-button" onClick={onContinue}>
-            进入学习 <ArrowRight size={15} />
-          </button>
-        )}
+        <button className="text-button" onClick={onContinue}>
+          进入学习任务中心 <ArrowRight size={15} />
+        </button>
       </div>
       <section className="dashboard-grid">
         <div className="card goal-card">
           <div className="card-kicker">
-            <Target size={16} /> 当前目标
+            <Target size={16} /> 独立学习任务
           </div>
-          <h3>{ws?.goal?.payload?.goal_statement || "还没有目标"}</h3>
+          <h3>每份资料拥有自己的计划、进度、教师记忆和本地 RAG。</h3>
           <div className="goal-meta">
             <span>
               <CalendarDays size={15} />
-              截止 {ws?.goal?.payload?.deadline || "—"}
+              支持多个任务随时切换
             </span>
             <span>
-              <Brain size={15} /> {ws?.goal?.payload?.current_level || "待设置"}
+              <Brain size={15} /> 不会串资料
             </span>
-          </div>
-          <div className="progress-line">
-            <i
-              style={{
-                width: `${Math.round((progress?.completion_rate || 0) * 100)}%`,
-              }}
-            />
-          </div>
-          <div className="progress-caption">
-            <span>计划完成度</span>
-            <b>{Math.round((progress?.completion_rate || 0) * 100)}%</b>
           </div>
         </div>
         <div className="card signal-card">
           <div className="card-kicker">
-            <CircleAlert size={16} /> 今日信号
+            <Brain size={16} /> 先看知识地图
           </div>
-          <div className="signal-number">
-            {progress?.at_risk ? "需要调整" : "节奏稳定"}
-          </div>
-          <p>
-            {progress?.at_risk
-              ? "可用时间偏紧，建议确认压缩或延长方案。"
-              : "先完成一个最小任务，保持连续性。"}
-          </p>
-          <div className="signal-tag">
-            {plan ? "计划已生成" : "等待创建计划"}
-          </div>
+          <div className="signal-number">心里有底</div>
+          <p>上传后先展示知识结构、依赖和预计工作量，再进入每天安排。</p>
+          <div className="signal-tag">资料驱动</div>
         </div>
         <div className="card source-card">
           <div className="card-kicker">
-            <FileText size={16} /> 已连接资料
+            <CalendarDays size={16} /> 每天点开就学
           </div>
-          <div className="source-count">
-            {ws?.sources?.length || 0}
-            <span>份</span>
-          </div>
-          <p>所有 Tutor 解释都会优先回到这里找证据。</p>
+          <div className="source-count">1<span>次建立</span></div>
+          <p>以后从每天安排直接进入教师带学，不需要重复创建计划。</p>
           <div className="source-pills">
-            {(ws?.sources || []).slice(0, 3).map((s: any) => (
-              <span key={s.id}>{s.title.slice(0, 12)}</span>
-            ))}
-            {!ws && <span>Demo 资料</span>}
+            <span>日历进入</span>
+            <span>可归档恢复</span>
           </div>
         </div>
       </section>
@@ -2021,7 +1899,7 @@ function Progress({ progress, plan, completed }: any) {
           </div>
           <h3>
             {progress?.recommendation ||
-              "先创建计划，系统会根据真实表现给出建议。"}
+              "先创建学习任务，系统会根据真实表现给出建议。"}
           </h3>
           <p>
             动态重排会生成新版本，旧计划始终保留，任何调整都需要你确认后生效。
