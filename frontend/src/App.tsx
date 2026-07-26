@@ -2063,7 +2063,19 @@ export function Settings() {
             : <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="输入 Provider 模型 ID" /></label>}
           <label>API Key<input type="password" value={state.apiKey} onChange={e => state.setApiKey(e.target.value)} placeholder="自动保存到当前浏览器本机" /></label>
         </>}
-        <div className="key-note"><ShieldCheck size={16} /><span>{state.provider === "fake" ? "Fake 只用于明确的 Demo Workspace。" : "已自动保存到当前浏览器本机；真实请求失败时不会切换到 Fake。"}</span><button onClick={() => state.setApiKey("")}>清除 Key</button></div>
+        <div className="key-note">
+          <ShieldCheck size={16} />
+          <span>
+            {state.provider === "fake"
+              ? "Fake 只用于明确的 Demo Workspace。"
+              : state.verified
+                ? "真实 Provider 已验证；Key 仅保存在当前浏览器本机。"
+                : state.apiKey
+                  ? "Key 已保存到当前浏览器本机，但尚未验证；真实请求失败时不会切换到 Fake。"
+                  : "尚未填写 API Key；当前不能建立真实 ProviderSession，也不会冒充真实 AI。"}
+          </span>
+          <button disabled={!state.apiKey} onClick={() => state.setApiKey("")}>清除 Key</button>
+        </div>
         <button className="primary" onClick={test}>{state.provider === "fake" ? "测试 Fake Provider" : `测试 ${labels[state.provider]}`} <Check size={16} /></button>
         {state.lastError && <div className="provider-error" role="alert">{state.lastError.includes("重新绑定") ? state.lastError : `${state.lastError} · 请重新绑定模型`}</div>}
         {message && <div className="success-note">{message}</div>}
