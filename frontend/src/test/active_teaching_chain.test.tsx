@@ -328,22 +328,83 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByDisplayValue("游戏、做饭")).toBeInTheDocument();
   });
 
-  it("rebuilds the knowledge map only when a map input such as foundation changes", async () => {
+  it("hydrates server conditions before creating a draft for a switched task", async () => {
+    const hydratedSnapshot = {
+      ...snapshot,
+      workspace_id: "server-hydration-active",
+      receipt: {
+        ...snapshot.receipt,
+        current_level: "zero_foundation",
+        deadline: "2026-12-31",
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => hydratedSnapshot,
+    }));
+    render(<ActiveTeachingChainView workspaceId="server-hydration" />);
+
+    expect(await screen.findByTestId("active-foundation")).toHaveValue("zero_foundation");
+    expect(screen.getByTestId("active-deadline")).toHaveValue("2026-12-31");
+    await waitFor(() => {
+      const raw = localStorage.getItem(
+        "mentorflow_active_task_draft_v1:server-hydration-active",
+      );
+      expect(raw).toContain('"deadline":"2026-12-31"');
+      expect(raw).toContain('"level":"zero_foundation"');
+    });
+  });
+
+  it("replans without rebuilding the knowledge map when foundation changes", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     const foundation = await screen.findByTestId("active-foundation");
     fireEvent.change(foundation, { target: { value: "zero_foundation" } });
     expect(screen.getByTestId("active-save-receipt")).toHaveTextContent(
-      "重建知识地图与计划",
+      "保存更改并重新排程",
     );
     fireEvent.click(screen.getByTestId("active-save-receipt"));
 
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
       expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(false);
       expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+    });
+  });
+
+  it("refreshes persisted state even when replanning fails after the receipt was saved", async () => {
+    let snapshotReads = 0;
+    const savedAfterFailure = {
+      ...snapshot,
+      receipt: { ...snapshot.receipt, deadline: "2026-11-01" },
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/snapshot")) {
+        snapshotReads += 1;
+        return {
+          ok: true,
+          json: async () => snapshotReads === 1 ? snapshot : savedAfterFailure,
+        };
+      }
+      if (url.endsWith("/mastery-plans/generate")) {
+        return {
+          ok: false,
+          json: async () => ({ error: { message: "重新排程失败" } }),
+        };
+      }
+      return { ok: true, json: async () => snapshot };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+    const deadlineInput = await screen.findByTestId("active-deadline");
+    fireEvent.change(deadlineInput, { target: { value: "2026-11-01" } });
+    fireEvent.click(screen.getByTestId("active-save-receipt"));
+
+    await waitFor(() => {
+      expect(screen.getByText("重新排程失败")).toBeInTheDocument();
+      expect(snapshotReads).toBeGreaterThanOrEqual(2);
     });
   });
 

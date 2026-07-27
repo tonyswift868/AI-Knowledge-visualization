@@ -98,6 +98,30 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
             )
             assert point["estimated_task_minutes"] == estimate["total_mastery_task_minutes"]
 
+        resaved = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={
+                **_receipt(material_id, start=start, deadline=deadline),
+                "allocation_mode": "system",
+                "review_rounds": 2,
+            },
+        )
+        assert resaved.status_code == 200, resaved.text
+        saved_allocation = resaved.json()["allocation"]
+        assert saved_allocation["estimation_source"] == "existing_knowledge_map"
+        assert saved_allocation["initial_learning_minutes"] == sum(
+            sum(
+                point["mastery_estimate"][key]
+                for key in (
+                    "understand_minutes",
+                    "recall_minutes",
+                    "guided_practice_minutes",
+                    "independent_application_minutes",
+                )
+            )
+            for point in graph["knowledge_points"]
+        )
+
         plan = client.post(
             f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
         )
@@ -399,7 +423,7 @@ def test_hot150_canary_specs_are_attributed_and_independently_verified(tmp_path)
         assert verification["independent_verification_ready"] is False
 
 
-def test_graph_regeneration_invalidates_derived_state_but_preserves_inputs(tmp_path):
+def test_foundation_change_reuses_content_map_and_preserves_derived_state(tmp_path):
     configure_orm(tmp_path / "generic-regenerate.db")
     workspace = "generic-regenerate"
     start = date.today()
@@ -468,30 +492,31 @@ Two pointers track two positions while scanning an array."""
             json={},
         )
         assert regenerated.status_code == 200, regenerated.text
+        assert regenerated.json()["extraction"]["provider_meta"]["cache_hit"] is True
 
         assert client.get(
             f"/api/active-teaching/sessions/{session['session_id']}"
-        ).status_code == 404
+        ).status_code == 200
         assert client.get(
             f"/api/active-teaching/workspaces/{workspace}/plans/current"
-        ).status_code == 404
+        ).status_code == 200
 
         snapshot = client.get(
             f"/api/active-teaching/workspaces/{workspace}/snapshot"
         ).json()
         assert [item["id"] for item in snapshot["materials"]] == [material["id"]]
         assert snapshot["receipt"] == changed_receipt.json()
-        assert snapshot["plan"] is None
-        assert snapshot["session"] is None
+        assert snapshot["plan"]["id"] == plan["id"]
+        assert snapshot["session"]["session_id"] == session["session_id"]
 
         with active_teaching._connect() as connection:
             assert connection.execute(
                 "SELECT COUNT(*) FROM active_knowledge_conflicts WHERE workspace_id=?",
                 (workspace,),
-            ).fetchone()[0] == 0
+            ).fetchone()[0] == 1
             assert connection.execute(
                 "SELECT COUNT(*) FROM active_plans WHERE id=?", (plan["id"],)
-            ).fetchone()[0] == 0
+            ).fetchone()[0] == 1
 
 
 def test_gb18030_json_and_office_zip_formats_use_content_not_course_rules(tmp_path):

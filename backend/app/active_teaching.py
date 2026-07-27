@@ -829,8 +829,14 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         _error("INVALID_START_DATE", "开始日期必须是 YYYY-MM-DD", 422)
     if start_date > deadline:
         _error("INVALID_DATE_RANGE", "开始日期不能晚于截止日期", 422)
+    allocation_mode = (
+        "system" if str(payload.get("allocation_mode") or "").casefold() == "system"
+        else "manual"
+    )
     minutes = int(payload.get("daily_task_minutes") or 30)
-    if not 10 <= minutes <= 720:
+    if allocation_mode == "system" and not 10 <= minutes <= 720:
+        minutes = 30
+    elif not 10 <= minutes <= 720:
         _error("INVALID_DAILY_TASK_MINUTES", "每日任务分钟预算必须在 10 到 720 之间", 422)
     weekdays = sorted({int(item) for item in payload["study_weekdays"]})
     if not weekdays or any(item < 0 or item > 6 for item in weekdays):
@@ -877,10 +883,7 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "start_date": start_date.isoformat(),
         "deadline": deadline.isoformat(),
         "daily_task_minutes": minutes,
-        "allocation_mode": (
-            "system" if str(payload.get("allocation_mode") or "").casefold() == "system"
-            else "manual"
-        ),
+        "allocation_mode": allocation_mode,
         "study_weekdays": weekdays,
         "fixed_rest_weekdays": fixed_rest_weekdays or sorted(set(range(7)) - set(weekdays)),
         "unavailable_dates": unavailable_dates,
@@ -928,8 +931,54 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                     WHERE workspace_id=? AND material_id IN ({placeholders})""",
                 [workspace_id, *receipt["material_ids"]],
             ).fetchone()[0])
-            estimated_initial = max(90, chunk_count * 8 + 120)
-            estimated_review_round = max(30, math.ceil(estimated_initial * 0.12 / 5) * 5)
+            exact_estimates: list[dict[str, Any]] = []
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_point_details'"
+            ).fetchone():
+                detail_rows = connection.execute(
+                    f"""SELECT d.mastery_estimate
+                        FROM active_point_details d
+                        JOIN active_knowledge_points p ON p.id=d.knowledge_point_id
+                        WHERE p.workspace_id=? AND p.material_id IN ({placeholders})""",
+                    [workspace_id, *receipt["material_ids"]],
+                ).fetchall()
+                for row in detail_rows:
+                    try:
+                        estimate = json.loads(row["mastery_estimate"])
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                    if all(
+                        key in estimate
+                        for key in (
+                            "understand_minutes",
+                            "recall_minutes",
+                            "guided_practice_minutes",
+                            "independent_application_minutes",
+                            "review_minutes",
+                        )
+                    ):
+                        exact_estimates.append(estimate)
+            if exact_estimates:
+                estimated_initial = sum(
+                    int(estimate[key])
+                    for estimate in exact_estimates
+                    for key in (
+                        "understand_minutes",
+                        "recall_minutes",
+                        "guided_practice_minutes",
+                        "independent_application_minutes",
+                    )
+                )
+                estimated_review_round = sum(
+                    int(estimate["review_minutes"]) for estimate in exact_estimates
+                )
+                estimation_source = "existing_knowledge_map"
+            else:
+                estimated_initial = max(90, chunk_count * 8 + 120)
+                estimated_review_round = max(
+                    30, math.ceil(estimated_initial * 0.12 / 5) * 5
+                )
+                estimation_source = "material_structure_estimate"
             estimated_total = (
                 estimated_initial
                 + estimated_review_round * int(receipt.get("review_rounds") or 2)
@@ -948,6 +997,7 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 "buffer_rate": 0,
                 "available_study_days": len(study_dates),
                 "recommended_minutes_per_day": recommended,
+                "estimation_source": estimation_source,
                 "reason": "首学与所选完整复习轮次合并后，平均分配到全部可学习日。",
             }
         connection.execute(

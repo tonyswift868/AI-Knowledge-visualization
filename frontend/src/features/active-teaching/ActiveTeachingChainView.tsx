@@ -140,7 +140,8 @@ export function ActiveTeachingChainView({
         ? current
         : problemItems[0]?.id || "",
     );
-    if (next.receipt && !readTaskDraft(activeWorkspaceId)) {
+    const storedDraft = readTaskDraft(activeWorkspaceId);
+    if (next.receipt && !storedDraft) {
       setGoal(next.receipt.learning_goal);
       setLevel(next.receipt.current_level);
       setStartDate(next.receipt.start_date || isoAfterDays(0));
@@ -158,6 +159,7 @@ export function ActiveTeachingChainView({
       setTeacherPersona(next.receipt.teacher_persona || "");
       setLearnerInterests(next.receipt.learner_interests || "");
     }
+    if (!storedDraft) setDraftLoadedWorkspace(activeWorkspaceId);
   };
 
   useEffect(() => {
@@ -182,8 +184,8 @@ export function ActiveTeachingChainView({
       if (typeof draft.reviewAnswer === "string") setReviewAnswer(draft.reviewAnswer);
       if (typeof draft.code === "string") setCode(draft.code);
       if (typeof draft.updatedAt === "string") setDraftSavedAt(draft.updatedAt);
+      setDraftLoadedWorkspace(activeWorkspaceId);
     }
-    setDraftLoadedWorkspace(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -254,12 +256,20 @@ export function ActiveTeachingChainView({
   const run = async (label: string, operation: () => Promise<any>) => {
     setBusy(label);
     setError("");
+    let operationError: any = null;
     try {
       await operation();
-      await refresh();
     } catch (reason: any) {
+      operationError = reason;
       setError(reason?.message || "操作失败");
     } finally {
+      try {
+        await refresh();
+      } catch (refreshError: any) {
+        if (!operationError) {
+          setError(refreshError?.message || "操作已完成，但刷新最新状态失败");
+        }
+      }
       setBusy("");
     }
   };
@@ -355,9 +365,7 @@ export function ActiveTeachingChainView({
     && comparableReceipt(currentConditions) !== comparableReceipt(savedReceipt);
   const knowledgeInputsChanged = Boolean(file)
     || Boolean(savedReceipt && (
-      currentConditions.current_level
-        !== (savedReceipt.current_level || savedReceipt.current_foundation)
-      || JSON.stringify(readyMaterialIds)
+      JSON.stringify(readyMaterialIds)
         !== JSON.stringify([...(savedReceipt.material_ids || readyMaterialIds)].sort())
     ));
   const planNeedsRestoration = Boolean(savedReceipt)

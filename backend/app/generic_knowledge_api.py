@@ -92,6 +92,19 @@ def _knowledge_source_fingerprint(
     receipt: dict[str, Any],
 ) -> str:
     digest = hashlib.sha256()
+    for chunk in chunks:
+        digest.update(str(chunk["material_id"]).encode("utf-8"))
+        digest.update(str(chunk["id"]).encode("utf-8"))
+        digest.update(hashlib.sha256(str(chunk["text"]).encode("utf-8")).digest())
+    return digest.hexdigest()
+
+
+def _legacy_level_bound_fingerprint(
+    chunks: list[sqlite3.Row],
+    receipt: dict[str, Any],
+) -> str:
+    """Read compatibility for maps created before learner level was decoupled."""
+    digest = hashlib.sha256()
     digest.update(str(receipt.get("current_level") or "beginner").encode("utf-8"))
     for chunk in chunks:
         digest.update(str(chunk["material_id"]).encode("utf-8"))
@@ -637,24 +650,24 @@ async def generate_knowledge_map(
         if latest_run:
             latest_meta = json.loads(latest_run["provider_meta"])
             existing_graph = public_generic_graph(connection, workspace_id)
-            source_matches = latest_meta.get("source_fingerprint") == source_fingerprint
+            stored_fingerprint = latest_meta.get("source_fingerprint")
             latest_plan = connection.execute(
                 """SELECT receipt FROM active_plans
                    WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
                 (workspace_id,),
             ).fetchone()
             plan_receipt = json.loads(latest_plan["receipt"]) if latest_plan else {}
-            current_map_inputs = (
-                str(receipt.get("current_level") or receipt.get("current_foundation") or ""),
-                sorted(str(item) for item in receipt.get("material_ids") or []),
-            )
-            planned_map_inputs = (
-                str(
-                    plan_receipt.get("current_level")
-                    or plan_receipt.get("current_foundation")
-                    or ""
+            source_matches = stored_fingerprint in {
+                source_fingerprint,
+                _legacy_level_bound_fingerprint(
+                    chunks, plan_receipt or receipt
                 ),
-                sorted(str(item) for item in plan_receipt.get("material_ids") or []),
+            }
+            current_map_inputs = sorted(
+                str(item) for item in receipt.get("material_ids") or []
+            )
+            planned_map_inputs = sorted(
+                str(item) for item in plan_receipt.get("material_ids") or []
             )
             legacy_current_run = (
                 not latest_meta.get("source_fingerprint")
@@ -666,7 +679,7 @@ async def generate_knowledge_map(
                 existing_graph["knowledge_points"]
                 and (source_matches or legacy_current_run)
             ):
-                if legacy_current_run:
+                if legacy_current_run or stored_fingerprint != source_fingerprint:
                     latest_meta["source_fingerprint"] = source_fingerprint
                     latest_meta["cache_hit"] = False
                     connection.execute(
@@ -683,7 +696,7 @@ async def generate_knowledge_map(
                     "provider_meta": {
                         **latest_meta,
                         "cache_hit": True,
-                        "message": "资料与当前基础均未变化，复用已生成知识地图。",
+                        "message": "资料内容未变化，复用已生成知识地图。",
                     },
                     "warnings": json.loads(latest_run["warnings"]),
                     "input_chunk_count": latest_run["input_chunk_count"],
