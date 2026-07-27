@@ -10,6 +10,7 @@ import {
   uploadActiveMaterial,
 } from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
+import { reconnectSavedProvider } from "../../providerConnection";
 import {
   TeacherCompanionPortrait,
   type TeacherCompanionState,
@@ -83,6 +84,8 @@ type PendingUserMessage = {
   id: string;
   content: string;
   status: "processing" | "error";
+  understood: boolean;
+  error?: string;
 };
 
 const draftStorageKey = (workspaceId: string) =>
@@ -566,6 +569,7 @@ export function ActiveTeachingChainView({
           sessionId: item.session_id,
           todayPlan,
           groups: groupDailyTasks(todayPlan?.tasks || []),
+          overdueGroups: groupDailyTasks(todayPlan?.overdue_tasks || []),
         };
       });
     if (plan && !items.some((item) => item.workspaceId === activeWorkspaceId)) {
@@ -588,6 +592,7 @@ export function ActiveTeachingChainView({
             }
           : null,
         groups: dailyTaskGroups,
+        overdueGroups: [],
       });
     }
     return items;
@@ -605,6 +610,20 @@ export function ActiveTeachingChainView({
   const dailyPlanTaskCount = dailyPlanItems.reduce(
     (total, item) => total + item.groups.length,
     0,
+  );
+  const totalOverdueTaskCount = dailyPlanItems.reduce(
+    (total, item) => total + Number(item.todayPlan?.overdue_task_count || 0),
+    0,
+  );
+  const totalOverdueMinutes = dailyPlanItems.reduce(
+    (total, item) => total + Number(item.todayPlan?.overdue_task_minutes || 0),
+    0,
+  );
+  const currentMinutesUntilMidnight = Math.max(
+    0,
+    Math.floor(
+      (new Date().setHours(24, 0, 0, 0) - Date.now()) / 60000,
+    ),
   );
 
   useEffect(() => {
@@ -692,21 +711,37 @@ export function ActiveTeachingChainView({
       || `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setPendingUserMessages((current) => [
       ...current,
-      { id: pendingId, content, status: "processing" },
+      { id: pendingId, content, status: "processing", understood },
     ]);
     setMessage("");
     try {
-      const updatedSession = await activeRequest(
-        `/sessions/${encodeURIComponent(session.session_id)}/advance`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            message: content,
-            understood,
-            provider_session_id: realProviderSessionId,
-          }),
-        },
-      );
+      const send = (providerSession: string | null) =>
+        activeRequest(
+          `/sessions/${encodeURIComponent(session.session_id)}/advance`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              message: content,
+              understood,
+              provider_session_id: providerSession,
+            }),
+          },
+        );
+      let updatedSession;
+      try {
+        updatedSession = await send(realProviderSessionId);
+      } catch (reason: any) {
+        const providerSessionFailed =
+          typeof reason?.code === "string"
+          && reason.code.startsWith("PROVIDER_SESSION");
+        if (!providerSessionFailed) throw reason;
+        const restored = await reconnectSavedProvider();
+        const restoredSessionId =
+          restored?.provider_session_id
+          || useMentorStore.getState().providerSessionId;
+        if (!restoredSessionId) throw reason;
+        updatedSession = await send(restoredSessionId);
+      }
       setSnapshot((current: any) =>
         current ? { ...current, session: updatedSession } : current,
       );
@@ -717,11 +752,24 @@ export function ActiveTeachingChainView({
     } catch (reason) {
       setPendingUserMessages((current) =>
         current.map((item) =>
-          item.id === pendingId ? { ...item, status: "error" } : item,
+          item.id === pendingId
+            ? {
+                ...item,
+                status: "error",
+                error: (reason as any)?.message || "发送失败，请重试",
+              }
+            : item,
         ),
       );
       throw reason;
     }
+  };
+
+  const retryPendingMessage = async (item: PendingUserMessage) => {
+    setPendingUserMessages((current) =>
+      current.filter((candidate) => candidate.id !== item.id),
+    );
+    return advance(item.content, item.understood);
   };
 
   const generateKnowledgeMap = () =>
@@ -888,6 +936,29 @@ export function ActiveTeachingChainView({
     } finally {
       setBusy("");
     }
+  };
+
+  const rollOverDebt = async (dailyPlan: (typeof dailyPlanItems)[number]) => {
+    let sessionId = dailyPlan.sessionId;
+    if (!sessionId) {
+      const started = await activeRequest(
+        `/workspaces/${encodeURIComponent(dailyPlan.workspaceId)}/sessions/start`,
+        {
+          method: "POST",
+          body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+        },
+      );
+      sessionId = started.session_id;
+    }
+    await activeRequest(`/sessions/${encodeURIComponent(String(sessionId))}/replan`, {
+      method: "POST",
+      body: JSON.stringify({
+        trigger: "manual_debt_rollover",
+        reason: "用户将历史未完成任务滚入今天及后续学习日",
+        affected_from: isoAfterDays(0),
+      }),
+    });
+    await refresh(dailyPlan.workspaceId);
   };
 
   const startTodayLesson = () => {
@@ -1154,6 +1225,29 @@ export function ActiveTeachingChainView({
             </span>
           </div>
 
+          {totalOverdueTaskCount > 0 && (
+            <div className="active-today__debt-summary" data-testid="active-overdue-summary">
+              <div>
+                <b>历史欠账不会消失</b>
+                <span>
+                  共有 {totalOverdueTaskCount} 个未完成步骤，约 {totalOverdueMinutes} 标准任务分钟。
+                  你可以先补昨天的内容，也可以把它们重新平均排入今天及后续学习日。
+                </span>
+              </div>
+            </div>
+          )}
+          {totalOverdueTaskCount === 0
+            && dailyPlanItems.reduce(
+              (total, item) =>
+                total + Number(item.todayPlan?.remaining_task_minutes || 0),
+              0,
+            ) > currentMinutesUntilMidnight && (
+              <div className="active-today__time-warning" data-testid="active-time-warning">
+                <b>按当前时间，今天的计划可能无法全部完成。</b>
+                <span>没有完成的内容明天会进入“历史欠账”，仍可继续学习，不会在零点被清除。</span>
+              </div>
+            )}
+
           <div className="active-today__plans" data-testid="active-daily-plans">
             {dailyPlanItems.map((dailyPlan) => {
               const expanded = expandedDailyPlans.includes(dailyPlan.workspaceId);
@@ -1191,6 +1285,48 @@ export function ActiveTeachingChainView({
                       <p className="active-today__order-policy">
                         学习顺序：前置依赖优先；当前可学习内容按简单 → 中等 → 困难排列。
                       </p>
+                      {dailyPlan.overdueGroups.length > 0 && (
+                        <div
+                          className="active-today__debt"
+                          data-testid={`active-overdue-${dailyPlan.workspaceId}`}
+                        >
+                          <div>
+                            <b>
+                              历史欠账 · {dailyPlan.todayPlan?.overdue_task_count} 个步骤
+                            </b>
+                            <span>
+                              最早来自 {dailyPlan.todayPlan?.oldest_overdue_date} ·
+                              约 {dailyPlan.todayPlan?.overdue_task_minutes} 分钟未完成
+                            </span>
+                          </div>
+                          <div className="active-today__debt-actions">
+                            <button
+                              data-testid={`active-start-overdue-${dailyPlan.workspaceId}`}
+                              disabled={Boolean(busy)}
+                              onClick={() => {
+                                const first = dailyPlan.overdueGroups[0];
+                                void enterTaskFromDailyPlan(
+                                  dailyPlan.workspaceId,
+                                  first.nextTask,
+                                  first.title,
+                                );
+                              }}
+                            >
+                              先补最早欠账
+                            </button>
+                            <button
+                              className="active-today__secondary"
+                              data-testid={`active-rollover-overdue-${dailyPlan.workspaceId}`}
+                              disabled={Boolean(busy)}
+                              onClick={() =>
+                                run("滚动历史欠账", () => rollOverDebt(dailyPlan))
+                              }
+                            >
+                              重新平均排入后续
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {dailyPlan.groups.length > 0 ? (
                         <div
                           className="active-today__tasks"
@@ -1787,6 +1923,20 @@ export function ActiveTeachingChainView({
                     >
                       <span>你 · {item.status === "processing" ? "教师正在思考…" : "发送失败，请重试"}</span>
                       <p>{item.content}</p>
+                      {item.status === "error" && (
+                        <div className="active-chain__message-retry">
+                          <small>{item.error || "这条消息没有写入课程记录。"}</small>
+                          <button
+                            data-testid="active-retry-user-message"
+                            disabled={Boolean(busy)}
+                            onClick={() =>
+                              run("重新发送", () => retryPendingMessage(item))
+                            }
+                          >
+                            重新发送
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -27,6 +27,12 @@ import { CitationCard } from "./components/CitationCard";
 import { ConflictPanel } from "./components/ConflictPanel";
 import ReactMarkdown from "react-markdown";
 import { providerDiagnostic, useMentorStore } from "./stores/useMentorStore";
+import {
+  providerRequestContext,
+  reconnectSavedProvider,
+  request,
+} from "./providerConnection";
+export { providerRequestContext, reconnectSavedProvider } from "./providerConnection";
 import { useNarrativeStore } from "./stores/useNarrativeStore";
 import { StoryCatalogView } from "./features/story-catalog/StoryCatalogView";
 import { speakBrowser } from "./features/voice/browserVoice";
@@ -35,7 +41,6 @@ import { ExpeditionView } from "./features/expedition/ExpeditionView";
 import { ActiveTeachingChainView } from "./features/active-teaching/ActiveTeachingChainView";
 
 const TeacherAvatarStudio = lazy(() => import("./features/teachers/TeacherAvatarStudio").then(module => ({ default: module.TeacherAvatarStudio })));
-const API = "/api";
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
 const PRESETS_STORAGE_KEY = "mentorflow_create_presets_v1";
 const DAILY_SETTINGS_KEY = "mentorflow_daily_refresh_v1";
@@ -84,95 +89,6 @@ function normalizePlan(item: any, workspace?: any): Plan | null {
     deadline: payload.deadline || goal.deadline || "",
     source_coverage_rate: payload.source_coverage_rate ?? feasibility.source_sufficiency,
   } as Plan;
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(API + path, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    const errorCode = data.error?.code || data.detail?.error?.code;
-    if (typeof errorCode === "string" && errorCode.startsWith("PROVIDER_SESSION")) useMentorStore.getState().setLastError(data.error?.message || data.detail?.error?.message || "模型会话已失效，请重新连接");
-    throw new Error(
-      data.error?.message || data.detail?.error?.message || data.detail?.message || "请求失败",
-    );
-  }
-  return data;
-}
-
-export function providerRequestContext(): Record<string, string> {
-  const state = useMentorStore.getState();
-  const sessionId = state.verified ? state.providerSessionId : null;
-  return sessionId ? { provider_session_id: sessionId } : {};
-}
-
-let providerReconnectInFlight: Promise<any> | null = null;
-
-export function reconnectSavedProvider(): Promise<any> {
-  if (providerReconnectInFlight) return providerReconnectInFlight;
-  const state = useMentorStore.getState();
-  if (state.provider === "fake" || !state.apiKey.trim()) {
-    return Promise.resolve(null);
-  }
-  providerReconnectInFlight = (async () => {
-    if (state.providerSessionId) {
-      try {
-        const current = await request<any>(
-          `/provider-sessions/${encodeURIComponent(state.providerSessionId)}`,
-        );
-        if (
-          current.verified
-          && (!current.expires_at || new Date(current.expires_at).getTime() > Date.now())
-        ) {
-          useMentorStore.getState().setProviderSession({
-            providerSessionId: current.provider_session_id,
-            provider: state.provider,
-            baseUrl: state.baseUrl,
-            model: state.model,
-            verified: true,
-            expiresAt: current.expires_at,
-            latencyMs: current.latency_ms,
-            lastTestedAt: current.last_tested_at,
-          });
-          return current;
-        }
-      } catch {
-        // Backend restarts discard the in-memory session. Recreate it below
-        // from the browser-local provider configuration and credential.
-      }
-    }
-    const baseUrl = state.baseUrl.trim()
-      || (state.provider === "openai-compatible" ? "https://api.deepseek.com" : "");
-    const created = await request<any>("/provider-sessions", {
-      method: "POST",
-      body: JSON.stringify({
-        provider: state.provider,
-        base_url: baseUrl,
-        model: state.model,
-        api_key: state.apiKey,
-      }),
-    });
-    const result = await request<any>(
-      `/provider-sessions/${encodeURIComponent(created.provider_session_id)}/test`,
-      { method: "POST" },
-    );
-    useMentorStore.getState().setProviderSession({
-      providerSessionId: result.provider_session_id,
-      provider: state.provider,
-      baseUrl,
-      model: state.model,
-      verified: true,
-      expiresAt: result.expires_at,
-      latencyMs: result.latency_ms,
-      lastTestedAt: result.last_tested_at,
-    });
-    return result;
-  })().finally(() => {
-    providerReconnectInFlight = null;
-  });
-  return providerReconnectInFlight;
 }
 
 const characters = [

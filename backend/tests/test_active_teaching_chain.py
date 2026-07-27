@@ -404,6 +404,23 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
                 for task in today_plan["tasks"]
             )
 
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        tomorrow_index = client.get(
+            f"/api/active-teaching/workspaces?day={tomorrow}"
+        )
+        assert tomorrow_index.status_code == 200, tomorrow_index.text
+        tomorrow_items = {
+            item["workspace_id"]: item for item in tomorrow_index.json()["items"]
+        }
+        cooking_debt = tomorrow_items["task-cooking"]["today_plan"]
+        assert cooking_debt["overdue_task_count"] > 0
+        assert cooking_debt["overdue_task_minutes"] > 0
+        assert cooking_debt["oldest_overdue_date"] <= date.today().isoformat()
+        assert all(
+            task["day_date"] < tomorrow
+            for task in cooking_debt["overdue_tasks"]
+        )
+
         cooking_tasks = created["task-cooking"]["plan"]["tasks"]
         focused_task = cooking_tasks[-1]
         focused = client.post(

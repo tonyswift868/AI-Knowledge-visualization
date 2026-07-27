@@ -376,6 +376,26 @@ def test_stale_expression_provider_does_not_strand_a_durable_lesson(tmp_path, mo
         assert continued.json()["messages"][-1]["action"] == "explain"
         assert continued.json()["state"]["teacher_generation"]["mode"] == "system_guided"
 
+        replacement_public = create_provider_session(
+            {
+                "provider": "openai-compatible",
+                "base_url": "https://example.invalid",
+                "model": "teaching-expression-test",
+                "api_key": "test-only-key",
+            }
+        )
+        replacement = get_provider_session(replacement_public["provider_session_id"])
+        replacement.verified = True
+        resumed = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": "请继续带着我学",
+                "provider_session_id": replacement.id,
+            },
+        )
+        assert resumed.status_code == 200, resumed.text
+        assert resumed.json()["state"]["provider_session_id"] == replacement.id
+
 
 def test_provider_high_score_cannot_bypass_required_grounded_prechecks(tmp_path, monkeypatch):
     configure_orm(tmp_path / "active-provider-precheck.db")

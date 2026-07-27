@@ -27,6 +27,10 @@ export type ActiveLearningTaskSummary = {
     completed_task_minutes: number;
     remaining_task_minutes: number;
     tasks: any[];
+    overdue_task_count: number;
+    overdue_task_minutes: number;
+    oldest_overdue_date: string | null;
+    overdue_tasks: any[];
     projected_review_items: any[];
     learning_order_policy: string;
   } | null;
@@ -59,7 +63,12 @@ export type ActiveTeacherVisualProfile = {
 async function parseResponse(response: Response) {
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error?.message || data.detail?.error?.message || data.detail?.message || "请求失败");
+    const error = new Error(
+      data.error?.message || data.detail?.error?.message || data.detail?.message || "请求失败",
+    ) as Error & { code?: string; status?: number };
+    error.code = data.error?.code || data.detail?.error?.code;
+    error.status = response.status;
+    throw error;
   }
   return data;
 }

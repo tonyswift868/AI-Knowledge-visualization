@@ -3791,11 +3791,20 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             and bound_provider_session_id
             and requested_provider_session_id != bound_provider_session_id
         ):
-            _error(
-                "TEACHING_PROVIDER_SESSION_MISMATCH",
-                "该教学会话已绑定另一条 Provider 会话；不能在一次学习证据链中静默更换评分来源。",
-                409,
-            )
+            try:
+                require_provider_session(str(bound_provider_session_id))
+            except ProviderError:
+                # Provider sessions are deliberately in-memory. After a backend
+                # restart the durable teaching session may still reference the
+                # vanished id; accept the browser's newly verified replacement.
+                state["provider_session_id"] = requested_provider_session_id
+                bound_provider_session_id = requested_provider_session_id
+            else:
+                _error(
+                    "TEACHING_PROVIDER_SESSION_MISMATCH",
+                    "该教学会话已绑定另一条 Provider 会话；不能在一次学习证据链中静默更换评分来源。",
+                    409,
+                )
         if requested_provider_session_id and not bound_provider_session_id:
             state["provider_session_id"] = requested_provider_session_id
         tasks = _task_rows(connection, session["plan_id"])
@@ -5769,7 +5778,24 @@ def _workspace_day_overview(
            ORDER BY task.point_sequence,task.task_order,task.id""",
         (plan_id, day_date),
     ).fetchall()
-    point_ids = list(dict.fromkeys(str(row["knowledge_point_id"]) for row in rows))
+    overdue_rows = connection.execute(
+        """SELECT task.*,point.name AS knowledge_point_name,
+                  point.difficulty,point.mastery
+           FROM active_plan_tasks AS task
+           JOIN active_knowledge_points AS point
+             ON point.id=task.knowledge_point_id
+           WHERE task.plan_id=? AND task.day_date<?
+             AND task.status IN ('planned','in_progress','unscheduled')
+           ORDER BY task.day_date,task.point_sequence,task.task_order,task.id""",
+        (plan_id, day_date),
+    ).fetchall()
+    today_point_ids = list(
+        dict.fromkeys(str(row["knowledge_point_id"]) for row in rows)
+    )
+    relevant_rows = [*rows, *overdue_rows]
+    point_ids = list(
+        dict.fromkeys(str(row["knowledge_point_id"]) for row in relevant_rows)
+    )
     prerequisite_names: dict[str, list[str]] = defaultdict(list)
     if point_ids:
         placeholders = ",".join("?" for _ in point_ids)
@@ -5784,8 +5810,7 @@ def _workspace_day_overview(
             (workspace_id, *point_ids),
         ).fetchall():
             prerequisite_names[str(row["dependent_id"])].append(str(row["name"]))
-    tasks = []
-    for row in rows:
+    def enrich_task(row: sqlite3.Row) -> dict[str, Any]:
         task = dict(row)
         task["prerequisite_names"] = prerequisite_names.get(
             str(row["knowledge_point_id"]), []
@@ -5795,11 +5820,27 @@ def _workspace_day_overview(
             if task["prerequisite_names"]
             else "当前无未满足先修，按简单到困难进入"
         )
-        tasks.append(task)
+        return task
+
+    tasks = [enrich_task(row) for row in rows]
+    overdue_tasks = [
+        enrich_task(row)
+        for row in overdue_rows
+        if int(row["completed_task_minutes"] or 0)
+        < int(row["estimated_task_minutes"] or 0)
+    ]
     completed_minutes = sum(
         int(row["completed_task_minutes"] or 0) for row in rows
     )
     planned_minutes = sum(int(row["estimated_task_minutes"] or 0) for row in rows)
+    overdue_minutes = sum(
+        max(
+            0,
+            int(row["estimated_task_minutes"] or 0)
+            - int(row["completed_task_minutes"] or 0),
+        )
+        for row in overdue_rows
+    )
     has_plan_calendars = connection.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type='table' AND name='active_plan_calendars'"""
@@ -5825,12 +5866,20 @@ def _workspace_day_overview(
         projected_reviews = list(selected_day.get("projected_review_items") or [])
     return {
         "date": day_date,
-        "knowledge_point_count": len(point_ids),
+        "knowledge_point_count": len(today_point_ids),
         "task_count": len(tasks),
         "planned_task_minutes": planned_minutes,
         "completed_task_minutes": completed_minutes,
         "remaining_task_minutes": max(0, planned_minutes - completed_minutes),
         "tasks": tasks,
+        "overdue_task_count": len(overdue_tasks),
+        "overdue_task_minutes": overdue_minutes,
+        "oldest_overdue_date": (
+            min(str(task["day_date"]) for task in overdue_tasks)
+            if overdue_tasks
+            else None
+        ),
+        "overdue_tasks": overdue_tasks,
         "projected_review_items": projected_reviews,
         "learning_order_policy": (
             "严格先满足前置依赖；同一时刻可学习的知识点按简单、"

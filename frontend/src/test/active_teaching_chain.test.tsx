@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ActiveTeachingChainView } from "../features/active-teaching/ActiveTeachingChainView";
+import { useMentorStore } from "../stores/useMentorStore";
 
 
 const snapshot = {
@@ -203,6 +204,13 @@ describe("ActiveTeachingChainView", () => {
     cleanup();
     vi.unstubAllGlobals();
     localStorage.clear();
+    useMentorStore.getState().setProvider("fake");
+    useMentorStore.getState().setApiKey("");
+    useMentorStore.getState().setProviderSession({
+      providerSessionId: "",
+      provider: "fake",
+      verified: false,
+    });
   });
 
   it("shows only the current knowledge-point conversation after a new briefing", async () => {
@@ -391,6 +399,18 @@ describe("ActiveTeachingChainView", () => {
           date: "2026-07-27",
           remaining_task_minutes: 40,
           tasks: [firstTodayTask],
+          overdue_task_count: 1,
+          overdue_task_minutes: 15,
+          oldest_overdue_date: "2026-07-26",
+          overdue_tasks: [{
+            ...firstTodayTask,
+            id: "task_overdue",
+            title: "昨日基础 · 理解",
+            knowledge_point_id: "kp_overdue",
+            knowledge_point_name: "昨日基础",
+            day_date: "2026-07-26",
+            estimated_task_minutes: 15,
+          }],
           projected_review_items: [],
         },
         updated_at: "2026-07-27T00:00:00Z",
@@ -455,6 +475,23 @@ describe("ActiveTeachingChainView", () => {
     );
     expect(screen.getByTestId("active-daily-plan-generic-active")).toHaveTextContent(
       "计划一",
+    );
+    expect(screen.getByTestId("active-overdue-summary")).toHaveTextContent(
+      "历史欠账不会消失",
+    );
+    fireEvent.click(screen.getByTestId("active-daily-plan-toggle-generic-active"));
+    expect(
+      await screen.findByTestId("active-overdue-generic-active"),
+    ).toHaveTextContent("2026-07-26");
+    fireEvent.click(screen.getByTestId("active-rollover-overdue-generic-active"));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/sessions/session_1/replan",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"trigger":"manual_debt_rollover"'),
+        }),
+      ),
     );
     expect(screen.getByTestId("active-daily-plan-second-plan")).toHaveTextContent(
       "计划二",
@@ -542,6 +579,115 @@ describe("ActiveTeachingChainView", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("active-pending-user-message")).not.toBeInTheDocument(),
     );
+  });
+
+  it("keeps a failed learner message visible and provides a working retry", async () => {
+    let advanceAttempts = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/sessions/session_1/advance") && init?.method === "POST") {
+        advanceAttempts += 1;
+        if (advanceAttempts === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            json: async () => ({
+              error: { code: "PROVIDER_UPSTREAM_ERROR", message: "模型暂时不可用" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => snapshot.session });
+      }
+      return Promise.resolve({ ok: true, json: async () => snapshot });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    fireEvent.change(await screen.findByTestId("active-teacher-input"), {
+      target: { value: "请带着我慢慢写这个代码" },
+    });
+    fireEvent.click(screen.getByTestId("active-send-teacher"));
+    expect(await screen.findByTestId("active-retry-user-message")).toBeInTheDocument();
+    expect(screen.getByTestId("active-pending-user-message")).toHaveTextContent(
+      "模型暂时不可用",
+    );
+
+    fireEvent.click(screen.getByTestId("active-retry-user-message"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("active-pending-user-message")).not.toBeInTheDocument(),
+    );
+    expect(advanceAttempts).toBe(2);
+  });
+
+  it("reconnects a lost provider session and retries the learner message once", async () => {
+    useMentorStore.getState().setProvider("openai-compatible");
+    useMentorStore.getState().setBaseUrl("https://mock.provider/v1");
+    useMentorStore.getState().setModel("mock-model");
+    useMentorStore.getState().setApiKey("saved-browser-key");
+    useMentorStore.getState().setProviderSession({
+      providerSessionId: "ps_lost",
+      provider: "openai-compatible",
+      verified: true,
+    });
+    let advanceAttempts = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const value = String(url);
+      if (value.endsWith("/sessions/session_1/advance") && init?.method === "POST") {
+        advanceAttempts += 1;
+        if (advanceAttempts === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 428,
+            json: async () => ({
+              error: { code: "PROVIDER_SESSION_REQUIRED", message: "请先验证 Provider 连接" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => snapshot.session });
+      }
+      if (value === "/api/provider-sessions/ps_lost") {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({
+            error: { code: "PROVIDER_SESSION_NOT_FOUND", message: "会话不存在" },
+          }),
+        });
+      }
+      if (value === "/api/provider-sessions" && init?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ provider_session_id: "ps_restored" }),
+        });
+      }
+      if (value === "/api/provider-sessions/ps_restored/test") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            provider_session_id: "ps_restored",
+            verified: true,
+            expires_at: "2030-01-01T00:00:00Z",
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => snapshot });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    fireEvent.change(await screen.findByTestId("active-teacher-input"), {
+      target: { value: "B，请你带着我慢慢学会写这个代码" },
+    });
+    fireEvent.click(screen.getByTestId("active-send-teacher"));
+
+    await waitFor(() => expect(advanceAttempts).toBe(2));
+    expect(useMentorStore.getState().providerSessionId).toBe("ps_restored");
+    const advanceBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).endsWith("/sessions/session_1/advance"))
+      .map(([, init]) => JSON.parse(String(init?.body || "{}")));
+    expect(advanceBodies.map((body) => body.provider_session_id)).toEqual([
+      "ps_lost",
+      "ps_restored",
+    ]);
   });
 
   it("submits generic learning conditions without any course-specific fields", async () => {

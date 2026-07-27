@@ -55,6 +55,9 @@
 .active-chain__message.is-pending { opacity: .82; border-style: dashed; }
 .active-chain__message.is-pending > span { animation: active-teacher-pulse 1.25s ease-in-out infinite; }
 .active-chain__message.is-pending.is-error { border-color: #e1a99e; background: #fff1ed; }
+.active-chain__message-retry { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.active-chain__message-retry small { color: #8b4b3f; }
+.active-chain .active-chain__message-retry button { flex: none; padding: 7px 12px; }
 .active-classroom__composer { position: sticky; bottom: 0; z-index: 6; align-items: end; padding: 12px 0 2px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 18%); }
 .active-classroom__composer textarea { min-height: 66px; max-height: 180px; }
 .active-classroom__status { padding: 10px 12px; border: 1px solid #d8e4dd; border-radius: 12px; background: #f8fbf9; }
@@ -121,6 +124,11 @@
 .active-today__sequence { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #fff; background: #397d5d; font-size: 12px; font-weight: 800; }
 .active-today__empty { display: grid; gap: 5px; padding: 20px; border: 1px dashed #a8cdb8; border-radius: 14px; color: #5f6f68; background: rgba(255, 255, 255, .62); }
 .active-today__empty b { color: #285b44; }
+.active-today__debt-summary, .active-today__time-warning, .active-today__debt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #e3c28c; border-radius: 14px; color: #79521b; background: #fff8e8; }
+.active-today__debt-summary > div, .active-today__time-warning, .active-today__debt > div:first-child { display: grid; gap: 4px; }
+.active-today__debt-summary span, .active-today__time-warning span, .active-today__debt span { font-size: 12px; }
+.active-today__debt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.active-today__time-warning { align-items: start; flex-direction: column; border-color: #e4b3a7; color: #7c4338; background: #fff2ee; }
 .active-chain__advanced { grid-column: 1 / -1; padding: 12px 14px; border: 1px solid #d8e4dd; border-radius: 12px; }
 .active-chain__advanced summary { color: #397d5d; font-weight: 700; cursor: pointer; }
 .active-chain__advanced[open] { display: grid; gap: 12px; }
