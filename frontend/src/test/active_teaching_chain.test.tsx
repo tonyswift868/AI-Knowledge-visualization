@@ -33,6 +33,12 @@ const snapshot = {
     unavailable_dates: [],
     special_date_minutes: {},
     preferred_learning_style: "主动讲解",
+    allocation: {
+      phase_daily_minutes: {
+        initial_learning: 40,
+        review: 10,
+      },
+    },
   },
   knowledge_graph: {
     assessment: {
@@ -83,6 +89,7 @@ const snapshot = {
     calendar: [{
       date: "2026-07-25",
       availability_reason: "regular",
+      study_phase: "initial_learning",
       capacity_minutes: 120,
       planned_task_minutes: 40,
       expected_actual_elapsed_minutes_range: { min: 46, max: 64 },
@@ -190,6 +197,23 @@ describe("ActiveTeachingChainView", () => {
       "证据覆盖 100%",
     );
     expect(screen.getByTestId("active-plan-budget")).toHaveTextContent("120");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
+      "前半段首学（07/25–07/25，共 1 天）：40/日",
+    );
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
+      "后半段复习（07/26–07/26，共 1 天）：10/日",
+    );
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
+      "两个数字不会在同一天相加",
+    );
+    expect(screen.getByTestId("active-generate-graph")).toBeDisabled();
+    expect(screen.getByTestId("active-generate-graph")).toHaveTextContent(
+      "知识地图已生成",
+    );
+    expect(screen.getByTestId("active-save-receipt")).toBeDisabled();
+    expect(screen.getByTestId("active-save-receipt")).toHaveTextContent(
+      "当前设置未变化",
+    );
     expect(screen.getByText(/完全掌握预计 50 任务分钟/)).toBeInTheDocument();
     expect(screen.getAllByText(/完成任务分钟 0/).length).toBeGreaterThan(0);
     expect(screen.getByText(/实际耗时分钟 0.000/)).toBeInTheDocument();
@@ -231,7 +255,7 @@ describe("ActiveTeachingChainView", () => {
     await screen.findByTestId("active-save-receipt");
     expect(screen.queryByTestId("active-daily-minutes")).not.toBeInTheDocument();
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按阶段分配学习负荷");
-    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("不是用户预算或固定上限");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("两个数字不会在同一天相加");
     fireEvent.change(screen.getByTestId("active-teacher-persona"), {
       target: { value: "耐心、有趣，先用生活例子" },
     });
@@ -247,6 +271,16 @@ describe("ActiveTeachingChainView", () => {
       expect(body.daily_task_minutes).toBeUndefined();
       expect(body.material_ids).toEqual(["material_1"]);
       expect(JSON.stringify(body)).not.toMatch(/leetcode|hot150|面试经典/iu);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) => String(url).endsWith("/knowledge-map/generate"),
+        ),
+      ).toBe(false);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) => String(url).endsWith("/mastery-plans/generate"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -281,6 +315,25 @@ describe("ActiveTeachingChainView", () => {
     expect(await screen.findByDisplayValue("刷新后仍保留的学习目标")).toBeInTheDocument();
     expect(screen.getByDisplayValue("耐心但主动的教师")).toBeInTheDocument();
     expect(screen.getByDisplayValue("游戏、做饭")).toBeInTheDocument();
+  });
+
+  it("rebuilds the knowledge map only when a map input such as foundation changes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+    const foundation = await screen.findByTestId("active-foundation");
+    fireEvent.change(foundation, { target: { value: "zero_foundation" } });
+    expect(screen.getByTestId("active-save-receipt")).toHaveTextContent(
+      "重建知识地图与计划",
+    );
+    fireEvent.click(screen.getByTestId("active-save-receipt"));
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+    });
   });
 
   it("turns one uploaded arbitrary file into receipt, knowledge map, and plan automatically", async () => {

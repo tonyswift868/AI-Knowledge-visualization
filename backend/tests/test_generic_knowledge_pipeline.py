@@ -134,6 +134,17 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
         initial_actual = {
             task["id"]: task["actual_elapsed_minutes"] for task in payload["tasks"]
         }
+        cached_graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert cached_graph.status_code == 200, cached_graph.text
+        assert cached_graph.json()["extraction"]["provider_meta"]["cache_hit"] is True
+        current_plan = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/plans/current"
+        )
+        assert current_plan.status_code == 200, current_plan.text
+        assert current_plan.json()["id"] == payload["id"]
         session = client.post(
             f"/api/active-teaching/workspaces/{workspace}/sessions/start",
             json={},
@@ -426,6 +437,15 @@ Two pointers track two positions while scanning an array."""
             )
             connection.commit()
 
+        changed_receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={
+                **receipt_payload,
+                "current_level": "zero_foundation",
+                "current_foundation": "zero_foundation",
+            },
+        )
+        assert changed_receipt.status_code == 200, changed_receipt.text
         regenerated = client.post(
             f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
             json={},
@@ -443,7 +463,7 @@ Two pointers track two positions while scanning an array."""
             f"/api/active-teaching/workspaces/{workspace}/snapshot"
         ).json()
         assert [item["id"] for item in snapshot["materials"]] == [material["id"]]
-        assert snapshot["receipt"] == saved_receipt.json()
+        assert snapshot["receipt"] == changed_receipt.json()
         assert snapshot["plan"] is None
         assert snapshot["session"] is None
 

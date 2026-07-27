@@ -87,6 +87,19 @@ def _evidence_chunks(connection: sqlite3.Connection, workspace_id: str, material
     ).fetchall()
 
 
+def _knowledge_source_fingerprint(
+    chunks: list[sqlite3.Row],
+    receipt: dict[str, Any],
+) -> str:
+    digest = hashlib.sha256()
+    digest.update(str(receipt.get("current_level") or "beginner").encode("utf-8"))
+    for chunk in chunks:
+        digest.update(str(chunk["material_id"]).encode("utf-8"))
+        digest.update(str(chunk["id"]).encode("utf-8"))
+        digest.update(hashlib.sha256(str(chunk["text"]).encode("utf-8")).digest())
+    return digest.hexdigest()
+
+
 def _structural_nodes(
     chunks: list[sqlite3.Row], current_level: str
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str]]:
@@ -606,7 +619,8 @@ async def generate_knowledge_map(
     with active_teaching._connect() as connection:
         ensure_generic_schema(connection)
         receipt_row = connection.execute(
-            "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
+            "SELECT payload,updated_at FROM active_receipts WHERE workspace_id=?",
+            (workspace_id,),
         ).fetchone()
         if not receipt_row:
             active_teaching._error("RECEIPT_REQUIRED", "请先保存学习条件", 409)
@@ -614,6 +628,68 @@ async def generate_knowledge_map(
         chunks = _evidence_chunks(connection, workspace_id, receipt["material_ids"])
         if not chunks:
             active_teaching._error("KNOWLEDGE_SOURCE_REQUIRED", "所选资料没有可追溯正文", 409)
+        source_fingerprint = _knowledge_source_fingerprint(chunks, receipt)
+        latest_run = connection.execute(
+            """SELECT * FROM active_extraction_runs
+               WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (workspace_id,),
+        ).fetchone()
+        if latest_run:
+            latest_meta = json.loads(latest_run["provider_meta"])
+            existing_graph = public_generic_graph(connection, workspace_id)
+            source_matches = latest_meta.get("source_fingerprint") == source_fingerprint
+            latest_plan = connection.execute(
+                """SELECT receipt FROM active_plans
+                   WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+                (workspace_id,),
+            ).fetchone()
+            plan_receipt = json.loads(latest_plan["receipt"]) if latest_plan else {}
+            current_map_inputs = (
+                str(receipt.get("current_level") or receipt.get("current_foundation") or ""),
+                sorted(str(item) for item in receipt.get("material_ids") or []),
+            )
+            planned_map_inputs = (
+                str(
+                    plan_receipt.get("current_level")
+                    or plan_receipt.get("current_foundation")
+                    or ""
+                ),
+                sorted(str(item) for item in plan_receipt.get("material_ids") or []),
+            )
+            legacy_current_run = (
+                not latest_meta.get("source_fingerprint")
+                and int(latest_run["input_chunk_count"]) == len(chunks)
+                and bool(latest_plan)
+                and current_map_inputs == planned_map_inputs
+            )
+            if (
+                existing_graph["knowledge_points"]
+                and (source_matches or legacy_current_run)
+            ):
+                if legacy_current_run:
+                    latest_meta["source_fingerprint"] = source_fingerprint
+                    latest_meta["cache_hit"] = False
+                    connection.execute(
+                        "UPDATE active_extraction_runs SET provider_meta=? WHERE id=?",
+                        (
+                            json.dumps(latest_meta, ensure_ascii=False),
+                            latest_run["id"],
+                        ),
+                    )
+                    connection.commit()
+                existing_graph["extraction"] = {
+                    "id": latest_run["id"],
+                    "mode": latest_run["mode"],
+                    "provider_meta": {
+                        **latest_meta,
+                        "cache_hit": True,
+                        "message": "资料与当前基础均未变化，复用已生成知识地图。",
+                    },
+                    "warnings": json.loads(latest_run["warnings"]),
+                    "input_chunk_count": latest_run["input_chunk_count"],
+                    "output_point_count": latest_run["output_point_count"],
+                }
+                return existing_graph
         session_id = _provider_session_id(request, body)
         if session_id:
             nodes, edges, warnings, provider_meta = await _provider_nodes(
@@ -629,6 +705,11 @@ async def generate_knowledge_map(
                 "message": "未收到已验证的真实 Provider 会话。",
             }
             mode = "structural_fallback"
+        provider_meta = {
+            **provider_meta,
+            "source_fingerprint": source_fingerprint,
+            "cache_hit": False,
+        }
         if not nodes:
             active_teaching._error(
                 "KNOWLEDGE_EXTRACTION_EMPTY",

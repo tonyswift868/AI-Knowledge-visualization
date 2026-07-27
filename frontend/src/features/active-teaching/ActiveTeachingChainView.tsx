@@ -265,6 +265,17 @@ export function ActiveTeachingChainView({
   const localKnowledgeBase = snapshot?.local_knowledge_base;
   const graph = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
   const plan = snapshot?.plan;
+  const initialPhaseDays = (plan?.calendar || []).filter(
+    (day: any) => day.study_phase === "initial_learning",
+  );
+  const reviewPhaseDays = (plan?.calendar || []).filter(
+    (day: any) => day.study_phase === "review",
+  );
+  const phaseRange = (days: any[]) => {
+    if (!days.length) return "等待排程";
+    const short = (value: string) => value.slice(5).replace("-", "/");
+    return `${short(days[0].date)}–${short(days[days.length - 1].date)}，共 ${days.length} 天`;
+  };
   const session = snapshot?.session;
   const completionReport = snapshot?.completion_report;
   useEffect(() => {
@@ -310,6 +321,39 @@ export function ActiveTeachingChainView({
     allow_schedule_suggestions: true,
     material_ids: materialIds || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
   });
+  const readyMaterialIds = materials
+    .filter((item: any) => item.status === "ready")
+    .map((item: any) => item.id)
+    .sort();
+  const savedReceipt = snapshot?.receipt;
+  const currentConditions = receiptPayload(readyMaterialIds);
+  const comparableReceipt = (value: any) => JSON.stringify({
+    learning_goal: value?.learning_goal || "",
+    current_level: value?.current_level || value?.current_foundation || "",
+    start_date: value?.start_date || "",
+    deadline: value?.deadline || "",
+    study_weekdays: [...(value?.study_weekdays || [0, 1, 2, 3, 4, 5, 6])].sort(),
+    unavailable_dates: [...(value?.unavailable_dates || [])].sort(),
+    special_date_minutes: value?.special_date_minutes || {},
+    preferred_learning_style: value?.preferred_learning_style || "",
+    teacher_persona: value?.teacher_persona || "",
+    learner_interests: value?.learner_interests || "",
+    notes: value?.notes || "",
+    material_ids: [...(value?.material_ids || readyMaterialIds)].sort(),
+  });
+  const taskConditionsChanged = Boolean(savedReceipt)
+    && comparableReceipt(currentConditions) !== comparableReceipt(savedReceipt);
+  const knowledgeInputsChanged = Boolean(file)
+    || Boolean(savedReceipt && (
+      currentConditions.current_level
+        !== (savedReceipt.current_level || savedReceipt.current_foundation)
+      || JSON.stringify(readyMaterialIds)
+        !== JSON.stringify([...(savedReceipt.material_ids || readyMaterialIds)].sort())
+    ));
+  const planNeedsRestoration = Boolean(savedReceipt)
+    && graph.knowledge_points.length > 0
+    && !plan;
+  const taskNeedsRecalculation = taskConditionsChanged || planNeedsRestoration;
 
   const saveReceipt = (materialIds?: string[]) =>
     activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/receipt`, {
@@ -570,7 +614,8 @@ export function ActiveTeachingChainView({
       {busy && (
         <div className="active-chain__busy" role="status">
           正在执行：{busy}
-          {busy.includes("学习任务") && realProviderSessionId && readyChunkCount > 24
+          {(busy.includes("学习任务") || busy.includes("知识地图"))
+            && realProviderSessionId && readyChunkCount > 24
             ? `；真实 AI 正在并行分析 ${readyChunkCount} 个资料分块，通常需要 1–3 分钟。`
             : ""}
         </div>
@@ -662,13 +707,13 @@ export function ActiveTeachingChainView({
           <div className="active-chain__allocation" data-testid="active-system-allocation">
             <span>系统按阶段分配学习负荷</span>
             <b>
-              {snapshot?.receipt?.allocation?.phase_daily_minutes
-                ? `首学 ${snapshot.receipt.allocation.phase_daily_minutes.initial_learning} · 复习 ${snapshot.receipt.allocation.phase_daily_minutes.review} 标准任务分钟/日`
+              {plan && snapshot?.receipt?.allocation?.phase_daily_minutes
+                ? `前半段首学（${phaseRange(initialPhaseDays)}）：${snapshot.receipt.allocation.phase_daily_minutes.initial_learning}/日；后半段复习（${phaseRange(reviewPhaseDays)}）：${snapshot.receipt.allocation.phase_daily_minutes.review}/日`
                 : snapshot?.receipt?.allocation?.recommended_minutes_per_day
                 ? `暂估 ${snapshot.receipt.allocation.recommended_minutes_per_day} 标准任务分钟/日`
                 : "保存后自动计算"}
             </b>
-            <small>这不是用户预算或固定上限。前 50% 可学习日期完成第一遍，后 50% 进入滚动复习；知识地图生成后按真实知识量校准。</small>
+            <small>两个数字不会在同一天相加：前 50% 的日期只完成完整第一遍，后 50% 的日期才进行滚动复习。</small>
           </div>
           <label>
             AI 教师人设
@@ -736,14 +781,22 @@ export function ActiveTeachingChainView({
           {snapshot?.receipt && (
             <button
               data-testid="active-save-receipt"
-              disabled={!materials.length || Boolean(busy)}
+              disabled={!materials.length || Boolean(file) || Boolean(busy) || !taskNeedsRecalculation}
               onClick={() => run("更新任务条件与计划", async () => {
                 await saveReceipt();
-                await generateKnowledgeMap();
+                if (knowledgeInputsChanged) {
+                  await generateKnowledgeMap();
+                }
                 await generateMasteryPlan();
               })}
             >
-              更新当前任务的知识地图与计划
+              {planNeedsRestoration
+                ? "恢复当前知识地图的学习计划"
+                : knowledgeInputsChanged
+                  ? "保存更改并重建知识地图与计划"
+                  : taskConditionsChanged
+                    ? "保存更改并重新排程"
+                    : "当前设置未变化，无需重新计算"}
             </button>
           )}
           <div data-testid="active-material-count">已保存资料 {materials.length} 份</div>
@@ -788,7 +841,20 @@ export function ActiveTeachingChainView({
         <article className="active-chain__card">
           <span className="active-chain__step">02 · 计划知识地图</span>
           <h3>先看清要学什么，再进入日历</h3>
-          <button data-testid="active-generate-graph" disabled={!snapshot?.receipt || Boolean(busy)} onClick={() => run("从资料生成知识地图", generateKnowledgeMap)}>从上传资料生成知识地图</button>
+          <button
+            data-testid="active-generate-graph"
+            disabled={!snapshot?.receipt || Boolean(busy) || graph.knowledge_points.length > 0}
+            onClick={() => run("从资料生成知识地图", generateKnowledgeMap)}
+          >
+            {graph.knowledge_points.length > 0
+              ? "知识地图已生成（资料未变化，无需重复生成）"
+              : "从上传资料生成知识地图"}
+          </button>
+          {graph.knowledge_points.length > 0 && (
+            <p className="active-chain__muted">
+              修改目标、日期、教师人设或学习偏好只会重新排程，不会再次调用模型抽取；上传新资料时才重建知识地图。
+            </p>
+          )}
           <div className="active-chain__receipt" data-testid="active-extraction-mode">
             <b>抽取模式：{graph.extraction?.mode || "尚未生成"}</b>
             <span>
