@@ -248,6 +248,69 @@ describe("ActiveTeachingChainView", () => {
     expect(history).not.toHaveTextContent("这是旧知识点的回答");
   });
 
+  it("offers to re-answer an old evidence-gated reply with the layered policy", async () => {
+    const legacySnapshot = structuredClone(snapshot);
+    legacySnapshot.session.messages = [
+      {
+        id: "briefing",
+        role: "teacher",
+        action: "daily_briefing",
+        content: "先了解你的基础。",
+        citations: [],
+      },
+      {
+        id: "learner-coaching-request",
+        role: "user",
+        action: "feedback",
+        content: "Java 忘光了，你能带着我完成任务吗？",
+        citations: [],
+      },
+      {
+        id: "legacy-insufficient",
+        role: "teacher",
+        action: "insufficient_evidence",
+        content: "当前资料没有足够证据。",
+        citations: [],
+      },
+    ];
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/sessions/session_1/advance") && init?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ...legacySnapshot.session,
+            messages: [
+              ...legacySnapshot.session.messages,
+              {
+                id: "corrected",
+                role: "teacher",
+                action: "learning_coach_response",
+                content: "可以，我会一步一步带着你完成。",
+                citations: [],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => legacySnapshot });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    fireEvent.click(
+      await screen.findByTestId("active-reanswer-with-layered-knowledge"),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/sessions/session_1/advance",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("你能带着我完成任务吗"),
+        }),
+      ),
+    );
+  });
+
   it("renders generic traceability, separated time fields, and persisted remediation state", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot }));
     render(<ActiveTeachingChainView workspaceId="generic" />);

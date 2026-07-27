@@ -31,6 +31,9 @@ const teacherActionLabels: Record<string, string> = {
   clarify_feedback: "再缩小一点",
   invite_questions: "轮到你提问",
   grounded_answer: "回答你的问题",
+  learning_coach_response: "学习引导 · 无需资料证据",
+  model_general_answer: "模型通识补充 · 非资料引用",
+  insufficient_evidence: "资料未覆盖",
   guided_practice: "小练习",
   check_understanding: "理解检查",
   remediation: "换一种方式讲",
@@ -490,6 +493,10 @@ export function ActiveTeachingChainView({
   }, [session?.messages]);
   const latestTeacher = useMemo(
     () => [...currentConversationMessages].reverse().find((item: any) => item.role === "teacher"),
+    [currentConversationMessages],
+  );
+  const latestLearnerMessage = useMemo(
+    () => [...currentConversationMessages].reverse().find((item: any) => item.role === "user"),
     [currentConversationMessages],
   );
   const currentKnowledgePoint = graph.knowledge_points.find(
@@ -1828,6 +1835,8 @@ export function ActiveTeachingChainView({
         </div>
         <p className="active-chain__muted">
           教师会依次带完首学与所选完整复习轮次；计划完成后仍可继续检索当前知识库并自由提问。
+          上传资料是课程事实依据；资料未覆盖时，真实模型可用稳定通识知识补充并单独标记。
+          最新信息和实时状态只有接入搜索工具后才算联网核验。
         </p>
         {session && (
           <>
@@ -1912,6 +1921,25 @@ export function ActiveTeachingChainView({
                             ))}
                           </details>
                         )}
+                        {item.id === latestTeacher?.id
+                          && item.action === "insufficient_evidence"
+                          && latestLearnerMessage?.content && (
+                            <div className="active-chain__message-retry">
+                              <small>这条回答来自旧的封闭证据规则，可以按新的分层策略重新回答。</small>
+                              <button
+                                data-testid="active-reanswer-with-layered-knowledge"
+                                disabled={Boolean(busy)}
+                                onClick={() =>
+                                  run(
+                                    "按新策略重新回答",
+                                    () => advance(latestLearnerMessage.content),
+                                  )
+                                }
+                              >
+                                按新策略重新回答
+                              </button>
+                            </div>
+                          )}
                       </div>
                     );
                   })}
@@ -1981,6 +2009,16 @@ export function ActiveTeachingChainView({
                     <span>补救栈 <b>{session.state.remediation_stack.length}</b></span>
                     <span>实际耗时 <b>{session.actual_elapsed_minutes}</b> 分钟</span>
                     <span>检索 <b>{session.state.last_retrieval?.mode || "local_hybrid_v1"}</b></span>
+                    <span>
+                      知识范围
+                      <b>
+                        {session.state.teacher_generation?.knowledge_scope === "model_general_knowledge"
+                          ? "模型通识补充"
+                          : session.state.teacher_generation?.knowledge_scope === "pedagogical_coaching"
+                            ? "教学引导"
+                            : "本地资料依据"}
+                      </b>
+                    </span>
                   </div>
                   {(session.state.replan_history || []).length > 0 && (
                     <div className="active-chain__receipt" data-testid="active-replan-summary">

@@ -39,6 +39,19 @@ SUPPORTED_SUFFIXES = {
 }
 CONFUSION_MARKERS = ("不懂", "不理解", "为什么", "再解释", "没明白", "听不懂", "看不懂")
 UNDERSTOOD_MARKERS = ("懂了", "明白了", "理解了", "会了", "可以继续")
+QUESTION_FUNCTION_TERMS = {
+    "为什",
+    "什么",
+    "怎么",
+    "如何",
+    "是否",
+    "请问",
+    "哪一",
+    "哪里",
+    "能不",
+    "不能",
+    "么会",
+}
 MAX_MATERIAL_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 5_000
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
@@ -2750,14 +2763,20 @@ async def _render_teacher_content(
     citations: list[dict[str, Any]],
     provider_session_id: str | None,
     state: dict[str, Any],
+    knowledge_scope: str = "source_grounded",
 ) -> tuple[str, dict[str, Any]]:
-    """Let a verified real provider improve delivery without controlling state or facts."""
+    """Render one teacher turn while preserving an explicit knowledge boundary."""
     if not provider_session_id:
         return draft, {
             "mode": "system_guided",
             "provider": None,
             "fallback_used": False,
-            "scope": "state_and_source_grounded_template",
+            "scope": (
+                "state_and_source_grounded_template"
+                if knowledge_scope == "source_grounded"
+                else knowledge_scope
+            ),
+            "knowledge_scope": knowledge_scope,
         }
     try:
         provider_session = require_provider_session(provider_session_id)
@@ -2795,6 +2814,7 @@ async def _render_teacher_content(
             (state.get("teacher_memory") or {}).get("last_learner_message") or ""
         ),
         "allowed_evidence": evidence,
+        "knowledge_scope": knowledge_scope,
         "rules": [
             "Rewrite the draft as concise, supportive Chinese teaching language.",
             "When latest_learner_message is a question, answer that exact question in the first paragraph; otherwise respond directly to the learner's actual feedback instead of repeating the knowledge-point title.",
@@ -2806,7 +2826,15 @@ async def _render_teacher_content(
             "Make it explicit that the learner may interrupt, ask a question, or request another example at any time.",
             "Keep the language professional and suitable for a learning classroom; never use sexual innuendo, erotic roleplay, humiliation, or suggestive body metaphors, even if a persona requests them.",
             "Do not change the action, route, task completion, mastery, timing, or next action.",
-            "Do not add factual claims beyond the draft and allowed evidence.",
+            (
+                "Do not add factual claims beyond the draft and allowed evidence."
+                if knowledge_scope == "source_grounded"
+                else (
+                    "You may use stable general model knowledge and pedagogical expertise. "
+                    "Clearly distinguish it from uploaded-material evidence, never invent a "
+                    "citation, and say when a current or time-sensitive claim needs real web verification."
+                )
+            ),
             "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
             "Follow the user's teacher persona when it does not conflict with evidence or safety.",
             "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
@@ -2821,8 +2849,16 @@ async def _render_teacher_content(
                 {
                     "role": "system",
                     "content": (
-                        "You are only the teaching-expression layer. The application owns "
-                        "facts, citations, teaching state, grading, timing and routing."
+                        (
+                            "You are the teaching-response layer. For this turn the application "
+                            "allows stable general model knowledge, but uploaded-source citations, "
+                            "teaching state, grading, timing and routing remain application-owned."
+                        )
+                        if knowledge_scope != "source_grounded"
+                        else (
+                            "You are only the teaching-expression layer. The application owns "
+                            "facts, citations, teaching state, grading, timing and routing."
+                        )
                     ),
                 },
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
@@ -2837,8 +2873,18 @@ async def _render_teacher_content(
             "Provider 未返回有效的教学表达内容。",
             502,
         )
+    if (
+        knowledge_scope == "model_general_knowledge"
+        and "模型通识补充" not in rendered[:80]
+    ):
+        rendered = f"模型通识补充（非资料引用）：\n\n{rendered}"
     return rendered, generation_meta(provider_session) | {
-        "scope": "expression_only",
+        "scope": (
+            "expression_only"
+            if knowledge_scope == "source_grounded"
+            else knowledge_scope
+        ),
+        "knowledge_scope": knowledge_scope,
         "fixed_action": action,
     }
 
@@ -3647,7 +3693,7 @@ def _search(
     source diversity.  It is more tolerant of phrasing changes than the old
     substring gate while keeping every answer traceable to stored chunks.
     """
-    terms = _retrieval_terms(query)
+    terms = _retrieval_terms(query) - QUESTION_FUNCTION_TERMS
     query_ngrams = _character_ngrams(query)
     if not terms:
         return []
@@ -3885,6 +3931,24 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
         is_understood = bool(body.get("understood")) or any(marker in lower for marker in UNDERSTOOD_MARKERS)
         is_remediation = bool(state.get("remediation_stack"))
+        is_pedagogical_request = any(
+            marker in lower
+            for marker in (
+                "带着我",
+                "教我",
+                "一步一步",
+                "慢慢学",
+                "怎么开始",
+                "从哪里开始",
+                "不敢写",
+                "害怕写",
+                "完成任务",
+                "忘光",
+                "忘了",
+                "没基础",
+                "零基础",
+            )
+        )
         is_question_window = state.get("current_teaching_step") in {
             "question_invitation",
             "concept_check",
@@ -3910,12 +3974,23 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             )
         )
         action = "continue"
+        knowledge_scope = "source_grounded"
         has_question_form = (
             "?" in message
             or "？" in message
             or any(
                 marker in message
-                for marker in ("为什么", "怎么", "能不能", "是否", "请问", "哪一步", "哪里")
+                for marker in (
+                    "为什么",
+                    "怎么",
+                    "能不能",
+                    "是否",
+                    "请问",
+                    "哪一步",
+                    "哪里",
+                    "吗",
+                    "呢",
+                )
             )
         )
         is_explicit_question = (
@@ -3925,11 +4000,40 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             ))
             and not is_understood
             and not is_remediation
-            and (not is_confused or is_question_window)
         )
         question_hits = _search(
             connection, session["workspace_id"], message, plan_id=session["plan_id"]
         ) if is_explicit_question else []
+        if question_hits:
+            query_topic_terms = _retrieval_terms(message) - QUESTION_FUNCTION_TERMS
+            current_topic_terms = _retrieval_terms(
+                " ".join(
+                    (
+                        str(point["name"]),
+                        str(point["explanation"]),
+                        str(point["acceptance_method"]),
+                    )
+                )
+            )
+            refers_to_current_context = any(
+                marker in lower
+                for marker in (
+                    "这里",
+                    "这个",
+                    "这样",
+                    "这一步",
+                    "刚才",
+                    "当前",
+                    "它",
+                    "该题",
+                    "本题",
+                )
+            )
+            if not (query_topic_terms & current_topic_terms) and not refers_to_current_context:
+                # A lexical retriever can find a generic shared word such as
+                # “运行”. Do not mislabel an unrelated question as grounded in
+                # the current lesson merely because of that weak collision.
+                question_hits = []
         question_conflicts = (
             _matching_conflicts(
                 connection,
@@ -3940,7 +4044,34 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             if is_explicit_question
             else []
         )
-        if question_conflicts:
+        if is_pedagogical_request and not is_understood and not is_remediation:
+            action = "learning_coach_response"
+            citations = question_hits
+            knowledge_scope = "pedagogical_coaching"
+            first_check = (
+                "你还记得 Java 里的数组下标从 0 开始吗？只回答“记得 / 不记得”即可。"
+                if "java" in lower
+                else (
+                    f"看着“{point['name']}”这个名称，你觉得它大概要把什么输入变成什么结果？"
+                    "完全不知道也可以直接回答“不知道”。"
+                )
+            )
+            content = (
+                "可以，我会带着你完成，而且这不是一道需要从资料里寻找事实答案的问题。"
+                "你是在告诉我当前基础、压力和希望的教学节奏；这类学习引导不需要先命中本地资料。"
+                "\n\n我们先不要求你独立写完整代码。第一步只做一件事："
+                f"围绕“{point['name']}”，我先用生活语言说明输入、目标和一个最小例子，"
+                "然后请你只回答一个很短的问题；根据你的回答，我再决定补讲还是进入下一小步。"
+                f"\n\n现在先告诉我：{first_check}"
+            )
+            state["current_teaching_step"] = "question_invitation"
+            state["next_action"] = "answer_question_or_start_practice"
+            state["autonomy"] = {
+                "mode": "teacher_led_question_dialogue",
+                "awaiting_learner": True,
+                "reason": "pedagogical_coaching_requested",
+            }
+        elif question_conflicts:
             action = "source_conflict"
             citations = [
                 question_conflicts[0]["evidence_a"],
@@ -3959,13 +4090,28 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 "reason": "follow_up_question_invited",
             }
         elif is_explicit_question and not question_hits:
-            action = "insufficient_evidence"
-            citations = []
-            content = (
-                "资料中无法确认。当前上传资料没有足够证据支持这个问题，我不会猜测或编造。"
-                "你可以换一种问法、补充资料，或者继续追问我能从现有资料确认的部分；"
-                "确认清楚后说“开始练习”。"
+            action = (
+                "model_general_answer"
+                if requested_provider_session_id
+                else "insufficient_evidence"
             )
+            citations = []
+            if requested_provider_session_id:
+                knowledge_scope = "model_general_knowledge"
+                content = (
+                    "当前上传资料没有直接覆盖这个问题。下面可以使用模型的稳定通识知识回答，"
+                    "但会明确标成“模型通识补充”，不会伪造为资料引用。"
+                    f"\n\n请直接回答学习者的问题：“{message[:400]}”。"
+                    "先给简短结论，再给一个适合当前基础的小例子；"
+                    "如果问题涉及最新信息、价格、政策或实时状态，明确说明需要另行联网核验。"
+                    "\n\n最后只问一个能帮助学习者继续的小问题。"
+                )
+            else:
+                content = (
+                    "当前上传资料没有直接覆盖这个问题，而且目前没有连接真实模型来提供通识补充。"
+                    "这不代表问题超标；连接 Provider 后我可以把“资料依据”和“模型通识”分开回答，"
+                    "但不会把通识内容伪装成资料引用。"
+                )
             state["current_teaching_step"] = "question_invitation"
             state["next_action"] = "answer_question_or_start_practice"
             state["autonomy"] = {
@@ -4493,6 +4639,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             citations=citations,
             provider_session_id=requested_provider_session_id,
             state=state,
+            knowledge_scope=knowledge_scope,
         )
         state["teacher_generation"] = teacher_generation
         teacher_memory = dict(state.get("teacher_memory") or {})

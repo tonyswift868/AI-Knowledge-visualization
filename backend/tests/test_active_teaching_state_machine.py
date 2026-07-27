@@ -171,6 +171,89 @@ def test_daily_briefing_accepts_a_baseline_reply_and_pauses_after_one_explanatio
         assert substantive["state"]["current_teaching_step"] == "check_understanding"
 
 
+def test_coaching_request_is_not_blocked_by_material_evidence_gate(tmp_path):
+    configure_orm(tmp_path / "active-coaching-request.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": (
+                    "B，主要是为了面试，Java 最近只学了一点但是忘光了。"
+                    "你能带着我完成任务吗？我有点不敢写代码。"
+                )
+            },
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        teacher_message = payload["messages"][-1]
+        assert teacher_message["action"] == "learning_coach_response"
+        assert "资料证据不足" not in teacher_message["content"]
+        assert "带着你完成" in teacher_message["content"]
+        assert payload["state"]["teacher_generation"]["knowledge_scope"] == (
+            "pedagogical_coaching"
+        )
+        assert payload["state"]["autonomy"]["reason"] == (
+            "pedagogical_coaching_requested"
+        )
+
+
+def test_real_provider_may_answer_stable_general_question_without_fake_citations(
+    tmp_path, monkeypatch
+):
+    configure_orm(tmp_path / "active-general-knowledge.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "general-knowledge-test",
+            "api_key": "test-only-key",
+        }
+    )
+    provider_session = get_provider_session(public["provider_session_id"])
+    provider_session.verified = True
+    captured: dict = {}
+
+    class GeneralKnowledgeProvider:
+        async def json(self, messages):
+            prompt = __import__("json").loads(messages[-1]["content"])
+            captured.update(prompt)
+            return {
+                "content": (
+                    "模型通识补充（非资料引用）：月球绕地球运行与引力和初始速度有关。"
+                    "你想先了解引力还是轨道速度？"
+                )
+            }
+
+    monkeypatch.setattr(
+        "app.active_teaching.provider_for_session",
+        lambda _session: GeneralKnowledgeProvider(),
+    )
+    with TestClient(app) as client:
+        _bootstrap_without_session(client)
+        started = client.post(
+            "/api/active-teaching/workspaces/provider-teacher/sessions/start",
+            json={"provider_session_id": provider_session.id},
+        ).json()
+        response = client.post(
+            f"/api/active-teaching/sessions/{started['session_id']}/advance",
+            json={
+                "message": "月球为什么会绕着地球运行？",
+                "provider_session_id": provider_session.id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        teacher_message = payload["messages"][-1]
+        assert teacher_message["action"] == "model_general_answer"
+        assert teacher_message["citations"] == []
+        assert "模型通识补充" in teacher_message["content"]
+        assert captured["knowledge_scope"] == "model_general_knowledge"
+        assert payload["state"]["teacher_generation"]["knowledge_scope"] == (
+            "model_general_knowledge"
+        )
+
 def test_zero_coding_foundation_gets_a_no_code_first_step(tmp_path):
     configure_orm(tmp_path / "active-no-code-first.db")
     with TestClient(app) as client:
