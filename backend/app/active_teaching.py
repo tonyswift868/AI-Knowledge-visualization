@@ -822,6 +822,74 @@ def delete_teacher_persona(persona_id: str) -> dict[str, Any]:
         }
 
 
+@router.patch("/workspaces/{workspace_id}/teacher-persona")
+def apply_teacher_persona_to_workspace(
+    workspace_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    """Switch one learning task to a saved persona without rebuilding its plan."""
+    persona_id = str(body.get("teacher_persona_id") or "").strip()
+    if not persona_id:
+        _error("TEACHER_PERSONA_REQUIRED", "请选择要应用到当前任务的教师人设", 422)
+    with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        persona = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+        ).fetchone()
+        if not persona:
+            _error("TEACHER_PERSONA_NOT_FOUND", "所选教师人设不存在", 404)
+        receipt_row = connection.execute(
+            "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
+        ).fetchone()
+        if not receipt_row:
+            _error("RECEIPT_NOT_FOUND", "当前学习任务尚未保存，不能绑定教师人设", 404)
+
+        now = _now()
+        receipt = json.loads(receipt_row["payload"])
+        _apply_persona_to_payload(receipt, persona)
+        receipt["updated_at"] = now
+        connection.execute(
+            "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
+            (json.dumps(receipt, ensure_ascii=False), now, workspace_id),
+        )
+
+        updated_plan_count = 0
+        for plan in connection.execute(
+            "SELECT id,receipt FROM active_plans WHERE workspace_id=?", (workspace_id,)
+        ).fetchall():
+            plan_receipt = json.loads(plan["receipt"])
+            _apply_persona_to_payload(plan_receipt, persona)
+            connection.execute(
+                "UPDATE active_plans SET receipt=? WHERE id=?",
+                (json.dumps(plan_receipt, ensure_ascii=False), plan["id"]),
+            )
+            updated_plan_count += 1
+
+        updated_session_count = 0
+        for session in connection.execute(
+            "SELECT id,state FROM active_teaching_sessions WHERE workspace_id=?",
+            (workspace_id,),
+        ).fetchall():
+            state = json.loads(session["state"])
+            _apply_persona_to_payload(state, persona)
+            connection.execute(
+                "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+                (json.dumps(state, ensure_ascii=False), now, session["id"]),
+            )
+            updated_session_count += 1
+
+        connection.commit()
+        return {
+            "workspace_id": workspace_id,
+            "persona": _teacher_persona_item(
+                persona,
+                usage_count=_persona_usage_count(connection, persona_id),
+            ),
+            "updated_plan_count": updated_plan_count,
+            "updated_session_count": updated_session_count,
+        }
+
+
 def _error(code: str, message: str, status: int = 400, **details: Any) -> None:
     raise HTTPException(
         status_code=status,
@@ -2807,6 +2875,23 @@ async def _render_teacher_content(
         },
         "source_grounded_draft": draft,
         "teacher_persona": state.get("teacher_persona") or "",
+        "persona_scope": (
+            "The persona remains visible throughout class through voice, warmth, naming, "
+            "brief reactions, humor, and helpful anecdotes. It may enrich delivery but does "
+            "not silently replace the learner's plan or mastery evidence."
+        ),
+        "teaching_contract": {
+            "priority": "Teaching the current objective and verifying learning always comes first.",
+            "during_class": (
+                "Stay on the current objective, use the planned scaffold, ask one check at a time, "
+                "and advance only from learner evidence. A brief social detour may be answered "
+                "naturally, then offer to resume without losing lesson state."
+            ),
+            "after_class": (
+                "Once the lesson is completed or paused, allow broader normal conversation while "
+                "retaining the course context for an easy return."
+            ),
+        },
         "learner_context": state.get("learner_context") or {},
         "learner_mastery_model": state.get("learner_mastery_model") or {},
         "persistent_memory": state.get("teacher_memory") or {},
@@ -2825,6 +2910,8 @@ async def _render_teacher_content(
             "End with exactly one clear question or action the learner can answer now.",
             "Make it explicit that the learner may interrupt, ask a question, or request another example at any time.",
             "Keep the language professional and suitable for a learning classroom; never use sexual innuendo, erotic roleplay, humiliation, or suggestive body metaphors, even if a persona requests them.",
+            "Express the teacher persona naturally during class, including brief reactions, humor, and supportive social replies, while preserving the current learning objective and evidence requirements.",
+            "If the learner briefly changes topic during class, respond naturally and concisely, then ask whether to resume; do not discard or reset the lesson state.",
             "Do not change the action, route, task completion, mastery, timing, or next action.",
             (
                 "Do not add factual claims beyond the draft and allowed evidence."
@@ -2836,7 +2923,7 @@ async def _render_teacher_content(
                 )
             ),
             "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
-            "Follow the user's teacher persona when it does not conflict with evidence or safety.",
+            "Use the voice, mannerisms, and relational tone from the user's teacher persona throughout the interaction; resolve conflicts in favor of the teaching contract, evidence, and safety.",
             "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
             "Use learner_mastery_model and knowledge_progress to connect the current lesson to already passed phases, prior mistakes, and unresolved points; never claim the learner forgot completed work.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",

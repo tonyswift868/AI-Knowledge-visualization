@@ -521,7 +521,57 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
             updated.json()["teacher_visual_profile_id"]
             == "teacher-02-blonde-fang-v9"
         )
+        assert client.post(
+            "/api/active-teaching/workspaces/persona-migration/knowledge-map/generate",
+            json={},
+        ).status_code == 200
+        plan = client.post(
+            "/api/active-teaching/workspaces/persona-migration/mastery-plans/generate"
+        )
+        assert plan.status_code == 200, plan.text
+        session = client.post(
+            "/api/active-teaching/workspaces/persona-migration/sessions/start",
+            json={},
+        )
+        assert session.status_code == 200, session.text
 
+        applied = client.patch(
+            "/api/active-teaching/workspaces/persona-migration/teacher-persona",
+            json={"teacher_persona_id": default_persona["id"]},
+        )
+        assert applied.status_code == 200, applied.text
+        assert applied.json()["persona"]["id"] == default_persona["id"]
+        assert applied.json()["persona"]["usage_count"] == 1
+        assert applied.json()["updated_plan_count"] == 1
+        assert applied.json()["updated_session_count"] == 1
+        applied_snapshot = client.get(
+            "/api/active-teaching/workspaces/persona-migration/snapshot"
+        ).json()
+        assert (
+            applied_snapshot["receipt"]["teacher_persona_id"]
+            == default_persona["id"]
+        )
+        assert (
+            applied_snapshot["receipt"]["teacher_visual_profile_id"]
+            == "teacher-02-blonde-fang-v9"
+        )
+        applied_session = client.get(
+            f"/api/active-teaching/sessions/{session.json()['session_id']}"
+        ).json()
+        assert (
+            applied_session["state"]["teacher_persona_id"]
+            == default_persona["id"]
+        )
+        assert (
+            applied_session["state"]["teacher_visual_profile_id"]
+            == "teacher-02-blonde-fang-v9"
+        )
+
+        rebound = client.patch(
+            "/api/active-teaching/workspaces/persona-migration/teacher-persona",
+            json={"teacher_persona_id": migrated["id"]},
+        )
+        assert rebound.status_code == 200, rebound.text
         deleted = client.delete(
             f"/api/active-teaching/teacher-personas/{migrated['id']}"
         )

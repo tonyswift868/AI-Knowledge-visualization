@@ -2,8 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { Check, ExternalLink, FileDown, RotateCcw, Trash2, Upload } from "lucide-react"
 import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarMorph } from "./api"
 import {
+  activeLearningTasks,
   activeTeacherPersonas,
   activeTeacherVisualProfiles,
+  applyActiveTeacherPersona,
   deleteActiveTeacherPersona,
   saveActiveTeacherPersona,
   type ActiveTeacherPersona,
@@ -143,6 +145,8 @@ export function TeacherAvatarStudio({
   const [personaStyle, setPersonaStyle] = useState("")
   const [personaVisualId, setPersonaVisualId] = useState("")
   const [personaNotice, setPersonaNotice] = useState("")
+  const [activeTaskWorkspaceId, setActiveTaskWorkspaceId] = useState("")
+  const [activeTaskTitle, setActiveTaskTitle] = useState("")
   // Prefer a native Koikatsu/KKBP export when one is available.  PMX keeps
   // the game's actual body and skeleton instead of falling back to the
   // generic VRM rig that caused the old bone distortions.
@@ -200,9 +204,25 @@ export function TeacherAvatarStudio({
   useEffect(() => { if (active) setMorph(normalizeMorph(active.morph)) }, [active?.model_id])
   useEffect(() => {
     if (compact) return
-    void Promise.all([activeTeacherPersonas(), activeTeacherVisualProfiles()]).then(([value, profiles]) => {
+    void Promise.all([
+      activeTeacherPersonas(),
+      activeTeacherVisualProfiles(),
+      activeLearningTasks(false),
+    ]).then(([value, profiles, tasks]) => {
       setPersonas(value)
       setVisualProfiles(profiles)
+      let selectedWorkspaceId = ""
+      try {
+        selectedWorkspaceId = localStorage.getItem("mentorflow_active_teaching_workspace_v1") || ""
+      } catch {
+        selectedWorkspaceId = ""
+      }
+      const selectedTask = tasks.find(item => item.workspace_id === selectedWorkspaceId)
+        || tasks.find(item => item.status === "learning")
+        || tasks.find(item => item.status === "planned")
+        || tasks[0]
+      setActiveTaskWorkspaceId(selectedTask?.workspace_id || "")
+      setActiveTaskTitle(selectedTask?.title || "")
       const selected = value.find(item => item.is_default) || value[0]
       if (selected) {
         setPersonaId(selected.id)
@@ -326,6 +346,40 @@ export function TeacherAvatarStudio({
     }
   }
 
+  async function saveAndApplyPersona() {
+    if (!activeTaskWorkspaceId) {
+      setPersonaNotice("还没有可绑定的学习任务；请先在“学习任务”中建立任务。")
+      return
+    }
+    try {
+      setBusy(true)
+      setPersonaNotice("")
+      const saved = await saveActiveTeacherPersona({
+        id: personaId || undefined,
+        name: personaName,
+        prompt: personaPrompt,
+        teaching_style: personaStyle,
+        visual_profile_id: personaVisualId,
+      })
+      const result = await applyActiveTeacherPersona(activeTaskWorkspaceId, saved.id)
+      const next = await activeTeacherPersonas()
+      setPersonas(next)
+      setPersonaId(saved.id)
+      setPersonaName(saved.name)
+      setPersonaPrompt(saved.prompt)
+      setPersonaStyle(saved.teaching_style)
+      setPersonaVisualId(saved.visual_profile_id)
+      setPersonaNotice(
+        `“${saved.name}”已应用到“${activeTaskTitle || activeTaskWorkspaceId}”；`
+        + `${result.updated_session_count ? "正在进行的课堂也已同步，下一轮回复开始生效。" : "下次进入课堂时生效。"}`,
+      )
+    } catch (error) {
+      setPersonaNotice(error instanceof Error ? error.message : "教师人设应用失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function deletePersona() {
     const selected = personas.find(item => item.id === personaId)
     if (!selected || selected.is_default) return
@@ -432,10 +486,21 @@ export function TeacherAvatarStudio({
               >
                 <Trash2 size={14} />删除人设
               </button>
-              <button type="button" onClick={() => void savePersona()} disabled={busy || !personaName.trim() || !personaPrompt.trim()}>
-                {busy ? "正在保存…" : personaId ? "保存人设修改" : "加入角色库"}
+              <button type="button" className="secondary" onClick={() => void savePersona()} disabled={busy || !personaName.trim() || !personaPrompt.trim()}>
+                {busy ? "正在保存…" : personaId ? "仅保存到角色库" : "加入角色库"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveAndApplyPersona()}
+                disabled={busy || !personaName.trim() || !personaPrompt.trim() || !activeTaskWorkspaceId}
+                title={activeTaskWorkspaceId ? `应用到当前学习任务：${activeTaskTitle || activeTaskWorkspaceId}` : "请先创建学习任务"}
+              >
+                保存并应用到当前任务
               </button>
             </div>
+            <small className="teacher-persona-library__target">
+              当前应用目标：{activeTaskTitle || "暂无可绑定的学习任务"}
+            </small>
           </div>
         </div>
         {personaNotice && <div className="teacher-avatar-notice" role="status">{personaNotice}</div>}

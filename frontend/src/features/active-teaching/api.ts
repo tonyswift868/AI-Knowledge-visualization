@@ -153,6 +153,24 @@ export async function deleteActiveTeacherPersona(id: string): Promise<{
   });
 }
 
+export async function applyActiveTeacherPersona(
+  workspaceId: string,
+  teacherPersonaId: string,
+): Promise<{
+  workspace_id: string;
+  persona: ActiveTeacherPersona;
+  updated_plan_count: number;
+  updated_session_count: number;
+}> {
+  return activeRequest(
+    `/workspaces/${encodeURIComponent(workspaceId)}/teacher-persona`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ teacher_persona_id: teacherPersonaId }),
+    },
+  );
+}
+
 export async function setActiveLearningTaskArchived(workspaceId: string, archived: boolean) {
   return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}`, {
     method: "PATCH",
