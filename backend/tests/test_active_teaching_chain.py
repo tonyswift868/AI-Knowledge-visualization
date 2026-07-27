@@ -421,7 +421,13 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
             focused_state["teacher_memory"]["plan_id"]
             == created["task-cooking"]["plan"]["id"]
         )
-        assert focused_state["autonomy"]["reason"] == "calendar_task_selected"
+        assert focused_state["autonomy"] == {
+            "mode": "teacher_led_until_learner_input",
+            "awaiting_learner": True,
+            "reason": "learner_foundation_required",
+        }
+        assert focused.json()["messages"][-1]["action"] == "daily_briefing"
+        assert "我先不讲长内容" in focused.json()["messages"][-1]["content"]
 
         foreign_task = created["task-cycling"]["plan"]["tasks"][0]
         rejected = client.post(
@@ -433,6 +439,53 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
             rejected.json()["error"]["code"]
             == "ACTIVE_TASK_OUTSIDE_SESSION_PLAN"
         )
+
+
+def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selected_role(tmp_path):
+    configure_orm(tmp_path / "teacher-persona-library.db")
+    with TestClient(app) as client:
+        material = client.post(
+            "/api/active-teaching/workspaces/persona-migration/materials",
+            files={
+                "file": (
+                    "lesson.md",
+                    "# 课程\n先观察，再提出一个最小问题。".encode("utf-8"),
+                    "text/markdown",
+                )
+            },
+        ).json()
+        old_prompt = "旧任务里已经填写的耐心教师人设，必须完整保留。"
+        receipt = client.put(
+            "/api/active-teaching/workspaces/persona-migration/receipt",
+            json={
+                **_receipt(material["id"], daily_minutes=30, deadline_days=4),
+                "teacher_persona": old_prompt,
+            },
+        )
+        assert receipt.status_code == 200, receipt.text
+
+        library = client.get("/api/active-teaching/teacher-personas")
+        assert library.status_code == 200, library.text
+        items = library.json()["items"]
+        migrated = next(item for item in items if item["prompt"] == old_prompt)
+        assert migrated["name"].startswith("已保存教师人设")
+        assert any(item["is_default"] for item in items)
+        migrated_snapshot = client.get(
+            "/api/active-teaching/workspaces/persona-migration/snapshot"
+        ).json()
+        assert migrated_snapshot["receipt"]["teacher_persona_id"] == migrated["id"]
+
+        updated = client.put(
+            "/api/active-teaching/workspaces/persona-migration/receipt",
+            json={
+                **_receipt(material["id"], daily_minutes=30, deadline_days=4),
+                "teacher_persona_id": migrated["id"],
+                "teacher_persona": "前端伪造的旧值",
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["teacher_persona_id"] == migrated["id"]
+        assert updated.json()["teacher_persona"] == old_prompt
 
 
 def test_teacher_memory_survives_switching_to_another_knowledge_point(tmp_path):

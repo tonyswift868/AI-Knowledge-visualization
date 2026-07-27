@@ -35,9 +35,9 @@
 .active-chain__history { display: grid; gap: 10px; max-height: 620px; overflow: auto; padding-right: 4px; }
 .active-chain__message.is-user { margin-left: min(14%, 120px); background: #eaf5ef; border: 1px solid #c8dfd2; }
 .active-chain__composer { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-top: 12px; }
-.active-classroom { display: grid; grid-template-columns: minmax(300px, .82fr) minmax(0, 1.55fr); gap: 18px; align-items: start; margin-top: 18px; }
+.active-classroom { display: grid; grid-template-columns: minmax(360px, .92fr) minmax(0, 1.45fr); gap: 18px; align-items: start; margin-top: 18px; }
 .active-classroom__teacher { position: sticky; top: 16px; display: grid; gap: 12px; min-width: 0; }
-.active-classroom__teacher .teacher-companion-portrait { min-height: 500px; }
+.active-classroom__teacher .teacher-companion-portrait { min-height: 620px; }
 .active-classroom__teacher .teacher-companion-portrait > .teacher-companion-character { inset: 62px 0 0 9%; }
 .active-classroom__focus { display: grid; gap: 5px; padding: 14px 16px; border: 1px solid #c8dfd2; border-radius: 14px; background: #fff; }
 .active-classroom__focus span, .active-classroom__dialogue-head span { color: #397d5d; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }

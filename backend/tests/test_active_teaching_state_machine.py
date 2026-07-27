@@ -90,7 +90,7 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
             "reason": "learner_can_interrupt",
         }
         assert "只看第一个" in opening["messages"][-1]["content"]
-        assert "完全没接触过" in opening["messages"][-1]["content"]
+        assert "A．完全没写过代码" in opening["messages"][-1]["content"]
 
         explanation = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
@@ -151,6 +151,24 @@ def test_daily_briefing_accepts_a_baseline_reply_and_pauses_after_one_explanatio
         assert payload["messages"][-1]["action"] == "explain"
         assert "完全没接触过" in payload["messages"][-1]["content"]
         assert payload["state"]["current_teaching_step"] == "explain"
+        assert payload["state"]["autonomy"]["awaiting_learner"] is True
+
+
+def test_zero_coding_foundation_gets_a_no_code_first_step(tmp_path):
+    configure_orm(tmp_path / "active-no-code-first.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "A，我完全不会写代码"},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        message = payload["messages"][-1]["content"]
+        assert payload["state"]["learner_context"]["coding_foundation"] == "none"
+        assert "这一轮先不写代码" in message
+        assert "各说一个词也可以" in message
+        assert "最终编码验收会等到理解和引导练习之后" in message
         assert payload["state"]["autonomy"]["awaiting_learner"] is True
 
 

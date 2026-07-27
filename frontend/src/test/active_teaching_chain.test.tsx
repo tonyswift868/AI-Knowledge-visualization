@@ -170,6 +170,33 @@ const snapshot = {
   },
 };
 
+const personaItems = [{
+  id: "persona_active",
+  name: "耐心主动教师",
+  prompt: "耐心、有趣，先用生活例子",
+  teaching_style: "短讲解",
+  is_default: true,
+  created_at: "2026-07-27T00:00:00Z",
+  updated_at: "2026-07-27T00:00:00Z",
+}, {
+  id: "persona_draft",
+  name: "耐心但主动的教师",
+  prompt: "耐心但主动的教师",
+  teaching_style: "主动带学",
+  is_default: false,
+  created_at: "2026-07-27T00:00:00Z",
+  updated_at: "2026-07-27T00:00:00Z",
+}];
+
+const snapshotFetch = (value: any = snapshot) =>
+  vi.fn().mockImplementation((url: string) =>
+    Promise.resolve({
+      ok: true,
+      json: async () => String(url).endsWith("/teacher-personas")
+        ? { items: personaItems }
+        : value,
+    }));
+
 
 describe("ActiveTeachingChainView", () => {
   afterEach(() => {
@@ -474,7 +501,7 @@ describe("ActiveTeachingChainView", () => {
   });
 
   it("submits generic learning conditions without any course-specific fields", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
+    const fetchMock = snapshotFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     await screen.findByTestId("active-save-receipt");
@@ -482,7 +509,7 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按总任务量平均分配");
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("完整复习 2 轮");
     fireEvent.change(screen.getByTestId("active-teacher-persona"), {
-      target: { value: "耐心、有趣，先用生活例子" },
+      target: { value: "persona_active" },
     });
     fireEvent.change(screen.getByTestId("active-review-rounds"), {
       target: { value: "3" },
@@ -497,6 +524,7 @@ describe("ActiveTeachingChainView", () => {
       expect(body.review_rounds).toBe(3);
       expect(body.initial_learning_period_ratio).toBeUndefined();
       expect(body.teacher_persona).toBe("耐心、有趣，先用生活例子");
+      expect(body.teacher_persona_id).toBe("persona_active");
       expect(body.daily_task_minutes).toBeUndefined();
       expect(body.material_ids).toEqual(["material_1"]);
       expect(JSON.stringify(body)).not.toMatch(/leetcode|hot150|面试经典/iu);
@@ -513,9 +541,67 @@ describe("ActiveTeachingChainView", () => {
     });
   });
 
+  it("shows the knowledge-point ordinal instead of the phase-task route index", async () => {
+    const points = Array.from({ length: 150 }, (_, index) => ({
+      id: `kp_${index + 1}`,
+      name: `知识点 ${index + 1}`,
+      difficulty: "中等",
+      estimated_task_minutes: 20,
+      current_mastery: 0,
+    }));
+    const phaseTasks = [
+      ...["understand", "recall", "guided_practice", "independent_application"].map(
+        (phase, index) => ({
+          id: `task_1_${index}`,
+          knowledge_point_id: "kp_1",
+          point_sequence: 1,
+          task_type: "initial_learning",
+          learning_phase: phase,
+          status: "planned",
+          estimated_task_minutes: 5,
+        }),
+      ),
+      {
+        id: "task_2_0",
+        knowledge_point_id: "kp_2",
+        point_sequence: 2,
+        task_type: "initial_learning",
+        learning_phase: "understand",
+        status: "planned",
+        estimated_task_minutes: 5,
+      },
+    ];
+    const ordinalSnapshot = {
+      ...snapshot,
+      knowledge_graph: { ...snapshot.knowledge_graph, knowledge_points: points },
+      plan: {
+        ...snapshot.plan,
+        tasks: phaseTasks,
+        calendar: [{ ...snapshot.plan.calendar[0], tasks: phaseTasks }],
+      },
+      session: {
+        ...snapshot.session,
+        state: {
+          ...snapshot.session.state,
+          current_knowledge_point_id: "kp_2",
+          route_index: 4,
+          route_length: 614,
+        },
+      },
+    };
+    vi.stubGlobal("fetch", snapshotFetch(ordinalSnapshot));
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+    expect(await screen.findByTestId("active-current-knowledge-point")).toHaveTextContent(
+      "第 2 / 150 个知识点",
+    );
+    expect(screen.getByTestId("active-current-knowledge-point")).not.toHaveTextContent(
+      "5 / 614",
+    );
+  });
+
   it("auto-saves and restores every editable task draft field per workspace", async () => {
     const draftSnapshot = { ...snapshot, workspace_id: "draft-case-active" };
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => draftSnapshot });
+    const fetchMock = snapshotFetch(draftSnapshot);
     vi.stubGlobal("fetch", fetchMock);
     const view = render(<ActiveTeachingChainView workspaceId="draft-case" />);
     await screen.findByTestId("active-draft-status");
@@ -524,7 +610,7 @@ describe("ActiveTeachingChainView", () => {
       target: { value: "刷新后仍保留的学习目标" },
     });
     fireEvent.change(screen.getByTestId("active-teacher-persona"), {
-      target: { value: "耐心但主动的教师" },
+      target: { value: "persona_draft" },
     });
     fireEvent.change(screen.getByTestId("active-learner-interests"), {
       target: { value: "游戏、做饭" },
@@ -542,7 +628,7 @@ describe("ActiveTeachingChainView", () => {
     view.unmount();
     render(<ActiveTeachingChainView workspaceId="draft-case" />);
     expect(await screen.findByDisplayValue("刷新后仍保留的学习目标")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("耐心但主动的教师")).toBeInTheDocument();
+    expect(screen.getByTestId("active-teacher-persona")).toHaveValue("persona_draft");
     expect(screen.getByDisplayValue("游戏、做饭")).toBeInTheDocument();
   });
 

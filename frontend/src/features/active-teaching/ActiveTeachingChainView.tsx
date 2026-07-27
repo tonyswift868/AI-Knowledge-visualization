@@ -3,8 +3,10 @@ import {
   activeLearningTasks,
   activeRequest,
   activeSnapshot,
+  activeTeacherPersonas,
   setActiveLearningTaskArchived,
   type ActiveLearningTaskSummary,
+  type ActiveTeacherPersona,
   uploadActiveMaterial,
 } from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
@@ -68,6 +70,7 @@ type ActiveTaskDraft = {
   notes?: string;
   learningStyle?: string;
   teacherPersona?: string;
+  teacherPersonaId?: string;
   learnerInterests?: string;
   message?: string;
   reviewAnswer?: string;
@@ -220,6 +223,8 @@ export function ActiveTeachingChainView({
   const [notes, setNotes] = useState("");
   const [learningStyle, setLearningStyle] = useState("主动讲解、示例、理解检查、练习与复习");
   const [teacherPersona, setTeacherPersona] = useState("");
+  const [teacherPersonaId, setTeacherPersonaId] = useState("");
+  const [teacherPersonas, setTeacherPersonas] = useState<ActiveTeacherPersona[]>([]);
   const [learnerInterests, setLearnerInterests] = useState("");
   const [message, setMessage] = useState("");
   const [pendingUserMessages, setPendingUserMessages] = useState<PendingUserMessage[]>([]);
@@ -241,9 +246,10 @@ export function ActiveTeachingChainView({
   const refresh = async (workspaceOverride?: string) => {
     const requestedWorkspaceId = workspaceOverride || activeWorkspaceId;
     const requestSequence = ++refreshSequence.current;
-    const [next, taskItems] = await Promise.all([
+    const [next, taskItems, personaItems] = await Promise.all([
       activeSnapshot(requestedWorkspaceId),
       activeLearningTasks(showArchived),
+      activeTeacherPersonas(),
     ]);
     let problemItems: any[] = [];
     try {
@@ -256,6 +262,7 @@ export function ActiveTeachingChainView({
     }
     if (requestSequence !== refreshSequence.current) return;
     setLearningTasks(taskItems);
+    setTeacherPersonas(personaItems);
     if (
       !next.receipt
       && !(next.materials || []).length
@@ -291,6 +298,12 @@ export function ActiveTeachingChainView({
       setNotes(next.receipt.notes || "");
       setLearningStyle(next.receipt.preferred_learning_style);
       setTeacherPersona(next.receipt.teacher_persona || "");
+      setTeacherPersonaId(
+        next.receipt.teacher_persona_id
+        || personaItems.find((item) => item.prompt === next.receipt.teacher_persona)?.id
+        || personaItems.find((item) => item.is_default)?.id
+        || "",
+      );
       setLearnerInterests(next.receipt.learner_interests || "");
     }
     if (!storedDraft) setDraftLoadedWorkspace(requestedWorkspaceId);
@@ -313,6 +326,7 @@ export function ActiveTeachingChainView({
       if (typeof draft.notes === "string") setNotes(draft.notes);
       if (typeof draft.learningStyle === "string") setLearningStyle(draft.learningStyle);
       if (typeof draft.teacherPersona === "string") setTeacherPersona(draft.teacherPersona);
+      if (typeof draft.teacherPersonaId === "string") setTeacherPersonaId(draft.teacherPersonaId);
       if (typeof draft.learnerInterests === "string") setLearnerInterests(draft.learnerInterests);
       if (typeof draft.message === "string") setMessage(draft.message);
       if (typeof draft.reviewAnswer === "string") setReviewAnswer(draft.reviewAnswer);
@@ -321,6 +335,17 @@ export function ActiveTeachingChainView({
       setDraftLoadedWorkspace(activeWorkspaceId);
     }
   }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!teacherPersonas.length || teacherPersonaId) return;
+    const selected =
+      teacherPersonas.find((item) => item.prompt === teacherPersona)
+      || teacherPersonas.find((item) => item.is_default)
+      || teacherPersonas[0];
+    if (!selected) return;
+    setTeacherPersonaId(selected.id);
+    setTeacherPersona(selected.prompt);
+  }, [teacherPersona, teacherPersonaId, teacherPersonas]);
 
   useEffect(() => {
     try {
@@ -351,6 +376,7 @@ export function ActiveTeachingChainView({
         notes,
         learningStyle,
         teacherPersona,
+        teacherPersonaId,
         learnerInterests,
         message,
         reviewAnswer,
@@ -384,6 +410,7 @@ export function ActiveTeachingChainView({
     startDate,
     studyWeekdays,
     teacherPersona,
+    teacherPersonaId,
     unavailableDates,
   ]);
 
@@ -453,6 +480,25 @@ export function ActiveTeachingChainView({
   const currentKnowledgePoint = graph.knowledge_points.find(
     (item: any) => item.id === session?.state?.current_knowledge_point_id,
   );
+  const currentKnowledgePointOrdinal = useMemo(() => {
+    const allTasks = (plan?.calendar || [])
+      .flatMap((day: any) => day.tasks || [])
+      .filter((task: any) => task.task_type === "initial_learning")
+      .sort(
+        (left: any, right: any) =>
+          Number(left.point_sequence || 0) - Number(right.point_sequence || 0),
+      );
+    const orderedIds = Array.from(
+      new Set(allTasks.map((task: any) => String(task.knowledge_point_id || ""))),
+    ).filter(Boolean);
+    const graphIds = graph.knowledge_points.map((point: any) => String(point.id));
+    const ids = orderedIds.length ? orderedIds : graphIds;
+    const currentIndex = ids.indexOf(String(session?.state?.current_knowledge_point_id || ""));
+    return {
+      current: currentIndex >= 0 ? currentIndex + 1 : 1,
+      total: Math.max(graphIds.length, ids.length, 1),
+    };
+  }, [graph.knowledge_points, plan?.calendar, session?.state?.current_knowledge_point_id]);
   const teacherPresentationState = useMemo<TeacherCompanionState>(() => {
     if (busy) return "thinking";
     const action = String(latestTeacher?.action || "");
@@ -578,6 +624,8 @@ export function ActiveTeachingChainView({
     review_rounds: reviewRounds,
     preferred_learning_style: learningStyle,
     teacher_persona: teacherPersona,
+    teacher_persona_id: teacherPersonaId,
+    teacher_persona_name: teacherPersonas.find((item) => item.id === teacherPersonaId)?.name || "",
     learner_interests: learnerInterests,
     notes,
     allow_schedule_suggestions: true,
@@ -600,6 +648,7 @@ export function ActiveTeachingChainView({
     special_date_minutes: value?.special_date_minutes || {},
     preferred_learning_style: value?.preferred_learning_style || "",
     teacher_persona: value?.teacher_persona || "",
+    teacher_persona_id: value?.teacher_persona_id || "",
     learner_interests: value?.learner_interests || "",
     notes: value?.notes || "",
     material_ids: [...(value?.material_ids || readyMaterialIds)].sort(),
@@ -1258,13 +1307,24 @@ export function ActiveTeachingChainView({
             </small>
           </div>
           <label>
-            AI 教师人设
-            <textarea
+            AI 教师角色
+            <select
               data-testid="active-teacher-persona"
-              value={teacherPersona}
-              onChange={(event) => setTeacherPersona(event.target.value)}
-              placeholder="例如：温柔但不敷衍，擅长用生活梗和小故事，把我当零基础学生一步步带会。"
-            />
+              value={teacherPersonaId}
+              onChange={(event) => {
+                const selected = teacherPersonas.find((item) => item.id === event.target.value);
+                setTeacherPersonaId(event.target.value);
+                setTeacherPersona(selected?.prompt || "");
+              }}
+            >
+              {!teacherPersonas.length && <option value="">正在读取角色库…</option>}
+              {teacherPersonas.map((item) => (
+                <option value={item.id} key={item.id}>{item.name}{item.is_default ? "（默认）" : ""}</option>
+              ))}
+            </select>
+            <small>
+              角色人设已统一放到左侧“AI教师角色库”管理；以前填写的人设会自动迁移并保留。
+            </small>
           </label>
           <label>
             我的兴趣或熟悉场景
@@ -1624,15 +1684,15 @@ export function ActiveTeachingChainView({
             <div className="active-classroom">
               <aside className="active-classroom__teacher">
                 <TeacherCompanionPortrait
-                  teacherName="艾莉丝"
+                  teacherName={session.state.teacher_persona_name || "艾莉丝"}
                   state={teacherPresentationState}
                 />
                 <div className="active-classroom__focus" data-testid="active-current-knowledge-point">
                   <span>现在只学这一点</span>
                   <h4>{currentKnowledgePoint?.name || "当前知识点"}</h4>
                   <p>
-                    第 {Math.min(Number(session.state.route_index || 0) + 1, Number(session.state.route_length || 1))}
-                    {" / "}{session.state.route_length || 1} 个知识点
+                    第 {currentKnowledgePointOrdinal.current}
+                    {" / "}{currentKnowledgePointOrdinal.total} 个知识点
                   </p>
                   <small>你可以随时打断、追问、要求换个例子。</small>
                 </div>

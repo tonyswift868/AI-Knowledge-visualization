@@ -34,6 +34,16 @@ export type ActiveLearningTaskSummary = {
   updated_at: string;
 };
 
+export type ActiveTeacherPersona = {
+  id: string;
+  name: string;
+  prompt: string;
+  teaching_style: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 async function parseResponse(response: Response) {
   const data = await response.json();
   if (!response.ok) {
@@ -83,6 +93,28 @@ export async function activeLearningTasks(
     `/workspaces?include_archived=${includeArchived}${dayQuery}`,
   );
   return payload.items || [];
+}
+
+export async function activeTeacherPersonas(): Promise<ActiveTeacherPersona[]> {
+  const payload = await activeRequest("/teacher-personas");
+  return payload.items || [];
+}
+
+export async function saveActiveTeacherPersona(
+  input: Pick<ActiveTeacherPersona, "name" | "prompt" | "teaching_style"> & {
+    id?: string;
+    is_default?: boolean;
+  },
+): Promise<ActiveTeacherPersona> {
+  return activeRequest(
+    input.id
+      ? `/teacher-personas/${encodeURIComponent(input.id)}`
+      : "/teacher-personas",
+    {
+      method: input.id ? "PATCH" : "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function setActiveLearningTaskArchived(workspaceId: string, archived: boolean) {

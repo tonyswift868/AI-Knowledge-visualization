@@ -81,6 +81,32 @@ def _requires_executable_verification(acceptance_method: str) -> bool:
     )
 
 
+def _coding_foundation_from_reply(message: str) -> str:
+    """Classify an explicit learner self-report without treating arbitrary text as evidence."""
+    value = str(message or "").strip().casefold()
+    if value in {"a", "a。", "a.", "a、"} or any(
+        marker in value
+        for marker in (
+            "不会写代码",
+            "没写过代码",
+            "完全不会",
+            "零基础",
+            "看不懂代码",
+            "不懂编程",
+        )
+    ):
+        return "none"
+    if value in {"b", "b。", "b.", "b、"} or any(
+        marker in value for marker in ("能看懂一点", "会一点", "有一点基础")
+    ):
+        return "partial"
+    if value in {"c", "c。", "c.", "c、"} or any(
+        marker in value for marker in ("能写简单", "会写代码", "有编程基础")
+    ):
+        return "comfortable"
+    return "unknown"
+
+
 def _db_path() -> Path:
     from . import orm
 
@@ -139,6 +165,15 @@ def _init_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS active_workspace_settings (
             workspace_id TEXT PRIMARY KEY,
             archived INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS active_teacher_personas (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            teaching_style TEXT NOT NULL DEFAULT '',
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS active_knowledge_points (
@@ -387,6 +422,176 @@ def _init_schema(connection: sqlite3.Connection) -> None:
                 f"ALTER TABLE active_replan_history ADD COLUMN {column} {ddl}"
             )
     connection.commit()
+
+
+def _teacher_persona_item(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": str(row["id"]),
+        "name": str(row["name"]),
+        "prompt": str(row["prompt"]),
+        "teaching_style": str(row["teaching_style"] or ""),
+        "is_default": bool(row["is_default"]),
+        "created_at": str(row["created_at"]),
+        "updated_at": str(row["updated_at"]),
+    }
+
+
+def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
+    """Seed the role library and migrate task-scoped persona text without losing it."""
+    now = _now()
+    if not connection.execute(
+        "SELECT 1 FROM active_teacher_personas LIMIT 1"
+    ).fetchone():
+        connection.execute(
+            """INSERT INTO active_teacher_personas
+               (id,name,prompt,teaching_style,is_default,created_at,updated_at)
+               VALUES (?,?,?,?,1,?,?)""",
+            (
+                "teacher_persona_iris_default",
+                "艾莉丝 · 主动陪练",
+                (
+                    "温柔、耐心但不敷衍。每次只推进一个最小目标，先摸清学习者基础，"
+                    "允许随时打断；先用生活语言建立直觉，再逐步进入术语、练习和独立验收。"
+                ),
+                "主动提问、短讲解、逐步撤除脚手架",
+                now,
+                now,
+            ),
+        )
+    migrated_index = 0
+    for receipt_row in connection.execute(
+        "SELECT workspace_id,payload FROM active_receipts ORDER BY updated_at"
+    ).fetchall():
+        try:
+            payload = json.loads(receipt_row["payload"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        prompt = str(payload.get("teacher_persona") or "").strip()
+        if not prompt:
+            continue
+        persona_row = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE prompt=?", (prompt,)
+        ).fetchone()
+        if not persona_row:
+            migrated_index += 1
+            persona_id = _id("teacher_persona")
+            persona_name = str(
+                payload.get("teacher_persona_name")
+                or f"已保存教师人设 {migrated_index}"
+            )
+            connection.execute(
+                """INSERT INTO active_teacher_personas
+                   (id,name,prompt,teaching_style,is_default,created_at,updated_at)
+                   VALUES (?,?,?,?,0,?,?)""",
+                (
+                    persona_id,
+                    persona_name,
+                    prompt[:2000],
+                    str(payload.get("preferred_learning_style") or "")[:500],
+                    now,
+                    now,
+                ),
+            )
+        else:
+            persona_id = str(persona_row["id"])
+            persona_name = str(persona_row["name"])
+        if payload.get("teacher_persona_id") != persona_id:
+            payload["teacher_persona_id"] = persona_id
+            payload["teacher_persona_name"] = persona_name
+            connection.execute(
+                "UPDATE active_receipts SET payload=? WHERE workspace_id=?",
+                (
+                    json.dumps(payload, ensure_ascii=False),
+                    receipt_row["workspace_id"],
+                ),
+            )
+
+
+@router.get("/teacher-personas")
+def list_teacher_personas() -> dict[str, Any]:
+    with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        connection.commit()
+        rows = connection.execute(
+            """SELECT * FROM active_teacher_personas
+               ORDER BY is_default DESC,updated_at DESC,name"""
+        ).fetchall()
+        return {"items": [_teacher_persona_item(row) for row in rows]}
+
+
+@router.post("/teacher-personas")
+def create_teacher_persona(body: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    name = str(body.get("name") or "").strip()
+    prompt = str(body.get("prompt") or "").strip()
+    teaching_style = str(body.get("teaching_style") or "").strip()
+    if not name or not prompt:
+        _error("TEACHER_PERSONA_REQUIRED", "请填写教师人设名称和人设说明", 422)
+    if len(name) > 80 or len(prompt) > 2000 or len(teaching_style) > 500:
+        _error("TEACHER_PERSONA_TOO_LONG", "教师人设内容过长", 422)
+    persona_id = _id("teacher_persona")
+    now = _now()
+    with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        is_default = bool(body.get("is_default"))
+        if is_default:
+            connection.execute("UPDATE active_teacher_personas SET is_default=0")
+        connection.execute(
+            """INSERT INTO active_teacher_personas
+               (id,name,prompt,teaching_style,is_default,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (persona_id, name, prompt, teaching_style, int(is_default), now, now),
+        )
+        connection.commit()
+        return _teacher_persona_item(
+            connection.execute(
+                "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+            ).fetchone()
+        )
+
+
+@router.patch("/teacher-personas/{persona_id}")
+def update_teacher_persona(
+    persona_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        current = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+        ).fetchone()
+        if not current:
+            _error("TEACHER_PERSONA_NOT_FOUND", "教师人设不存在", 404)
+        name = str(body.get("name", current["name"]) or "").strip()
+        prompt = str(body.get("prompt", current["prompt"]) or "").strip()
+        teaching_style = str(
+            body.get("teaching_style", current["teaching_style"]) or ""
+        ).strip()
+        if not name or not prompt:
+            _error("TEACHER_PERSONA_REQUIRED", "请填写教师人设名称和人设说明", 422)
+        if len(name) > 80 or len(prompt) > 2000 or len(teaching_style) > 500:
+            _error("TEACHER_PERSONA_TOO_LONG", "教师人设内容过长", 422)
+        is_default = bool(body.get("is_default", current["is_default"]))
+        if is_default:
+            connection.execute("UPDATE active_teacher_personas SET is_default=0")
+        connection.execute(
+            """UPDATE active_teacher_personas
+               SET name=?,prompt=?,teaching_style=?,is_default=?,updated_at=?
+               WHERE id=?""",
+            (
+                name,
+                prompt,
+                teaching_style,
+                int(is_default),
+                _now(),
+                persona_id,
+            ),
+        )
+        connection.commit()
+        return _teacher_persona_item(
+            connection.execute(
+                "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+            ).fetchone()
+        )
 
 
 def _error(code: str, message: str, status: int = 400, **details: Any) -> None:
@@ -893,6 +1098,8 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
         "notes": str(payload.get("notes") or ""),
+        "teacher_persona_id": str(payload.get("teacher_persona_id") or "")[:120],
+        "teacher_persona_name": str(payload.get("teacher_persona_name") or "")[:80],
         "teacher_persona": str(payload.get("teacher_persona") or "")[:2000],
         "learner_interests": str(payload.get("learner_interests") or "")[:1000],
         "allow_schedule_suggestions": bool(payload.get("allow_schedule_suggestions", True)),
@@ -905,6 +1112,26 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
 def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
     receipt = _validate_receipt(body)
     with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        persona_id = str(receipt.get("teacher_persona_id") or "")
+        persona_row = (
+            connection.execute(
+                "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+            ).fetchone()
+            if persona_id
+            else None
+        )
+        if persona_id and not persona_row:
+            _error("TEACHER_PERSONA_NOT_FOUND", "所选教师人设不存在，请重新选择", 422)
+        if not persona_row and receipt.get("teacher_persona"):
+            persona_row = connection.execute(
+                "SELECT * FROM active_teacher_personas WHERE prompt=?",
+                (receipt["teacher_persona"],),
+            ).fetchone()
+        if persona_row:
+            receipt["teacher_persona_id"] = str(persona_row["id"])
+            receipt["teacher_persona_name"] = str(persona_row["name"])
+            receipt["teacher_persona"] = str(persona_row["prompt"])
         known = {
             row["id"]
             for row in connection.execute(
@@ -2490,14 +2717,58 @@ def _daily_briefing(
         citations = _merge_citations(
             citations, json.loads(first_point["source_evidence"]), limit=3
         )
+    executable = bool(
+        first_point
+        and _requires_executable_verification(str(first_point["acceptance_method"]))
+    )
+    readiness_question = (
+        "\n\n在讲解前只选一个最接近你的情况："
+        "\nA．完全没写过代码　B．能看懂一点代码　C．能写简单函数。"
+        "\n只回复 A / B / C，或直接说“我不会写代码”就行；选 A 也不会立刻要求你编码。"
+        if executable
+        else (
+            f"\n\n先用一句话告诉我：对于“{first_name}”，"
+            "你是完全没接触过，还是已经有一点印象？"
+        )
+    )
     content = (
         f"今天一共有 {len(points)} 个知识点，但我们现在只看第一个：{first_name}。"
         "我会讲一小段就停下来，不会一次把整份资料倒给你。"
         f"\n\n这部分来自你上传的资料，今天的完整安排约 {summary['task_minutes']} 个标准任务分钟；"
         "你可以随时打断、追问，或者让我换一个例子。"
-        f"\n\n先告诉我：对于“{first_name}”，你是完全没接触过，还是已经有一点印象？"
+        f"{readiness_question}"
     )
     return content, citations
+
+
+def _point_readiness_prompt(
+    connection: sqlite3.Connection,
+    *,
+    task: sqlite3.Row,
+) -> tuple[str, list[dict[str, Any]]]:
+    point = connection.execute(
+        "SELECT * FROM active_knowledge_points WHERE id=?",
+        (task["knowledge_point_id"],),
+    ).fetchone()
+    citations = _merge_citations(
+        [],
+        json.loads(point["source_evidence"]),
+        limit=3,
+    )
+    if _requires_executable_verification(str(point["acceptance_method"])):
+        question = (
+            "在开始前只选一个：\n"
+            "A．完全没写过代码　B．能看懂一点代码　C．能写简单函数。\n"
+            "只回复 A / B / C，或直接说“我不会写代码”即可。选 A 时我会先用生活语言和小问题带你，"
+            "不会一上来要求你编码。"
+        )
+    else:
+        question = "在开始前只告诉我：你是完全没接触过，还是已经有一点印象？一句话就够。"
+    return (
+        f"好，我们现在只学习“{point['name']}”。我先不讲长内容，也不假设你已经会。"
+        f"\n\n{question}",
+        citations,
+    )
 
 
 def _sync_teacher_learner_model(
@@ -2833,6 +3104,8 @@ async def start_session(
             "estimated_task_minutes": first["estimated_task_minutes"],
             "completed_task_minutes": 0,
             "actual_elapsed_minutes": 0.0,
+            "teacher_persona_id": receipt.get("teacher_persona_id") or "",
+            "teacher_persona_name": receipt.get("teacher_persona_name") or "艾莉丝",
             "teacher_persona": receipt.get("teacher_persona") or "",
             "learner_context": {
                 "foundation": receipt.get("current_foundation") or receipt.get("current_level"),
@@ -3431,12 +3704,33 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             plan_receipt = json.loads(connection.execute(
                 "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
             ).fetchone()["receipt"])
-            content, citations = _opening(connection, task, plan_receipt)
-            content = (
-                f"收到，你目前对“{point['name']}”的感觉是：{message[:120]}。"
-                f"\n\n{content}"
-                "\n\n我先停在这里。哪一句不清楚就直接问，或者回复“继续”。"
+            coding_foundation = (
+                _coding_foundation_from_reply(message)
+                if _requires_executable_verification(str(point["acceptance_method"]))
+                else "not_applicable"
             )
+            learner_context = dict(state.get("learner_context") or {})
+            learner_context["coding_foundation"] = coding_foundation
+            state["learner_context"] = learner_context
+            if coding_foundation == "none":
+                citations = _merge_citations(
+                    citations,
+                    json.loads(point["source_evidence"]),
+                )
+                content = (
+                    f"收到：你现在不会写代码，这完全可以。学习“{point['name']}”时，"
+                    "这一轮先不写代码，也不会把最终验收直接丢给你。"
+                    f"\n\n先只建立直觉：{point['explanation'][:320]}"
+                    " 现在只回答一个很小的问题：这里要处理的对象是什么、希望它发生什么变化？"
+                    "各说一个词也可以；最终编码验收会等到理解和引导练习之后。"
+                )
+            else:
+                content, citations = _opening(connection, task, plan_receipt)
+                content = (
+                    f"收到，你目前对“{point['name']}”的感觉是：{message[:120]}。"
+                    f"\n\n{content}"
+                    "\n\n我先停在这里。哪一句不清楚就直接问，或者回复“继续”。"
+                )
             state["current_teaching_step"] = "explain"
             state["next_action"] = "show_example"
             state["autonomy"] = {
@@ -3926,8 +4220,8 @@ def focus_session_task(
         )
         state["autonomy"] = {
             "mode": "teacher_led_until_learner_input",
-            "awaiting_learner": False,
-            "reason": "calendar_task_selected",
+            "awaiting_learner": True,
+            "reason": "learner_foundation_required",
         }
         teacher_memory = dict(state.get("teacher_memory") or {})
         teacher_memory["last_interaction"] = "calendar_task_selected"
@@ -3936,6 +4230,15 @@ def focus_session_task(
             connection,
             workspace_id=session["workspace_id"],
             state=state,
+        )
+        readiness, citations = _point_readiness_prompt(connection, task=task)
+        _record_message(
+            connection,
+            session_id,
+            "teacher",
+            "daily_briefing",
+            readiness,
+            citations,
         )
         connection.execute(
             """UPDATE active_teaching_sessions

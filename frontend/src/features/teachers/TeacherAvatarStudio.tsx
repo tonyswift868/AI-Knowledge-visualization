@@ -1,6 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { Check, ExternalLink, FileDown, RotateCcw, Upload } from "lucide-react"
 import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarMorph } from "./api"
+import {
+  activeTeacherPersonas,
+  saveActiveTeacherPersona,
+  type ActiveTeacherPersona,
+} from "../active-teaching/api"
 import { ParametricCardPreview } from "./ParametricCardPreview"
 import { TeacherCompanionPortrait, TeacherCompanionStage, type TeacherCompanionState } from "./TeacherCompanionStage"
 import { friendlyKksDisplayName } from "./kksDisplayNames"
@@ -127,6 +132,12 @@ export function TeacherAvatarStudio({
   const [spineTeacher, setSpineTeacher] = useState<SpineTeacher | null>(null)
   const [spineNotice, setSpineNotice] = useState("")
   const [reviewMode, setReviewMode] = useState<`mother-${TeacherMotherImageId}` | "skeleton">("mother-blonde-fang-teaching")
+  const [personas, setPersonas] = useState<ActiveTeacherPersona[]>([])
+  const [personaId, setPersonaId] = useState("")
+  const [personaName, setPersonaName] = useState("")
+  const [personaPrompt, setPersonaPrompt] = useState("")
+  const [personaStyle, setPersonaStyle] = useState("")
+  const [personaNotice, setPersonaNotice] = useState("")
   // Prefer a native Koikatsu/KKBP export when one is available.  PMX keeps
   // the game's actual body and skeleton instead of falling back to the
   // generic VRM rig that caused the old bone distortions.
@@ -182,6 +193,19 @@ export function TeacherAvatarStudio({
 
   useEffect(() => { void load() }, [load])
   useEffect(() => { if (active) setMorph(normalizeMorph(active.morph)) }, [active?.model_id])
+  useEffect(() => {
+    if (compact) return
+    void activeTeacherPersonas().then(value => {
+      setPersonas(value)
+      const selected = value.find(item => item.is_default) || value[0]
+      if (selected) {
+        setPersonaId(selected.id)
+        setPersonaName(selected.name)
+        setPersonaPrompt(selected.prompt)
+        setPersonaStyle(selected.teaching_style)
+      }
+    }).catch(error => setPersonaNotice(error instanceof Error ? error.message : "教师人设加载失败"))
+  }, [compact])
 
   if (compact) {
     return (
@@ -260,6 +284,39 @@ export function TeacherAvatarStudio({
     setNotice(card.missing_dependencies.length ? `${card.display_name} 已载入；${card.missing_dependencies.length} 个卡片明确引用的本地资源待解析` : `${card.display_name} 已载入统一身体模板`)
   }
 
+  function selectPersona(id: string) {
+    setPersonaId(id)
+    const selected = personas.find(item => item.id === id)
+    setPersonaName(selected?.name || "")
+    setPersonaPrompt(selected?.prompt || "")
+    setPersonaStyle(selected?.teaching_style || "")
+    setPersonaNotice("")
+  }
+
+  async function savePersona() {
+    try {
+      setBusy(true)
+      setPersonaNotice("")
+      const saved = await saveActiveTeacherPersona({
+        id: personaId || undefined,
+        name: personaName,
+        prompt: personaPrompt,
+        teaching_style: personaStyle,
+      })
+      const next = await activeTeacherPersonas()
+      setPersonas(next)
+      selectPersona(saved.id)
+      setPersonaName(saved.name)
+      setPersonaPrompt(saved.prompt)
+      setPersonaStyle(saved.teaching_style)
+      setPersonaNotice(personaId ? "教师人设已更新。" : "新教师人设已加入角色库。")
+    } catch (error) {
+      setPersonaNotice(error instanceof Error ? error.message : "教师人设保存失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function importCard(form: HTMLFormElement) {
     const body = new FormData(form)
     try {
@@ -289,6 +346,36 @@ export function TeacherAvatarStudio({
       <div><span>{compact ? "LICENSED AVATAR ROSTER" : "2D AI TEACHER COMPANION"}</span><h2>{compact ? "今日教师模型" : "AI 教师角色库"}</h2><p>{compact ? "当前教师的课程展示模型。" : "以高质量 2D 角色、教学状态和自然互动构成教师陪伴体验。"}</p></div>
         <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看备用 DragonBones 方案 <ExternalLink size={14} /></a>
     </div>
+
+      {!compact && <section className="teacher-persona-library" aria-label="AI 教师人设库">
+        <header>
+          <div><span>TEACHING PERSONA</span><h3>教师大脑与教学风格</h3></div>
+          <button type="button" onClick={() => selectPersona("")}>＋ 新建人设</button>
+        </header>
+        <p>学习任务只选择这里的角色，不再各自保存一份难以管理的人设；此前任务里填写的内容会自动迁移到这里。</p>
+        <div className="teacher-persona-library__grid">
+          <nav aria-label="已保存教师人设">
+            {personas.map(item => <button
+              type="button"
+              key={item.id}
+              className={item.id === personaId ? "active" : ""}
+              onClick={() => selectPersona(item.id)}
+            >
+              <b>{item.name}</b>
+              <small>{item.is_default ? "默认人设" : item.teaching_style || "自定义人设"}</small>
+            </button>)}
+          </nav>
+          <div className="teacher-persona-library__editor">
+            <label>角色名称<input value={personaName} onChange={event => setPersonaName(event.target.value)} placeholder="例如：艾莉丝 · 零基础陪练" /></label>
+            <label>教学风格<input value={personaStyle} onChange={event => setPersonaStyle(event.target.value)} placeholder="例如：短讲解、生活类比、逐步撤除提示" /></label>
+            <label>完整人设<textarea value={personaPrompt} onChange={event => setPersonaPrompt(event.target.value)} placeholder="说明她怎样主动提问、如何照顾零基础、何时进入练习与验收。" /></label>
+            <button type="button" onClick={() => void savePersona()} disabled={busy || !personaName.trim() || !personaPrompt.trim()}>
+              {busy ? "正在保存…" : personaId ? "保存人设修改" : "加入角色库"}
+            </button>
+          </div>
+        </div>
+        {personaNotice && <div className="teacher-avatar-notice" role="status">{personaNotice}</div>}
+      </section>}
 
       {!compact && <div className="teacher-review-switch" role="group" aria-label="教师视觉审稿模式">
         <button type="button" className={reviewMode === "mother-auburn" ? "active" : ""} aria-pressed={reviewMode === "mother-auburn"} onClick={() => setReviewMode("mother-auburn")}>教师 01 · 红发</button>
