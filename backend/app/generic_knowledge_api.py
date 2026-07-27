@@ -415,6 +415,32 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
     dependency_count = len(graph["edges"])
     isolated_count = sum(1 for item in points if item.get("isolated"))
     evidence_covered = sum(1 for item in points if item.get("source_evidence"))
+    executable_point_ids = {
+        str(item["id"])
+        for item in points
+        if active_teaching._requires_executable_verification(
+            str(item.get("acceptance_method") or "")
+        )
+    }
+    verified_executable_point_ids: set[str] = set()
+    if connection.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='active_practice_problem_specs'"""
+    ).fetchone():
+        verified_executable_point_ids = {
+            str(row["knowledge_point_id"])
+            for row in connection.execute(
+                """SELECT DISTINCT knowledge_point_id
+                   FROM active_practice_problem_specs
+                   WHERE workspace_id=? AND reference_status='system_verified'""",
+                (workspace_id,),
+            ).fetchall()
+            if str(row["knowledge_point_id"]) in executable_point_ids
+        }
+    executable_ready = (
+        not executable_point_ids
+        or executable_point_ids <= verified_executable_point_ids
+    )
     confidence_counts: dict[str, int] = {}
     for estimate in estimates:
         confidence = str(estimate.get("confidence") or "unknown")
@@ -431,6 +457,12 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
         risks.append("超过一半知识点没有已验证前置依赖；系统不会凭章节顺序伪造依赖。")
     if evidence_covered < point_count:
         risks.append("存在缺少来源证据的知识点，不能进入主动教学。")
+    if not executable_ready:
+        risks.append(
+            "资料要求编程或可执行验收，但仍有知识点缺少经系统运行验证的题目规格与测试；"
+            "可以先学习概念，不能宣称已完成独立编码验收。"
+        )
+    evidence_ready = bool(point_count and evidence_covered == point_count)
     graph["assessment"] = {
         "scope": "selected_materials",
         "material_ids": material_ids,
@@ -452,12 +484,33 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
             "review_task_minutes": review_minutes,
             "estimate_confidence_counts": confidence_counts,
         },
+        "verification": {
+            "executable_required_point_count": len(executable_point_ids),
+            "system_verified_problem_point_count": len(
+                verified_executable_point_ids
+            ),
+            "executable_verification_coverage_ratio": round(
+                len(verified_executable_point_ids)
+                / max(1, len(executable_point_ids)),
+                4,
+            )
+            if executable_point_ids
+            else 1.0,
+            "executable_verification_ready": executable_ready,
+        },
+        "capabilities": {
+            "source_grounded_teaching": evidence_ready,
+            "executable_practice": executable_ready,
+            "verified_completion": evidence_ready and executable_ready,
+        },
         "readiness": {
             "status": (
                 "ready"
-                if point_count and evidence_covered == point_count and extraction_mode == "provider_grounded"
+                if evidence_ready
+                and executable_ready
+                and extraction_mode == "provider_grounded"
                 else "usable_with_review"
-                if point_count and evidence_covered == point_count
+                if evidence_ready
                 else "blocked"
             ),
             "risks": risks,

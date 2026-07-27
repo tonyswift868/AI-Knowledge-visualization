@@ -166,6 +166,9 @@ def test_verified_problem_spec_runs_tests_hides_hidden_data_and_persists(tmp_pat
             "problem_count": 1,
             "submission_count": 3,
             "independently_verified_problem_count": 1,
+            "executable_required_point_count": 1,
+            "system_verified_problem_point_count": 1,
+            "independently_verified_problem_point_count": 1,
         }
         assert report_body["gates"]["all_code_problems_independently_verified"] is True
         assert len(report_body["mistake_queue"]) == 2

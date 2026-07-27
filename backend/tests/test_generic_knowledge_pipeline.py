@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import zipfile
 from datetime import date, timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,9 @@ from app.provider_runtime import (
     get_provider_session,
     reset_provider_sessions,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _receipt(material_id: str, *, start: date, deadline: date) -> dict:
@@ -174,6 +178,117 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
         assert payload["total_mastery_task_minutes"] == sum(
             point["mastery_estimate"]["total_mastery_task_minutes"]
             for point in graph["knowledge_points"]
+        )
+
+
+def test_coding_acceptance_requires_system_verified_problem_specs(tmp_path):
+    configure_orm(tmp_path / "generic-code-readiness.db")
+    workspace = "generic-code-readiness"
+    start = date.today()
+    material_text = """# 整数列表求和
+知识点：维护累计值并依次加入每个整数。
+验收方式：独立实现一个接收整数列表并返回总和的函数，并通过边界测试。
+"""
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("coding.md", material_text.encode("utf-8"), "text/markdown")},
+        ).json()
+        receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(
+                material["id"],
+                start=start,
+                deadline=start + timedelta(days=6),
+            ),
+        )
+        assert receipt.status_code == 200, receipt.text
+        graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert graph.status_code == 200, graph.text
+        assessment = graph.json()["assessment"]
+        assert assessment["verification"] == {
+            "executable_required_point_count": 1,
+            "system_verified_problem_point_count": 0,
+            "executable_verification_coverage_ratio": 0.0,
+            "executable_verification_ready": False,
+        }
+        assert assessment["capabilities"]["source_grounded_teaching"] is True
+        assert assessment["capabilities"]["executable_practice"] is False
+        assert assessment["capabilities"]["verified_completion"] is False
+        assert any("缺少经系统运行验证" in risk for risk in assessment["readiness"]["risks"])
+
+        plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert plan.status_code == 200, plan.text
+        assert (
+            plan.json()["source_assessment"]["capabilities"]["verified_completion"]
+            is False
+        )
+        session = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        ).json()
+        report = client.get(
+            f"/api/active-teaching/sessions/{session['session_id']}/completion-report"
+        )
+        assert report.status_code == 200, report.text
+        payload = report.json()
+        assert payload["code"]["executable_required_point_count"] == 1
+        assert payload["code"]["system_verified_problem_point_count"] == 0
+        assert payload["gates"]["all_code_problems_independently_verified"] is False
+        assert payload["verified_complete"] is False
+
+
+def test_hot150_metadata_can_be_planned_but_not_claim_verified_code_completion(tmp_path):
+    configure_orm(tmp_path / "hot150-readiness.db")
+    workspace = "hot150-readiness"
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={
+                "file": (
+                    "leetcode_top_interview_150_zh.md",
+                    (ROOT / "demo" / "leetcode_top_interview_150_zh.md").read_bytes(),
+                    "text/markdown",
+                )
+            },
+        ).json()
+        receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(
+                material["id"],
+                start=start,
+                deadline=start + timedelta(days=16),
+            ),
+        )
+        assert receipt.status_code == 200, receipt.text
+        graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert graph.status_code == 200, graph.text
+        body = graph.json()
+        assert len(body["knowledge_points"]) == 150
+        verification = body["assessment"]["verification"]
+        assert verification["executable_required_point_count"] > 0
+        assert verification["system_verified_problem_point_count"] == 0
+        assert verification["executable_verification_ready"] is False
+        assert body["assessment"]["capabilities"]["verified_completion"] is False
+
+        plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert plan.status_code == 200, plan.text
+        assert (
+            plan.json()["source_assessment"]["verification"][
+                "executable_verification_ready"
+            ]
+            is False
         )
 
 

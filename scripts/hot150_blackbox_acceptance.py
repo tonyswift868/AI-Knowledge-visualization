@@ -88,6 +88,13 @@ assertions = {
     "exactly_150_points": len(points) == 150,
     "all_point_names_unique": len(normalized_names) == 150,
     "all_points_traceable": all(item["source_evidence"] for item in points),
+    "coding_requirements_detected": (
+        graph["assessment"]["verification"]["executable_required_point_count"] > 0
+    ),
+    "missing_code_specs_not_marked_ready": (
+        graph["assessment"]["verification"]["executable_verification_ready"] is False
+        and graph["assessment"]["capabilities"]["verified_completion"] is False
+    ),
     "seventeen_natural_days": len(calendar) == 17,
     "fixed_rest_days_empty": bool(rest_days)
     and all(

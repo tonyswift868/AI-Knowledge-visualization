@@ -790,7 +790,9 @@ export function ActiveTeachingChainView({
                 {graph.assessment.readiness?.status === "ready"
                   ? "可直接生成计划"
                   : graph.assessment.readiness?.status === "usable_with_review"
-                    ? "可排程，建议语义复核"
+                    ? graph.assessment.verification?.executable_verification_ready === false
+                      ? "可排程，完整验收尚未就绪"
+                      : "可排程，建议语义复核"
                     : "暂不可排程"}
               </b>
               <span>
@@ -804,6 +806,14 @@ export function ActiveTeachingChainView({
                 第一遍 {graph.assessment.workload?.initial_learning_task_minutes || 0} ·
                 复习 {graph.assessment.workload?.review_task_minutes || 0}
               </span>
+              {(graph.assessment.verification?.executable_required_point_count || 0) > 0 && (
+                <span data-testid="active-executable-readiness">
+                  可执行验收：
+                  {graph.assessment.verification?.system_verified_problem_point_count || 0}/
+                  {graph.assessment.verification?.executable_required_point_count || 0}
+                  个要求编码的知识点已绑定系统验证题目
+                </span>
+              )}
               {(graph.assessment.readiness?.risks || []).map((risk: string) => (
                 <span key={risk}>{risk}</span>
               ))}

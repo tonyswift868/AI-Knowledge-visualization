@@ -64,6 +64,23 @@ def _normalise(value: str) -> str:
     return re.sub(r"[\W_]+", "", value, flags=re.UNICODE).casefold()
 
 
+def _requires_executable_verification(acceptance_method: str) -> bool:
+    """Detect an observable coding requirement without assuming a course domain."""
+    value = str(acceptance_method or "")
+    return bool(
+        re.search(
+            (
+                r"独立(?:编码|编程)|编写(?:代码|程序|函数)|可运行(?:代码|程序|实现)|"
+                r"通过(?:边界|隐藏|单元|自动化)?测试|实现.+(?:算法|函数|程序|代码)|"
+                r"(?:算法|函数|程序|代码).+实现|"
+                r"\b(?:code|coding|implement|program|unit tests?|hidden tests?)\b"
+            ),
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
 def _db_path() -> Path:
     from . import orm
 
@@ -4450,22 +4467,45 @@ def _completion_report(
         (session["workspace_id"],),
     ).fetchone()[0]
     mistakes: list[dict[str, Any]] = []
+    executable_required_point_ids = {
+        str(row["id"])
+        for row in connection.execute(
+            """SELECT id,acceptance_method FROM active_knowledge_points
+               WHERE workspace_id=?""",
+            (session["workspace_id"],),
+        ).fetchall()
+        if _requires_executable_verification(str(row["acceptance_method"] or ""))
+    }
+    system_verified_problem_point_ids: set[str] = set()
+    independently_verified_problem_point_ids: set[str] = set()
     code_summary = {
         "problem_count": 0,
         "submission_count": 0,
         "independently_verified_problem_count": 0,
+        "executable_required_point_count": len(executable_required_point_ids),
+        "system_verified_problem_point_count": 0,
+        "independently_verified_problem_point_count": 0,
     }
     if connection.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type='table' AND name='active_practice_code_submissions'"""
     ).fetchone():
         problems = connection.execute(
-            """SELECT id,title FROM active_practice_problem_specs
+            """SELECT id,title,knowledge_point_id,reference_status
+               FROM active_practice_problem_specs
                WHERE workspace_id=? ORDER BY created_at,id""",
             (session["workspace_id"],),
         ).fetchall()
         code_summary["problem_count"] = len(problems)
         for problem in problems:
+            if (
+                problem["reference_status"] == "system_verified"
+                and str(problem["knowledge_point_id"])
+                in executable_required_point_ids
+            ):
+                system_verified_problem_point_ids.add(
+                    str(problem["knowledge_point_id"])
+                )
             submissions = connection.execute(
                 """SELECT * FROM active_practice_code_submissions
                    WHERE session_id=? AND problem_id=? ORDER BY created_at,id""",
@@ -4484,6 +4524,10 @@ def _completion_report(
             )
             if independent_accept:
                 code_summary["independently_verified_problem_count"] += 1
+                if str(problem["knowledge_point_id"]) in executable_required_point_ids:
+                    independently_verified_problem_point_ids.add(
+                        str(problem["knowledge_point_id"])
+                    )
             for row in submissions:
                 if row["status"] == "accepted":
                     continue
@@ -4503,6 +4547,12 @@ def _completion_report(
                         ),
                     }
                 )
+    code_summary["system_verified_problem_point_count"] = len(
+        system_verified_problem_point_ids
+    )
+    code_summary["independently_verified_problem_point_count"] = len(
+        independently_verified_problem_point_ids
+    )
     gates = {
         "all_initial_tasks_completed": bool(initial)
         and all(task["status"] == "completed" for task in initial),
@@ -4512,9 +4562,9 @@ def _completion_report(
         "no_unresolved_source_conflicts": int(conflicts) == 0,
         "no_unscheduled_minutes": int(plan["unscheduled_task_minutes"]) == 0,
         "all_code_problems_independently_verified": (
-            code_summary["problem_count"] == 0
-            or code_summary["independently_verified_problem_count"]
-            == code_summary["problem_count"]
+            not executable_required_point_ids
+            or executable_required_point_ids
+            <= independently_verified_problem_point_ids
         ),
         "has_independent_mastery_evidence": bool(independent_evidence),
     }
