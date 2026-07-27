@@ -3,6 +3,7 @@
 .active-chain__hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .active-chain__hero h2, .active-chain__teacher h3 { margin: 6px 0; }
 .active-chain__hero p { margin: 0; color: #5f6f68; }
+.active-chain__is-hidden { display: none !important; }
 .active-chain__eyebrow, .active-chain__step { color: #397d5d; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .active-chain__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .active-chain__card { display: grid; align-content: start; gap: 12px; background: #fff; border: 1px solid #dde7e1; border-radius: 18px; padding: 20px; }
@@ -63,6 +64,25 @@
 .active-task-hub__current > span { color: #397d5d; font-size: 12px; font-weight: 800; }
 .active-task-hub__current h3, .active-task-hub__current p { margin: 0; }
 .active-task-hub__current code { width: fit-content; margin-top: 6px; color: #708078; font-size: 11px; }
+.active-today { display: grid; gap: 18px; padding: 24px; border: 1px solid #b9dac7; border-radius: 22px; background: linear-gradient(145deg, #f8fcf7, #eaf7f0); box-shadow: 0 12px 30px rgba(31, 96, 69, .08); }
+.active-today__head { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.active-today__head h2 { margin: 6px 0; font-size: clamp(22px, 2.5vw, 32px); }
+.active-today__head p { margin: 0; color: #5f6f68; }
+.active-today__actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+.active-chain button.active-today__secondary { color: #286a4f; background: #fff; border: 1px solid #a8cdb8; }
+.active-today__summary { display: grid; grid-template-columns: minmax(190px, 1.35fr) repeat(3, minmax(130px, 1fr)); gap: 10px; align-items: stretch; }
+.active-today__summary > label, .active-today__summary > span { display: grid; align-content: center; min-height: 58px; padding: 10px 12px; border: 1px solid #d3e5da; border-radius: 12px; background: rgba(255, 255, 255, .78); }
+.active-today__summary > span { color: #53635c; font-size: 12px; }
+.active-today__summary b { color: #1f6045; font-size: 19px; }
+.active-today__tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; max-height: min(52vh, 560px); overflow: auto; padding: 2px 4px 2px 2px; }
+.active-today__tasks > article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 108px; padding: 16px; border: 1px solid #d1e3d8; border-radius: 15px; background: #fff; }
+.active-today__tasks > article.is-active { border-color: #398460; box-shadow: 0 0 0 3px #d9efe2; }
+.active-today__tasks > article.is-complete { opacity: .68; background: #f2f5f3; }
+.active-today__tasks h3, .active-today__tasks p { margin: 4px 0 0; }
+.active-today__tasks p, .active-today__tasks span { color: #687870; font-size: 12px; }
+.active-today__tasks span { color: #397d5d; font-weight: 800; }
+.active-today__empty { display: grid; gap: 5px; padding: 20px; border: 1px dashed #a8cdb8; border-radius: 14px; color: #5f6f68; background: rgba(255, 255, 255, .62); }
+.active-today__empty b { color: #285b44; }
 .active-chain__advanced { grid-column: 1 / -1; padding: 12px 14px; border: 1px solid #d8e4dd; border-radius: 12px; }
 .active-chain__advanced summary { color: #397d5d; font-weight: 700; cursor: pointer; }
 .active-chain__advanced[open] { display: grid; gap: 12px; }
@@ -88,6 +108,15 @@
   .active-chain__creator-card, .active-task-hub { grid-template-columns: 1fr; }
   .active-chain__creator-card > * { grid-column: 1; }
   .active-chain__autosave { justify-self: start; }
-  .active-chain__hero, .active-chain__teacher-head { align-items: stretch; flex-direction: column; }
+  .active-chain__hero, .active-chain__teacher-head, .active-today__head { align-items: stretch; flex-direction: column; }
+  .active-today__actions { justify-content: stretch; }
+  .active-today__actions button { flex: 1; }
+  .active-today__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .active-chain__composer { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .active-today { padding: 16px; }
+  .active-today__summary { grid-template-columns: 1fr; }
+  .active-today__tasks { max-height: none; }
+  .active-today__tasks > article { grid-template-columns: 1fr; }
 }

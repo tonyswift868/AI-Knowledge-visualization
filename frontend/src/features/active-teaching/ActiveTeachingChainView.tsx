@@ -73,6 +73,9 @@ export function ActiveTeachingChainView({
   const [snapshot, setSnapshot] = useState<any>(null);
   const [learningTasks, setLearningTasks] = useState<ActiveLearningTaskSummary[]>([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [showPlanDetails, setShowPlanDetails] = useState(false);
+  const [showLesson, setShowLesson] = useState(false);
+  const [selectedStudyDate, setSelectedStudyDate] = useState(isoAfterDays(0));
   const [creatingNewTask, setCreatingNewTask] = useState(() =>
     Boolean(readTaskDraft(activeWorkspaceId)),
   );
@@ -319,6 +322,74 @@ export function ActiveTeachingChainView({
   const activeTaskSummary = learningTasks.find(
     (item) => item.workspace_id === activeWorkspaceId,
   );
+  const selectedStudyDay = (plan?.calendar || []).find(
+    (day: any) => day.date === selectedStudyDate,
+  );
+  const dailyTaskGroups = useMemo(() => {
+    const groups = new Map<string, any>();
+    for (const task of selectedStudyDay?.tasks || []) {
+      const key = `${task.task_type || "task"}:${task.knowledge_point_id || task.id}`;
+      const current = groups.get(key) || {
+        key,
+        knowledgePointId: task.knowledge_point_id,
+        title: String(task.title || "学习任务").replace(
+          /\s*·\s*(理解|回忆|引导练习|独立应用).*$/,
+          "",
+        ),
+        taskType: task.task_type,
+        tasks: [],
+        minutes: 0,
+      };
+      current.tasks.push(task);
+      current.minutes += Number(task.estimated_task_minutes || 0);
+      groups.set(key, current);
+    }
+    return Array.from(groups.values()).map((group) => {
+      const completed = group.tasks.filter(
+        (task: any) => task.status === "completed",
+      ).length;
+      return {
+        ...group,
+        completed,
+        nextTask:
+          group.tasks.find((task: any) => task.status !== "completed")
+          || group.tasks[0],
+      };
+    });
+  }, [selectedStudyDay]);
+  const selectedDayCompleted = dailyTaskGroups.reduce(
+    (total, group) => total + group.completed,
+    0,
+  );
+  const selectedDayTaskCount = dailyTaskGroups.reduce(
+    (total, group) => total + group.tasks.length,
+    0,
+  );
+  const selectedDayRemainingMinutes = (selectedStudyDay?.tasks || []).reduce(
+    (total: number, task: any) =>
+      total
+      + Math.max(
+        0,
+        Number(task.estimated_task_minutes || 0)
+          - Number(task.completed_task_minutes || 0),
+      ),
+    0,
+  );
+
+  useEffect(() => {
+    const days = plan?.calendar || [];
+    if (!days.length) return;
+    const today = isoAfterDays(0);
+    const nextDate =
+      days.find((day: any) => day.date === today)?.date
+      || days.find((day: any) =>
+        (day.tasks || []).some((task: any) => task.status !== "completed")
+      )?.date
+      || days[0].date;
+    setSelectedStudyDate(nextDate);
+    setShowPlanDetails(false);
+    setShowLesson(false);
+  }, [activeWorkspaceId, plan?.id]);
 
   const receiptPayload = (materialIds?: string[]) => ({
     learning_goal: goal,
@@ -520,6 +591,36 @@ export function ActiveTeachingChainView({
     return current;
   };
 
+  const revealTeacherWorkbench = () => {
+    setShowLesson(true);
+    window.setTimeout(() => {
+      const workbench = document.getElementById("active-teacher-workbench");
+      if (typeof workbench?.scrollIntoView === "function") {
+        workbench.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  };
+
+  const enterDailyTask = (task: any) => {
+    revealTeacherWorkbench();
+    return enterCalendarTask(task);
+  };
+
+  const startTodayLesson = () => {
+    revealTeacherWorkbench();
+    return startTeacherLedLesson();
+  };
+
+  const leaveLessonForToday = () => {
+    setShowLesson(false);
+    window.setTimeout(() => {
+      const dashboard = document.getElementById("active-today-dashboard");
+      if (typeof dashboard?.scrollIntoView === "function") {
+        dashboard.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  };
+
   const toggleWeekday = (day: number) => {
     setStudyWeekdays((current) =>
       current.includes(day)
@@ -621,9 +722,15 @@ export function ActiveTeachingChainView({
     <section className="active-chain" data-testid="active-teaching-chain">
       <header className="active-chain__hero">
         <div>
-          <span className="active-chain__eyebrow">统一学习任务中心</span>
-          <h2>建立一次任务，之后每天点开就学</h2>
-          <p>每个任务独立保存计划、知识地图、教师记忆和本地 RAG；切换任务不会串资料。</p>
+          <span className="active-chain__eyebrow">
+            {plan ? "学习任务" : "统一学习任务中心"}
+          </span>
+          <h2>{plan ? "今天按计划学习，随时切换任务" : "建立一次任务，之后每天点开就学"}</h2>
+          <p>
+            {plan
+              ? "直接选择今天的一项开始；计划、教师记忆和学习进度都会自动保存。"
+              : "每个任务独立保存计划、知识地图、教师记忆和本地 RAG；切换任务不会串资料。"}
+          </p>
         </div>
         <button data-testid="active-new-task" onClick={createNewTask}>＋ 新建学习任务</button>
       </header>
@@ -705,7 +812,126 @@ export function ActiveTeachingChainView({
         </section>
       </div>
 
-      <div className="active-chain__grid">
+      {plan && (
+        <article
+          className="active-today"
+          data-testid="active-today-dashboard"
+          id="active-today-dashboard"
+        >
+          <div className="active-today__head">
+            <div>
+              <span className="active-chain__eyebrow">今日学习</span>
+              <h2>{session ? "继续上次进度，或切换今天的另一项" : "选一项，教师马上开始带学"}</h2>
+              <p>任务内部的小步骤由教师接管；退出页面或切换任务都不会丢失进度。</p>
+            </div>
+            <div className="active-today__actions">
+              {session && (
+                <button
+                  data-testid="active-continue-lesson"
+                  disabled={Boolean(busy)}
+                  onClick={revealTeacherWorkbench}
+                >
+                  继续当前课程
+                </button>
+              )}
+              {!session && (
+                <button
+                  data-testid="active-start-today"
+                  disabled={Boolean(busy)}
+                  onClick={() => run("启动今日主动课程", startTodayLesson)}
+                >
+                  开始今日课程
+                </button>
+              )}
+              <button
+                className="active-today__secondary"
+                data-testid="active-toggle-plan-details"
+                onClick={() => setShowPlanDetails((current) => !current)}
+              >
+                {showPlanDetails ? "收起任务设置与完整计划" : "查看或调整完整计划"}
+              </button>
+            </div>
+          </div>
+
+          <div className="active-today__summary">
+            <label>
+              学习日期
+              <select
+                data-testid="active-study-date"
+                value={selectedStudyDate}
+                onChange={(event) => setSelectedStudyDate(event.target.value)}
+              >
+                {(plan.calendar || []).map((day: any) => (
+                  <option key={day.date} value={day.date}>
+                    {day.date}
+                    {day.date === isoAfterDays(0) ? "（今天）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span><b>{dailyTaskGroups.length}</b> 项知识主题</span>
+            <span><b>{selectedDayRemainingMinutes}</b> 标准任务分钟待完成</span>
+            <span><b>{selectedDayCompleted}/{selectedDayTaskCount}</b> 个教学步骤已完成</span>
+          </div>
+
+          {dailyTaskGroups.length > 0 ? (
+            <div className="active-today__tasks" data-testid="active-today-tasks">
+              {dailyTaskGroups.map((group) => {
+                const active = group.tasks.some(
+                  (task: any) => task.id === session?.state?.active_task_id,
+                );
+                const complete = group.completed === group.tasks.length;
+                return (
+                  <article
+                    className={`${active ? "is-active" : ""} ${complete ? "is-complete" : ""}`}
+                    key={group.key}
+                  >
+                    <div>
+                      <span>
+                        {group.taskType === "review"
+                          ? "完整复习"
+                          : group.taskType === "remediation"
+                            ? "补救学习"
+                            : "首学"}
+                      </span>
+                      <h3>{group.title}</h3>
+                      <p>
+                        {group.minutes} 分钟 ·
+                        {group.completed}/{group.tasks.length} 个步骤完成
+                      </p>
+                    </div>
+                    <button
+                      data-testid={`active-today-task-${group.knowledgePointId || group.nextTask.id}`}
+                      disabled={Boolean(busy) || complete}
+                      onClick={() =>
+                        run(
+                          `${active ? "继续" : "进入"} ${group.title}`,
+                          () => enterDailyTask(group.nextTask),
+                        )}
+                    >
+                      {complete ? "今日已完成" : active ? "继续学习" : "开始学习"}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="active-today__empty">
+              <b>{selectedStudyDate} 没有待执行的首学任务</b>
+              <span>
+                {(selectedStudyDay?.projected_review_items || []).length > 0
+                  ? `当天预留了 ${(selectedStudyDay.projected_review_items || []).length} 项完整复习，进入教师后按复习队列执行。`
+                  : "可以切换其他日期，或查看完整计划。"}
+              </span>
+            </div>
+          )}
+        </article>
+      )}
+
+      <div
+        className={`active-chain__grid ${plan && !showPlanDetails ? "active-chain__is-hidden" : ""}`}
+        data-testid="active-plan-details"
+      >
         <article className="active-chain__card active-chain__creator-card">
           <span className="active-chain__step">01 · 设置学习任务</span>
           <span className="active-chain__autosave" data-testid="active-draft-status">
@@ -1055,7 +1281,7 @@ export function ActiveTeachingChainView({
                             data-testid={`active-calendar-task-${task.id}`}
                             disabled={Boolean(busy)}
                             key={task.id || `${day.date}-${task.knowledge_point_id}-${task.learning_phase}-${taskIndex}`}
-                            onClick={() => run(`进入 ${task.title}`, () => enterCalendarTask(task))}
+                            onClick={() => run(`进入 ${task.title}`, () => enterDailyTask(task))}
                           >
                             <b>{task.title}</b>
                             <small>{task.estimated_task_minutes} 分钟 · {task.status}</small>
@@ -1084,10 +1310,23 @@ export function ActiveTeachingChainView({
         </article>
       </div>
 
-      <article className="active-chain__teacher" id="active-teacher-workbench">
+      <article
+        className={`active-chain__teacher ${plan && !showLesson ? "active-chain__is-hidden" : ""}`}
+        id="active-teacher-workbench"
+      >
         <div className="active-chain__teacher-head">
           <div><span className="active-chain__step">04 · 今日学习</span><h3>当前任务专属教师 · 计划 RAG 与记忆不会串线</h3></div>
-          <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTeacherLedLesson)}>开始今日课程（教师主动带学）</button>
+          <button data-testid="active-start-teacher" disabled={!plan || Boolean(busy)} onClick={() => run("启动今日主动课程", startTodayLesson)}>开始今日课程（教师主动带学）</button>
+          {plan && (
+            <button
+              className="active-today__secondary"
+              data-testid="active-leave-lesson"
+              disabled={Boolean(busy)}
+              onClick={leaveLessonForToday}
+            >
+              暂存并返回今日任务
+            </button>
+          )}
           {session && <button data-testid="active-replan" disabled={Boolean(busy)} onClick={() => run("滚动未完成任务", () => activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/replan`, {
             method: "POST",
             body: JSON.stringify({

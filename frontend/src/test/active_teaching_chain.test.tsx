@@ -189,7 +189,7 @@ describe("ActiveTeachingChainView", () => {
       "不代表资料包含完整答案",
     );
     expect(screen.getByText(/预留复习 12 分钟/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /建立一次任务/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /今天按计划学习/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-edge-count")).toHaveTextContent("1");
     expect(screen.getByTestId("active-knowledge-map")).toHaveTextContent("资料内知识点");
@@ -240,6 +240,40 @@ describe("ActiveTeachingChainView", () => {
       "仍在学习或验证中",
     );
     expect(screen.getByTestId("active-mistake-queue")).toHaveTextContent("待重做");
+  });
+
+  it("defaults a planned task to a compact daily dashboard and preserves lesson switching", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => snapshot,
+    }));
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const dashboard = await screen.findByTestId("active-today-dashboard");
+    expect(dashboard).toHaveTextContent("继续上次进度，或切换今天的另一项");
+    expect(await screen.findByTestId("active-today-tasks")).toHaveTextContent(
+      "资料内知识点",
+    );
+    expect(screen.getByTestId("active-plan-details")).toHaveClass("active-chain__is-hidden");
+    expect(document.getElementById("active-teacher-workbench")).toHaveClass(
+      "active-chain__is-hidden",
+    );
+
+    fireEvent.click(screen.getByTestId("active-toggle-plan-details"));
+    expect(screen.getByTestId("active-plan-details")).not.toHaveClass(
+      "active-chain__is-hidden",
+    );
+    fireEvent.click(screen.getByTestId("active-toggle-plan-details"));
+    expect(screen.getByTestId("active-plan-details")).toHaveClass("active-chain__is-hidden");
+
+    fireEvent.click(screen.getByTestId("active-continue-lesson"));
+    expect(document.getElementById("active-teacher-workbench")).not.toHaveClass(
+      "active-chain__is-hidden",
+    );
+    fireEvent.click(screen.getByTestId("active-leave-lesson"));
+    expect(document.getElementById("active-teacher-workbench")).toHaveClass(
+      "active-chain__is-hidden",
+    );
   });
 
   it("sends an explicit understood signal to the persisted state machine", async () => {
@@ -543,7 +577,7 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     expect(await screen.findByTestId("active-task-hub")).toHaveTextContent("掌握任意上传资料");
-    fireEvent.click(await screen.findByTestId("active-calendar-task-task_1"));
+    fireEvent.click(await screen.findByTestId("active-today-task-task_1"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/active-teaching/sessions/session_1/focus",
@@ -552,6 +586,9 @@ describe("ActiveTeachingChainView", () => {
           body: JSON.stringify({ task_id: "task_1" }),
         }),
       ),
+    );
+    expect(document.getElementById("active-teacher-workbench")).not.toHaveClass(
+      "active-chain__is-hidden",
     );
   });
 
