@@ -448,7 +448,7 @@ def test_remediation_pauses_and_restores_route_with_persistence(tmp_path):
             ).fetchone()[0] == 2
 
 
-def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
+def test_persisted_review_queue_executes_two_complete_review_rounds(
     tmp_path, monkeypatch
 ):
     configure_orm(tmp_path / "active-review-cycle.db")
@@ -530,11 +530,7 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
         assert due[0]["source_mastery_evidence_id"]
         assert due[0]["scheduled_task_id"]
         assert due[0]["scheduled_date"] == due_day.isoformat()
-        assert (
-            due[0]["estimated_task_minutes"] * 2
-            + max(0, due[0]["review_total_minutes"] - 2 * due[0]["estimated_task_minutes"])
-            == due[0]["review_total_minutes"]
-        )
+        assert due[0]["estimated_task_minutes"] == due[0]["review_total_minutes"]
 
         locked = client.post(
             f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/start",
@@ -619,10 +615,8 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
         first_body = independent.json()
         assert first_body["passed"] is True
         assert first_body["review"]["interval_step"] == 1
-        assert first_body["review"]["interval_days"] == 3
-        assert first_body["review"]["due_date"] == (
-            first_independent_day + timedelta(days=3)
-        ).isoformat()
+        assert first_body["review"]["interval_days"] >= 1
+        assert date.fromisoformat(first_body["review"]["due_date"]) > first_independent_day
         assert first_body["session"]["state"]["route_index"] == saved_route
         assert "active_review" not in first_body["session"]["state"]
 
@@ -632,7 +626,7 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
             f"/api/active-teaching/sessions/{session_id}/reviews"
         ).json()["items"][0]
         assert recovered["attempt_count"] == 2
-        second_day = first_independent_day + timedelta(days=3)
+        second_day = date.fromisoformat(recovered["due_date"])
         assert client.post(
             f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/start",
             json={
@@ -649,27 +643,8 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
             },
         ).json()
         assert second["review"]["interval_step"] == 2
-        assert second["review"]["interval_days"] == 7
-        third_day = second_day + timedelta(days=7)
-        assert client.post(
-            f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/start",
-            json={
-                "as_of": third_day.isoformat(),
-                "provider_session_id": provider_session.id,
-            },
-        ).status_code == 200
-        third = client.post(
-            f"/api/active-teaching/sessions/{session_id}/reviews/{review_id}/submit",
-            json={
-                "message": answer,
-                "as_of": third_day.isoformat(),
-                "provider_session_id": provider_session.id,
-            },
-        ).json()
-        assert third["passed"] is True
-        assert third["review"]["status"] == "completed"
-        assert third["review"]["interval_step"] == 3
-        assert third["session"]["state"]["pending_reviews"] == []
+        assert second["review"]["status"] == "completed"
+        assert second["session"]["state"]["pending_reviews"] == []
 
         with active_teaching._connect() as connection:
             assert connection.execute(
@@ -682,11 +657,11 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
                    ORDER BY attempt_no""",
                 (review_id,),
             ).fetchall()
-            assert len(attempts) == 4
+            assert len(attempts) == 3
             assert attempts[0]["passed"] == 0
             assert attempts[0]["assistance_level"] == "hinted"
             assert attempts[0]["completed_task_minutes"] == 0
-            assert len({row["plan_task_id"] for row in attempts}) == 4
+            assert len({row["plan_task_id"] for row in attempts}) == 3
             assert all(row["passed"] == 1 for row in attempts[1:])
             review = connection.execute(
                 "SELECT * FROM active_review_items WHERE id=?", (review_id,)
@@ -697,11 +672,11 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
                    ORDER BY review_cycle,id""",
                 (review_id,),
             ).fetchall()
-            assert len(review_tasks) == 4  # one hinted attempt plus three independent passes
+            assert len(review_tasks) == 3  # one hinted attempt plus two complete passes
             assert all(row["task_type"] == "review" for row in review_tasks)
-            assert sum(row["completed_task_minutes"] for row in review_tasks) == review[
-                "review_total_minutes"
-            ]
+            assert sum(row["completed_task_minutes"] for row in review_tasks) == (
+                review["review_total_minutes"] * 2
+            )
             assert sum(row["actual_elapsed_minutes"] for row in review_tasks) == 2
             source_task = connection.execute(
                 "SELECT * FROM active_plan_tasks WHERE id=?",
@@ -713,4 +688,4 @@ def test_persisted_review_queue_executes_dynamic_one_three_seven_cycle(
                    WHERE session_id=? AND trigger_name IN
                      ('review_enqueued','review_retry','review_rescheduled')""",
                 (session_id,),
-            ).fetchone()[0] == 4
+            ).fetchone()[0] == 3

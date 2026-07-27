@@ -22,6 +22,7 @@ type ActiveTaskDraft = {
   level?: string;
   startDate?: string;
   deadline?: string;
+  reviewRounds?: number;
   studyWeekdays?: number[];
   unavailableDates?: string;
   shortDate?: string;
@@ -80,6 +81,7 @@ export function ActiveTeachingChainView({
   const [level, setLevel] = useState("beginner");
   const [startDate, setStartDate] = useState(isoAfterDays(0));
   const [deadline, setDeadline] = useState(isoAfterDays(90));
+  const [reviewRounds, setReviewRounds] = useState(2);
   const [studyWeekdays, setStudyWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [unavailableDates, setUnavailableDates] = useState("");
   const [shortDate, setShortDate] = useState("");
@@ -143,6 +145,7 @@ export function ActiveTeachingChainView({
       setLevel(next.receipt.current_level);
       setStartDate(next.receipt.start_date || isoAfterDays(0));
       setDeadline(next.receipt.deadline);
+      setReviewRounds(Number(next.receipt.review_rounds || 2));
       setStudyWeekdays(next.receipt.study_weekdays || [0, 1, 2, 3, 4, 5, 6]);
       setUnavailableDates((next.receipt.unavailable_dates || []).join(","));
       const special = Object.entries(next.receipt.special_date_minutes || {})[0] as [string, any] | undefined;
@@ -166,6 +169,7 @@ export function ActiveTeachingChainView({
       if (typeof draft.level === "string") setLevel(draft.level);
       if (typeof draft.startDate === "string") setStartDate(draft.startDate);
       if (typeof draft.deadline === "string") setDeadline(draft.deadline);
+      if (typeof draft.reviewRounds === "number") setReviewRounds(draft.reviewRounds);
       if (Array.isArray(draft.studyWeekdays)) setStudyWeekdays(draft.studyWeekdays);
       if (typeof draft.unavailableDates === "string") setUnavailableDates(draft.unavailableDates);
       if (typeof draft.shortDate === "string") setShortDate(draft.shortDate);
@@ -203,6 +207,7 @@ export function ActiveTeachingChainView({
         level,
         startDate,
         deadline,
+        reviewRounds,
         studyWeekdays,
         unavailableDates,
         shortDate,
@@ -236,6 +241,7 @@ export function ActiveTeachingChainView({
     message,
     notes,
     reviewAnswer,
+    reviewRounds,
     shortDate,
     shortMinutes,
     snapshot?.workspace_id,
@@ -266,10 +272,13 @@ export function ActiveTeachingChainView({
   const graph = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
   const plan = snapshot?.plan;
   const initialPhaseDays = (plan?.calendar || []).filter(
-    (day: any) => day.study_phase === "initial_learning",
+    (day: any) => ["initial_learning", "transition"].includes(day.study_phase),
   );
   const reviewPhaseDays = (plan?.calendar || []).filter(
-    (day: any) => day.study_phase === "review",
+    (day: any) => ["review", "transition"].includes(day.study_phase),
+  );
+  const transitionDays = (plan?.calendar || []).filter(
+    (day: any) => day.study_phase === "transition",
   );
   const phaseRange = (days: any[]) => {
     if (!days.length) return "等待排程";
@@ -313,7 +322,7 @@ export function ActiveTeachingChainView({
     unavailable_dates: unavailableDates.split(",").map((item) => item.trim()).filter(Boolean),
     special_date_minutes: shortDate ? { [shortDate]: shortMinutes } : {},
     allocation_mode: "system",
-    initial_learning_period_ratio: 0.5,
+    review_rounds: reviewRounds,
     preferred_learning_style: learningStyle,
     teacher_persona: teacherPersona,
     learner_interests: learnerInterests,
@@ -332,6 +341,7 @@ export function ActiveTeachingChainView({
     current_level: value?.current_level || value?.current_foundation || "",
     start_date: value?.start_date || "",
     deadline: value?.deadline || "",
+    review_rounds: Number(value?.review_rounds || 2),
     study_weekdays: [...(value?.study_weekdays || [0, 1, 2, 3, 4, 5, 6])].sort(),
     unavailable_dates: [...(value?.unavailable_dates || [])].sort(),
     special_date_minutes: value?.special_date_minutes || {},
@@ -703,17 +713,35 @@ export function ActiveTeachingChainView({
             <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
             <label>开始日期<input data-testid="active-start-date" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
+            <label>
+              完整复习轮数
+              <select
+                data-testid="active-review-rounds"
+                value={reviewRounds}
+                onChange={(event) => setReviewRounds(Number(event.target.value))}
+              >
+                <option value={2}>2 轮（推荐）</option>
+                <option value={3}>3 轮</option>
+                <option value={4}>4 轮</option>
+              </select>
+            </label>
           </div>
           <div className="active-chain__allocation" data-testid="active-system-allocation">
-            <span>系统按阶段分配学习负荷</span>
+            <span>系统按总任务量平均分配</span>
             <b>
-              {plan && snapshot?.receipt?.allocation?.phase_daily_minutes
-                ? `前半段首学（${phaseRange(initialPhaseDays)}）：${snapshot.receipt.allocation.phase_daily_minutes.initial_learning}/日；后半段复习（${phaseRange(reviewPhaseDays)}）：${snapshot.receipt.allocation.phase_daily_minutes.review}/日`
+              {plan && snapshot?.receipt?.allocation?.recommended_minutes_per_day
+                ? `每天约 ${snapshot.receipt.allocation.recommended_minutes_per_day} 标准任务分钟：首学 1 次 + 完整复习 ${snapshot.receipt.review_rounds || 2} 轮`
                 : snapshot?.receipt?.allocation?.recommended_minutes_per_day
                 ? `暂估 ${snapshot.receipt.allocation.recommended_minutes_per_day} 标准任务分钟/日`
                 : "保存后自动计算"}
             </b>
-            <small>两个数字不会在同一天相加：前 50% 的日期只完成完整第一遍，后 50% 的日期才进行滚动复习。</small>
+            <small>
+              首学约 {snapshot?.receipt?.allocation?.initial_learning_minutes || "待估算"} 分钟；
+              每轮完整复习约 {snapshot?.receipt?.allocation?.one_review_round_minutes || "待估算"} 分钟。
+              {transitionDays.length
+                ? ` ${phaseRange(transitionDays)} 是交界日：先完成首学，再用当天剩余任务量开始复习。`
+                : " 系统按顺序排入每天，不再强制按日期比例切开。"}
+            </small>
           </div>
           <label>
             AI 教师人设
@@ -942,7 +970,7 @@ export function ActiveTeachingChainView({
           {plan && (
             <>
               <div className="active-chain__metrics">
-                <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>系统日负荷峰值</span>
+                <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>每日任务目标</span>
                 <strong>{plan.tasks.length}</strong><span>可执行任务</span>
                 <strong>{plan.unscheduled_task_minutes}</strong><span>未排分钟</span>
                 <strong data-testid="active-plan-feasible">{plan.feasible ? "可行" : "不可行"}</strong><span>容量结论</span>
@@ -950,7 +978,10 @@ export function ActiveTeachingChainView({
               <div className="active-chain__time">
                 <span>完全掌握预计 {plan.total_mastery_task_minutes ?? plan.total_estimated_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 任务分钟</span>
                 <span>第一遍预计 {plan.initial_learning_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 分钟</span>
-                <span>后半正式复习预计 {plan.projected_review_task_minutes ?? 0} 分钟；分钟占比不代表阶段占比</span>
+                <span>
+                  完整复习 {plan.review_rounds ?? reviewRounds} 轮，共预计 {plan.projected_review_task_minutes ?? 0} 分钟
+                  （每轮约 {plan.one_review_round_task_minutes ?? 0} 分钟）
+                </span>
                 {plan.expected_actual_elapsed_minutes_range && (
                   <span data-testid="active-expected-elapsed-range">
                     预计真实耗时范围 {plan.expected_actual_elapsed_minutes_range.min}–
@@ -969,9 +1000,22 @@ export function ActiveTeachingChainView({
                     <div className={`active-chain__day ${day.capacity_minutes === 0 ? "is-rest" : ""} ${day.tasks.some((task: any) => task.id === session?.state?.active_task_id) ? "is-current" : ""}`} key={day.date}>
                       <b>{day.date}</b>
                       <span>{day.availability_reason}</span>
-                      <span>{day.study_phase === "initial_learning" ? "首学阶段" : day.study_phase === "review" ? "复习阶段" : "休息"}</span>
-                      <span>容量 {day.capacity_minutes} · 计划 {day.planned_task_minutes}</span>
-                      {day.study_phase === "review" && (
+                      <span>
+                        {day.study_phase === "initial_learning"
+                          ? "首学"
+                          : day.study_phase === "transition"
+                            ? "首学→复习交界日"
+                            : day.study_phase === "review"
+                              ? "复习"
+                              : day.study_phase === "available"
+                                ? "可学习"
+                                : "休息"}
+                      </span>
+                      <span>
+                        容量 {day.capacity_minutes} ·
+                        计划 {Number(day.planned_task_minutes || 0) + Number(day.projected_review_task_minutes || 0)}
+                      </span>
+                      {["review", "transition"].includes(day.study_phase) && (
                         <span>
                           预留复习 {day.projected_review_task_minutes || 0} 分钟 ·
                           预计覆盖 {(day.projected_review_items || []).length} 个知识点
@@ -1008,8 +1052,8 @@ export function ActiveTeachingChainView({
                         )
                       ))}
                       {(day.projected_review_items || []).slice(0, 4).map((item: any) => (
-                        <small key={`projected-${day.date}-${item.knowledge_point_id}`}>
-                          预计复习：{item.title} · {item.projected_review_task_minutes} 分钟
+                        <small key={`projected-${day.date}-${item.knowledge_point_id}-${item.review_round || 1}-${item.part_index || 1}`}>
+                          第 {item.review_round || 1} 轮：{item.title} · {item.projected_review_task_minutes} 分钟
                         </small>
                       ))}
                       {(day.projected_review_items || []).length > 4 && (
@@ -1037,6 +1081,9 @@ export function ActiveTeachingChainView({
             }),
           }))}>从今天滚动未完成任务</button>}
         </div>
+        <p className="active-chain__muted">
+          教师会依次带完首学与所选完整复习轮次；计划完成后仍可继续检索当前知识库并自由提问。
+        </p>
         {session && (
           <>
             <div className="active-chain__state" data-testid="active-session-state">

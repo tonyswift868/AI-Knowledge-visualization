@@ -789,70 +789,76 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
             - item["mastery_estimate"]["review_minutes"]
             for item in ordered
         )
-        projected_review_minutes = sum(
+        one_review_round_minutes = sum(
             item["mastery_estimate"]["review_minutes"] for item in ordered
         )
+        review_rounds = max(2, min(4, int(receipt.get("review_rounds") or 2)))
+        projected_review_minutes = one_review_round_minutes * review_rounds
         if receipt.get("allocation_mode") == "system":
             # The learner supplies availability; the system owns the workload
             # conversion. Recalculate after extraction because the knowledge
             # map is more reliable than the upload-time structural estimate.
             allocation_calendar = calendar_capacities(receipt)
-            initial_days = sum(
-                1 for day in allocation_calendar
-                if day["capacity_minutes"] > 0 and day["study_phase"] == "initial_learning"
+            study_days = sum(
+                1 for day in allocation_calendar if day["capacity_minutes"] > 0
             )
-            review_days = sum(
-                1 for day in allocation_calendar
-                if day["capacity_minutes"] > 0 and day["study_phase"] == "review"
-            )
-            initial_daily = max(
+            total_required = initial_learning_minutes + projected_review_minutes
+            recommended = max(
                 5,
-                math.ceil(initial_learning_minutes / max(1, initial_days) / 5) * 5,
+                math.ceil(total_required / max(1, study_days) / 5) * 5,
             )
-            review_daily = (
-                max(
-                    5,
-                    math.ceil(projected_review_minutes / review_days / 5) * 5,
-                )
-                if review_days
-                else 0
-            )
-            recommended = max(initial_daily, review_daily)
             receipt["daily_task_minutes"] = recommended
             receipt["allocation"] = {
                 **dict(receipt.get("allocation") or {}),
                 "mode": "system",
-                "estimated_total_minutes": initial_learning_minutes + projected_review_minutes,
-                "available_study_days": initial_days + review_days,
-                "initial_learning_days": initial_days,
-                "review_days": review_days,
+                "estimated_total_minutes": total_required,
+                "available_study_days": study_days,
+                "initial_learning_minutes": initial_learning_minutes,
+                "one_review_round_minutes": one_review_round_minutes,
+                "review_rounds": review_rounds,
+                "projected_review_minutes": projected_review_minutes,
                 "recommended_minutes_per_day": recommended,
-                "phase_daily_minutes": {
-                    "initial_learning": initial_daily,
-                    "review": review_daily,
-                },
                 "buffer_rate": 0,
                 "reason": (
-                    "知识地图生成后，系统按首学与复习的真实工作量分别计算每日负荷；"
-                    "该数值不是用户预算或固定上限。"
+                    "完整首学一次与所选完整复习轮次合并计量后，"
+                    "平均分配到全部可学习日；首学结束当天可直接进入复习。"
                 ),
             }
-            connection.execute(
-                "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
-                (json.dumps(receipt, ensure_ascii=False), _now(), workspace_id),
-            )
-        calendar, initial_unscheduled = schedule_by_capacity(ordered, receipt)
-        raw_ratio = receipt.get("initial_learning_period_ratio")
-        configured_ratio = float(raw_ratio) if raw_ratio is not None else 1.0
+        calendar, unscheduled = schedule_by_capacity(
+            ordered,
+            receipt,
+            review_rounds=review_rounds,
+        )
+        receipt["review_rounds"] = review_rounds
+        receipt["allocation"] = {
+            **dict(receipt.get("allocation") or {}),
+            "study_phase_by_date": {
+                day["date"]: day["study_phase"]
+                for day in calendar
+                if day["capacity_minutes"] > 0
+            },
+            "projected_review_schedule": {
+                day["date"]: day.get("projected_review_items") or []
+                for day in calendar
+                if day.get("projected_review_items")
+            },
+            "transition_dates": [
+                day["date"] for day in calendar if day["study_phase"] == "transition"
+            ],
+        }
+        connection.execute(
+            "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
+            (json.dumps(receipt, ensure_ascii=False), _now(), workspace_id),
+        )
         total = initial_learning_minutes + projected_review_minutes
         capacity = sum(day["capacity_minutes"] for day in calendar)
-        review_capacity = sum(
-            day["capacity_minutes"] for day in calendar if day["study_phase"] == "review"
+        scheduled_initial_minutes = sum(
+            int(day["planned_task_minutes"]) for day in calendar
         )
-        projected_review_unscheduled = max(
-            0, projected_review_minutes - review_capacity
+        initial_unscheduled = max(
+            0, initial_learning_minutes - scheduled_initial_minutes
         )
-        unscheduled = initial_unscheduled + projected_review_unscheduled
+        projected_review_unscheduled = max(0, unscheduled - initial_unscheduled)
         plan_id = active_teaching._id("active_plan")
         warning = (
             f"当前学习周期容量不足，仍有 {unscheduled} 个标准任务分钟未排入。"
@@ -920,43 +926,43 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         result["total_mastery_task_minutes"] = total
         result["initial_learning_task_minutes"] = initial_learning_minutes
         result["projected_review_task_minutes"] = projected_review_minutes
-        result["initial_learning_period_ratio"] = configured_ratio
+        result["one_review_round_task_minutes"] = one_review_round_minutes
+        result["review_rounds"] = review_rounds
         result["phase_boundary"] = {
             "initial_learning_dates": [
-                day["date"] for day in calendar if day["study_phase"] == "initial_learning"
+                day["date"]
+                for day in calendar
+                if day["study_phase"] in {"initial_learning", "transition"}
             ],
             "review_dates": [
-                day["date"] for day in calendar if day["study_phase"] == "review"
+                day["date"]
+                for day in calendar
+                if day["study_phase"] in {"review", "transition"}
+            ],
+            "transition_dates": [
+                day["date"] for day in calendar if day["study_phase"] == "transition"
             ],
             "initial_learning_capacity_minutes": sum(
-                day["capacity_minutes"]
+                int(day["planned_task_minutes"]) for day in calendar
+            ),
+            "review_capacity_minutes": sum(
+                int(day.get("projected_review_task_minutes") or 0)
                 for day in calendar
-                if day["study_phase"] == "initial_learning"
             ),
-            "review_capacity_minutes": review_capacity,
-            "initial_learning_daily_minutes": (
-                receipt.get("allocation", {})
-                .get("phase_daily_minutes", {})
-                .get("initial_learning")
-            ),
-            "review_daily_minutes": (
-                receipt.get("allocation", {})
-                .get("phase_daily_minutes", {})
-                .get("review")
-            ),
+            "uniform_daily_task_minutes": receipt["daily_task_minutes"],
             "daily_consolidation_counts_as_formal_review": False,
             "formal_review_requires_all_initial_learning_completed": True,
         }
-        result["formal_review_period_ratio"] = 1 - configured_ratio
+        result["formal_review_period_ratio"] = round(
+            projected_review_minutes / max(1, total), 4
+        )
         result["projected_review_unscheduled_task_minutes"] = (
             projected_review_unscheduled
         )
         result["source_assessment"] = graph.get("assessment") or {}
         result["review_scheduling_policy"] = (
-            f"前 {configured_ratio:.0%} 的可学习日期用于完成完整第一遍；"
-            "每天首学后的回顾属于当日巩固，不计入正式复习阶段。后 "
-            f"{1 - configured_ratio:.0%} 的可学习日期保留给正式滚动复习，"
-            "且只有全部首学任务完成后才解锁。复习任务会先进入持久化队列，"
-            "但不会在首学尚未完成时执行。"
+            f"计划包含完整首学 1 次和完整复习 {review_rounds} 轮；"
+            "总任务量平均分配到全部可学习日。只有全部首学任务完成后才解锁正式复习，"
+            "交界日可以先完成首学，再使用当天剩余任务量开始第一轮复习。"
         )
         return result

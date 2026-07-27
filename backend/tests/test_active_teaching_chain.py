@@ -213,7 +213,7 @@ def test_system_allocation_plan_scoped_rag_and_teacher_memory(tmp_path):
             "deadline": deadline.isoformat(),
             "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
             "preferred_learning_style": "生活例子后映射回原文",
-            "initial_learning_period_ratio": 0.5,
+            "review_rounds": 2,
             "teacher_persona": "像耐心的朋友，讲得生动但不替我作答",
             "learner_interests": "做饭和骑车",
         }

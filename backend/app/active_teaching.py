@@ -869,6 +869,9 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
             _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须是 0 到 1 之间的数字", 422)
         if not 0.1 <= initial_learning_period_ratio <= 0.9:
             _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须在 0.1 到 0.9 之间", 422)
+    review_rounds = int(payload.get("review_rounds") or 2)
+    if review_rounds not in {2, 3, 4}:
+        _error("INVALID_REVIEW_ROUNDS", "完整复习轮数只能选择 2、3 或 4", 422)
     return {
         **payload,
         "start_date": start_date.isoformat(),
@@ -883,6 +886,7 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "unavailable_dates": unavailable_dates,
         "special_date_minutes": special_date_minutes,
         "initial_learning_period_ratio": initial_learning_period_ratio,
+        "review_rounds": review_rounds,
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
         "notes": str(payload.get("notes") or ""),
@@ -924,19 +928,27 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                     WHERE workspace_id=? AND material_id IN ({placeholders})""",
                 [workspace_id, *receipt["material_ids"]],
             ).fetchone()[0])
-            estimated_total = max(90, chunk_count * 8 + 120)
+            estimated_initial = max(90, chunk_count * 8 + 120)
+            estimated_review_round = max(30, math.ceil(estimated_initial * 0.12 / 5) * 5)
+            estimated_total = (
+                estimated_initial
+                + estimated_review_round * int(receipt.get("review_rounds") or 2)
+            )
             recommended = max(
                 20,
-                math.ceil(estimated_total * 1.2 / len(study_dates) / 5) * 5,
+                math.ceil(estimated_total / len(study_dates) / 5) * 5,
             )
             receipt["daily_task_minutes"] = recommended
             receipt["allocation"] = {
                 "mode": "system",
                 "estimated_total_minutes": estimated_total,
-                "buffer_rate": 0.2,
+                "initial_learning_minutes": estimated_initial,
+                "one_review_round_minutes": estimated_review_round,
+                "review_rounds": int(receipt.get("review_rounds") or 2),
+                "buffer_rate": 0,
                 "available_study_days": len(study_dates),
                 "recommended_minutes_per_day": recommended,
-                "reason": "根据所选资料、截止日期和真实可学习日自动分配；用户无需猜测每日分钟。",
+                "reason": "首学与所选完整复习轮次合并后，平均分配到全部可学习日。",
             }
         connection.execute(
             """INSERT INTO active_receipts(workspace_id,payload,updated_at) VALUES (?,?,?)
@@ -1530,7 +1542,9 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
         if calendar_row:
             result["calendar"] = json.loads(calendar_row["calendar"])
             for day in result["calendar"]:
-                planned = int(day.get("planned_task_minutes") or 0)
+                planned = int(day.get("planned_task_minutes") or 0) + int(
+                    day.get("projected_review_task_minutes") or 0
+                )
                 day["expected_actual_elapsed_minutes_range"] = {
                     "min": round(planned * elapsed_multipliers[0]),
                     "max": round(planned * elapsed_multipliers[1]),
@@ -1540,12 +1554,23 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
     result["initial_learning_period_ratio"] = receipt.get(
         "initial_learning_period_ratio"
     )
+    result["review_rounds"] = int(receipt.get("review_rounds") or 2)
+    result["one_review_round_task_minutes"] = int(
+        (receipt.get("allocation") or {}).get("one_review_round_minutes") or 0
+    )
     result["phase_boundary"] = {
         "initial_learning_dates": [
-            day["date"] for day in calendar if day.get("study_phase") == "initial_learning"
+            day["date"]
+            for day in calendar
+            if day.get("study_phase") in {"initial_learning", "transition"}
         ],
         "review_dates": [
-            day["date"] for day in calendar if day.get("study_phase") == "review"
+            day["date"]
+            for day in calendar
+            if day.get("study_phase") in {"review", "transition"}
+        ],
+        "transition_dates": [
+            day["date"] for day in calendar if day.get("study_phase") == "transition"
         ],
     }
     return result
@@ -1600,11 +1625,37 @@ def _review_total_minutes_for_point(
 
 
 def _review_occurrence_minutes(total_minutes: int, cycle: int) -> int:
-    """Split the complete +1/+3/+7 review budget without multiplying it by three."""
-    total = max(3, int(total_minutes))
-    cycle_index = max(1, min(3, int(cycle))) - 1
-    base, remainder = divmod(total, 3)
-    return base + (1 if cycle_index < remainder else 0)
+    """Each configured cycle is one complete review of the knowledge point."""
+    return max(3, int(total_minutes))
+
+
+def _planned_review_due_date(
+    connection: sqlite3.Connection,
+    *,
+    plan_id: str,
+    knowledge_point_id: str,
+    cycle: int,
+    fallback: str,
+) -> str:
+    if not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_plan_calendars'"
+    ).fetchone():
+        return fallback
+    row = connection.execute(
+        "SELECT calendar FROM active_plan_calendars WHERE plan_id=?",
+        (plan_id,),
+    ).fetchone()
+    if not row:
+        return fallback
+    candidates: list[str] = []
+    for day in json.loads(row["calendar"]):
+        if any(
+            str(item.get("knowledge_point_id") or "") == knowledge_point_id
+            and int(item.get("review_round") or 0) == cycle
+            for item in day.get("projected_review_items") or []
+        ):
+            candidates.append(str(day["date"]))
+    return min(candidates) if candidates else fallback
 
 
 def _task_snapshot(row: sqlite3.Row) -> dict[str, Any]:
@@ -1660,63 +1711,30 @@ def _refresh_plan_calendar(
             float(day["actual_elapsed_minutes"]) + float(row["actual_elapsed_minutes"]),
             3,
         )
-    review_days = [
-        day
-        for day in calendar
-        if day.get("study_phase") == "review" and day["capacity_minutes"] > 0
-    ]
-    if review_days:
-        points = connection.execute(
-            """SELECT point.*
-               FROM active_knowledge_points AS point
-               JOIN (
-                 SELECT knowledge_point_id, MIN(point_sequence) AS sequence
-                 FROM active_plan_tasks
-                 WHERE plan_id=? AND task_type='initial_learning'
-                 GROUP BY knowledge_point_id
-               ) AS planned ON planned.knowledge_point_id=point.id
-               ORDER BY planned.sequence,point.id""",
-            (plan_id,),
-        ).fetchall()
-        projected_items = [
-            {
-                "knowledge_point_id": point["id"],
-                "title": point["name"],
-                "projected_review_task_minutes": _review_total_minutes_for_point(
-                    connection, point
-                ),
-                "status": "awaiting_initial_mastery",
-            }
-            for point in points
-        ]
-        # Balance by review minutes instead of point count. A round-robin split
-        # can overflow one day even when the phase has enough total capacity.
-        for item in sorted(
-            projected_items,
-            key=lambda value: int(value["projected_review_task_minutes"]),
-            reverse=True,
-        ):
-            minutes = int(item["projected_review_task_minutes"])
-            fitting_days = [
-                day
-                for day in review_days
-                if int(day["capacity_minutes"])
-                - int(day.get("projected_review_task_minutes") or 0)
-                >= minutes
-            ]
-            candidates = fitting_days or review_days
-            day = min(
-                candidates,
-                key=lambda value: (
-                    int(value.get("projected_review_task_minutes") or 0)
-                    / max(1, int(value["capacity_minutes"])),
-                    value["date"],
-                ),
+    materialized_review_keys = {
+        (str(row["knowledge_point_id"]), int(row["review_cycle"] or 0))
+        for row in rows
+        if row["task_type"] == "review"
+    }
+    projected_schedule = (
+        (receipt.get("allocation") or {}).get("projected_review_schedule") or {}
+    )
+    for day_date, items in projected_schedule.items():
+        if day_date not in by_date:
+            continue
+        day = by_date[day_date]
+        for raw_item in items:
+            item = dict(raw_item)
+            key = (
+                str(item.get("knowledge_point_id") or ""),
+                int(item.get("review_round") or 0),
             )
+            if key in materialized_review_keys:
+                continue
             day.setdefault("projected_review_items", []).append(item)
             day["projected_review_task_minutes"] = int(
                 day.get("projected_review_task_minutes") or 0
-            ) + minutes
+            ) + int(item.get("projected_review_task_minutes") or 0)
     if connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_plan_calendars'"
     ).fetchone():
@@ -1931,19 +1949,13 @@ def _materialize_review_occurrence(
     trigger_reason: str,
 ) -> str:
     """Create one auditable plan task for one review occurrence."""
-    plan_row = connection.execute(
-        "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
-    ).fetchone()
-    if plan_row:
-        from .generic_knowledge import calendar_capacities
-
-        review_dates = [
-            day["date"]
-            for day in calendar_capacities(json.loads(plan_row["receipt"]))
-            if day.get("study_phase") == "review" and day["capacity_minutes"] > 0
-        ]
-        if review_dates and due_date < review_dates[0]:
-            due_date = review_dates[0]
+    due_date = _planned_review_due_date(
+        connection,
+        plan_id=session["plan_id"],
+        knowledge_point_id=point["id"],
+        cycle=cycle,
+        fallback=due_date,
+    )
     current_task_id = str(review["scheduled_task_id"] or "")
     if current_task_id:
         current = connection.execute(
@@ -3355,18 +3367,13 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                         (session["plan_id"],),
                     ).fetchone()
                     if plan_receipt:
-                        from .generic_knowledge import calendar_capacities
-
-                        review_dates = [
-                            day["date"]
-                            for day in calendar_capacities(
-                                json.loads(plan_receipt["receipt"])
-                            )
-                            if day.get("study_phase") == "review"
-                            and day["capacity_minutes"] > 0
-                        ]
-                        if review_dates and review_due < review_dates[0]:
-                            review_due = review_dates[0]
+                        review_due = _planned_review_due_date(
+                            connection,
+                            plan_id=session["plan_id"],
+                            knowledge_point_id=point["id"],
+                            cycle=1,
+                            fallback=review_due,
+                        )
                     now = _now()
                     review_total_minutes = _review_total_minutes_for_point(
                         connection, point
@@ -3963,16 +3970,40 @@ async def submit_review(
         )
         previous_step = int(review["interval_step"])
         success_streak = int(review["success_streak"])
+        plan_receipt_row = connection.execute(
+            "SELECT receipt FROM active_plans WHERE id=?",
+            (session["plan_id"],),
+        ).fetchone()
+        configured_review_rounds = max(
+            2,
+            min(
+                4,
+                int(
+                    json.loads(plan_receipt_row["receipt"]).get("review_rounds") or 2
+                )
+                if plan_receipt_row
+                else 2,
+            ),
+        )
         if passed:
             next_step = previous_step + 1
             success_streak += 1
-            if next_step >= 3:
+            if next_step >= configured_review_rounds:
                 next_interval = None
                 next_due = None
                 next_status = "completed"
             else:
-                next_interval = (3, 7)[next_step - 1]
-                next_due = (reviewed_on + timedelta(days=next_interval)).isoformat()
+                next_interval = (1, 3, 7)[min(2, next_step - 1)]
+                fallback_due = (
+                    reviewed_on + timedelta(days=next_interval)
+                ).isoformat()
+                next_due = _planned_review_due_date(
+                    connection,
+                    plan_id=session["plan_id"],
+                    knowledge_point_id=point["id"],
+                    cycle=next_step + 1,
+                    fallback=fallback_due,
+                )
                 next_status = "pending"
             completed_minutes = int(review["estimated_task_minutes"])
             connection.execute(
@@ -4115,7 +4146,8 @@ async def submit_review(
             action = "review_completed" if next_status == "completed" else "review_rescheduled"
             if next_status == "completed":
                 content = (
-                    f"延迟独立复测通过（{score:.0%}），1/3/7 复习链完成。"
+                    f"延迟独立复测通过（{score:.0%}），"
+                    f"{configured_review_rounds} 轮完整复习已完成。"
                     "已恢复原学习路线。"
                 )
             else:
@@ -4173,6 +4205,10 @@ async def submit_review(
 def _remaining_projected_review_minutes(
     connection: sqlite3.Connection, plan: sqlite3.Row
 ) -> int:
+    configured_review_rounds = max(
+        2,
+        min(4, int(json.loads(plan["receipt"]).get("review_rounds") or 2)),
+    )
     initial_minutes = int(
         connection.execute(
             """SELECT COALESCE(SUM(estimated_task_minutes),0)
@@ -4195,7 +4231,10 @@ def _remaining_projected_review_minutes(
     ).fetchall()
     for row in rows:
         total = int(row["review_total_minutes"] or 0)
-        for cycle in range(1, min(3, int(row["max_cycle"] or 0)) + 1):
+        for cycle in range(
+            1,
+            min(configured_review_rounds, int(row["max_cycle"] or 0)) + 1,
+        ):
             materialized_baseline += _review_occurrence_minutes(total, cycle)
     return max(0, baseline - materialized_baseline)
 

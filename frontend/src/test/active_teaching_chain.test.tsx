@@ -30,14 +30,15 @@ const snapshot = {
     start_date: "2026-07-25",
     deadline: "2026-10-25",
     daily_task_minutes: 120,
+    review_rounds: 2,
     unavailable_dates: [],
     special_date_minutes: {},
     preferred_learning_style: "主动讲解",
     allocation: {
-      phase_daily_minutes: {
-        initial_learning: 40,
-        review: 10,
-      },
+      recommended_minutes_per_day: 120,
+      initial_learning_minutes: 40,
+      one_review_round_minutes: 10,
+      projected_review_minutes: 20,
     },
   },
   knowledge_graph: {
@@ -73,11 +74,13 @@ const snapshot = {
     feasible: 1,
     unscheduled_task_minutes: 0,
     warning: "",
-    total_mastery_task_minutes: 50,
+    total_mastery_task_minutes: 60,
     initial_learning_task_minutes: 40,
-    projected_review_task_minutes: 10,
-    initial_learning_ratio: 0.8,
-    projected_review_ratio: 0.2,
+    one_review_round_task_minutes: 10,
+    projected_review_task_minutes: 20,
+    review_rounds: 2,
+    initial_learning_ratio: 0.6667,
+    projected_review_ratio: 0.3333,
     expected_actual_elapsed_minutes_range: { min: 58, max: 80 },
     tasks: [{
       id: "task_1",
@@ -198,14 +201,18 @@ describe("ActiveTeachingChainView", () => {
     );
     expect(screen.getByTestId("active-plan-budget")).toHaveTextContent("120");
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
-      "前半段首学（07/25–07/25，共 1 天）：40/日",
+      "每天约 120 标准任务分钟：首学 1 次 + 完整复习 2 轮",
     );
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
-      "后半段复习（07/26–07/26，共 1 天）：10/日",
+      "首学约 40 分钟",
     );
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
-      "两个数字不会在同一天相加",
+      "每轮完整复习约 10 分钟",
     );
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
+      "不再强制按日期比例切开",
+    );
+    expect(screen.getByTestId("active-review-rounds")).toHaveValue("2");
     expect(screen.getByTestId("active-generate-graph")).toBeDisabled();
     expect(screen.getByTestId("active-generate-graph")).toHaveTextContent(
       "知识地图已生成",
@@ -214,7 +221,7 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByTestId("active-save-receipt")).toHaveTextContent(
       "当前设置未变化",
     );
-    expect(screen.getByText(/完全掌握预计 50 任务分钟/)).toBeInTheDocument();
+    expect(screen.getByText(/完全掌握预计 60 任务分钟/)).toBeInTheDocument();
     expect(screen.getAllByText(/完成任务分钟 0/).length).toBeGreaterThan(0);
     expect(screen.getByText(/实际耗时分钟 0.000/)).toBeInTheDocument();
     expect(screen.getByTestId("active-expected-elapsed-range")).toHaveTextContent(
@@ -254,10 +261,13 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
     await screen.findByTestId("active-save-receipt");
     expect(screen.queryByTestId("active-daily-minutes")).not.toBeInTheDocument();
-    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按阶段分配学习负荷");
-    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("两个数字不会在同一天相加");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按总任务量平均分配");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("完整复习 2 轮");
     fireEvent.change(screen.getByTestId("active-teacher-persona"), {
       target: { value: "耐心、有趣，先用生活例子" },
+    });
+    fireEvent.change(screen.getByTestId("active-review-rounds"), {
+      target: { value: "3" },
     });
     fireEvent.click(screen.getByTestId("active-save-receipt"));
     await waitFor(() => {
@@ -266,7 +276,8 @@ describe("ActiveTeachingChainView", () => {
       const body = JSON.parse(call![1].body);
       expect(body.target_level).toBe("complete_mastery");
       expect(body.allocation_mode).toBe("system");
-      expect(body.initial_learning_period_ratio).toBe(0.5);
+      expect(body.review_rounds).toBe(3);
+      expect(body.initial_learning_period_ratio).toBeUndefined();
       expect(body.teacher_persona).toBe("耐心、有趣，先用生活例子");
       expect(body.daily_task_minutes).toBeUndefined();
       expect(body.material_ids).toEqual(["material_1"]);

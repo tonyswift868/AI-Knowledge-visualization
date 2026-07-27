@@ -194,9 +194,26 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
         if special["availability_reason"] != "fixed_rest_weekday":
             assert special["capacity_minutes"] == 30
             assert special["planned_task_minutes"] <= 30
-        assert payload["total_mastery_task_minutes"] == sum(
-            point["mastery_estimate"]["total_mastery_task_minutes"]
+        expected_initial = sum(
+            sum(
+                point["mastery_estimate"][key]
+                for key in (
+                    "understand_minutes",
+                    "recall_minutes",
+                    "guided_practice_minutes",
+                    "independent_application_minutes",
+                )
+            )
             for point in graph["knowledge_points"]
+        )
+        expected_one_review_round = sum(
+            point["mastery_estimate"]["review_minutes"]
+            for point in graph["knowledge_points"]
+        )
+        assert payload["review_rounds"] == 2
+        assert payload["one_review_round_task_minutes"] == expected_one_review_round
+        assert payload["total_mastery_task_minutes"] == (
+            expected_initial + expected_one_review_round * 2
         )
 
 
@@ -702,7 +719,7 @@ def test_provider_batches_are_merged_globally_for_long_material(tmp_path, monkey
             "合并规范化同名节点" in warning
             for warning in body["extraction"]["warnings"]
         )
-def test_fifteen_day_cycle_reserves_first_eight_days_for_initial_learning():
+def test_fifteen_day_calendar_keeps_every_usable_day_available_before_scheduling():
     calendar = calendar_capacities(
         {
             "start_date": "2026-07-27",
@@ -711,32 +728,14 @@ def test_fifteen_day_cycle_reserves_first_eight_days_for_initial_learning():
             "unavailable_dates": [],
             "special_date_minutes": {},
             "daily_task_minutes": 600,
-            "initial_learning_period_ratio": 0.5,
         }
     )
     assert len(calendar) == 15
-    assert [day["date"] for day in calendar if day["study_phase"] == "initial_learning"] == [
-        "2026-07-27",
-        "2026-07-28",
-        "2026-07-29",
-        "2026-07-30",
-        "2026-07-31",
-        "2026-08-01",
-        "2026-08-02",
-        "2026-08-03",
-    ]
-    assert [day["date"] for day in calendar if day["study_phase"] == "review"] == [
-        "2026-08-04",
-        "2026-08-05",
-        "2026-08-06",
-        "2026-08-07",
-        "2026-08-08",
-        "2026-08-09",
-        "2026-08-10",
-    ]
+    assert {day["study_phase"] for day in calendar} == {"available"}
+    assert {day["capacity_minutes"] for day in calendar} == {600}
 
 
-def test_system_allocation_uses_distinct_phase_loads_without_daily_budget_cap():
+def test_system_allocation_uses_one_uniform_daily_capacity():
     calendar = calendar_capacities(
         {
             "start_date": "2026-07-27",
@@ -744,24 +743,67 @@ def test_system_allocation_uses_distinct_phase_loads_without_daily_budget_cap():
             "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
             "unavailable_dates": [],
             "special_date_minutes": {},
-            "daily_task_minutes": 795,
-            "initial_learning_period_ratio": 0.5,
+            "daily_task_minutes": 690,
             "allocation_mode": "system",
             "allocation": {
-                "phase_daily_minutes": {
-                    "initial_learning": 480,
-                    "review": 795,
-                }
+                "recommended_daily_task_minutes": 690,
             },
         }
     )
-    initial = [day for day in calendar if day["study_phase"] == "initial_learning"]
-    review = [day for day in calendar if day["study_phase"] == "review"]
-    assert len(initial) == 8
-    assert len(review) == 7
-    assert {day["capacity_minutes"] for day in initial} == {480}
-    assert {day["capacity_minutes"] for day in review} == {795}
-    assert sum(day["capacity_minutes"] for day in calendar) == 9405
+    assert len(calendar) == 15
+    assert {day["capacity_minutes"] for day in calendar} == {690}
+    assert {day["study_phase"] for day in calendar} == {"available"}
+    assert sum(day["capacity_minutes"] for day in calendar) == 10350
+
+
+def test_scheduler_combines_first_pass_and_selected_full_review_rounds_uniformly():
+    items = [
+        {
+            "id": "point-1",
+            "name": "可手算知识点",
+            "mastery_estimate": {
+                "understand_minutes": 10,
+                "recall_minutes": 10,
+                "guided_practice_minutes": 10,
+                "independent_application_minutes": 10,
+                "review_minutes": 10,
+                "total_mastery_task_minutes": 50,
+            },
+            "source_evidence": [{"chunk_id": "chunk-1"}],
+            "acceptance_method": "能够独立解释并应用",
+        }
+    ]
+    calendar, unscheduled = schedule_by_capacity(
+        items,
+        {
+            "start_date": "2026-07-27",
+            "deadline": "2026-07-28",
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 30,
+            "review_rounds": 2,
+        },
+    )
+
+    assert unscheduled == 0
+    assert [
+        day["planned_task_minutes"]
+        + int(day.get("projected_review_task_minutes") or 0)
+        for day in calendar
+    ] == [30, 30]
+    assert [day["study_phase"] for day in calendar] == [
+        "initial_learning",
+        "transition",
+    ]
+    assert {
+        item["review_round"]
+        for day in calendar
+        for item in day.get("projected_review_items") or []
+    } == {1, 2}
+    assert sum(
+        int(day.get("projected_review_task_minutes") or 0) for day in calendar
+    ) == 20
 
 
 def test_system_estimate_and_scheduler_balance_minutes_not_item_counts():
@@ -805,6 +847,7 @@ def test_system_estimate_and_scheduler_balance_minutes_not_item_counts():
             "daily_task_minutes": 300,
             "initial_learning_period_ratio": 0.9,
         },
+        review_rounds=0,
     )
     active = [day for day in calendar if day["study_phase"] == "initial_learning"]
     assert unscheduled == 0
@@ -843,13 +886,14 @@ def test_scheduler_does_not_strand_capacity_between_splittable_learning_units():
             "unavailable_dates": [],
             "special_date_minutes": {},
             "daily_task_minutes": 20,
-            "initial_learning_period_ratio": 0.5,
         },
+        review_rounds=0,
     )
 
     initial_days = [
         day for day in calendar if day["study_phase"] == "initial_learning"
     ]
-    assert sum(day["capacity_minutes"] for day in initial_days) == 120
     assert sum(day["planned_task_minutes"] for day in initial_days) == 92
+    daily_loads = [day["planned_task_minutes"] for day in initial_days]
+    assert max(daily_loads) - min(daily_loads) <= 1
     assert unscheduled == 0

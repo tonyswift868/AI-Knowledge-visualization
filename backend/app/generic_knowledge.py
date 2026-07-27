@@ -313,38 +313,21 @@ def calendar_capacities(receipt: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
         cursor += timedelta(days=1)
-    active_days = [item for item in result if item["capacity_minutes"] > 0]
-    raw_ratio = receipt.get("initial_learning_period_ratio")
-    ratio = (
-        max(0.1, min(0.9, float(raw_ratio)))
-        if raw_ratio is not None
-        else 1.0
-    )
-    initial_day_count = max(1, min(len(active_days), int(len(active_days) * ratio + 0.999999)))
-    initial_dates = {item["date"] for item in active_days[:initial_day_count]}
+    phase_by_date = (receipt.get("allocation") or {}).get("study_phase_by_date") or {}
     for item in result:
         item["study_phase"] = (
-            "initial_learning"
-            if item["date"] in initial_dates
-            else "review"
+            str(phase_by_date.get(item["date"]) or "available")
             if item["capacity_minutes"] > 0
             else "rest"
         )
-    allocation = receipt.get("allocation") or {}
-    phase_daily_minutes = allocation.get("phase_daily_minutes") or {}
-    if receipt.get("allocation_mode") == "system" and phase_daily_minutes:
-        for item in result:
-            phase = item["study_phase"]
-            if item["availability_reason"] != "regular" or phase == "rest":
-                continue
-            configured = phase_daily_minutes.get(phase)
-            if configured is not None:
-                item["capacity_minutes"] = max(0, int(configured))
     return result
 
 
 def schedule_by_capacity(
-    items: Iterable[dict[str, Any]], receipt: dict[str, Any]
+    items: Iterable[dict[str, Any]],
+    receipt: dict[str, Any],
+    *,
+    review_rounds: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     calendar = [
         {**day, "planned_task_minutes": 0, "tasks": []}
@@ -353,9 +336,17 @@ def schedule_by_capacity(
     active_indexes = [
         index
         for index, day in enumerate(calendar)
-        if day["capacity_minutes"] > 0 and day["study_phase"] == "initial_learning"
+        if day["capacity_minutes"] > 0
     ]
     item_list = list(items)
+    rounds = max(
+        0,
+        int(
+            review_rounds
+            if review_rounds is not None
+            else receipt.get("review_rounds") or 2
+        ),
+    )
     day_cursor = 0
     unscheduled = 0
     phase_specs = (
@@ -368,11 +359,58 @@ def schedule_by_capacity(
             "独立应用",
         ),
     )
-    remaining_total = sum(
+    initial_total = sum(
         int(item["mastery_estimate"][estimate_key])
         for item in item_list
         for _, estimate_key, _ in phase_specs
     )
+    one_review_round_total = sum(
+        int(item["mastery_estimate"]["review_minutes"])
+        for item in item_list
+    )
+    remaining_total = initial_total + one_review_round_total * rounds
+
+    def allocate_minutes(
+        *,
+        remaining: int,
+        append_part: Any,
+    ) -> None:
+        nonlocal day_cursor, remaining_total, unscheduled
+        part = 1
+        while remaining > 0:
+            if day_cursor >= len(active_indexes):
+                unscheduled += remaining
+                return
+            day = calendar[active_indexes[day_cursor]]
+            day_limit = int(day["capacity_minutes"])
+            current_load = int(day["planned_task_minutes"]) + int(
+                day.get("projected_review_task_minutes") or 0
+            )
+            remaining_days = len(active_indexes) - day_cursor
+            balanced_target = min(
+                day_limit,
+                max(
+                    current_load,
+                    (remaining_total + current_load + remaining_days - 1)
+                    // remaining_days,
+                ),
+            )
+            day["balanced_target_minutes"] = balanced_target
+            capacity_left = balanced_target - current_load
+            if capacity_left <= 0:
+                day_cursor += 1
+                continue
+            minutes = min(remaining, capacity_left, 120)
+            append_part(day, minutes, part)
+            remaining -= minutes
+            remaining_total -= minutes
+            part += 1
+            updated_load = int(day["planned_task_minutes"]) + int(
+                day.get("projected_review_task_minutes") or 0
+            )
+            if remaining and updated_load >= balanced_target:
+                day_cursor += 1
+
     for point_sequence, item in enumerate(item_list, start=1):
         # Learning phases are deliberately splittable across dates.  Fill the
         # day's balanced target before moving on; otherwise an item larger than
@@ -381,29 +419,8 @@ def schedule_by_capacity(
         for phase, estimate_key, phase_label in phase_specs:
             remaining = int(item["mastery_estimate"][estimate_key])
             phase_tasks: list[dict[str, Any]] = []
-            part = 1
-            while remaining > 0:
-                if day_cursor >= len(active_indexes):
-                    unscheduled += remaining
-                    break
-                day = calendar[active_indexes[day_cursor]]
-                day_limit = int(day["capacity_minutes"])
-                current_load = int(day["planned_task_minutes"])
-                remaining_days = len(active_indexes) - day_cursor
-                balanced_target = min(
-                    day_limit,
-                    max(
-                        current_load,
-                        (remaining_total + current_load + remaining_days - 1)
-                        // remaining_days,
-                    ),
-                )
-                day["balanced_target_minutes"] = balanced_target
-                capacity_left = balanced_target - current_load
-                if capacity_left <= 0:
-                    day_cursor += 1
-                    continue
-                minutes = min(remaining, capacity_left, 120)
+
+            def append_initial(day: dict[str, Any], minutes: int, part: int) -> None:
                 task = {
                     "knowledge_point_id": item["id"],
                     "title": f"{item['name']} · {phase_label}",
@@ -420,11 +437,51 @@ def schedule_by_capacity(
                 day["tasks"].append(task)
                 phase_tasks.append(task)
                 day["planned_task_minutes"] += minutes
-                remaining -= minutes
-                remaining_total -= minutes
-                part += 1
-                if remaining:
-                    day_cursor += 1
+
+            allocate_minutes(remaining=remaining, append_part=append_initial)
             for task in phase_tasks:
                 task["phase_part_count"] = len(phase_tasks)
+
+    for review_round in range(1, rounds + 1):
+        for point_sequence, item in enumerate(item_list, start=1):
+            projected_parts: list[dict[str, Any]] = []
+
+            def append_review(day: dict[str, Any], minutes: int, part: int) -> None:
+                projected = {
+                    "knowledge_point_id": item["id"],
+                    "title": item["name"],
+                    "review_round": review_round,
+                    "point_sequence": point_sequence,
+                    "part_index": part,
+                    "part_count": 0,
+                    "projected_review_task_minutes": minutes,
+                    "status": "awaiting_initial_mastery",
+                }
+                day.setdefault("projected_review_items", []).append(projected)
+                projected_parts.append(projected)
+                day["projected_review_task_minutes"] = int(
+                    day.get("projected_review_task_minutes") or 0
+                ) + minutes
+
+            allocate_minutes(
+                remaining=int(item["mastery_estimate"]["review_minutes"]),
+                append_part=append_review,
+            )
+            for projected in projected_parts:
+                projected["part_count"] = len(projected_parts)
+
+    for day in calendar:
+        has_initial = int(day["planned_task_minutes"]) > 0
+        has_review = int(day.get("projected_review_task_minutes") or 0) > 0
+        day["study_phase"] = (
+            "transition"
+            if has_initial and has_review
+            else "initial_learning"
+            if has_initial
+            else "review"
+            if has_review
+            else "available"
+            if day["capacity_minutes"] > 0
+            else "rest"
+        )
     return calendar, unscheduled
