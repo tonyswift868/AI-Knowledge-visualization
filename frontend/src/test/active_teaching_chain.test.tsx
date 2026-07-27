@@ -359,6 +359,7 @@ describe("ActiveTeachingChainView", () => {
       state: {
         ...snapshot.session.state,
         active_task_id: "task_2",
+        current_knowledge_point_id: "kp_1",
         autonomy: { awaiting_learner: true },
       },
     };
@@ -415,6 +416,14 @@ describe("ActiveTeachingChainView", () => {
         expect.objectContaining({ method: "POST" }),
       ),
     );
+    await waitFor(() =>
+      expect(document.getElementById("active-teacher-workbench")).not.toHaveClass(
+        "active-chain__is-hidden",
+      ),
+    );
+    expect(screen.getByTestId("active-current-knowledge-point")).toHaveTextContent(
+      "资料内知识点",
+    );
   });
 
   it("sends an explicit understood signal to the persisted state machine", async () => {
@@ -431,6 +440,36 @@ describe("ActiveTeachingChainView", () => {
           body: expect.stringContaining('"understood":true'),
         }),
       ),
+    );
+  });
+
+  it("shows the teacher and the learner message immediately while a reply is pending", async () => {
+    let resolveAdvance: ((value: any) => void) | undefined;
+    const advanceResponse = new Promise((resolve) => {
+      resolveAdvance = resolve;
+    });
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/sessions/session_1/advance") && init?.method === "POST") {
+        return advanceResponse;
+      }
+      return Promise.resolve({ ok: true, json: async () => snapshot });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    expect(await screen.findByTestId("teacher-companion-portrait")).toBeInTheDocument();
+    const input = screen.getByTestId("active-teacher-input");
+    fireEvent.change(input, { target: { value: "这里我没听懂，能换个例子吗？" } });
+    fireEvent.click(screen.getByTestId("active-send-teacher"));
+
+    const pending = await screen.findByTestId("active-pending-user-message");
+    expect(pending).toHaveTextContent("这里我没听懂，能换个例子吗？");
+    expect(pending).toHaveTextContent("教师正在思考");
+    expect(input).toHaveValue("");
+
+    resolveAdvance?.({ ok: true, json: async () => snapshot.session });
+    await waitFor(() =>
+      expect(screen.queryByTestId("active-pending-user-message")).not.toBeInTheDocument(),
     );
   });
 

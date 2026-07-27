@@ -2345,6 +2345,11 @@ async def _render_teacher_content(
         "allowed_evidence": evidence,
         "rules": [
             "Rewrite the draft as concise, supportive Chinese teaching language.",
+            "Teach exactly one current objective per turn; never enumerate the whole day's knowledge list.",
+            "Use no more than three short paragraphs and normally stay within 500 Chinese characters.",
+            "End with exactly one clear question or action the learner can answer now.",
+            "Make it explicit that the learner may interrupt, ask a question, or request another example at any time.",
+            "Keep the language professional and suitable for a learning classroom; never use sexual innuendo, erotic roleplay, humiliation, or suggestive body metaphors, even if a persona requests them.",
             "Do not change the action, route, task completion, mastery, timing, or next action.",
             "Do not add factual claims beyond the draft and allowed evidence.",
             "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
@@ -2476,21 +2481,21 @@ def _daily_briefing(
         for point_id in point_ids
     ]
     points = [point for point in points if point is not None]
-    names = [str(point["name"]) for point in points]
-    query = " ".join(names[:12])
+    first_point = points[0] if points else None
+    first_name = str(first_point["name"]) if first_point else "当前知识点"
+    first_explanation = str(first_point["explanation"]) if first_point else ""
+    query = f"{first_name} {first_explanation}".strip()
     citations = _search(connection, workspace_id, query, plan_id=plan_id) if query else []
-    for point in points[:5]:
+    if first_point is not None:
         citations = _merge_citations(
-            citations, json.loads(point["source_evidence"])
+            citations, json.loads(first_point["source_evidence"]), limit=3
         )
-    preview = "、".join(names[:6])
-    if len(names) > 6:
-        preview += f"等 {len(names)} 个知识点"
     content = (
-        f"今天不是直接让你做题。我们先建立完成今日任务需要的知识框架：{preview}。"
-        f"\n\n今日计划约 {summary['task_minutes']} 个标准任务分钟。"
-        "我会先检索资料讲清概念和先修关系，再示范最小例子，然后让你完成一个小练习；"
-        "我会根据你的回答决定补讲、降低难度或继续，而不是照着资料念。"
+        f"今天一共有 {len(points)} 个知识点，但我们现在只看第一个：{first_name}。"
+        "我会讲一小段就停下来，不会一次把整份资料倒给你。"
+        f"\n\n这部分来自你上传的资料，今天的完整安排约 {summary['task_minutes']} 个标准任务分钟；"
+        "你可以随时打断、追问，或者让我换一个例子。"
+        f"\n\n先告诉我：对于“{first_name}”，你是完全没接触过，还是已经有一点印象？"
     )
     return content, citations
 
@@ -2843,9 +2848,9 @@ async def start_session(
                 "last_interaction": "",
             },
             "autonomy": {
-                "mode": "teacher_led_until_learner_input",
-                "awaiting_learner": False,
-                "reason": "daily_knowledge_briefing",
+                "mode": "teacher_led_dialogue",
+                "awaiting_learner": True,
+                "reason": "learner_can_interrupt",
             },
             "today_plan": _daily_route_summary(
                 connection, plan_row["id"], first["day_date"]
@@ -2950,7 +2955,7 @@ async def teach_next(
                 content = f"{memory_sentence}\n\n{content}"
             state["current_teaching_step"] = "explain"
             state["next_action"] = "show_example"
-            awaiting = False
+            awaiting = True
         elif step == "explain":
             action = "invite_questions"
             content = (
@@ -2998,14 +3003,23 @@ async def teach_next(
             workspace_id=session["workspace_id"],
             state=state,
         )
+        expression_provider_session_id = (
+            str(body.get("provider_session_id") or "").strip() or None
+        )
+        if not expression_provider_session_id and state.get("provider_session_id"):
+            try:
+                require_provider_session(str(state["provider_session_id"]))
+                expression_provider_session_id = str(state["provider_session_id"])
+            except ProviderError:
+                # Provider sessions are process-local. A backend restart must not
+                # strand a durable learning session or prevent the learner from
+                # speaking; expression can safely fall back to the grounded draft.
+                expression_provider_session_id = None
         content, teacher_generation = await _render_teacher_content(
             draft=content,
             action=action,
             citations=citations,
-            provider_session_id=(
-                str(body.get("provider_session_id") or "").strip()
-                or state.get("provider_session_id")
-            ),
+            provider_session_id=expression_provider_session_id,
             state=state,
         )
         state["teacher_generation"] = teacher_generation
@@ -3411,6 +3425,24 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 "mode": "teacher_led_question_dialogue",
                 "awaiting_learner": True,
                 "reason": "follow_up_question_invited",
+            }
+        elif state.get("current_teaching_step") == "daily_briefing":
+            action = "explain"
+            plan_receipt = json.loads(connection.execute(
+                "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+            ).fetchone()["receipt"])
+            content, citations = _opening(connection, task, plan_receipt)
+            content = (
+                f"收到，你目前对“{point['name']}”的感觉是：{message[:120]}。"
+                f"\n\n{content}"
+                "\n\n我先停在这里。哪一句不清楚就直接问，或者回复“继续”。"
+            )
+            state["current_teaching_step"] = "explain"
+            state["next_action"] = "show_example"
+            state["autonomy"] = {
+                "mode": "teacher_led_dialogue",
+                "awaiting_learner": True,
+                "reason": "learner_can_interrupt",
             }
         elif is_question_window and wants_practice:
             action = "guided_practice"

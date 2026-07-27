@@ -35,6 +35,33 @@
 .active-chain__history { display: grid; gap: 10px; max-height: 620px; overflow: auto; padding-right: 4px; }
 .active-chain__message.is-user { margin-left: min(14%, 120px); background: #eaf5ef; border: 1px solid #c8dfd2; }
 .active-chain__composer { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-top: 12px; }
+.active-classroom { display: grid; grid-template-columns: minmax(300px, .82fr) minmax(0, 1.55fr); gap: 18px; align-items: start; margin-top: 18px; }
+.active-classroom__teacher { position: sticky; top: 16px; display: grid; gap: 12px; min-width: 0; }
+.active-classroom__teacher .teacher-companion-portrait { min-height: 500px; }
+.active-classroom__teacher .teacher-companion-portrait > .teacher-companion-character { inset: 62px 0 0 9%; }
+.active-classroom__focus { display: grid; gap: 5px; padding: 14px 16px; border: 1px solid #c8dfd2; border-radius: 14px; background: #fff; }
+.active-classroom__focus span, .active-classroom__dialogue-head span { color: #397d5d; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.active-classroom__focus h4, .active-classroom__focus p { margin: 0; }
+.active-classroom__focus p, .active-classroom__focus small { color: #64736c; }
+.active-classroom__dialogue { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid #d5e3db; border-radius: 16px; background: rgba(255,255,255,.82); }
+.active-classroom__dialogue-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.active-classroom__dialogue-head h3 { margin: 4px 0 0; }
+.active-classroom__dialogue-head > b { flex: none; padding: 6px 10px; border-radius: 999px; color: #24674c; background: #e4f4ea; font-size: 12px; }
+.active-classroom__dialogue .active-chain__history { max-height: min(54vh, 610px); padding: 4px 6px 4px 2px; scroll-behavior: smooth; }
+.active-chain__message p { margin: 8px 0 0; }
+.active-chain__message-more, .active-chain__citations, .active-classroom__status, .active-classroom__tools { margin-top: 10px; }
+.active-chain__message-more summary, .active-chain__citations summary, .active-classroom__status summary, .active-classroom__tools > summary { color: #397d5d; font-size: 12px; font-weight: 800; cursor: pointer; }
+.active-chain__citations blockquote { max-height: 180px; overflow: auto; color: #53635c; font-size: 12px; line-height: 1.55; }
+.active-chain__message.is-pending { opacity: .82; border-style: dashed; }
+.active-chain__message.is-pending > span { animation: active-teacher-pulse 1.25s ease-in-out infinite; }
+.active-chain__message.is-pending.is-error { border-color: #e1a99e; background: #fff1ed; }
+.active-classroom__composer { position: sticky; bottom: 0; z-index: 6; align-items: end; padding: 12px 0 2px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 18%); }
+.active-classroom__composer textarea { min-height: 66px; max-height: 180px; }
+.active-classroom__status { padding: 10px 12px; border: 1px solid #d8e4dd; border-radius: 12px; background: #f8fbf9; }
+.active-classroom__status[open] { display: grid; gap: 10px; }
+.active-classroom__tools { padding: 14px 16px; border: 1px solid #d5e3db; border-radius: 14px; background: #fff; }
+.active-classroom__tools[open] { display: grid; gap: 12px; }
+@keyframes active-teacher-pulse { 50% { opacity: .48; } }
 .active-chain__error, .active-chain__warning { padding: 12px; border-radius: 10px; background: #fff1ed; color: #a73e2e; }
 .active-chain__busy { padding: 10px 12px; border-radius: 10px; background: #edf7f1; color: #286a4f; }
 .active-chain__ok { padding: 12px; border-radius: 10px; background: #e8f7ee; color: #1f6d49; }
@@ -125,6 +152,9 @@
   .active-today__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .active-today__tasks { grid-template-columns: 1fr; }
   .active-chain__composer { grid-template-columns: 1fr; }
+  .active-classroom { grid-template-columns: 1fr; }
+  .active-classroom__teacher { position: static; }
+  .active-classroom__teacher .teacher-companion-portrait { min-height: 400px; }
 }
 @media (max-width: 560px) {
   .active-today { padding: 16px; }

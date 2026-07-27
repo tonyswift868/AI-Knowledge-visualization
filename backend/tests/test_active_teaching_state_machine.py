@@ -76,7 +76,7 @@ def _bootstrap_without_session(client: TestClient) -> str:
     return material["id"]
 
 
-def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path):
+def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_path):
     configure_orm(tmp_path / "active-proactive-teacher.db")
     with TestClient(app) as client:
         _, session_id = _bootstrap(client)
@@ -84,7 +84,13 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
             f"/api/active-teaching/sessions/{session_id}"
         ).json()
         assert opening["messages"][-1]["action"] == "daily_briefing"
-        assert opening["state"]["autonomy"]["awaiting_learner"] is False
+        assert opening["state"]["autonomy"] == {
+            "mode": "teacher_led_dialogue",
+            "awaiting_learner": True,
+            "reason": "learner_can_interrupt",
+        }
+        assert "只看第一个" in opening["messages"][-1]["content"]
+        assert "完全没接触过" in opening["messages"][-1]["content"]
 
         explanation = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
@@ -92,7 +98,7 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
         )
         assert explanation.status_code == 200, explanation.text
         assert explanation.json()["messages"][-1]["action"] == "explain"
-        assert explanation.json()["state"]["autonomy"]["awaiting_learner"] is False
+        assert explanation.json()["state"]["autonomy"]["awaiting_learner"] is True
 
         invitation = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
@@ -129,6 +135,23 @@ def test_teacher_proactively_teaches_until_learner_evidence_is_required(tmp_path
         assert len(practice.json()["messages"]) == 7
         assert practice.json()["state"]["today_plan"]["task_count"] > 0
         assert practice.json()["state"]["today_plan"]["knowledge_point_count"] > 0
+
+
+def test_daily_briefing_accepts_a_baseline_reply_and_pauses_after_one_explanation(tmp_path):
+    configure_orm(tmp_path / "active-baseline-reply.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "完全没接触过，请从零开始"},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["messages"][-2]["role"] == "user"
+        assert payload["messages"][-1]["action"] == "explain"
+        assert "完全没接触过" in payload["messages"][-1]["content"]
+        assert payload["state"]["current_teaching_step"] == "explain"
+        assert payload["state"]["autonomy"]["awaiting_learner"] is True
 
 
 def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_path, monkeypatch):
@@ -184,6 +207,13 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
         assert body["messages"][-1]["citations"]
         assert body["state"]["teacher_generation"]["scope"] == "expression_only"
         assert body["state"]["current_teaching_step"] == "daily_briefing"
+
+        explained = client.post(
+            f"/api/active-teaching/sessions/{body['session_id']}/teach-next",
+            json={"provider_session_id": provider_session.id},
+        )
+        assert explained.status_code == 200, explained.text
+        assert explained.json()["messages"][-1]["action"] == "explain"
 
         confused = client.post(
             f"/api/active-teaching/sessions/{body['session_id']}/advance",
@@ -268,6 +298,47 @@ def test_fake_provider_cannot_masquerade_as_active_ai_teacher(tmp_path):
         )
         assert response.status_code == 428
         assert response.json()["error"]["code"] == "REAL_PROVIDER_REQUIRED"
+
+
+def test_stale_expression_provider_does_not_strand_a_durable_lesson(tmp_path, monkeypatch):
+    configure_orm(tmp_path / "active-stale-expression-provider.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "teaching-expression-test",
+            "api_key": "test-only-key",
+        }
+    )
+    provider_session = get_provider_session(public["provider_session_id"])
+    provider_session.verified = True
+
+    class ExpressionProvider:
+        async def json(self, _messages):
+            return {"content": "已由真实表达层生成开场。"}
+
+    monkeypatch.setattr(
+        "app.active_teaching.provider_for_session",
+        lambda _session: ExpressionProvider(),
+    )
+    with TestClient(app) as client:
+        _bootstrap_without_session(client)
+        started = client.post(
+            "/api/active-teaching/workspaces/provider-teacher/sessions/start",
+            json={"provider_session_id": provider_session.id},
+        )
+        assert started.status_code == 200, started.text
+        session_id = started.json()["session_id"]
+
+        reset_provider_sessions()
+        continued = client.post(
+            f"/api/active-teaching/sessions/{session_id}/teach-next",
+            json={},
+        )
+        assert continued.status_code == 200, continued.text
+        assert continued.json()["messages"][-1]["action"] == "explain"
+        assert continued.json()["state"]["teacher_generation"]["mode"] == "system_guided"
 
 
 def test_provider_high_score_cannot_bypass_required_grounded_prechecks(tmp_path, monkeypatch):

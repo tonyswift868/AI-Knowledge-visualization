@@ -8,6 +8,11 @@ import {
   uploadActiveMaterial,
 } from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
+import {
+  TeacherCompanionPortrait,
+  type TeacherCompanionState,
+} from "../teachers/TeacherCompanionStage";
+import "../teachers/teacher-avatar.css";
 import "./active-teaching.css";
 
 const isoAfterDays = (days: number) => {
@@ -16,6 +21,39 @@ const isoAfterDays = (days: number) => {
 };
 const ACTIVE_WORKSPACE_KEY = "mentorflow_active_teaching_workspace_v1";
 const ACTIVE_DRAFT_PREFIX = "mentorflow_active_task_draft_v1:";
+
+const teacherActionLabels: Record<string, string> = {
+  daily_briefing: "今天先学这一点",
+  explain: "讲解",
+  invite_questions: "轮到你提问",
+  grounded_answer: "回答你的问题",
+  guided_practice: "小练习",
+  check_understanding: "理解检查",
+  remediation: "换一种方式讲",
+  remediation_example: "补充示例",
+  praise: "做得很好",
+};
+
+const readableMessageParagraphs = (content: string) => {
+  const source = String(content || "").trim();
+  if (!source) return [];
+  const paragraphs = source.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  return paragraphs.flatMap((paragraph) => {
+    if (paragraph.length <= 160) return [paragraph];
+    const sentences = paragraph.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [paragraph];
+    const chunks: string[] = [];
+    let current = "";
+    for (const sentence of sentences) {
+      if (current && current.length + sentence.length > 160) {
+        chunks.push(current.trim());
+        current = "";
+      }
+      current += sentence;
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks;
+  });
+};
 
 type ActiveTaskDraft = {
   goal?: string;
@@ -35,6 +73,12 @@ type ActiveTaskDraft = {
   reviewAnswer?: string;
   code?: string;
   updatedAt?: string;
+};
+
+type PendingUserMessage = {
+  id: string;
+  content: string;
+  status: "processing" | "error";
 };
 
 const draftStorageKey = (workspaceId: string) =>
@@ -177,7 +221,8 @@ export function ActiveTeachingChainView({
   const [learningStyle, setLearningStyle] = useState("主动讲解、示例、理解检查、练习与复习");
   const [teacherPersona, setTeacherPersona] = useState("");
   const [learnerInterests, setLearnerInterests] = useState("");
-  const [message, setMessage] = useState("继续主动讲解");
+  const [message, setMessage] = useState("");
+  const [pendingUserMessages, setPendingUserMessages] = useState<PendingUserMessage[]>([]);
   const [reviewAnswer, setReviewAnswer] = useState("");
   const [reviewAsOf, setReviewAsOf] = useState(isoAfterDays(0));
   const [problems, setProblems] = useState<any[]>([]);
@@ -191,6 +236,7 @@ export function ActiveTeachingChainView({
   const [draftLoadedWorkspace, setDraftLoadedWorkspace] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const refreshSequence = useRef(0);
+  const conversationHistoryRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = async (workspaceOverride?: string) => {
     const requestedWorkspaceId = workspaceOverride || activeWorkspaceId;
@@ -404,6 +450,25 @@ export function ActiveTeachingChainView({
     () => [...(session?.messages || [])].reverse().find((item: any) => item.role === "teacher"),
     [session],
   );
+  const currentKnowledgePoint = graph.knowledge_points.find(
+    (item: any) => item.id === session?.state?.current_knowledge_point_id,
+  );
+  const teacherPresentationState = useMemo<TeacherCompanionState>(() => {
+    if (busy) return "thinking";
+    const action = String(latestTeacher?.action || "");
+    if (/praise|pass|complete/.test(action)) return "praising";
+    if (/question|check/.test(action)) return "questioning";
+    if (/remediation|confus|encourag/.test(action)) return "encouraging";
+    return session ? "explaining" : "idle";
+  }, [busy, latestTeacher?.action, session]);
+  useEffect(() => {
+    if (!showLesson) return;
+    const frame = window.requestAnimationFrame(() => {
+      const history = conversationHistoryRef.current;
+      if (history) history.scrollTop = history.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestTeacher?.id, pendingUserMessages.length, showLesson]);
   const activeTaskSummary = learningTasks.find(
     (item) => item.workspace_id === activeWorkspaceId,
   );
@@ -496,7 +561,6 @@ export function ActiveTeachingChainView({
       || days[0].date;
     setSelectedStudyDate(nextDate);
     setShowPlanDetails(false);
-    setShowLesson(false);
   }, [activeWorkspaceId, plan?.id]);
 
   const receiptPayload = (materialIds?: string[]) => ({
@@ -560,15 +624,43 @@ export function ActiveTeachingChainView({
 
   const advance = async (text = message, understood = false) => {
     if (!session?.session_id) throw new Error("请先启动 AI 教师");
-    await activeRequest(`/sessions/${encodeURIComponent(session.session_id)}/advance`, {
-      method: "POST",
-      body: JSON.stringify({
-        message: text,
-        understood,
-        provider_session_id: realProviderSessionId,
-      }),
-    });
+    const content = String(text || "").trim();
+    if (!content) throw new Error("请先输入你想说的话");
+    const pendingId =
+      globalThis.crypto?.randomUUID?.()
+      || `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setPendingUserMessages((current) => [
+      ...current,
+      { id: pendingId, content, status: "processing" },
+    ]);
     setMessage("");
+    try {
+      const updatedSession = await activeRequest(
+        `/sessions/${encodeURIComponent(session.session_id)}/advance`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            message: content,
+            understood,
+            provider_session_id: realProviderSessionId,
+          }),
+        },
+      );
+      setSnapshot((current: any) =>
+        current ? { ...current, session: updatedSession } : current,
+      );
+      setPendingUserMessages((current) =>
+        current.filter((item) => item.id !== pendingId),
+      );
+      return updatedSession;
+    } catch (reason) {
+      setPendingUserMessages((current) =>
+        current.map((item) =>
+          item.id === pendingId ? { ...item, status: "error" } : item,
+        ),
+      );
+      throw reason;
+    }
   };
 
   const generateKnowledgeMap = () =>
@@ -627,6 +719,7 @@ export function ActiveTeachingChainView({
     setFile(null);
     setGoal("完全掌握上传资料，并能用可验证的方式独立应用");
     setCreatingNewTask(true);
+    setShowLesson(false);
     setActiveWorkspaceId(`learning-task-${suffix}`);
   };
 
@@ -731,7 +824,6 @@ export function ActiveTeachingChainView({
       await refresh(targetWorkspaceId);
     } catch (reason: any) {
       setError(reason?.message || "进入学习任务失败");
-      setShowLesson(false);
     } finally {
       setBusy("");
     }
@@ -909,6 +1001,7 @@ export function ActiveTeachingChainView({
                   data-testid={`active-task-switch-${item.workspace_id}`}
                   onClick={() => {
                     setCreatingNewTask(false);
+                    setShowLesson(false);
                     setActiveWorkspaceId(item.workspace_id);
                   }}
                 >
@@ -1528,65 +1621,165 @@ export function ActiveTeachingChainView({
         </p>
         {session && (
           <>
-            <div className="active-chain__state" data-testid="active-session-state">
-              <span>步骤 <b>{session.state.current_teaching_step}</b></span>
-              <span>路线 <b>{session.state.route_index + 1}/{session.state.route_length}</b></span>
-              <span>今日剩余 <b>{session.state.today_remaining_task_minutes}</b> 任务分钟</span>
-              <span>补救栈 <b>{session.state.remediation_stack.length}</b></span>
-              <span>实际耗时 <b>{session.actual_elapsed_minutes}</b> 分钟</span>
-              <span>检索 <b>{session.state.last_retrieval?.mode || "local_hybrid_v1"}</b></span>
-              <span>
-                教师状态 <b>{session.state.autonomy?.awaiting_learner ? "等待你的最小回答" : "主动讲授中"}</b>
-              </span>
-            </div>
-            {session.state.today_plan && (
-              <div className="active-chain__receipt" data-testid="active-today-plan">
-                <b>{session.state.today_plan.date} · 今日课程</b>
-                <span>{session.state.today_plan.knowledge_point_count ?? session.state.today_plan.task_count} 个知识点 · {session.state.today_plan.task_minutes} 标准任务分钟</span>
-                <span>教师会先建立知识框架并检索讲解，然后主动邀请你多轮追问；确认没有疑问后才进入练习与验收。</span>
-              </div>
-            )}
-            {(session.state.replan_history || []).length > 0 && (
-              <div className="active-chain__receipt" data-testid="active-replan-summary">
-                <b>最近一次自动重排</b>
-                <span>{session.state.replan_history.at(-1).trigger} · {session.state.replan_history.at(-1).reason}</span>
-                <span>
-                  移动 {session.state.replan_history.at(-1).moved_task_ids.length} 项 ·
-                  未排 {session.state.replan_history.at(-1).unscheduled_task_minutes} 分钟
-                </span>
-              </div>
-            )}
-            {(session.state.mastery_evidence || []).length > 0 && (
-              <div className="active-chain__receipt" data-testid="active-mastery-evidence">
-                <b>最近掌握证据</b>
-                {session.state.mastery_evidence.slice(-5).map((item: any, index: number) => (
-                  <span key={`${item.knowledge_point_id}-${index}`}>
-                    {item.learning_phase || (item.review_item_id ? "延迟复测" : "理解检测")} ·
-                    {item.passed ? "通过" : "未通过"} · {(Number(item.score || 0) * 100).toFixed(0)}%
-                    {item.assistance_level && ` · assistance=${item.assistance_level}`}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="active-chain__history" data-testid="active-conversation-history">
-              {(session.messages || []).slice(-6).map((item: any) => (
+            <div className="active-classroom">
+              <aside className="active-classroom__teacher">
+                <TeacherCompanionPortrait
+                  teacherName="艾莉丝"
+                  state={teacherPresentationState}
+                />
+                <div className="active-classroom__focus" data-testid="active-current-knowledge-point">
+                  <span>现在只学这一点</span>
+                  <h4>{currentKnowledgePoint?.name || "当前知识点"}</h4>
+                  <p>
+                    第 {Math.min(Number(session.state.route_index || 0) + 1, Number(session.state.route_length || 1))}
+                    {" / "}{session.state.route_length || 1} 个知识点
+                  </p>
+                  <small>你可以随时打断、追问、要求换个例子。</small>
+                </div>
+              </aside>
+
+              <section className="active-classroom__dialogue">
+                <div className="active-classroom__dialogue-head">
+                  <div>
+                    <span>教师正在带你完成</span>
+                    <h3>{currentKnowledgePoint?.name || "今天的学习任务"}</h3>
+                  </div>
+                  <b>{session.state.autonomy?.awaiting_learner ? "等你说话" : "讲解中"}</b>
+                </div>
+
+                {session.state.today_plan && (
+                  <div className="active-chain__receipt" data-testid="active-today-plan">
+                    <b>{session.state.today_plan.date} · 今日课程</b>
+                    <span>
+                      今天共 {session.state.today_plan.knowledge_point_count ?? session.state.today_plan.task_count} 个知识点，
+                      但每次只推进一个；当前约 {session.state.today_remaining_task_minutes} 标准任务分钟待完成。
+                    </span>
+                  </div>
+                )}
+
                 <div
-                  className={`active-chain__message ${item.role === "user" ? "is-user" : ""}`}
-                  data-testid={item.id === latestTeacher?.id ? "active-latest-teacher" : undefined}
-                  key={item.id}
+                  className="active-chain__history"
+                  data-testid="active-conversation-history"
+                  ref={conversationHistoryRef}
                 >
-                  <span>{item.role === "user" ? "你" : item.action}</span><p>{item.content}</p>
-                  {(item.citations || []).map((citation: any) => (
-                    <blockquote key={citation.chunk_id}>{citation.quote}<small>段落 {citation.paragraph_start} · 字符 {citation.char_start}-{citation.char_end} · {citation.content_hash.slice(0, 12)}…</small></blockquote>
+                  {(session.messages || []).slice(-8).map((item: any) => {
+                    const paragraphs = readableMessageParagraphs(item.content);
+                    const visibleParagraphs = item.role === "teacher" ? paragraphs.slice(0, 2) : paragraphs;
+                    const remainingParagraphs = item.role === "teacher" ? paragraphs.slice(2) : [];
+                    return (
+                      <div
+                        className={`active-chain__message ${item.role === "user" ? "is-user" : ""}`}
+                        data-testid={item.id === latestTeacher?.id ? "active-latest-teacher" : undefined}
+                        key={item.id}
+                      >
+                        <span>
+                          {item.role === "user"
+                            ? "你"
+                            : teacherActionLabels[item.action] || "艾莉丝"}
+                        </span>
+                        {visibleParagraphs.map((paragraph, index) => (
+                          <p key={`${item.id}-visible-${index}`}>{paragraph}</p>
+                        ))}
+                        {remainingParagraphs.length > 0 && (
+                          <details className="active-chain__message-more">
+                            <summary>展开本轮完整讲解</summary>
+                            {remainingParagraphs.map((paragraph, index) => (
+                              <p key={`${item.id}-remaining-${index}`}>{paragraph}</p>
+                            ))}
+                          </details>
+                        )}
+                        {(item.citations || []).length > 0 && (
+                          <details className="active-chain__citations">
+                            <summary>查看资料依据（{item.citations.length}）</summary>
+                            {(item.citations || []).map((citation: any) => (
+                              <blockquote key={citation.chunk_id}>
+                                {citation.quote}
+                                <small>
+                                  段落 {citation.paragraph_start} · 字符 {citation.char_start}-{citation.char_end}
+                                </small>
+                              </blockquote>
+                            ))}
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {pendingUserMessages.map((item) => (
+                    <div
+                      className={`active-chain__message is-user is-pending ${item.status === "error" ? "is-error" : ""}`}
+                      data-testid="active-pending-user-message"
+                      key={item.id}
+                    >
+                      <span>你 · {item.status === "processing" ? "教师正在思考…" : "发送失败，请重试"}</span>
+                      <p>{item.content}</p>
+                    </div>
                   ))}
                 </div>
-              ))}
+
+                <div className="active-chain__composer active-classroom__composer">
+                  <textarea
+                    data-testid="active-teacher-input"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        if (message.trim() && !busy) {
+                          void run("推进教学", () => advance());
+                        }
+                      }
+                    }}
+                    placeholder="哪里没听懂就直接说；Enter 发送，Shift+Enter 换行"
+                  />
+                  <button
+                    data-testid="active-send-teacher"
+                    disabled={!message.trim() || Boolean(busy)}
+                    onClick={() => run("推进教学", () => advance())}
+                  >
+                    发送
+                  </button>
+                  <button
+                    data-testid="active-understood"
+                    disabled={Boolean(busy)}
+                    onClick={() => run("提交理解证据", () => advance(message || "我理解了，可以继续", true))}
+                  >
+                    我已理解并接受检测
+                  </button>
+                </div>
+
+                <details className="active-classroom__status">
+                  <summary>查看课程状态与系统依据</summary>
+                  <div className="active-chain__state" data-testid="active-session-state">
+                    <span>步骤 <b>{session.state.current_teaching_step}</b></span>
+                    <span>路线 <b>{session.state.route_index + 1}/{session.state.route_length}</b></span>
+                    <span>今日剩余 <b>{session.state.today_remaining_task_minutes}</b> 任务分钟</span>
+                    <span>补救栈 <b>{session.state.remediation_stack.length}</b></span>
+                    <span>实际耗时 <b>{session.actual_elapsed_minutes}</b> 分钟</span>
+                    <span>检索 <b>{session.state.last_retrieval?.mode || "local_hybrid_v1"}</b></span>
+                  </div>
+                  {(session.state.replan_history || []).length > 0 && (
+                    <div className="active-chain__receipt" data-testid="active-replan-summary">
+                      <b>最近一次自动重排</b>
+                      <span>{session.state.replan_history.at(-1).trigger} · {session.state.replan_history.at(-1).reason}</span>
+                    </div>
+                  )}
+                  {(session.state.mastery_evidence || []).length > 0 && (
+                    <div className="active-chain__receipt" data-testid="active-mastery-evidence">
+                      <b>最近掌握证据</b>
+                      {session.state.mastery_evidence.slice(-5).map((item: any, index: number) => (
+                        <span key={`${item.knowledge_point_id}-${index}`}>
+                          {item.learning_phase || (item.review_item_id ? "延迟复测" : "理解检测")} ·
+                          {item.passed ? "通过" : "未通过"} · {(Number(item.score || 0) * 100).toFixed(0)}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              </section>
             </div>
-            <div className="active-chain__composer">
-              <input data-testid="active-teacher-input" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：我不理解，为什么？" />
-              <button data-testid="active-send-teacher" disabled={!message || Boolean(busy)} onClick={() => run("推进教学", () => advance())}>发送</button>
-              <button data-testid="active-understood" disabled={Boolean(busy)} onClick={() => run("提交理解证据", () => advance(message || "我理解了，可以继续", true))}>我已理解并接受检测</button>
-            </div>
+
+            <details className="active-classroom__tools">
+              <summary>复习、代码练习与其他课程工具</summary>
             <div className="active-chain__receipt" data-testid="active-review-queue">
               <b>持久化复习队列</b>
               <label>
@@ -1717,6 +1910,7 @@ export function ActiveTeachingChainView({
                 </>
               )}
             </div>
+            </details>
           </>
         )}
       </article>
