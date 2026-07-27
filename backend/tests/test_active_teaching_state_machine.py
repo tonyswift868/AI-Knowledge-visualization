@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -285,6 +286,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
     )
     provider_session = get_provider_session(public["provider_session_id"])
     provider_session.verified = True
+    expression_prompts: list[dict] = []
 
     class ExpressionProvider:
         async def json(self, messages):
@@ -295,6 +297,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
                     "criteria_met": True,
                     "rationale": "回答满足资料给出的可观察验收条件。",
                 }
+            expression_prompts.append(prompt)
             assert prompt["rules"]
             assert prompt["fixed_action"] in {
                 "daily_briefing",
@@ -326,6 +329,19 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
         assert body["messages"][-1]["citations"]
         assert body["state"]["teacher_generation"]["scope"] == "expression_only"
         assert body["state"]["current_teaching_step"] == "daily_briefing"
+        opening_prompt = expression_prompts[0]
+        assert "blanket keyword ban" in opening_prompt["persona_expression"]["boundary"]
+        assert "no fixed character or paragraph limit" in " ".join(
+            opening_prompt["adaptive_teaching_guidance"]
+        )
+        assert "briefly change topic" in " ".join(
+            opening_prompt["adaptive_teaching_guidance"]
+        )
+        assert len(opening_prompt["teaching_contract"]["non_negotiable_outcomes"]) == 3
+        serialized_prompt = json.dumps(opening_prompt, ensure_ascii=False)
+        assert "never use sexual innuendo" not in serialized_prompt
+        assert "exactly one clear question" not in serialized_prompt
+        assert "no more than three short paragraphs" not in serialized_prompt
 
         explained = client.post(
             f"/api/active-teaching/sessions/{body['session_id']}/teach-next",

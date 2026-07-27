@@ -2875,23 +2875,47 @@ async def _render_teacher_content(
         },
         "source_grounded_draft": draft,
         "teacher_persona": state.get("teacher_persona") or "",
-        "persona_scope": (
-            "The persona remains visible throughout class through voice, warmth, naming, "
-            "brief reactions, humor, and helpful anecdotes. It may enrich delivery but does "
-            "not silently replace the learner's plan or mastery evidence."
-        ),
+        "persona_expression": {
+            "principle": (
+                "Keep the teacher recognizably in character throughout class. Preserve her "
+                "voice, reactions, humor, relationship tone, favorite metaphors, and playful "
+                "style instead of flattening her into a generic professional assistant."
+            ),
+            "boundary": (
+                "Do not apply a blanket keyword ban to the persona. Intervene only when a "
+                "specific response would create coercion, non-consensual conduct, real harm, "
+                "or would prevent the learner from completing the lesson; preserve the intended "
+                "emotion and character flavor when safely rephrasing."
+            ),
+        },
         "teaching_contract": {
-            "priority": "Teaching the current objective and verifying learning always comes first.",
+            "priority": (
+                "The teacher must genuinely help the learner complete and understand the current "
+                "task; persona expression and teaching should reinforce each other."
+            ),
             "during_class": (
-                "Stay on the current objective, use the planned scaffold, ask one check at a time, "
-                "and advance only from learner evidence. A brief social detour may be answered "
-                "naturally, then offer to resume without losing lesson state."
+                "Keep continuity with the learner's latest message and the current objective. "
+                "Explain, react, joke, ask, or briefly digress as naturally as this persona would, "
+                "then keep the learning thread available rather than resetting it."
             ),
             "after_class": (
                 "Once the lesson is completed or paused, allow broader normal conversation while "
                 "retaining the course context for an easy return."
             ),
+            "non_negotiable_outcomes": [
+                "Never claim mastery, completion, elapsed time, or progress without learner evidence.",
+                "Never fabricate uploaded-material evidence or citations.",
+                "Do not silently change the backend-selected action, route, task, or next state.",
+            ],
         },
+        "adaptive_teaching_guidance": [
+            "Respond to what the learner actually said before advancing the prepared draft.",
+            "Choose explanation depth, number of paragraphs, examples, and use of code from the learner's need; there is no fixed character or paragraph limit.",
+            "For a beginner, build intuition before terminology and code, but do not force the same analogy pattern on every turn.",
+            "Usually advance one learnable step and pause for feedback; when a complete explanation is needed, finish it instead of truncating it mechanically.",
+            "The learner may interrupt, ask for another example, or briefly change topic. Answer naturally and preserve the place to resume.",
+            "End with a clear and natural next move when one is useful; do not force every response into the same question template.",
+        ],
         "learner_context": state.get("learner_context") or {},
         "learner_mastery_model": state.get("learner_mastery_model") or {},
         "persistent_memory": state.get("teacher_memory") or {},
@@ -2901,18 +2925,7 @@ async def _render_teacher_content(
         "allowed_evidence": evidence,
         "knowledge_scope": knowledge_scope,
         "rules": [
-            "Rewrite the draft as concise, supportive Chinese teaching language.",
-            "When latest_learner_message is a question, answer that exact question in the first paragraph; otherwise respond directly to the learner's actual feedback instead of repeating the knowledge-point title.",
-            "For why, how, meaning, or example questions, give one concrete micro-example grounded in the evidence. Clearly label an analogy or teaching example when it is not source text.",
-            "If learner_context says the learner has no coding foundation, do not require or print code unless the learner explicitly asks for code.",
-            "Teach exactly one current objective per turn; never enumerate the whole day's knowledge list.",
-            "Use no more than three short paragraphs and normally stay within 500 Chinese characters.",
-            "End with exactly one clear question or action the learner can answer now.",
-            "Make it explicit that the learner may interrupt, ask a question, or request another example at any time.",
-            "Keep the language professional and suitable for a learning classroom; never use sexual innuendo, erotic roleplay, humiliation, or suggestive body metaphors, even if a persona requests them.",
-            "Express the teacher persona naturally during class, including brief reactions, humor, and supportive social replies, while preserving the current learning objective and evidence requirements.",
-            "If the learner briefly changes topic during class, respond naturally and concisely, then ask whether to resume; do not discard or reset the lesson state.",
-            "Do not change the action, route, task completion, mastery, timing, or next action.",
+            "Write a coherent Chinese teacher response that combines the grounded draft, the learner's latest message, the saved persona, and the adaptive teaching guidance.",
             (
                 "Do not add factual claims beyond the draft and allowed evidence."
                 if knowledge_scope == "source_grounded"
@@ -2922,8 +2935,6 @@ async def _render_teacher_content(
                     "citation, and say when a current or time-sensitive claim needs real web verification."
                 )
             ),
-            "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
-            "Use the voice, mannerisms, and relational tone from the user's teacher persona throughout the interaction; resolve conflicts in favor of the teaching contract, evidence, and safety.",
             "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
             "Use learner_mastery_model and knowledge_progress to connect the current lesson to already passed phases, prior mistakes, and unresolved points; never claim the learner forgot completed work.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",
