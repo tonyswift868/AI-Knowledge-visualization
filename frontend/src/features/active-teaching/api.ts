@@ -19,6 +19,18 @@ export type ActiveLearningTaskSummary = {
   task_count: number;
   completed_task_count: number;
   next_task: any | null;
+  today_plan?: {
+    date: string;
+    knowledge_point_count: number;
+    task_count: number;
+    planned_task_minutes: number;
+    completed_task_minutes: number;
+    remaining_task_minutes: number;
+    tasks: any[];
+    projected_review_items: any[];
+    learning_order_policy: string;
+  } | null;
+  learning_order_policy?: string | null;
   updated_at: string;
 };
 
@@ -62,8 +74,14 @@ export async function activeSnapshot(workspaceId: string): Promise<ActiveSnapsho
   return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/snapshot`);
 }
 
-export async function activeLearningTasks(includeArchived = false): Promise<ActiveLearningTaskSummary[]> {
-  const payload = await activeRequest(`/workspaces?include_archived=${includeArchived}`);
+export async function activeLearningTasks(
+  includeArchived = false,
+  day = "",
+): Promise<ActiveLearningTaskSummary[]> {
+  const dayQuery = day ? `&day=${encodeURIComponent(day)}` : "";
+  const payload = await activeRequest(
+    `/workspaces?include_archived=${includeArchived}${dayQuery}`,
+  );
   return payload.items || [];
 }
 

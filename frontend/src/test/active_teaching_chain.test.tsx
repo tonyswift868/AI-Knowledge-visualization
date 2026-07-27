@@ -250,17 +250,30 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     const dashboard = await screen.findByTestId("active-today-dashboard");
-    expect(dashboard).toHaveTextContent("继续上次进度，或切换今天的另一项");
-    expect(await screen.findByTestId("active-today-tasks")).toHaveTextContent(
+    expect(dashboard).toHaveTextContent("今天有 1 个学习计划");
+    expect(
+      screen.queryByTestId("active-today-tasks-generic-active"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("active-daily-plan-toggle-generic-active"));
+    expect(await screen.findByTestId("active-today-tasks-generic-active")).toHaveTextContent(
       "资料内知识点",
     );
+    expect(screen.getByTestId("active-daily-plan-generic-active")).toHaveTextContent(
+      "学习顺序：前置依赖优先",
+    );
     expect(screen.getByTestId("active-plan-details")).toHaveClass("active-chain__is-hidden");
+    expect(screen.getByTestId("active-completion-report")).toHaveClass(
+      "active-chain__is-hidden",
+    );
     expect(document.getElementById("active-teacher-workbench")).toHaveClass(
       "active-chain__is-hidden",
     );
 
     fireEvent.click(screen.getByTestId("active-toggle-plan-details"));
     expect(screen.getByTestId("active-plan-details")).not.toHaveClass(
+      "active-chain__is-hidden",
+    );
+    expect(screen.getByTestId("active-completion-report")).not.toHaveClass(
       "active-chain__is-hidden",
     );
     fireEvent.click(screen.getByTestId("active-toggle-plan-details"));
@@ -273,6 +286,134 @@ describe("ActiveTeachingChainView", () => {
     fireEvent.click(screen.getByTestId("active-leave-lesson"));
     expect(document.getElementById("active-teacher-workbench")).toHaveClass(
       "active-chain__is-hidden",
+    );
+  });
+
+  it("shows every active plan as an expandable ordered daily section", async () => {
+    const firstTodayTask = {
+      ...snapshot.plan.calendar[0].tasks[0],
+      knowledge_point_id: "kp_1",
+      knowledge_point_name: "资料内知识点",
+      point_sequence: 1,
+      difficulty: "easy",
+      prerequisite_names: [],
+    };
+    const secondTodayTask = {
+      id: "task_2",
+      title: "第二计划基础概念 · 理解",
+      knowledge_point_id: "kp_2",
+      knowledge_point_name: "第二计划基础概念",
+      task_type: "initial_learning",
+      learning_phase: "understand",
+      point_sequence: 1,
+      difficulty: "简单",
+      prerequisite_names: [],
+      estimated_task_minutes: 25,
+      completed_task_minutes: 0,
+      status: "planned",
+    };
+    const index = {
+      items: [{
+        workspace_id: "generic-active",
+        title: "计划一",
+        archived: false,
+        status: "learning",
+        material_count: 1,
+        knowledge_point_count: 1,
+        plan_id: "plan_1",
+        session_id: "session_1",
+        task_count: 1,
+        completed_task_count: 0,
+        next_task: firstTodayTask,
+        today_plan: {
+          date: "2026-07-27",
+          remaining_task_minutes: 40,
+          tasks: [firstTodayTask],
+          projected_review_items: [],
+        },
+        updated_at: "2026-07-27T00:00:00Z",
+      }, {
+        workspace_id: "second-plan",
+        title: "计划二",
+        archived: false,
+        status: "planned",
+        material_count: 1,
+        knowledge_point_count: 1,
+        plan_id: "plan_2",
+        session_id: null,
+        task_count: 1,
+        completed_task_count: 0,
+        next_task: secondTodayTask,
+        today_plan: {
+          date: "2026-07-27",
+          remaining_task_minutes: 25,
+          tasks: [secondTodayTask],
+          projected_review_items: [],
+        },
+        updated_at: "2026-07-27T00:00:00Z",
+      }],
+    };
+    const secondSession = {
+      ...snapshot.session,
+      session_id: "session_2",
+      state: {
+        ...snapshot.session.state,
+        active_task_id: "task_2",
+        autonomy: { awaiting_learner: true },
+      },
+    };
+    const secondSnapshot = {
+      ...snapshot,
+      workspace_id: "second-plan",
+      receipt: { ...snapshot.receipt, learning_goal: "计划二" },
+      plan: { ...snapshot.plan, id: "plan_2" },
+      session: secondSession,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const value = String(url);
+      let payload: any = snapshot;
+      if (value === "/api/active-teaching/workspaces?include_archived=false") {
+        payload = index;
+      } else if (value.includes("/workspaces/second-plan/snapshot")) {
+        payload = secondSnapshot;
+      } else if (
+        value.includes("/workspaces/second-plan/sessions/start")
+        && init?.method === "POST"
+      ) {
+        payload = secondSession;
+      }
+      return Promise.resolve({ ok: true, json: async () => payload });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    expect(await screen.findByTestId("active-today-dashboard")).toHaveTextContent(
+      "今天有 2 个学习计划",
+    );
+    expect(screen.getByTestId("active-daily-plan-generic-active")).toHaveTextContent(
+      "计划一",
+    );
+    expect(screen.getByTestId("active-daily-plan-second-plan")).toHaveTextContent(
+      "计划二",
+    );
+    expect(
+      screen.queryByTestId("active-today-tasks-second-plan"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("active-daily-plan-toggle-second-plan"));
+    expect(
+      await screen.findByTestId("active-today-tasks-second-plan"),
+    ).toHaveTextContent("01");
+    expect(screen.getByTestId("active-today-tasks-second-plan")).toHaveTextContent(
+      "第二计划基础概念",
+    );
+
+    fireEvent.click(screen.getByTestId("active-today-task-second-plan-kp_2"));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/workspaces/second-plan/sessions/start",
+        expect.objectContaining({ method: "POST" }),
+      ),
     );
   });
 
@@ -577,7 +718,8 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     expect(await screen.findByTestId("active-task-hub")).toHaveTextContent("掌握任意上传资料");
-    fireEvent.click(await screen.findByTestId("active-today-task-task_1"));
+    fireEvent.click(screen.getByTestId("active-daily-plan-toggle-generic-active"));
+    fireEvent.click(await screen.findByTestId("active-today-task-generic-active-task_1"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/active-teaching/sessions/session_1/focus",

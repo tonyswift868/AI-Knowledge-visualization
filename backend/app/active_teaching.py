@@ -1356,7 +1356,15 @@ def _topological_points(
         if edge["prerequisite_id"] in by_id and edge["dependent_id"] in by_id:
             outgoing[edge["prerequisite_id"]].append(edge["dependent_id"])
             indegree[edge["dependent_id"]] += 1
-    def source_order(row: sqlite3.Row) -> tuple[int, int, str]:
+    def learning_order(row: sqlite3.Row) -> tuple[int, int, int, str]:
+        difficulty = str(row["difficulty"] or "").casefold()
+        difficulty_rank = (
+            0
+            if any(item in difficulty for item in ("easy", "简单", "基础"))
+            else 2
+            if any(item in difficulty for item in ("hard", "困难", "高级"))
+            else 1
+        )
         try:
             evidence = json.loads(row["source_evidence"])
         except (KeyError, TypeError, json.JSONDecodeError):
@@ -1370,13 +1378,16 @@ def _topological_points(
             if isinstance(item, dict)
         ]
         paragraph, char_start = min(positions, default=(0, 0))
-        return paragraph, char_start, str(row["name"])
+        return difficulty_rank, paragraph, char_start, str(row["name"])
     ready = [
         node_id
         for node_id, value in indegree.items()
         if value == 0
     ]
-    ready.sort(key=lambda item: source_order(by_id[item]))
+    # Kahn's algorithm guarantees prerequisites always come first.  When
+    # several nodes are simultaneously available, teach the easier one before
+    # medium/hard peers, then preserve source order for deterministic results.
+    ready.sort(key=lambda item: learning_order(by_id[item]))
     ordered: list[sqlite3.Row] = []
     while ready:
         node_id = ready.pop(0)
@@ -1385,7 +1396,7 @@ def _topological_points(
             indegree[target] -= 1
             if indegree[target] == 0:
                 ready.append(target)
-                ready.sort(key=lambda item: source_order(by_id[item]))
+                ready.sort(key=lambda item: learning_order(by_id[item]))
     if len(ordered) != len(points):
         _error("KNOWLEDGE_DEPENDENCY_CYCLE", "知识依赖存在循环，无法生成计划", 422)
     return ordered
@@ -2329,6 +2340,7 @@ async def _render_teacher_content(
         "source_grounded_draft": draft,
         "teacher_persona": state.get("teacher_persona") or "",
         "learner_context": state.get("learner_context") or {},
+        "learner_mastery_model": state.get("learner_mastery_model") or {},
         "persistent_memory": state.get("teacher_memory") or {},
         "allowed_evidence": evidence,
         "rules": [
@@ -2338,6 +2350,7 @@ async def _render_teacher_content(
             "For a zero-foundation learner, explain with one vivid everyday analogy, clearly label it as an analogy, then map it back to the cited source.",
             "Follow the user's teacher persona when it does not conflict with evidence or safety.",
             "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
+            "Use learner_mastery_model and knowledge_progress to connect the current lesson to already passed phases, prior mistakes, and unresolved points; never claim the learner forgot completed work.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",
             "Return JSON only with one string field named content.",
         ],
@@ -2480,6 +2493,174 @@ def _daily_briefing(
         "我会根据你的回答决定补讲、降低难度或继续，而不是照着资料念。"
     )
     return content, citations
+
+
+def _sync_teacher_learner_model(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    state: dict[str, Any],
+) -> None:
+    """Persist a workspace-scoped learner model so task switches do not reset context."""
+    progress: dict[str, dict[str, Any]] = {}
+    for row in connection.execute(
+        """SELECT id,name,difficulty,mastery
+           FROM active_knowledge_points WHERE workspace_id=?
+           ORDER BY created_at,id""",
+        (workspace_id,),
+    ).fetchall():
+        if float(row["mastery"] or 0) <= 0:
+            continue
+        progress[str(row["id"])] = {
+            "knowledge_point_id": str(row["id"]),
+            "name": str(row["name"]),
+            "difficulty": str(row["difficulty"]),
+            "mastery": float(row["mastery"] or 0),
+            "attempt_count": 0,
+            "passed_phases": [],
+            "needs_support": False,
+        }
+    evidence_rows = connection.execute(
+        """SELECT evidence.*,point.name,point.difficulty,point.mastery
+           FROM active_mastery_evidence AS evidence
+           JOIN active_knowledge_points AS point
+             ON point.id=evidence.knowledge_point_id
+           WHERE point.workspace_id=?
+           ORDER BY evidence.created_at,evidence.id""",
+        (workspace_id,),
+    ).fetchall()
+    for row in evidence_rows:
+        point_id = str(row["knowledge_point_id"])
+        item = progress.setdefault(
+            point_id,
+            {
+                "knowledge_point_id": point_id,
+                "name": str(row["name"]),
+                "difficulty": str(row["difficulty"]),
+                "mastery": float(row["mastery"] or 0),
+                "attempt_count": 0,
+                "passed_phases": [],
+                "needs_support": False,
+            },
+        )
+        try:
+            evidence = json.loads(row["evidence"])
+        except (TypeError, json.JSONDecodeError):
+            evidence = {}
+        phase = str(evidence.get("learning_phase") or "")
+        item["attempt_count"] = int(item.get("attempt_count") or 0) + 1
+        item["last_score"] = float(row["score"] or 0)
+        item["last_passed"] = bool(row["passed"])
+        item["last_phase"] = phase
+        item["last_attempt_at"] = str(row["created_at"])
+        item["mastery"] = float(row["mastery"] or item.get("mastery") or 0)
+        evidence_summary = str(
+            evidence.get("learner_note")
+            or evidence.get("feedback")
+            or evidence.get("message")
+            or ""
+        ).strip()
+        if evidence_summary:
+            item["last_evidence_summary"] = evidence_summary[:500]
+        if row["passed"] and phase:
+            item["passed_phases"] = list(
+                dict.fromkeys([*(item.get("passed_phases") or []), phase])
+            )
+        if not row["passed"]:
+            item["needs_support"] = True
+    current_unresolved = list(state.get("unresolved_confusions") or [])
+    previous_session = connection.execute(
+        """SELECT id,state FROM active_teaching_sessions
+           WHERE workspace_id=? ORDER BY updated_at DESC,id DESC LIMIT 1""",
+        (workspace_id,),
+    ).fetchone()
+    historical_unresolved: list[dict[str, Any]] = []
+    if previous_session:
+        try:
+            previous_state = json.loads(previous_session["state"])
+        except (TypeError, json.JSONDecodeError):
+            previous_state = {}
+        historical_unresolved = [
+            {
+                **item,
+                "source_session_id": str(previous_session["id"]),
+            }
+            for item in previous_state.get("unresolved_confusions") or []
+            if isinstance(item, dict)
+        ]
+    unresolved = list({
+        (
+            str(item.get("knowledge_point_id") or ""),
+            str(item.get("message") or ""),
+        ): item
+        for item in [*historical_unresolved, *current_unresolved]
+        if item.get("knowledge_point_id")
+    }.values())
+    unresolved_ids = {
+        str(item.get("knowledge_point_id") or "")
+        for item in unresolved
+    }
+    for point_id, item in progress.items():
+        if point_id in unresolved_ids:
+            item["needs_support"] = True
+        elif item.get("last_passed"):
+            item["needs_support"] = False
+    ordered = sorted(
+        progress.values(),
+        key=lambda item: (
+            str(item.get("last_attempt_at") or ""),
+            str(item.get("name") or ""),
+        ),
+        reverse=True,
+    )
+    teacher_memory = dict(state.get("teacher_memory") or {})
+    teacher_memory["knowledge_progress"] = {
+        item["knowledge_point_id"]: item for item in ordered
+    }
+    teacher_memory["unresolved_confusions"] = unresolved
+    state["teacher_memory"] = teacher_memory
+    state["learner_mastery_model"] = {
+        "tracked_knowledge_point_count": len(ordered),
+        "mastered_knowledge_point_count": sum(
+            1 for item in ordered if float(item.get("mastery") or 0) >= 0.8
+        ),
+        "needs_support_count": sum(
+            1 for item in ordered if item.get("needs_support")
+        ),
+        "recent_knowledge_points": [
+            {
+                "name": item["name"],
+                "last_phase": item.get("last_phase") or "",
+                "last_score": item.get("last_score"),
+                "last_evidence_summary": item.get("last_evidence_summary") or "",
+                "needs_support": bool(item.get("needs_support")),
+            }
+            for item in ordered[:8]
+        ],
+    }
+
+
+def _learner_memory_sentence(state: dict[str, Any]) -> str:
+    model = state.get("learner_mastery_model") or {}
+    recent = list(model.get("recent_knowledge_points") or [])
+    if not recent:
+        return ""
+    passed = [
+        str(item.get("name") or "")
+        for item in recent
+        if not item.get("needs_support") and item.get("last_score") is not None
+    ]
+    support = [
+        str(item.get("name") or "")
+        for item in recent
+        if item.get("needs_support")
+    ]
+    parts = []
+    if passed:
+        parts.append(f"我记得你此前已经通过：{'、'.join(passed[:4])}")
+    if support:
+        parts.append(f"仍需重点照顾：{'、'.join(support[:4])}")
+    return "；".join(parts) + "。" if parts else ""
 
 
 def _grade_understanding(message: str, point: sqlite3.Row) -> tuple[float, list[str]]:
@@ -2670,6 +2851,11 @@ async def start_session(
                 connection, plan_row["id"], first["day_date"]
             ),
         }
+        _sync_teacher_learner_model(
+            connection,
+            workspace_id=workspace_id,
+            state=state,
+        )
         session_id = _id("active_session")
         started = _now()
         connection.execute(
@@ -2684,6 +2870,9 @@ async def start_session(
             plan_id=plan_row["id"],
             day_date=first["day_date"],
         )
+        memory_sentence = _learner_memory_sentence(state)
+        if memory_sentence:
+            opening = f"{memory_sentence}\n\n{opening}"
         opening, teacher_generation = await _render_teacher_content(
             draft=opening,
             action="daily_briefing",
@@ -2728,6 +2917,11 @@ async def teach_next(
         if not session:
             _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
         state = json.loads(session["state"])
+        _sync_teacher_learner_model(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+        )
         tasks = _task_rows(connection, session["plan_id"])
         route_index = min(int(state["route_index"]), len(tasks) - 1)
         task = tasks[route_index]
@@ -2751,6 +2945,9 @@ async def teach_next(
                 "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
             ).fetchone()["receipt"])
             content, citations = _opening(connection, task, plan_receipt)
+            memory_sentence = _learner_memory_sentence(state)
+            if memory_sentence:
+                content = f"{memory_sentence}\n\n{content}"
             state["current_teaching_step"] = "explain"
             state["next_action"] = "show_example"
             awaiting = False
@@ -2796,6 +2993,11 @@ async def teach_next(
             )
             connection.commit()
             return _public_session(connection, session_id)
+        _sync_teacher_learner_model(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+        )
         content, teacher_generation = await _render_teacher_content(
             draft=content,
             action=action,
@@ -3595,6 +3797,11 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 action = "grounded_answer"
                 content = f"根据上传资料，可确认的相关片段如下：{hits[0]['quote'][:240]}"
 
+        _sync_teacher_learner_model(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+        )
         content, teacher_generation = await _render_teacher_content(
             draft=content,
             action=action,
@@ -3693,6 +3900,11 @@ def focus_session_task(
         teacher_memory = dict(state.get("teacher_memory") or {})
         teacher_memory["last_interaction"] = "calendar_task_selected"
         state["teacher_memory"] = teacher_memory
+        _sync_teacher_learner_model(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+        )
         connection.execute(
             """UPDATE active_teaching_sessions
                SET state=?,updated_at=? WHERE id=?""",
@@ -4855,9 +5067,100 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
         }
 
 
+def _workspace_day_overview(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    plan_id: str,
+    day_date: str,
+) -> dict[str, Any]:
+    rows = connection.execute(
+        """SELECT task.*,point.name AS knowledge_point_name,
+                  point.difficulty,point.mastery
+           FROM active_plan_tasks AS task
+           JOIN active_knowledge_points AS point
+             ON point.id=task.knowledge_point_id
+           WHERE task.plan_id=? AND task.day_date=?
+           ORDER BY task.point_sequence,task.task_order,task.id""",
+        (plan_id, day_date),
+    ).fetchall()
+    point_ids = list(dict.fromkeys(str(row["knowledge_point_id"]) for row in rows))
+    prerequisite_names: dict[str, list[str]] = defaultdict(list)
+    if point_ids:
+        placeholders = ",".join("?" for _ in point_ids)
+        for row in connection.execute(
+            f"""SELECT dependency.dependent_id,point.name
+                FROM active_dependencies AS dependency
+                JOIN active_knowledge_points AS point
+                  ON point.id=dependency.prerequisite_id
+                WHERE dependency.workspace_id=?
+                  AND dependency.dependent_id IN ({placeholders})
+                ORDER BY dependency.dependent_id,point.name""",
+            (workspace_id, *point_ids),
+        ).fetchall():
+            prerequisite_names[str(row["dependent_id"])].append(str(row["name"]))
+    tasks = []
+    for row in rows:
+        task = dict(row)
+        task["prerequisite_names"] = prerequisite_names.get(
+            str(row["knowledge_point_id"]), []
+        )
+        task["ordering_reason"] = (
+            "先修知识完成后，按简单到困难进入"
+            if task["prerequisite_names"]
+            else "当前无未满足先修，按简单到困难进入"
+        )
+        tasks.append(task)
+    completed_minutes = sum(
+        int(row["completed_task_minutes"] or 0) for row in rows
+    )
+    planned_minutes = sum(int(row["estimated_task_minutes"] or 0) for row in rows)
+    has_plan_calendars = connection.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='active_plan_calendars'"""
+    ).fetchone()
+    calendar_row = (
+        connection.execute(
+            "SELECT calendar FROM active_plan_calendars WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        if has_plan_calendars
+        else None
+    )
+    projected_reviews: list[dict[str, Any]] = []
+    if calendar_row:
+        try:
+            calendar = json.loads(calendar_row["calendar"])
+        except (TypeError, json.JSONDecodeError):
+            calendar = []
+        selected_day = next(
+            (item for item in calendar if str(item.get("date")) == day_date),
+            {},
+        )
+        projected_reviews = list(selected_day.get("projected_review_items") or [])
+    return {
+        "date": day_date,
+        "knowledge_point_count": len(point_ids),
+        "task_count": len(tasks),
+        "planned_task_minutes": planned_minutes,
+        "completed_task_minutes": completed_minutes,
+        "remaining_task_minutes": max(0, planned_minutes - completed_minutes),
+        "tasks": tasks,
+        "projected_review_items": projected_reviews,
+        "learning_order_policy": (
+            "严格先满足前置依赖；同一时刻可学习的知识点按简单、"
+            "中等、困难排序，难度相同再按资料原始顺序。"
+        ),
+    }
+
+
 @router.get("/workspaces")
-def list_learning_workspaces(include_archived: bool = False) -> dict[str, Any]:
+def list_learning_workspaces(
+    include_archived: bool = False,
+    day: str = "",
+) -> dict[str, Any]:
     """Return the durable task index for the unified learning workspace."""
+    selected_day = _review_as_of(day).isoformat() if day else date.today().isoformat()
     with _connect() as connection:
         workspace_ids = [
             row["workspace_id"]
@@ -4977,6 +5280,21 @@ def list_learning_workspaces(include_archived: bool = False) -> dict[str, Any]:
                     "task_count": task_counts["total"],
                     "completed_task_count": task_counts["completed"],
                     "next_task": next_task,
+                    "today_plan": (
+                        _workspace_day_overview(
+                            connection,
+                            workspace_id=workspace_id,
+                            plan_id=plan["id"],
+                            day_date=selected_day,
+                        )
+                        if plan
+                        else None
+                    ),
+                    "learning_order_policy": (
+                        "prerequisite_then_difficulty_then_source"
+                        if plan
+                        else None
+                    ),
                     "updated_at": max(updated_candidates) if updated_candidates else "",
                 }
             )

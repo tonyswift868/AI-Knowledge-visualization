@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
+from app import active_teaching
 from app.main import app
-from app.active_teaching import _cycle_nodes
+from app.active_teaching import _cycle_nodes, _topological_points
 from app.orm import configure_orm
 
 
@@ -41,6 +43,34 @@ def _receipt(material_id: str, *, daily_minutes: int = 400, deadline_days: int =
         "preferred_learning_style": "讲解、手推、独立编码、追问",
         "material_ids": [material_id],
     }
+
+
+def test_learning_order_keeps_prerequisites_first_then_easiest_ready_point():
+    hard = {
+        "id": "hard",
+        "name": "困难但独立",
+        "difficulty": "困难",
+        "source_evidence": json.dumps([{"paragraph_start": 1}]),
+    }
+    easy = {
+        "id": "easy",
+        "name": "简单且独立",
+        "difficulty": "简单",
+        "source_evidence": json.dumps([{"paragraph_start": 2}]),
+    }
+    dependent = {
+        "id": "dependent",
+        "name": "依赖困难知识的简单项",
+        "difficulty": "简单",
+        "source_evidence": json.dumps([{"paragraph_start": 3}]),
+    }
+
+    ordered = _topological_points(
+        [hard, easy, dependent],
+        [{"prerequisite_id": "hard", "dependent_id": "dependent"}],
+    )
+
+    assert [item["id"] for item in ordered] == ["easy", "hard", "dependent"]
 
 
 def test_ingestion_graph_plan_and_retrieval_are_traceable(tmp_path):
@@ -357,6 +387,22 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
             indexed["task-cooking"]["session_id"]
             == created["task-cooking"]["session"]["session_id"]
         )
+        for workspace in ("task-cooking", "task-cycling"):
+            today_plan = indexed[workspace]["today_plan"]
+            assert today_plan["date"] == date.today().isoformat()
+            assert today_plan["task_count"] > 0
+            assert today_plan["knowledge_point_count"] > 0
+            assert "前置依赖" in today_plan["learning_order_policy"]
+            assert all(
+                {
+                    "knowledge_point_name",
+                    "difficulty",
+                    "prerequisite_names",
+                    "ordering_reason",
+                }
+                <= set(task)
+                for task in today_plan["tasks"]
+            )
 
         cooking_tasks = created["task-cooking"]["plan"]["tasks"]
         focused_task = cooking_tasks[-1]
@@ -387,6 +433,108 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
             rejected.json()["error"]["code"]
             == "ACTIVE_TASK_OUTSIDE_SESSION_PLAN"
         )
+
+
+def test_teacher_memory_survives_switching_to_another_knowledge_point(tmp_path):
+    configure_orm(tmp_path / "teacher-cross-task-memory.db")
+    workspace = "teacher-memory"
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("memory.md", SAMPLE.encode("utf-8"), "text/markdown")},
+        ).json()
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(material["id"], daily_minutes=400, deadline_days=10),
+        ).status_code == 200
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-graph/generate"
+        ).status_code == 200
+        plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/plans/generate"
+        ).json()
+        session = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start"
+        ).json()
+        first_task = plan["tasks"][0]
+        later_task = next(
+            task
+            for task in plan["tasks"]
+            if task["knowledge_point_id"] != first_task["knowledge_point_id"]
+        )
+
+        with active_teaching._connect() as connection:
+            connection.execute(
+                "UPDATE active_knowledge_points SET mastery=? WHERE id=?",
+                (0.92, first_task["knowledge_point_id"]),
+            )
+            persisted_state = json.loads(
+                connection.execute(
+                    "SELECT state FROM active_teaching_sessions WHERE id=?",
+                    (session["session_id"],),
+                ).fetchone()["state"]
+            )
+            persisted_state["unresolved_confusions"] = [{
+                "knowledge_point_id": later_task["knowledge_point_id"],
+                "message": "我还分不清这个知识点的边界条件",
+                "created_at": "2026-07-27T11:55:00+08:00",
+            }]
+            connection.execute(
+                "UPDATE active_teaching_sessions SET state=? WHERE id=?",
+                (
+                    json.dumps(persisted_state, ensure_ascii=False),
+                    session["session_id"],
+                ),
+            )
+            connection.execute(
+                """INSERT INTO active_mastery_evidence
+                   (id,session_id,knowledge_point_id,evidence_type,score,passed,
+                    evidence,citations,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    "memory-evidence-1",
+                    session["session_id"],
+                    first_task["knowledge_point_id"],
+                    "independent_application",
+                    0.93,
+                    1,
+                    json.dumps(
+                        {
+                            "learning_phase": "independent_application",
+                            "learner_note": "边界条件曾经出错，现已修正",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "[]",
+                    "2026-07-27T12:00:00+08:00",
+                ),
+            )
+            connection.commit()
+
+        focused = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/focus",
+            json={"task_id": later_task["id"]},
+        )
+        assert focused.status_code == 200, focused.text
+        state = focused.json()["state"]
+        remembered = state["teacher_memory"]["knowledge_progress"][
+            first_task["knowledge_point_id"]
+        ]
+        assert remembered["last_passed"] is True
+        assert remembered["last_phase"] == "independent_application"
+        assert remembered["mastery"] == 0.92
+        assert remembered["last_evidence_summary"] == "边界条件曾经出错，现已修正"
+        assert state["teacher_memory"]["unresolved_confusions"][0]["message"] == (
+            "我还分不清这个知识点的边界条件"
+        )
+        assert state["learner_mastery_model"]["tracked_knowledge_point_count"] >= 1
+
+        taught = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/teach-next",
+            json={},
+        )
+        assert taught.status_code == 200, taught.text
+        assert "我记得你此前已经通过" in taught.json()["messages"][-1]["content"]
 
 
 def test_deadline_capacity_reports_unscheduled_minutes(tmp_path):

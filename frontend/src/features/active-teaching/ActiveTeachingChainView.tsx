@@ -49,6 +49,89 @@ const readTaskDraft = (workspaceId: string): ActiveTaskDraft | null => {
   }
 };
 
+const groupDailyTasks = (tasks: any[] = []) => {
+  const groups = new Map<string, any>();
+  for (const task of tasks) {
+    const key = `${task.task_type || "task"}:${task.knowledge_point_id || task.id}`;
+    const current = groups.get(key) || {
+      key,
+      knowledgePointId: task.knowledge_point_id,
+      title: String(task.knowledge_point_name || task.title || "学习任务").replace(
+        /\s*·\s*(理解|回忆|引导练习|独立应用).*$/,
+        "",
+      ),
+      difficulty: task.difficulty || "",
+      prerequisiteNames: task.prerequisite_names || [],
+      pointSequence: Number(task.point_sequence || 0),
+      taskType: task.task_type,
+      tasks: [],
+      minutes: 0,
+    };
+    current.tasks.push(task);
+    current.minutes += Number(task.estimated_task_minutes || 0);
+    groups.set(key, current);
+  }
+  const grouped = Array.from(groups.values())
+    .map((group) => {
+      const completed = group.tasks.filter(
+        (task: any) => task.status === "completed",
+      ).length;
+      return {
+        ...group,
+        completed,
+        nextTask:
+          group.tasks.find((task: any) => task.status !== "completed")
+          || group.tasks[0],
+      };
+    });
+  const byTitle = new Map(
+    grouped.map((group) => [String(group.title).trim(), group]),
+  );
+  const outgoing = new Map(grouped.map((group) => [group.key, [] as string[]]));
+  const indegree = new Map(grouped.map((group) => [group.key, 0]));
+  for (const group of grouped) {
+    for (const prerequisiteName of group.prerequisiteNames) {
+      const prerequisite = byTitle.get(String(prerequisiteName).trim());
+      if (!prerequisite || prerequisite.key === group.key) continue;
+      outgoing.get(prerequisite.key)?.push(group.key);
+      indegree.set(group.key, Number(indegree.get(group.key) || 0) + 1);
+    }
+  }
+  const difficultyRank = (difficulty: string) => {
+    const value = String(difficulty || "").toLowerCase();
+    if (/(easy|简单|基础)/.test(value)) return 0;
+    if (/(hard|困难|高级)/.test(value)) return 2;
+    return 1;
+  };
+  const compare = (left: any, right: any) =>
+    difficultyRank(left.difficulty) - difficultyRank(right.difficulty)
+    || left.pointSequence - right.pointSequence
+    || String(left.title).localeCompare(String(right.title), "zh-CN");
+  const byKey = new Map(grouped.map((group) => [group.key, group]));
+  const ready = grouped
+    .filter((group) => indegree.get(group.key) === 0)
+    .sort(compare);
+  const ordered: any[] = [];
+  while (ready.length) {
+    const group = ready.shift();
+    ordered.push(group);
+    for (const targetKey of outgoing.get(group.key) || []) {
+      const remaining = Number(indegree.get(targetKey) || 0) - 1;
+      indegree.set(targetKey, remaining);
+      if (remaining === 0) {
+        ready.push(byKey.get(targetKey));
+        ready.sort(compare);
+      }
+    }
+  }
+  if (ordered.length < grouped.length) {
+    ordered.push(
+      ...grouped.filter((group) => !ordered.includes(group)).sort(compare),
+    );
+  }
+  return ordered;
+};
+
 export function ActiveTeachingChainView({
   workspaceId,
   createRequest = 0,
@@ -75,6 +158,7 @@ export function ActiveTeachingChainView({
   const [showArchived, setShowArchived] = useState(false);
   const [showPlanDetails, setShowPlanDetails] = useState(false);
   const [showLesson, setShowLesson] = useState(false);
+  const [expandedDailyPlans, setExpandedDailyPlans] = useState<string[]>([]);
   const [selectedStudyDate, setSelectedStudyDate] = useState(isoAfterDays(0));
   const [creatingNewTask, setCreatingNewTask] = useState(() =>
     Boolean(readTaskDraft(activeWorkspaceId)),
@@ -108,16 +192,17 @@ export function ActiveTeachingChainView({
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const refreshSequence = useRef(0);
 
-  const refresh = async () => {
+  const refresh = async (workspaceOverride?: string) => {
+    const requestedWorkspaceId = workspaceOverride || activeWorkspaceId;
     const requestSequence = ++refreshSequence.current;
     const [next, taskItems] = await Promise.all([
-      activeSnapshot(activeWorkspaceId),
+      activeSnapshot(requestedWorkspaceId),
       activeLearningTasks(showArchived),
     ]);
     let problemItems: any[] = [];
     try {
       const problemPayload = await activeRequest(
-        `/workspaces/${encodeURIComponent(activeWorkspaceId)}/problems`,
+        `/workspaces/${encodeURIComponent(requestedWorkspaceId)}/problems`,
       );
       problemItems = problemPayload.items || [];
     } catch {
@@ -129,7 +214,7 @@ export function ActiveTeachingChainView({
       !next.receipt
       && !(next.materials || []).length
       && taskItems.length
-      && !taskItems.some((item) => item.workspace_id === activeWorkspaceId)
+      && !taskItems.some((item) => item.workspace_id === requestedWorkspaceId)
       && !creatingNewTask
     ) {
       setActiveWorkspaceId(taskItems[0].workspace_id);
@@ -143,7 +228,7 @@ export function ActiveTeachingChainView({
         ? current
         : problemItems[0]?.id || "",
     );
-    const storedDraft = readTaskDraft(activeWorkspaceId);
+    const storedDraft = readTaskDraft(requestedWorkspaceId);
     if (next.receipt && !storedDraft) {
       setGoal(next.receipt.learning_goal);
       setLevel(next.receipt.current_level);
@@ -162,7 +247,7 @@ export function ActiveTeachingChainView({
       setTeacherPersona(next.receipt.teacher_persona || "");
       setLearnerInterests(next.receipt.learner_interests || "");
     }
-    if (!storedDraft) setDraftLoadedWorkspace(activeWorkspaceId);
+    if (!storedDraft) setDraftLoadedWorkspace(requestedWorkspaceId);
   };
 
   useEffect(() => {
@@ -325,45 +410,9 @@ export function ActiveTeachingChainView({
   const selectedStudyDay = (plan?.calendar || []).find(
     (day: any) => day.date === selectedStudyDate,
   );
-  const dailyTaskGroups = useMemo(() => {
-    const groups = new Map<string, any>();
-    for (const task of selectedStudyDay?.tasks || []) {
-      const key = `${task.task_type || "task"}:${task.knowledge_point_id || task.id}`;
-      const current = groups.get(key) || {
-        key,
-        knowledgePointId: task.knowledge_point_id,
-        title: String(task.title || "学习任务").replace(
-          /\s*·\s*(理解|回忆|引导练习|独立应用).*$/,
-          "",
-        ),
-        taskType: task.task_type,
-        tasks: [],
-        minutes: 0,
-      };
-      current.tasks.push(task);
-      current.minutes += Number(task.estimated_task_minutes || 0);
-      groups.set(key, current);
-    }
-    return Array.from(groups.values()).map((group) => {
-      const completed = group.tasks.filter(
-        (task: any) => task.status === "completed",
-      ).length;
-      return {
-        ...group,
-        completed,
-        nextTask:
-          group.tasks.find((task: any) => task.status !== "completed")
-          || group.tasks[0],
-      };
-    });
-  }, [selectedStudyDay]);
-  const selectedDayCompleted = dailyTaskGroups.reduce(
-    (total, group) => total + group.completed,
-    0,
-  );
-  const selectedDayTaskCount = dailyTaskGroups.reduce(
-    (total, group) => total + group.tasks.length,
-    0,
+  const dailyTaskGroups = useMemo(
+    () => groupDailyTasks(selectedStudyDay?.tasks || []),
+    [selectedStudyDay],
   );
   const selectedDayRemainingMinutes = (selectedStudyDay?.tasks || []).reduce(
     (total: number, task: any) =>
@@ -373,6 +422,65 @@ export function ActiveTeachingChainView({
         Number(task.estimated_task_minutes || 0)
           - Number(task.completed_task_minutes || 0),
       ),
+    0,
+  );
+  const dailyPlanItems = useMemo(() => {
+    const items = learningTasks
+      .filter((item) => !item.archived && item.plan_id)
+      .map((item) => {
+        const fallbackDay =
+          item.workspace_id === activeWorkspaceId ? selectedStudyDay : null;
+        const todayPlan = item.today_plan || (fallbackDay
+          ? {
+              ...fallbackDay,
+              remaining_task_minutes: selectedDayRemainingMinutes,
+            }
+          : null);
+        return {
+          workspaceId: item.workspace_id,
+          title: item.title,
+          planId: item.plan_id,
+          sessionId: item.session_id,
+          todayPlan,
+          groups: groupDailyTasks(todayPlan?.tasks || []),
+        };
+      });
+    if (plan && !items.some((item) => item.workspaceId === activeWorkspaceId)) {
+      items.unshift({
+        workspaceId: activeWorkspaceId,
+        title:
+          snapshot?.receipt?.learning_goal
+          || activeTaskSummary?.title
+          || "当前学习计划",
+        planId: plan.id,
+        sessionId: session?.session_id || null,
+        todayPlan: selectedStudyDay
+          ? {
+              ...selectedStudyDay,
+              remaining_task_minutes: selectedDayRemainingMinutes,
+              learning_order_policy: (
+                "严格先满足前置依赖；同一时刻可学习的知识点按简单、"
+                + "中等、困难排序，难度相同再按资料原始顺序。"
+              ),
+            }
+          : null,
+        groups: dailyTaskGroups,
+      });
+    }
+    return items;
+  }, [
+    activeTaskSummary?.title,
+    activeWorkspaceId,
+    dailyTaskGroups,
+    learningTasks,
+    plan,
+    selectedDayRemainingMinutes,
+    selectedStudyDay,
+    session?.session_id,
+    snapshot?.receipt?.learning_goal,
+  ]);
+  const dailyPlanTaskCount = dailyPlanItems.reduce(
+    (total, item) => total + item.groups.length,
     0,
   );
 
@@ -553,9 +661,12 @@ export function ActiveTeachingChainView({
     }
   };
 
-  const enterCalendarTask = async (task: any) => {
+  const enterCalendarTask = async (
+    task: any,
+    targetWorkspaceId = activeWorkspaceId,
+  ) => {
     let current = await activeRequest(
-      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/sessions/start`,
+      `/workspaces/${encodeURIComponent(targetWorkspaceId)}/sessions/start`,
       {
         method: "POST",
         body: JSON.stringify({ provider_session_id: realProviderSessionId }),
@@ -604,6 +715,26 @@ export function ActiveTeachingChainView({
   const enterDailyTask = (task: any) => {
     revealTeacherWorkbench();
     return enterCalendarTask(task);
+  };
+
+  const enterTaskFromDailyPlan = async (
+    targetWorkspaceId: string,
+    task: any,
+    title: string,
+  ) => {
+    setBusy(`进入 ${title}`);
+    setError("");
+    revealTeacherWorkbench();
+    try {
+      setActiveWorkspaceId(targetWorkspaceId);
+      await enterCalendarTask(task, targetWorkspaceId);
+      await refresh(targetWorkspaceId);
+    } catch (reason: any) {
+      setError(reason?.message || "进入学习任务失败");
+      setShowLesson(false);
+    } finally {
+      setBusy("");
+    }
   };
 
   const startTodayLesson = () => {
@@ -812,7 +943,7 @@ export function ActiveTeachingChainView({
         </section>
       </div>
 
-      {plan && (
+      {dailyPlanItems.length > 0 && (
         <article
           className="active-today"
           data-testid="active-today-dashboard"
@@ -820,9 +951,9 @@ export function ActiveTeachingChainView({
         >
           <div className="active-today__head">
             <div>
-              <span className="active-chain__eyebrow">今日学习</span>
-              <h2>{session ? "继续上次进度，或切换今天的另一项" : "选一项，教师马上开始带学"}</h2>
-              <p>任务内部的小步骤由教师接管；退出页面或切换任务都不会丢失进度。</p>
+              <span className="active-chain__eyebrow">全部计划 · 今日学习</span>
+              <h2>今天有 {dailyPlanItems.length} 个学习计划</h2>
+              <p>先选计划，再按编号从简单和前置知识开始；切换计划、任务或退出页面都不会丢失教师记忆。</p>
             </div>
             <div className="active-today__actions">
               {session && (
@@ -848,83 +979,139 @@ export function ActiveTeachingChainView({
                 data-testid="active-toggle-plan-details"
                 onClick={() => setShowPlanDetails((current) => !current)}
               >
-                {showPlanDetails ? "收起任务设置与完整计划" : "查看或调整完整计划"}
+                {showPlanDetails ? "收起当前计划设置" : "查看或调整当前计划"}
               </button>
             </div>
           </div>
 
           <div className="active-today__summary">
-            <label>
-              学习日期
-              <select
-                data-testid="active-study-date"
-                value={selectedStudyDate}
-                onChange={(event) => setSelectedStudyDate(event.target.value)}
-              >
-                {(plan.calendar || []).map((day: any) => (
-                  <option key={day.date} value={day.date}>
-                    {day.date}
-                    {day.date === isoAfterDays(0) ? "（今天）" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span><b>{dailyTaskGroups.length}</b> 项知识主题</span>
-            <span><b>{selectedDayRemainingMinutes}</b> 标准任务分钟待完成</span>
-            <span><b>{selectedDayCompleted}/{selectedDayTaskCount}</b> 个教学步骤已完成</span>
+            <span><b>{isoAfterDays(0)}</b> 今日</span>
+            <span><b>{dailyPlanItems.length}</b> 个进行中的计划</span>
+            <span><b>{dailyPlanTaskCount}</b> 项知识主题</span>
+            <span>
+              <b>
+                {dailyPlanItems.reduce(
+                  (total, item) =>
+                    total + Number(item.todayPlan?.remaining_task_minutes || 0),
+                  0,
+                )}
+              </b>
+              标准任务分钟待完成
+            </span>
           </div>
 
-          {dailyTaskGroups.length > 0 ? (
-            <div className="active-today__tasks" data-testid="active-today-tasks">
-              {dailyTaskGroups.map((group) => {
-                const active = group.tasks.some(
-                  (task: any) => task.id === session?.state?.active_task_id,
-                );
-                const complete = group.completed === group.tasks.length;
-                return (
-                  <article
-                    className={`${active ? "is-active" : ""} ${complete ? "is-complete" : ""}`}
-                    key={group.key}
+          <div className="active-today__plans" data-testid="active-daily-plans">
+            {dailyPlanItems.map((dailyPlan) => {
+              const expanded = expandedDailyPlans.includes(dailyPlan.workspaceId);
+              const remainingMinutes = Number(
+                dailyPlan.todayPlan?.remaining_task_minutes || 0,
+              );
+              return (
+                <section
+                  className={`${dailyPlan.workspaceId === activeWorkspaceId ? "is-active" : ""}`}
+                  data-testid={`active-daily-plan-${dailyPlan.workspaceId}`}
+                  key={dailyPlan.workspaceId}
+                >
+                  <button
+                    className="active-today__plan-toggle"
+                    data-testid={`active-daily-plan-toggle-${dailyPlan.workspaceId}`}
+                    onClick={() => {
+                      setExpandedDailyPlans((current) =>
+                        current.includes(dailyPlan.workspaceId)
+                          ? current.filter((item) => item !== dailyPlan.workspaceId)
+                          : [...current, dailyPlan.workspaceId]
+                      );
+                    }}
                   >
-                    <div>
-                      <span>
-                        {group.taskType === "review"
-                          ? "完整复习"
-                          : group.taskType === "remediation"
-                            ? "补救学习"
-                            : "首学"}
-                      </span>
-                      <h3>{group.title}</h3>
-                      <p>
-                        {group.minutes} 分钟 ·
-                        {group.completed}/{group.tasks.length} 个步骤完成
+                    <span>
+                      <b>{dailyPlan.title}</b>
+                      <small>
+                        {dailyPlan.groups.length} 项 · {remainingMinutes} 分钟待完成
+                      </small>
+                    </span>
+                    <em>{expanded ? "收起" : "展开今天内容"}</em>
+                  </button>
+
+                  {expanded && (
+                    <div className="active-today__plan-body">
+                      <p className="active-today__order-policy">
+                        学习顺序：前置依赖优先；当前可学习内容按简单 → 中等 → 困难排列。
                       </p>
+                      {dailyPlan.groups.length > 0 ? (
+                        <div
+                          className="active-today__tasks"
+                          data-testid={`active-today-tasks-${dailyPlan.workspaceId}`}
+                        >
+                          {dailyPlan.groups.map((group, groupIndex) => {
+                            const active =
+                              dailyPlan.workspaceId === activeWorkspaceId
+                              && group.tasks.some(
+                                (task: any) =>
+                                  task.id === session?.state?.active_task_id,
+                              );
+                            const complete = group.completed === group.tasks.length;
+                            return (
+                              <article
+                                className={`${active ? "is-active" : ""} ${complete ? "is-complete" : ""}`}
+                                key={group.key}
+                              >
+                                <div className="active-today__sequence">
+                                  {String(groupIndex + 1).padStart(2, "0")}
+                                </div>
+                                <div>
+                                  <span>
+                                    {group.taskType === "review"
+                                      ? "完整复习"
+                                      : group.taskType === "remediation"
+                                        ? "补救学习"
+                                        : "首学"}
+                                    {group.difficulty ? ` · ${group.difficulty}` : ""}
+                                  </span>
+                                  <h3>{group.title}</h3>
+                                  <p>
+                                    {group.prerequisiteNames.length
+                                      ? `前置：${group.prerequisiteNames.join("、")} · `
+                                      : "无未满足前置 · "}
+                                    {group.minutes} 分钟 ·
+                                    {group.completed}/{group.tasks.length} 个步骤完成
+                                  </p>
+                                </div>
+                                <button
+                                  data-testid={`active-today-task-${dailyPlan.workspaceId}-${group.knowledgePointId || group.nextTask.id}`}
+                                  disabled={Boolean(busy) || complete}
+                                  onClick={() =>
+                                    enterTaskFromDailyPlan(
+                                      dailyPlan.workspaceId,
+                                      group.nextTask,
+                                      group.title,
+                                    )}
+                                >
+                                  {complete
+                                    ? "今日已完成"
+                                    : active
+                                      ? "继续学习"
+                                      : "开始学习"}
+                                </button>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="active-today__empty">
+                          <b>{dailyPlan.todayPlan?.date || isoAfterDays(0)} 没有新的首学任务</b>
+                          <span>
+                            {(dailyPlan.todayPlan?.projected_review_items || []).length > 0
+                              ? `预留了 ${dailyPlan.todayPlan.projected_review_items.length} 项完整复习，进入该计划教师后执行。`
+                              : "该计划今天没有安排，明天会继续按原顺序推进。"}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <button
-                      data-testid={`active-today-task-${group.knowledgePointId || group.nextTask.id}`}
-                      disabled={Boolean(busy) || complete}
-                      onClick={() =>
-                        run(
-                          `${active ? "继续" : "进入"} ${group.title}`,
-                          () => enterDailyTask(group.nextTask),
-                        )}
-                    >
-                      {complete ? "今日已完成" : active ? "继续学习" : "开始学习"}
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="active-today__empty">
-              <b>{selectedStudyDate} 没有待执行的首学任务</b>
-              <span>
-                {(selectedStudyDay?.projected_review_items || []).length > 0
-                  ? `当天预留了 ${(selectedStudyDay.projected_review_items || []).length} 项完整复习，进入教师后按复习队列执行。`
-                  : "可以切换其他日期，或查看完整计划。"}
-              </span>
-            </div>
-          )}
+                  )}
+                </section>
+              );
+            })}
+          </div>
         </article>
       )}
 
@@ -1534,7 +1721,10 @@ export function ActiveTeachingChainView({
         )}
       </article>
       {completionReport && (
-        <article className="active-chain__teacher" data-testid="active-completion-report">
+        <article
+          className={`active-chain__teacher ${showPlanDetails ? "" : "active-chain__is-hidden"}`}
+          data-testid="active-completion-report"
+        >
           <div className="active-chain__teacher-head">
             <div>
               <span className="active-chain__step">06 · 权威完成度报告</span>
