@@ -117,6 +117,8 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
         assert answer.status_code == 200, answer.text
         assert answer.json()["messages"][-1]["action"] == "grounded_answer"
         assert answer.json()["messages"][-1]["citations"]
+        assert "为什么这里要使用哈希映射" in answer.json()["messages"][-1]["content"]
+        assert "直接回答" in answer.json()["messages"][-1]["content"]
         assert answer.json()["state"]["current_teaching_step"] == "question_invitation"
         assert answer.json()["state"]["autonomy"] == {
             "mode": "teacher_led_question_dialogue",

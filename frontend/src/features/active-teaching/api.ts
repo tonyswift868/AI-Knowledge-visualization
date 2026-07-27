@@ -39,9 +39,21 @@ export type ActiveTeacherPersona = {
   name: string;
   prompt: string;
   teaching_style: string;
+  visual_profile_id: string;
+  visual_profile_name: string;
+  visual_manifest_url: string;
+  usage_count: number;
   is_default: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type ActiveTeacherVisualProfile = {
+  id: string;
+  name: string;
+  description: string;
+  manifest_url: string;
+  interactive: boolean;
 };
 
 async function parseResponse(response: Response) {
@@ -100,8 +112,13 @@ export async function activeTeacherPersonas(): Promise<ActiveTeacherPersona[]> {
   return payload.items || [];
 }
 
+export async function activeTeacherVisualProfiles(): Promise<ActiveTeacherVisualProfile[]> {
+  const payload = await activeRequest("/teacher-visual-profiles");
+  return payload.items || [];
+}
+
 export async function saveActiveTeacherPersona(
-  input: Pick<ActiveTeacherPersona, "name" | "prompt" | "teaching_style"> & {
+  input: Pick<ActiveTeacherPersona, "name" | "prompt" | "teaching_style" | "visual_profile_id"> & {
     id?: string;
     is_default?: boolean;
   },
@@ -115,6 +132,16 @@ export async function saveActiveTeacherPersona(
       body: JSON.stringify(input),
     },
   );
+}
+
+export async function deleteActiveTeacherPersona(id: string): Promise<{
+  deleted_id: string;
+  reassigned_task_count: number;
+  replacement: ActiveTeacherPersona;
+}> {
+  return activeRequest(`/teacher-personas/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function setActiveLearningTaskArchived(workspaceId: string, archived: boolean) {

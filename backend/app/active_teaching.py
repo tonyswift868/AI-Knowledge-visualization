@@ -42,6 +42,15 @@ UNDERSTOOD_MARKERS = ("懂了", "明白了", "理解了", "会了", "可以继�
 MAX_MATERIAL_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 5_000
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+TEACHER_VISUAL_PROFILES: dict[str, dict[str, Any]] = {
+    "teacher-02-blonde-fang-v9": {
+        "id": "teacher-02-blonde-fang-v9",
+        "name": "教师 02 · 金发虎牙小熊",
+        "description": "小熊软糖教学态与泳装聊天态共用同一套轻量互动角色。",
+        "manifest_url": "/teacher2d/original-ai-teacher-blonde-fang/manifest.json",
+        "interactive": True,
+    },
+}
 
 
 def _now() -> str:
@@ -172,6 +181,9 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             name TEXT NOT NULL,
             prompt TEXT NOT NULL,
             teaching_style TEXT NOT NULL DEFAULT '',
+            visual_profile_id TEXT NOT NULL DEFAULT '',
+            visual_profile_name TEXT NOT NULL DEFAULT '',
+            visual_manifest_url TEXT NOT NULL DEFAULT '',
             is_default INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -367,6 +379,21 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             connection.execute(
                 f"ALTER TABLE active_plan_tasks ADD COLUMN {column} {ddl}"
             )
+    existing_persona_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(active_teacher_personas)"
+        ).fetchall()
+    }
+    for column in (
+        "visual_profile_id",
+        "visual_profile_name",
+        "visual_manifest_url",
+    ):
+        if column not in existing_persona_columns:
+            connection.execute(
+                f"ALTER TABLE active_teacher_personas ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+            )
     existing_review_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(active_review_items)").fetchall()
@@ -424,12 +451,32 @@ def _init_schema(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
-def _teacher_persona_item(row: sqlite3.Row) -> dict[str, Any]:
+def _persona_usage_count(connection: sqlite3.Connection, persona_id: str) -> int:
+    count = 0
+    for row in connection.execute("SELECT payload FROM active_receipts").fetchall():
+        try:
+            payload = json.loads(row["payload"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if str(payload.get("teacher_persona_id") or "") == persona_id:
+            count += 1
+    return count
+
+
+def _teacher_persona_item(
+    row: sqlite3.Row,
+    *,
+    usage_count: int = 0,
+) -> dict[str, Any]:
     return {
         "id": str(row["id"]),
         "name": str(row["name"]),
         "prompt": str(row["prompt"]),
         "teaching_style": str(row["teaching_style"] or ""),
+        "visual_profile_id": str(row["visual_profile_id"] or ""),
+        "visual_profile_name": str(row["visual_profile_name"] or ""),
+        "visual_manifest_url": str(row["visual_manifest_url"] or ""),
+        "usage_count": usage_count,
         "is_default": bool(row["is_default"]),
         "created_at": str(row["created_at"]),
         "updated_at": str(row["updated_at"]),
@@ -444,8 +491,9 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
     ).fetchone():
         connection.execute(
             """INSERT INTO active_teacher_personas
-               (id,name,prompt,teaching_style,is_default,created_at,updated_at)
-               VALUES (?,?,?,?,1,?,?)""",
+               (id,name,prompt,teaching_style,visual_profile_id,visual_profile_name,
+                visual_manifest_url,is_default,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,1,?,?)""",
             (
                 "teacher_persona_iris_default",
                 "艾莉丝 · 主动陪练",
@@ -454,10 +502,24 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
                     "允许随时打断；先用生活语言建立直觉，再逐步进入术语、练习和独立验收。"
                 ),
                 "主动提问、短讲解、逐步撤除脚手架",
+                "teacher-02-blonde-fang-v9",
+                TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["name"],
+                TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["manifest_url"],
                 now,
                 now,
             ),
         )
+    connection.execute(
+        """UPDATE active_teacher_personas
+           SET visual_profile_id=?,visual_profile_name=?,visual_manifest_url=?,updated_at=?
+           WHERE id='teacher_persona_iris_default' AND visual_profile_id=''""",
+        (
+            "teacher-02-blonde-fang-v9",
+            TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["name"],
+            TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["manifest_url"],
+            now,
+        ),
+    )
     migrated_index = 0
     for receipt_row in connection.execute(
         "SELECT workspace_id,payload FROM active_receipts ORDER BY updated_at"
@@ -481,13 +543,17 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
             )
             connection.execute(
                 """INSERT INTO active_teacher_personas
-                   (id,name,prompt,teaching_style,is_default,created_at,updated_at)
-                   VALUES (?,?,?,?,0,?,?)""",
+                   (id,name,prompt,teaching_style,visual_profile_id,visual_profile_name,
+                    visual_manifest_url,is_default,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,0,?,?)""",
                 (
                     persona_id,
                     persona_name,
                     prompt[:2000],
                     str(payload.get("preferred_learning_style") or "")[:500],
+                    "",
+                    "",
+                    "",
                     now,
                     now,
                 ),
@@ -495,9 +561,16 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
         else:
             persona_id = str(persona_row["id"])
             persona_name = str(persona_row["name"])
-        if payload.get("teacher_persona_id") != persona_id:
-            payload["teacher_persona_id"] = persona_id
-            payload["teacher_persona_name"] = persona_name
+        canonical_persona = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+        ).fetchone()
+        if (
+            payload.get("teacher_persona_id") != persona_id
+            or payload.get("teacher_persona_name") != persona_name
+            or payload.get("teacher_visual_profile_id")
+            != str(canonical_persona["visual_profile_id"] or "")
+        ):
+            _apply_persona_to_payload(payload, canonical_persona)
             connection.execute(
                 "UPDATE active_receipts SET payload=? WHERE workspace_id=?",
                 (
@@ -516,7 +589,82 @@ def list_teacher_personas() -> dict[str, Any]:
             """SELECT * FROM active_teacher_personas
                ORDER BY is_default DESC,updated_at DESC,name"""
         ).fetchall()
-        return {"items": [_teacher_persona_item(row) for row in rows]}
+        return {
+            "items": [
+                _teacher_persona_item(
+                    row,
+                    usage_count=_persona_usage_count(connection, str(row["id"])),
+                )
+                for row in rows
+            ]
+        }
+
+
+@router.get("/teacher-visual-profiles")
+def list_teacher_visual_profiles() -> dict[str, Any]:
+    return {"items": list(TEACHER_VISUAL_PROFILES.values())}
+
+
+def _resolved_visual_profile(profile_id: Any) -> dict[str, Any]:
+    value = str(profile_id or "").strip()
+    if not value:
+        return {"id": "", "name": "", "manifest_url": ""}
+    profile = TEACHER_VISUAL_PROFILES.get(value)
+    if not profile:
+        _error("TEACHER_VISUAL_PROFILE_NOT_FOUND", "所选教师外观不存在", 422)
+    return profile
+
+
+def _apply_persona_to_payload(payload: dict[str, Any], row: sqlite3.Row) -> None:
+    payload.update(
+        {
+            "teacher_persona_id": str(row["id"]),
+            "teacher_persona_name": str(row["name"]),
+            "teacher_persona": str(row["prompt"]),
+            "teacher_visual_profile_id": str(row["visual_profile_id"] or ""),
+            "teacher_visual_profile_name": str(row["visual_profile_name"] or ""),
+            "teacher_visual_manifest_url": str(row["visual_manifest_url"] or ""),
+        }
+    )
+
+
+def _propagate_persona_to_references(
+    connection: sqlite3.Connection,
+    *,
+    source_persona_id: str,
+    target: sqlite3.Row,
+) -> None:
+    for table, key_column in (
+        ("active_receipts", "workspace_id"),
+        ("active_plans", "id"),
+    ):
+        payload_column = "payload" if table == "active_receipts" else "receipt"
+        rows = connection.execute(
+            f"SELECT {key_column},{payload_column} FROM {table}"
+        ).fetchall()
+        for item in rows:
+            payload = json.loads(item[payload_column])
+            if str(payload.get("teacher_persona_id") or "") != source_persona_id:
+                continue
+            _apply_persona_to_payload(payload, target)
+            connection.execute(
+                f"UPDATE {table} SET {payload_column}=? WHERE {key_column}=?",
+                (
+                    json.dumps(payload, ensure_ascii=False),
+                    item[key_column],
+                ),
+            )
+    for item in connection.execute(
+        "SELECT id,state FROM active_teaching_sessions"
+    ).fetchall():
+        state = json.loads(item["state"])
+        if str(state.get("teacher_persona_id") or "") != source_persona_id:
+            continue
+        _apply_persona_to_payload(state, target)
+        connection.execute(
+            "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+            (json.dumps(state, ensure_ascii=False), _now(), item["id"]),
+        )
 
 
 @router.post("/teacher-personas")
@@ -524,6 +672,7 @@ def create_teacher_persona(body: dict[str, Any] = Body(default_factory=dict)) ->
     name = str(body.get("name") or "").strip()
     prompt = str(body.get("prompt") or "").strip()
     teaching_style = str(body.get("teaching_style") or "").strip()
+    visual = _resolved_visual_profile(body.get("visual_profile_id"))
     if not name or not prompt:
         _error("TEACHER_PERSONA_REQUIRED", "请填写教师人设名称和人设说明", 422)
     if len(name) > 80 or len(prompt) > 2000 or len(teaching_style) > 500:
@@ -537,9 +686,21 @@ def create_teacher_persona(body: dict[str, Any] = Body(default_factory=dict)) ->
             connection.execute("UPDATE active_teacher_personas SET is_default=0")
         connection.execute(
             """INSERT INTO active_teacher_personas
-               (id,name,prompt,teaching_style,is_default,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?)""",
-            (persona_id, name, prompt, teaching_style, int(is_default), now, now),
+               (id,name,prompt,teaching_style,visual_profile_id,visual_profile_name,
+                visual_manifest_url,is_default,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                persona_id,
+                name,
+                prompt,
+                teaching_style,
+                visual["id"],
+                visual["name"],
+                visual["manifest_url"],
+                int(is_default),
+                now,
+                now,
+            ),
         )
         connection.commit()
         return _teacher_persona_item(
@@ -566,6 +727,9 @@ def update_teacher_persona(
         teaching_style = str(
             body.get("teaching_style", current["teaching_style"]) or ""
         ).strip()
+        visual = _resolved_visual_profile(
+            body.get("visual_profile_id", current["visual_profile_id"])
+        )
         if not name or not prompt:
             _error("TEACHER_PERSONA_REQUIRED", "请填写教师人设名称和人设说明", 422)
         if len(name) > 80 or len(prompt) > 2000 or len(teaching_style) > 500:
@@ -575,23 +739,74 @@ def update_teacher_persona(
             connection.execute("UPDATE active_teacher_personas SET is_default=0")
         connection.execute(
             """UPDATE active_teacher_personas
-               SET name=?,prompt=?,teaching_style=?,is_default=?,updated_at=?
+               SET name=?,prompt=?,teaching_style=?,visual_profile_id=?,
+                   visual_profile_name=?,visual_manifest_url=?,is_default=?,updated_at=?
                WHERE id=?""",
             (
                 name,
                 prompt,
                 teaching_style,
+                visual["id"],
+                visual["name"],
+                visual["manifest_url"],
                 int(is_default),
                 _now(),
                 persona_id,
             ),
         )
+        updated = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+        ).fetchone()
+        _propagate_persona_to_references(
+            connection,
+            source_persona_id=persona_id,
+            target=updated,
+        )
         connection.commit()
         return _teacher_persona_item(
-            connection.execute(
-                "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
-            ).fetchone()
+            updated,
+            usage_count=_persona_usage_count(connection, persona_id),
         )
+
+
+@router.delete("/teacher-personas/{persona_id}")
+def delete_teacher_persona(persona_id: str) -> dict[str, Any]:
+    with _connect() as connection:
+        _sync_teacher_persona_library(connection)
+        current = connection.execute(
+            "SELECT * FROM active_teacher_personas WHERE id=?", (persona_id,)
+        ).fetchone()
+        if not current:
+            _error("TEACHER_PERSONA_NOT_FOUND", "教师人设不存在", 404)
+        if bool(current["is_default"]):
+            _error("DEFAULT_TEACHER_PERSONA_REQUIRED", "默认教师不能删除", 409)
+        replacement = connection.execute(
+            """SELECT * FROM active_teacher_personas
+               WHERE id<>? ORDER BY is_default DESC,updated_at DESC LIMIT 1""",
+            (persona_id,),
+        ).fetchone()
+        if not replacement:
+            _error("LAST_TEACHER_PERSONA_REQUIRED", "至少需要保留一个教师角色", 409)
+        usage_count = _persona_usage_count(connection, persona_id)
+        _propagate_persona_to_references(
+            connection,
+            source_persona_id=persona_id,
+            target=replacement,
+        )
+        connection.execute(
+            "DELETE FROM active_teacher_personas WHERE id=?", (persona_id,)
+        )
+        connection.commit()
+        return {
+            "deleted_id": persona_id,
+            "reassigned_task_count": usage_count,
+            "replacement": _teacher_persona_item(
+                replacement,
+                usage_count=_persona_usage_count(
+                    connection, str(replacement["id"])
+                ),
+            ),
+        }
 
 
 def _error(code: str, message: str, status: int = 400, **details: Any) -> None:
@@ -1101,6 +1316,15 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "teacher_persona_id": str(payload.get("teacher_persona_id") or "")[:120],
         "teacher_persona_name": str(payload.get("teacher_persona_name") or "")[:80],
         "teacher_persona": str(payload.get("teacher_persona") or "")[:2000],
+        "teacher_visual_profile_id": str(
+            payload.get("teacher_visual_profile_id") or ""
+        )[:120],
+        "teacher_visual_profile_name": str(
+            payload.get("teacher_visual_profile_name") or ""
+        )[:120],
+        "teacher_visual_manifest_url": str(
+            payload.get("teacher_visual_manifest_url") or ""
+        )[:500],
         "learner_interests": str(payload.get("learner_interests") or "")[:1000],
         "allow_schedule_suggestions": bool(payload.get("allow_schedule_suggestions", True)),
         "material_ids": list(dict.fromkeys(str(item) for item in payload["material_ids"])),
@@ -1129,9 +1353,7 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 (receipt["teacher_persona"],),
             ).fetchone()
         if persona_row:
-            receipt["teacher_persona_id"] = str(persona_row["id"])
-            receipt["teacher_persona_name"] = str(persona_row["name"])
-            receipt["teacher_persona"] = str(persona_row["prompt"])
+            _apply_persona_to_payload(receipt, persona_row)
         known = {
             row["id"]
             for row in connection.execute(
@@ -2569,9 +2791,15 @@ async def _render_teacher_content(
         "learner_context": state.get("learner_context") or {},
         "learner_mastery_model": state.get("learner_mastery_model") or {},
         "persistent_memory": state.get("teacher_memory") or {},
+        "latest_learner_question": str(
+            (state.get("teacher_memory") or {}).get("last_learner_message") or ""
+        ),
         "allowed_evidence": evidence,
         "rules": [
             "Rewrite the draft as concise, supportive Chinese teaching language.",
+            "When latest_learner_question is present, answer that exact question in the first paragraph; do not merely praise it, repeat the knowledge-point title, or paste a source quote.",
+            "For why, how, meaning, or example questions, give one concrete micro-example grounded in the evidence. Clearly label an analogy or teaching example when it is not source text.",
+            "If learner_context says the learner has no coding foundation, do not require or print code unless the learner explicitly asks for code.",
             "Teach exactly one current objective per turn; never enumerate the whole day's knowledge list.",
             "Use no more than three short paragraphs and normally stay within 500 Chinese characters.",
             "End with exactly one clear question or action the learner can answer now.",
@@ -3107,6 +3335,9 @@ async def start_session(
             "teacher_persona_id": receipt.get("teacher_persona_id") or "",
             "teacher_persona_name": receipt.get("teacher_persona_name") or "艾莉丝",
             "teacher_persona": receipt.get("teacher_persona") or "",
+            "teacher_visual_profile_id": receipt.get("teacher_visual_profile_id") or "",
+            "teacher_visual_profile_name": receipt.get("teacher_visual_profile_name") or "",
+            "teacher_visual_manifest_url": receipt.get("teacher_visual_manifest_url") or "",
             "learner_context": {
                 "foundation": receipt.get("current_foundation") or receipt.get("current_level"),
                 "interests": receipt.get("learner_interests") or "",
@@ -3684,13 +3915,24 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         elif is_explicit_question:
             action = "grounded_answer"
             citations = question_hits
+            learner_context = state.get("learner_context") or {}
+            interests = str(learner_context.get("interests") or "").strip()
+            asks_for_example = any(
+                marker in message
+                for marker in ("例子", "举例", "怎么理解", "什么意思", "为什么", "怎么做")
+            )
+            analogy = (
+                f"\n\n帮助理解的小例子（不是资料原文）：可以先把它放进“{interests[:40]}”这个你熟悉的场景，"
+                "只看输入、处理过程和可验证结果三步；我会在下一句把这个类比逐项映射回资料。"
+                if asks_for_example and interests
+                else ""
+            )
             content = (
-                f"你问得很好。先把它和当前知识点连起来：{point['explanation'][:240]}"
-                f"\n\n资料中直接相关的依据是：{question_hits[0]['quote'][:320]}"
-                "\n\n我只会把上面的原文当作已确认事实；如果你的问题要求的结论没有出现在证据里，"
-                "我会把它标成待验证，并带你补资料、设计验证或换一种可由现有资料回答的问法。"
-                "\n\n如果这还没有解决你卡住的那一步，请继续追问；"
-                "你确认清楚后再说“开始练习”，我不会机械跳到下一步。"
+                f"你问的是：“{message[:240]}”\n\n"
+                f"直接回答：结合当前知识点，{point['explanation'][:280]}"
+                f"\n\n资料依据：{question_hits[0]['quote'][:360]}"
+                f"{analogy}"
+                "\n\n这是否回答了你真正卡住的那一步？如果没有，请指出哪一句不清楚，我会换一种讲法。"
             )
             state["current_teaching_step"] = "question_invitation"
             state["next_action"] = "answer_question_or_start_practice"

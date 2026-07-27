@@ -36,11 +36,11 @@ export function illustrationForTeacherState(state: TeacherAnimationState) {
 
 export function TeacherCompanionPortrait({
   teacherName = "艾莉丝",
-  spineManifestUrl,
+  presentationManifestUrl,
   state = "idle",
   }: {
   teacherName?: string
-  spineManifestUrl?: string
+  presentationManifestUrl?: string
   state?: TeacherCompanionState
 }) {
   const [runtime, setRuntime] = useState<"image2d" | "dragonbones" | "error" | "loading">("loading")
@@ -80,7 +80,7 @@ export function TeacherCompanionPortrait({
       </div>
       <div className="teacher-companion-character">
         <div className="teacher-companion-halo" aria-hidden="true" />
-        <Teacher2DStage teacherName={teacherName} state={state} compact onRuntimeChange={setRuntime} />
+        <Teacher2DStage teacherName={teacherName} state={state} compact manifestUrl={presentationManifestUrl} onRuntimeChange={setRuntime} />
         <div className="teacher-companion-shadow" aria-hidden="true" />
       </div>
       <div className="teacher-companion-status">

@@ -468,12 +468,26 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         assert library.status_code == 200, library.text
         items = library.json()["items"]
         migrated = next(item for item in items if item["prompt"] == old_prompt)
+        default_persona = next(item for item in items if item["is_default"])
         assert migrated["name"].startswith("已保存教师人设")
-        assert any(item["is_default"] for item in items)
+        assert default_persona["visual_profile_id"] == "teacher-02-blonde-fang-v9"
+        assert default_persona["visual_manifest_url"].endswith("/manifest.json")
         migrated_snapshot = client.get(
             "/api/active-teaching/workspaces/persona-migration/snapshot"
         ).json()
         assert migrated_snapshot["receipt"]["teacher_persona_id"] == migrated["id"]
+
+        bound = client.patch(
+            f"/api/active-teaching/teacher-personas/{migrated['id']}",
+            json={
+                "name": migrated["name"],
+                "prompt": old_prompt,
+                "teaching_style": migrated["teaching_style"],
+                "visual_profile_id": "teacher-02-blonde-fang-v9",
+            },
+        )
+        assert bound.status_code == 200, bound.text
+        assert bound.json()["visual_profile_name"] == "教师 02 · 金发虎牙小熊"
 
         updated = client.put(
             "/api/active-teaching/workspaces/persona-migration/receipt",
@@ -486,6 +500,27 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         assert updated.status_code == 200, updated.text
         assert updated.json()["teacher_persona_id"] == migrated["id"]
         assert updated.json()["teacher_persona"] == old_prompt
+        assert (
+            updated.json()["teacher_visual_profile_id"]
+            == "teacher-02-blonde-fang-v9"
+        )
+
+        deleted = client.delete(
+            f"/api/active-teaching/teacher-personas/{migrated['id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["reassigned_task_count"] == 1
+        after_delete = client.get(
+            "/api/active-teaching/workspaces/persona-migration/snapshot"
+        ).json()
+        assert (
+            after_delete["receipt"]["teacher_persona_id"]
+            == default_persona["id"]
+        )
+        cannot_delete_default = client.delete(
+            f"/api/active-teaching/teacher-personas/{default_persona['id']}"
+        )
+        assert cannot_delete_default.status_code == 409
 
 
 def test_teacher_memory_survives_switching_to_another_knowledge_point(tmp_path):

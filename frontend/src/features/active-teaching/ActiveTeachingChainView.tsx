@@ -1319,7 +1319,9 @@ export function ActiveTeachingChainView({
             >
               {!teacherPersonas.length && <option value="">正在读取角色库…</option>}
               {teacherPersonas.map((item) => (
-                <option value={item.id} key={item.id}>{item.name}{item.is_default ? "（默认）" : ""}</option>
+                <option value={item.id} key={item.id}>
+                  {item.name}{item.is_default ? "（默认）" : ""} · {item.visual_profile_name || "系统默认外观"}
+                </option>
               ))}
             </select>
             <small>
@@ -1685,6 +1687,7 @@ export function ActiveTeachingChainView({
               <aside className="active-classroom__teacher">
                 <TeacherCompanionPortrait
                   teacherName={session.state.teacher_persona_name || "艾莉丝"}
+                  presentationManifestUrl={session.state.teacher_visual_manifest_url || undefined}
                   state={teacherPresentationState}
                 />
                 <div className="active-classroom__focus" data-testid="active-current-knowledge-point">

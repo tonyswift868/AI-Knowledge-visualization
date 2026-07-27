@@ -1,10 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
-import { Check, ExternalLink, FileDown, RotateCcw, Upload } from "lucide-react"
+import { Check, ExternalLink, FileDown, RotateCcw, Trash2, Upload } from "lucide-react"
 import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarMorph } from "./api"
 import {
   activeTeacherPersonas,
+  activeTeacherVisualProfiles,
+  deleteActiveTeacherPersona,
   saveActiveTeacherPersona,
   type ActiveTeacherPersona,
+  type ActiveTeacherVisualProfile,
 } from "../active-teaching/api"
 import { ParametricCardPreview } from "./ParametricCardPreview"
 import { TeacherCompanionPortrait, TeacherCompanionStage, type TeacherCompanionState } from "./TeacherCompanionStage"
@@ -133,10 +136,12 @@ export function TeacherAvatarStudio({
   const [spineNotice, setSpineNotice] = useState("")
   const [reviewMode, setReviewMode] = useState<`mother-${TeacherMotherImageId}` | "skeleton">("mother-blonde-fang-teaching")
   const [personas, setPersonas] = useState<ActiveTeacherPersona[]>([])
+  const [visualProfiles, setVisualProfiles] = useState<ActiveTeacherVisualProfile[]>([])
   const [personaId, setPersonaId] = useState("")
   const [personaName, setPersonaName] = useState("")
   const [personaPrompt, setPersonaPrompt] = useState("")
   const [personaStyle, setPersonaStyle] = useState("")
+  const [personaVisualId, setPersonaVisualId] = useState("")
   const [personaNotice, setPersonaNotice] = useState("")
   // Prefer a native Koikatsu/KKBP export when one is available.  PMX keeps
   // the game's actual body and skeleton instead of falling back to the
@@ -195,14 +200,16 @@ export function TeacherAvatarStudio({
   useEffect(() => { if (active) setMorph(normalizeMorph(active.morph)) }, [active?.model_id])
   useEffect(() => {
     if (compact) return
-    void activeTeacherPersonas().then(value => {
+    void Promise.all([activeTeacherPersonas(), activeTeacherVisualProfiles()]).then(([value, profiles]) => {
       setPersonas(value)
+      setVisualProfiles(profiles)
       const selected = value.find(item => item.is_default) || value[0]
       if (selected) {
         setPersonaId(selected.id)
         setPersonaName(selected.name)
         setPersonaPrompt(selected.prompt)
         setPersonaStyle(selected.teaching_style)
+        setPersonaVisualId(selected.visual_profile_id)
       }
     }).catch(error => setPersonaNotice(error instanceof Error ? error.message : "教师人设加载失败"))
   }, [compact])
@@ -212,7 +219,6 @@ export function TeacherAvatarStudio({
       <section className="teacher-avatar-studio compact">
         <TeacherCompanionPortrait
           teacherName={spineTeacher?.display_name || "艾莉丝"}
-          spineManifestUrl={configuredSpineManifestUrl || spineTeacher?.manifest_url}
           state={presentationState}
         />
       </section>
@@ -290,6 +296,7 @@ export function TeacherAvatarStudio({
     setPersonaName(selected?.name || "")
     setPersonaPrompt(selected?.prompt || "")
     setPersonaStyle(selected?.teaching_style || "")
+    setPersonaVisualId(selected?.visual_profile_id || "")
     setPersonaNotice("")
   }
 
@@ -302,16 +309,51 @@ export function TeacherAvatarStudio({
         name: personaName,
         prompt: personaPrompt,
         teaching_style: personaStyle,
+        visual_profile_id: personaVisualId,
       })
       const next = await activeTeacherPersonas()
       setPersonas(next)
-      selectPersona(saved.id)
+      setPersonaId(saved.id)
       setPersonaName(saved.name)
       setPersonaPrompt(saved.prompt)
       setPersonaStyle(saved.teaching_style)
+      setPersonaVisualId(saved.visual_profile_id)
       setPersonaNotice(personaId ? "教师人设已更新。" : "新教师人设已加入角色库。")
     } catch (error) {
       setPersonaNotice(error instanceof Error ? error.message : "教师人设保存失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deletePersona() {
+    const selected = personas.find(item => item.id === personaId)
+    if (!selected || selected.is_default) return
+    const usage = selected.usage_count
+      ? `它正被 ${selected.usage_count} 个学习任务使用；删除后这些任务会安全切换到默认教师。`
+      : "它当前没有绑定学习任务。"
+    if (!window.confirm(`确定删除“${selected.name}”吗？${usage}`)) return
+    try {
+      setBusy(true)
+      setPersonaNotice("")
+      const result = await deleteActiveTeacherPersona(selected.id)
+      const next = await activeTeacherPersonas()
+      setPersonas(next)
+      const replacement = next.find(item => item.id === result.replacement.id)
+        || next.find(item => item.is_default)
+        || next[0]
+      if (replacement) {
+        setPersonaId(replacement.id)
+        setPersonaName(replacement.name)
+        setPersonaPrompt(replacement.prompt)
+        setPersonaStyle(replacement.teaching_style)
+        setPersonaVisualId(replacement.visual_profile_id)
+      }
+      setPersonaNotice(result.reassigned_task_count
+        ? `人设已删除，${result.reassigned_task_count} 个学习任务已切换到默认教师。`
+        : "人设已删除。")
+    } catch (error) {
+      setPersonaNotice(error instanceof Error ? error.message : "教师人设删除失败")
     } finally {
       setBusy(false)
     }
@@ -363,15 +405,37 @@ export function TeacherAvatarStudio({
             >
               <b>{item.name}</b>
               <small>{item.is_default ? "默认人设" : item.teaching_style || "自定义人设"}</small>
+              <small>{item.visual_profile_name || "未绑定课堂外观"} · {item.usage_count || 0} 个任务</small>
             </button>)}
           </nav>
           <div className="teacher-persona-library__editor">
             <label>角色名称<input value={personaName} onChange={event => setPersonaName(event.target.value)} placeholder="例如：艾莉丝 · 零基础陪练" /></label>
             <label>教学风格<input value={personaStyle} onChange={event => setPersonaStyle(event.target.value)} placeholder="例如：短讲解、生活类比、逐步撤除提示" /></label>
+            <label>
+              绑定课堂外观
+              <select value={personaVisualId} onChange={event => setPersonaVisualId(event.target.value)}>
+                <option value="">未绑定（课堂使用系统默认外观）</option>
+                {visualProfiles.map(profile => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+              <small>选择“教师 02 · 金发虎牙小熊”后，这个人设进入课堂时就会使用她的小熊教学态与泳装聊天态。</small>
+            </label>
             <label>完整人设<textarea value={personaPrompt} onChange={event => setPersonaPrompt(event.target.value)} placeholder="说明她怎样主动提问、如何照顾零基础、何时进入练习与验收。" /></label>
-            <button type="button" onClick={() => void savePersona()} disabled={busy || !personaName.trim() || !personaPrompt.trim()}>
-              {busy ? "正在保存…" : personaId ? "保存人设修改" : "加入角色库"}
-            </button>
+            <div className="teacher-persona-library__actions">
+              <button
+                type="button"
+                className="danger"
+                onClick={() => void deletePersona()}
+                disabled={busy || !personaId || personas.find(item => item.id === personaId)?.is_default}
+                title={personas.find(item => item.id === personaId)?.is_default ? "默认教师不能删除" : "删除当前人设"}
+              >
+                <Trash2 size={14} />删除人设
+              </button>
+              <button type="button" onClick={() => void savePersona()} disabled={busy || !personaName.trim() || !personaPrompt.trim()}>
+                {busy ? "正在保存…" : personaId ? "保存人设修改" : "加入角色库"}
+              </button>
+            </div>
           </div>
         </div>
         {personaNotice && <div className="teacher-avatar-notice" role="status">{personaNotice}</div>}
