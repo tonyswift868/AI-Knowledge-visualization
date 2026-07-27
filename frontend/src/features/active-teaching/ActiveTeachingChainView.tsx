@@ -814,6 +814,14 @@ export function ActiveTeachingChainView({
                   个要求编码的知识点已绑定系统验证题目
                 </span>
               )}
+              {(graph.assessment.verification?.system_verified_problem_point_count || 0) > 0 && (
+                <span data-testid="active-independent-oracle-readiness">
+                  独立答案依据：
+                  {graph.assessment.verification?.independent_oracle_problem_point_count || 0}/
+                  {graph.assessment.verification?.executable_required_point_count || 0}
+                  个编码知识点具备来源与独立测试证据
+                </span>
+              )}
               {(graph.assessment.readiness?.risks || []).map((risk: string) => (
                 <span key={risk}>{risk}</span>
               ))}

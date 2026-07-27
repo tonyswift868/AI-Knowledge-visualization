@@ -423,6 +423,7 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
         )
     }
     verified_executable_point_ids: set[str] = set()
+    independently_verified_executable_point_ids: set[str] = set()
     if connection.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type='table' AND name='active_practice_problem_specs'"""
@@ -437,9 +438,31 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
             ).fetchall()
             if str(row["knowledge_point_id"]) in executable_point_ids
         }
+        spec_columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(active_practice_problem_specs)"
+            ).fetchall()
+        }
+        if "verification_scope" in spec_columns:
+            independently_verified_executable_point_ids = {
+                str(row["knowledge_point_id"])
+                for row in connection.execute(
+                    """SELECT DISTINCT knowledge_point_id
+                       FROM active_practice_problem_specs
+                       WHERE workspace_id=? AND reference_status='system_verified'
+                         AND verification_scope='independent_oracle'""",
+                    (workspace_id,),
+                ).fetchall()
+                if str(row["knowledge_point_id"]) in executable_point_ids
+            }
     executable_ready = (
         not executable_point_ids
         or executable_point_ids <= verified_executable_point_ids
+    )
+    independent_verification_ready = (
+        not executable_point_ids
+        or executable_point_ids <= independently_verified_executable_point_ids
     )
     confidence_counts: dict[str, int] = {}
     for estimate in estimates:
@@ -461,6 +484,11 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
         risks.append(
             "资料要求编程或可执行验收，但仍有知识点缺少经系统运行验证的题目规格与测试；"
             "可以先学习概念，不能宣称已完成独立编码验收。"
+        )
+    elif not independent_verification_ready:
+        risks.append(
+            "可执行题目已通过随附测试，但测试答案缺少独立来源或复核证据；"
+            "可以练习，不能据此宣称完整掌握。"
         )
     evidence_ready = bool(point_count and evidence_covered == point_count)
     graph["assessment"] = {
@@ -489,6 +517,9 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
             "system_verified_problem_point_count": len(
                 verified_executable_point_ids
             ),
+            "independent_oracle_problem_point_count": len(
+                independently_verified_executable_point_ids
+            ),
             "executable_verification_coverage_ratio": round(
                 len(verified_executable_point_ids)
                 / max(1, len(executable_point_ids)),
@@ -497,17 +528,21 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
             if executable_point_ids
             else 1.0,
             "executable_verification_ready": executable_ready,
+            "independent_verification_ready": independent_verification_ready,
         },
         "capabilities": {
             "source_grounded_teaching": evidence_ready,
             "executable_practice": executable_ready,
-            "verified_completion": evidence_ready and executable_ready,
+            "verified_completion": (
+                evidence_ready and executable_ready and independent_verification_ready
+            ),
         },
         "readiness": {
             "status": (
                 "ready"
                 if evidence_ready
                 and executable_ready
+                and independent_verification_ready
                 and extraction_mode == "provider_grounded"
                 else "usable_with_review"
                 if evidence_ready

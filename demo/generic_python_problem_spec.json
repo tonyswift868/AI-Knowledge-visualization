@@ -8,6 +8,15 @@
       "entrypoint": "solve",
       "prompt": "实现 solve(values)，返回整数列表中所有元素的和。空列表返回 0。",
       "reference_status": "verified",
+      "source_provenance": {
+        "kind": "user_authored",
+        "attribution": "MentorFlow generic code-practice fixture"
+      },
+      "test_oracle": {
+        "status": "independently_verified",
+        "method": "按整数加法定义逐项人工复核，并用 Python 内置 sum 交叉核对",
+        "evidence": "sample、空列表、正负抵消与混合整数四组互异输入"
+      },
       "reference_solution": "def solve(values):\n    total = 0\n    for value in values:\n        total += value\n    return total",
       "hints": [
         "先准备一个保存累计结果的变量，并逐个读取列表元素。",

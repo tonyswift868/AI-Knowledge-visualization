@@ -38,6 +38,8 @@ def _init_code_schema(connection) -> None:
             reference_solution TEXT NOT NULL,
             reference_status TEXT NOT NULL,
             reference_validation TEXT NOT NULL DEFAULT '{}',
+            source_provenance TEXT NOT NULL DEFAULT '{}',
+            verification_scope TEXT NOT NULL DEFAULT 'bundle_consistency',
             source_evidence TEXT NOT NULL,
             test_bundle_hash TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -103,6 +105,16 @@ def _init_code_schema(connection) -> None:
         connection.execute(
             """ALTER TABLE active_practice_problem_specs
                ADD COLUMN reference_validation TEXT NOT NULL DEFAULT '{}'"""
+        )
+    if "source_provenance" not in spec_columns:
+        connection.execute(
+            """ALTER TABLE active_practice_problem_specs
+               ADD COLUMN source_provenance TEXT NOT NULL DEFAULT '{}'"""
+        )
+    if "verification_scope" not in spec_columns:
+        connection.execute(
+            """ALTER TABLE active_practice_problem_specs
+               ADD COLUMN verification_scope TEXT NOT NULL DEFAULT 'bundle_consistency'"""
         )
 
 
@@ -177,6 +189,8 @@ def _public_problem(connection, row) -> dict[str, Any]:
         "prompt": row["prompt"],
         "reference_status": row["reference_status"],
         "reference_validation": json.loads(row["reference_validation"]),
+        "source_provenance": json.loads(row["source_provenance"]),
+        "verification_scope": row["verification_scope"],
         "source_evidence": json.loads(row["source_evidence"]),
         "test_bundle_hash": row["test_bundle_hash"],
         "test_summary": {
@@ -275,6 +289,91 @@ def import_problem_specs(workspace_id: str, body: dict[str, Any]) -> dict[str, A
                     f"“{point_name}”没有由资料明确声明的参考实现，不能开始系统校验。",
                     422,
                 )
+            source_provenance = raw.get("source_provenance") or {}
+            if not isinstance(source_provenance, dict):
+                _error(
+                    "PROBLEM_SOURCE_PROVENANCE_INVALID",
+                    f"“{point_name}”的 source_provenance 必须是对象。",
+                    422,
+                )
+            source_kind = str(source_provenance.get("kind") or "").strip()
+            if source_kind and source_kind not in {
+                "user_authored",
+                "official",
+                "open_source",
+            }:
+                _error(
+                    "PROBLEM_SOURCE_KIND_INVALID",
+                    f"“{point_name}”的来源类型无效：{source_kind}",
+                    422,
+                )
+            if source_kind in {"official", "open_source"} and not str(
+                source_provenance.get("url") or ""
+            ).strip():
+                _error(
+                    "PROBLEM_SOURCE_URL_REQUIRED",
+                    f"“{point_name}”的外部来源缺少 URL。",
+                    422,
+                )
+            if source_kind and not str(
+                source_provenance.get("attribution") or ""
+            ).strip():
+                _error(
+                    "PROBLEM_SOURCE_ATTRIBUTION_REQUIRED",
+                    f"“{point_name}”的来源缺少 attribution。",
+                    422,
+                )
+            if source_kind == "open_source":
+                missing = [
+                    field
+                    for field in ("revision", "license", "attribution")
+                    if not str(source_provenance.get(field) or "").strip()
+                ]
+                if missing:
+                    _error(
+                        "PROBLEM_OPEN_SOURCE_PROVENANCE_REQUIRED",
+                        f"“{point_name}”的开源来源缺少：{', '.join(missing)}。",
+                        422,
+                    )
+            test_oracle = raw.get("test_oracle") or {}
+            if not isinstance(test_oracle, dict):
+                _error(
+                    "PROBLEM_TEST_ORACLE_INVALID",
+                    f"“{point_name}”的 test_oracle 必须是对象。",
+                    422,
+                )
+            oracle_status = str(test_oracle.get("status") or "").strip()
+            if oracle_status and oracle_status not in {
+                "unverified",
+                "independently_verified",
+            }:
+                _error(
+                    "PROBLEM_TEST_ORACLE_STATUS_INVALID",
+                    f"“{point_name}”的测试依据状态无效：{oracle_status}",
+                    422,
+                )
+            independent_oracle = oracle_status == "independently_verified"
+            if independent_oracle:
+                if not source_kind:
+                    _error(
+                        "PROBLEM_INDEPENDENT_ORACLE_PROVENANCE_REQUIRED",
+                        f"“{point_name}”声明了独立测试依据，但缺少可追踪来源。",
+                        422,
+                    )
+                missing = [
+                    field
+                    for field in ("method", "evidence")
+                    if not str(test_oracle.get(field) or "").strip()
+                ]
+                if missing:
+                    _error(
+                        "PROBLEM_TEST_ORACLE_EVIDENCE_REQUIRED",
+                        f"“{point_name}”的独立测试依据缺少：{', '.join(missing)}。",
+                        422,
+                    )
+            verification_scope = (
+                "independent_oracle" if independent_oracle else "bundle_consistency"
+            )
             canonical_tests = []
             seen_inputs: set[str] = set()
             for ordinal, test in enumerate(tests):
@@ -351,6 +450,8 @@ def import_problem_specs(workspace_id: str, body: dict[str, Any]) -> dict[str, A
             reference_validation = {
                 "validator": "mentorflow-python-isolated-v1",
                 "source_claim": source_reference_status,
+                "verification_scope": verification_scope,
+                "test_oracle": test_oracle,
                 "test_bundle_hash": bundle_hash,
                 "passed_count": reference_passed,
                 "total_count": len(canonical_tests),
@@ -366,15 +467,18 @@ def import_problem_specs(workspace_id: str, body: dict[str, Any]) -> dict[str, A
             connection.execute(
                 """INSERT INTO active_practice_problem_specs
                     (id,workspace_id,knowledge_point_id,material_id,title,language,entrypoint,
-                    prompt,hints,reference_solution,reference_status,reference_validation,source_evidence,
-                    test_bundle_hash,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    prompt,hints,reference_solution,reference_status,reference_validation,
+                    source_provenance,verification_scope,source_evidence,test_bundle_hash,
+                    created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(workspace_id,knowledge_point_id,language) DO UPDATE SET
                      material_id=excluded.material_id,title=excluded.title,
                      entrypoint=excluded.entrypoint,prompt=excluded.prompt,hints=excluded.hints,
                      reference_solution=excluded.reference_solution,
                      reference_status=excluded.reference_status,
                      reference_validation=excluded.reference_validation,
+                     source_provenance=excluded.source_provenance,
+                     verification_scope=excluded.verification_scope,
                      source_evidence=excluded.source_evidence,
                      test_bundle_hash=excluded.test_bundle_hash,updated_at=excluded.updated_at""",
                 (
@@ -390,6 +494,8 @@ def import_problem_specs(workspace_id: str, body: dict[str, Any]) -> dict[str, A
                     reference_solution,
                     reference_status,
                     _safe_json(reference_validation, "reference_validation"),
+                    _safe_json(source_provenance, "source_provenance"),
+                    verification_scope,
                     _safe_json(
                         _evidence_with_source_files(
                             connection,

@@ -212,8 +212,10 @@ def test_coding_acceptance_requires_system_verified_problem_specs(tmp_path):
         assert assessment["verification"] == {
             "executable_required_point_count": 1,
             "system_verified_problem_point_count": 0,
+            "independent_oracle_problem_point_count": 0,
             "executable_verification_coverage_ratio": 0.0,
             "executable_verification_ready": False,
+            "independent_verification_ready": False,
         }
         assert assessment["capabilities"]["source_grounded_teaching"] is True
         assert assessment["capabilities"]["executable_practice"] is False
@@ -290,6 +292,75 @@ def test_hot150_metadata_can_be_planned_but_not_claim_verified_code_completion(t
             ]
             is False
         )
+
+
+def test_hot150_canary_specs_are_attributed_and_independently_verified(tmp_path):
+    configure_orm(tmp_path / "hot150-canary.db")
+    workspace = "hot150-canary"
+    start = date.today()
+    with TestClient(app) as client:
+        learning = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={
+                "file": (
+                    "leetcode_top_interview_150_zh.md",
+                    (ROOT / "demo" / "leetcode_top_interview_150_zh.md").read_bytes(),
+                    "text/markdown",
+                )
+            },
+        ).json()
+        specs = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={
+                "file": (
+                    "leetcode_top_interview_150_canary_specs.json",
+                    (
+                        ROOT
+                        / "demo"
+                        / "leetcode_top_interview_150_canary_specs.json"
+                    ).read_bytes(),
+                    "application/json",
+                )
+            },
+        ).json()
+        receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(
+                learning["id"],
+                start=start,
+                deadline=start + timedelta(days=16),
+            ),
+        )
+        assert receipt.status_code == 200, receipt.text
+        graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert graph.status_code == 200, graph.text
+        imported = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/problems/import",
+            json={"material_id": specs["id"]},
+        )
+        assert imported.status_code == 200, imported.text
+        items = imported.json()["items"]
+        assert len(items) == 3
+        assert all(item["reference_status"] == "system_verified" for item in items)
+        assert all(item["verification_scope"] == "independent_oracle" for item in items)
+        assert {
+            item["source_provenance"]["license"] for item in items
+        } == {"MIT"}
+        refreshed = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map"
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        verification = refreshed.json()["assessment"]["verification"]
+        # All three canary problems are executable practice. Only “有效的括号”
+        # has an explicitly executable acceptance method in the source graph,
+        # so readiness coverage deliberately counts one rather than inflating it.
+        assert verification["system_verified_problem_point_count"] == 1
+        assert verification["independent_oracle_problem_point_count"] == 1
+        assert verification["executable_verification_ready"] is False
+        assert verification["independent_verification_ready"] is False
 
 
 def test_graph_regeneration_invalidates_derived_state_but_preserves_inputs(tmp_path):

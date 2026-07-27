@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "problem_specs": [
+    {
+      "knowledge_point_name": "多数元素",
+      "title": "多数元素：投票与验证",
+      "language": "python",
+      "entrypoint": "solve",
+      "prompt": "给定一个非空整数列表，其中某个值出现次数超过一半。实现 solve(nums) 返回该多数元素。",
+      "reference_status": "verified",
+      "source_provenance": {
+        "kind": "open_source",
+        "url": "https://github.com/LeetCode-Top-Interview-150/LeetCode-Top-Interview-150/blob/65c49122a5c7ffc9b42bf58138d07d43795eca07/src/main/python/g0101_0200/s0169_majority_element/Solution0169.py",
+        "revision": "65c49122a5c7ffc9b42bf58138d07d43795eca07",
+        "license": "MIT",
+        "attribution": "Valentyn Kolesnikov, LeetCode-Top-Interview-150; locally adapted to MentorFlow solve(nums)"
+      },
+      "test_oracle": {
+        "status": "independently_verified",
+        "method": "示例结果与官方题目页面交叉核对；边界和隐藏用例由独立计数 oracle 复核",
+        "evidence": "https://leetcode.com/problems/majority-element/ ; local oracle: max(set(nums), key=nums.count)"
+      },
+      "reference_solution": "def solve(nums):\n    candidate = None\n    count = 0\n    for value in nums:\n        if count == 0:\n            candidate = value\n        count += 1 if value == candidate else -1\n    return candidate",
+      "hints": [
+        "维护一个候选值和它与其他值抵消后的票数。",
+        "票数归零时，当前前缀无法决定最终多数元素，可以从当前位置选择新候选。",
+        "伪代码：遍历 nums；count 为 0 时更新 candidate；相同加一，不同减一；返回 candidate。"
+      ],
+      "tests": [
+        {"kind": "sample", "args": [[3, 2, 3]], "expected": 3},
+        {"kind": "boundary", "args": [[1]], "expected": 1},
+        {"kind": "hidden", "args": [[2, 2, 1, 1, 1, 2, 2]], "expected": 2},
+        {"kind": "hidden", "args": [[-1, -1, -1, 2, 2]], "expected": -1}
+      ]
+    },
+    {
+      "knowledge_point_name": "买卖股票的最佳时机",
+      "title": "买卖股票的最佳时机：一次交易",
+      "language": "python",
+      "entrypoint": "solve",
+      "prompt": "给定每日价格列表，只允许先买入再卖出一次。实现 solve(prices) 返回最大利润；无正利润时返回 0。",
+      "reference_status": "verified",
+      "source_provenance": {
+        "kind": "open_source",
+        "url": "https://github.com/LeetCode-Top-Interview-150/LeetCode-Top-Interview-150/blob/65c49122a5c7ffc9b42bf58138d07d43795eca07/src/main/python/g0101_0200/s0121_best_time_to_buy_and_sell_stock/Solution0121.py",
+        "revision": "65c49122a5c7ffc9b42bf58138d07d43795eca07",
+        "license": "MIT",
+        "attribution": "Valentyn Kolesnikov, LeetCode-Top-Interview-150; locally adapted to MentorFlow solve(prices)"
+      },
+      "test_oracle": {
+        "status": "independently_verified",
+        "method": "示例结果与官方题目页面交叉核对；边界和隐藏用例由枚举全部买卖日组合的 oracle 复核",
+        "evidence": "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/ ; local oracle: max(prices[j]-prices[i]) for i<j, lower bounded by 0"
+      },
+      "reference_solution": "def solve(prices):\n    minimum = float('inf')\n    best = 0\n    for price in prices:\n        minimum = min(minimum, price)\n        best = max(best, price - minimum)\n    return best",
+      "hints": [
+        "卖出日确定时，最好的买入价是它之前出现过的最低价。",
+        "从左到右维护前缀最低价，并用当前价格减去它更新最大利润。",
+        "伪代码：minimum = inf，best = 0；遍历 price；更新 minimum 和 best；返回 best。"
+      ],
+      "tests": [
+        {"kind": "sample", "args": [[7, 1, 5, 3, 6, 4]], "expected": 5},
+        {"kind": "boundary", "args": [[7, 6, 4, 3, 1]], "expected": 0},
+        {"kind": "hidden", "args": [[2, 4, 1, 9]], "expected": 8},
+        {"kind": "hidden", "args": [[5]], "expected": 0}
+      ]
+    },
+    {
+      "knowledge_point_name": "有效的括号",
+      "title": "有效的括号：栈匹配",
+      "language": "python",
+      "entrypoint": "solve",
+      "prompt": "输入只含圆括号、方括号和花括号。实现 solve(text)，仅当每个闭括号按正确类型与顺序闭合时返回 true。",
+      "reference_status": "verified",
+      "source_provenance": {
+        "kind": "open_source",
+        "url": "https://github.com/LeetCode-Top-Interview-150/LeetCode-Top-Interview-150/blob/65c49122a5c7ffc9b42bf58138d07d43795eca07/src/main/python/g0001_0100/s0020_valid_parentheses/Solution0020.py",
+        "revision": "65c49122a5c7ffc9b42bf58138d07d43795eca07",
+        "license": "MIT",
+        "attribution": "Valentyn Kolesnikov, LeetCode-Top-Interview-150; locally adapted to MentorFlow solve(text)"
+      },
+      "test_oracle": {
+        "status": "independently_verified",
+        "method": "示例结果与官方题目页面交叉核对；嵌套和交叉用例由逐字符栈轨迹人工复核",
+        "evidence": "https://leetcode.com/problems/valid-parentheses/ ; local evidence: explicit stack traces for {[()]} and ([)]"
+      },
+      "reference_solution": "def solve(text):\n    pairs = {')': '(', ']': '[', '}': '{'}\n    stack = []\n    for char in text:\n        if char in '([{':\n            stack.append(char)\n        elif not stack or stack.pop() != pairs[char]:\n            return False\n    return not stack",
+      "hints": [
+        "最近打开的括号必须最先闭合，因此需要后进先出的结构。",
+        "遇到左括号压栈；遇到右括号时，栈顶必须是对应的左括号。",
+        "伪代码：遍历字符；左括号 push；右括号检查并 pop；最后栈必须为空。"
+      ],
+      "tests": [
+        {"kind": "sample", "args": ["()[]{}"], "expected": true},
+        {"kind": "boundary", "args": ["("], "expected": false},
+        {"kind": "hidden", "args": ["{[()]}"], "expected": true},
+        {"kind": "hidden", "args": ["([)]"], "expected": false}
+      ]
+    }
+  ]
+}

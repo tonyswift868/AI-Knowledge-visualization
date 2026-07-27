@@ -4477,6 +4477,7 @@ def _completion_report(
         if _requires_executable_verification(str(row["acceptance_method"] or ""))
     }
     system_verified_problem_point_ids: set[str] = set()
+    independent_oracle_problem_point_ids: set[str] = set()
     independently_verified_problem_point_ids: set[str] = set()
     code_summary = {
         "problem_count": 0,
@@ -4484,14 +4485,27 @@ def _completion_report(
         "independently_verified_problem_count": 0,
         "executable_required_point_count": len(executable_required_point_ids),
         "system_verified_problem_point_count": 0,
+        "independent_oracle_problem_point_count": 0,
         "independently_verified_problem_point_count": 0,
     }
     if connection.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type='table' AND name='active_practice_code_submissions'"""
     ).fetchone():
+        problem_spec_columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(active_practice_problem_specs)"
+            ).fetchall()
+        }
+        verification_scope_expression = (
+            "COALESCE(verification_scope,'bundle_consistency')"
+            if "verification_scope" in problem_spec_columns
+            else "'bundle_consistency'"
+        )
         problems = connection.execute(
-            """SELECT id,title,knowledge_point_id,reference_status
+            f"""SELECT id,title,knowledge_point_id,reference_status,
+                      {verification_scope_expression} AS verification_scope
                FROM active_practice_problem_specs
                WHERE workspace_id=? ORDER BY created_at,id""",
             (session["workspace_id"],),
@@ -4506,6 +4520,10 @@ def _completion_report(
                 system_verified_problem_point_ids.add(
                     str(problem["knowledge_point_id"])
                 )
+                if problem["verification_scope"] == "independent_oracle":
+                    independent_oracle_problem_point_ids.add(
+                        str(problem["knowledge_point_id"])
+                    )
             submissions = connection.execute(
                 """SELECT * FROM active_practice_code_submissions
                    WHERE session_id=? AND problem_id=? ORDER BY created_at,id""",
@@ -4550,6 +4568,9 @@ def _completion_report(
     code_summary["system_verified_problem_point_count"] = len(
         system_verified_problem_point_ids
     )
+    code_summary["independent_oracle_problem_point_count"] = len(
+        independent_oracle_problem_point_ids
+    )
     code_summary["independently_verified_problem_point_count"] = len(
         independently_verified_problem_point_ids
     )
@@ -4563,8 +4584,12 @@ def _completion_report(
         "no_unscheduled_minutes": int(plan["unscheduled_task_minutes"]) == 0,
         "all_code_problems_independently_verified": (
             not executable_required_point_ids
-            or executable_required_point_ids
-            <= independently_verified_problem_point_ids
+            or (
+                executable_required_point_ids
+                <= independently_verified_problem_point_ids
+                and executable_required_point_ids
+                <= independent_oracle_problem_point_ids
+            )
         ),
         "has_independent_mastery_evidence": bool(independent_evidence),
     }

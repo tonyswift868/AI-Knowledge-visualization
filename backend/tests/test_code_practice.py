@@ -13,9 +13,15 @@ from app.orm import configure_orm
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _bootstrap(client: TestClient, workspace: str = "generic-code") -> tuple[str, str]:
+def _bootstrap(
+    client: TestClient,
+    workspace: str = "generic-code",
+    spec_bytes: bytes | None = None,
+) -> tuple[str, str]:
     material_bytes = (ROOT / "demo" / "generic_python_learning_material.md").read_bytes()
-    spec_bytes = (ROOT / "demo" / "generic_python_problem_spec.json").read_bytes()
+    spec_bytes = spec_bytes or (
+        ROOT / "demo" / "generic_python_problem_spec.json"
+    ).read_bytes()
     material = client.post(
         f"/api/active-teaching/workspaces/{workspace}/materials",
         files={"file": ("learning.md", material_bytes, "text/markdown")},
@@ -66,6 +72,8 @@ def test_verified_problem_spec_runs_tests_hides_hidden_data_and_persists(tmp_pat
             "/api/active-teaching/workspaces/generic-code/problems"
         ).json()["items"][0]
         assert public_problem["reference_status"] == "system_verified"
+        assert public_problem["verification_scope"] == "independent_oracle"
+        assert public_problem["source_provenance"]["kind"] == "user_authored"
         assert public_problem["reference_validation"]["passed_count"] == 4
         assert {
             item["source_file"] for item in public_problem["source_evidence"]
@@ -168,6 +176,7 @@ def test_verified_problem_spec_runs_tests_hides_hidden_data_and_persists(tmp_pat
             "independently_verified_problem_count": 1,
             "executable_required_point_count": 1,
             "system_verified_problem_point_count": 1,
+            "independent_oracle_problem_point_count": 1,
             "independently_verified_problem_point_count": 1,
         }
         assert report_body["gates"]["all_code_problems_independently_verified"] is True
@@ -366,3 +375,39 @@ def test_import_rejects_self_declared_but_failing_reference_solution(tmp_path):
             ).json()["items"]
             == []
         )
+
+
+def test_bundle_consistency_is_not_misreported_as_independent_oracle(tmp_path):
+    configure_orm(tmp_path / "bundle-consistency.db")
+    spec = json.loads(
+        (ROOT / "demo" / "generic_python_problem_spec.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    spec["problem_specs"][0].pop("test_oracle")
+    with TestClient(app) as client:
+        session_id, problem_id = _bootstrap(
+            client,
+            "bundle-consistency",
+            json.dumps(spec, ensure_ascii=False).encode("utf-8"),
+        )
+        problem = client.get(
+            "/api/active-teaching/workspaces/bundle-consistency/problems"
+        ).json()["items"][0]
+        assert problem["id"] == problem_id
+        assert problem["reference_status"] == "system_verified"
+        assert problem["verification_scope"] == "bundle_consistency"
+        accepted = client.post(
+            f"/api/active-teaching/sessions/{session_id}/problems/{problem_id}/submit",
+            json={
+                "code": "def solve(values):\n    return sum(values)",
+                "idempotency_key": "bundle-only-answer",
+            },
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["status"] == "accepted"
+        report = client.get(
+            f"/api/active-teaching/sessions/{session_id}/completion-report"
+        ).json()
+        assert report["code"]["independent_oracle_problem_point_count"] == 0
+        assert report["gates"]["all_code_problems_independently_verified"] is False
