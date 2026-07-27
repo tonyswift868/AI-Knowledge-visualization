@@ -132,6 +132,18 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
             payload["initial_learning_task_minutes"]
             + payload["projected_review_task_minutes"]
         )
+        repeated_plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert repeated_plan.status_code == 200, repeated_plan.text
+        assert repeated_plan.json()["id"] == payload["id"]
+        from app import active_teaching
+
+        with active_teaching._connect() as connection:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM active_plans WHERE workspace_id=?",
+                (workspace,),
+            ).fetchone()[0] == 1
         assert sum(
             task["estimated_task_minutes"] for task in payload["tasks"]
         ) == payload["initial_learning_task_minutes"]

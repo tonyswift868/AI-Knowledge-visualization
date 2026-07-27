@@ -974,7 +974,15 @@ export function ActiveTeachingChainView({
         <article className="active-chain__card">
           <span className="active-chain__step">03 · 每天安排</span>
           <h3>点击任意首学任务，直接进入对应课程</h3>
-          <button data-testid="active-generate-plan" disabled={!graph.knowledge_points.length || Boolean(busy)} onClick={() => run("生成完全掌握计划", generateMasteryPlan)}>生成完全掌握计划</button>
+          <button
+            data-testid="active-generate-plan"
+            disabled={!graph.knowledge_points.length || Boolean(busy) || Boolean(plan)}
+            onClick={() => run("生成完全掌握计划", generateMasteryPlan)}
+          >
+            {plan
+              ? "完整掌握计划已生成（修改条件请在上方重新排程）"
+              : "生成完整掌握计划"}
+          </button>
           {plan && (
             <>
               <div className="active-chain__metrics">

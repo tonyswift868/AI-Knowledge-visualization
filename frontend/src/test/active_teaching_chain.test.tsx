@@ -200,6 +200,10 @@ describe("ActiveTeachingChainView", () => {
       "证据覆盖 100%",
     );
     expect(screen.getByTestId("active-plan-budget")).toHaveTextContent("120");
+    expect(screen.getByTestId("active-generate-plan")).toBeDisabled();
+    expect(screen.getByTestId("active-generate-plan")).toHaveTextContent(
+      "完整掌握计划已生成",
+    );
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent(
       "每天约 120 标准任务分钟：首学 1 次 + 完整复习 2 轮",
     );
@@ -483,6 +487,23 @@ describe("ActiveTeachingChainView", () => {
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["material_1"]);
     });
+  });
+
+  it("enables plan generation only when a knowledge map exists without a plan", async () => {
+    const mapWithoutPlan = {
+      ...snapshot,
+      plan: null,
+      session: null,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mapWithoutPlan,
+    }));
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const button = await screen.findByTestId("active-generate-plan");
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent("生成完整掌握计划");
   });
 
   it("switches durable tasks and enters a clicked calendar task", async () => {

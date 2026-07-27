@@ -36,6 +36,49 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _plan_input_signature(receipt: dict[str, Any]) -> str:
+    """Stable user-owned plan inputs; derived allocation fields are excluded."""
+    return json.dumps(
+        {
+            "learning_goal": str(receipt.get("learning_goal") or ""),
+            "current_level": str(
+                receipt.get("current_level")
+                or receipt.get("current_foundation")
+                or ""
+            ),
+            "target_level": str(receipt.get("target_level") or ""),
+            "start_date": str(receipt.get("start_date") or ""),
+            "deadline": str(receipt.get("deadline") or ""),
+            "review_rounds": int(receipt.get("review_rounds") or 2),
+            "study_weekdays": sorted(
+                int(item) for item in receipt.get("study_weekdays") or []
+            ),
+            "unavailable_dates": sorted(
+                str(item) for item in receipt.get("unavailable_dates") or []
+            ),
+            "special_date_minutes": {
+                str(key): int(value)
+                for key, value in sorted(
+                    dict(receipt.get("special_date_minutes") or {}).items()
+                )
+            },
+            "allocation_mode": str(receipt.get("allocation_mode") or ""),
+            "preferred_learning_style": str(
+                receipt.get("preferred_learning_style") or ""
+            ),
+            "teacher_persona": str(receipt.get("teacher_persona") or ""),
+            "learner_interests": str(receipt.get("learner_interests") or ""),
+            "notes": str(receipt.get("notes") or ""),
+            "material_ids": sorted(
+                str(item) for item in receipt.get("material_ids") or []
+            ),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def ensure_generic_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
@@ -777,6 +820,17 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
         if not receipt_row:
             active_teaching._error("RECEIPT_REQUIRED", "请先保存学习条件", 409)
         receipt = json.loads(receipt_row["payload"])
+        latest_plan = connection.execute(
+            """SELECT id,receipt FROM active_plans
+               WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (workspace_id,),
+        ).fetchone()
+        if (
+            latest_plan
+            and _plan_input_signature(json.loads(latest_plan["receipt"]))
+            == _plan_input_signature(receipt)
+        ):
+            return active_teaching._plan(connection, latest_plan["id"])
         graph = public_generic_graph(connection, workspace_id)
         material_ids = set(str(item) for item in receipt.get("material_ids") or [])
         points = [
