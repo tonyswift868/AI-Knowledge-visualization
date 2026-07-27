@@ -330,6 +330,16 @@ def calendar_capacities(receipt: dict[str, Any]) -> list[dict[str, Any]]:
             if item["capacity_minutes"] > 0
             else "rest"
         )
+    allocation = receipt.get("allocation") or {}
+    phase_daily_minutes = allocation.get("phase_daily_minutes") or {}
+    if receipt.get("allocation_mode") == "system" and phase_daily_minutes:
+        for item in result:
+            phase = item["study_phase"]
+            if item["availability_reason"] != "regular" or phase == "rest":
+                continue
+            configured = phase_daily_minutes.get(phase)
+            if configured is not None:
+                item["capacity_minutes"] = max(0, int(configured))
     return result
 
 

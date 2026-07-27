@@ -925,7 +925,10 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 [workspace_id, *receipt["material_ids"]],
             ).fetchone()[0])
             estimated_total = max(90, chunk_count * 8 + 120)
-            recommended = max(20, min(480, math.ceil(estimated_total * 1.2 / len(study_dates) / 5) * 5))
+            recommended = max(
+                20,
+                math.ceil(estimated_total * 1.2 / len(study_dates) / 5) * 5,
+            )
             receipt["daily_task_minutes"] = recommended
             receipt["allocation"] = {
                 "mode": "system",
@@ -1675,9 +1678,8 @@ def _refresh_plan_calendar(
                ORDER BY planned.sequence,point.id""",
             (plan_id,),
         ).fetchall()
-        for index, point in enumerate(points):
-            day = review_days[index % len(review_days)]
-            item = {
+        projected_items = [
+            {
                 "knowledge_point_id": point["id"],
                 "title": point["name"],
                 "projected_review_task_minutes": _review_total_minutes_for_point(
@@ -1685,10 +1687,36 @@ def _refresh_plan_calendar(
                 ),
                 "status": "awaiting_initial_mastery",
             }
+            for point in points
+        ]
+        # Balance by review minutes instead of point count. A round-robin split
+        # can overflow one day even when the phase has enough total capacity.
+        for item in sorted(
+            projected_items,
+            key=lambda value: int(value["projected_review_task_minutes"]),
+            reverse=True,
+        ):
+            minutes = int(item["projected_review_task_minutes"])
+            fitting_days = [
+                day
+                for day in review_days
+                if int(day["capacity_minutes"])
+                - int(day.get("projected_review_task_minutes") or 0)
+                >= minutes
+            ]
+            candidates = fitting_days or review_days
+            day = min(
+                candidates,
+                key=lambda value: (
+                    int(value.get("projected_review_task_minutes") or 0)
+                    / max(1, int(value["capacity_minutes"])),
+                    value["date"],
+                ),
+            )
             day.setdefault("projected_review_items", []).append(item)
             day["projected_review_task_minutes"] = int(
                 day.get("projected_review_task_minutes") or 0
-            ) + int(item["projected_review_task_minutes"])
+            ) + minutes
     if connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_plan_calendars'"
     ).fetchone():

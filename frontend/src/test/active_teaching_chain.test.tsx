@@ -230,7 +230,8 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
     await screen.findByTestId("active-save-receipt");
     expect(screen.queryByTestId("active-daily-minutes")).not.toBeInTheDocument();
-    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统分配每日投入");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按阶段分配学习负荷");
+    expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("不是用户预算或固定上限");
     fireEvent.change(screen.getByTestId("active-teacher-persona"), {
       target: { value: "耐心、有趣，先用生活例子" },
     });

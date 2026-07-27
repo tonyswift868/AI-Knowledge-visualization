@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
+import os
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -23,6 +25,11 @@ from .provider_service import ProviderError
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["generic-active-teaching"])
+PROVIDER_BATCH_SIZE = 24
+PROVIDER_BATCH_CONCURRENCY = max(
+    1,
+    min(6, int(os.getenv("MENTORFLOW_PROVIDER_BATCH_CONCURRENCY", "4"))),
+)
 
 
 def _now() -> str:
@@ -155,12 +162,12 @@ async def _provider_nodes(
             "通用语义知识地图需要已验证的真实 Provider；Fake Provider 不能冒充 AI 抽取。",
             428,
         )
-    all_nodes: list[dict[str, Any]] = []
-    all_edges: list[dict[str, str]] = []
-    warnings: list[str] = []
-    meta: dict[str, Any] = {}
-    for batch_index in range(0, len(chunks), 24):
-        batch = chunks[batch_index : batch_index + 24]
+    semaphore = asyncio.Semaphore(PROVIDER_BATCH_CONCURRENCY)
+
+    async def extract_batch(
+        batch_index: int,
+        batch: list[sqlite3.Row],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str], dict[str, Any]]:
         evidence_by_chunk = {
             row["id"]: active_teaching._evidence(row)
             for row in batch
@@ -209,18 +216,19 @@ async def _provider_nodes(
         }
         started = datetime.now(timezone.utc)
         try:
-            payload = await provider_for_session(session).json(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a curriculum analyst. Produce only grounded JSON. "
-                            "Never add a concept without a supplied chunk id."
-                        ),
-                    },
-                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-                ]
-            )
+            async with semaphore:
+                payload = await provider_for_session(session).json(
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a curriculum analyst. Produce only grounded JSON. "
+                                "Never add a concept without a supplied chunk id."
+                            ),
+                        },
+                        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+                    ]
+                )
         except ProviderError as exc:
             active_teaching._error(exc.code, exc.message, exc.status, **exc.details)
         batch_nodes, batch_edges, batch_warnings = validate_provider_map(
@@ -228,22 +236,56 @@ async def _provider_nodes(
             evidence_by_chunk=evidence_by_chunk,
             current_level=current_level,
         )
-        prefix = f"b{batch_index // 24 + 1}-"
+        prefix = f"b{batch_index + 1}-"
         id_map = {item["local_id"]: prefix + item["local_id"] for item in batch_nodes}
         for item in batch_nodes:
             item["local_id"] = id_map[item["local_id"]]
         for edge in batch_edges:
             edge["prerequisite_id"] = id_map[edge["prerequisite_id"]]
             edge["dependent_id"] = id_map[edge["dependent_id"]]
-        all_nodes.extend(batch_nodes)
-        all_edges.extend(batch_edges)
-        warnings.extend(batch_warnings)
-        meta = generation_meta(
+        batch_meta = generation_meta(
             session,
             latency_ms=max(1, int((datetime.now(timezone.utc) - started).total_seconds() * 1000)),
         )
+        return batch_nodes, batch_edges, batch_warnings, batch_meta
+
+    batches = [
+        list(chunks[offset : offset + PROVIDER_BATCH_SIZE])
+        for offset in range(0, len(chunks), PROVIDER_BATCH_SIZE)
+    ]
+    started_all = datetime.now(timezone.utc)
+    tasks = [
+        asyncio.create_task(extract_batch(index, batch))
+        for index, batch in enumerate(batches)
+    ]
+    try:
+        results = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    all_nodes: list[dict[str, Any]] = []
+    all_edges: list[dict[str, str]] = []
+    warnings: list[str] = []
+    meta: dict[str, Any] = {}
+    for batch_nodes, batch_edges, batch_warnings, batch_meta in results:
+        all_nodes.extend(batch_nodes)
+        all_edges.extend(batch_edges)
+        warnings.extend(batch_warnings)
+        meta = batch_meta
     all_nodes, all_edges, merge_warnings = merge_provider_batches(all_nodes, all_edges)
     warnings.extend(merge_warnings)
+    meta = {
+        **meta,
+        "batch_count": len(batches),
+        "batch_concurrency": min(PROVIDER_BATCH_CONCURRENCY, len(batches)),
+        "total_latency_ms": max(
+            1,
+            int((datetime.now(timezone.utc) - started_all).total_seconds() * 1000),
+        ),
+    }
     return all_nodes, all_edges, warnings, meta
 
 
@@ -682,13 +724,19 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                 1 for day in allocation_calendar
                 if day["capacity_minutes"] > 0 and day["study_phase"] == "review"
             )
-            required_daily = max(
-                initial_learning_minutes / max(1, initial_days),
-                projected_review_minutes / max(1, review_days)
-                if review_days else
-                (initial_learning_minutes + projected_review_minutes) / max(1, initial_days),
+            initial_daily = max(
+                5,
+                math.ceil(initial_learning_minutes / max(1, initial_days) / 5) * 5,
             )
-            recommended = max(20, min(480, math.ceil(required_daily * 1.1 / 5) * 5))
+            review_daily = (
+                max(
+                    5,
+                    math.ceil(projected_review_minutes / review_days / 5) * 5,
+                )
+                if review_days
+                else 0
+            )
+            recommended = max(initial_daily, review_daily)
             receipt["daily_task_minutes"] = recommended
             receipt["allocation"] = {
                 **dict(receipt.get("allocation") or {}),
@@ -698,8 +746,15 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                 "initial_learning_days": initial_days,
                 "review_days": review_days,
                 "recommended_minutes_per_day": recommended,
-                "buffer_rate": 0.1,
-                "reason": "知识地图生成后，按首学与复习阶段容量重新计算。",
+                "phase_daily_minutes": {
+                    "initial_learning": initial_daily,
+                    "review": review_daily,
+                },
+                "buffer_rate": 0,
+                "reason": (
+                    "知识地图生成后，系统按首学与复习的真实工作量分别计算每日负荷；"
+                    "该数值不是用户预算或固定上限。"
+                ),
             }
             connection.execute(
                 "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
@@ -798,6 +853,16 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                 if day["study_phase"] == "initial_learning"
             ),
             "review_capacity_minutes": review_capacity,
+            "initial_learning_daily_minutes": (
+                receipt.get("allocation", {})
+                .get("phase_daily_minutes", {})
+                .get("initial_learning")
+            ),
+            "review_daily_minutes": (
+                receipt.get("allocation", {})
+                .get("phase_daily_minutes", {})
+                .get("review")
+            ),
             "daily_consolidation_counts_as_formal_review": False,
             "formal_review_requires_all_initial_learning_completed": True,
         }

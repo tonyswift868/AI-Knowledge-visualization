@@ -259,6 +259,9 @@ export function ActiveTeachingChainView({
   };
 
   const materials = snapshot?.materials || [];
+  const readyChunkCount = materials
+    .filter((item: any) => item.status === "ready")
+    .reduce((total: number, item: any) => total + Number(item.chunk_count || 0), 0);
   const localKnowledgeBase = snapshot?.local_knowledge_base;
   const graph = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
   const plan = snapshot?.plan;
@@ -333,7 +336,7 @@ export function ActiveTeachingChainView({
       body: JSON.stringify({
         provider_session_id: realProviderSessionId,
       }),
-    });
+    }, 210_000);
 
   const generateMasteryPlan = () =>
     activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/mastery-plans/generate`, {
@@ -564,7 +567,14 @@ export function ActiveTeachingChainView({
       </header>
 
       {error && <div className="active-chain__error" role="alert">{error}</div>}
-      {busy && <div className="active-chain__busy">正在执行：{busy}</div>}
+      {busy && (
+        <div className="active-chain__busy" role="status">
+          正在执行：{busy}
+          {busy.includes("学习任务") && realProviderSessionId && readyChunkCount > 24
+            ? `；真实 AI 正在并行分析 ${readyChunkCount} 个资料分块，通常需要 1–3 分钟。`
+            : ""}
+        </div>
+      )}
 
       <div className="active-task-hub" data-testid="active-task-hub">
         <aside className="active-task-hub__rail">
@@ -623,7 +633,7 @@ export function ActiveTeachingChainView({
             <p>
               计划 {plan.feasible ? "可执行" : "需要调整"} ·
               {graph.knowledge_points.length} 个知识点 ·
-              每个可学习日约 {plan.daily_task_minutes_budget} 分钟
+              系统分配峰值 {plan.daily_task_minutes_budget} 标准任务分钟/日
             </p>
           ) : (
             <p>填写目标、期限并上传资料，系统一次完成知识地图、估时和排程。</p>
@@ -650,13 +660,15 @@ export function ActiveTeachingChainView({
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
           </div>
           <div className="active-chain__allocation" data-testid="active-system-allocation">
-            <span>系统分配每日投入</span>
+            <span>系统按阶段分配学习负荷</span>
             <b>
-              {snapshot?.receipt?.allocation?.recommended_minutes_per_day
-                ? `${snapshot.receipt.allocation.recommended_minutes_per_day} 分钟 / 可学习日`
+              {snapshot?.receipt?.allocation?.phase_daily_minutes
+                ? `首学 ${snapshot.receipt.allocation.phase_daily_minutes.initial_learning} · 复习 ${snapshot.receipt.allocation.phase_daily_minutes.review} 标准任务分钟/日`
+                : snapshot?.receipt?.allocation?.recommended_minutes_per_day
+                ? `暂估 ${snapshot.receipt.allocation.recommended_minutes_per_day} 标准任务分钟/日`
                 : "保存后自动计算"}
             </b>
-            <small>前 50% 可学习日期完成第一遍，后 50% 进入滚动复习；生成知识地图后会按真实知识量再次校准。</small>
+            <small>这不是用户预算或固定上限。前 50% 可学习日期完成第一遍，后 50% 进入滚动复习；知识地图生成后按真实知识量校准。</small>
           </div>
           <label>
             AI 教师人设
@@ -707,12 +719,19 @@ export function ActiveTeachingChainView({
               disabled={(!file && !materials.some((item: any) => item.status === "ready")) || Boolean(busy)}
               onClick={() => run("创建学习任务", createOrCompleteTask)}
             >
-              {file
-                ? materials.length
-                  ? "添加资料并生成知识地图与计划"
-                  : "上传资料并创建任务"
-                : "使用已保存资料继续创建任务"}
+              {busy === "创建学习任务"
+                ? `正在分析 ${readyChunkCount || "资料"} 个分块…`
+                : file
+                  ? materials.length
+                    ? "添加资料并生成知识地图与计划"
+                    : "上传资料并创建任务"
+                  : "使用已保存资料继续创建任务"}
             </button>
+          )}
+          {busy === "创建学习任务" && realProviderSessionId && readyChunkCount > 24 && (
+            <div className="active-chain__busy active-chain__busy--inline" data-testid="active-create-progress">
+              已保存你的填写内容。正在调用真实 AI 分批建立知识地图，完成后会自动生成计划；超过 3 分 30 秒会自动解除按钮，不会一直锁住。
+            </div>
           )}
           {snapshot?.receipt && (
             <button
@@ -857,7 +876,7 @@ export function ActiveTeachingChainView({
           {plan && (
             <>
               <div className="active-chain__metrics">
-                <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>每日预算</span>
+                <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>系统日负荷峰值</span>
                 <strong>{plan.tasks.length}</strong><span>可执行任务</span>
                 <strong>{plan.unscheduled_task_minutes}</strong><span>未排分钟</span>
                 <strong data-testid="active-plan-feasible">{plan.feasible ? "可行" : "不可行"}</strong><span>容量结论</span>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import zipfile
 from datetime import date, timedelta
@@ -120,6 +121,13 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
             "independent_application",
         }
         assert all(task["learning_phase"] != "review" for task in payload["tasks"])
+        if payload["feasible"]:
+            assert all(
+                int(day.get("projected_review_task_minutes") or 0)
+                <= int(day["capacity_minutes"])
+                for day in payload["calendar"]
+                if day["study_phase"] == "review"
+            )
         initial_estimates = {
             task["id"]: task["estimated_task_minutes"] for task in payload["tasks"]
         }
@@ -609,25 +617,36 @@ def test_provider_batches_are_merged_globally_for_long_material(tmp_path, monkey
     session = get_provider_session(public["provider_session_id"])
     session.verified = True
 
+    concurrency = {"active": 0, "maximum": 0}
+
     class RepeatingConceptProvider:
         async def json(self, messages):
-            prompt = __import__("json").loads(messages[-1]["content"])
-            first_chunk = prompt["chunks"][0]["chunk_id"]
-            return {
-                "knowledge_points": [
-                    {
-                        "id": "shared",
-                        "name": "跨章节共同概念",
-                        "explanation": "这个概念在长资料的多个章节中反复出现。",
-                        "difficulty": "medium",
-                        "estimated_mastery_minutes": 45,
-                        "acceptance_method": "能够综合两个章节解释该概念",
-                        "source_chunk_ids": [first_chunk],
-                        "confidence": 0.88,
-                    }
-                ],
-                "dependencies": [],
-            }
+            concurrency["active"] += 1
+            concurrency["maximum"] = max(
+                concurrency["maximum"],
+                concurrency["active"],
+            )
+            try:
+                await asyncio.sleep(0.05)
+                prompt = __import__("json").loads(messages[-1]["content"])
+                first_chunk = prompt["chunks"][0]["chunk_id"]
+                return {
+                    "knowledge_points": [
+                        {
+                            "id": "shared",
+                            "name": "跨章节共同概念",
+                            "explanation": "这个概念在长资料的多个章节中反复出现。",
+                            "difficulty": "medium",
+                            "estimated_mastery_minutes": 45,
+                            "acceptance_method": "能够综合两个章节解释该概念",
+                            "source_chunk_ids": [first_chunk],
+                            "confidence": 0.88,
+                        }
+                    ],
+                    "dependencies": [],
+                }
+            finally:
+                concurrency["active"] -= 1
 
     monkeypatch.setattr(
         "app.generic_knowledge_api.provider_for_session",
@@ -654,6 +673,9 @@ def test_provider_batches_are_merged_globally_for_long_material(tmp_path, monkey
         )
         assert response.status_code == 200, response.text
         body = response.json()
+        assert concurrency["maximum"] == 2
+        assert body["extraction"]["provider_meta"]["batch_count"] == 2
+        assert body["extraction"]["provider_meta"]["batch_concurrency"] == 2
         assert len(body["knowledge_points"]) == 1
         assert len(body["knowledge_points"][0]["source_evidence"]) == 2
         assert any(
@@ -692,6 +714,34 @@ def test_fifteen_day_cycle_reserves_first_eight_days_for_initial_learning():
         "2026-08-09",
         "2026-08-10",
     ]
+
+
+def test_system_allocation_uses_distinct_phase_loads_without_daily_budget_cap():
+    calendar = calendar_capacities(
+        {
+            "start_date": "2026-07-27",
+            "deadline": "2026-08-10",
+            "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 795,
+            "initial_learning_period_ratio": 0.5,
+            "allocation_mode": "system",
+            "allocation": {
+                "phase_daily_minutes": {
+                    "initial_learning": 480,
+                    "review": 795,
+                }
+            },
+        }
+    )
+    initial = [day for day in calendar if day["study_phase"] == "initial_learning"]
+    review = [day for day in calendar if day["study_phase"] == "review"]
+    assert len(initial) == 8
+    assert len(review) == 7
+    assert {day["capacity_minutes"] for day in initial} == {480}
+    assert {day["capacity_minutes"] for day in review} == {795}
+    assert sum(day["capacity_minutes"] for day in calendar) == 9405
 
 
 def test_system_estimate_and_scheduler_balance_minutes_not_item_counts():

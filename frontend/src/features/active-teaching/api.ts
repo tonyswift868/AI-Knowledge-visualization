@@ -30,11 +30,32 @@ async function parseResponse(response: Response) {
   return data;
 }
 
-export async function activeRequest(path: string, init?: RequestInit) {
+export async function activeRequest(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 0,
+) {
   const headers = init?.body instanceof FormData
     ? init.headers
     : { "Content-Type": "application/json", ...(init?.headers || {}) };
-  return parseResponse(await fetch(`/api/active-teaching${path}`, { ...init, headers }));
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  const timeout = controller
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  try {
+    return await parseResponse(await fetch(`/api/active-teaching${path}`, {
+      ...init,
+      headers,
+      signal: init?.signal || controller?.signal,
+    }));
+  } catch (error: any) {
+    if (controller?.signal.aborted) {
+      throw new Error("真实 AI 分析超过等待上限，页面已解除锁定；资料和已保存条件不会丢失，请稍后重试。");
+    }
+    throw error;
+  } finally {
+    if (timeout !== null) window.clearTimeout(timeout);
+  }
 }
 
 export async function activeSnapshot(workspaceId: string): Promise<ActiveSnapshot> {
