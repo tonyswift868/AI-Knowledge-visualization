@@ -104,6 +104,45 @@ test("home exposes one task path and archived tasks can be restored", async ({ p
 });
 
 
+test("an indexed-only workspace can finish task creation without reselecting its file", async ({ page }) => {
+  const workspaceId = `indexed-only-${Date.now()}`;
+  const upload = await page.request.post(
+    `/api/active-teaching/workspaces/${workspaceId}/materials`,
+    {
+      multipart: {
+        file: {
+          name: "indexed-only.md",
+          mimeType: "text/markdown",
+          buffer: Buffer.from(
+            "# 第一章\n知识点：理解基础定义。\n\n# 第二章\n知识点：应用基础定义解决问题。",
+            "utf8",
+          ),
+        },
+      },
+    },
+  );
+  expect(upload.ok()).toBeTruthy();
+  await page.addInitScript((activeWorkspaceId) => {
+    localStorage.setItem("mentorflow_last_tab_v1", "active");
+    localStorage.setItem("mentorflow_active_teaching_workspace_v1", activeWorkspaceId);
+  }, workspaceId);
+
+  await page.goto("/");
+  await expect(page.getByTestId("active-local-knowledge-base")).toContainText(
+    "当前资料库：已索引，可检索",
+  );
+  await expect(page.getByTestId("active-local-knowledge-base")).toContainText(
+    "资料已经保存，但任务尚未建立",
+  );
+  await expect(page.getByTestId("active-save-receipt")).toHaveCount(0);
+  await page.getByRole("button", { name: "使用已保存资料继续创建任务" }).click();
+
+  await expect(page.getByTestId("active-save-receipt")).toBeVisible();
+  await expect(page.getByTestId("active-point-count")).not.toHaveText("0");
+  await expect(page.getByTestId("active-plan-budget")).toBeVisible();
+});
+
+
 test("arbitrary material drives plan, remediation, verified practice, and persistence", async ({ page }) => {
   test.setTimeout(180_000);
   const materialPath = path.resolve(

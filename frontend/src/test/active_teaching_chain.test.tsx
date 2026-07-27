@@ -173,8 +173,11 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     await waitFor(() => expect(screen.getByTestId("active-material-count")).toHaveTextContent("资料 1 份"));
-    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("当前任务 RAG：可用");
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("当前资料库：已索引，可检索");
     expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent("3 个可引用分块");
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent(
+      "不代表资料包含完整答案",
+    );
     expect(screen.getByText(/预留复习 12 分钟/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /建立一次任务/ })).toBeInTheDocument();
     expect(screen.getByTestId("active-point-count")).toHaveTextContent("1");
@@ -313,6 +316,46 @@ describe("ActiveTeachingChainView", () => {
       expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["uploaded_generic_1"]);
+    });
+  });
+
+  it("continues task creation from an already indexed material without another file selection", async () => {
+    const indexedOnlySnapshot = {
+      ...snapshot,
+      receipt: null,
+      knowledge_graph: { knowledge_points: [], edges: [] },
+      plan: null,
+      session: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => indexedOnlySnapshot,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const continueButton = await screen.findByRole("button", {
+      name: "使用已保存资料继续创建任务",
+    });
+    expect(continueButton).toBeEnabled();
+    expect(screen.queryByTestId("active-save-receipt")).not.toBeInTheDocument();
+    expect(screen.getByTestId("active-local-knowledge-base")).toHaveTextContent(
+      "资料已经保存，但任务尚未建立",
+    );
+    fireEvent.click(continueButton);
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) => String(url).endsWith("/materials") && init?.method === "POST",
+        ),
+      ).toBe(false);
+      const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
+      expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["material_1"]);
     });
   });
 

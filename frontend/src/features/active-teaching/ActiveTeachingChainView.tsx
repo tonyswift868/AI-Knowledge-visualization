@@ -340,13 +340,15 @@ export function ActiveTeachingChainView({
       method: "POST",
     });
 
-  const uploadAndAnalyze = async () => {
-    if (!file) throw new Error("请选择文件");
-    const uploaded = await uploadActiveMaterial(activeWorkspaceId, file);
+  const createOrCompleteTask = async () => {
+    const uploaded = file
+      ? await uploadActiveMaterial(activeWorkspaceId, file)
+      : null;
     const ids = Array.from(new Set([
       ...materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
-      uploaded.id,
+      ...(uploaded ? [uploaded.id] : []),
     ]));
+    if (!ids.length) throw new Error("请先选择并上传一份学习资料");
     await saveReceipt(ids);
     await generateKnowledgeMap();
     await generateMasteryPlan();
@@ -699,31 +701,52 @@ export function ActiveTeachingChainView({
             <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
             <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
           </details>
-          <button
-            data-testid="active-upload"
-            disabled={!file || Boolean(busy)}
-            onClick={() => run("创建学习任务", uploadAndAnalyze)}
-          >
-            创建任务并自动生成知识地图与计划
-          </button>
-          <button
-            data-testid="active-save-receipt"
-            disabled={!materials.length || Boolean(busy)}
-            onClick={() => run("更新任务条件与计划", async () => {
-              await saveReceipt();
-              await generateKnowledgeMap();
-              await generateMasteryPlan();
-            })}
-          >
-            更新当前任务的知识地图与计划
-          </button>
+          {(!snapshot?.receipt || file) && (
+            <button
+              data-testid="active-upload"
+              disabled={(!file && !materials.some((item: any) => item.status === "ready")) || Boolean(busy)}
+              onClick={() => run("创建学习任务", createOrCompleteTask)}
+            >
+              {file
+                ? materials.length
+                  ? "添加资料并生成知识地图与计划"
+                  : "上传资料并创建任务"
+                : "使用已保存资料继续创建任务"}
+            </button>
+          )}
+          {snapshot?.receipt && (
+            <button
+              data-testid="active-save-receipt"
+              disabled={!materials.length || Boolean(busy)}
+              onClick={() => run("更新任务条件与计划", async () => {
+                await saveReceipt();
+                await generateKnowledgeMap();
+                await generateMasteryPlan();
+              })}
+            >
+              更新当前任务的知识地图与计划
+            </button>
+          )}
           <div data-testid="active-material-count">已保存资料 {materials.length} 份</div>
           <div className="active-chain__receipt" data-testid="active-local-knowledge-base">
-            <b>当前任务 RAG：{localKnowledgeBase?.status === "ready" ? "可用" : "等待资料"}</b>
+            <b>
+              当前资料库：
+              {localKnowledgeBase?.status === "ready" ? "已索引，可检索" : "等待资料"}
+            </b>
             <span>
               {localKnowledgeBase?.material_count || 0} 份资料 · {localKnowledgeBase?.chunk_count || 0} 个可引用分块 ·
               {localKnowledgeBase?.indexed_characters || 0} 字符
             </span>
+            {localKnowledgeBase?.status === "ready" && (
+              <span>
+                已索引只表示可以引用原文分块，不代表资料包含完整答案，也不代表知识地图和计划已经生成。
+              </span>
+            )}
+            {materials.length > 0 && !snapshot?.receipt && (
+              <span className="active-chain__warning">
+                资料已经保存，但任务尚未建立；请使用上方按钮继续创建，无需重新选择文件。
+              </span>
+            )}
             <span>
               {localKnowledgeBase?.scope === "current_plan"
                 ? `已冻结到计划 ${localKnowledgeBase?.plan_id || ""}，不会检索其他任务`
