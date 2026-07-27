@@ -2791,13 +2791,13 @@ async def _render_teacher_content(
         "learner_context": state.get("learner_context") or {},
         "learner_mastery_model": state.get("learner_mastery_model") or {},
         "persistent_memory": state.get("teacher_memory") or {},
-        "latest_learner_question": str(
+        "latest_learner_message": str(
             (state.get("teacher_memory") or {}).get("last_learner_message") or ""
         ),
         "allowed_evidence": evidence,
         "rules": [
             "Rewrite the draft as concise, supportive Chinese teaching language.",
-            "When latest_learner_question is present, answer that exact question in the first paragraph; do not merely praise it, repeat the knowledge-point title, or paste a source quote.",
+            "When latest_learner_message is a question, answer that exact question in the first paragraph; otherwise respond directly to the learner's actual feedback instead of repeating the knowledge-point title.",
             "For why, how, meaning, or example questions, give one concrete micro-example grounded in the evidence. Clearly label an analogy or teaching example when it is not source text.",
             "If learner_context says the learner has no coding foundation, do not require or print code unless the learner explicitly asks for code.",
             "Teach exactly one current objective per turn; never enumerate the whole day's knowledge list.",
@@ -2884,12 +2884,40 @@ def _opening(connection: sqlite3.Connection, task: sqlite3.Row, receipt: dict[st
         if zero_foundation else ""
     )
     content = (
-        f"今天先学习“{point['name']}”。我会主动按“讲解→示例→检查理解→独立验收”推进。"
-        f"\n\n讲解：{point['explanation']}"
+        f"好，我们从“{point['name']}”的第一小步开始。"
+        f"\n\n先建立一个直觉：{point['explanation']}"
         f"{analogy}"
-        f"\n\n本任务预计 {task['estimated_task_minutes']} 任务分钟；验收条件：{point['acceptance_method']}"
+        "\n\n我先停在这里。请用一句自己的话告诉我：你目前理解到的核心是什么？"
+        "不确定也没关系，直接说卡在哪个词就行。"
     )
     return content, citations
+
+
+def _formative_feedback_ready(message: str) -> bool:
+    """A low-stakes turn gate, not a mastery verdict.
+
+    A substantive reply may advance to guided practice, where the real
+    evidence-based assessment still happens. Short acknowledgements do not
+    silently move the learner forward.
+    """
+    value = re.sub(r"\s+", "", str(message or ""))
+    if any(marker in value for marker in CONFUSION_MARKERS):
+        return False
+    if any(marker in value for marker in UNDERSTOOD_MARKERS):
+        return True
+    if value.casefold() in {
+        "继续",
+        "好的",
+        "好",
+        "嗯",
+        "ok",
+        "okay",
+        "知道了",
+        "不知道",
+        "不清楚",
+    }:
+        return False
+    return len(value) >= 6
 
 
 def _daily_route_summary(
@@ -3457,20 +3485,23 @@ async def teach_next(
             memory_sentence = _learner_memory_sentence(state)
             if memory_sentence:
                 content = f"{memory_sentence}\n\n{content}"
-            state["current_teaching_step"] = "explain"
-            state["next_action"] = "show_example"
+            state["current_teaching_step"] = "concept_check"
+            state["next_action"] = "interpret_learner_feedback"
             awaiting = True
-        elif step == "explain":
-            action = "invite_questions"
-            content = (
-                f"“{point['name']}”的核心已经讲完。先不要急着做题。"
-                "\n\n你可以直接问：为什么要这样做、哪一步最难、能不能换个例子、"
-                "边界条件是什么，或者把你卡住的原话贴出来。"
-                "\n\n我会结合当前资料重新检索并回答；你确认没有疑问后，再说“开始练习”。"
+        elif step in {"concept_check", "question_invitation", "check_understanding"}:
+            # These steps require a learner reply. A repeated teach-next request
+            # must not invent progress or append another near-duplicate prompt.
+            state["autonomy"] = {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": True,
+                "reason": "learner_feedback_required",
+            }
+            connection.execute(
+                "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+                (json.dumps(state, ensure_ascii=False), _now(), session_id),
             )
-            state["current_teaching_step"] = "question_invitation"
-            state["next_action"] = "answer_question_or_start_practice"
-            awaiting = True
+            connection.commit()
+            return _public_session(connection, session_id)
         elif step in {"example", "remediation_example"}:
             action = "check_understanding"
             content = (
@@ -3745,6 +3776,12 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         if not session:
             _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
         state = json.loads(session["state"])
+        # Sessions created by the previous flow paused at `explain`. Treat that
+        # durable state as the new feedback checkpoint so an in-progress lesson
+        # continues coherently after this upgrade.
+        if state.get("current_teaching_step") == "explain":
+            state["current_teaching_step"] = "concept_check"
+            state["next_action"] = "interpret_learner_feedback"
         requested_provider_session_id = (
             str(body.get("provider_session_id") or "").strip() or None
         )
@@ -3839,7 +3876,11 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
         is_understood = bool(body.get("understood")) or any(marker in lower for marker in UNDERSTOOD_MARKERS)
         is_remediation = bool(state.get("remediation_stack"))
-        is_question_window = state.get("current_teaching_step") == "question_invitation"
+        is_question_window = state.get("current_teaching_step") in {
+            "question_invitation",
+            "concept_check",
+            "point_readiness",
+        }
         wants_practice = is_question_window and (
             bool(body.get("continue_to_practice"))
             or lower.strip() in {"继续", "下一步"}
@@ -3860,8 +3901,19 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             )
         )
         action = "continue"
+        has_question_form = (
+            "?" in message
+            or "？" in message
+            or any(
+                marker in message
+                for marker in ("为什么", "怎么", "能不能", "是否", "请问", "哪一步", "哪里")
+            )
+        )
         is_explicit_question = (
-            (("?" in message or "？" in message) or (is_question_window and not wants_practice))
+            (has_question_form or (
+                state.get("current_teaching_step") == "question_invitation"
+                and not wants_practice
+            ))
             and not is_understood
             and not is_remediation
             and (not is_confused or is_question_window)
@@ -3973,13 +4025,66 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     f"\n\n{content}"
                     "\n\n我先停在这里。哪一句不清楚就直接问，或者回复“继续”。"
                 )
-            state["current_teaching_step"] = "explain"
-            state["next_action"] = "show_example"
+            state["current_teaching_step"] = "concept_check"
+            state["next_action"] = "interpret_learner_feedback"
             state["autonomy"] = {
                 "mode": "teacher_led_dialogue",
                 "awaiting_learner": True,
                 "reason": "learner_can_interrupt",
             }
+        elif state.get("current_teaching_step") == "point_readiness":
+            action = "explain"
+            plan_receipt = json.loads(connection.execute(
+                "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+            ).fetchone()["receipt"])
+            content, citations = _opening(connection, task, plan_receipt)
+            content = (
+                f"收到。你对这一点的当前感觉是：“{message[:120]}”。"
+                f"\n\n{content}"
+            )
+            state["current_teaching_step"] = "concept_check"
+            state["next_action"] = "interpret_learner_feedback"
+            state["autonomy"] = {
+                "mode": "teacher_led_dialogue",
+                "awaiting_learner": True,
+                "reason": "learner_feedback_required",
+            }
+        elif (
+            state.get("current_teaching_step") == "concept_check"
+            and not is_confused
+        ):
+            if _formative_feedback_ready(message):
+                action = "guided_practice"
+                content = (
+                    f"我听到你目前的理解是：“{message[:180]}”。这足够进入下一小步，"
+                    "但还不等于已经掌握。"
+                    f"\n\n现在只做一个最小应用：请针对“{point['name']}”给出一个具体场景或关键步骤，"
+                    f"并说明它怎样符合资料中的这个核心：{point['explanation'][:220]}"
+                    "\n\n写到你会的部分就停；我会根据这次回答判断是推进、纠正还是换一种讲法。"
+                )
+                state["current_teaching_step"] = "check_understanding"
+                state["next_action"] = "evaluate_answer"
+                state["autonomy"] = {
+                    "mode": "teacher_led_until_learner_input",
+                    "awaiting_learner": True,
+                    "reason": "learner_practice_required",
+                }
+            else:
+                action = "clarify_feedback"
+                content = (
+                    f"我收到的是：“{message[:160]}”，但这还不足以判断你具体会到哪一步，"
+                    "所以我不会直接把你推到后面。"
+                    f"\n\n我们把问题再缩小：关于“{point['name']}”，"
+                    "你现在能说出“它要处理什么对象”或“它希望得到什么结果”中的任意一个吗？"
+                    "只答一个短句就可以。"
+                )
+                state["current_teaching_step"] = "concept_check"
+                state["next_action"] = "interpret_learner_feedback"
+                state["autonomy"] = {
+                    "mode": "teacher_led_dialogue",
+                    "awaiting_learner": True,
+                    "reason": "more_specific_feedback_required",
+                }
         elif is_question_window and wants_practice:
             action = "guided_practice"
             state["current_teaching_step"] = "check_understanding"
@@ -4085,20 +4190,6 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 f"\n\n请先举一个符合这个事实的具体场景，再说明它怎样满足验收条件：{point['acceptance_method']}"
                 "。如果仍不理解，我会继续降低解释层级或标记需要额外资料。"
             )
-        elif state["current_teaching_step"] == "explain":
-            state["current_teaching_step"] = "question_invitation"
-            state["next_action"] = "answer_question_or_start_practice"
-            state["autonomy"] = {
-                "mode": "teacher_led_question_dialogue",
-                "awaiting_learner": True,
-                "reason": "question_invited_before_practice",
-            }
-            action = "invite_questions"
-            content = (
-                f"“{point['name']}”先讲到这里，我不会马上让你做题。"
-                "\n\n请告诉我哪一步还不清楚；你可以问为什么、要求换例子或追问边界条件。"
-                "我会检索资料回答。确认没有疑问后说“开始练习”。"
-            )
         elif state["current_teaching_step"] == "example":
             state["current_teaching_step"] = "check_understanding"
             state["next_action"] = "evaluate_answer"
@@ -4107,7 +4198,9 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 f"理解检查：请不用照抄资料，用自己的话解释“{point['name']}”，"
                 f"给出一个具体应用或例子，并完成这个验收条件：{point['acceptance_method']}"
             )
-        elif state["current_teaching_step"] == "check_understanding" and is_understood:
+        elif state["current_teaching_step"] == "check_understanding" and (
+            is_understood or len(message.strip()) >= 6
+        ):
             learning_phase = str(task["learning_phase"] or "integrated_initial")
             phase_part_index = int(task["phase_part_index"] or 1)
             phase_part_count = int(task["phase_part_count"] or 1)
@@ -4282,8 +4375,8 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     state["route_index"] = route_index
                     state["active_task_id"] = next_task["id"]
                     state["current_knowledge_point_id"] = next_point["id"]
-                    state["current_teaching_step"] = "explain"
-                    state["next_action"] = "show_example"
+                    state["current_teaching_step"] = "point_readiness"
+                    state["next_action"] = "ask_point_readiness"
                     state["estimated_task_minutes"] = next_task["estimated_task_minutes"]
                     action = "advance_route"
                     citations = json.loads(next_point["source_evidence"])
@@ -4299,7 +4392,8 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                         )
                     content = (
                         f"{progress_message}"
-                        f"\n\n回到整体路线，下一项是“{next_point['name']}”：{next_point['explanation']}"
+                        f"\n\n下一项是“{next_point['name']}”。在我开始讲之前，"
+                        "请只告诉我：你是完全没接触过、只有一点印象，还是已经能用自己的话解释？"
                     )
                 else:
                     state["route_index"] = len(tasks)
@@ -4352,6 +4446,20 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                         "本次理解检查未达到系统验收阈值，主路线已暂停；"
                         f"评估说明：{evaluation.get('rationale') or '需要补足验收条件中的可观察证据。'}"
                     )
+        elif state.get("current_teaching_step") == "check_understanding":
+            action = "clarify_feedback"
+            citations = []
+            content = (
+                "这条反馈太短，我还不能据此判断你是否理解，因此不会擅自推进。"
+                f"\n\n请用一个完整短句回答刚才关于“{point['name']}”的小练习；"
+                "如果不会，直接说具体卡在哪一步，我会立即换一种讲法。"
+            )
+            state["next_action"] = "evaluate_answer"
+            state["autonomy"] = {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": True,
+                "reason": "substantive_answer_required",
+            }
         else:
             hits = _search(
                 connection, session["workspace_id"], message, plan_id=session["plan_id"]

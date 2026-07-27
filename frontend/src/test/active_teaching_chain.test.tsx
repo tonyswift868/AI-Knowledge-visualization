@@ -205,6 +205,41 @@ describe("ActiveTeachingChainView", () => {
     localStorage.clear();
   });
 
+  it("shows only the current knowledge-point conversation after a new briefing", async () => {
+    const currentTurnSnapshot = structuredClone(snapshot);
+    currentTurnSnapshot.session.state.current_teaching_step = "daily_briefing";
+    currentTurnSnapshot.session.messages = [
+      {
+        id: "old-briefing",
+        role: "teacher",
+        action: "daily_briefing",
+        content: "旧知识点开场，不应混入当前课堂。",
+        citations: [],
+      },
+      {
+        id: "old-answer",
+        role: "user",
+        action: "feedback",
+        content: "这是旧知识点的回答。",
+        citations: [],
+      },
+      {
+        id: "current-briefing",
+        role: "teacher",
+        action: "daily_briefing",
+        content: "当前知识点只显示这一轮开场。",
+        citations: [],
+      },
+    ];
+    vi.stubGlobal("fetch", snapshotFetch(currentTurnSnapshot));
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const history = await screen.findByTestId("active-conversation-history");
+    expect(history).toHaveTextContent("当前知识点只显示这一轮开场");
+    expect(history).not.toHaveTextContent("旧知识点开场");
+    expect(history).not.toHaveTextContent("这是旧知识点的回答");
+  });
+
   it("renders generic traceability, separated time fields, and persisted remediation state", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot }));
     render(<ActiveTeachingChainView workspaceId="generic" />);
@@ -453,11 +488,14 @@ describe("ActiveTeachingChainView", () => {
     );
   });
 
-  it("sends an explicit understood signal to the persisted state machine", async () => {
+  it("requires an actual learner answer before requesting an understanding judgment", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
-    await screen.findByTestId("active-understood");
+    expect(await screen.findByTestId("active-understood")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("active-teacher-input"), {
+      target: { value: "我会先记录已经看过的元素，再检查目标是否出现。" },
+    });
     fireEvent.click(screen.getByTestId("active-understood"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -467,6 +505,12 @@ describe("ActiveTeachingChainView", () => {
           body: expect.stringContaining('"understood":true'),
         }),
       ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/active-teaching/sessions/session_1/advance",
+      expect.objectContaining({
+        body: expect.stringContaining("我会先记录已经看过的元素"),
+      }),
     );
   });
 

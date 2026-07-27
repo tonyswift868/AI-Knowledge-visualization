@@ -25,8 +25,9 @@ const ACTIVE_WORKSPACE_KEY = "mentorflow_active_teaching_workspace_v1";
 const ACTIVE_DRAFT_PREFIX = "mentorflow_active_task_draft_v1:";
 
 const teacherActionLabels: Record<string, string> = {
-  daily_briefing: "今天先学这一点",
-  explain: "讲解",
+  daily_briefing: "开场摸底",
+  explain: "第一小步",
+  clarify_feedback: "再缩小一点",
   invite_questions: "轮到你提问",
   grounded_answer: "回答你的问题",
   guided_practice: "小练习",
@@ -473,9 +474,20 @@ export function ActiveTeachingChainView({
       setCodeResult(null);
     });
   }, [session?.session_id, problemId]);
+  const currentConversationMessages = useMemo(() => {
+    const messages = session?.messages || [];
+    let boundaryIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (["daily_briefing", "advance_route"].includes(String(messages[index]?.action || ""))) {
+        boundaryIndex = index;
+        break;
+      }
+    }
+    return messages.slice(Math.max(0, boundaryIndex));
+  }, [session?.messages]);
   const latestTeacher = useMemo(
-    () => [...(session?.messages || [])].reverse().find((item: any) => item.role === "teacher"),
-    [session],
+    () => [...currentConversationMessages].reverse().find((item: any) => item.role === "teacher"),
+    [currentConversationMessages],
   );
   const currentKnowledgePoint = graph.knowledge_points.find(
     (item: any) => item.id === session?.state?.current_knowledge_point_id,
@@ -1691,7 +1703,7 @@ export function ActiveTeachingChainView({
                   state={teacherPresentationState}
                 />
                 <div className="active-classroom__focus" data-testid="active-current-knowledge-point">
-                  <span>现在只学这一点</span>
+                  <span>当前知识点</span>
                   <h4>{currentKnowledgePoint?.name || "当前知识点"}</h4>
                   <p>
                     第 {currentKnowledgePointOrdinal.current}
@@ -1725,7 +1737,7 @@ export function ActiveTeachingChainView({
                   data-testid="active-conversation-history"
                   ref={conversationHistoryRef}
                 >
-                  {(session.messages || []).slice(-8).map((item: any) => {
+                  {currentConversationMessages.slice(-8).map((item: any) => {
                     const paragraphs = readableMessageParagraphs(item.content);
                     const visibleParagraphs = item.role === "teacher" ? paragraphs.slice(0, 2) : paragraphs;
                     const remainingParagraphs = item.role === "teacher" ? paragraphs.slice(2) : [];
@@ -1803,10 +1815,10 @@ export function ActiveTeachingChainView({
                   </button>
                   <button
                     data-testid="active-understood"
-                    disabled={Boolean(busy)}
-                    onClick={() => run("提交理解证据", () => advance(message || "我理解了，可以继续", true))}
+                    disabled={!message.trim() || Boolean(busy)}
+                    onClick={() => run("提交理解证据", () => advance(message, true))}
                   >
-                    我已理解并接受检测
+                    提交回答并让教师判断
                   </button>
                 </div>
 

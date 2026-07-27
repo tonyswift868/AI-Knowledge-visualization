@@ -105,8 +105,9 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
             json={},
         )
         assert invitation.status_code == 200, invitation.text
-        assert invitation.json()["messages"][-1]["action"] == "invite_questions"
-        assert invitation.json()["state"]["current_teaching_step"] == "question_invitation"
+        assert len(invitation.json()["messages"]) == len(explanation.json()["messages"])
+        assert invitation.json()["messages"][-1]["action"] == "explain"
+        assert invitation.json()["state"]["current_teaching_step"] == "concept_check"
         assert invitation.json()["state"]["autonomy"]["awaiting_learner"] is True
         assert invitation.json()["state"]["formal_review_gate"]["unlocked"] is False
 
@@ -134,7 +135,7 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
         assert practice.json()["messages"][-1]["action"] == "guided_practice"
         assert practice.json()["state"]["current_teaching_step"] == "check_understanding"
         assert practice.json()["state"]["autonomy"]["reason"] == "learner_practice_required"
-        assert len(practice.json()["messages"]) == 7
+        assert len(practice.json()["messages"]) == 6
         assert practice.json()["state"]["today_plan"]["task_count"] > 0
         assert practice.json()["state"]["today_plan"]["knowledge_point_count"] > 0
 
@@ -152,8 +153,22 @@ def test_daily_briefing_accepts_a_baseline_reply_and_pauses_after_one_explanatio
         assert payload["messages"][-2]["role"] == "user"
         assert payload["messages"][-1]["action"] == "explain"
         assert "完全没接触过" in payload["messages"][-1]["content"]
-        assert payload["state"]["current_teaching_step"] == "explain"
+        assert payload["state"]["current_teaching_step"] == "concept_check"
         assert payload["state"]["autonomy"]["awaiting_learner"] is True
+
+        too_vague = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "继续"},
+        ).json()
+        assert too_vague["messages"][-1]["action"] == "clarify_feedback"
+        assert too_vague["state"]["current_teaching_step"] == "concept_check"
+
+        substantive = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "我理解的是先记录已经看过的元素"},
+        ).json()
+        assert substantive["messages"][-1]["action"] == "guided_practice"
+        assert substantive["state"]["current_teaching_step"] == "check_understanding"
 
 
 def test_zero_coding_foundation_gets_a_no_code_first_step(tmp_path):
@@ -207,6 +222,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
                 "remediation_explain",
                 "resume_main_route",
                 "advance_route",
+                "clarify_feedback",
             }
             return {"content": f"表达层输出：{prompt['fixed_action']}"}
 
@@ -238,7 +254,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
         confused = client.post(
             f"/api/active-teaching/sessions/{body['session_id']}/advance",
             json={
-                "message": "我不懂，为什么要这样做？",
+                    "message": "我还是没明白这里的核心关系",
                 "provider_session_id": provider_session.id,
             },
         )
@@ -399,11 +415,10 @@ def test_provider_high_score_cannot_bypass_required_grounded_prechecks(tmp_path,
         )
         client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "继续", "provider_session_id": provider_session.id},
-        )
-        client.post(
-            f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "继续", "provider_session_id": provider_session.id},
+            json={
+                "message": "我理解的是先记录已经看过的元素再检查目标",
+                "provider_session_id": provider_session.id,
+            },
         )
         response = client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
@@ -446,7 +461,7 @@ def test_remediation_pauses_and_restores_route_with_persistence(tmp_path):
         confused = client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
             json={
-                "message": "我不理解，为什么要这样做？",
+                "message": "我还是没明白这里的核心关系",
                 "actual_elapsed_minutes": 2.0,
                 "activity_event_id": "state-turn-1",
             },
@@ -588,11 +603,10 @@ def test_persisted_review_queue_executes_two_complete_review_rounds(
         )
         client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "继续", "provider_session_id": provider_session.id},
-        )
-        client.post(
-            f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "继续", "provider_session_id": provider_session.id},
+            json={
+                "message": "我理解的是先记录已经看过的元素再检查目标",
+                "provider_session_id": provider_session.id,
+            },
         )
         passed_initial = client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
