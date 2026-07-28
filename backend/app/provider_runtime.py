@@ -3,14 +3,11 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
 from .provider_service import ProviderError, get_provider
-
-SESSION_TTL_SECONDS = 1800
-
 
 @dataclass
 class ProviderSession:
@@ -21,7 +18,7 @@ class ProviderSession:
     api_key: str
     temperature: float
     created_at: datetime
-    expires_at: datetime
+    expires_at: datetime | None
     last_tested_at: datetime | None = None
     verified: bool = False
     last_latency_ms: int | None = None
@@ -58,7 +55,7 @@ def create_provider_session(config: dict[str, Any]) -> dict[str, Any]:
     if provider != "fake":
         get_provider(effective_config)
     created = _now()
-    session = ProviderSession(id="ps_" + secrets.token_urlsafe(12), provider=provider, base_url=str(effective_config.get("base_url", "")), model=str(effective_config.get("model", "fake")), api_key=str(effective_config.get("api_key", "")), temperature=float(config.get("temperature", 0.2)), created_at=created, expires_at=created + timedelta(seconds=SESSION_TTL_SECONDS))
+    session = ProviderSession(id="ps_" + secrets.token_urlsafe(12), provider=provider, base_url=str(effective_config.get("base_url", "")), model=str(effective_config.get("model", "fake")), api_key=str(effective_config.get("api_key", "")), temperature=float(config.get("temperature", 0.2)), created_at=created, expires_at=None)
     _sessions[session.id] = session
     return public_session(session)
 
@@ -66,22 +63,36 @@ def create_provider_session(config: dict[str, Any]) -> dict[str, Any]:
 def get_provider_session(session_id: str | None) -> ProviderSession | None:
     if not session_id:
         return None
-    session = _sessions.get(session_id)
-    if session and session.expires_at <= _now():
-        session.verified = False
-        session.last_error_code = "PROVIDER_SESSION_EXPIRED"
-    return session
+    return _sessions.get(session_id)
 
 
 def require_provider_session(session_id: str | None, verified: bool = True) -> ProviderSession:
     session = get_provider_session(session_id)
     if not session:
         raise ProviderError("PROVIDER_SESSION_REQUIRED", "请先验证 Provider 连接", 428)
-    if session.expires_at <= _now():
-        raise ProviderError("PROVIDER_SESSION_EXPIRED", "Provider 会话已失效，请重新连接", 401)
     if verified and not session.verified:
         raise ProviderError("PROVIDER_SESSION_UNVERIFIED", "Provider 尚未验证，请先测试连接", 428)
     return session
+
+
+def same_provider_configuration(left: ProviderSession, right: ProviderSession) -> bool:
+    """Return whether two sessions represent the same evaluator configuration.
+
+    Provider sessions are process-local handles. Recreating an identical handle
+    after a page refresh or backend restart must not look like an evaluator
+    switch to a durable teaching session.
+    """
+
+    left_provider = left.provider.replace("-", "_").strip().lower()
+    right_provider = right.provider.replace("-", "_").strip().lower()
+    left_base_url = left.base_url.strip().rstrip("/").lower()
+    right_base_url = right.base_url.strip().rstrip("/").lower()
+    return (
+        left_provider == right_provider
+        and left_base_url == right_base_url
+        and left.model.strip() == right.model.strip()
+        and secrets.compare_digest(left.api_key, right.api_key)
+    )
 
 
 async def test_provider_session(session_id: str) -> dict[str, Any]:
@@ -117,7 +128,7 @@ def delete_provider_session(session_id: str) -> bool:
 
 def create_verified_demo_session() -> ProviderSession:
     created = _now()
-    session = ProviderSession(id="ps_demo_" + secrets.token_hex(6), provider="fake", base_url="", model="fake", api_key="", temperature=0.2, created_at=created, expires_at=created + timedelta(seconds=SESSION_TTL_SECONDS), last_tested_at=created, verified=True, last_latency_ms=0, model_reported="fake")
+    session = ProviderSession(id="ps_demo_" + secrets.token_hex(6), provider="fake", base_url="", model="fake", api_key="", temperature=0.2, created_at=created, expires_at=None, last_tested_at=created, verified=True, last_latency_ms=0, model_reported="fake")
     _sessions[session.id] = session
     return session
 

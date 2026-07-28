@@ -400,6 +400,35 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
         )
         assert verified["messages"][-1]["action"] == "advance_route"
 
+        replacement_public = create_provider_session(
+            {
+                "provider": "openai-compatible",
+                "base_url": "https://example.invalid",
+                "model": "teaching-expression-test",
+                "api_key": "test-only-key",
+            }
+        )
+        replacement_session = get_provider_session(
+            replacement_public["provider_session_id"]
+        )
+        replacement_session.verified = True
+        reconnected = client.post(
+            f"/api/active-teaching/sessions/{body['session_id']}/advance",
+            json={
+                "message": "为什么这个方法只需要遍历一次？",
+                "provider_session_id": replacement_session.id,
+            },
+        )
+        assert reconnected.status_code == 200, reconnected.text
+        assert (
+            reconnected.json()["state"]["provider_session_id"]
+            == replacement_session.id
+        )
+        assert (
+            reconnected.json()["state"]["provider_reconnect"]["reason"]
+            == "same_configuration"
+        )
+
         other_public = create_provider_session(
             {
                 "provider": "openai-compatible",

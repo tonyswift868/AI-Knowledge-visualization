@@ -270,19 +270,6 @@ export function App() {
       return () => clearTimeout(t);
     }
   }, [toast]);
-  useEffect(() => {
-    if (!providerState.expiresAt || !providerState.verified) return;
-    const remaining = new Date(providerState.expiresAt).getTime() - Date.now();
-    if (remaining <= 0) {
-      useMentorStore.getState().setLastError("模型会话已过期，正在自动重新连接");
-      return;
-    }
-    const timer = window.setTimeout(
-      () => useMentorStore.getState().setLastError("模型会话已过期，正在自动重新连接"),
-      remaining,
-    );
-    return () => window.clearTimeout(timer);
-  }, [providerState.expiresAt, providerState.verified]);
   async function selectWs(item: Workspace) {
     setWs(item);
     useMentorStore.getState().setWorkspace(item.id);

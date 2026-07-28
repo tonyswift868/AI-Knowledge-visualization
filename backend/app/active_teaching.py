@@ -18,7 +18,12 @@ from typing import Any, Iterable
 
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 
-from .provider_runtime import generation_meta, provider_for_session, require_provider_session
+from .provider_runtime import (
+    generation_meta,
+    provider_for_session,
+    require_provider_session,
+    same_provider_configuration,
+)
 from .provider_service import ProviderError
 
 
@@ -894,6 +899,57 @@ def _error(code: str, message: str, status: int = 400, **details: Any) -> None:
     raise HTTPException(
         status_code=status,
         detail={"error": {"code": code, "message": message, "details": details}},
+    )
+
+
+def _bind_provider_session(
+    state: dict[str, Any], requested_provider_session_id: str | None
+) -> str | None:
+    """Resolve a browser Provider handle without mistaking reconnection for a source switch."""
+
+    bound_provider_session_id = str(state.get("provider_session_id") or "").strip() or None
+    if not requested_provider_session_id:
+        if not bound_provider_session_id:
+            return None
+        try:
+            require_provider_session(bound_provider_session_id)
+        except ProviderError:
+            return None
+        return bound_provider_session_id
+
+    requested_session = require_provider_session(requested_provider_session_id)
+    if not bound_provider_session_id or requested_provider_session_id == bound_provider_session_id:
+        state["provider_session_id"] = requested_provider_session_id
+        return requested_provider_session_id
+
+    try:
+        bound_session = require_provider_session(bound_provider_session_id)
+    except ProviderError:
+        # Provider handles live in backend memory. A browser can transparently
+        # recreate the same verified configuration after a backend restart.
+        state["provider_session_id"] = requested_provider_session_id
+        state["provider_reconnect"] = {
+            "previous_provider_session_id": bound_provider_session_id,
+            "provider_session_id": requested_provider_session_id,
+            "reconnected_at": _now(),
+            "reason": "previous_handle_unavailable",
+        }
+        return requested_provider_session_id
+
+    if same_provider_configuration(bound_session, requested_session):
+        state["provider_session_id"] = requested_provider_session_id
+        state["provider_reconnect"] = {
+            "previous_provider_session_id": bound_provider_session_id,
+            "provider_session_id": requested_provider_session_id,
+            "reconnected_at": _now(),
+            "reason": "same_configuration",
+        }
+        return requested_provider_session_id
+
+    _error(
+        "TEACHING_PROVIDER_SESSION_MISMATCH",
+        "该教学会话已绑定另一套 Provider 配置；如需更换模型或评分来源，请新建任务。",
+        409,
     )
 
 
@@ -3682,7 +3738,8 @@ async def teach_next(
             workspace_id=session["workspace_id"],
             state=state,
         )
-        expression_provider_session_id = (
+        expression_provider_session_id = _bind_provider_session(
+            state,
             str(body.get("provider_session_id") or "").strip() or None
         )
         if not expression_provider_session_id and state.get("provider_session_id"):
@@ -3926,31 +3983,10 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         if state.get("current_teaching_step") == "explain":
             state["current_teaching_step"] = "concept_check"
             state["next_action"] = "interpret_learner_feedback"
-        requested_provider_session_id = (
+        requested_provider_session_id = _bind_provider_session(
+            state,
             str(body.get("provider_session_id") or "").strip() or None
         )
-        bound_provider_session_id = state.get("provider_session_id")
-        if (
-            requested_provider_session_id
-            and bound_provider_session_id
-            and requested_provider_session_id != bound_provider_session_id
-        ):
-            try:
-                require_provider_session(str(bound_provider_session_id))
-            except ProviderError:
-                # Provider sessions are deliberately in-memory. After a backend
-                # restart the durable teaching session may still reference the
-                # vanished id; accept the browser's newly verified replacement.
-                state["provider_session_id"] = requested_provider_session_id
-                bound_provider_session_id = requested_provider_session_id
-            else:
-                _error(
-                    "TEACHING_PROVIDER_SESSION_MISMATCH",
-                    "该教学会话已绑定另一条 Provider 会话；不能在一次学习证据链中静默更换评分来源。",
-                    409,
-                )
-        if requested_provider_session_id and not bound_provider_session_id:
-            state["provider_session_id"] = requested_provider_session_id
         tasks = _task_rows(connection, session["plan_id"])
         if not tasks:
             _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
@@ -4979,16 +5015,9 @@ async def start_review(
         active_review = state.get("active_review")
         if active_review and active_review.get("id") != review_id:
             _error("OTHER_REVIEW_IN_PROGRESS", "请先完成当前复习任务", 409)
-        provider_session_id = str(body.get("provider_session_id") or "").strip() or None
-        bound_provider_session_id = state.get("provider_session_id")
-        if provider_session_id and bound_provider_session_id and provider_session_id != bound_provider_session_id:
-            _error(
-                "TEACHING_PROVIDER_SESSION_MISMATCH",
-                "该教学会话已绑定另一条 Provider 会话。",
-                409,
-            )
-        if provider_session_id and not bound_provider_session_id:
-            state["provider_session_id"] = provider_session_id
+        provider_session_id = _bind_provider_session(
+            state, str(body.get("provider_session_id") or "").strip() or None
+        )
         state.setdefault(
             "review_return",
             {
@@ -5096,16 +5125,9 @@ async def submit_review(
             "SELECT * FROM active_knowledge_points WHERE id=?",
             (review["knowledge_point_id"],),
         ).fetchone()
-        provider_session_id = str(body.get("provider_session_id") or "").strip() or None
-        bound_provider_session_id = state.get("provider_session_id")
-        if provider_session_id and bound_provider_session_id and provider_session_id != bound_provider_session_id:
-            _error(
-                "TEACHING_PROVIDER_SESSION_MISMATCH",
-                "该教学会话已绑定另一条 Provider 会话。",
-                409,
-            )
-        if bound_provider_session_id and not provider_session_id:
-            provider_session_id = bound_provider_session_id
+        provider_session_id = _bind_provider_session(
+            state, str(body.get("provider_session_id") or "").strip() or None
+        )
         try:
             elapsed = max(0.0, min(60.0, float(body.get("actual_elapsed_minutes") or 0)))
         except (TypeError, ValueError):

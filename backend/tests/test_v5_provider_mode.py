@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -138,13 +138,15 @@ def test_provider_failure_never_falls_back_to_fake(client, monkeypatch):
     assert client.post(f"/api/workspaces/{workspace['id']}/feasibility/analyze", json={}).status_code == 428
 
 
-def test_provider_session_expiry_and_delete(client, monkeypatch):
+def test_provider_session_has_no_time_limit_and_can_be_deleted(client, monkeypatch):
     install_mock_provider(monkeypatch)
     result = make_real_session(client)
     session = get_provider_session(result["provider_session_id"])
-    session.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-    expired = client.post(f"/api/provider-sessions/{result['provider_session_id']}/test")
-    assert expired.status_code == 401 and expired.json()["error"]["code"] == "PROVIDER_SESSION_EXPIRED"
+    assert session.expires_at is None
+    current = client.get(f"/api/provider-sessions/{result['provider_session_id']}")
+    assert current.status_code == 200
+    assert current.json()["verified"] is True
+    assert current.json()["expires_at"] is None
     assert client.delete(f"/api/provider-sessions/{result['provider_session_id']}").status_code == 200
 
 
