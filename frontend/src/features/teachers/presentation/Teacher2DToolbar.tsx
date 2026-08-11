@@ -19,11 +19,19 @@ type Props = {
   onSkinChange: (value: string) => void
 }
 
+export function teacherSkinLabel(name: string): string {
+  if (name === "teaching") return "教学形态"
+  if (name === "swimsuit") return "泳装形态"
+  if (name === "default") return "银白发"
+  if (name === "red-hair") return "山茶红发"
+  return name
+}
+
 export function Teacher2DToolbar({ collapsed, paused, mirrored, debug, animations, selectedAnimation, skins, selectedSkin, onCollapsedChange, onPausedChange, onMirroredChange, onDebugChange, onZoom, onReset, onAnimationChange, onSkinChange }: Props) {
   return <nav className="teacher-2d-toolbar" aria-label="2D 教师控制栏">
     <button type="button" aria-expanded={!collapsed} aria-label={collapsed ? "展开教师舞台" : "收起教师舞台"} title={collapsed ? "展开" : "收起"} onClick={() => onCollapsedChange(!collapsed)}>{collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}<span>{collapsed ? "展开" : "收起"}</span></button>
     <label className="teacher-2d-animation-picker"><ListVideo size={16} /><span>动作</span><select aria-label="真实动画列表" value={selectedAnimation} onChange={event => onAnimationChange(event.target.value)} disabled={!animations.length}><option value="">选择动画</option>{animations.map(name => <option value={name} key={name}>{name}</option>)}</select></label>
-    {skins.length > 1 && <label className="teacher-2d-skin-picker"><Shirt size={16} /><span>形态</span><select aria-label="教师形态" value={selectedSkin} onChange={event => onSkinChange(event.target.value)}>{skins.map(name => <option value={name} key={name}>{name === "teaching" ? "教学形态" : "泳装形态"}</option>)}</select></label>}
+    {skins.length > 1 && <label className="teacher-2d-skin-picker"><Shirt size={16} /><span>形态</span><select aria-label="教师形态" value={selectedSkin} onChange={event => onSkinChange(event.target.value)}>{skins.map(name => <option value={name} key={name}>{teacherSkinLabel(name)}</option>)}</select></label>}
     <button type="button" aria-label="放大教师" title="放大" onClick={() => onZoom(.12)}><Maximize2 size={16} /><span>放大</span></button>
     <button type="button" aria-label="缩小教师" title="缩小" onClick={() => onZoom(-.12)}><Minimize2 size={16} /><span>缩小</span></button>
     <button type="button" aria-pressed={mirrored} aria-label="左右镜像教师" title="镜像" className={mirrored ? "active" : ""} onClick={() => onMirroredChange(!mirrored)}><FlipHorizontal2 size={16} /><span>镜像</span></button>

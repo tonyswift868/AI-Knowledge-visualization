@@ -15,6 +15,7 @@ import { ParametricCardPreview } from "./ParametricCardPreview"
 import { TeacherCompanionPortrait, TeacherCompanionStage, type TeacherCompanionState } from "./TeacherCompanionStage"
 import { friendlyKksDisplayName } from "./kksDisplayNames"
 import "./teacher-avatar.css"
+import "./teacher-avatar-warm.css"
 
 const KoikatsuCardEditor = lazy(() => import("./KoikatsuCardEditor").then(module => ({ default: module.KoikatsuCardEditor })))
 
@@ -136,7 +137,7 @@ export function TeacherAvatarStudio({
   const configuredSpineManifestUrl = useMemo(() => resolveSpineTeacherManifestUrl(), [])
   const [spineTeacher, setSpineTeacher] = useState<SpineTeacher | null>(null)
   const [spineNotice, setSpineNotice] = useState("")
-  const [reviewMode, setReviewMode] = useState<`mother-${TeacherMotherImageId}` | "skeleton">("mother-blonde-fang-teaching")
+  const [reviewMode, setReviewMode] = useState<`mother-${TeacherMotherImageId}` | "skeleton">("skeleton")
   const [personas, setPersonas] = useState<ActiveTeacherPersona[]>([])
   const [visualProfiles, setVisualProfiles] = useState<ActiveTeacherVisualProfile[]>([])
   const [personaId, setPersonaId] = useState("")
@@ -510,8 +511,8 @@ export function TeacherAvatarStudio({
         <button type="button" className={reviewMode === "mother-auburn" ? "active" : ""} aria-pressed={reviewMode === "mother-auburn"} onClick={() => setReviewMode("mother-auburn")}>教师 01 · 红发</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 小熊教学态</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-swimsuit" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-swimsuit"} onClick={() => setReviewMode("mother-blonde-fang-swimsuit")}>教师 02 · 泳装聊天态</button>
-        <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>V9 轻量动态</button>
-        <span>当前使用正式母图进行低显存互动；以后拆层时可替换渲染器，不影响教师大脑。</span>
+        <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>椿 · Live2D 动态</button>
+        <span>当前默认教师使用 Cubism 原生网格、物理与语义动作；母图仅保留作历史对照。</span>
       </div>}
 
       {!compact && (reviewMode !== "skeleton"

@@ -36,6 +36,116 @@
 .teacher-mother-review-stage img{height:650px}
 @media(max-width:1000px){.teacher-mother-review-stage img{height:790px}}
 @media(max-width:650px){.teacher-mother-review-stage img{height:620px}}
+
+/* Warm library shell: persona management and mother-image review should read
+   as part of MentorFlow instead of a separate dark developer console. */
+.teacher-avatar-studio:not(.compact){
+  border-color:#d9cdbb;
+  background:
+    radial-gradient(circle at 82% 8%,#dfeee3 0,transparent 29%),
+    linear-gradient(145deg,#fffaf1,#f6efe4 58%,#f0e7da);
+  box-shadow:0 22px 58px #6d5c4730;
+  color:#303a34;
+}
+.teacher-avatar-studio:not(.compact) .teacher-avatar-heading span{color:#4f836b}
+.teacher-avatar-studio:not(.compact) .teacher-avatar-heading h2{color:#28352f}
+.teacher-avatar-studio:not(.compact) .teacher-avatar-heading p{color:#756f66}
+.teacher-avatar-studio:not(.compact) .teacher-avatar-heading a{
+  border-color:#a9c5b4;
+  background:#f5fbf5;
+  color:#356d56;
+}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library{
+  border-color:#c7d8cb;
+  background:#fffdf8e8;
+  box-shadow:0 12px 30px #79684d16;
+}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library header span,
+.teacher-avatar-studio:not(.compact) .teacher-persona-library h3{color:#356d56}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library p,
+.teacher-avatar-studio:not(.compact) .teacher-persona-library nav small,
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__editor label small{color:#766f66}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library button{
+  border-color:#cbbfae;
+  background:#fffaf2;
+  color:#4b4c45;
+}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library nav button.active{
+  border-color:#77a78c;
+  background:#e7f2e9;
+  color:#275e49;
+}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__editor label{color:#4f554f}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__editor input,
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__editor select,
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__editor textarea{
+  border-color:#d4c8b6;
+  background:#fffdf9;
+  color:#2e3933;
+}
+.teacher-avatar-studio:not(.compact) .teacher-persona-library__actions button:last-child{
+  background:#66b49a;
+  color:#10281f;
+}
+.teacher-avatar-studio:not(.compact) .teacher-review-switch{
+  border-color:#d4c8b6;
+  background:#f7f0e5;
+}
+.teacher-avatar-studio:not(.compact) .teacher-review-switch button{
+  border-color:#c8bba8;
+  background:#fffaf2;
+  color:#68645d;
+}
+.teacher-avatar-studio:not(.compact) .teacher-review-switch button:hover,
+.teacher-avatar-studio:not(.compact) .teacher-review-switch button:focus-visible,
+.teacher-avatar-studio:not(.compact) .teacher-review-switch button.active{
+  border-color:#73a98d;
+  background:#e6f2e8;
+  color:#2b6a51;
+  box-shadow:0 7px 18px #4f836b1a;
+}
+.teacher-avatar-studio:not(.compact) .teacher-review-switch span{color:#7d766c}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review{
+  border-color:#d5c8b5;
+  background:
+    radial-gradient(circle at 76% 42%,#dcecdf 0,#edf5ec 27%,transparent 50%),
+    linear-gradient(115deg,#fffaf1 0,#f4ecdf 48%,#e9f1e9 100%);
+  box-shadow:0 20px 50px #6b59442d;
+}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review:after{
+  background:linear-gradient(90deg,#fffaf7f5 0,#fffaf2d9 39%,transparent 69%),linear-gradient(180deg,transparent 72%,#d8c9b540);
+}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy>span{color:#4d8b70}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy h3{color:#2d3933}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy p{color:#706b64}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy dl div{
+  border-color:#d8cbb8;
+  background:#fffdf8c9;
+}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy dt{color:#4b8b6f}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-copy dd{color:#4d504b}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-stage img{filter:drop-shadow(0 24px 26px #735f4650)}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-halo{
+  border-color:#73a98d42;
+  box-shadow:0 0 0 46px #73a98d12,0 0 0 92px #c9885b0b;
+}
+.teacher-avatar-studio:not(.compact) .teacher-mother-review-status{
+  border-color:#7fad92;
+  background:#fffaf0e8;
+  color:#356d56;
+  box-shadow:0 8px 22px #705f461f;
+}
+.teacher-avatar-studio:not(.compact) .spine-teacher-import,
+.teacher-avatar-studio:not(.compact) .teacher-legacy-tools{
+  border-color:#d5c8b6;
+  background:#fffaf2cc;
+  color:#4c514c;
+}
+@media(max-width:650px){
+  .teacher-avatar-studio:not(.compact) .teacher-mother-review-copy{
+    background:linear-gradient(180deg,#fffaf6f5 0,#fffaf3df 72%,transparent);
+  }
+}
 .teacher-avatar-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.35fr);gap:14px;align-items:start}.teacher-avatar-preview-panel{position:sticky;top:12px;min-width:0}.teacher-avatar-preview-shell{height:580px;overflow:hidden;border:1px solid #2d5064;border-radius:14px;background:radial-gradient(circle at 50% 18%,#26385a,#10192d 58%,#090f18)}.teacher-avatar-preview-shell>div{width:100%;height:100%}.teacher-avatar-empty{display:grid;place-items:center;height:100%;color:#8fa6b3;font-size:13px}.teacher-avatar-credit{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #294253;border-top:0;border-radius:0 0 12px 12px;background:#08131dcc;color:#dceaf2}.teacher-avatar-credit span{color:#91a6b2;font-size:11px}.teacher-avatar-controls{display:flex;flex-direction:column;gap:14px}.teacher-avatar-current{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:11px 13px;border-radius:11px;background:#0a131dcc;color:#dceaf2}.teacher-avatar-current span{color:#91a6b2;font-size:11px}
 .teacher-avatar-roster{display:flex;flex-wrap:wrap;gap:8px}.teacher-avatar-roster button{display:flex;flex-direction:column;align-items:flex-start;border:1px solid #344f62;background:#142433;color:#dceaf2;border-radius:10px;padding:8px 10px}.teacher-avatar-roster small{color:#8ba1ae}.teacher-avatar-roster button.active{border-color:#79ddca;background:#173b3e;color:#a8f6e7}
 .teacher-morph-grid{display:grid;grid-template-columns:1fr;gap:12px;padding:15px;border-radius:14px;background:#0a131dcc}.teacher-morph-grid label{display:flex;flex-direction:column;gap:6px}.teacher-morph-grid label span{display:flex;justify-content:space-between;color:#bdcdd6}.teacher-morph-grid input[type=range]{width:100%;accent-color:#72dac5}

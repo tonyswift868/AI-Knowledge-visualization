@@ -1,4 +1,4 @@
-export type TeacherRendererKind = "image2d" | "dragonbones2d" | "spine2d" | "kks3d" | "none"
+export type TeacherRendererKind = "image2d" | "layered2d" | "dragonbones2d" | "live2d2d" | "spine2d" | "kks3d" | "none"
 
 export type TeacherPresentationState =
   | "loading"
@@ -35,6 +35,28 @@ export type Teacher2DManifest = {
     teaching: string
     swimsuit: string
   }
+  live2d?: {
+    coreScript?: string
+    textureLod?: "full" | "single-auto" | false
+    expressions?: Partial<Record<TeacherPresentationState, string>>
+    skins?: Record<string, {
+      label?: string
+      partIds?: readonly string[]
+      multiplyColor?: readonly [number, number, number, number]
+      screenColor?: readonly [number, number, number, number]
+    }>
+    parameters?: Partial<Record<
+      | "angleX" | "angleY" | "angleZ"
+      | "bodyX" | "bodyY" | "bodyZ"
+      | "eyeLeftOpen" | "eyeRightOpen"
+      | "eyeExpression1" | "eyeExpression2"
+      | "mouthOpen" | "mouthForm" | "mouthX" | "mouthPucker" | "mouthShrug"
+      | "jawOpen" | "browLeftY" | "browRightY" | "browLeftForm" | "browRightForm" | "eyeBrowX"
+      | "cheekPuff" | "breath"
+      | "leftHand1" | "leftHand2" | "rightHand1" | "rightHand2",
+      string
+    >>
+  }
 }
 
 export type TeacherRendererSnapshot = {
@@ -62,6 +84,7 @@ export interface Teacher2DRenderer {
   listSkins(): string[]
   setSkin(name: string): void
   setScale(scale: number): void
+  setOffset(x: number, y: number): void
   setMirror(mirrored: boolean): void
   pause(): void
   resume(): void

@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .env
+MINIMAX_API_KEY.txt
+backend/config/voice/minimax_teacher_voice.local.json
 *.pid
 *.log
 
@@ -60,3 +62,11 @@ artifacts/test_quant.png
 
 # Local handoff document; do not publish with the project
 CODEX_MENTORFLOW_ACCEPTANCE_REPORT_FOR_GPT.md
+HANDOFF_NEW_SESSION_MENTORFLOW_LIVE2D_20260807.md
+
+# Local browser/evidence artifacts and extracted runtime metadata
+frontend/.playwright-cli/
+frontend/output/
+data/active_teaching/uploads/_teaching_attachments/
+$extract/
+weight.json

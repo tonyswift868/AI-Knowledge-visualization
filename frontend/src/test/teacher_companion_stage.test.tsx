@@ -2,7 +2,7 @@ import { StrictMode } from "react"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { TeacherCompanionPortrait, TeacherCompanionStage } from "../features/teachers/TeacherCompanionStage"
+import { TeacherCompanionPortrait, TeacherCompanionStage, teacherRuntimeLabel } from "../features/teachers/TeacherCompanionStage"
 import { Teacher2DStage } from "../features/teachers/presentation/Teacher2DStage"
 import type { TeacherPresentationController } from "../features/teachers/presentation/TeacherPresentationController"
 import type { TeacherPresentationControllerOptions } from "../features/teachers/presentation/TeacherPresentationController"
@@ -35,6 +35,7 @@ function fakeController(
     dispose: vi.fn(),
     setState: vi.fn(),
     setScale: vi.fn(),
+    setOffset: vi.fn(),
     setMirror: vi.fn(),
     setSkin: vi.fn(),
     pause: vi.fn(),
@@ -47,11 +48,17 @@ function fakeController(
 }
 
 describe("2D teacher companion stage", () => {
+  it("reports the hierarchical runtime instead of calling it an image fallback", () => {
+    expect(teacherRuntimeLabel("live2d")).toBe("Live2D Cubism")
+    expect(teacherRuntimeLabel("layered2d")).toBe("Pixi 层级骨骼")
+    expect(teacherRuntimeLabel("image2d")).toBe("V9 图片回退")
+  })
+
   it("uses the lightweight V9 image renderer boundary", () => {
     render(<TeacherCompanionStage teacherName="艾莉丝" />)
     const stage = screen.getByTestId("teacher-companion-stage")
-    expect(stage).toHaveAttribute("data-visual-mode", "2d-image")
-    expect(stage).toHaveAttribute("data-runtime-target", "image2d")
+    expect(stage).toHaveAttribute("data-visual-mode", "2d-layered")
+    expect(stage).toHaveAttribute("data-runtime-target", "layered2d")
     expect(screen.getByTestId("teacher-2d-stage")).toHaveAttribute("data-renderer-kind", "image2d")
   })
 
@@ -98,7 +105,35 @@ describe("2D teacher companion stage", () => {
     expect(screen.getByTestId("teacher-2d-debug")).toBeInTheDocument()
   })
 
-  it("switches the V9 form through the visible toolbar without remounting", async () => {
+  it("offers face, half-body and full-body camera presets with position tuning", async () => {
+    const setScale = vi.fn()
+    const setOffset = vi.fn()
+    const controllerFactory = (options: TeacherPresentationControllerOptions) => fakeController(options, {
+      setScale,
+      setOffset,
+    })
+    render(<Teacher2DStage compact controllerFactory={controllerFactory} />)
+
+    const stage = screen.getByTestId("teacher-2d-stage")
+    expect(stage).toHaveAttribute("data-camera-preset", "half")
+    expect(stage).toHaveAttribute("data-camera-zoom", "1.52")
+    expect(stage).toHaveAttribute("data-camera-y", "0.44")
+    fireEvent.click(screen.getByRole("button", { name: "脸部" }))
+    expect(stage).toHaveAttribute("data-camera-preset", "face")
+    expect(stage).toHaveAttribute("data-camera-zoom", "2.30")
+    expect(stage).toHaveAttribute("data-camera-y", "0.70")
+    fireEvent.click(screen.getByRole("button", { name: "教师向上移动" }))
+    expect(stage).toHaveAttribute("data-camera-preset", "custom")
+    expect(stage).toHaveAttribute("data-camera-y", "0.64")
+    fireEvent.click(screen.getByRole("button", { name: "恢复教师默认状态" }))
+    expect(stage).toHaveAttribute("data-camera-preset", "half")
+    await waitFor(() => {
+      expect(setScale).toHaveBeenCalledWith(1.52)
+      expect(setOffset).toHaveBeenCalledWith(0, .44)
+    })
+  })
+
+  it("switches the V9 form through the visible dual-form controls without remounting", async () => {
     const setSkin = vi.fn()
     const mount = vi.fn()
     const controllerFactory = (options: TeacherPresentationControllerOptions) => fakeController(options, {
@@ -122,8 +157,10 @@ describe("2D teacher companion stage", () => {
     })
     render(<Teacher2DStage controllerFactory={controllerFactory} />)
 
-    const picker = await screen.findByLabelText("教师形态")
-    fireEvent.change(picker, { target: { value: "swimsuit" } })
+    const swimsuitButton = await screen.findByTestId("teacher-form-swimsuit")
+    expect(swimsuitButton).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(swimsuitButton)
+    expect(swimsuitButton).toHaveAttribute("aria-pressed", "true")
     expect(setSkin).toHaveBeenCalledWith("swimsuit")
     expect(mount).toHaveBeenCalledTimes(1)
   })

@@ -8,6 +8,9 @@ import {
   type ActiveLearningTaskSummary,
   type ActiveTeacherPersona,
   uploadActiveMaterial,
+  uploadActiveTeachingAttachment,
+  warmActiveTeachingVoice,
+  transcribeActiveTeachingVoice,
 } from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
 import { reconnectSavedProvider } from "../../providerConnection";
@@ -15,8 +18,15 @@ import {
   TeacherCompanionPortrait,
   type TeacherCompanionState,
 } from "../teachers/TeacherCompanionStage";
+import {
+  speakLocalTeacherVoice,
+  stopLocalTeacherVoice,
+} from "../voice/localTeacherVoice";
+import { VoicePlaybackRateControl } from "../voice/VoicePlaybackRateControl";
 import "../teachers/teacher-avatar.css";
+import "../teachers/teacher-avatar-warm.css";
 import "./active-teaching.css";
+import { FocusMonitorPanel } from "./FocusMonitorPanel";
 
 const isoAfterDays = (days: number) => {
   const value = new Date(Date.now() + days * 86400000);
@@ -41,6 +51,54 @@ const teacherActionLabels: Record<string, string> = {
   praise: "做得很好",
 };
 
+export function resolveActiveTeacherPresentationState(
+  busy: boolean,
+  actionValue: unknown,
+  sessionState?: Record<string, any> | null,
+  contentValue: unknown = "",
+): TeacherCompanionState {
+  if (busy) return "thinking";
+  const action = String(actionValue || "").trim().toLowerCase();
+  const teachingStep = String(sessionState?.current_teaching_step || "").trim().toLowerCase();
+  const content = String(contentValue || "").trim().toLowerCase();
+
+  if (/complete_route|course_complete|lesson_end/.test(action) || teachingStep === "completed") {
+    return "ending";
+  }
+  if (/daily_briefing|knowledge_jump|lesson_start/.test(action)) return "greeting";
+  if (/praise|pass|advance_route|resume_main_route|mastered/.test(action)) return "praising";
+  if (/question|check|guided_practice|clarify_feedback|invite_questions|point_readiness/.test(action)) {
+    return "questioning";
+  }
+  if (/source_conflict|insufficient_evidence|confus/.test(action)) return "confused";
+  if (/remediation|encourag|learning_coach/.test(action)) return "encouraging";
+  if (/explain|example/.test(action)) return "explaining";
+
+  // Provider answers often share a generic action such as grounded_answer.
+  // Preserve explicit workflow actions above, then let the actual teaching
+  // language select a visibly different pose instead of always using talking.
+  if (/资料(?:不足|未覆盖)|证据(?:不足|冲突)|无法(?:确认|判断)|不能(?:确认|判断)|不确定|矛盾|conflict|insufficient evidence|cannot confirm|uncertain/.test(content)) {
+    return "confused";
+  }
+  if (/做得(?:很)?好|答对了|回答正确|完全正确|判断正确|掌握得很好|很棒|太棒了|excellent|well done|correct answer/.test(content)) {
+    return "praising";
+  }
+  if (/没关系|别着急|不要着急|慢慢来|再试一次|继续尝试|已经很接近|你可以做到|加油|don['’]?t worry|try again|keep going/.test(content)) {
+    return "encouraging";
+  }
+  if (/[？?]\s*$/.test(content) || /(?:请你|你能|能否|试着|想一想|思考一下|告诉我).{0,32}(?:吗|呢|为什么|如何|怎么|哪一|什么)|(?:why|how|what|which|can you|could you)\b/.test(content)) {
+    return "questioning";
+  }
+  if (/本节(?:课|学习)?(?:到此)?结束|今天就到这里|课程完成|学习完成|最后总结|到这里就完成了|lesson complete|that concludes/.test(content)) {
+    return "ending";
+  }
+  if (/举个例子|例如|比如|换句话说|可以分为.{0,12}步|第一步|首先.{0,24}(?:然后|接着|其次)|关键(?:点)?是|原因是|for example|in other words|first[,，]?.{0,40}(?:then|next)/.test(content)) {
+    return "explaining";
+  }
+  if (/grounded_answer|model_general_answer|coach_response|free_question/.test(action) || content) return "talking";
+  return sessionState ? "idle" : "idle";
+}
+
 const readableMessageParagraphs = (content: string) => {
   const source = String(content || "").trim();
   if (!source) return [];
@@ -62,12 +120,81 @@ const readableMessageParagraphs = (content: string) => {
   });
 };
 
+const readableTeacherVoiceText = (content: string) =>
+  readableMessageParagraphs(content)
+    .join("\n")
+    .replace(/\[\[重点:([^\]\n]{1,120})\]\]/g, "$1")
+    .replace(/\*\*([^*\n]{1,120})\*\*/g, "$1")
+    .trim();
+
+const teacherVoiceReplyKind = (item: any): string => {
+  const action = String(item?.action || "").trim().toLowerCase();
+  if (["advance_route", "complete_route"].includes(action)) return "teaching.quiz_success";
+  if (["remediation_example", "remediation_explain", "clarify_feedback", "insufficient_evidence"].includes(action)) {
+    return "teaching.correct";
+  }
+  if (["check_understanding", "point_readiness"].includes(action)) return "teaching.transition";
+  return "teaching.explain";
+};
+
+export type TeacherMessageSegment = {
+  text: string;
+  focus: boolean;
+};
+
+export const teacherMessageSegments = (content: string): TeacherMessageSegment[] => {
+  const source = String(content || "");
+  const pattern = /\[\[重点:([^\]\n]{1,120})\]\]|\*\*([^*\n]{1,120})\*\*/g;
+  const segments: TeacherMessageSegment[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source)) !== null) {
+    if (match.index > cursor) {
+      segments.push({ text: source.slice(cursor, match.index), focus: false });
+    }
+    segments.push({ text: match[1] || match[2] || "", focus: true });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < source.length) {
+    segments.push({ text: source.slice(cursor), focus: false });
+  }
+  return segments.length ? segments : [{ text: source, focus: false }];
+};
+
+function TeacherMessageParagraph({
+  content,
+  teacher,
+}: {
+  content: string;
+  teacher: boolean;
+}) {
+  if (!teacher) return <p>{content}</p>;
+  return (
+    <p>
+      {teacherMessageSegments(content).map((segment, index) => (
+        segment.focus
+          ? (
+            <strong
+              className="active-chain__teacher-focus"
+              data-testid="active-teacher-focus"
+              key={`${index}-${segment.text}`}
+            >
+              {segment.text}
+            </strong>
+          )
+          : <span key={`${index}-${segment.text}`}>{segment.text}</span>
+      ))}
+    </p>
+  );
+}
+
 type ActiveTaskDraft = {
   goal?: string;
   level?: string;
   startDate?: string;
   deadline?: string;
   reviewRounds?: number;
+  discoverExternalResources?: boolean;
   studyWeekdays?: number[];
   unavailableDates?: string;
   shortDate?: string;
@@ -88,8 +215,138 @@ type PendingUserMessage = {
   content: string;
   status: "processing" | "error";
   understood: boolean;
+  attachments: TeachingAttachment[];
   error?: string;
 };
+
+type TeacherVoicePlayback = {
+  messageId: string;
+  state: "idle" | "loading" | "playing" | "error";
+  error: string;
+  phase?: "starting" | "synthesizing";
+};
+
+type TeachingAttachment = {
+  id: string;
+  original_filename: string;
+  media_type: string;
+  kind?: "image" | "document" | "archive";
+  previewable?: boolean;
+  size_bytes: number;
+  width: number;
+  height: number;
+  status: string;
+  analysis_mode: string;
+  analysis_text: string;
+  file_url: string;
+};
+
+const classroomAttachmentLimit = 6;
+const classroomAttachmentAccept = [
+  ".png", ".jpg", ".jpeg", ".webp",
+  ".pdf", ".docx", ".pptx", ".xlsx", ".epub", ".zip",
+  ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl",
+  ".yaml", ".yml", ".xml", ".toml", ".ini", ".log",
+  ".py", ".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".sql",
+  ".java", ".c", ".cpp", ".h", ".hpp", ".go", ".rs", ".ps1",
+].join(",");
+
+const clipboardImageExtension = (mediaType: string) => {
+  const normalized = String(mediaType || "").toLowerCase();
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
+  if (normalized.includes("webp")) return "webp";
+  return "png";
+};
+
+const normalizeIncomingFile = (
+  file: File,
+  source: "picker" | "paste" | "drop",
+  index: number,
+) => {
+  if (file.name && /\.[a-z0-9]{1,12}$/i.test(file.name)) return file;
+  const isImage = String(file.type || "").toLowerCase().startsWith("image/");
+  const extension = isImage ? clipboardImageExtension(file.type) : "bin";
+  const prefix = source === "paste" && isImage ? "粘贴截图" : "课堂附件";
+  return new File(
+    [file],
+    `${prefix}-${Date.now()}-${index + 1}.${extension}`,
+    {
+      type: file.type || (isImage ? `image/${extension}` : "application/octet-stream"),
+      lastModified: file.lastModified || Date.now(),
+    },
+  );
+};
+
+export const filesFromDataTransfer = (
+  transfer: DataTransfer,
+  source: "picker" | "paste" | "drop",
+) => {
+  const itemFiles = Array.from(transfer.items || [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  const directFiles = Array.from(transfer.files || []);
+  const candidates = itemFiles.length ? itemFiles : directFiles;
+  const seen = new Set<string>();
+  return candidates
+    .map((file, index) => normalizeIncomingFile(file, source, index))
+    .filter((file) => {
+      const signature = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+};
+
+const isImageAttachment = (attachment: TeachingAttachment) =>
+  attachment.kind === "image" || attachment.media_type.startsWith("image/");
+
+const attachmentStatusLabel = (attachment: TeachingAttachment) => {
+  if (attachment.analysis_mode === "provider_vision"
+    || attachment.analysis_mode === "provider_vision_with_documents") {
+    return "视觉模型已读取";
+  }
+  if (attachment.analysis_mode === "local_ocr"
+    || attachment.analysis_mode === "local_ocr_with_documents") {
+    return "图片文字已在本机读取";
+  }
+  if (attachment.analysis_mode === "document_text") return "文件正文已读取";
+  if (attachment.analysis_mode === "pending") return "等待随消息读取";
+  if (attachment.analysis_mode === "document_unreadable") {
+    return "文件已保存 · 未抽取到正文";
+  }
+  return isImageAttachment(attachment)
+    ? "图片已保存 · 当前模型未读取"
+    : "文件已保存";
+};
+
+function ClassroomAttachmentVisual({
+  attachment,
+}: {
+  attachment: TeachingAttachment;
+}) {
+  if (isImageAttachment(attachment)) {
+    return (
+      <img
+        alt={attachment.original_filename || "课堂图片"}
+        src={attachment.file_url}
+      />
+    );
+  }
+  const extension = attachment.original_filename.split(".").at(-1)?.toUpperCase() || "FILE";
+  return (
+    <a
+      className="active-classroom__file-visual"
+      href={attachment.file_url}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={`打开 ${attachment.original_filename}`}
+    >
+      <span aria-hidden="true">{attachment.kind === "archive" ? "ZIP" : "DOC"}</span>
+      <strong>{extension}</strong>
+    </a>
+  );
+}
 
 const draftStorageKey = (workspaceId: string) =>
   `${ACTIVE_DRAFT_PREFIX}${workspaceId}`;
@@ -210,6 +467,7 @@ export function ActiveTeachingChainView({
   const [snapshot, setSnapshot] = useState<any>(null);
   const [learningTasks, setLearningTasks] = useState<ActiveLearningTaskSummary[]>([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [archiveCandidate, setArchiveCandidate] = useState<ActiveLearningTaskSummary | null>(null);
   const [showPlanDetails, setShowPlanDetails] = useState(false);
   const [showLesson, setShowLesson] = useState(false);
   const [expandedDailyPlans, setExpandedDailyPlans] = useState<string[]>([]);
@@ -223,6 +481,7 @@ export function ActiveTeachingChainView({
   const [startDate, setStartDate] = useState(isoAfterDays(0));
   const [deadline, setDeadline] = useState(isoAfterDays(90));
   const [reviewRounds, setReviewRounds] = useState(2);
+  const [discoverExternalResources, setDiscoverExternalResources] = useState(true);
   const [studyWeekdays, setStudyWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [unavailableDates, setUnavailableDates] = useState("");
   const [shortDate, setShortDate] = useState("");
@@ -235,6 +494,19 @@ export function ActiveTeachingChainView({
   const [learnerInterests, setLearnerInterests] = useState("");
   const [message, setMessage] = useState("");
   const [pendingUserMessages, setPendingUserMessages] = useState<PendingUserMessage[]>([]);
+  const [teachingAttachments, setTeachingAttachments] = useState<TeachingAttachment[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentDragActive, setAttachmentDragActive] = useState(false);
+  const [voiceState, setVoiceState] = useState<
+    "idle" | "preparing" | "recording" | "transcribing"
+  >("idle");
+  const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
+  const [voiceStatusText, setVoiceStatusText] = useState("");
+  const [teacherVoicePlayback, setTeacherVoicePlayback] = useState<TeacherVoicePlayback>({
+    messageId: "",
+    state: "idle",
+    error: "",
+  });
   const [reviewAnswer, setReviewAnswer] = useState("");
   const [reviewAsOf, setReviewAsOf] = useState(isoAfterDays(0));
   const [problems, setProblems] = useState<any[]>([]);
@@ -244,11 +516,18 @@ export function ActiveTeachingChainView({
   const [codeResult, setCodeResult] = useState<any>(null);
   const [hint, setHint] = useState<any>(null);
   const [busy, setBusy] = useState("");
+  const [resourceDiscoveryStatus, setResourceDiscoveryStatus] = useState<any>(null);
   const [error, setError] = useState("");
   const [draftLoadedWorkspace, setDraftLoadedWorkspace] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const refreshSequence = useRef(0);
   const conversationHistoryRef = useRef<HTMLDivElement | null>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
+  const voiceScopeRef = useRef(0);
+  const teacherVoiceScopeRef = useRef(0);
 
   const refresh = async (workspaceOverride?: string) => {
     const requestedWorkspaceId = workspaceOverride || activeWorkspaceId;
@@ -281,6 +560,7 @@ export function ActiveTeachingChainView({
       return;
     }
     setSnapshot(next);
+    setResourceDiscoveryStatus((next.knowledge_graph as any)?.resource_discovery || null);
     if (next.receipt || (next.materials || []).length) setCreatingNewTask(false);
     setProblems(problemItems);
     setProblemId((current) =>
@@ -295,6 +575,11 @@ export function ActiveTeachingChainView({
       setStartDate(next.receipt.start_date || isoAfterDays(0));
       setDeadline(next.receipt.deadline);
       setReviewRounds(Number(next.receipt.review_rounds || 2));
+      setDiscoverExternalResources(
+        Object.prototype.hasOwnProperty.call(next.receipt, "discover_external_resources")
+          ? Boolean(next.receipt.discover_external_resources)
+          : true,
+      );
       setStudyWeekdays(next.receipt.study_weekdays || [0, 1, 2, 3, 4, 5, 6]);
       setUnavailableDates((next.receipt.unavailable_dates || []).join(","));
       const special = Object.entries(next.receipt.special_date_minutes || {})[0] as [string, any] | undefined;
@@ -326,6 +611,9 @@ export function ActiveTeachingChainView({
       if (typeof draft.startDate === "string") setStartDate(draft.startDate);
       if (typeof draft.deadline === "string") setDeadline(draft.deadline);
       if (typeof draft.reviewRounds === "number") setReviewRounds(draft.reviewRounds);
+      if (typeof draft.discoverExternalResources === "boolean") {
+        setDiscoverExternalResources(draft.discoverExternalResources);
+      }
       if (Array.isArray(draft.studyWeekdays)) setStudyWeekdays(draft.studyWeekdays);
       if (typeof draft.unavailableDates === "string") setUnavailableDates(draft.unavailableDates);
       if (typeof draft.shortDate === "string") setShortDate(draft.shortDate);
@@ -364,6 +652,45 @@ export function ActiveTeachingChainView({
   }, [activeWorkspaceId, showArchived]);
 
   useEffect(() => {
+    if (resourceDiscoveryStatus?.status !== "running") return undefined;
+    let cancelled = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      try {
+        const latest = await activeRequest(
+          `/workspaces/${encodeURIComponent(activeWorkspaceId)}/resource-discovery/status${
+            (resourceDiscoveryStatus?.run_id || resourceDiscoveryStatus?.id)
+              ? `?run_id=${encodeURIComponent(resourceDiscoveryStatus.run_id || resourceDiscoveryStatus.id)}&t=${Date.now()}`
+              : ""
+          }`,
+          undefined,
+          10_000,
+        );
+        if (cancelled) return;
+        setResourceDiscoveryStatus(latest);
+        if (["completed", "partial", "failed", "unsupported", "not_requested", "disabled"].includes(latest.status)) {
+          await refresh(activeWorkspaceId);
+          return;
+        }
+      } catch (reason: any) {
+        if (cancelled) return;
+        setError(reason?.message || "外部学习工具状态暂时无法读取，将继续保留后台任务");
+      }
+      if (!cancelled) timer = window.setTimeout(poll, 1_500);
+    };
+    timer = window.setTimeout(poll, 800);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    activeWorkspaceId,
+    resourceDiscoveryStatus?.id,
+    resourceDiscoveryStatus?.run_id,
+    resourceDiscoveryStatus?.status,
+  ]);
+
+  useEffect(() => {
     if (
       draftLoadedWorkspace !== activeWorkspaceId
       || snapshot?.workspace_id !== activeWorkspaceId
@@ -376,6 +703,7 @@ export function ActiveTeachingChainView({
         startDate,
         deadline,
         reviewRounds,
+        discoverExternalResources,
         studyWeekdays,
         unavailableDates,
         shortDate,
@@ -402,6 +730,7 @@ export function ActiveTeachingChainView({
     activeWorkspaceId,
     code,
     deadline,
+    discoverExternalResources,
     draftLoadedWorkspace,
     goal,
     learnerInterests,
@@ -447,7 +776,24 @@ export function ActiveTeachingChainView({
     .filter((item: any) => item.status === "ready")
     .reduce((total: number, item: any) => total + Number(item.chunk_count || 0), 0);
   const localKnowledgeBase = snapshot?.local_knowledge_base;
-  const graph = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
+  const graph: any = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
+  const resourceDiscovery = resourceDiscoveryStatus
+    || graph.resource_discovery
+    || { status: "not_run", resource_count: 0, warnings: [] };
+  const resourceDiscoveryRunning = resourceDiscovery.status === "running";
+  const resourceDiscoveryPointCount = Number(
+    resourceDiscovery.point_count
+      || graph.knowledge_points?.length
+      || 0,
+  );
+  const resourceDiscoverySearchedPointCount = Number(
+    resourceDiscovery.searched_point_count || 0,
+  );
+  const resourceDiscoveryTaskScope =
+    String(resourceDiscovery.provider_meta?.scope || "") === "task";
+  const resourceDiscoveryCoveredPointCount = new Set(
+    (graph.learning_resources || []).map((item: any) => String(item.knowledge_point_id || "")),
+  ).size;
   const plan = snapshot?.plan;
   const initialPhaseDays = (plan?.calendar || []).filter(
     (day: any) => ["initial_learning", "transition"].includes(day.study_phase),
@@ -484,7 +830,7 @@ export function ActiveTeachingChainView({
     const messages = session?.messages || [];
     let boundaryIndex = -1;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (["daily_briefing", "advance_route"].includes(String(messages[index]?.action || ""))) {
+      if (["daily_briefing", "advance_route", "knowledge_jump"].includes(String(messages[index]?.action || ""))) {
         boundaryIndex = index;
         break;
       }
@@ -502,9 +848,23 @@ export function ActiveTeachingChainView({
   const currentKnowledgePoint = graph.knowledge_points.find(
     (item: any) => item.id === session?.state?.current_knowledge_point_id,
   );
+  const taskByKnowledgePointId = useMemo(() => {
+    const tasks = (plan?.tasks || [])
+      .filter((task: any) => task.task_type === "initial_learning")
+      .sort(
+        (left: any, right: any) =>
+          Number(left.point_sequence || 0) - Number(right.point_sequence || 0)
+          || Number(left.task_order || 0) - Number(right.task_order || 0),
+      );
+    const byPoint = new Map<string, any>();
+    for (const task of tasks) {
+      const pointId = String(task.knowledge_point_id || "");
+      if (pointId && !byPoint.has(pointId)) byPoint.set(pointId, task);
+    }
+    return byPoint;
+  }, [plan?.tasks]);
   const currentKnowledgePointOrdinal = useMemo(() => {
-    const allTasks = (plan?.calendar || [])
-      .flatMap((day: any) => day.tasks || [])
+    const allTasks = (plan?.tasks || [])
       .filter((task: any) => task.task_type === "initial_learning")
       .sort(
         (left: any, right: any) =>
@@ -520,15 +880,24 @@ export function ActiveTeachingChainView({
       current: currentIndex >= 0 ? currentIndex + 1 : 1,
       total: Math.max(graphIds.length, ids.length, 1),
     };
-  }, [graph.knowledge_points, plan?.calendar, session?.state?.current_knowledge_point_id]);
+  }, [graph.knowledge_points, plan?.tasks, session?.state?.current_knowledge_point_id]);
   const teacherPresentationState = useMemo<TeacherCompanionState>(() => {
-    if (busy) return "thinking";
-    const action = String(latestTeacher?.action || "");
-    if (/praise|pass|complete/.test(action)) return "praising";
-    if (/question|check/.test(action)) return "questioning";
-    if (/remediation|confus|encourag/.test(action)) return "encouraging";
-    return session ? "explaining" : "idle";
-  }, [busy, latestTeacher?.action, session]);
+    return resolveActiveTeacherPresentationState(
+      Boolean(busy),
+      latestTeacher?.action,
+      session?.state,
+      latestTeacher?.content,
+    );
+  }, [busy, latestTeacher?.action, latestTeacher?.content, session?.state]);
+  useEffect(() => {
+    teacherVoiceScopeRef.current += 1;
+    stopLocalTeacherVoice();
+    setTeacherVoicePlayback({ messageId: "", state: "idle", error: "" });
+    return () => {
+      teacherVoiceScopeRef.current += 1;
+      stopLocalTeacherVoice();
+    };
+  }, [activeWorkspaceId, latestTeacher?.id, session?.session_id, showLesson]);
   useEffect(() => {
     if (!showLesson) return;
     const frame = window.requestAnimationFrame(() => {
@@ -647,6 +1016,43 @@ export function ActiveTeachingChainView({
     setShowPlanDetails(false);
   }, [activeWorkspaceId, plan?.id]);
 
+  useEffect(() => () => {
+    voiceScopeRef.current += 1;
+    if (voiceTimerRef.current !== null) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        // The media stream is still released below.
+      }
+    }
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+  }, []);
+
+  const savedReceipt = snapshot?.receipt;
+  const hasSavedResourceDiscoveryOption = Boolean(
+    savedReceipt
+    && Object.prototype.hasOwnProperty.call(
+      savedReceipt,
+      "discover_external_resources",
+    ),
+  );
+  const savedResourceDiscoveryOption = hasSavedResourceDiscoveryOption
+    ? Boolean(savedReceipt.discover_external_resources)
+    : true;
+  const isTaskCreationFlow = creatingNewTask || !savedReceipt;
+  // This option belongs to task creation. Existing receipts without the field
+  // retain the historical behaviour (resource discovery enabled), while an
+  // explicit false is preserved without changing the current plan.
+  const resourceDiscoveryEnabled = isTaskCreationFlow
+    ? discoverExternalResources
+    : savedResourceDiscoveryOption;
+
   const receiptPayload = (materialIds?: string[]) => ({
     learning_goal: goal,
     current_level: level,
@@ -667,13 +1073,15 @@ export function ActiveTeachingChainView({
     learner_interests: learnerInterests,
     notes,
     allow_schedule_suggestions: true,
+    discover_external_resources: isTaskCreationFlow || hasSavedResourceDiscoveryOption
+      ? resourceDiscoveryEnabled
+      : undefined,
     material_ids: materialIds || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
   });
   const readyMaterialIds = materials
     .filter((item: any) => item.status === "ready")
     .map((item: any) => item.id)
     .sort();
-  const savedReceipt = snapshot?.receipt;
   const currentConditions = receiptPayload(readyMaterialIds);
   const comparableReceipt = (value: any) => JSON.stringify({
     learning_goal: value?.learning_goal || "",
@@ -709,16 +1117,267 @@ export function ActiveTeachingChainView({
       body: JSON.stringify(receiptPayload(materialIds)),
     });
 
-  const advance = async (text = message, understood = false) => {
+  const clearVoiceResources = () => {
+    if (voiceTimerRef.current !== null) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    voiceRecorderRef.current = null;
+    voiceChunksRef.current = [];
+  };
+
+  const stopTeacherVoicePlayback = () => {
+    teacherVoiceScopeRef.current += 1;
+    stopLocalTeacherVoice();
+    setTeacherVoicePlayback({ messageId: "", state: "idle", error: "" });
+  };
+
+  const toggleTeacherVoicePlayback = async (item: any) => {
+    const messageId = String(item?.id || "");
+    const text = readableTeacherVoiceText(String(item?.content || ""));
+    const isCurrentPlayback = teacherVoicePlayback.messageId === messageId
+      && ["loading", "playing"].includes(teacherVoicePlayback.state);
+    if (isCurrentPlayback) {
+      stopTeacherVoicePlayback();
+      return;
+    }
+    stopLocalTeacherVoice();
+    const scope = ++teacherVoiceScopeRef.current;
+    if (!messageId || !text) {
+      setTeacherVoicePlayback({
+        messageId,
+        state: "error",
+        error: "这条教师回复没有可朗读的正文。",
+      });
+      return;
+    }
+    setTeacherVoicePlayback({ messageId, state: "loading", error: "" });
+    const result = await speakLocalTeacherVoice(text, {
+      replyKind: teacherVoiceReplyKind(item),
+      onPreparing: (phase) => {
+        if (scope !== teacherVoiceScopeRef.current) return;
+        setTeacherVoicePlayback({ messageId, state: "loading", error: "", phase });
+      },
+      onStart: () => {
+        if (scope !== teacherVoiceScopeRef.current) return;
+        setTeacherVoicePlayback({ messageId, state: "playing", error: "" });
+      },
+      onEnd: () => {
+        if (scope !== teacherVoiceScopeRef.current) return;
+        setTeacherVoicePlayback({ messageId, state: "idle", error: "" });
+      },
+      onError: (reason) => {
+        if (scope !== teacherVoiceScopeRef.current) return;
+        setTeacherVoicePlayback({
+          messageId,
+          state: "error",
+          error: `教师语音播放失败：${reason || "未知播放错误"} 请稍后重试。`,
+        });
+      },
+    });
+    if (scope !== teacherVoiceScopeRef.current || result.ok) return;
+    setTeacherVoicePlayback({
+      messageId,
+      state: "error",
+      error: `教师语音暂不可用：${result.reason || "当前没有可用音色"} 请稍后重试。`,
+    });
+  };
+
+  const stopVoiceInput = () => {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    setVoiceState("transcribing");
+    setVoiceStatusText("正在本地识别语音，首次使用可能需要几秒…");
+    if (voiceTimerRef.current !== null) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    recorder.stop();
+  };
+
+  const toggleVoiceInput = async () => {
+    if (voiceState === "preparing" || voiceState === "transcribing") return;
+    if (voiceState === "recording") {
+      stopVoiceInput();
+      return;
+    }
+    if (!session?.session_id) throw new Error("请先启动 AI 教师");
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      throw new Error("当前浏览器不支持麦克风录音");
+    }
+    setError("");
+    setVoiceState("preparing");
+    setVoiceStatusText("正在启动本地语音识别…");
+    const scope = ++voiceScopeRef.current;
+    const sessionId = session.session_id;
+    const warmResult = await warmActiveTeachingVoice();
+    if (scope !== voiceScopeRef.current) return;
+    if (warmResult?.available === false) {
+      throw new Error(
+        warmResult?.error || "本地语音识别组件不可用，请检查 SenseVoice 资源",
+      );
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+    ];
+    const mimeType =
+      candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    voiceStreamRef.current = stream;
+    voiceRecorderRef.current = recorder;
+    voiceChunksRef.current = [];
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) voiceChunksRef.current.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      const chunks = voiceChunksRef.current.slice();
+      const blobType = recorder.mimeType || mimeType || "audio/webm";
+      clearVoiceResources();
+      if (scope !== voiceScopeRef.current) return;
+      try {
+        if (!chunks.length) throw new Error("没有录到可识别的声音");
+        const extension = blobType.includes("ogg") ? "ogg" : "webm";
+        const result = await transcribeActiveTeachingVoice(
+          sessionId,
+          new Blob(chunks, { type: blobType }),
+          `mentorflow-recording.${extension}`,
+        );
+        if (scope !== voiceScopeRef.current) return;
+        setMessage((current) => {
+          const prefix = current && !/\s$/.test(current) ? `${current} ` : current;
+          return `${prefix || ""}${result.text}`.trimStart();
+        });
+        setVoiceStatusText("已转成文字；你可以修改后再发送");
+      } catch (reason: any) {
+        if (scope === voiceScopeRef.current) {
+          const detail = reason?.message || "语音转文字失败";
+          setVoiceStatusText(`转写失败：${detail}`);
+          setError(detail);
+        }
+      } finally {
+        if (scope === voiceScopeRef.current) {
+          setVoiceState("idle");
+          setVoiceElapsedSeconds(0);
+        }
+      }
+    }, { once: true });
+    recorder.addEventListener("error", (event: Event) => {
+      clearVoiceResources();
+      if (scope !== voiceScopeRef.current) return;
+      setVoiceState("idle");
+      setVoiceElapsedSeconds(0);
+      const detail =
+        (event as Event & { error?: Error }).error?.message
+        || "MediaRecorder error";
+      setVoiceStatusText(`录音失败：${detail}`);
+      setError(`录音失败：${detail}`);
+    }, { once: true });
+    recorder.start();
+    setVoiceElapsedSeconds(0);
+    setVoiceState("recording");
+    setVoiceStatusText("正在录音；说完后再点一次即可转成文字");
+    const startedAt = Date.now();
+    voiceTimerRef.current = window.setInterval(() => {
+      setVoiceElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    }, 500);
+  };
+
+  const addTeachingAttachments = async (files: File[]) => {
+    if (!session?.session_id) throw new Error("请先启动 AI 教师");
+    const availableSlots = Math.max(
+      0,
+      classroomAttachmentLimit - teachingAttachments.length,
+    );
+    const selected = files.slice(0, availableSlots);
+    if (!selected.length) {
+      throw new Error(
+        availableSlots
+          ? "请选择要交给教师阅读的文件"
+          : `每条消息最多附带 ${classroomAttachmentLimit} 个文件`,
+      );
+    }
+    setAttachmentBusy(true);
+    setError("");
+    try {
+      const uploaded: TeachingAttachment[] = [];
+      for (const file of selected) {
+        if (file.size > 32 * 1024 * 1024) {
+          throw new Error(`${file.name} 超过 32 MB`);
+        }
+        uploaded.push(
+          await uploadActiveTeachingAttachment(session.session_id, file),
+        );
+      }
+      setTeachingAttachments((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        for (const item of uploaded) byId.set(item.id, item);
+        return Array.from(byId.values()).slice(0, classroomAttachmentLimit);
+      });
+    } catch (reason: any) {
+      setError(reason?.message || "附件上传失败");
+      throw reason;
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
+  const addFilesFromTransfer = (
+    transfer: DataTransfer,
+    source: "paste" | "drop",
+  ) => {
+    const files = filesFromDataTransfer(transfer, source);
+    if (!files.length) return false;
+    void addTeachingAttachments(files).catch((reason: any) => {
+      setError(reason?.message || "附件上传失败");
+    });
+    return true;
+  };
+
+  const advance = async (
+    text = message,
+    understood = false,
+    selectedAttachments = teachingAttachments,
+    forceComplete = false,
+  ) => {
     if (!session?.session_id) throw new Error("请先启动 AI 教师");
     const content = String(text || "").trim();
-    if (!content) throw new Error("请先输入你想说的话");
+    if (!content && !selectedAttachments.length && !forceComplete) {
+      throw new Error("请先输入内容或添加文件");
+    }
+    const visibleContent = forceComplete
+      ? "我确认自己已经掌握，直接完成这个知识点。"
+      : content || (
+        selectedAttachments.length > 0
+        && selectedAttachments.every(isImageAttachment)
+          ? "请分析我上传的练习结果截图。"
+          : "请阅读我上传的附件，并结合当前知识点继续指导。"
+      );
     const pendingId =
       globalThis.crypto?.randomUUID?.()
       || `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setPendingUserMessages((current) => [
       ...current,
-      { id: pendingId, content, status: "processing", understood },
+      {
+        id: pendingId,
+        content: visibleContent,
+        status: "processing",
+        understood,
+        attachments: selectedAttachments,
+      },
     ]);
     setMessage("");
     try {
@@ -730,7 +1389,9 @@ export function ActiveTeachingChainView({
             body: JSON.stringify({
               message: content,
               understood,
+              force_complete: forceComplete,
               provider_session_id: providerSession,
+              attachment_ids: selectedAttachments.map((item) => item.id),
             }),
           },
         );
@@ -755,6 +1416,10 @@ export function ActiveTeachingChainView({
       setPendingUserMessages((current) =>
         current.filter((item) => item.id !== pendingId),
       );
+      const sentIds = new Set(selectedAttachments.map((item) => item.id));
+      setTeachingAttachments((current) =>
+        current.filter((item) => !sentIds.has(item.id)),
+      );
       return updatedSession;
     } catch (reason) {
       setPendingUserMessages((current) =>
@@ -772,20 +1437,58 @@ export function ActiveTeachingChainView({
     }
   };
 
+  const forceCompleteCurrentPoint = async () => {
+    if (!session?.session_id) throw new Error("请先启动 AI 教师");
+    const updatedSession = await activeRequest(
+      `/sessions/${encodeURIComponent(session.session_id)}/advance`,
+      {
+        method: "POST",
+        body: JSON.stringify({ force_complete: true }),
+      },
+    );
+    setSnapshot((current: any) =>
+      current ? { ...current, session: updatedSession } : current,
+    );
+    return updatedSession;
+  };
+
   const retryPendingMessage = async (item: PendingUserMessage) => {
     setPendingUserMessages((current) =>
       current.filter((candidate) => candidate.id !== item.id),
     );
-    return advance(item.content, item.understood);
+    return advance(item.content, item.understood, item.attachments);
   };
 
-  const generateKnowledgeMap = () =>
+  const generateKnowledgeMap = (
+    refreshLearningResources = false,
+    queueExternalResources = false,
+  ) =>
     activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/generate`, {
       method: "POST",
       body: JSON.stringify({
         provider_session_id: realProviderSessionId,
+        refresh_learning_resources: refreshLearningResources,
+        discover_external_resources: resourceDiscoveryEnabled,
+        queue_external_resources: queueExternalResources,
       }),
     }, 210_000);
+
+  const startResourceDiscovery = async () => {
+    if (!realProviderSessionId) {
+      throw new Error("请先连接并验证真实 Provider，再为整项任务寻找外部学习工具");
+    }
+    const started = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/resource-discovery/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({ provider_session_id: realProviderSessionId }),
+      },
+      15_000,
+    );
+    setResourceDiscoveryStatus(started);
+    if (started.status === "completed") await refresh();
+    return started;
+  };
 
   const generateMasteryPlan = () =>
     activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/mastery-plans/generate`, {
@@ -802,7 +1505,13 @@ export function ActiveTeachingChainView({
     ]));
     if (!ids.length) throw new Error("请先选择并上传一份学习资料");
     await saveReceipt(ids);
-    await generateKnowledgeMap();
+    // Knowledge-map extraction and planning stay on the critical path.  Web
+    // resources are optional enrichment and must be queued after the map is
+    // ready, otherwise a slow/unsupported search can lock task creation.
+    await generateKnowledgeMap(false, true);
+    if (resourceDiscoveryEnabled && realProviderSessionId) {
+      await startResourceDiscovery();
+    }
     await generateMasteryPlan();
     setFile(null);
   };
@@ -834,6 +1543,7 @@ export function ActiveTeachingChainView({
     setSnapshot(null);
     setFile(null);
     setGoal("完全掌握上传资料，并能用可验证的方式独立应用");
+    setDiscoverExternalResources(true);
     setCreatingNewTask(true);
     setShowLesson(false);
     setActiveWorkspaceId(`learning-task-${suffix}`);
@@ -868,6 +1578,14 @@ export function ActiveTeachingChainView({
     } finally {
       setBusy("");
     }
+  };
+
+  const requestTaskArchive = (item: ActiveLearningTaskSummary) => {
+    if (item.archived) {
+      void toggleTaskArchive(item);
+      return;
+    }
+    setArchiveCandidate(item);
   };
 
   const enterCalendarTask = async (
@@ -1151,7 +1869,7 @@ export function ActiveTeachingChainView({
                 <button
                   className="active-task-hub__archive-action"
                   data-testid={`active-task-archive-${item.workspace_id}`}
-                  onClick={() => toggleTaskArchive(item)}
+                  onClick={() => requestTaskArchive(item)}
                 >
                   {item.archived ? "恢复" : "归档"}
                 </button>
@@ -1174,6 +1892,48 @@ export function ActiveTeachingChainView({
           <code data-testid="active-workspace-id">{activeWorkspaceId}</code>
         </section>
       </div>
+
+      {archiveCandidate && (
+        <div
+          className="active-task-archive-confirm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setArchiveCandidate(null);
+          }}
+        >
+          <section
+            className="active-task-archive-confirm__card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="active-task-archive-confirm-title"
+          >
+            <span className="active-chain__eyebrow">需要你的确认</span>
+            <h3 id="active-task-archive-confirm-title">归档“{archiveCandidate.title}”？</h3>
+            <p>
+              归档是可恢复的整理操作，<strong>不会删除</strong>这项任务的资料、计划、本地 RAG、
+              学习进度、知识点记忆或教师人设。归档后它只会移到“已归档”，你随时可以恢复。
+            </p>
+            <div className="active-task-archive-confirm__notice">
+              永久删除是另一种高风险操作；这里不会把“归档”伪装成删除，也不会一键清空数据。
+            </div>
+            <div className="active-task-archive-confirm__actions">
+              <button type="button" onClick={() => setArchiveCandidate(null)}>取消，保留任务</button>
+              <button
+                type="button"
+                data-testid="active-confirm-archive"
+                disabled={Boolean(busy)}
+                onClick={async () => {
+                  const candidate = archiveCandidate;
+                  setArchiveCandidate(null);
+                  await toggleTaskArchive(candidate);
+                }}
+              >
+                确认归档（可恢复）
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {dailyPlanItems.length > 0 && (
         <article
@@ -1302,6 +2062,7 @@ export function ActiveTeachingChainView({
                               历史欠账 · {dailyPlan.todayPlan?.overdue_task_count} 个步骤
                             </b>
                             <span>
+                              共 {dailyPlan.todayPlan?.overdue_day_count || 1} 天 ·
                               最早来自 {dailyPlan.todayPlan?.oldest_overdue_date} ·
                               约 {dailyPlan.todayPlan?.overdue_task_minutes} 分钟未完成
                             </span>
@@ -1331,6 +2092,65 @@ export function ActiveTeachingChainView({
                             >
                               重新平均排入后续
                             </button>
+                          </div>
+                          <div className="active-today__debt-days">
+                            {(dailyPlan.todayPlan?.overdue_days || []).map(
+                              (
+                                debtDay: {
+                                  date: string;
+                                  task_count: number;
+                                  remaining_task_minutes: number;
+                                  tasks: any[];
+                                },
+                                debtIndex: number,
+                              ) => {
+                                const debtGroups = groupDailyTasks(debtDay.tasks || []);
+                                const firstDebtTask = debtGroups[0]?.nextTask;
+                                return (
+                                  <details
+                                    key={debtDay.date}
+                                    open={debtIndex === 0}
+                                    data-testid={`active-overdue-day-${dailyPlan.workspaceId}-${debtDay.date}`}
+                                  >
+                                    <summary>
+                                      <span>
+                                        <b>{debtDay.date}</b>
+                                        <small>
+                                          {debtDay.task_count} 个步骤 ·
+                                          约 {debtDay.remaining_task_minutes} 分钟
+                                        </small>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(busy) || !firstDebtTask}
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                          if (!firstDebtTask) return;
+                                          void enterTaskFromDailyPlan(
+                                            dailyPlan.workspaceId,
+                                            firstDebtTask,
+                                            debtGroups[0].title,
+                                          );
+                                        }}
+                                      >
+                                        从这天开始补
+                                      </button>
+                                    </summary>
+                                    <ul>
+                                      {debtGroups.map((group) => (
+                                        <li key={group.key}>
+                                          <span>{group.title}</span>
+                                          <small>
+                                            {group.completed}/{group.tasks.length} 步
+                                          </small>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                );
+                              },
+                            )}
                           </div>
                         </div>
                       )}
@@ -1461,6 +2281,23 @@ export function ActiveTeachingChainView({
                 : " 系统按顺序排入每天，不再强制按日期比例切开。"}
             </small>
           </div>
+          <label className="active-chain__resource-option">
+            <span>
+              <input
+                data-testid="active-discover-external-resources"
+                type="checkbox"
+                checked={discoverExternalResources}
+                disabled={!isTaskCreationFlow || Boolean(busy)}
+                onChange={(event) => setDiscoverExternalResources(event.target.checked)}
+              />
+              创建计划时，为整项任务准备通用的外部学习工具与权威链接
+            </span>
+            <small>
+              只在新建任务时生效；计划先快速完成，链接在后台准备，不会阻塞创建、重建知识地图或改变进度。
+              每道题的深入讲解、示例和思路仍由教师按你的问题即时带着完成；没有可靠匹配时不会添加链接。
+              {!isTaskCreationFlow && " 当前任务的创建选项已锁定；如需改变，请新建任务。"}
+            </small>
+          </label>
           <label>
             AI 教师角色
             <select
@@ -1544,7 +2381,10 @@ export function ActiveTeachingChainView({
               onClick={() => run("更新任务条件与计划", async () => {
                 await saveReceipt();
                 if (knowledgeInputsChanged) {
-                  await generateKnowledgeMap();
+                  await generateKnowledgeMap(false, true);
+                  if (resourceDiscoveryEnabled && realProviderSessionId) {
+                    await startResourceDiscovery();
+                  }
                 }
                 await generateMasteryPlan();
               })}
@@ -1614,6 +2454,27 @@ export function ActiveTeachingChainView({
               修改目标、日期、教师人设或学习偏好只会重新排程，不会再次调用模型抽取；上传新资料时才重建知识地图。
             </p>
           )}
+          {graph.knowledge_points.length > 0
+            && resourceDiscoveryEnabled
+            && !["completed", "disabled"].includes(graph.resource_discovery?.status)
+            && (
+              <button
+                data-testid="active-discover-resources"
+                disabled={Boolean(busy) || resourceDiscoveryRunning || !realProviderSessionId}
+                onClick={() => {
+                  setError("");
+                  startResourceDiscovery().catch((reason: any) => {
+                    setError(reason?.message || "外部学习工具发现失败，请稍后重试");
+                  });
+                }}
+              >
+                {resourceDiscoveryRunning
+                  ? "正在后台准备通用链接…"
+                  : Number(resourceDiscovery.resource_count || 0) > 0
+                    ? "重新寻找适合本任务的链接"
+                    : "为本任务寻找适合的学习链接"}
+              </button>
+            )}
           <div className="active-chain__receipt" data-testid="active-extraction-mode">
             <b>抽取模式：{graph.extraction?.mode || "尚未生成"}</b>
             <span>
@@ -1623,6 +2484,32 @@ export function ActiveTeachingChainView({
             </span>
             {(graph.extraction?.warnings || []).map((warning: string) => <span key={warning}>{warning}</span>)}
           </div>
+          {graph.knowledge_points.length > 0 && (
+            <div className="active-chain__receipt" data-testid="active-resource-discovery">
+              <b>
+                联网学习工具：
+                {graph.resource_discovery?.status === "completed"
+                  ? `已找到 ${graph.learning_resources?.length || 0} 项`
+                  : graph.resource_discovery?.status === "partial"
+                    ? `部分完成 · ${graph.learning_resources?.length || 0} 项`
+                    : graph.resource_discovery?.status === "disabled"
+                      ? "创建时未启用"
+                      : graph.resource_discovery?.status === "unsupported"
+                      ? "当前模型不支持可验证联网检索"
+                      : graph.resource_discovery?.status === "failed"
+                        ? "本次检索失败"
+                        : "尚未执行"}
+              </b>
+              <span>
+                {graph.resource_discovery?.status === "disabled"
+                  ? "创建任务时未启用外部学习资源；不影响本任务的计划、进度或教师教学。"
+                  : "系统只保存带真实搜索引用的具体练习、官方文档、模拟器或可视化工具；没有合适资源时不会硬塞链接。"}
+              </span>
+              {(graph.resource_discovery?.warnings || []).map((warning: string) => (
+                <span key={warning}>{warning}</span>
+              ))}
+            </div>
+          )}
           <div className="active-chain__metrics">
             <strong data-testid="active-point-count">{graph.knowledge_points.length}</strong><span>知识点</span>
             <strong data-testid="active-edge-count">{graph.edges.length}</strong><span>前置依赖</span>
@@ -1677,17 +2564,33 @@ export function ActiveTeachingChainView({
                 .filter((edge: any) => edge.dependent_id === point.id)
                 .map((edge: any) => graph.knowledge_points.find((candidate: any) => candidate.id === edge.prerequisite_id)?.name)
                 .filter(Boolean);
+              const plannedTask = taskByKnowledgePointId.get(String(point.id));
               return (
-                <div className="active-chain__knowledge-node" key={point.id}>
+                <button
+                  type="button"
+                  className="active-chain__knowledge-node"
+                  key={point.id}
+                  data-testid={`active-knowledge-jump-${point.id}`}
+                  disabled={!plannedTask || Boolean(busy)}
+                  title={plannedTask ? "进入这个知识点；教师会记住你从哪里跳来" : "该知识点尚未进入计划"}
+                  onClick={() => plannedTask && run(
+                    `进入 ${point.name}`,
+                    async () => {
+                      revealTeacherWorkbench();
+                      await enterCalendarTask(plannedTask);
+                    },
+                  )}
+                >
                   <span>{prerequisites.length ? `前置：${prerequisites.join("、")}` : "起点知识"}</span>
                   <b>{point.name}</b>
                   <small>
                     {point.difficulty} ·
                     {point.mastery_estimate?.total_mastery_task_minutes || point.estimated_task_minutes} 分钟 ·
-                    掌握 {(point.current_mastery * 100).toFixed(0)}%
+                    掌握 {(point.current_mastery * 100).toFixed(0)}% ·
+                    外部工具 {(point.learning_resources || []).length}
                   </small>
                   <i style={{ width: `${Math.max(4, point.current_mastery * 100)}%` }} />
-                </div>
+                </button>
               );
             })}
             {!graph.knowledge_points.length && <p>任务建立后，知识结构会完整显示在这里。</p>}
@@ -1710,7 +2613,7 @@ export function ActiveTeachingChainView({
             <>
               <div className="active-chain__metrics">
                 <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>每日任务目标</span>
-                <strong>{plan.tasks.length}</strong><span>可执行任务</span>
+                <strong>{plan.tasks.length}</strong><span>已保存任务</span>
                 <strong>{plan.unscheduled_task_minutes}</strong><span>未排分钟</span>
                 <strong data-testid="active-plan-feasible">{plan.feasible ? "可行" : "不可行"}</strong><span>容量结论</span>
               </div>
@@ -1732,6 +2635,27 @@ export function ActiveTeachingChainView({
               </div>
               {plan.review_scheduling_policy && <p className="active-chain__muted">{plan.review_scheduling_policy}</p>}
               {plan.warning && <div className="active-chain__warning">{plan.warning}</div>}
+              {(plan.tasks || []).some((task: any) => task.status === "unscheduled" && task.task_type === "initial_learning") && (
+                <div className="active-chain__unscheduled" data-testid="active-unscheduled-tasks">
+                  <b>超出当前日历，但任务仍已保留</b>
+                  <span>这些知识点没有被删除；你可以直接进入学习，之后再调整截止日期或可用时间。</span>
+                  {(plan.tasks || [])
+                    .filter((task: any) => task.status === "unscheduled" && task.task_type === "initial_learning")
+                    .map((task: any) => (
+                      <button
+                        className="active-chain__calendar-task"
+                        data-testid={`active-unscheduled-task-${task.id}`}
+                        disabled={Boolean(busy)}
+                        key={task.id}
+                        onClick={() => run(`进入 ${task.title}`, () => enterDailyTask(task))}
+                      >
+                        <b>{task.title}</b>
+                        <small>{task.estimated_task_minutes} 分钟 · 未排期</small>
+                        <span>仍然进入学习 →</span>
+                      </button>
+                    ))}
+                </div>
+              )}
               {plan.calendar && (
                 <div className="active-chain__calendar" data-testid="active-plan-calendar">
                   {plan.calendar
@@ -1856,9 +2780,47 @@ export function ActiveTeachingChainView({
                   </p>
                   <small>你可以随时打断、追问、要求换个例子。</small>
                 </div>
+                <FocusMonitorPanel teachingSessionId={session.session_id} />
               </aside>
 
-              <section className="active-classroom__dialogue">
+              <section
+                className={`active-classroom__dialogue ${
+                  attachmentDragActive ? "is-file-dragging" : ""
+                }`}
+                data-testid="active-classroom-dialogue"
+                onDragEnter={(event) => {
+                  if (event.dataTransfer.types.includes("Files")) {
+                    event.preventDefault();
+                    setAttachmentDragActive(true);
+                  }
+                }}
+                onDragLeave={(event) => {
+                  const nextTarget = event.relatedTarget as Node | null;
+                  if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                    setAttachmentDragActive(false);
+                  }
+                }}
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes("Files")) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                    setAttachmentDragActive(true);
+                  }
+                }}
+                onDrop={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  setAttachmentDragActive(false);
+                  if (!addFilesFromTransfer(event.dataTransfer, "drop")) {
+                    setError("没有从拖入内容中读取到文件，请改用“＋ 文件”选择");
+                  }
+                }}
+                onPaste={(event) => {
+                  if (addFilesFromTransfer(event.clipboardData, "paste")) {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 <div className="active-classroom__dialogue-head">
                   <div>
                     <span>教师正在带你完成</span>
@@ -1877,6 +2839,107 @@ export function ActiveTeachingChainView({
                   </div>
                 )}
 
+                {resourceDiscoveryEnabled && (
+                  <div
+                    className="active-classroom__resource-action"
+                    data-testid="active-classroom-resource-action"
+                  >
+                    <div>
+                      <span>外部学习工具</span>
+                      <b>
+                        {resourceDiscoveryRunning
+                          ? "正在为整项任务准备通用学习链接"
+                          : resourceDiscovery.status === "failed"
+                            || resourceDiscovery.status === "unsupported"
+                            ? "上次寻找未完成，可以重新尝试"
+                            : Number(resourceDiscovery.resource_count || 0) > 0
+                          ? resourceDiscoveryTaskScope
+                            ? `已为任务准备 ${resourceDiscovery.resource_count} 个通用学习链接`
+                            : `已为任务准备 ${resourceDiscovery.resource_count} 项外部工具，覆盖 ${resourceDiscoveryCoveredPointCount || "部分"} 个知识点`
+                              : "还没有为后续知识点准备外部工具"}
+                      </b>
+                      <small>
+                        {resourceDiscoveryRunning
+                          ? resourceDiscoveryTaskScope
+                            ? "正在寻找一个能覆盖整项任务的官方练习平台或权威工具；每道题的细节由教师按你的问题讲解。"
+                            : `已处理 ${resourceDiscoverySearchedPointCount}/${resourceDiscoveryPointCount || "全部"} 个知识点；完成后每个后续知识点会显示自己的链接。`
+                          : resourceDiscoveryTaskScope
+                            ? "只保留少量通用学习链接，不为每个知识点机械搜索；不会重排计划、改变掌握度或影响当前进度。"
+                            : "一次为整项任务的全部知识点寻找合适的官方练习或工具；不会重排计划、改变掌握度或影响当前进度。"}
+                      </small>
+                      {!resourceDiscoveryRunning
+                        && Array.isArray(resourceDiscovery.warnings)
+                        && resourceDiscovery.warnings[0]
+                        && (resourceDiscovery.status === "failed"
+                          || resourceDiscovery.status === "unsupported"
+                          || resourceDiscovery.status === "partial") && (
+                          <small className="active-classroom__resource-warning">
+                            {resourceDiscovery.warnings[0]}
+                          </small>
+                        )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(busy) || resourceDiscoveryRunning || !realProviderSessionId}
+                      onClick={() => {
+                        setError("");
+                        startResourceDiscovery().catch((reason: any) => {
+                          setError(reason?.message || "外部学习工具发现失败，请稍后重试");
+                        });
+                      }}
+                    >
+                      {!realProviderSessionId
+                        ? "请先连接真实 Provider"
+                        : resourceDiscoveryRunning
+                          ? "正在准备通用链接…"
+                          : Number(resourceDiscovery.resource_count || 0) > 0
+                            ? "重新寻找通用链接"
+                            : "为本任务寻找通用链接"}
+                    </button>
+                  </div>
+                )}
+
+                {(session.state.practice_resources || []).length > 0 && (
+                  <aside
+                    className="active-classroom__practice-resources"
+                    data-testid="active-practice-resources"
+                  >
+                    <div>
+                      <span>权威外部实践</span>
+                      <b>去原站完成，再把结果带回来一起分析</b>
+                      <small>
+                        外部页面不会改动本课程进度；完成后可粘贴代码、报错或直接回传截图。
+                      </small>
+                    </div>
+                    {(session.state.practice_resources || []).map((resource: any) => (
+                      <a
+                        data-testid={`active-practice-resource-${resource.id}`}
+                        href={resource.url}
+                        key={resource.id}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        <span>{resource.provider || resource.host}</span>
+                        <b>{resource.title}</b>
+                        <small>
+                          {resource.authority === "official"
+                            ? resource.kind === "official_practice"
+                              ? "官方原题 · 联网检索"
+                              : "官方或第一方资源 · 联网检索"
+                            : resource.authority === "institutional"
+                              ? "权威机构资源 · 联网检索"
+                              : resource.source === "uploaded_material"
+                                ? `资料提供 · ${resource.host}`
+                                : "联网搜索引用资源"}
+                        </small>
+                        {resource.description && <small>{resource.description}</small>}
+                        <strong>打开练习 ↗</strong>
+                      </a>
+                    ))}
+                  </aside>
+                )}
+
+                <VoicePlaybackRateControl compact />
                 <div
                   className="active-chain__history"
                   data-testid="active-conversation-history"
@@ -1886,6 +2949,14 @@ export function ActiveTeachingChainView({
                     const paragraphs = readableMessageParagraphs(item.content);
                     const visibleParagraphs = item.role === "teacher" ? paragraphs.slice(0, 2) : paragraphs;
                     const remainingParagraphs = item.role === "teacher" ? paragraphs.slice(2) : [];
+                    const isCurrentTeacherVoice = item.role === "teacher"
+                      && teacherVoicePlayback.messageId === String(item.id || "");
+                    const currentTeacherVoiceState = isCurrentTeacherVoice
+                      ? teacherVoicePlayback.state
+                      : "idle";
+                    const currentTeacherVoiceActive = ["loading", "playing"].includes(
+                      currentTeacherVoiceState,
+                    );
                     return (
                       <div
                         className={`active-chain__message ${item.role === "user" ? "is-user" : ""}`}
@@ -1897,16 +2968,89 @@ export function ActiveTeachingChainView({
                             ? "你"
                             : teacherActionLabels[item.action] || "艾莉丝"}
                         </span>
+                        {item.role === "teacher" && (
+                          <button
+                            aria-label={currentTeacherVoiceActive
+                              ? "停止朗读这条教师回复"
+                              : "朗读这条教师回复"}
+                            aria-pressed={currentTeacherVoiceActive}
+                            data-testid={`active-teacher-speak-${item.id}`}
+                            onClick={() => void toggleTeacherVoicePlayback(item)}
+                            type="button"
+                          >
+                            {currentTeacherVoiceState === "loading"
+                              ? teacherVoicePlayback.phase === "starting"
+                                ? "取消模型启动"
+                                : "取消语音合成"
+                              : currentTeacherVoiceState === "playing"
+                                ? "停止朗读"
+                                : currentTeacherVoiceState === "error"
+                                  ? "重试朗读"
+                                  : "听语音"}
+                          </button>
+                        )}
+                        {isCurrentTeacherVoice && teacherVoicePlayback.error && (
+                          <small
+                            data-testid={`active-teacher-speak-error-${item.id}`}
+                            role="alert"
+                          >
+                            {teacherVoicePlayback.error}
+                          </small>
+                        )}
                         {visibleParagraphs.map((paragraph, index) => (
-                          <p key={`${item.id}-visible-${index}`}>{paragraph}</p>
+                          <TeacherMessageParagraph
+                            content={paragraph}
+                            key={`${item.id}-visible-${index}`}
+                            teacher={item.role === "teacher"}
+                          />
                         ))}
                         {remainingParagraphs.length > 0 && (
                           <details className="active-chain__message-more">
                             <summary>展开本轮完整讲解</summary>
                             {remainingParagraphs.map((paragraph, index) => (
-                              <p key={`${item.id}-remaining-${index}`}>{paragraph}</p>
+                              <TeacherMessageParagraph
+                                content={paragraph}
+                                key={`${item.id}-remaining-${index}`}
+                                teacher={item.role === "teacher"}
+                              />
                             ))}
                           </details>
+                        )}
+                        {(item.attachments || []).length > 0 && (
+                          <div
+                            className="active-classroom__message-attachments"
+                            data-testid="active-message-attachments"
+                          >
+                            {(item.attachments || []).map((attachment: TeachingAttachment) => (
+                              <figure key={attachment.id}>
+                                <ClassroomAttachmentVisual attachment={attachment} />
+                                <figcaption>
+                                  <b>{attachment.original_filename}</b>
+                                  <small>{attachmentStatusLabel(attachment)}</small>
+                                  {isImageAttachment(attachment)
+                                    && (
+                                      attachment.analysis_mode === "vision_unavailable"
+                                      || attachment.analysis_mode === "vision_provider_required"
+                                    ) && (
+                                      <button
+                                        type="button"
+                                        data-testid={`active-retry-image-${attachment.id}`}
+                                        onClick={() => run(
+                                          "重新读取图片",
+                                          () => advance(
+                                            "请重新读取这张截图，并结合当前知识点判断我的结果。",
+                                            false,
+                                            [attachment],
+                                          ),
+                                        )}
+                                      >
+                                        用本地 OCR 重新读取
+                                      </button>
+                                    )}
+                                </figcaption>
+                              </figure>
+                            ))}
+                          </div>
                         )}
                         {(item.citations || []).length > 0 && (
                           <details className="active-chain__citations">
@@ -1951,6 +3095,16 @@ export function ActiveTeachingChainView({
                     >
                       <span>你 · {item.status === "processing" ? "教师正在思考…" : "发送失败，请重试"}</span>
                       <p>{item.content}</p>
+                      {item.attachments.length > 0 && (
+                        <div className="active-classroom__message-attachments">
+                          {item.attachments.map((attachment) => (
+                            <figure key={attachment.id}>
+                              <ClassroomAttachmentVisual attachment={attachment} />
+                              <figcaption>{attachment.original_filename}</figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      )}
                       {item.status === "error" && (
                         <div className="active-chain__message-retry">
                           <small>{item.error || "这条消息没有写入课程记录。"}</small>
@@ -1969,7 +3123,103 @@ export function ActiveTeachingChainView({
                   ))}
                 </div>
 
-                <div className="active-chain__composer active-classroom__composer">
+                <div
+                  className="active-chain__composer active-classroom__composer"
+                >
+                  {teachingAttachments.length > 0 && (
+                    <div
+                      className="active-classroom__attachment-tray"
+                      data-testid="active-attachment-tray"
+                    >
+                      {teachingAttachments.map((attachment) => (
+                        <figure key={attachment.id}>
+                          <ClassroomAttachmentVisual attachment={attachment} />
+                          <figcaption>
+                            <span>{attachment.original_filename}</span>
+                            <button
+                              aria-label={`移除 ${attachment.original_filename}`}
+                              onClick={() =>
+                                setTeachingAttachments((current) =>
+                                  current.filter((item) => item.id !== attachment.id),
+                                )
+                              }
+                              type="button"
+                            >
+                              ×
+                            </button>
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
+                  <label className="active-classroom__attachment-button">
+                    {attachmentBusy ? "上传中…" : "＋ 文件"}
+                    <input
+                      accept={classroomAttachmentAccept}
+                      data-testid="active-teacher-attachment"
+                      disabled={
+                        attachmentBusy
+                        || teachingAttachments.length >= classroomAttachmentLimit
+                      }
+                      multiple
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || [])
+                          .map((file, index) =>
+                            normalizeIncomingFile(file, "picker", index));
+                        event.target.value = "";
+                        void addTeachingAttachments(files).catch((reason: any) => {
+                          setError(reason?.message || "附件上传失败");
+                        });
+                      }}
+                      type="file"
+                    />
+                  </label>
+                  <button
+                    aria-label={
+                      voiceState === "recording"
+                        ? "停止语音输入并转成文字"
+                        : voiceState === "preparing"
+                          ? "正在准备语音输入"
+                          : voiceState === "transcribing"
+                            ? "正在将语音输入转成文字"
+                            : "开始语音输入（录音转文字）"
+                    }
+                    aria-pressed={voiceState === "recording"}
+                    className={`active-classroom__voice-button is-${voiceState}`}
+                    data-testid="active-teacher-voice"
+                    disabled={
+                      attachmentBusy
+                      || voiceState === "preparing"
+                      || voiceState === "transcribing"
+                      || Boolean(busy)
+                    }
+                    onClick={() => {
+                      void toggleVoiceInput().catch((reason: any) => {
+                        setVoiceState("idle");
+                        const detail = reason?.message || "无法启动语音输入";
+                        setVoiceStatusText(`语音不可用：${detail}`);
+                        setError(detail);
+                      });
+                    }}
+                    title={
+                      voiceState === "recording"
+                        ? "停止录音并转成文字"
+                        : voiceState === "preparing"
+                          ? "正在准备本地语音识别"
+                          : voiceState === "transcribing"
+                            ? "正在将录音转成文字"
+                            : "开始语音输入"
+                    }
+                    type="button"
+                  >
+                    {voiceState === "recording"
+                      ? `■ ${voiceElapsedSeconds}s`
+                      : voiceState === "preparing"
+                        ? "准备中…"
+                      : voiceState === "transcribing"
+                        ? "识别中…"
+                        : "🎙 语音输入"}
+                  </button>
                   <textarea
                     data-testid="active-teacher-input"
                     value={message}
@@ -1977,27 +3227,67 @@ export function ActiveTeachingChainView({
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
-                        if (message.trim() && !busy) {
+                        if ((message.trim() || teachingAttachments.length) && !busy) {
                           void run("推进教学", () => advance());
                         }
                       }
                     }}
                     placeholder="哪里没听懂就直接说；Enter 发送，Shift+Enter 换行"
                   />
-                  <button
-                    data-testid="active-send-teacher"
-                    disabled={!message.trim() || Boolean(busy)}
-                    onClick={() => run("推进教学", () => advance())}
-                  >
-                    发送
-                  </button>
-                  <button
-                    data-testid="active-understood"
-                    disabled={!message.trim() || Boolean(busy)}
-                    onClick={() => run("提交理解证据", () => advance(message, true))}
-                  >
-                    提交回答并让教师判断
-                  </button>
+                  {voiceStatusText && (
+                    <small
+                      className={`active-classroom__voice-status is-${voiceState}`}
+                      data-testid="active-teacher-voice-status"
+                    >
+                      {voiceStatusText}
+                    </small>
+                  )}
+                  <div className="active-classroom__submit-actions">
+                    <button
+                      data-testid="active-send-teacher"
+                      disabled={
+                        (!message.trim() && !teachingAttachments.length)
+                        || Boolean(busy)
+                        || attachmentBusy
+                        || voiceState !== "idle"
+                      }
+                      onClick={() => run("推进教学", () => advance())}
+                    >
+                      发送
+                    </button>
+                    <button
+                      data-testid="active-understood"
+                      disabled={
+                        (!message.trim() && !teachingAttachments.length)
+                        || Boolean(busy)
+                        || attachmentBusy
+                        || voiceState !== "idle"
+                      }
+                      onClick={() => run("提交理解证据", () => advance(message, true))}
+                    >
+                      提交回答并让教师判断
+                    </button>
+                    <button
+                      className="active-classroom__fast-pass"
+                      data-testid="active-force-complete"
+                      disabled={
+                        Boolean(busy)
+                        || attachmentBusy
+                        || voiceState !== "idle"
+                      }
+                      onClick={() =>
+                        run(
+                          "直接完成知识点",
+                          forceCompleteCurrentPoint,
+                        )}
+                      title="由你确认已经掌握；无需系统复审，直接进入下一个知识点"
+                    >
+                      ✓ 我已掌握，直接完成本知识点
+                    </button>
+                  </div>
+                  <small className="active-classroom__fast-pass-help">
+                    最终决定权在你：无需上传证明或等待教师批准。系统会记录为“用户主动通过”，之后仍可回来提问和参加完整复习。
+                  </small>
                 </div>
 
                 <details className="active-classroom__status">

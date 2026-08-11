@@ -7,7 +7,44 @@ export type RequestError = Error & {
   status?: number;
 };
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const RECOVERABLE_PROVIDER_SESSION_ERRORS = new Set([
+  "PROVIDER_SESSION_REQUIRED",
+  "PROVIDER_SESSION_NOT_FOUND",
+  "PROVIDER_SESSION_UNVERIFIED",
+  "PROVIDER_SESSION_EXPIRED",
+]);
+
+function retryInitWithProviderSession(
+  init: RequestInit | undefined,
+  providerSessionId: string,
+): RequestInit {
+  const headers = new Headers(init?.headers);
+  headers.set("X-Provider-Session-ID", providerSessionId);
+  let body = init?.body;
+  if (typeof body === "string") {
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        body = JSON.stringify({
+          ...parsed,
+          provider_session_id: providerSessionId,
+        });
+      }
+    } catch {
+      // Non-JSON bodies still receive the refreshed session through the header.
+    }
+  }
+  return { ...init, headers, body };
+}
+
+export async function request<T>(
+  path: string,
+  init?: RequestInit,
+  providerRecoveryAttempted = false,
+): Promise<T> {
   const response = await fetch(API + path, {
     headers: { "Content-Type": "application/json" },
     ...init,
@@ -20,6 +57,33 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       || data.detail?.error?.message
       || data.detail?.message
       || "请求失败";
+    const state = useMentorStore.getState();
+    if (
+      !providerRecoveryAttempted
+      && !path.startsWith("/provider-sessions")
+      && RECOVERABLE_PROVIDER_SESSION_ERRORS.has(code)
+      && state.provider !== "fake"
+      && state.apiKey.trim()
+    ) {
+      try {
+        const restored = await reconnectSavedProvider();
+        const restoredSessionId = String(
+          restored?.provider_session_id
+          || useMentorStore.getState().providerSessionId
+          || "",
+        );
+        if (restoredSessionId) {
+          return request<T>(
+            path,
+            retryInitWithProviderSession(init, restoredSessionId),
+            true,
+          );
+        }
+      } catch {
+        // Fall through to the original request error. The learner can retry,
+        // while diagnostics preserve the server response that triggered recovery.
+      }
+    }
     if (typeof code === "string" && code.startsWith("PROVIDER_SESSION")) {
       useMentorStore.getState().setLastError(message || "模型会话已失效，请重新连接");
     }

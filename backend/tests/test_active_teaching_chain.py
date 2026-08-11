@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app import active_teaching
 from app.main import app
@@ -174,6 +176,272 @@ def test_ingestion_graph_plan_and_retrieval_are_traceable(tmp_path):
         assert snapshot.status_code == 200
         assert snapshot.json()["local_knowledge_base"]["chunk_count"] == 4
         assert snapshot.json()["local_knowledge_base"]["network_required"] is False
+
+
+def test_official_practice_link_and_screenshot_round_trip_are_session_scoped(
+    tmp_path,
+    monkeypatch,
+):
+    configure_orm(tmp_path / "active-external-practice.db")
+    workspace = "external-practice"
+    monkeypatch.setattr(
+        active_teaching,
+        "extract_image_text",
+        lambda *_args, **_kwargs: ("", "local_ocr_empty"),
+    )
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={
+                "file": (
+                    "leetcode_top_interview_150_zh.md",
+                    SAMPLE.encode("utf-8"),
+                    "text/markdown",
+                )
+            },
+        )
+        assert material.status_code == 200, material.text
+        material_id = material.json()["id"]
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(material_id, daily_minutes=400, deadline_days=10),
+        ).status_code == 200
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-graph/generate"
+        ).status_code == 200
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/plans/generate"
+        ).status_code == 200
+        session_response = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        )
+        assert session_response.status_code == 200, session_response.text
+        session = session_response.json()
+        expired_provider = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/advance",
+            json={
+                "message": "这条消息不应在 Provider 会话恢复前写入",
+                "provider_session_id": "ps_lost_after_backend_restart",
+            },
+        )
+        assert expired_provider.status_code == 428, expired_provider.text
+        assert (
+            expired_provider.json()["error"]["code"]
+            == "PROVIDER_SESSION_REQUIRED"
+        )
+        assert not any(
+            item.get("content") == "这条消息不应在 Provider 会话恢复前写入"
+            for item in client.get(
+                f"/api/active-teaching/sessions/{session['session_id']}"
+            ).json()["messages"]
+        )
+        resources = session["state"]["practice_resources"]
+        # A course filename and ordinal are not web evidence. The old
+        # LeetCode-specific catalog was removed; resources now come from
+        # uploaded URLs or a real search-grounded discovery run.
+        assert resources == []
+
+        image_bytes = BytesIO()
+        Image.new("RGB", (32, 24), color=(246, 238, 219)).save(
+            image_bytes,
+            format="PNG",
+        )
+        image_data = image_bytes.getvalue()
+        uploaded = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/attachments",
+            files={"file": ("leetcode-result.png", image_data, "image/png")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        attachment = uploaded.json()
+        assert attachment["media_type"] == "image/png"
+        assert attachment["width"] == 32
+        assert attachment["height"] == 24
+        assert attachment["analysis_mode"] == "pending"
+
+        duplicate = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/attachments",
+            files={"file": ("same-image.png", image_data, "image/png")},
+        )
+        assert duplicate.status_code == 200
+        assert duplicate.json()["id"] == attachment["id"]
+
+        stored_file = client.get(attachment["file_url"])
+        assert stored_file.status_code == 200
+        assert stored_file.content == image_data
+        assert stored_file.headers["content-type"].startswith("image/png")
+        assert stored_file.headers["content-disposition"].startswith("inline")
+
+        advanced = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/advance",
+            json={"message": "", "attachment_ids": [attachment["id"]]},
+        )
+        assert advanced.status_code == 200, advanced.text
+        user_message = next(
+            item
+            for item in reversed(advanced.json()["messages"])
+            if item["role"] == "user"
+        )
+        assert user_message["content"] == "请分析我上传的练习结果截图。"
+        assert user_message["attachments"][0]["id"] == attachment["id"]
+        assert (
+            user_message["attachments"][0]["analysis_mode"]
+            == "vision_provider_required"
+        )
+        assert "当前没有已验证的视觉模型" in (
+            user_message["attachments"][0]["analysis_text"]
+        )
+        teacher_message = next(
+            item
+            for item in reversed(advanced.json()["messages"])
+            if item["role"] == "teacher"
+        )
+        assert teacher_message["action"] == "vision_unavailable"
+        assert "截图已保存" in teacher_message["content"]
+        assert "请把运行结果或报错文字粘贴" in teacher_message["content"]
+        assert (
+            advanced.json()["state"]["autonomy"]["reason"]
+            == "vision_text_fallback_required"
+        )
+
+        monkeypatch.setattr(
+            active_teaching,
+            "extract_image_text",
+            lambda *_args, **_kwargs: (
+                "public void merge(int[] nums1, int m, int[] nums2, int n)\n"
+                "while (i >= 0 && j >= 0)",
+                "rapidocr_ppocrv6",
+            ),
+        )
+        second_image = BytesIO()
+        Image.new("RGB", (33, 24), color=(238, 246, 219)).save(
+            second_image,
+            format="PNG",
+        )
+        readable_upload = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/attachments",
+            files={
+                "file": (
+                    "leetcode-code.png",
+                    second_image.getvalue(),
+                    "image/png",
+                )
+            },
+        ).json()
+        read_locally = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/advance",
+            json={
+                "message": "请检查截图中的代码",
+                "attachment_ids": [readable_upload["id"]],
+            },
+        )
+        assert read_locally.status_code == 200, read_locally.text
+        local_user_message = next(
+            item
+            for item in reversed(read_locally.json()["messages"])
+            if item["role"] == "user"
+        )
+        assert (
+            local_user_message["attachments"][0]["analysis_mode"]
+            == "local_ocr"
+        )
+        assert "while (i >= 0 && j >= 0)" in (
+            local_user_message["attachments"][0]["analysis_text"]
+        )
+        assert (
+            read_locally.json()["messages"][-1]["action"]
+            != "vision_unavailable"
+        )
+
+        invalid = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/attachments",
+            files={"file": ("not-an-image.png", b"not an image", "image/png")},
+        )
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["code"] == "TEACHING_IMAGE_INVALID"
+
+
+def test_classroom_documents_and_voice_are_session_scoped(tmp_path, monkeypatch):
+    configure_orm(tmp_path / "active-classroom-media.db")
+    workspace = "classroom-media"
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("course.md", SAMPLE.encode("utf-8"), "text/markdown")},
+        )
+        assert material.status_code == 200, material.text
+        material_id = material.json()["id"]
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(material_id, daily_minutes=400, deadline_days=10),
+        ).status_code == 200
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-graph/generate"
+        ).status_code == 200
+        assert client.post(
+            f"/api/active-teaching/workspaces/{workspace}/plans/generate"
+        ).status_code == 200
+        session = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        ).json()
+
+        note_text = "我在外部练习里发现：逆序归并可以避免覆盖 nums1 尚未读取的元素。"
+        uploaded = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/attachments",
+            files={"file": ("practice-note.md", note_text.encode("utf-8"), "text/markdown")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        attachment = uploaded.json()
+        assert attachment["kind"] == "document"
+        assert attachment["previewable"] is False
+        assert attachment["width"] == 0
+        assert attachment["height"] == 0
+
+        stored_file = client.get(attachment["file_url"])
+        assert stored_file.status_code == 200
+        assert stored_file.content == note_text.encode("utf-8")
+        assert stored_file.headers["content-disposition"].startswith("attachment")
+
+        advanced = client.post(
+            f"/api/active-teaching/sessions/{session['session_id']}/advance",
+            json={
+                "message": "请结合这份练习笔记继续教我。",
+                "attachment_ids": [attachment["id"]],
+            },
+        )
+        assert advanced.status_code == 200, advanced.text
+        user_message = next(
+            item for item in reversed(advanced.json()["messages"])
+            if item["role"] == "user"
+        )
+        assert user_message["attachments"][0]["analysis_mode"] == "document_text"
+        assert "逆序归并" in user_message["attachments"][0]["analysis_text"]
+        assert advanced.json()["state"]["autonomy"]["reason"] != (
+            "attachment_text_fallback_required"
+        )
+
+        monkeypatch.setattr(
+            active_teaching,
+            "transcribe_classroom_audio",
+            lambda data, *, filename, language: {
+                "ok": True,
+                "text": "我想先看一个更简单的例子",
+                "engine": "test-sensevoice",
+                "audio_bytes": len(data),
+                "temporary_audio_deleted": True,
+            },
+        )
+        voice = client.post(
+            (
+                f"/api/active-teaching/sessions/{session['session_id']}"
+                "/voice/transcribe?language=auto"
+            ),
+            files={"file": ("recording.webm", b"fake-audio", "audio/webm")},
+        )
+        assert voice.status_code == 200, voice.text
+        assert voice.json()["text"] == "我想先看一个更简单的例子"
+        assert voice.json()["engine"] == "test-sensevoice"
 
 
 def test_unsupported_and_parse_failure_are_explicit(tmp_path):
@@ -416,8 +684,14 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
         assert cooking_debt["overdue_task_count"] > 0
         assert cooking_debt["overdue_task_minutes"] > 0
         assert cooking_debt["oldest_overdue_date"] <= date.today().isoformat()
+        assert cooking_debt["overdue_day_count"] == len(
+            cooking_debt["overdue_days"]
+        )
+        assert cooking_debt["overdue_days"][0]["date"] == cooking_debt[
+            "oldest_overdue_date"
+        ]
         assert all(
-            task["day_date"] < tomorrow
+            task["debt_date"] < tomorrow
             for task in cooking_debt["overdue_tasks"]
         )
 
@@ -443,6 +717,15 @@ def test_unified_task_index_and_calendar_focus_keep_plan_scope(tmp_path):
             "awaiting_learner": True,
             "reason": "learner_foundation_required",
         }
+        assert focused_state["memory_policy"] == {
+            "cross_task": "compact_profile_only",
+            "current_point": "bounded_detailed_summary",
+            "full_transcript": "session_scoped_not_cross_task",
+        }
+        assert (
+            focused_state["global_learner_profile"]["current_state"]["workspace_id"]
+            == "task-cooking"
+        )
         assert focused.json()["messages"][-1]["action"] == "daily_briefing"
         assert "我先不讲长内容" in focused.json()["messages"][-1]["content"]
 
@@ -487,7 +770,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         migrated = next(item for item in items if item["prompt"] == old_prompt)
         default_persona = next(item for item in items if item["is_default"])
         assert migrated["name"].startswith("已保存教师人设")
-        assert default_persona["visual_profile_id"] == "teacher-02-blonde-fang-v9"
+        assert default_persona["visual_profile_id"] == "teacher-live2d-tsubaki-local"
         assert default_persona["visual_manifest_url"].endswith("/manifest.json")
         migrated_snapshot = client.get(
             "/api/active-teaching/workspaces/persona-migration/snapshot"
@@ -553,7 +836,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         )
         assert (
             applied_snapshot["receipt"]["teacher_visual_profile_id"]
-            == "teacher-02-blonde-fang-v9"
+            == "teacher-live2d-tsubaki-local"
         )
         applied_session = client.get(
             f"/api/active-teaching/sessions/{session.json()['session_id']}"
@@ -564,7 +847,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         )
         assert (
             applied_session["state"]["teacher_visual_profile_id"]
-            == "teacher-02-blonde-fang-v9"
+            == "teacher-live2d-tsubaki-local"
         )
 
         rebound = client.patch(
@@ -683,6 +966,22 @@ def test_teacher_memory_survives_switching_to_another_knowledge_point(tmp_path):
             "我还分不清这个知识点的边界条件"
         )
         assert state["learner_mastery_model"]["tracked_knowledge_point_count"] >= 1
+        assert state["navigation_context"]["kind"] in {
+            "future_jump",
+            "cross_point_jump",
+        }
+        assert state["navigation_context"]["from_incomplete"] is True
+        assert (
+            state["global_learner_profile"]["current_state"]["knowledge_point_id"]
+            == later_task["knowledge_point_id"]
+        )
+        assert state["current_knowledge_memory"]["knowledge_point_id"] == (
+            later_task["knowledge_point_id"]
+        )
+        assert "我还分不清这个知识点的边界条件" in (
+            state["current_knowledge_memory"]["blockers"]
+        )
+        assert "跳到" in focused.json()["messages"][-1]["content"]
 
         taught = client.post(
             f"/api/active-teaching/sessions/{session['session_id']}/teach-next",
@@ -713,6 +1012,21 @@ def test_deadline_capacity_reports_unscheduled_minutes(tmp_path):
         assert plan.json()["feasible"] == 0
         assert plan.json()["unscheduled_task_minutes"] > 0
         assert "容量不足" in plan.json()["warning"]
+        overflow_tasks = [
+            task for task in plan.json()["tasks"] if task["status"] == "unscheduled"
+        ]
+        assert overflow_tasks, "容量外任务必须保留为可进入的未排期任务"
+        started = client.post(
+            "/api/active-teaching/workspaces/capacity/sessions/start",
+            json={},
+        )
+        assert started.status_code == 200, started.text
+        focused = client.post(
+            f"/api/active-teaching/sessions/{started.json()['session_id']}/focus",
+            json={"task_id": overflow_tasks[0]["id"]},
+        )
+        assert focused.status_code == 200, focused.text
+        assert focused.json()["state"]["active_task_id"] == overflow_tasks[0]["id"]
 
 
 def test_learning_workspace_can_be_archived_and_restored_without_data_loss(tmp_path):

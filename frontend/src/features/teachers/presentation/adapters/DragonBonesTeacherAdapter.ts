@@ -86,6 +86,8 @@ export class DragonBonesTeacherAdapter implements Teacher2DRenderer {
   private currentAnimationDurationMs = 1300
   private currentSemantic: TeacherPresentationState = "loading"
   private scale = 1
+  private offsetX = 0
+  private offsetY = 0
   private mirrored = false
   private paused = false
   private userPaused = false
@@ -260,7 +262,12 @@ export class DragonBonesTeacherAdapter implements Teacher2DRenderer {
   listAnimations(): string[] { return [...this.animationNames] }
   listSkins(): string[] { return [...this.skinNames] }
   setSkin(_name: string): void { /* Shizuku has one default skin; future manifests can rebuild here. */ }
-  setScale(scale: number): void { this.scale = Math.max(.08, Math.min(2.5, scale)); this.resize(this.host.clientWidth, this.host.clientHeight) }
+  setScale(scale: number): void { this.scale = Math.max(.08, Math.min(2.8, scale)); this.resize(this.host.clientWidth, this.host.clientHeight) }
+  setOffset(x: number, y: number): void {
+    this.offsetX = Math.max(-1.2, Math.min(1.2, x))
+    this.offsetY = Math.max(-1.4, Math.min(1.4, y))
+    this.resize(this.host.clientWidth, this.host.clientHeight)
+  }
   setMirror(mirrored: boolean): void { this.mirrored = mirrored; this.resize(this.host.clientWidth, this.host.clientHeight) }
   pause(): void { this.userPaused = true; this.paused = true; this.app?.ticker.stop() }
   resume(): void { this.userPaused = false; this.paused = this.pageHidden; if (!this.paused) this.app?.ticker.start() }
@@ -270,8 +277,8 @@ export class DragonBonesTeacherAdapter implements Teacher2DRenderer {
     const fit = Math.min(width / 640, height / 700)
     const magnitude = Math.max(.08, manifestScale * fit * this.scale)
     this.display.scale.set(this.mirrored ? -magnitude : magnitude, magnitude)
-    this.display.x = width * .62 + (this.manifest?.initialOffsetX || 0)
-    this.display.y = height * .98 + (this.manifest?.initialOffsetY || 0)
+    this.display.x = width * .62 + this.offsetX * width + (this.manifest?.initialOffsetX || 0)
+    this.display.y = height * .98 + this.offsetY * height + (this.manifest?.initialOffsetY || 0)
     if (this.app) this.app.renderer.resize(width, height)
     this.onSnapshot?.({
       currentAnimation: this.currentAnimation,

@@ -273,6 +273,141 @@ def test_zero_coding_foundation_gets_a_no_code_first_step(tmp_path):
         assert payload["state"]["autonomy"]["awaiting_learner"] is True
 
 
+def test_learner_can_force_complete_current_point_without_provider_or_evidence(
+    tmp_path, monkeypatch
+):
+    from app import active_teaching
+
+    async def fail_if_teacher_reply_is_generated(**_kwargs):
+        raise AssertionError("force completion must not generate a teacher reply")
+
+    configure_orm(tmp_path / "active-learner-override.db")
+    reset_provider_sessions()
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        monkeypatch.setattr(
+            active_teaching,
+            "_render_teacher_content",
+            fail_if_teacher_reply_is_generated,
+        )
+        before = client.get(
+            "/api/active-teaching/workspaces/state/snapshot"
+        ).json()
+        original_point_id = before["session"]["state"]["current_knowledge_point_id"]
+        original_task_ids = {
+            task["id"]
+            for task in before["plan"]["tasks"]
+            if task["knowledge_point_id"] == original_point_id
+        }
+        original_messages = list(before["session"]["messages"])
+
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"force_complete": True},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["state"]["current_knowledge_point_id"] != original_point_id
+        assert original_task_ids <= set(payload["state"]["completed_tasks"])
+        assert payload["state"]["pending_reviews"]
+        evidence = payload["state"]["mastery_evidence"][-1]
+        assert evidence["passed"] is True
+        assert evidence["evaluation"]["mode"] == "learner_override"
+        assert evidence["evaluation"]["scope"] == "learner_override"
+        assert payload["messages"] == original_messages
+        assert payload["state"]["teacher_generation"]["mode"] == (
+            "direct_state_transition"
+        )
+
+
+def test_verified_external_result_completes_all_initial_steps_for_current_point(
+    tmp_path, monkeypatch
+):
+    configure_orm(tmp_path / "active-fast-pass.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "external-result-test",
+            "api_key": "test-only-key",
+        }
+    )
+    provider_session = get_provider_session(public["provider_session_id"])
+    provider_session.verified = True
+    evaluation_prompts: list[dict] = []
+
+    class ExternalResultProvider:
+        async def json(self, messages):
+            prompt = __import__("json").loads(messages[-1]["content"])
+            if "learner_answer" in prompt:
+                evaluation_prompts.append(prompt)
+                return {
+                    "score": 0.96,
+                    "criteria_met": True,
+                    "rationale": "Accepted 与全部测试通过构成可观察的独立完成证据。",
+                }
+            return {"content": f"表达层输出：{prompt['fixed_action']}"}
+
+    monkeypatch.setattr(
+        "app.active_teaching.provider_for_session",
+        lambda _session: ExternalResultProvider(),
+    )
+    with TestClient(app) as client:
+        _bootstrap_without_session(client)
+        started = client.post(
+            "/api/active-teaching/workspaces/provider-teacher/sessions/start",
+            json={"provider_session_id": provider_session.id},
+        ).json()
+        original_point_id = started["state"]["current_knowledge_point_id"]
+        before_snapshot = client.get(
+            "/api/active-teaching/workspaces/provider-teacher/snapshot"
+        ).json()
+        original_task_ids = {
+            task["id"]
+            for task in before_snapshot["plan"]["tasks"]
+            if task["knowledge_point_id"] == original_point_id
+        }
+        passed = client.post(
+            f"/api/active-teaching/sessions/{started['session_id']}/advance",
+            json={
+                "message": "LeetCode 提交结果：Accepted，全部测试用例通过，运行结果正确。",
+                "understood": True,
+                "verify_completion": True,
+                "provider_session_id": provider_session.id,
+            },
+        )
+        assert passed.status_code == 200, passed.text
+        payload = passed.json()
+        assert payload["state"]["current_knowledge_point_id"] != original_point_id
+        assert original_task_ids
+        assert original_task_ids <= set(payload["state"]["completed_tasks"])
+        assert payload["state"]["pending_reviews"]
+        assert (
+            payload["state"]["mastery_evidence"][-1]["evaluation"]["scope"]
+            == "external_completion_evaluation"
+        )
+        assert payload["messages"][-1]["action"] == "advance_route"
+        assert evaluation_prompts
+        assert "external exercise result" in " ".join(evaluation_prompts[0]["rules"])
+
+        snapshot = client.get(
+            "/api/active-teaching/workspaces/provider-teacher/snapshot"
+        ).json()
+        original_tasks = [
+            task
+            for task in snapshot["plan"]["tasks"]
+            if task["knowledge_point_id"] == original_point_id
+        ]
+        original_task_rows = {
+            task["id"]: task
+            for task in original_tasks
+            if task["id"] in original_task_ids
+        }
+        assert set(original_task_rows) == original_task_ids
+        assert all(task["status"] == "completed" for task in original_task_rows.values())
+
+
 def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_path, monkeypatch):
     configure_orm(tmp_path / "active-provider-teacher.db")
     reset_provider_sessions()

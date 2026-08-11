@@ -18,11 +18,16 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:5174",
+    permissions: ["camera"],
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     ...devices["Desktop Chrome"],
     launchOptions: {
       executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+      args: [
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+      ],
     },
   },
   webServer: [
@@ -39,7 +44,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "npm.cmd run dev -- --host 127.0.0.1 --port 5174",
+      command: "pnpm.cmd exec vite --host 127.0.0.1 --port 5174",
       cwd: root,
       env: {
         ...process.env,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import socket
 from datetime import datetime, timedelta, timezone
@@ -213,6 +214,129 @@ def test_anthropic_provider_parses_response():
     async def request(*args, **kwargs): return SimpleNamespace(status_code=200, json=lambda: {'content': [{'text': 'ok'}]})
     p = AnthropicProvider('https://provider.test', 'm', 'secret'); p.request = request
     assert asyncio.run(p.text([{'role': 'user', 'content': 'hi'}])) == 'ok'
+
+
+def test_gemini_provider_returns_search_grounding_metadata():
+    captured = {}
+
+    async def request(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "modelVersion": "gemini-2.5-flash",
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        "RESOURCE|point-1|official_practice|official|"
+                                        "官方练习|可直接完成练习"
+                                    )
+                                }
+                            ]
+                        },
+                        "groundingMetadata": {
+                            "webSearchQueries": ["point 1 official practice"],
+                            "groundingChunks": [
+                                {
+                                    "web": {
+                                        "uri": "https://official.example/practice",
+                                        "title": "Official Practice",
+                                    }
+                                }
+                            ],
+                            "groundingSupports": [
+                                {
+                                    "segment": {
+                                        "startIndex": 0,
+                                        "endIndex": 65,
+                                        "text": "RESOURCE",
+                                    },
+                                    "groundingChunkIndices": [0],
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+        )
+
+    provider = GeminiProvider("https://provider.test", "gemini-2.5-flash", "secret")
+    provider.request = request
+    result = asyncio.run(provider.grounded_web_search("find official practice"))
+    assert captured["json"]["tools"] == [{"google_search": {}}]
+    assert result["search_grounded"] is True
+    assert result["sources"][0]["url"] == "https://official.example/practice"
+    assert result["supports"][0]["source_indices"] == [0]
+    assert result["queries"] == ["point 1 official practice"]
+
+
+def test_real_providers_send_images_in_their_native_multimodal_payloads():
+    image = {"media_type": "image/png", "data": b"\x89PNG\r\nvision"}
+
+    openai_call = {}
+
+    async def openai_request(*args, **kwargs):
+        openai_call.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": "openai vision"}}]},
+        )
+
+    openai = OpenAICompatibleProvider("https://provider.test", "m", "secret")
+    openai.request = openai_request
+    assert asyncio.run(openai.vision("read screenshot", [image])) == "openai vision"
+    openai_content = openai_call["json"]["messages"][0]["content"]
+    assert openai_content[0] == {"type": "text", "text": "read screenshot"}
+    assert openai_content[1]["type"] == "image_url"
+    assert openai_content[1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
+    assert base64.b64decode(
+        openai_content[1]["image_url"]["url"].split(",", 1)[1]
+    ) == image["data"]
+
+    gemini_call = {}
+
+    async def gemini_request(*args, **kwargs):
+        gemini_call.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "gemini vision"}]}}]
+            },
+        )
+
+    gemini = GeminiProvider("https://provider.test", "m", "secret")
+    gemini.request = gemini_request
+    assert asyncio.run(gemini.vision("read screenshot", [image])) == "gemini vision"
+    gemini_parts = gemini_call["json"]["contents"][0]["parts"]
+    assert gemini_parts[0] == {"text": "read screenshot"}
+    assert gemini_parts[1]["inline_data"]["mime_type"] == "image/png"
+    assert base64.b64decode(gemini_parts[1]["inline_data"]["data"]) == image["data"]
+
+    anthropic_call = {}
+
+    async def anthropic_request(*args, **kwargs):
+        anthropic_call.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"content": [{"text": "anthropic vision"}]},
+        )
+
+    anthropic = AnthropicProvider("https://provider.test", "m", "secret")
+    anthropic.request = anthropic_request
+    assert (
+        asyncio.run(anthropic.vision("read screenshot", [image]))
+        == "anthropic vision"
+    )
+    anthropic_content = anthropic_call["json"]["messages"][0]["content"]
+    assert anthropic_content[0]["type"] == "image"
+    assert anthropic_content[0]["source"]["media_type"] == "image/png"
+    assert base64.b64decode(anthropic_content[0]["source"]["data"]) == image["data"]
+    assert anthropic_content[1] == {"type": "text", "text": "read screenshot"}
 
 
 def test_provider_http_error_is_structured():

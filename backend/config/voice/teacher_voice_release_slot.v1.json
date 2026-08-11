@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "slot_id": "mentorflow_original_teacher_dual_style",
+  "status": "awaiting_authorized_samples",
+  "identity": {
+    "identity_id": "original_mentorflow_teacher",
+    "kind": "original_generic",
+    "display_name": "原创教师音色",
+    "impersonates": false,
+    "source_identity": null
+  },
+  "authorization": {
+    "status": "awaiting_authorized_samples",
+    "evidence": []
+  },
+  "runtime": {
+    "default_url": null,
+    "url_env": "MENTORFLOW_TEACHER_VOICE_RUNTIME_URL"
+  },
+  "storage": {
+    "release_root": "../../../data/voice/releases/original_mentorflow_teacher_dual_style",
+    "training_output_root": "staging",
+    "output_mode": "create_new_immutable_release",
+    "overwrite_existing": false
+  },
+  "models": null,
+  "styles": {
+    "lively": {
+      "style_id": "lively",
+      "identity_id": "original_mentorflow_teacher",
+      "description": "活泼、清晰、节奏更轻快的教学表达",
+      "reference_audio": []
+    },
+    "relaxed": {
+      "style_id": "relaxed",
+      "identity_id": "original_mentorflow_teacher",
+      "description": "慵懒、柔和、节奏更舒缓的陪伴表达",
+      "reference_audio": []
+    }
+  }
+}

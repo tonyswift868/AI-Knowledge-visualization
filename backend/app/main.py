@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import mimetypes
 import os
 import time
@@ -23,7 +25,7 @@ from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfi
 from .services import analyze, available_days, build_plan, create_source, inspect_local, parse_text, safe_path, scene_for_task, source_detail, tutor, uid, normalize
 from .orm import init_orm
 from .ingestion_secure import create_preview, consume_preview, parse_file, chunks as secure_chunks
-from .provider_service import get_provider, ProviderError
+from .provider_service import get_provider, parse_conversational_payload, ProviderError
 from .retrieval_service import RetrievalService
 from .grounding_service import critic as grounding_critic
 from .job_service import create_job, set_job
@@ -47,13 +49,22 @@ from .teacher_avatar_card_presets import list_card_presets as list_teacher_avata
 from .teacher_avatar_presets import activate_preset as activate_teacher_avatar_preset, list_presets as list_teacher_avatar_presets, resolve_preview as resolve_teacher_avatar_preset_preview
 from .spine_teacher_registry import SpineTeacherError, active_teacher as active_spine_teacher, import_package as import_spine_teacher_package, public_manifest as spine_teacher_manifest, resolve_asset as resolve_spine_teacher_asset
 from .active_teaching import router as active_teaching_router
+from .focus_monitoring import router as focus_monitoring_router
 from .generic_knowledge_api import router as generic_knowledge_router
 from .code_practice import router as code_practice_router
+from .casual_chat import router as casual_chat_router
+from .teacher_voice_pack import router as teacher_voice_pack_router
+from .qwen_base_clone_runtime import (
+    bootstrap_production_qwen_base_clone_runtime,
+    shutdown_production_qwen_base_clone_runtimes,
+)
+from .qwen_custom_private_runtime import shutdown_private_qwen_runtime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = PROJECT_ROOT / "data" / "presets"
 PRESET_SETTINGS_FILE = PROJECT_ROOT / "data" / "preset_settings.json"
 _TASK_PROFILE_LOCK = Lock()
+_LOGGER = logging.getLogger(__name__)
 
 
 def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dict[str, Any]:
@@ -66,12 +77,76 @@ async def lifespan(_app):
     db.init_db()
     init_orm()
     cleanup_expired_previews()
-    yield
+    # Missing or invalid engine release material is recorded fail-closed. The
+    # bootstrap accepts only the fixed registry -> root-signed policy -> leaf
+    # receipt -> signed engine chain and never starts its child/model.
+    bootstrap_status = await asyncio.to_thread(
+        bootstrap_production_qwen_base_clone_runtime
+    )
+    _app.state.qwen_voice_bootstrap = bootstrap_status
+    if bootstrap_status.get("state") == "failed_closed":
+        _LOGGER.warning(
+            "Qwen voice runtime registration failed closed: %s",
+            (bootstrap_status.get("error") or {}).get("code", "unknown"),
+        )
+    try:
+        yield
+    finally:
+        # The private prerelease runtime is also an app-owned Windows Job.
+        # It is lazy (normally absent), but when present must be terminated as
+        # part of application shutdown rather than left behind after a reload.
+        try:
+            private_shutdown_report = await asyncio.to_thread(
+                shutdown_private_qwen_runtime
+            )
+        except BaseException as exc:
+            private_shutdown_report = None
+            _app.state.private_qwen_voice_shutdown_error = {
+                "code": "PRIVATE_VOICE_RUNTIME_SHUTDOWN_FAILED",
+                "error": f"{type(exc).__name__}:{exc}",
+            }
+            _LOGGER.exception("Private Qwen voice runtime shutdown raised unexpectedly")
+        else:
+            _app.state.private_qwen_voice_shutdown_error = None
+        _app.state.private_qwen_voice_shutdown = private_shutdown_report
+        # The registry contains only production supervisors created from a
+        # verified engine capability. Each supervisor terminates only the
+        # process tree whose Windows Job handle it retained at launch.
+        try:
+            shutdown_report = await asyncio.to_thread(
+                shutdown_production_qwen_base_clone_runtimes
+            )
+        except BaseException as exc:
+            shutdown_error = {
+                "code": "VOICE_RUNTIME_SHUTDOWN_FAILED",
+                "error": f"{type(exc).__name__}:{exc}",
+            }
+            _app.state.qwen_voice_shutdown = None
+            _app.state.qwen_voice_shutdown_error = shutdown_error
+            _LOGGER.exception("Qwen voice runtime shutdown raised unexpectedly")
+            raise
+        _app.state.qwen_voice_shutdown = shutdown_report
+        failures = list(shutdown_report.get("failures") or [])
+        if failures:
+            _app.state.qwen_voice_shutdown_error = {
+                "code": "VOICE_RUNTIME_SHUTDOWN_INCOMPLETE",
+                "failures": failures,
+            }
+            _LOGGER.error(
+                "Qwen voice runtime shutdown completed with %d owned-runtime failure(s): %s",
+                len(failures),
+                failures,
+            )
+        else:
+            _app.state.qwen_voice_shutdown_error = None
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
 app.include_router(active_teaching_router)
+app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)
 app.include_router(code_practice_router)
+app.include_router(casual_chat_router)
+app.include_router(teacher_voice_pack_router)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
@@ -97,6 +172,19 @@ async def http_error_handler(request: Request, exc: HTTPException):
     detail=exc.detail if isinstance(exc.detail,dict) else {'message':str(exc.detail)}
     error=detail.get('error',{}) if isinstance(detail,dict) else {}
     return JSONResponse(status_code=exc.status_code,content=app_error_body(error.get('code','HTTP_ERROR'),error.get('message',detail.get('message','请求失败')),error.get('details',{}),getattr(request.state,'request_id',None)))
+
+@app.exception_handler(ProviderError)
+async def provider_error_handler(request: Request, exc: ProviderError):
+    """Keep recoverable Provider failures machine-readable across every router."""
+    return JSONResponse(
+        status_code=exc.status,
+        content=app_error_body(
+            exc.code,
+            exc.message,
+            exc.details,
+            getattr(request.state, "request_id", None),
+        ),
+    )
 
 @app.exception_handler(Exception)
 async def unknown_error_handler(request: Request, exc: Exception):
@@ -212,6 +300,39 @@ def attach_workspace_provider(workspace_id: str, session) -> None:
 async def call_bound_provider_json(session, messages: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
     started = time.perf_counter()
     result = await provider_for_session(session).json(messages)
+    return result, generation_meta(session, latency_ms=max(1, int((time.perf_counter() - started) * 1000)))
+
+
+async def call_bound_provider_tutor(
+    session,
+    messages: list[dict[str, Any]],
+    local_result: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Call the tutor while tolerating a plain-text answer from a chat model.
+
+    Planning and assessment endpoints remain strict JSON contracts.  A tutor
+    response, however, is still useful when a fast model ignores the JSON
+    instruction and returns normal prose.  Preserve that prose as the visible
+    message instead of turning a successful teaching turn into a protocol
+    error.
+    """
+
+    started = time.perf_counter()
+    raw = await provider_for_session(session).text(messages)
+    result, fallback_used = parse_conversational_payload(
+        raw,
+        text_field="message",
+        fallback={
+            "status": local_result.get("status", "insufficient"),
+            "confidence": 0.5,
+            "citations": [],
+            "suggested_next_action": "",
+            "progress_update": {},
+            "warnings": [],
+        },
+    )
+    if fallback_used:
+        result["warnings"] = ["Provider 未遵循 JSON 格式；已保留原始教师回复。"]
     return result, generation_meta(session, latency_ms=max(1, int((time.perf_counter() - started) * 1000)))
 
 
@@ -947,7 +1068,7 @@ async def message_session(session_id: str, body: dict[str, Any]):
     if bound_session.provider != "fake":
         try:
             from .prompt_loader import load_prompt
-            provider_output, meta = await call_bound_provider_json(bound_session, [{"role":"system","content":load_prompt("tutor.md")},{"role":"user","content":json.dumps({"question":user_text,"evidence":result.get("citations",[]),"status":result.get("status"),"scaffold":result.get("scaffold"),"persona_prompt":(require_workspace(item["workspace_id"]).get("persona_prompt") or "")},ensure_ascii=False)}])
+            provider_output, meta = await call_bound_provider_tutor(bound_session, [{"role":"system","content":load_prompt("tutor.md")},{"role":"user","content":json.dumps({"question":user_text,"evidence":result.get("citations",[]),"status":result.get("status"),"scaffold":result.get("scaffold"),"persona_prompt":(require_workspace(item["workspace_id"]).get("persona_prompt") or "")},ensure_ascii=False)}], result)
             result["provider_output"] = provider_output
             if provider_output.get("message"): result["message"] = str(provider_output["message"])
             result["generation_meta"] = meta
@@ -2164,6 +2285,23 @@ def teacher_avatar_morph(model_id: str, request: Request, body: dict[str, Any]):
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if STATIC.exists():
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
+    teacher2d_static = STATIC / "teacher2d"
+    if teacher2d_static.exists():
+        app.mount(
+            "/teacher2d",
+            StaticFiles(directory=teacher2d_static),
+            name="teacher2d",
+        )
+    vendor_static = STATIC / "vendor"
+    if vendor_static.exists():
+        # Live2D Cubism Core is a runtime script rather than a bundled ESM
+        # dependency.  Mount vendor assets explicitly so the SPA fallback does
+        # not return index.html for the script URL.
+        app.mount(
+            "/vendor",
+            StaticFiles(directory=vendor_static),
+            name="vendor",
+        )
 
     @app.get("/{path:path}")
     def spa(path: str):

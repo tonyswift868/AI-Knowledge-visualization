@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "protocol": "mentorflow.legacy-qwen3-tts-direct-loopback.v1",
+  "enabled": false,
+  "api_url": null,
+  "engine": "qwen3-tts",
+  "release_slot": "mentorflow_original_teacher_dual_style_qwen3_tts"
+}

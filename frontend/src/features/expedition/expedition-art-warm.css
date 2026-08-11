@@ -1,0 +1,57 @@
+/* Asset review belongs to the warm product shell. The combat replay can stay
+   cinematic, but its management tools should not look like a second dark app. */
+.art-review-import label {
+  border-color: #9fbea9;
+  color: #46715d;
+  background: #f1f7f1;
+}
+
+.art-review-preview {
+  border: 1px solid #ddd1c2;
+  color: #716d66;
+  background: #fffaf2;
+}
+
+.art-review-preview.valid {
+  border-color: #8fbba1;
+  background: #eef6ef;
+}
+
+.art-review-preview.invalid {
+  border-color: #d29a92;
+  color: #9b514b;
+  background: #fff2ef;
+}
+
+.art-review-preview b { color: #397459; }
+
+.art-pack-version-list article,
+.art-contact-sheet > article {
+  border-color: #ddd1c2;
+  background: #fffdf8;
+  box-shadow: 0 8px 22px #745a3820;
+}
+
+.art-pack-version-list small,
+.art-contact-head small,
+.art-review-toolbar > span,
+.art-review-asset > span,
+.expedition-replay-loading,
+.art-review-table code,
+.art-review-kind-list small,
+.art-review-kind-list em,
+.art-review-kind-list i {
+  color: #7f786f;
+}
+
+.art-contact-head { border-color: #e4d9cb; }
+.art-review-asset img { border-color: #d7c8b5; background: #f2ece3; }
+.art-review-asset button { border-color: #b8cdbf; color: #416d59; background: #edf5ef; }
+.art-review-errors { border-color: #d49a92; color: #9c504a; background: #fff1ed; }
+.art-review-table th,
+.art-review-table td { border-color: #e4dbcf; }
+.art-review-table th { color: #4b7e66; }
+.art-review-kind-list span > b { color: #414842; }
+.art-review-kind-list em { color: #9a713d; }
+.art-review-kind-list i { color: #478265; }
+.art-review-table td > small { color: #756f68; }

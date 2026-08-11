@@ -23,6 +23,8 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
   private currentAnimation = "idle"
   private currentSkin = "teaching"
   private scale = 1
+  private offsetX = 0
+  private offsetY = 0
   private mirrored = false
   private paused = false
   private actionTimer: number | undefined
@@ -140,8 +142,15 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
   }
 
   setScale(scale: number): void {
-    this.scale = scale
-    this.root?.style.setProperty("--teacher-scale", String(scale))
+    this.scale = Math.max(.5, Math.min(2.8, scale))
+    this.root?.style.setProperty("--teacher-scale", String(this.scale))
+  }
+
+  setOffset(x: number, y: number): void {
+    this.offsetX = Math.max(-1.2, Math.min(1.2, x))
+    this.offsetY = Math.max(-1.4, Math.min(1.4, y))
+    this.root?.style.setProperty("--teacher-offset-x", `${this.offsetX * 100}%`)
+    this.root?.style.setProperty("--teacher-offset-y", `${this.offsetY * 100}%`)
   }
 
   setMirror(mirrored: boolean): void {

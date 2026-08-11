@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -15,8 +16,10 @@ from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from .provider_runtime import (
     generation_meta,
@@ -24,7 +27,20 @@ from .provider_runtime import (
     require_provider_session,
     same_provider_configuration,
 )
-from .provider_service import ProviderError
+from .provider_service import ProviderError, parse_conversational_payload
+from .classroom_media import (
+    IMAGE_SUFFIXES as CLASSROOM_IMAGE_SUFFIXES,
+    MAX_CLASSROOM_ATTACHMENT_BYTES,
+    MAX_CLASSROOM_ATTACHMENT_COUNT,
+    attachment_kind,
+    classroom_asr_status,
+    extract_attachment_text,
+    extract_image_text,
+    safe_attachment_name,
+    transcribe_classroom_audio,
+    validate_attachment_bytes,
+    warm_classroom_asr,
+)
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["active-teaching"])
@@ -60,7 +76,22 @@ QUESTION_FUNCTION_TERMS = {
 MAX_MATERIAL_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 5_000
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_TEACHING_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_TEACHING_IMAGE_PIXELS = 40_000_000
+TEACHING_IMAGE_FORMATS = {
+    "JPEG": ("image/jpeg", ".jpg"),
+    "PNG": ("image/png", ".png"),
+    "WEBP": ("image/webp", ".webp"),
+}
 TEACHER_VISUAL_PROFILES: dict[str, dict[str, Any]] = {
+    "teacher-live2d-tsubaki-local": {
+        "id": "teacher-live2d-tsubaki-local",
+        "name": "椿 · Live2D 本地模拟",
+        "description": "用户提供的非商用 Cubism 模型；原生网格、物理、表情与语义动作。",
+        "manifest_url": "/teacher2d/tsubaki-live2d/manifest.json",
+        "interactive": True,
+        "local_only": True,
+    },
     "teacher-02-blonde-fang-v9": {
         "id": "teacher-02-blonde-fang-v9",
         "name": "教师 02 · 金发虎牙小熊",
@@ -69,6 +100,8 @@ TEACHER_VISUAL_PROFILES: dict[str, dict[str, Any]] = {
         "interactive": True,
     },
 }
+DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-live2d-tsubaki-local"
+LEGACY_DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-02-blonde-fang-v9"
 
 
 def _now() -> str:
@@ -150,6 +183,143 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def _progress_snapshot_key(
+    material_id: Any,
+    normalized_name: Any = "",
+    name: Any = "",
+) -> tuple[str, str]:
+    """Return a stable key independent from generated graph and plan ids."""
+    material = str(material_id or "").strip()
+    value = str(normalized_name or name or "").strip()
+    return material, _normalise(value)
+
+
+def _capture_knowledge_progress(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Persist compact learner progress before derived rows are rebuilt."""
+    rows = connection.execute(
+        "SELECT id,material_id,normalized_name,name,mastery "
+        "FROM active_knowledge_points WHERE workspace_id=?",
+        (workspace_id,),
+    ).fetchall()
+    snapshot: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = _progress_snapshot_key(
+            row["material_id"], row["normalized_name"], row["name"]
+        )
+        if not key[0] or not key[1]:
+            continue
+        snapshot[key] = {
+            "workspace_id": workspace_id,
+            "material_id": key[0],
+            "normalized_name": key[1],
+            "name": str(row["name"] or ""),
+            "mastery": float(row["mastery"] or 0),
+            "completed_task_count": 0,
+            "completed_task_minutes": 0,
+            "actual_elapsed_minutes": 0.0,
+            "completed_phases": set(),
+        }
+    task_rows = connection.execute(
+        """SELECT point.material_id,point.normalized_name,point.name AS point_name,
+                  task.status,task.completed_task_minutes,
+                  task.actual_elapsed_minutes,task.learning_phase
+             FROM active_plan_tasks AS task
+             JOIN active_knowledge_points AS point
+               ON point.id=task.knowledge_point_id
+            WHERE task.workspace_id=?""",
+        (workspace_id,),
+    ).fetchall()
+    for row in task_rows:
+        key = _progress_snapshot_key(
+            row["material_id"], row["normalized_name"], row["point_name"]
+        )
+        item = snapshot.get(key)
+        if item is None:
+            continue
+        item["completed_task_minutes"] += int(row["completed_task_minutes"] or 0)
+        item["actual_elapsed_minutes"] += float(row["actual_elapsed_minutes"] or 0)
+        if str(row["status"] or "") == "completed":
+            item["completed_task_count"] += 1
+            phase = str(row["learning_phase"] or "").strip()
+            if phase:
+                item["completed_phases"].add(phase)
+    existing_phase_rows = connection.execute(
+        """SELECT material_id,normalized_name,completed_phases
+           FROM active_knowledge_progress_snapshots WHERE workspace_id=?""",
+        (workspace_id,),
+    ).fetchall()
+    existing_phases: dict[tuple[str, str], set[str]] = {}
+    for row in existing_phase_rows:
+        try:
+            values = json.loads(row["completed_phases"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            values = []
+        existing_phases[(str(row["material_id"]), str(row["normalized_name"]))] = {
+            str(value) for value in values if str(value)
+        }
+    for item in snapshot.values():
+        phases = sorted(
+            {
+                *existing_phases.get(
+                    (item["material_id"], item["normalized_name"]), set()
+                ),
+                *(str(value) for value in item.pop("completed_phases") if value),
+            }
+        )
+        item["completed_phases"] = phases
+        connection.execute(
+            """INSERT INTO active_knowledge_progress_snapshots
+               (workspace_id,material_id,normalized_name,name,mastery,
+                completed_task_count,completed_task_minutes,actual_elapsed_minutes,
+                completed_phases,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(workspace_id,material_id,normalized_name) DO UPDATE SET
+                 name=excluded.name,
+                 mastery=MAX(active_knowledge_progress_snapshots.mastery,excluded.mastery),
+                 completed_task_count=MAX(active_knowledge_progress_snapshots.completed_task_count,excluded.completed_task_count),
+                 completed_task_minutes=MAX(active_knowledge_progress_snapshots.completed_task_minutes,excluded.completed_task_minutes),
+                 actual_elapsed_minutes=MAX(active_knowledge_progress_snapshots.actual_elapsed_minutes,excluded.actual_elapsed_minutes),
+                 completed_phases=excluded.completed_phases,
+                 updated_at=excluded.updated_at""",
+            (
+                item["workspace_id"], item["material_id"], item["normalized_name"],
+                item["name"], item["mastery"], item["completed_task_count"],
+                item["completed_task_minutes"], item["actual_elapsed_minutes"],
+                json.dumps(phases, ensure_ascii=False), _now(),
+            ),
+        )
+    return snapshot
+
+
+def _progress_snapshots(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Load durable learner progress keyed by material and normalized name."""
+    rows = connection.execute(
+        "SELECT * FROM active_knowledge_progress_snapshots WHERE workspace_id=?",
+        (workspace_id,),
+    ).fetchall()
+    output: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        try:
+            phases = json.loads(row["completed_phases"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            phases = []
+        output[(str(row["material_id"]), str(row["normalized_name"]))] = {
+            **dict(row),
+            "mastery": float(row["mastery"] or 0),
+            "completed_task_count": int(row["completed_task_count"] or 0),
+            "completed_task_minutes": int(row["completed_task_minutes"] or 0),
+            "actual_elapsed_minutes": float(row["actual_elapsed_minutes"] or 0),
+            "completed_phases": [str(value) for value in phases if str(value)],
+        }
+    return output
+
+
 def _init_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
@@ -193,6 +363,31 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             workspace_id TEXT PRIMARY KEY,
             archived INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS active_learner_profiles (
+            learner_key TEXT PRIMARY KEY,
+            compact_profile TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS active_knowledge_memories (
+            workspace_id TEXT NOT NULL,
+            knowledge_point_id TEXT NOT NULL REFERENCES active_knowledge_points(id) ON DELETE CASCADE,
+            detail_memory TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(workspace_id, knowledge_point_id)
+        );
+        CREATE TABLE IF NOT EXISTS active_knowledge_progress_snapshots (
+            workspace_id TEXT NOT NULL,
+            material_id TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            mastery REAL NOT NULL DEFAULT 0,
+            completed_task_count INTEGER NOT NULL DEFAULT 0,
+            completed_task_minutes INTEGER NOT NULL DEFAULT 0,
+            actual_elapsed_minutes REAL NOT NULL DEFAULT 0,
+            completed_phases TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(workspace_id, material_id, normalized_name)
         );
         CREATE TABLE IF NOT EXISTS active_teacher_personas (
             id TEXT PRIMARY KEY,
@@ -255,6 +450,7 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             plan_id TEXT NOT NULL REFERENCES active_plans(id) ON DELETE CASCADE,
             workspace_id TEXT NOT NULL,
             day_date TEXT NOT NULL,
+            original_day_date TEXT NOT NULL DEFAULT '',
             day_index INTEGER NOT NULL,
             task_order INTEGER NOT NULL,
             knowledge_point_id TEXT NOT NULL REFERENCES active_knowledge_points(id),
@@ -293,7 +489,25 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             action TEXT NOT NULL,
             content TEXT NOT NULL,
             citations TEXT NOT NULL,
+            attachment_ids TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS active_teaching_attachments (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL REFERENCES active_teaching_sessions(id) ON DELETE CASCADE,
+            workspace_id TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            stored_path TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ready',
+            analysis_mode TEXT NOT NULL DEFAULT 'pending',
+            analysis_text TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            UNIQUE(session_id, sha256)
         );
         CREATE TABLE IF NOT EXISTS active_mastery_evidence (
             id TEXT PRIMARY KEY,
@@ -436,10 +650,60 @@ def _init_schema(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE active_review_attempts ADD COLUMN plan_task_id TEXT NOT NULL DEFAULT ''"
         )
+    existing_message_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(active_teaching_messages)"
+        ).fetchall()
+    }
+    if "attachment_ids" not in existing_message_columns:
+        connection.execute(
+            "ALTER TABLE active_teaching_messages "
+            "ADD COLUMN attachment_ids TEXT NOT NULL DEFAULT '[]'"
+        )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_active_teaching_attachments_session
+           ON active_teaching_attachments(session_id,created_at)"""
+    )
     connection.execute(
         """CREATE INDEX IF NOT EXISTS idx_active_plan_tasks_schedule
            ON active_plan_tasks(plan_id,status,day_date)"""
     )
+    existing_task_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(active_plan_tasks)").fetchall()
+    }
+    if "original_day_date" not in existing_task_columns:
+        connection.execute(
+            "ALTER TABLE active_plan_tasks "
+            "ADD COLUMN original_day_date TEXT NOT NULL DEFAULT ''"
+        )
+    connection.execute(
+        """UPDATE active_plan_tasks
+           SET original_day_date=day_date
+           WHERE original_day_date='' OR original_day_date IS NULL"""
+    )
+    # Older replans rewrote day_date in place. Recover the earliest recorded
+    # schedule so rolling debt forward can never erase the day it was first due.
+    for history_row in connection.execute(
+        """SELECT before_snapshot FROM active_replan_history
+           WHERE before_snapshot<>'' ORDER BY created_at,id"""
+    ).fetchall():
+        try:
+            historical_tasks = json.loads(history_row["before_snapshot"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        for task in historical_tasks if isinstance(historical_tasks, list) else []:
+            task_id = str(task.get("id") or "")
+            original_date = str(task.get("original_day_date") or task.get("day_date") or "")
+            if not task_id or not original_date:
+                continue
+            connection.execute(
+                """UPDATE active_plan_tasks
+                   SET original_day_date=?
+                   WHERE id=? AND (original_day_date='' OR original_day_date>?)""",
+                (original_date, task_id, original_date),
+            )
     connection.execute(
         """CREATE INDEX IF NOT EXISTS idx_active_plan_tasks_review
            ON active_plan_tasks(linked_review_item_id,status)"""
@@ -520,9 +784,9 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
                     "允许随时打断；先用生活语言建立直觉，再逐步进入术语、练习和独立验收。"
                 ),
                 "主动提问、短讲解、逐步撤除脚手架",
-                "teacher-02-blonde-fang-v9",
-                TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["name"],
-                TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["manifest_url"],
+                DEFAULT_TEACHER_VISUAL_PROFILE_ID,
+                TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["name"],
+                TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["manifest_url"],
                 now,
                 now,
             ),
@@ -530,14 +794,32 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
     connection.execute(
         """UPDATE active_teacher_personas
            SET visual_profile_id=?,visual_profile_name=?,visual_manifest_url=?,updated_at=?
-           WHERE id='teacher_persona_iris_default' AND visual_profile_id=''""",
+           WHERE id='teacher_persona_iris_default'
+             AND visual_profile_id IN ('',?)""",
         (
-            "teacher-02-blonde-fang-v9",
-            TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["name"],
-            TEACHER_VISUAL_PROFILES["teacher-02-blonde-fang-v9"]["manifest_url"],
+            DEFAULT_TEACHER_VISUAL_PROFILE_ID,
+            TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["name"],
+            TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["manifest_url"],
             now,
+            LEGACY_DEFAULT_TEACHER_VISUAL_PROFILE_ID,
         ),
     )
+    default_persona = connection.execute(
+        "SELECT * FROM active_teacher_personas WHERE id='teacher_persona_iris_default'"
+    ).fetchone()
+    if (
+        default_persona
+        and str(default_persona["visual_profile_id"] or "")
+        == DEFAULT_TEACHER_VISUAL_PROFILE_ID
+    ):
+        # Existing plans and open teaching sessions keep their identity and
+        # progress; only references to the former built-in default artwork are
+        # repointed to the new Live2D model.
+        _propagate_persona_to_references(
+            connection,
+            source_persona_id="teacher_persona_iris_default",
+            target=default_persona,
+        )
     migrated_index = 0
     for receipt_row in connection.execute(
         "SELECT workspace_id,payload FROM active_receipts ORDER BY updated_at"
@@ -1435,6 +1717,17 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
     review_rounds = int(payload.get("review_rounds") or 2)
     if review_rounds not in {2, 3, 4}:
         _error("INVALID_REVIEW_ROUNDS", "完整复习轮数只能选择 2、3 或 4", 422)
+    raw_resource_discovery = payload.get("discover_external_resources", True)
+    if isinstance(raw_resource_discovery, str):
+        discover_external_resources = raw_resource_discovery.strip().casefold() not in {
+            "",
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+    else:
+        discover_external_resources = bool(raw_resource_discovery)
     return {
         **payload,
         "start_date": start_date.isoformat(),
@@ -1464,6 +1757,11 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         )[:500],
         "learner_interests": str(payload.get("learner_interests") or "")[:1000],
         "allow_schedule_suggestions": bool(payload.get("allow_schedule_suggestions", True)),
+        # Keep this opt-in explicit for newly-created tasks while preserving
+        # the historical behavior for receipts that predate the field.  The
+        # generic knowledge-map endpoint treats a missing value as enabled;
+        # clients should always send a boolean for new tasks.
+        "discover_external_resources": discover_external_resources,
         "material_ids": list(dict.fromkeys(str(item) for item in payload["material_ids"])),
         "updated_at": _now(),
     }
@@ -1680,6 +1978,8 @@ def generate_knowledge_graph(workspace_id: str) -> dict[str, Any]:
         ).fetchall()
         if not chunks:
             _error("KNOWLEDGE_SOURCE_REQUIRED", "所选资料没有可追溯正文", 409)
+        _capture_knowledge_progress(connection, workspace_id)
+        progress = _progress_snapshots(connection, workspace_id)
         old_plans = [
             row["id"]
             for row in connection.execute(
@@ -1767,6 +2067,13 @@ def generate_knowledge_graph(workspace_id: str) -> dict[str, Any]:
                     )
                 continue
             point_id = f"kp_{hashlib.sha256((workspace_id + ':' + normalized).encode()).hexdigest()[:20]}"
+            progress_item = progress.get(
+                (str(chunk["material_id"]), normalized),
+                {},
+            )
+            preserved_mastery = max(
+                0.0, float(progress_item.get("mastery") or 0)
+            )
             connection.execute(
                 """INSERT INTO active_knowledge_points
                    (id,workspace_id,material_id,normalized_name,name,explanation,difficulty,estimated_task_minutes,mastery,acceptance_method,source_evidence,isolated,created_at)
@@ -1780,7 +2087,7 @@ def generate_knowledge_graph(workspace_id: str) -> dict[str, Any]:
                     explanation,
                     difficulty,
                     _difficulty_minutes(difficulty, chunk["text"]),
-                    0,
+                    preserved_mastery,
                     acceptance,
                     json.dumps([evidence], ensure_ascii=False),
                     0,
@@ -1800,7 +2107,7 @@ def generate_knowledge_graph(workspace_id: str) -> dict[str, Any]:
                     "explanation": explanation,
                     "difficulty": difficulty,
                     "estimated_task_minutes": _difficulty_minutes(difficulty, chunk["text"]),
-                    "current_mastery": 0,
+                    "current_mastery": preserved_mastery,
                     "acceptance_method": acceptance,
                     "material_id": chunk["material_id"],
                     "source_evidence": [evidence],
@@ -2001,6 +2308,8 @@ def _study_dates(deadline: date, weekdays: list[int]) -> list[date]:
 @router.post("/workspaces/{workspace_id}/plans/generate")
 def generate_plan(workspace_id: str) -> dict[str, Any]:
     with _connect() as connection:
+        _capture_knowledge_progress(connection, workspace_id)
+        progress = _progress_snapshots(connection, workspace_id)
         receipt_row = connection.execute(
             "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
         ).fetchone()
@@ -2045,28 +2354,51 @@ def generate_plan(workspace_id: str) -> dict[str, Any]:
                 day_index += 1
                 used = 0
                 task_order = 0
-            if day_index >= len(dates):
-                unscheduled += minutes
-                continue
-            task_order += 1
-            used += minutes
             evidence = json.loads(point["source_evidence"])
+            progress_item = progress.get(
+                _progress_snapshot_key(
+                    point["material_id"], point["normalized_name"], point["name"]
+                ),
+                {},
+            )
+            preserved_completed = bool(
+                float(progress_item.get("mastery") or 0) >= 0.8
+            )
+            capacity_exceeded = day_index >= len(dates)
+            if capacity_exceeded and not preserved_completed:
+                unscheduled += minutes
+            if capacity_exceeded:
+                task_day = dates[-1].isoformat()
+                persisted_day_index = 999999
+                persisted_task_order = 999999
+            else:
+                task_order += 1
+                used += minutes
+                task_day = dates[day_index].isoformat()
+                persisted_day_index = day_index
+                persisted_task_order = task_order
             task = {
                 "id": _id("active_task"),
                 "plan_id": plan_id,
                 "workspace_id": workspace_id,
-                "day_date": dates[day_index].isoformat(),
-                "day_index": day_index,
-                "task_order": task_order,
+                "day_date": task_day,
+                "day_index": persisted_day_index,
+                "task_order": persisted_task_order,
                 "knowledge_point_id": point["id"],
                 "title": f"{point['name']}{suffix}",
                 "objective": f"围绕“{point['name']}”完成讲解、示例、理解检测和独立验收。",
                 "source_evidence": evidence,
                 "acceptance_condition": point["acceptance_method"],
                 "estimated_task_minutes": minutes,
-                "completed_task_minutes": 0,
+                "completed_task_minutes": minutes if preserved_completed else 0,
                 "actual_elapsed_minutes": 0.0,
-                "status": "planned",
+                "status": (
+                    "completed"
+                    if preserved_completed
+                    else "unscheduled"
+                    if capacity_exceeded
+                    else "planned"
+                ),
             }
             scheduled.append(task)
         total = sum(int(point["estimated_task_minutes"]) for point in ordered)
@@ -2093,9 +2425,13 @@ def generate_plan(workspace_id: str) -> dict[str, Any]:
         for task in scheduled:
             connection.execute(
                 """INSERT INTO active_plan_tasks
-                   (id,plan_id,workspace_id,day_date,day_index,task_order,knowledge_point_id,title,objective,source_evidence,acceptance_condition,estimated_task_minutes,completed_task_minutes,actual_elapsed_minutes,status)
-                   VALUES (:id,:plan_id,:workspace_id,:day_date,:day_index,:task_order,:knowledge_point_id,:title,:objective,:source_evidence,:acceptance_condition,:estimated_task_minutes,:completed_task_minutes,:actual_elapsed_minutes,:status)""",
-                {**task, "source_evidence": json.dumps(task["source_evidence"], ensure_ascii=False)},
+                   (id,plan_id,workspace_id,day_date,original_day_date,day_index,task_order,knowledge_point_id,title,objective,source_evidence,acceptance_condition,estimated_task_minutes,completed_task_minutes,actual_elapsed_minutes,status)
+                   VALUES (:id,:plan_id,:workspace_id,:day_date,:original_day_date,:day_index,:task_order,:knowledge_point_id,:title,:objective,:source_evidence,:acceptance_condition,:estimated_task_minutes,:completed_task_minutes,:actual_elapsed_minutes,:status)""",
+                {
+                    **task,
+                    "original_day_date": task["day_date"],
+                    "source_evidence": json.dumps(task["source_evidence"], ensure_ascii=False),
+                },
             )
         connection.commit()
         return _plan(connection, plan_id)
@@ -2809,6 +3145,191 @@ def _sync_pending_reviews(
     ]
 
 
+def _safe_external_practice_url(value: str) -> str:
+    candidate = str(value or "").strip().rstrip("。，、；;）)]}>\"'")
+    if not candidate:
+        return ""
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return ""
+    if parsed.scheme != "https" or not parsed.hostname:
+        return ""
+    host = parsed.hostname.casefold()
+    if (
+        host in {"localhost", "127.0.0.1", "::1"}
+        or host.endswith(".local")
+        or host.endswith(".internal")
+    ):
+        return ""
+    return candidate
+
+
+def _practice_resource(
+    *,
+    title: str,
+    url: str,
+    source: str,
+    authority: str,
+) -> dict[str, str] | None:
+    safe_url = _safe_external_practice_url(url)
+    if not safe_url:
+        return None
+    host = str(urlparse(safe_url).hostname or "")
+    provider = host
+    return {
+        "id": _hash_text(f"{source}:{safe_url}")[:20],
+        "kind": "external_practice",
+        "title": str(title or "外部实践资源")[:180],
+        "url": safe_url,
+        "host": host,
+        "provider": provider,
+        "source": source,
+        "authority": authority,
+        "open_mode": "new_tab",
+    }
+
+
+def _practice_resources_for_session(
+    connection: sqlite3.Connection,
+    session: sqlite3.Row,
+    state: dict[str, Any],
+) -> list[dict[str, str]]:
+    tasks = _task_rows(connection, session["plan_id"])
+    if not tasks:
+        return []
+    route_index = min(
+        max(0, int(state.get("route_index") or 0)),
+        len(tasks) - 1,
+    )
+    task = tasks[route_index]
+    point = connection.execute(
+        "SELECT * FROM active_knowledge_points WHERE id=?",
+        (task["knowledge_point_id"],),
+    ).fetchone()
+    if not point:
+        return []
+    try:
+        evidence = json.loads(point["source_evidence"])
+    except (TypeError, json.JSONDecodeError):
+        evidence = []
+
+    resources: list[dict[str, str]] = []
+    seen: set[str] = set()
+    # Resources discovered during knowledge-map generation are backed by a
+    # real web-search citation. This replaces the old course-specific
+    # LeetCode ordinal catalog and works for any uploaded subject.
+    try:
+        from .learning_resources import public_resources
+
+        discovered_resources = []
+        for candidate in public_resources(
+            connection,
+            str(session["workspace_id"]),
+        ):
+            metadata = candidate.get("discovery_meta") or {}
+            # A task-scoped resource is a general tool for the course (for
+            # example an official problem platform).  It is intentionally
+            # available from every point; point-specific resources stay local
+            # to the current lesson.
+            if (
+                str(candidate.get("knowledge_point_id") or "")
+                == str(point["id"])
+                or str(metadata.get("scope") or "") == "task"
+            ):
+                discovered_resources.append(candidate)
+
+        for discovered in discovered_resources:
+            url = _safe_external_practice_url(str(discovered.get("url") or ""))
+            if not url or url in seen:
+                continue
+            resources.append(
+                {
+                    "id": str(discovered["id"]),
+                    "kind": str(discovered.get("kind") or "external_practice"),
+                    "title": str(discovered.get("title") or point["name"]),
+                    "description": str(discovered.get("description") or ""),
+                    "url": url,
+                    "host": str(discovered.get("host") or ""),
+                    "provider": str(
+                        discovered.get("provider")
+                        or discovered.get("host")
+                        or ""
+                    ),
+                    "source": str(
+                        discovered.get("source")
+                        or "web_search_grounding"
+                    ),
+                    "authority": str(
+                        discovered.get("authority")
+                        or "search_grounded"
+                    ),
+                    "search_query": str(
+                        discovered.get("search_query") or ""
+                    ),
+                    "open_mode": "new_tab",
+                }
+            )
+            seen.add(url)
+    except sqlite3.Error:
+        # Old databases can still expose source-provided URLs. The generic
+        # schema is created by knowledge-map generation on the next rebuild.
+        pass
+    for item in evidence:
+        searchable = "\n".join(
+            str(item.get(key) or "")
+            for key in ("heading", "quote", "source_file")
+        )
+        chunk_id = str(item.get("chunk_id") or "")
+        if chunk_id:
+            chunk = connection.execute(
+                "SELECT text FROM active_chunks WHERE id=?",
+                (chunk_id,),
+            ).fetchone()
+            if chunk:
+                searchable += f"\n{chunk['text']}"
+        for raw_url in re.findall(r"https://[^\s<>'\"]+", searchable):
+            resource = _practice_resource(
+                title=str(point["name"]),
+                url=raw_url,
+                source="uploaded_material",
+                authority=(
+                    "official"
+                    if (urlparse(raw_url).hostname or "").casefold()
+                    in {"leetcode.cn", "leetcode.com"}
+                    else "source_provided"
+                ),
+            )
+            if resource and resource["url"] not in seen:
+                resources.append(resource)
+                seen.add(resource["url"])
+    return resources[:4]
+
+
+def _public_teaching_attachment(row: sqlite3.Row) -> dict[str, Any]:
+    kind = attachment_kind(
+        str(row["original_filename"]),
+        str(row["media_type"]),
+    )
+    return {
+        "id": str(row["id"]),
+        "original_filename": str(row["original_filename"]),
+        "media_type": str(row["media_type"]),
+        "kind": kind,
+        "previewable": kind == "image",
+        "size_bytes": int(row["size_bytes"]),
+        "width": int(row["width"]),
+        "height": int(row["height"]),
+        "status": str(row["status"]),
+        "analysis_mode": str(row["analysis_mode"]),
+        "analysis_text": str(row["analysis_text"] or ""),
+        "file_url": (
+            f"/api/active-teaching/attachments/{row['id']}/file"
+        ),
+        "created_at": str(row["created_at"]),
+    }
+
+
 def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
     row = connection.execute(
         "SELECT * FROM active_teaching_sessions WHERE id=?", (session_id,)
@@ -2822,8 +3343,27 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
     ).fetchall():
         item = dict(message)
         item["citations"] = json.loads(item["citations"])
+        try:
+            attachment_ids = json.loads(item.get("attachment_ids") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            attachment_ids = []
+        attachments = []
+        for attachment_id in attachment_ids:
+            attachment = connection.execute(
+                """SELECT * FROM active_teaching_attachments
+                   WHERE id=? AND session_id=?""",
+                (str(attachment_id), session_id),
+            ).fetchone()
+            if attachment:
+                attachments.append(_public_teaching_attachment(attachment))
+        item["attachments"] = attachments
         messages.append(item)
     state = json.loads(row["state"])
+    state["practice_resources"] = _practice_resources_for_session(
+        connection,
+        row,
+        state,
+    )
     _sync_pending_reviews(connection, session_id, state)
     incomplete_initial = int(
         connection.execute(
@@ -2872,12 +3412,49 @@ def _record_message(
     action: str,
     content: str,
     citations: list[dict[str, Any]],
+    attachment_ids: list[str] | None = None,
 ) -> None:
     connection.execute(
-        """INSERT INTO active_teaching_messages(id,session_id,role,action,content,citations,created_at)
-           VALUES (?,?,?,?,?,?,?)""",
-        (_id("teaching_message"), session_id, role, action, content, json.dumps(citations, ensure_ascii=False), _now()),
+        """INSERT INTO active_teaching_messages
+           (id,session_id,role,action,content,citations,attachment_ids,created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (
+            _id("teaching_message"),
+            session_id,
+            role,
+            action,
+            content,
+            json.dumps(citations, ensure_ascii=False),
+            json.dumps(attachment_ids or [], ensure_ascii=False),
+            _now(),
+        ),
     )
+
+
+def _ensure_teacher_focus_markup(
+    content: str,
+    state: dict[str, Any],
+) -> str:
+    """Guarantee one concise, safe focus marker without styling whole answers."""
+    value = str(content or "").strip()
+    if not value or re.search(r"\[\[重点:[^\]\n]{1,120}\]\]|\*\*[^*\n]{1,120}\*\*", value):
+        return value
+    memory = state.get("current_knowledge_memory") or {}
+    navigation = state.get("navigation_context") or {}
+    candidates = [
+        str(memory.get("knowledge_point_name") or "").strip(),
+        str(navigation.get("to_knowledge_point_name") or "").strip(),
+    ]
+    for candidate in candidates:
+        if candidate and len(candidate) <= 80 and candidate in value:
+            return value.replace(candidate, f"[[重点:{candidate}]]", 1)
+    quoted = re.search(r"[“\"]([^”\"\n]{2,60})[”\"]", value)
+    if quoted:
+        phrase = quoted.group(1).strip()
+        if phrase:
+            start, end = quoted.span(1)
+            return f"{value[:start]}[[重点:{phrase}]]{value[end:]}"
+    return value
 
 
 async def _render_teacher_content(
@@ -2891,7 +3468,7 @@ async def _render_teacher_content(
 ) -> tuple[str, dict[str, Any]]:
     """Render one teacher turn while preserving an explicit knowledge boundary."""
     if not provider_session_id:
-        return draft, {
+        return _ensure_teacher_focus_markup(draft, state), {
             "mode": "system_guided",
             "provider": None,
             "fallback_used": False,
@@ -2930,6 +3507,7 @@ async def _render_teacher_content(
             "next_action": state.get("next_action"),
         },
         "source_grounded_draft": draft,
+        "available_external_tools": state.get("available_external_tools") or [],
         "teacher_persona": state.get("teacher_persona") or "",
         "persona_expression": {
             "principle": (
@@ -2971,10 +3549,30 @@ async def _render_teacher_content(
             "Usually advance one learnable step and pause for feedback; when a complete explanation is needed, finish it instead of truncating it mechanically.",
             "The learner may interrupt, ask for another example, or briefly change topic. Answer naturally and preserve the place to resume.",
             "End with a clear and natural next move when one is useful; do not force every response into the same question template.",
+            "If the learner asks for a practice site or tool, use an available_external_tools item when one exists and include its exact URL; do not invent a URL or dump links into an unrelated explanation.",
         ],
         "learner_context": state.get("learner_context") or {},
         "learner_mastery_model": state.get("learner_mastery_model") or {},
-        "persistent_memory": state.get("teacher_memory") or {},
+        "memory_contract": state.get("memory_policy") or {
+            "cross_task": "compact_profile_only",
+            "current_point": "bounded_detailed_summary",
+            "full_transcript": "session_scoped_not_cross_task",
+        },
+        "global_learner_profile": state.get("global_learner_profile") or {},
+        "current_knowledge_point_memory": state.get("current_knowledge_memory") or {},
+        "task_memory": {
+            key: value
+            for key, value in (state.get("teacher_memory") or {}).items()
+            if key
+            in {
+                "unresolved_points",
+                "explanations_that_helped",
+                "last_interaction",
+                "knowledge_progress",
+                "unresolved_confusions",
+            }
+        },
+        "navigation_context": state.get("navigation_context") or {},
         "latest_learner_message": str(
             (state.get("teacher_memory") or {}).get("last_learner_message") or ""
         ),
@@ -2982,6 +3580,7 @@ async def _render_teacher_content(
         "knowledge_scope": knowledge_scope,
         "rules": [
             "Write a coherent Chinese teacher response that combines the grounded draft, the learner's latest message, the saved persona, and the adaptive teaching guidance.",
+            "Mark only 1 to 3 short genuinely important phrases with the exact syntax [[重点:短语]]. Never mark an entire paragraph, URL, citation, code block, or ordinary praise.",
             (
                 "Do not add factual claims beyond the draft and allowed evidence."
                 if knowledge_scope == "source_grounded"
@@ -2991,15 +3590,16 @@ async def _render_teacher_content(
                     "citation, and say when a current or time-sensitive claim needs real web verification."
                 )
             ),
-            "Use persistent memory to avoid repeating failed explanations and to acknowledge prior questions.",
+            "Use current_knowledge_point_memory for detailed continuity inside this point and avoid repeating failed explanations.",
+            "Use global_learner_profile only for compact cross-task continuity: level, preferences, learned topics, current state, and blockers. Never imply that full conversations from other tasks were retained.",
+            "If navigation_context shows a jump, explicitly acknowledge where the learner came from and whether the previous point was unfinished or the destination was scheduled for later; do not shame or block curiosity.",
             "Use learner_mastery_model and knowledge_progress to connect the current lesson to already passed phases, prior mistakes, and unresolved points; never claim the learner forgot completed work.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",
             "Return JSON only with one string field named content.",
         ],
     }
     try:
-        payload = await provider_for_session(provider_session).json(
-            [
+        messages = [
                 {
                     "role": "system",
                     "content": (
@@ -3017,7 +3617,18 @@ async def _render_teacher_content(
                 },
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ]
-        )
+        expression_provider = provider_for_session(provider_session)
+        if hasattr(expression_provider, "text"):
+            raw = await expression_provider.text(messages)
+            payload, fallback_used = parse_conversational_payload(
+                raw,
+                text_field="content",
+            )
+        else:
+            # Compatibility for narrowly scoped provider doubles and adapters
+            # that expose only the former structured interface.
+            payload = await expression_provider.json(messages)
+            fallback_used = False
     except ProviderError as exc:
         _error(exc.code, exc.message, exc.status, **exc.details)
     rendered = str(payload.get("content") or "").strip() if isinstance(payload, dict) else ""
@@ -3032,6 +3643,7 @@ async def _render_teacher_content(
         and "模型通识补充" not in rendered[:80]
     ):
         rendered = f"模型通识补充（非资料引用）：\n\n{rendered}"
+    rendered = _ensure_teacher_focus_markup(rendered, state)
     return rendered, generation_meta(provider_session) | {
         "scope": (
             "expression_only"
@@ -3040,6 +3652,7 @@ async def _render_teacher_content(
         ),
         "knowledge_scope": knowledge_scope,
         "fixed_action": action,
+        "response_format_fallback": fallback_used,
     }
 
 
@@ -3225,6 +3838,240 @@ def _point_readiness_prompt(
         f"\n\n{question}",
         citations,
     )
+
+
+GLOBAL_LEARNER_KEY = "local_default"
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    try:
+        parsed = json.loads(str(value or "{}"))
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return dict(parsed) if isinstance(parsed, dict) else {}
+
+
+def _unique_text(values: list[Any], limit: int, width: int = 160) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()[:width]
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result[-limit:]
+
+
+def _read_global_learner_profile(connection: sqlite3.Connection) -> dict[str, Any]:
+    row = connection.execute(
+        "SELECT compact_profile FROM active_learner_profiles WHERE learner_key=?",
+        (GLOBAL_LEARNER_KEY,),
+    ).fetchone()
+    return _json_object(row["compact_profile"]) if row else {}
+
+
+def _read_knowledge_memory(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    knowledge_point_id: str,
+) -> dict[str, Any]:
+    if not knowledge_point_id:
+        return {}
+    row = connection.execute(
+        """SELECT detail_memory FROM active_knowledge_memories
+           WHERE workspace_id=? AND knowledge_point_id=?""",
+        (workspace_id, knowledge_point_id),
+    ).fetchone()
+    return _json_object(row["detail_memory"]) if row else {}
+
+
+def _write_knowledge_memory(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    point: sqlite3.Row,
+    state: dict[str, Any],
+    role: str = "",
+    message: str = "",
+    teacher_action: str = "",
+    confused: bool = False,
+) -> dict[str, Any]:
+    """Persist detail only inside one knowledge point.
+
+    Full transcripts remain in the session message table.  This memory stores
+    bounded teaching summaries that are useful when the learner leaves and
+    later returns to the same point.
+    """
+    point_id = str(point["id"])
+    memory = _read_knowledge_memory(
+        connection,
+        workspace_id=workspace_id,
+        knowledge_point_id=point_id,
+    )
+    interactions = [
+        item
+        for item in list(memory.get("recent_interactions") or [])
+        if isinstance(item, dict)
+    ]
+    if role and message:
+        interactions.append(
+            {
+                "role": role[:24],
+                "summary": str(message).strip()[:700],
+                "action": str(teacher_action or "")[:80],
+                "at": _now(),
+            }
+        )
+    blockers = list(memory.get("blockers") or [])
+    if confused and message:
+        blockers.append(str(message).strip()[:260])
+    unresolved = [
+        str(item.get("message") or "")[:260]
+        for item in state.get("unresolved_confusions") or []
+        if isinstance(item, dict)
+        and str(item.get("knowledge_point_id") or "") == point_id
+    ]
+    memory.update(
+        {
+            "knowledge_point_id": point_id,
+            "knowledge_point_name": str(point["name"]),
+            "mastery": round(float(point["mastery"] or 0), 4),
+            "last_teaching_step": str(state.get("current_teaching_step") or ""),
+            "last_task_id": str(state.get("active_task_id") or ""),
+            "last_teacher_action": str(teacher_action or memory.get("last_teacher_action") or "")[:80],
+            "blockers": _unique_text([*blockers, *unresolved], 8, 260),
+            "recent_interactions": interactions[-10:],
+            "updated_at": _now(),
+        }
+    )
+    connection.execute(
+        """INSERT INTO active_knowledge_memories
+           (workspace_id,knowledge_point_id,detail_memory,updated_at)
+           VALUES(?,?,?,?)
+           ON CONFLICT(workspace_id,knowledge_point_id) DO UPDATE SET
+             detail_memory=excluded.detail_memory,
+             updated_at=excluded.updated_at""",
+        (
+            workspace_id,
+            point_id,
+            json.dumps(memory, ensure_ascii=False),
+            memory["updated_at"],
+        ),
+    )
+    return memory
+
+
+def _sync_two_tier_memory(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    state: dict[str, Any],
+    navigation_event: str = "",
+) -> None:
+    """Inject a bounded cross-task profile plus one detailed point memory."""
+    existing = _read_global_learner_profile(connection)
+    receipt_row = connection.execute(
+        "SELECT payload FROM active_receipts WHERE workspace_id=?",
+        (workspace_id,),
+    ).fetchone()
+    receipt = _json_object(receipt_row["payload"]) if receipt_row else {}
+    point_id = str(state.get("current_knowledge_point_id") or "")
+    point = connection.execute(
+        "SELECT id,name,mastery FROM active_knowledge_points WHERE id=?",
+        (point_id,),
+    ).fetchone() if point_id else None
+    learned = connection.execute(
+        """SELECT name,mastery,workspace_id FROM active_knowledge_points
+           WHERE mastery>=0.8 ORDER BY created_at DESC,id DESC LIMIT 40"""
+    ).fetchall()
+    memory_rows = connection.execute(
+        """SELECT detail_memory FROM active_knowledge_memories
+           ORDER BY updated_at DESC LIMIT 40"""
+    ).fetchall()
+    blockers: list[str] = []
+    for row in memory_rows:
+        memory = _json_object(row["detail_memory"])
+        if memory.get("blockers"):
+            blockers.append(
+                f"{memory.get('knowledge_point_name') or '知识点'}："
+                f"{str(list(memory.get('blockers') or [])[-1])[:180]}"
+            )
+    prior_preferences = dict(existing.get("preferences") or {})
+    interest_values = [
+        *list(prior_preferences.get("interests") or []),
+        *re.split(r"[,，、;\n]+", str(receipt.get("learner_interests") or "")),
+    ]
+    profile = {
+        "schema": "compact-cross-task-v1",
+        "preferences": {
+            "learning_style": str(
+                receipt.get("preferred_learning_style")
+                or prior_preferences.get("learning_style")
+                or ""
+            )[:260],
+            "interests": _unique_text(interest_values, 12, 80),
+        },
+        "level": {
+            "foundation": str(
+                receipt.get("current_foundation")
+                or receipt.get("current_level")
+                or (existing.get("level") or {}).get("foundation")
+                or ""
+            )[:80],
+            "mastered_point_count": len(learned),
+        },
+        "learned_points": [
+            {
+                "name": str(row["name"])[:160],
+                "mastery": round(float(row["mastery"] or 0), 3),
+                "workspace_id": str(row["workspace_id"])[:160],
+            }
+            for row in learned
+        ],
+        "active_blockers": _unique_text(blockers, 12, 260),
+        "current_state": {
+            "workspace_id": workspace_id,
+            "knowledge_point_id": point_id,
+            "knowledge_point_name": str(point["name"]) if point else "",
+            "teaching_step": str(state.get("current_teaching_step") or ""),
+            "navigation_event": navigation_event
+            or str((state.get("navigation_context") or {}).get("kind") or ""),
+            "updated_at": _now(),
+        },
+    }
+    connection.execute(
+        """INSERT INTO active_learner_profiles(learner_key,compact_profile,updated_at)
+           VALUES(?,?,?)
+           ON CONFLICT(learner_key) DO UPDATE SET
+             compact_profile=excluded.compact_profile,
+             updated_at=excluded.updated_at""",
+        (
+            GLOBAL_LEARNER_KEY,
+            json.dumps(profile, ensure_ascii=False),
+            profile["current_state"]["updated_at"],
+        ),
+    )
+    state["global_learner_profile"] = profile
+    state["current_knowledge_memory"] = (
+        _write_knowledge_memory(
+            connection,
+            workspace_id=workspace_id,
+            point=point,
+            state=state,
+        )
+        if point
+        else {}
+    )
+    state["memory_policy"] = {
+        "cross_task": "compact_profile_only",
+        "current_point": "bounded_detailed_summary",
+        "full_transcript": "session_scoped_not_cross_task",
+    }
 
 
 def _sync_teacher_learner_model(
@@ -3439,6 +4286,7 @@ async def _evaluate_understanding(
     point: sqlite3.Row,
     citations: list[dict[str, Any]],
     provider_session_id: str | None,
+    external_completion_evidence: bool = False,
 ) -> tuple[float, bool, list[str], dict[str, Any]]:
     precheck_score, precheck_checks = _grade_understanding(message, point)
     if not provider_session_id:
@@ -3471,12 +4319,23 @@ async def _evaluate_understanding(
             }
             for item in citations
         ],
-        "rules": [
-            "Judge only against the supplied acceptance method and source evidence.",
-            "Do not reward the learner merely for claiming to understand.",
-            "Score 0 to 1. criteria_met is true only when the answer demonstrates the observable acceptance condition.",
-            "Return JSON only: score, criteria_met, rationale.",
-        ],
+        "rules": (
+            [
+                "The learner is submitting an external exercise result as completion evidence.",
+                "Judge whether the supplied text or attachment-reading result credibly shows that the current exercise was completed successfully.",
+                "A bare claim such as 'I passed' is insufficient; require observable result details such as Accepted, passed tests, output, or an equivalent completion artifact.",
+                "Do not require the learner to repeat a slow oral explanation when the external result already demonstrates the acceptance condition.",
+                "Score 0 to 1. criteria_met is true only when the evidence credibly demonstrates successful independent completion.",
+                "Return JSON only: score, criteria_met, rationale.",
+            ]
+            if external_completion_evidence
+            else [
+                "Judge only against the supplied acceptance method and source evidence.",
+                "Do not reward the learner merely for claiming to understand.",
+                "Score 0 to 1. criteria_met is true only when the answer demonstrates the observable acceptance condition.",
+                "Return JSON only: score, criteria_met, rationale.",
+            ]
+        ),
     }
     try:
         payload = await provider_for_session(provider_session).json(
@@ -3498,10 +4357,11 @@ async def _evaluate_understanding(
     except (AttributeError, TypeError, ValueError):
         _error("PROVIDER_ASSESSMENT_INVALID", "Provider 未返回有效的理解评分。", 502)
     criteria_met = bool(payload.get("criteria_met"))
-    required_prechecks = {
-        "substantive_answer",
-        "grounded_in_current_point",
-    }
+    required_prechecks = (
+        set()
+        if external_completion_evidence
+        else {"substantive_answer", "grounded_in_current_point"}
+    )
     passed = (
         criteria_met
         and provider_score >= 0.8
@@ -3510,7 +4370,11 @@ async def _evaluate_understanding(
     return round(provider_score, 2), passed, precheck_checks, generation_meta(
         provider_session
     ) | {
-        "scope": "grounded_rubric_evaluation",
+        "scope": (
+            "external_completion_evaluation"
+            if external_completion_evidence
+            else "grounded_rubric_evaluation"
+        ),
         "criteria_met": criteria_met,
         "rationale": str(payload.get("rationale") or "")[:1000],
         "system_threshold": 0.8,
@@ -3593,6 +4457,12 @@ async def start_session(
             workspace_id=workspace_id,
             state=state,
         )
+        _sync_two_tier_memory(
+            connection,
+            workspace_id=workspace_id,
+            state=state,
+            navigation_event="session_started",
+        )
         session_id = _id("active_session")
         started = _now()
         connection.execute(
@@ -3658,6 +4528,12 @@ async def teach_next(
             connection,
             workspace_id=session["workspace_id"],
             state=state,
+        )
+        _sync_two_tier_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+            navigation_event="teaching_resumed",
         )
         tasks = _task_rows(connection, session["plan_id"])
         route_index = min(int(state["route_index"]), len(tasks) - 1)
@@ -3751,12 +4627,20 @@ async def teach_next(
                 # strand a durable learning session or prevent the learner from
                 # speaking; expression can safely fall back to the grounded draft.
                 expression_provider_session_id = None
+        render_state = {
+            **state,
+            "available_external_tools": _practice_resources_for_session(
+                connection,
+                session,
+                state,
+            ),
+        }
         content, teacher_generation = await _render_teacher_content(
             draft=content,
             action=action,
             citations=citations,
             provider_session_id=expression_provider_session_id,
-            state=state,
+            state=render_state,
         )
         state["teacher_generation"] = teacher_generation
         state["autonomy"] = {
@@ -3965,10 +4849,395 @@ def _matching_conflicts(
     return output
 
 
+def _session_attachment_rows(
+    connection: sqlite3.Connection,
+    session_id: str,
+    attachment_ids: Iterable[Any],
+) -> list[sqlite3.Row]:
+    unique_ids = list(
+        dict.fromkeys(
+            str(value).strip()
+            for value in attachment_ids
+            if str(value).strip()
+        )
+    )
+    if len(unique_ids) > MAX_CLASSROOM_ATTACHMENT_COUNT:
+        _error(
+            "TOO_MANY_TEACHING_ATTACHMENTS",
+            f"每条课堂消息最多附带 {MAX_CLASSROOM_ATTACHMENT_COUNT} 个文件",
+            422,
+        )
+    rows: list[sqlite3.Row] = []
+    for attachment_id in unique_ids:
+        row = connection.execute(
+            """SELECT * FROM active_teaching_attachments
+               WHERE id=? AND session_id=? AND status='ready'""",
+            (attachment_id, session_id),
+        ).fetchone()
+        if not row:
+            _error(
+                "TEACHING_ATTACHMENT_NOT_FOUND",
+                "附件不存在、尚未完成上传或不属于当前课堂",
+                404,
+                attachment_id=attachment_id,
+            )
+        rows.append(row)
+    return rows
+
+
+@router.post("/sessions/{session_id}/attachments")
+async def upload_teaching_attachment(
+    session_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    from PIL import Image, UnidentifiedImageError
+
+    raw_name = safe_attachment_name(file.filename or "attachment.bin")
+    suffix = Path(raw_name).suffix.lower()
+    data = await file.read(MAX_CLASSROOM_ATTACHMENT_BYTES + 1)
+    if not data:
+        _error("TEACHING_ATTACHMENT_EMPTY", "请选择一个非空文件", 422)
+    if len(data) > MAX_CLASSROOM_ATTACHMENT_BYTES:
+        _error(
+            "TEACHING_ATTACHMENT_TOO_LARGE",
+            "课堂附件不能超过 32 MB；图片不能超过 8 MB",
+            413,
+        )
+    try:
+        upload_info = validate_attachment_bytes(
+            data,
+            filename=raw_name,
+            declared_media_type=str(file.content_type or ""),
+        )
+    except ValueError as exc:
+        status = 415 if "不支持" in str(exc) else 413 if "MB" in str(exc) else 422
+        _error(
+            "TEACHING_ATTACHMENT_INVALID",
+            str(exc),
+            status,
+        )
+    width = 0
+    height = 0
+    media_type = str(upload_info["media_type"])
+    suffix = str(upload_info["suffix"])
+    if suffix in CLASSROOM_IMAGE_SUFFIXES:
+        if len(data) > MAX_TEACHING_IMAGE_BYTES:
+            _error(
+                "TEACHING_IMAGE_TOO_LARGE",
+                "课堂图片不能超过 8 MB",
+                413,
+            )
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                image_format = str(image.format or "").upper()
+                width, height = image.size
+                image.verify()
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            _error(
+                "TEACHING_IMAGE_INVALID",
+                "文件不是有效的 PNG、JPEG 或 WebP 图片",
+                422,
+                reason=type(exc).__name__,
+            )
+        if image_format not in TEACHING_IMAGE_FORMATS:
+            _error(
+                "TEACHING_IMAGE_FORMAT_UNSUPPORTED",
+                "课堂图片仅支持 PNG、JPEG 和 WebP",
+                422,
+                image_format=image_format,
+            )
+        if width <= 0 or height <= 0 or width * height > MAX_TEACHING_IMAGE_PIXELS:
+            _error(
+                "TEACHING_IMAGE_DIMENSIONS_UNSAFE",
+                "课堂图片尺寸无效或像素总量超过 4000 万",
+                422,
+                width=width,
+                height=height,
+            )
+        media_type, suffix = TEACHING_IMAGE_FORMATS[image_format]
+    digest = _hash_bytes(data)
+    with _connect() as connection:
+        session = connection.execute(
+            "SELECT * FROM active_teaching_sessions WHERE id=?",
+            (session_id,),
+        ).fetchone()
+        if not session:
+            _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
+        existing = connection.execute(
+            """SELECT * FROM active_teaching_attachments
+               WHERE session_id=? AND sha256=?""",
+            (session_id, digest),
+        ).fetchone()
+        if existing:
+            return _public_teaching_attachment(existing)
+        attachment_id = _id("teaching_attachment")
+        attachment_root = (
+            UPLOAD_ROOT
+            / "_teaching_attachments"
+            / str(session["workspace_id"])
+            / session_id
+        )
+        attachment_root.mkdir(parents=True, exist_ok=True)
+        stored_path = (attachment_root / f"{attachment_id}{suffix}").resolve()
+        if attachment_root.resolve() not in stored_path.parents:
+            _error(
+                "TEACHING_ATTACHMENT_PATH_INVALID",
+                "课堂截图存储路径无效",
+                500,
+            )
+        stored_path.write_bytes(data)
+        connection.execute(
+            """INSERT INTO active_teaching_attachments
+               (id,session_id,workspace_id,original_filename,media_type,
+                size_bytes,width,height,sha256,stored_path,status,
+                analysis_mode,analysis_text,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                attachment_id,
+                session_id,
+                session["workspace_id"],
+                str(upload_info["filename"])[:240],
+                media_type,
+                len(data),
+                width,
+                height,
+                digest,
+                str(stored_path),
+                "ready",
+                "pending",
+                "",
+                _now(),
+            ),
+        )
+        connection.commit()
+        row = connection.execute(
+            "SELECT * FROM active_teaching_attachments WHERE id=?",
+            (attachment_id,),
+        ).fetchone()
+        return _public_teaching_attachment(row)
+
+
+@router.get("/attachments/{attachment_id}/file")
+def teaching_attachment_file(attachment_id: str):
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM active_teaching_attachments WHERE id=?",
+            (attachment_id,),
+        ).fetchone()
+        if not row:
+            _error("TEACHING_ATTACHMENT_NOT_FOUND", "课堂附件不存在", 404)
+        stored_path = Path(row["stored_path"]).expanduser().resolve()
+        if not stored_path.is_file():
+            _error(
+                "TEACHING_ATTACHMENT_FILE_MISSING",
+                "课堂附件文件已经缺失",
+                410,
+            )
+        inline = attachment_kind(
+            str(row["original_filename"]),
+            str(row["media_type"]),
+        ) == "image" or str(row["media_type"]) == "application/pdf"
+        return FileResponse(
+            stored_path,
+            media_type=str(row["media_type"]),
+            filename=Path(str(row["original_filename"])).name,
+            content_disposition_type="inline" if inline else "attachment",
+        )
+
+
+@router.get("/voice/status")
+def teaching_voice_status() -> dict[str, Any]:
+    return classroom_asr_status()
+
+
+@router.post("/voice/warm")
+async def teaching_voice_warm() -> dict[str, Any]:
+    return await asyncio.to_thread(warm_classroom_asr)
+
+
+@router.post("/sessions/{session_id}/voice/transcribe")
+async def transcribe_teaching_voice(
+    session_id: str,
+    file: UploadFile = File(...),
+    language: str = "auto",
+) -> dict[str, Any]:
+    with _connect() as connection:
+        exists = connection.execute(
+            "SELECT 1 FROM active_teaching_sessions WHERE id=?",
+            (session_id,),
+        ).fetchone()
+    if not exists:
+        _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
+    data = await file.read(20 * 1024 * 1024 + 1)
+    try:
+        return await asyncio.to_thread(
+            transcribe_classroom_audio,
+            data,
+            filename=file.filename or "recording.webm",
+            language=language,
+        )
+    except ValueError as exc:
+        _error("TEACHING_VOICE_INVALID", str(exc), 422)
+    except RuntimeError as exc:
+        _error("TEACHING_VOICE_UNAVAILABLE", str(exc), 503)
+
+
+async def _analyse_teaching_attachments(
+    *,
+    connection: sqlite3.Connection,
+    attachment_rows: list[sqlite3.Row],
+    provider_session_id: str | None,
+    learner_message: str,
+    point: sqlite3.Row,
+) -> tuple[str, str]:
+    if not attachment_rows:
+        return "", "none"
+    image_rows = [
+        row for row in attachment_rows
+        if attachment_kind(str(row["original_filename"]), str(row["media_type"])) == "image"
+    ]
+    document_rows = [row for row in attachment_rows if row not in image_rows]
+    document_sections: list[str] = []
+    document_modes: list[str] = []
+    remaining_chars = 48_000
+    for row in document_rows:
+        text, document_mode = extract_attachment_text(
+            Path(row["stored_path"]),
+            filename=str(row["original_filename"]),
+            media_type=str(row["media_type"]),
+            budget=max(1, remaining_chars),
+        )
+        document_modes.append(document_mode)
+        if text:
+            section = (
+                f"附件：{row['original_filename']}\n"
+                f"读取方式：{document_mode}\n{text}"
+            )[:remaining_chars]
+            document_sections.append(section)
+            remaining_chars -= len(section)
+    document_analysis = "\n\n".join(document_sections)
+    vision_analysis = ""
+    vision_mode = "none"
+    local_ocr_sections: list[str] = []
+    for row in image_rows:
+        text, ocr_mode = await asyncio.to_thread(
+            extract_image_text,
+            Path(row["stored_path"]),
+            budget=max(1, remaining_chars),
+        )
+        if text:
+            section = (
+                f"图片：{row['original_filename']}\n"
+                f"本地 OCR 引擎：{ocr_mode}\n{text}"
+            )[:remaining_chars]
+            local_ocr_sections.append(section)
+            remaining_chars -= len(section)
+    local_ocr_analysis = "\n\n".join(local_ocr_sections)
+    if image_rows and local_ocr_analysis:
+        vision_mode = "local_ocr"
+        vision_analysis = (
+            "已在本机读取截图中的文字、代码与运行结果；"
+            "以下内容将交给教师模型继续判断，不会上传到额外视觉服务。\n\n"
+            f"{local_ocr_analysis}"
+        )
+    elif image_rows and not provider_session_id:
+        vision_mode = "vision_provider_required"
+        vision_analysis = (
+            "截图已保存，但当前没有已验证的视觉模型。"
+            "请把运行结果或报错文字粘贴到消息中；"
+            "教师不会假装看到了图片。"
+        )
+    elif image_rows:
+        try:
+            provider_session = require_provider_session(provider_session_id)
+            if provider_session.provider == "fake":
+                raise ProviderError(
+                    "PROVIDER_VISION_UNSUPPORTED",
+                    "Fake Provider 不读取图片",
+                    422,
+                )
+            images = [
+                {
+                    "media_type": str(row["media_type"]),
+                    "data": Path(row["stored_path"]).read_bytes(),
+                }
+                for row in image_rows
+            ]
+            prompt = (
+                "你正在读取学习者从外部练习环境回传的截图。"
+                "只描述截图中实际可见的题目、代码、运行结果、通过状态和报错；"
+                "不要猜测被裁掉或模糊的内容。先逐字提取关键代码或错误，"
+                "再用简洁中文总结哪些测试通过、哪里失败。"
+                f"\n当前知识点：{point['name']}"
+                f"\n学习者附言：{learner_message or '请分析截图'}"
+            )
+            vision_analysis = (
+                await provider_for_session(provider_session).vision(
+                    prompt,
+                    images,
+                    temperature=0.1,
+                )
+            ).strip()
+            vision_mode = "provider_vision"
+        except (ProviderError, OSError) as exc:
+            vision_mode = "vision_unavailable"
+            vision_analysis = (
+                "截图已保存，但当前模型没有成功读取图片。"
+                "请把运行结果或报错文字粘贴到消息中；"
+                "教师不会假装看到了图片内容。"
+            )
+            if isinstance(exc, ProviderError):
+                vision_analysis += f"（{exc.code}）"
+    if image_rows and document_rows:
+        mode = (
+            "provider_vision_with_documents"
+            if vision_mode == "provider_vision" and document_analysis
+            else (
+                "local_ocr_with_documents"
+                if vision_mode == "local_ocr" and document_analysis
+                else vision_mode
+            )
+        )
+    elif image_rows:
+        mode = vision_mode
+    elif document_analysis:
+        mode = "document_text"
+    else:
+        mode = "document_unreadable"
+    analysis_parts = []
+    if vision_analysis:
+        analysis_parts.append(f"[图片读取]\n{vision_analysis}")
+    if document_analysis:
+        analysis_parts.append(f"[文件正文]\n{document_analysis}")
+    if document_rows and not document_analysis:
+        analysis_parts.append(
+            "[文件读取]\n附件已安全保存，但没有抽取到可供教师阅读的正文。"
+            "请换成 PDF、Office、文本、代码文件，或在消息里补充关键内容。"
+        )
+    analysis = "\n\n".join(analysis_parts)
+    for row in attachment_rows:
+        connection.execute(
+            """UPDATE active_teaching_attachments
+               SET analysis_mode=?,analysis_text=? WHERE id=?""",
+            (mode, analysis[:48_000], row["id"]),
+        )
+    return analysis, mode
+
+
 @router.post("/sessions/{session_id}/advance")
 async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    message = str(body.get("message") or "").strip()
-    if not message:
+    visible_message = str(body.get("message") or "").strip()
+    verify_completion = bool(body.get("verify_completion"))
+    force_completion = bool(body.get("force_complete"))
+    direct_completion = verify_completion or force_completion
+    raw_attachment_ids = body.get("attachment_ids") or []
+    if not isinstance(raw_attachment_ids, list):
+        _error(
+            "INVALID_TEACHING_ATTACHMENTS",
+            "attachment_ids 必须是附件 ID 数组",
+            422,
+        )
+    if not visible_message and not raw_attachment_ids and not force_completion:
         _error("TEACHING_MESSAGE_REQUIRED", "请输入学习反馈或回答", 422)
     with _connect() as connection:
         session = connection.execute(
@@ -3983,18 +5252,88 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         if state.get("current_teaching_step") == "explain":
             state["current_teaching_step"] = "concept_check"
             state["next_action"] = "interpret_learner_feedback"
-        requested_provider_session_id = _bind_provider_session(
-            state,
-            str(body.get("provider_session_id") or "").strip() or None
+        requested_provider_session_id = (
+            None
+            if force_completion
+            else _bind_provider_session(
+                state,
+                str(body.get("provider_session_id") or "").strip() or None,
+            )
         )
         tasks = _task_rows(connection, session["plan_id"])
         if not tasks:
             _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
         route_index = min(int(state["route_index"]), len(tasks) - 1)
         task = tasks[route_index]
+        if direct_completion:
+            current_point_id = str(task["knowledge_point_id"])
+            completion_candidates = [
+                (index, candidate)
+                for index, candidate in enumerate(tasks)
+                if str(candidate["knowledge_point_id"]) == current_point_id
+                and str(candidate["status"]) != "completed"
+            ]
+            independent_candidates = [
+                item
+                for item in completion_candidates
+                if str(item[1]["learning_phase"]) in {
+                    "integrated_initial",
+                    "independent_application",
+                }
+            ]
+            if independent_candidates:
+                route_index, task = independent_candidates[-1]
+            elif completion_candidates:
+                route_index, task = completion_candidates[-1]
+            state["route_index"] = route_index
+            state["active_task_id"] = task["id"]
+            state["current_teaching_step"] = "check_understanding"
+            state["next_action"] = "verify_external_completion"
         point = connection.execute(
             "SELECT * FROM active_knowledge_points WHERE id=?", (task["knowledge_point_id"],)
         ).fetchone()
+        if force_completion:
+            attachment_rows = []
+            attachment_analysis = ""
+            attachment_analysis_mode = "not_requested"
+        else:
+            attachment_rows = _session_attachment_rows(
+                connection,
+                session_id,
+                raw_attachment_ids,
+            )
+            attachment_analysis, attachment_analysis_mode = (
+                await _analyse_teaching_attachments(
+                    connection=connection,
+                    attachment_rows=attachment_rows,
+                    provider_session_id=requested_provider_session_id,
+                    learner_message=visible_message,
+                    point=point,
+                )
+            )
+        if not visible_message and not force_completion:
+            visible_message = (
+                "请分析我上传的练习结果截图。"
+                if attachment_rows and all(
+                    attachment_kind(
+                        str(row["original_filename"]),
+                        str(row["media_type"]),
+                    ) == "image"
+                    for row in attachment_rows
+                )
+                else "请阅读我上传的附件，并结合当前知识点继续指导。"
+            )
+        message = (
+            "学习者主动确认已掌握，并选择直接完成当前知识点。"
+            if force_completion
+            else visible_message
+        )
+        if attachment_analysis:
+            message += (
+                "\n\n[附件读取结果；不是学习者手动输入]"
+                f"\n识别模式：{attachment_analysis_mode}"
+                f"\n{attachment_analysis}"
+            )
         stored_citations = json.loads(point["source_evidence"])
         citations = _merge_citations(
             _search(
@@ -4052,18 +5391,128 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             "UPDATE active_plan_tasks SET actual_elapsed_minutes=actual_elapsed_minutes+? WHERE id=?",
             (elapsed, timing_task_id),
         )
-        _record_message(connection, session_id, "user", "feedback", message, [])
-        teacher_memory = dict(state.get("teacher_memory") or {})
-        recent_turns = list(teacher_memory.get("recent_turns") or [])
-        if message:
-            recent_turns.append({"role": "learner", "content": message[:600]})
-        teacher_memory["recent_turns"] = recent_turns[-12:]
-        teacher_memory["last_learner_message"] = message[:600]
-        state["teacher_memory"] = teacher_memory
+        if not force_completion:
+            _record_message(
+                connection,
+                session_id,
+                "user",
+                "feedback",
+                visible_message,
+                [],
+                [str(row["id"]) for row in attachment_rows],
+            )
+            teacher_memory = dict(state.get("teacher_memory") or {})
+            recent_turns = list(teacher_memory.get("recent_turns") or [])
+            if message:
+                recent_turns.append({"role": "learner", "content": message[:600]})
+            teacher_memory["recent_turns"] = recent_turns[-12:]
+            teacher_memory["last_learner_message"] = message[:600]
+            state["teacher_memory"] = teacher_memory
+
+        attachment_unreadable = attachment_analysis_mode in {
+            "vision_provider_required",
+            "vision_unavailable",
+            "document_unreadable",
+        }
+        if attachment_rows and attachment_unreadable:
+            action = (
+                "vision_unavailable"
+                if attachment_analysis_mode.startswith("vision_")
+                else "attachment_unavailable"
+            )
+            content = attachment_analysis
+            state["next_action"] = "await_visual_text_fallback"
+            state["autonomy"] = {
+                "mode": "teacher_led_until_learner_input",
+                "awaiting_learner": True,
+                "reason": (
+                    "vision_text_fallback_required"
+                    if attachment_analysis_mode.startswith("vision_")
+                    else "attachment_text_fallback_required"
+                ),
+            }
+            state["teacher_generation"] = {
+                "mode": "system_guided",
+                "provider": None,
+                "fallback_used": True,
+                "scope": "attachment_capability_status",
+            }
+            teacher_memory = dict(state.get("teacher_memory") or {})
+            teacher_memory["last_interaction"] = action
+            teacher_memory["recent_turns"] = (
+                list(teacher_memory.get("recent_turns") or [])
+                + [{"role": "teacher", "action": action, "content": content[:600]}]
+            )[-12:]
+            state["teacher_memory"] = teacher_memory
+            _write_knowledge_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                point=point,
+                state=state,
+                role="learner",
+                message=visible_message,
+                confused=False,
+            )
+            _write_knowledge_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                point=point,
+                state=state,
+                role="teacher",
+                message=content,
+                teacher_action=action,
+            )
+            _sync_two_tier_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                state=state,
+                navigation_event="awaiting_attachment_text_fallback",
+            )
+            _record_message(
+                connection,
+                session_id,
+                "teacher",
+                action,
+                content,
+                [],
+            )
+            connection.execute(
+                """UPDATE active_teaching_sessions
+                   SET state=?,updated_at=?,
+                       actual_elapsed_minutes=actual_elapsed_minutes+?
+                   WHERE id=?""",
+                (
+                    json.dumps(state, ensure_ascii=False),
+                    _now(),
+                    elapsed,
+                    session_id,
+                ),
+            )
+            connection.commit()
+            return _public_session(connection, session_id)
 
         lower = message.casefold()
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
         is_understood = bool(body.get("understood")) or any(marker in lower for marker in UNDERSTOOD_MARKERS)
+        if direct_completion:
+            is_confused = False
+            is_understood = True
+        if not force_completion:
+            _write_knowledge_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                point=point,
+                state=state,
+                role="learner",
+                message=message,
+                confused=is_confused,
+            )
+            _sync_two_tier_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                state=state,
+                navigation_event="learner_feedback",
+            )
         is_remediation = bool(state.get("remediation_stack"))
         is_pedagogical_request = any(
             marker in lower
@@ -4135,6 +5584,10 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             and not is_understood
             and not is_remediation
         )
+        if direct_completion:
+            is_pedagogical_request = False
+            is_explicit_question = False
+            is_remediation = False
         question_hits = _search(
             connection, session["workspace_id"], message, plan_id=session["plan_id"]
         ) if is_explicit_question else []
@@ -4497,12 +5950,30 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 learning_phase in {"integrated_initial", "independent_application"}
                 and phase_part_index >= phase_part_count
             )
-            score, passed, grading_checks, evaluation = await _evaluate_understanding(
-                message=message,
-                point=point,
-                citations=citations,
-                provider_session_id=requested_provider_session_id,
-            )
+            if force_completion:
+                score = 1.0
+                passed = True
+                grading_checks = ["learner_self_attested_completion"]
+                evaluation = {
+                    "mode": "learner_override",
+                    "scope": "learner_override",
+                    "criteria_met": True,
+                    "rationale": (
+                        "学习者拥有首学阶段的最终通过权；该记录不是系统独立验收，"
+                        "后续完整复习仍会保留。"
+                    ),
+                    "system_threshold": None,
+                    "required_prechecks": [],
+                    "prechecks_satisfied": True,
+                }
+            else:
+                score, passed, grading_checks, evaluation = await _evaluate_understanding(
+                    message=message,
+                    point=point,
+                    citations=citations,
+                    provider_session_id=requested_provider_session_id,
+                    external_completion_evidence=verify_completion,
+                )
             mastery_evidence_id = _id("mastery")
             connection.execute(
                 """INSERT INTO active_mastery_evidence
@@ -4512,7 +5983,15 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     mastery_evidence_id,
                     session_id,
                     point["id"],
-                    "provider_grounded_rubric" if evaluation.get("mode") == "real" else "unverified_recall",
+                    (
+                        "learner_self_attested_completion"
+                        if force_completion
+                        else (
+                            "provider_grounded_rubric"
+                            if evaluation.get("mode") == "real"
+                            else "unverified_recall"
+                        )
+                    ),
                     score,
                     1 if passed else 0,
                     json.dumps(
@@ -4544,23 +6023,42 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 }
             )
             if passed:
+                completion_tasks = (
+                    [
+                        candidate
+                        for candidate in tasks
+                        if str(candidate["knowledge_point_id"]) == str(point["id"])
+                        and str(candidate["status"]) != "completed"
+                    ]
+                    if direct_completion
+                    else [task]
+                )
+                newly_completed_task_ids = [
+                    str(candidate["id"]) for candidate in completion_tasks
+                ]
+                newly_completed_minutes = sum(
+                    int(candidate["estimated_task_minutes"])
+                    for candidate in completion_tasks
+                )
                 if completes_independent_phase:
                     connection.execute(
                         "UPDATE active_knowledge_points SET mastery=MAX(mastery,?) WHERE id=?",
                         (score, point["id"]),
                     )
-                connection.execute(
-                    """UPDATE active_plan_tasks SET status='completed',
-                       completed_task_minutes=estimated_task_minutes WHERE id=?""",
-                    (task["id"],),
-                )
-                state["completed_tasks"].append(task["id"])
-                state["completed_task_minutes"] = int(state.get("completed_task_minutes", 0)) + int(
-                    task["estimated_task_minutes"]
-                )
+                for completed_task_id in newly_completed_task_ids:
+                    connection.execute(
+                        """UPDATE active_plan_tasks SET status='completed',
+                           completed_task_minutes=estimated_task_minutes WHERE id=?""",
+                        (completed_task_id,),
+                    )
+                    if completed_task_id not in state["completed_tasks"]:
+                        state["completed_tasks"].append(completed_task_id)
+                state["completed_task_minutes"] = int(
+                    state.get("completed_task_minutes", 0)
+                ) + newly_completed_minutes
                 state["today_remaining_task_minutes"] = max(
                     0,
-                    int(state["today_remaining_task_minutes"]) - int(task["estimated_task_minutes"]),
+                    int(state["today_remaining_task_minutes"]) - newly_completed_minutes,
                 )
                 if completes_independent_phase:
                     review_due = (date.today() + timedelta(days=1)).isoformat()
@@ -4656,34 +6154,57 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     _sync_pending_reviews(connection, session_id, state)
                 if route_index + 1 < len(tasks):
                     route_index += 1
-                    next_task = tasks[route_index]
-                    next_point = connection.execute(
-                        "SELECT * FROM active_knowledge_points WHERE id=?",
-                        (next_task["knowledge_point_id"],),
-                    ).fetchone()
-                    state["route_index"] = route_index
-                    state["active_task_id"] = next_task["id"]
-                    state["current_knowledge_point_id"] = next_point["id"]
-                    state["current_teaching_step"] = "point_readiness"
-                    state["next_action"] = "ask_point_readiness"
-                    state["estimated_task_minutes"] = next_task["estimated_task_minutes"]
-                    action = "advance_route"
-                    citations = json.loads(next_point["source_evidence"])
-                    if completes_independent_phase:
-                        progress_message = (
-                            f"独立应用阶段通过（{score:.0%}），知识点掌握度已更新，"
-                            f"并安排 {review_due} 的首次复习。"
-                        )
+                    if direct_completion:
+                        while (
+                            route_index < len(tasks)
+                            and str(tasks[route_index]["knowledge_point_id"]) == str(point["id"])
+                        ):
+                            route_index += 1
+                    if route_index >= len(tasks):
+                        state["route_index"] = len(tasks)
+                        state["current_teaching_step"] = "completed"
+                        state["next_action"] = "review"
+                        action = "complete_route"
+                        content = "当前计划路线已完成；下一步进入基于掌握证据的间隔复习。"
                     else:
-                        progress_message = (
-                            f"“{learning_phase}”阶段通过（{score:.0%}）；"
-                            "该阶段任务分钟已完成，但尚未把整个知识点标记为掌握。"
+                        next_task = tasks[route_index]
+                        next_point = connection.execute(
+                            "SELECT * FROM active_knowledge_points WHERE id=?",
+                            (next_task["knowledge_point_id"],),
+                        ).fetchone()
+                        state["route_index"] = route_index
+                        state["active_task_id"] = next_task["id"]
+                        state["current_knowledge_point_id"] = next_point["id"]
+                        state["current_teaching_step"] = "point_readiness"
+                        state["next_action"] = "ask_point_readiness"
+                        state["estimated_task_minutes"] = next_task["estimated_task_minutes"]
+                        action = "advance_route"
+                        citations = json.loads(next_point["source_evidence"])
+                        if force_completion:
+                            progress_message = (
+                                f"已按你的确认直接完成“{point['name']}”的全部首学步骤，"
+                                f"并安排 {review_due} 的首次复习。之后仍可随时回来提问。"
+                            )
+                        elif verify_completion:
+                            progress_message = (
+                                f"外部做题结果核验通过（{score:.0%}），已直接完成"
+                                f"“{point['name']}”的全部首学步骤，并安排 {review_due} 的首次复习。"
+                            )
+                        elif completes_independent_phase:
+                            progress_message = (
+                                f"独立应用阶段通过（{score:.0%}），知识点掌握度已更新，"
+                                f"并安排 {review_due} 的首次复习。"
+                            )
+                        else:
+                            progress_message = (
+                                f"“{learning_phase}”阶段通过（{score:.0%}）；"
+                                "该阶段任务分钟已完成，但尚未把整个知识点标记为掌握。"
+                            )
+                        content = (
+                            f"{progress_message}"
+                            f"\n\n下一项是“{next_point['name']}”。在我开始讲之前，"
+                            "请只告诉我：你是完全没接触过、只有一点印象，还是已经能用自己的话解释？"
                         )
-                    content = (
-                        f"{progress_message}"
-                        f"\n\n下一项是“{next_point['name']}”。在我开始讲之前，"
-                        "请只告诉我：你是完全没接触过、只有一点印象，还是已经能用自己的话解释？"
-                    )
                 else:
                     state["route_index"] = len(tasks)
                     state["current_teaching_step"] = "completed"
@@ -4767,6 +6288,35 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             workspace_id=session["workspace_id"],
             state=state,
         )
+        if force_completion:
+            state["teacher_generation"] = {
+                "mode": "direct_state_transition",
+                "provider": None,
+                "fallback_used": False,
+                "scope": "learner_override",
+            }
+            teacher_memory = dict(state.get("teacher_memory") or {})
+            teacher_memory["last_interaction"] = "learner_override_completed"
+            state["teacher_memory"] = teacher_memory
+            _sync_two_tier_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                state=state,
+                navigation_event=(
+                    "advanced_to_next_point"
+                    if action == "advance_route"
+                    else "teaching_route_completed"
+                ),
+            )
+            connection.execute(
+                """UPDATE active_teaching_sessions
+                   SET state=?,updated_at=?,
+                       actual_elapsed_minutes=actual_elapsed_minutes+?
+                   WHERE id=?""",
+                (json.dumps(state, ensure_ascii=False), _now(), elapsed, session_id),
+            )
+            connection.commit()
+            return _public_session(connection, session_id)
         content, teacher_generation = await _render_teacher_content(
             draft=content,
             action=action,
@@ -4791,6 +6341,25 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             + [{"role": "teacher", "action": action, "content": content[:600]}]
         )[-12:]
         state["teacher_memory"] = teacher_memory
+        _write_knowledge_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            point=point,
+            state=state,
+            role="teacher",
+            message=content,
+            teacher_action=action,
+        )
+        _sync_two_tier_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+            navigation_event=(
+                "advanced_to_next_point"
+                if action == "advance_route"
+                else "teaching_turn_completed"
+            ),
+        )
         _record_message(connection, session_id, "teacher", action, content, citations)
         connection.execute(
             """UPDATE active_teaching_sessions
@@ -4840,6 +6409,59 @@ def focus_session_task(
             )
         task = tasks[route_index]
         state = json.loads(session["state"])
+        previous_route_index = min(
+            max(0, int(state.get("route_index") or 0)),
+            max(0, len(tasks) - 1),
+        )
+        previous_task = tasks[previous_route_index]
+        previous_point = connection.execute(
+            "SELECT * FROM active_knowledge_points WHERE id=?",
+            (previous_task["knowledge_point_id"],),
+        ).fetchone()
+        target_point = connection.execute(
+            "SELECT * FROM active_knowledge_points WHERE id=?",
+            (task["knowledge_point_id"],),
+        ).fetchone()
+        changed_point = (
+            str(previous_task["knowledge_point_id"])
+            != str(task["knowledge_point_id"])
+        )
+        previous_incomplete = str(previous_task["status"]) != "completed"
+        unmet_prerequisites = [
+            str(row["name"])
+            for row in connection.execute(
+                """SELECT prerequisite.name
+                   FROM active_dependencies dependency
+                   JOIN active_knowledge_points prerequisite
+                     ON prerequisite.id=dependency.prerequisite_id
+                   WHERE dependency.workspace_id=?
+                     AND dependency.dependent_id=?
+                     AND prerequisite.mastery<0.8
+                   ORDER BY prerequisite.name""",
+                (session["workspace_id"], task["knowledge_point_id"]),
+            ).fetchall()
+        ]
+        scheduled_for_later = str(task["day_date"]) > date.today().isoformat()
+        if changed_point and (scheduled_for_later or unmet_prerequisites):
+            navigation_kind = "future_jump"
+        elif changed_point:
+            navigation_kind = "cross_point_jump"
+        else:
+            navigation_kind = "resume_point"
+        if changed_point and previous_point:
+            _write_knowledge_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                point=previous_point,
+                state=state,
+                role="system",
+                message=(
+                    f"学习者在“{previous_point['name']}”"
+                    f"{'尚未完成时' if previous_incomplete else '完成后'}"
+                    f"跳转到“{target_point['name']}”。"
+                ),
+                teacher_action="learner_navigated_away",
+            )
         state["route_index"] = route_index
         state["route_length"] = len(tasks)
         state["current_knowledge_point_id"] = task["knowledge_point_id"]
@@ -4863,6 +6485,17 @@ def focus_session_task(
             "awaiting_learner": True,
             "reason": "learner_foundation_required",
         }
+        state["navigation_context"] = {
+            "kind": navigation_kind,
+            "from_knowledge_point_id": str(previous_task["knowledge_point_id"]),
+            "from_knowledge_point_name": str(previous_point["name"]) if previous_point else "",
+            "from_incomplete": previous_incomplete,
+            "to_knowledge_point_id": str(task["knowledge_point_id"]),
+            "to_knowledge_point_name": str(target_point["name"]) if target_point else "",
+            "scheduled_for_later": scheduled_for_later,
+            "scheduled_date": str(task["day_date"]),
+            "unmet_prerequisites": unmet_prerequisites,
+        }
         teacher_memory = dict(state.get("teacher_memory") or {})
         teacher_memory["last_interaction"] = "calendar_task_selected"
         state["teacher_memory"] = teacher_memory
@@ -4871,7 +6504,41 @@ def focus_session_task(
             workspace_id=session["workspace_id"],
             state=state,
         )
+        _sync_two_tier_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+            navigation_event=navigation_kind,
+        )
         readiness, citations = _point_readiness_prompt(connection, task=task)
+        if navigation_kind == "future_jump":
+            reasons = []
+            if scheduled_for_later:
+                reasons.append(f"它原计划在 {task['day_date']} 开放")
+            if unmet_prerequisites:
+                reasons.append(f"前面还有“{'、'.join(unmet_prerequisites)}”没有掌握")
+            readiness = (
+                f"我看到你像把时间往前拨了一下，从“{previous_point['name']}”"
+                f"跳到了还未开放的“{target_point['name']}”。"
+                "我知道你可以这样穿梭，也已经替你记住了原来的位置。"
+                f"{'；'.join(reasons)}。你可以先预览，但我不会假装这些前置已经学会。"
+                f"\n\n{readiness}"
+            )
+        elif navigation_kind == "cross_point_jump":
+            readiness = (
+                f"我看到你从“{previous_point['name']}”跳到了“{target_point['name']}”。"
+                f"{'前一个知识点还学到一半，我会保留那个断点。' if previous_incomplete else '前一个知识点的进度已经记下了。'}"
+                "我们不是换了一个失忆的老师，只是把课堂时间线切到了这里。"
+                f"\n\n{readiness}"
+            )
+        elif navigation_kind == "resume_point":
+            point_memory = state.get("current_knowledge_memory") or {}
+            if point_memory.get("recent_interactions"):
+                readiness = (
+                    f"我们回到“{target_point['name']}”了。上次停留的位置和卡点我都还记得，"
+                    "不用从头假装初次见面。"
+                    f"\n\n{readiness}"
+                )
         _record_message(
             connection,
             session_id,
@@ -6051,9 +7718,11 @@ def _workspace_day_overview(
            FROM active_plan_tasks AS task
            JOIN active_knowledge_points AS point
              ON point.id=task.knowledge_point_id
-           WHERE task.plan_id=? AND task.day_date<?
+           WHERE task.plan_id=?
+             AND COALESCE(NULLIF(task.original_day_date,''),task.day_date)<?
              AND task.status IN ('planned','in_progress','unscheduled')
-           ORDER BY task.day_date,task.point_sequence,task.task_order,task.id""",
+           ORDER BY COALESCE(NULLIF(task.original_day_date,''),task.day_date),
+                    task.point_sequence,task.task_order,task.id""",
         (plan_id, day_date),
     ).fetchall()
     today_point_ids = list(
@@ -6079,6 +7748,9 @@ def _workspace_day_overview(
             prerequisite_names[str(row["dependent_id"])].append(str(row["name"]))
     def enrich_task(row: sqlite3.Row) -> dict[str, Any]:
         task = dict(row)
+        task["debt_date"] = str(
+            task.get("original_day_date") or task.get("day_date") or ""
+        )
         task["prerequisite_names"] = prerequisite_names.get(
             str(row["knowledge_point_id"]), []
         )
@@ -6108,6 +7780,25 @@ def _workspace_day_overview(
         )
         for row in overdue_rows
     )
+    overdue_days_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for task in overdue_tasks:
+        overdue_days_map[str(task["debt_date"])].append(task)
+    overdue_days = [
+        {
+            "date": debt_date,
+            "task_count": len(day_tasks),
+            "remaining_task_minutes": sum(
+                max(
+                    0,
+                    int(task["estimated_task_minutes"] or 0)
+                    - int(task["completed_task_minutes"] or 0),
+                )
+                for task in day_tasks
+            ),
+            "tasks": day_tasks,
+        }
+        for debt_date, day_tasks in sorted(overdue_days_map.items())
+    ]
     has_plan_calendars = connection.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type='table' AND name='active_plan_calendars'"""
@@ -6142,10 +7833,12 @@ def _workspace_day_overview(
         "overdue_task_count": len(overdue_tasks),
         "overdue_task_minutes": overdue_minutes,
         "oldest_overdue_date": (
-            min(str(task["day_date"]) for task in overdue_tasks)
+            min(str(task["debt_date"]) for task in overdue_tasks)
             if overdue_tasks
             else None
         ),
+        "overdue_day_count": len(overdue_days),
+        "overdue_days": overdue_days,
         "overdue_tasks": overdue_tasks,
         "projected_review_items": projected_reviews,
         "learning_order_policy": (

@@ -35,10 +35,13 @@ import {
 export { providerRequestContext, reconnectSavedProvider } from "./providerConnection";
 import { useNarrativeStore } from "./stores/useNarrativeStore";
 import { StoryCatalogView } from "./features/story-catalog/StoryCatalogView";
-import { speakBrowser } from "./features/voice/browserVoice";
+import { speakLocalTeacherVoice, stopLocalTeacherVoice } from "./features/voice/localTeacherVoice";
 import { createLearningRun, requestLearningHint, sendLearningRunMessage, submitLearningRun, submitQuickQuiz } from "./features/learning-run/api";
 import { ExpeditionView } from "./features/expedition/ExpeditionView";
 import { ActiveTeachingChainView } from "./features/active-teaching/ActiveTeachingChainView";
+import { CasualTeacherChat } from "./features/casual-chat/CasualTeacherChat";
+import { VoicePackSettings } from "./features/voice/VoicePackSettings";
+import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
 
 const TeacherAvatarStudio = lazy(() => import("./features/teachers/TeacherAvatarStudio").then(module => ({ default: module.TeacherAvatarStudio })));
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
@@ -136,7 +139,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual"
   >(() => {
     try {
       const saved = localStorage.getItem("mentorflow_last_tab_v1");
@@ -150,8 +153,9 @@ export function App() {
         "expedition",
         "teachers",
         "active",
+        "casual",
       ].includes(saved || "")
-        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active"
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual"
         : "home";
     } catch {
       return "home";
@@ -478,6 +482,7 @@ export function App() {
           {[
             ["home", Gauge, "总览"],
             ["active", CalendarDays, "学习任务"],
+            ["casual", MessageCircle, "教师闲聊"],
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
             ["expedition", Sparkles, "学习远征"],
@@ -518,6 +523,8 @@ export function App() {
                 ? "总览"
                 : tab === "teachers"
                       ? "AI教师角色库"
+                    : tab === "casual"
+                      ? "教师闲聊"
                     : tab === "story"
                       ? "学习剧场"
                       : tab === "catalog"
@@ -541,6 +548,7 @@ export function App() {
         </header>
         <div className="content">
           {tab === "home" && (
+            <>
             <Home
               onCreate={() => {
                 setWs(null);
@@ -561,6 +569,8 @@ export function App() {
                 setTab("active");
               }}
             />
+            <CasualTeacherChat workspaceId={ws?.id || ""} />
+            </>
           )}{" "}
           {tab === "story" && (
             <CampaignView
@@ -610,6 +620,7 @@ export function App() {
           )}{" "}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
+          {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || ""} />}
           {tab === "active" && (
             <ActiveTeachingChainView
               workspaceId={ws?.id || "general-learning"}
@@ -1581,7 +1592,7 @@ function Learn({ today, task, chat, text, setText, send, complete, allowExternal
   </>
 }
 
-function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh }: any) {
+export function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh }: any) {
   const narrative = useNarrativeStore();
   const [busy, setBusy] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
@@ -1595,6 +1606,7 @@ function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh
   const character = scene?.characters?.find((item: any) => item.character_id === line?.speaker_id) || scene?.characters?.[0] || { character_id: "guide_a", display_name: "DEV GUIDE", public_identity: "DEV FIXTURE", personality_rules: [] };
   const gate = campaign?.state?.pending_learning_gate;
   const lineText = line?.text || "DEV FIXTURE — no fixed line is configured for this scene.";
+  const lineFullyVisible = skipped || typed === lineText;
   const isDevFixture = campaign?.story_pack?.story_pack_id === "dev_fixture_minimal";
   const adaptation = campaign?.adaptation_blueprint;
   const adaptiveObjects = campaign?.story_objects || campaign?.state?.adaptive_story_objects || [];
@@ -1610,6 +1622,11 @@ function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh
     }, 22);
     return () => window.clearInterval(timer);
   }, [campaign?.current_scene_id, lineText]);
+  useEffect(() => {
+    stopLocalTeacherVoice();
+    narrative.setVoicePlayback({ status: "idle" });
+    return () => stopLocalTeacherVoice();
+  }, [lineText]);
   useEffect(() => {
     if (!autoPlay || !campaign || gate || scene?.choices?.length) return;
     const timer = window.setTimeout(() => advance(), 1200);
@@ -1651,14 +1668,27 @@ function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh
     if (!history.length) setHistory((await request<any>(`/campaigns/${campaign.campaign_id}/history`)).events || []);
   }
   async function synthesize() {
-    if (!campaign) return;
-    const browser = speakBrowser(lineText, campaign.story_pack?.language || "zh-CN");
-    if (browser.ok) { narrative.setVoicePlayback({ status: "playing" }); return; }
+    if (!campaign || !lineFullyVisible || narrative.voicePlayback.status === "loading") return;
     narrative.setVoicePlayback({ status: "loading" });
-    try {
-      const result = await request<any>(`/campaigns/${campaign.campaign_id}/voice/synthesize`, { method: "POST", body: JSON.stringify({ text: lineText, voice_profile_id: "dev_voice_none" }) });
-      narrative.setVoicePlayback({ status: "failed", cacheKey: result.cache_key, error: "FakeVoiceProvider 当前仅提供文字回退" });
-    } catch (e: any) { narrative.setVoicePlayback({ status: "failed", error: e.message }); }
+    const result = await speakLocalTeacherVoice(lineText, {
+      style: "lively",
+      onPreparing: (phase) => narrative.setVoicePlayback({ status: "loading", phase }),
+      onStart: () => narrative.setVoicePlayback({ status: "playing" }),
+      onEnd: () => narrative.setVoicePlayback({ status: "idle" }),
+      onError: (reason) => narrative.setVoicePlayback({ status: "failed", error: reason }),
+    });
+    if (!result.ok && result.reason !== "cancelled") {
+      stopLocalTeacherVoice();
+      narrative.setVoicePlayback({ status: "failed", error: result.reason || "natural_voice_unavailable" });
+    }
+  }
+  function toggleNarrativeVoice() {
+    if (["loading", "playing"].includes(narrative.voicePlayback.status)) {
+      stopLocalTeacherVoice();
+      narrative.setVoicePlayback({ status: "idle" });
+      return;
+    }
+    void synthesize();
   }
   if (!workspace) return <div className="empty-state"><Sparkles size={22} /><h2>先创建一个学习空间</h2><p>学习剧场需要绑定到 Workspace，才能读取今天的任务和学习门禁。</p></div>;
   if (!campaign) return <div className="narrative-empty"><div className="eyebrow">NARRATIVE RUNTIME · V1</div><h1>学习剧场还没有战役</h1><p>从开发夹具开始验证剧情状态机。正式 Story Pack 由上游内容提供后再接入。</p><button className="primary" onClick={async () => { const created = await request<any>(`/workspaces/${workspace.id}/campaigns`, { method: "POST", body: JSON.stringify({ story_pack_id: "dev_fixture_minimal" }) }); narrative.setCampaign(created); }}><Sparkles size={16} /> 启动开发夹具</button></div>;
@@ -1670,13 +1700,13 @@ function CampaignView({ workspace, campaign, currentTask, onOpenLearn, onRefresh
         <div className="narrative-backdrop" style={scene?.background_asset_url ? { backgroundImage: `linear-gradient(180deg, rgba(4, 13, 16, .1), rgba(4, 13, 16, .82)), url("${scene.background_asset_url}")` } : undefined}>{isDevFixture && <span>DEV FIXTURE — NOT PRODUCTION STORY ASSET</span>}<b>{scene?.background_ref || ""}</b></div>
         <div className="narrative-stage-meta"><span>SCENE {scene?.story_order || "—"}</span><span>{campaign.current_story_stage}</span><span>REVISION {campaign.revision}</span></div>
         <div className="narrative-character-row">{(scene?.characters || [character]).map((item: any) => <div className="narrative-character" key={item.character_id}><CharacterPortrait character={{ ...item, id: item.character_id, name: item.display_name, avatar: "◇" }} className="narrative-portrait" /><b>{item.display_name}</b><small>{item.public_identity}</small></div>)}</div>
-        <div className="narrative-dialogue"><div className="dialogue-name">{character.display_name}</div><p>{skipped ? lineText : typed}<span className="typing-caret">▌</span></p><div className="dialogue-tools"><button className="ghost" onClick={() => { setSkipped(true); setTyped(lineText); }}>跳过已读</button><button className="ghost" onClick={synthesize}>语音状态</button>{typed === lineText && (!scene?.choices?.length || !scene?.lines_complete) && <button className="primary" onClick={advance} disabled={busy || Boolean(gate && gate.status !== "passed" && scene?.lines_complete)}>{busy ? "推进中…" : "继续"}<ArrowRight size={15} /></button>}</div></div>
+        <div className="narrative-dialogue"><div className="dialogue-name">{character.display_name}</div><p>{skipped ? lineText : typed}<span className="typing-caret">▌</span></p><div className="dialogue-tools"><button className="ghost" onClick={() => { setSkipped(true); setTyped(lineText); }}>跳过已读</button><button className="ghost" onClick={toggleNarrativeVoice} disabled={!lineFullyVisible} aria-label={["loading", "playing"].includes(narrative.voicePlayback.status) ? "停止朗读台词" : "听语音朗读台词"} aria-pressed={["loading", "playing"].includes(narrative.voicePlayback.status)}>{!lineFullyVisible ? "文字显示中…" : narrative.voicePlayback.status === "loading" ? narrative.voicePlayback.phase === "starting" ? "取消模型启动" : "取消语音合成" : narrative.voicePlayback.status === "playing" ? "停止朗读" : narrative.voicePlayback.status === "failed" ? "重试语音" : "听语音"}</button>{typed === lineText && (!scene?.choices?.length || !scene?.lines_complete) && <button className="primary" onClick={advance} disabled={busy || Boolean(gate && gate.status !== "passed" && scene?.lines_complete)}>{busy ? "推进中…" : "继续"}<ArrowRight size={15} /></button>}</div></div>
         {scene?.lines_complete && scene?.choices?.length > 0 && <div className="narrative-choices"><span className="block-type">FIXED CHOICES · 由 Story Pack 提供</span>{scene.choices.map((choice: any) => <button className="narrative-choice" key={choice.choice_id} onClick={() => choose(choice)} disabled={busy || Boolean(gate && gate.status !== "passed")}><span>{choice.label}</span><ArrowRight size={15} /></button>)}</div>}
         {gate && scene?.lines_complete && <div className={`learning-gate ${gate.status}`}><div><ShieldCheck size={18} /><div><b>{gate.status === "passed" ? "学习门禁已通过" : gate.status === "failed" ? "需要重新完成学习验证" : "剧情暂停：先完成学习验证"}</b><span>当前节点要求：{gate.required_event || "Evaluator 结果"}</span></div></div><button className="primary" onClick={onOpenLearn}><BookOpen size={15} /> 进入今日学习</button></div>}
         <div className="narrative-input"><input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") sendMessage(); }} placeholder="对当前角色说一句话…" /><button onClick={sendMessage} disabled={!message.trim()}><Send size={16} /></button></div>
         {narrative.errorState && <div className="narrative-error"><CircleAlert size={15} />{narrative.errorState}<button onClick={() => narrative.setErrorState("")}>×</button></div>}
       </section>
-      <aside className="narrative-side"><div className="side-card"><span className="block-type">LEARNING LINK</span><h3>学习不会跳出世界</h3><p>{currentTask ? currentTask.title : "当前没有绑定的今日任务"}</p><small>完成 Tutor / Evaluator 流程后，系统会发布结构化学习事件并解锁剧情。</small><button className="secondary" onClick={onOpenLearn}><BookOpen size={15} /> 查看今日任务</button></div>{adaptiveObjects.length > 0 && <div className="side-card"><span className="block-type">STORY OBJECTS</span><h3>你的成果已进入档案</h3>{adaptiveObjects.slice(-3).map((object: any) => <div className="story-object-mini" key={object.story_object_id}><b>{object.display_name}</b><small>{object.status} · {object.object_type}</small></div>)}</div>}<div className="side-card"><span className="block-type">VOICE RUNTIME</span><h3>{narrative.voicePlayback.status === "failed" ? "文字回退可用" : "浏览器语音"}</h3><p>语音由本机浏览器 speechSynthesis 提供，不搜索或克隆真人声线。</p></div>{narrative.dialogueHistory.length > 0 && <div className="side-card"><span className="block-type">RECENT DIALOGUE</span>{narrative.dialogueHistory.slice(-4).map((item: any, index: number) => <p className="recent-dialogue" key={index}><b>{item.role === "user" ? "你" : item.role === "choice" ? "选择" : character.display_name}</b>{item.content}</p>)}</div>}</aside>
+      <aside className="narrative-side"><div className="side-card"><span className="block-type">LEARNING LINK</span><h3>学习不会跳出世界</h3><p>{currentTask ? currentTask.title : "当前没有绑定的今日任务"}</p><small>完成 Tutor / Evaluator 流程后，系统会发布结构化学习事件并解锁剧情。</small><button className="secondary" onClick={onOpenLearn}><BookOpen size={15} /> 查看今日任务</button></div>{adaptiveObjects.length > 0 && <div className="side-card"><span className="block-type">STORY OBJECTS</span><h3>你的成果已进入档案</h3>{adaptiveObjects.slice(-3).map((object: any) => <div className="story-object-mini" key={object.story_object_id}><b>{object.display_name}</b><small>{object.status} · {object.object_type}</small></div>)}</div>}<VoicePlaybackRateControl compact /><div className="side-card"><span className="block-type">VOICE RUNTIME</span><h3>{narrative.voicePlayback.status === "loading" ? narrative.voicePlayback.phase === "starting" ? "正在准备教师语音" : "教师语音正在合成" : narrative.voicePlayback.status === "playing" ? "教师正在朗读" : narrative.voicePlayback.status === "failed" ? "教师语音不可用" : "文字优先 · 按需朗读"}</h3>{narrative.voicePlayback.status === "failed" ? <p role="alert">{narrative.voicePlayback.error || "请稍后重试教师语音"}</p> : <p>台词会先完整显示；只有点击“听语音”后才会生成并播放。</p>}</div>{narrative.dialogueHistory.length > 0 && <div className="side-card"><span className="block-type">RECENT DIALOGUE</span>{narrative.dialogueHistory.slice(-4).map((item: any, index: number) => <p className="recent-dialogue" key={index}><b>{item.role === "user" ? "你" : item.role === "choice" ? "选择" : character.display_name}</b>{item.content}</p>)}</div>}</aside>
     </div>
     {showHistory && <div className="narrative-history"><div className="section-head"><h2>故事日志</h2><button className="secondary" onClick={() => setShowHistory(false)}>关闭</button></div>{history.map((event: any) => <div className="history-event" key={event.event_id}><time>{event.occurred_at}</time><b>{event.event_type}</b><span>{event.source_type} · {event.idempotency_key}</span></div>)}</div>}
   </div>;
@@ -1959,7 +1989,11 @@ export function Settings() {
   const state = useMentorStore();
   const [message, setMessage] = useState("");
   const labels: Record<string, string> = { fake: "Fake Provider", "openai-compatible": "DeepSeek", gemini: "Gemini", claude: "Anthropic Claude" };
-  const defaultBaseUrl = state.provider === "openai-compatible" ? "https://api.deepseek.com" : "";
+  const defaultBaseUrl = state.provider === "openai-compatible"
+    ? "https://api.deepseek.com"
+    : state.provider === "gemini"
+      ? "https://generativelanguage.googleapis.com/v1beta"
+      : "";
   const test = async () => {
     try {
       const baseUrl = state.baseUrl.trim() || defaultBaseUrl;
@@ -1978,7 +2012,7 @@ export function Settings() {
         <div className="card-kicker"><Settings2 size={16} />模型 Provider</div>
         <label>Provider<select value={state.provider} onChange={e => state.setProvider(e.target.value as any)}><option value="openai-compatible">DeepSeek（OpenAI Compatible）</option><option value="fake">Fake Provider（仅 Demo）</option><option value="gemini">Google Gemini</option><option value="claude">Anthropic Claude</option></select></label>
         {state.provider !== "fake" && <>
-          <label>Base URL<input value={state.baseUrl || defaultBaseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder="留空使用 https://api.deepseek.com" /></label>
+          <label>Base URL<input value={state.baseUrl || defaultBaseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder={state.provider === "gemini" ? "留空使用 Google Gemini API" : "留空使用 https://api.deepseek.com"} /></label>
           {state.provider === "openai-compatible"
             ? <label>Model<select value={state.model || "deepseek-v4-pro"} onChange={e => state.setModel(e.target.value)}><option value="deepseek-v4-pro">DeepSeek V4 Pro（默认）</option><option value="deepseek-v4-flash">DeepSeek V4 Flash</option></select></label>
             : <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="输入 Provider 模型 ID" /></label>}
@@ -2003,5 +2037,6 @@ export function Settings() {
       </section>
       <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅保存于当前浏览器本机，不写项目文件或数据库", "API Key 不进 URL、诊断信息或接口响应", "应用会自动恢复已保存的真实 Provider 连接", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
     </div>
+    <VoicePackSettings />
   </>
 }

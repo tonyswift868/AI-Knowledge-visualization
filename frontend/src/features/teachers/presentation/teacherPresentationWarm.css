@@ -1,0 +1,90 @@
+/* A dark canvas helps the transparent character read clearly; warm charcoal
+   and sage controls keep it connected to the surrounding product UI. */
+.teacher-2d-stage {
+  border-color: #61796d;
+  background:
+    radial-gradient(circle at 70% 24%, #2c4038 0, #1c2925 31%, #141b19 68%, #101412 100%);
+  box-shadow: 0 24px 64px #58442e3d;
+}
+
+.teacher-2d-stage::after {
+  background:
+    linear-gradient(180deg, transparent 58%, #101310dc),
+    linear-gradient(90deg, #151a17a8, transparent 54%);
+}
+
+.teacher-2d-heading span { color: #9bd1b3; }
+.teacher-2d-heading p { color: #b8b6aa; }
+
+.teacher-2d-overlay,
+.teacher-2d-camera,
+.teacher-2d-debug {
+  border-color: #b7aa9460;
+  color: #ded8ca;
+  background: #242820e6;
+  box-shadow: 0 12px 30px #2b241a4d;
+}
+
+.teacher-2d-toolbar button,
+.teacher-2d-animation-picker {
+  border-color: #b7aa9445;
+  color: #c3c0b6;
+  background: #242820dc;
+}
+
+.teacher-2d-toolbar button:hover,
+.teacher-2d-toolbar button.active,
+.teacher-2d-animation-picker:focus-within,
+.teacher-2d-camera button:hover,
+.teacher-2d-camera button.active {
+  border-color: #91b39f;
+  color: #f5fbf6;
+  background: #3f6251;
+}
+
+.teacher-2d-camera button {
+  color: #c5c1b7;
+  background: #fffaf00d;
+}
+
+.teacher-2d-form-switch {
+  position: absolute;
+  z-index: 7;
+  top: 16px;
+  right: 76px;
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #b7aa9460;
+  border-radius: 13px;
+  background: #242820e8;
+  box-shadow: 0 10px 24px #2b241a4d;
+  backdrop-filter: blur(12px);
+}
+
+.teacher-2d-form-switch button {
+  min-height: 31px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #c9c5ba;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.teacher-2d-form-switch button:hover,
+.teacher-2d-form-switch button.active {
+  border-color: #91b39f;
+  color: #f5fbf6;
+  background: #3f6251;
+}
+
+.teacher-2d-stage.compact .teacher-2d-form-switch {
+  top: 12px;
+  right: 58px;
+  transform: scale(.9);
+  transform-origin: right top;
+}

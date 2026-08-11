@@ -52,6 +52,14 @@ def create_provider_session(config: dict[str, Any]) -> dict[str, Any]:
     if provider == "openai_compatible":
         effective_config["base_url"] = str(config.get("base_url") or "https://api.deepseek.com")
         effective_config["model"] = str(config.get("model") or "deepseek-v4-pro")
+    if provider == "gemini":
+        effective_config["base_url"] = str(
+            config.get("base_url")
+            or "https://generativelanguage.googleapis.com/v1beta"
+        )
+        effective_config["model"] = str(
+            config.get("model") or "gemini-2.5-flash"
+        )
     if provider != "fake":
         get_provider(effective_config)
     created = _now()

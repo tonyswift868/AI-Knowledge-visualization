@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Request
 
 from . import active_teaching
 from .generic_knowledge import (
@@ -22,6 +22,13 @@ from .generic_knowledge import (
 )
 from .provider_runtime import generation_meta, provider_for_session, require_provider_session
 from .provider_service import ProviderError
+from .learning_resources import (
+    _point_fingerprint,
+    discover_learning_resources,
+    discover_task_resources,
+    ensure_resource_schema,
+    public_resources,
+)
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["generic-active-teaching"])
@@ -34,6 +41,185 @@ PROVIDER_BATCH_CONCURRENCY = max(
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _external_resource_discovery_enabled(receipt: dict[str, Any]) -> bool:
+    """Return the task-scoped external-resource preference.
+
+    Receipts written before this option existed have no field.  They retain
+    the previous behavior (resource discovery enabled when a verified
+    Provider is supplied), while newly-created receipts persist an explicit
+    boolean choice.
+    """
+    value = receipt.get("discover_external_resources")
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().casefold() not in {"", "0", "false", "no", "off"}
+    return bool(value)
+
+
+def _disabled_resource_discovery(resource_count: int = 0) -> dict[str, Any]:
+    """Describe a deliberate opt-out without deleting existing resources."""
+    return {
+        "status": "disabled",
+        "cache_hit": False,
+        "resource_count": int(resource_count),
+        "warnings": ["创建任务时未启用外部学习资源发现；资料内链接仍可正常使用。"],
+        "provider_meta": {"mode": "disabled"},
+    }
+
+
+def _resource_discovery_row_payload(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+) -> dict[str, Any]:
+    """Normalize a persisted discovery run for polling clients."""
+    try:
+        provider_meta = json.loads(row["provider_meta"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        provider_meta = {}
+    try:
+        warnings = json.loads(row["warnings"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        warnings = []
+    point_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM active_knowledge_points WHERE workspace_id=?",
+            (row["workspace_id"],),
+        ).fetchone()[0]
+    )
+    resources = public_resources(connection, str(row["workspace_id"]))
+    return {
+        "run_id": str(row["id"]),
+        "workspace_id": str(row["workspace_id"]),
+        "status": str(row["status"]),
+        "point_count": point_count,
+        "searched_point_count": int(row["searched_point_count"] or 0),
+        "resource_count": int(row["resource_count"] or 0),
+        "warnings": warnings,
+        "provider_meta": provider_meta,
+        "created_at": str(row["created_at"]),
+        "resources": resources,
+    }
+
+
+def _update_resource_discovery_run(
+    connection: sqlite3.Connection,
+    run_id: str,
+    result: dict[str, Any],
+) -> None:
+    """Finish a queued run without changing plans, sessions, or progress."""
+    connection.execute(
+        """UPDATE active_resource_discovery_runs
+           SET provider_meta=?,searched_point_count=?,resource_count=?,status=?,warnings=?
+           WHERE id=?""",
+        (
+            json.dumps(result.get("provider_meta") or {}, ensure_ascii=False),
+            int(result.get("searched_point_count") or 0),
+            int(result.get("resource_count") or 0),
+            str(result.get("status") or "failed"),
+            json.dumps(result.get("warnings") or [], ensure_ascii=False),
+            run_id,
+        ),
+    )
+    connection.commit()
+
+
+async def _run_resource_discovery_background(
+    workspace_id: str,
+    run_id: str,
+    provider_session_id: str | None,
+) -> None:
+    """Discover a small set of task-level resources outside the HTTP request."""
+    try:
+        with active_teaching._connect() as connection:
+            ensure_generic_schema(connection)
+            receipt_row = connection.execute(
+                "SELECT payload FROM active_receipts WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()
+            receipt = json.loads(receipt_row["payload"]) if receipt_row else {}
+            if not _external_resource_discovery_enabled(receipt):
+                result = _disabled_resource_discovery()
+            else:
+                graph = public_generic_graph(connection, workspace_id)
+                points = list(graph.get("knowledge_points") or [])
+                if not points:
+                    result = {
+                        "status": "failed",
+                        "resource_count": 0,
+                        "searched_point_count": 0,
+                        "warnings": ["知识地图尚未生成，无法为任务发现外部学习资源。"],
+                        "provider_meta": {"mode": "missing_knowledge_map"},
+                    }
+                else:
+                    material_names = [
+                        str(row["original_filename"] or "")
+                        for row in connection.execute(
+                            """SELECT original_filename FROM active_materials
+                               WHERE workspace_id=? AND id IN ({})""".format(
+                                ",".join("?" for _ in receipt.get("material_ids") or [])
+                            ),
+                            [workspace_id, *(str(item) for item in receipt.get("material_ids") or [])],
+                        ).fetchall()
+                    ] if receipt.get("material_ids") else []
+                    task_label = "；".join(
+                        item for item in [
+                            str(receipt.get("learning_goal") or "").strip(),
+                            "资料：" + "、".join(material_names) if material_names else "",
+                        ] if item
+                    )
+                    result = await discover_task_resources(
+                        connection,
+                        workspace_id=workspace_id,
+                        points=points,
+                        provider_session_id=provider_session_id,
+                        task_label=task_label,
+                        force=True,
+                    )
+                    # The synchronous helper normally persists its own run
+                    # row. Reuse that measured count only when it is a
+                    # separate row; test adapters and providers may return
+                    # the count directly without inserting another row.
+                    latest_result = connection.execute(
+                        """SELECT id,searched_point_count FROM active_resource_discovery_runs
+                           WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+                        (workspace_id,),
+                    ).fetchone()
+                    if latest_result and str(latest_result["id"]) != run_id:
+                        result = {
+                            **result,
+                            "searched_point_count": int(
+                                latest_result["searched_point_count"] or 0
+                            ),
+                        }
+            _update_resource_discovery_run(connection, run_id, result)
+    except Exception as exc:  # pragma: no cover - defensive worker boundary
+        try:
+            with active_teaching._connect() as connection:
+                ensure_generic_schema(connection)
+                _update_resource_discovery_run(
+                    connection,
+                    run_id,
+                    {
+                        "status": "failed",
+                        "resource_count": int(
+                            connection.execute(
+                                """SELECT COUNT(*) FROM active_external_resources
+                                   WHERE workspace_id=? AND status='active'""",
+                                (workspace_id,),
+                            ).fetchone()[0]
+                        ),
+                        "searched_point_count": 0,
+                        "warnings": [f"外部学习资源发现失败：{exc}"],
+                        "provider_meta": {"mode": "background_error"},
+                    },
+                )
+        except Exception:
+            # There is no safe response channel after a 202 has been sent;
+            # leave the last persisted state intact if recovery itself fails.
+            return
 
 
 def _plan_input_signature(receipt: dict[str, Any]) -> str:
@@ -109,6 +295,7 @@ def ensure_generic_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    ensure_resource_schema(connection)
     connection.commit()
 
 
@@ -365,8 +552,14 @@ def _replace_graph(
     edges: list[dict[str, str]],
     mode: str,
 ) -> dict[str, Any]:
+    # Preserve learner progress before replacing generated graph/plan rows.
+    # The snapshot is keyed by material + normalized name, never by a generated
+    # knowledge-point or plan id, so a re-extraction cannot reset completion.
+    active_teaching._capture_knowledge_progress(connection, workspace_id)
+    progress = active_teaching._progress_snapshots(connection, workspace_id)
     # Preserve uploaded materials and receipts. Derived plans/sessions are
-    # invalidated because their knowledge-point IDs may no longer exist.
+    # invalidated because their knowledge-point IDs may no longer exist; their
+    # compact learner state remains in the snapshot table above.
     old_plans = [
         row["id"]
         for row in connection.execute(
@@ -410,11 +603,16 @@ def _replace_graph(
         point_id = f"kp_{hashlib.sha256((workspace_id + ':' + normalized).encode()).hexdigest()[:20]}"
         local_to_db[node["local_id"]] = point_id
         first_evidence = node["source_evidence"][0]
+        progress_item = progress.get(
+            (str(first_evidence.get("material_id") or ""), normalized),
+            {},
+        )
+        preserved_mastery = max(0.0, float(progress_item.get("mastery") or 0))
         connection.execute(
             """INSERT INTO active_knowledge_points
                (id,workspace_id,material_id,normalized_name,name,explanation,difficulty,
                 estimated_task_minutes,mastery,acceptance_method,source_evidence,isolated,created_at)
-               VALUES (?,?,?,?,?,?,?,?,0,?,?,1,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)""",
             (
                 point_id,
                 workspace_id,
@@ -424,6 +622,7 @@ def _replace_graph(
                 node["explanation"],
                 node["difficulty"],
                 node["mastery_estimate"]["total_mastery_task_minutes"],
+                preserved_mastery,
                 node["acceptance_method"],
                 json.dumps(node["source_evidence"], ensure_ascii=False),
                 _now(),
@@ -492,6 +691,36 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
         )
         point["extraction_mode"] = detail["extraction_mode"] if detail else "legacy"
         point["confidence"] = float(detail["confidence"]) if detail else None
+    resources = public_resources(connection, workspace_id)
+    resources_by_point: dict[str, list[dict[str, Any]]] = {}
+    for resource in resources:
+        resources_by_point.setdefault(
+            str(resource["knowledge_point_id"]), []
+        ).append(resource)
+    for point in graph["knowledge_points"]:
+        point["learning_resources"] = resources_by_point.get(
+            str(point["id"]), []
+        )
+    graph["learning_resources"] = resources
+    latest_resource_run = connection.execute(
+        """SELECT * FROM active_resource_discovery_runs
+           WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+        (workspace_id,),
+    ).fetchone()
+    graph["resource_discovery"] = (
+        {
+            **dict(latest_resource_run),
+            "provider_meta": json.loads(latest_resource_run["provider_meta"]),
+            "warnings": json.loads(latest_resource_run["warnings"]),
+        }
+        if latest_resource_run
+        else {
+            "status": "not_run",
+            "resource_count": 0,
+            "warnings": [],
+            "provider_meta": {"mode": "unavailable"},
+        }
+    )
     latest = connection.execute(
         """SELECT * FROM active_extraction_runs
            WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1""",
@@ -507,6 +736,11 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
         "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
     ).fetchone()
     receipt = json.loads(receipt_row["payload"]) if receipt_row else {}
+    if not _external_resource_discovery_enabled(receipt):
+        # Do not clear previously verified rows when a task opts out.  The
+        # preference only controls future discovery calls; existing resources
+        # remain available to the learner and are counted here for clarity.
+        graph["resource_discovery"] = _disabled_resource_discovery(len(resources))
     material_ids = list(dict.fromkeys(str(item) for item in receipt.get("material_ids") or []))
     if material_ids:
         placeholders = ",".join("?" for _ in material_ids)
@@ -665,6 +899,132 @@ def public_generic_graph(connection: sqlite3.Connection, workspace_id: str) -> d
     return graph
 
 
+@router.post(
+    "/workspaces/{workspace_id}/resource-discovery/start",
+    status_code=202,
+)
+async def start_resource_discovery(
+    workspace_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Queue one task-wide resource discovery run and return immediately.
+
+    The worker traverses every knowledge point in the current map.  It only
+    writes ``active_external_resources`` and discovery metadata; plans,
+    sessions, mastery, and progress are deliberately outside this route.
+    """
+    body = body or {}
+    provider_session_id = _provider_session_id(request, body)
+    with active_teaching._connect() as connection:
+        ensure_generic_schema(connection)
+        receipt_row = connection.execute(
+            "SELECT payload FROM active_receipts WHERE workspace_id=?",
+            (workspace_id,),
+        ).fetchone()
+        if not receipt_row:
+            active_teaching._error("RECEIPT_REQUIRED", "请先保存学习条件", 409)
+        receipt = json.loads(receipt_row["payload"])
+        if not _external_resource_discovery_enabled(receipt):
+            active_teaching._error(
+                "RESOURCE_DISCOVERY_DISABLED",
+                "创建任务时未启用外部学习资源发现",
+                409,
+            )
+        graph = public_generic_graph(connection, workspace_id)
+        points = list(graph.get("knowledge_points") or [])
+        if not points:
+            active_teaching._error(
+                "KNOWLEDGE_MAP_REQUIRED",
+                "请先生成知识地图，再发现外部学习资源",
+                409,
+            )
+        running = connection.execute(
+            """SELECT * FROM active_resource_discovery_runs
+               WHERE workspace_id=? AND status='running'
+               ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (workspace_id,),
+        ).fetchone()
+        if running:
+            return _resource_discovery_row_payload(connection, running)
+        resource_count = int(
+            connection.execute(
+                """SELECT COUNT(*) FROM active_external_resources
+                   WHERE workspace_id=? AND status='active'""",
+                (workspace_id,),
+            ).fetchone()[0]
+        )
+        run_id = active_teaching._id("resource_discovery")
+        connection.execute(
+            """INSERT INTO active_resource_discovery_runs
+               (id,workspace_id,point_fingerprint,provider_meta,searched_point_count,
+                resource_count,status,warnings,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                run_id,
+                workspace_id,
+                _point_fingerprint(points),
+                json.dumps(
+                    {
+                        "mode": "background_queued",
+                        "scope": "task",
+                        "provider_session_supplied": bool(provider_session_id),
+                        "point_count": len(points),
+                    },
+                    ensure_ascii=False,
+                ),
+                0,
+                resource_count,
+                "running",
+                "[]",
+                _now(),
+            ),
+        )
+        connection.commit()
+        queued = connection.execute(
+            "SELECT * FROM active_resource_discovery_runs WHERE id=?",
+            (run_id,),
+        ).fetchone()
+        payload = _resource_discovery_row_payload(connection, queued)
+    background_tasks.add_task(
+        _run_resource_discovery_background,
+        workspace_id,
+        run_id,
+        provider_session_id,
+    )
+    return payload
+
+
+@router.get("/workspaces/{workspace_id}/resource-discovery/status")
+def resource_discovery_status(
+    workspace_id: str,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Return a task-wide discovery run and all links found so far."""
+    with active_teaching._connect() as connection:
+        ensure_generic_schema(connection)
+        row = (
+            connection.execute(
+                "SELECT * FROM active_resource_discovery_runs WHERE id=? AND workspace_id=?",
+                (run_id, workspace_id),
+            ).fetchone()
+            if run_id
+            else connection.execute(
+                """SELECT * FROM active_resource_discovery_runs
+                   WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+                (workspace_id,),
+            ).fetchone()
+        )
+        if not row:
+            active_teaching._error(
+                "RESOURCE_DISCOVERY_NOT_FOUND",
+                "当前任务尚未开始外部学习资源发现",
+                404,
+            )
+        return _resource_discovery_row_payload(connection, row)
+
+
 @router.post("/workspaces/{workspace_id}/knowledge-map/generate")
 async def generate_knowledge_map(
     workspace_id: str,
@@ -733,6 +1093,30 @@ async def generate_knowledge_map(
                         ),
                     )
                     connection.commit()
+                session_id = _provider_session_id(request, body)
+                resource_discovery_enabled = _external_resource_discovery_enabled(
+                    receipt
+                )
+                if (
+                    resource_discovery_enabled
+                    and session_id
+                    and not bool(body.get("queue_external_resources"))
+                ):
+                    discovery = await discover_learning_resources(
+                        connection,
+                        workspace_id=workspace_id,
+                        points=existing_graph["knowledge_points"],
+                        provider_session_id=session_id,
+                        force=bool(body.get("refresh_learning_resources")),
+                    )
+                    existing_graph = public_generic_graph(
+                        connection, workspace_id
+                    )
+                    existing_graph["resource_discovery"] = discovery
+                elif not resource_discovery_enabled:
+                    existing_graph["resource_discovery"] = _disabled_resource_discovery(
+                        len(existing_graph.get("learning_resources") or [])
+                    )
                 existing_graph["extraction"] = {
                     "id": latest_run["id"],
                     "mode": latest_run["mode"],
@@ -790,6 +1174,31 @@ async def generate_knowledge_map(
             ),
         )
         connection.commit()
+        if (
+            _external_resource_discovery_enabled(receipt)
+            and not bool(body.get("queue_external_resources"))
+        ):
+            discovery = await discover_learning_resources(
+                connection,
+                workspace_id=workspace_id,
+                points=graph["knowledge_points"],
+                provider_session_id=session_id,
+                force=True,
+            )
+        else:
+            # The caller can request a fast map-only response and enqueue web
+            # enrichment through /resource-discovery/start.  Do not label an
+            # intentionally deferred run as disabled, because the frontend
+            # uses this state to show that the task is still being prepared.
+            discovery = public_generic_graph(connection, workspace_id).get(
+                "resource_discovery"
+            ) or {
+                "status": "not_requested",
+                "resource_count": 0,
+                "warnings": [],
+                "provider_meta": {"mode": "queued_after_map"},
+            }
+        graph = public_generic_graph(connection, workspace_id)
         graph["extraction"] = {
             "id": run_id,
             "mode": mode,
@@ -798,6 +1207,7 @@ async def generate_knowledge_map(
             "input_chunk_count": len(chunks),
             "output_point_count": len(nodes),
         }
+        graph["resource_discovery"] = discovery
         return graph
 
 
@@ -814,6 +1224,10 @@ def get_knowledge_map(workspace_id: str) -> dict[str, Any]:
 def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
     with active_teaching._connect() as connection:
         ensure_generic_schema(connection)
+        # Capture progress before a receipt change creates a replacement plan.
+        # This is intentionally done even when the map itself is reused.
+        active_teaching._capture_knowledge_progress(connection, workspace_id)
+        progress = active_teaching._progress_snapshots(connection, workspace_id)
         receipt_row = connection.execute(
             "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
         ).fetchone()
@@ -949,9 +1363,35 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
             ),
         )
         point_rows = {row["id"]: row for row in rows}
+        persisted_phase_parts: dict[tuple[str, str], int] = {}
+        persisted_phase_minutes: dict[tuple[str, str], int] = {}
         for day_index, day in enumerate(calendar):
             for task_order, task in enumerate(day["tasks"], start=1):
                 point = point_rows[task["knowledge_point_id"]]
+                point_key = active_teaching._progress_snapshot_key(
+                    point["material_id"], point["normalized_name"], point["name"]
+                )
+                progress_item = progress.get(point_key) or {}
+                completed_phases = {
+                    str(value) for value in progress_item.get("completed_phases") or []
+                }
+                learning_phase = str(task.get("learning_phase") or "")
+                task_type = str(task.get("task_type") or "initial_learning")
+                # A completed knowledge point must stay completed in a new plan.
+                # Partial work is also carried forward phase-by-phase; review
+                # tasks are not guessed complete from initial-learning evidence.
+                preserved_completed = bool(
+                    task_type == "initial_learning"
+                    and (
+                        float(progress_item.get("mastery") or 0) >= 0.8
+                        or learning_phase in completed_phases
+                    )
+                )
+                completed_minutes = (
+                    int(task["planned_task_minutes"]) if preserved_completed else 0
+                )
+                actual_elapsed = 0.0
+                task_status = "completed" if preserved_completed else "planned"
                 connection.execute(
                     """INSERT INTO active_plan_tasks
                        (id,plan_id,workspace_id,day_date,day_index,task_order,
@@ -959,7 +1399,7 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                         acceptance_condition,estimated_task_minutes,
                         completed_task_minutes,actual_elapsed_minutes,status,
                         task_type,learning_phase,point_sequence,phase_part_index,phase_part_count)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'planned',?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         active_teaching._id("active_task"),
                         plan_id,
@@ -976,13 +1416,97 @@ def generate_mastery_plan(workspace_id: str) -> dict[str, Any]:
                         json.dumps(task["source_evidence"], ensure_ascii=False),
                         task["acceptance_condition"],
                         task["planned_task_minutes"],
-                        task["task_type"],
-                        task["learning_phase"],
+                        completed_minutes,
+                        actual_elapsed,
+                        task_status,
+                        task_type,
+                        learning_phase,
                         task["point_sequence"],
                         task["phase_part_index"],
                         task["phase_part_count"],
                     ),
                 )
+                phase_key = (str(task["knowledge_point_id"]), learning_phase)
+                persisted_phase_parts[phase_key] = (
+                    persisted_phase_parts.get(phase_key, 0) + 1
+                )
+                persisted_phase_minutes[phase_key] = (
+                    persisted_phase_minutes.get(phase_key, 0)
+                    + int(task["planned_task_minutes"])
+                )
+
+        # Capacity is a scheduling constraint, not a data-retention boundary.
+        # Keep every overflow learning phase as an unscheduled task so the
+        # learner can still open that knowledge point and continue manually.
+        phase_specs = (
+            ("understand", "understand_minutes", "理解"),
+            ("recall", "recall_minutes", "回忆"),
+            ("guided_practice", "guided_practice_minutes", "引导练习"),
+            (
+                "independent_application",
+                "independent_application_minutes",
+                "独立应用",
+            ),
+        )
+        overflow_day = str(receipt.get("deadline") or calendar[-1]["date"])
+        for point_sequence, item in enumerate(ordered, start=1):
+            point = point_rows[item["id"]]
+            for learning_phase, estimate_key, phase_label in phase_specs:
+                phase_key = (str(item["id"]), learning_phase)
+                remaining = max(
+                    0,
+                    int(item["mastery_estimate"][estimate_key])
+                    - persisted_phase_minutes.get(phase_key, 0),
+                )
+                if remaining <= 0:
+                    continue
+                existing_parts = persisted_phase_parts.get(phase_key, 0)
+                overflow_parts = (remaining + 119) // 120
+                total_parts = existing_parts + overflow_parts
+                if existing_parts:
+                    connection.execute(
+                        """UPDATE active_plan_tasks SET phase_part_count=?
+                           WHERE plan_id=? AND knowledge_point_id=?
+                             AND task_type='initial_learning' AND learning_phase=?""",
+                        (total_parts, plan_id, item["id"], learning_phase),
+                    )
+                for overflow_index in range(1, overflow_parts + 1):
+                    minutes = min(120, remaining)
+                    remaining -= minutes
+                    part_index = existing_parts + overflow_index
+                    suffix = (
+                        f"（{part_index}/{total_parts}）" if total_parts > 1 else ""
+                    )
+                    connection.execute(
+                        """INSERT INTO active_plan_tasks
+                           (id,plan_id,workspace_id,day_date,day_index,task_order,
+                            knowledge_point_id,title,objective,source_evidence,
+                            acceptance_condition,estimated_task_minutes,
+                            completed_task_minutes,actual_elapsed_minutes,status,
+                            task_type,learning_phase,point_sequence,phase_part_index,
+                            phase_part_count)
+                           VALUES (?,?,?,?,999999,999999,?,?,?,?,?,?,0,0,'unscheduled',
+                                   'initial_learning',?,?,?,?)""",
+                        (
+                            active_teaching._id("active_task"),
+                            plan_id,
+                            workspace_id,
+                            overflow_day,
+                            item["id"],
+                            f"{item['name']} · {phase_label}{suffix}",
+                            (
+                                f"完成“{learning_phase}”阶段并留下可观察证据；"
+                                "该任务虽超出当前日历容量，但仍可随时进入继续学习。"
+                            ),
+                            json.dumps(item["source_evidence"], ensure_ascii=False),
+                            item["acceptance_method"],
+                            minutes,
+                            learning_phase,
+                            point_sequence,
+                            part_index,
+                            total_parts,
+                        ),
+                    )
         # Persist the calendar from the authoritative task rows.  The scheduler's
         # intermediate dictionaries do not yet contain database task IDs/status,
         # and must not become a second, stale representation of the plan.

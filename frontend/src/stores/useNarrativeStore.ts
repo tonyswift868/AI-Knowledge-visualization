@@ -7,7 +7,7 @@ export type NarrativeState = {
   availableChoices: any[];
   learningGate: any | null;
   characterVisualStates: Record<string, any>;
-  voicePlayback: { status: "idle" | "loading" | "playing" | "paused" | "failed"; cacheKey?: string; error?: string };
+  voicePlayback: { status: "idle" | "loading" | "playing" | "paused" | "failed"; cacheKey?: string; error?: string; phase?: "starting" | "synthesizing" };
   loadingState: "idle" | "loading" | "saving";
   errorState: string;
   revision: number;

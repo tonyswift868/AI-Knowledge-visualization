@@ -21,6 +21,7 @@ from app.provider_runtime import (
     get_provider_session,
     reset_provider_sessions,
 )
+from app.provider_service import ProviderError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -251,6 +252,66 @@ def test_arbitrary_markdown_becomes_grounded_map_mastery_estimate_and_capacity_p
         assert payload["total_mastery_task_minutes"] == (
             expected_initial + expected_one_review_round * 2
         )
+
+
+def test_capacity_overflow_tasks_remain_openable_in_mastery_plan(tmp_path):
+    configure_orm(tmp_path / "generic-overflow.db")
+    workspace = "generic-overflow"
+    today = date.today()
+    content = "\n\n".join(
+        f"# 知识点 {index}\n这是第 {index} 个需要理解、回忆、练习和独立应用的知识点。"
+        for index in range(1, 9)
+    )
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("overflow.md", content.encode("utf-8"), "text/markdown")},
+        )
+        assert material.status_code == 200, material.text
+        receipt = {
+            **_receipt(material.json()["id"], start=today, deadline=today),
+            "study_weekdays": list(range(7)),
+            "fixed_rest_weekdays": [],
+            "unavailable_dates": [],
+            "special_date_minutes": {},
+            "daily_task_minutes": 10,
+            "allocation_mode": "user",
+            "review_rounds": 2,
+        }
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=receipt,
+        ).status_code == 200
+        graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert graph.status_code == 200, graph.text
+        plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert plan.status_code == 200, plan.text
+        payload = plan.json()
+        overflow = [
+            task for task in payload["tasks"] if task["status"] == "unscheduled"
+        ]
+        assert overflow
+        assert {
+            task["knowledge_point_id"] for task in payload["tasks"]
+        } == {
+            point["id"] for point in graph.json()["knowledge_points"]
+        }
+        started = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/sessions/start",
+            json={},
+        )
+        assert started.status_code == 200, started.text
+        focused = client.post(
+            f"/api/active-teaching/sessions/{started.json()['session_id']}/focus",
+            json={"task_id": overflow[-1]["id"]},
+        )
+        assert focused.status_code == 200, focused.text
+        assert focused.json()["state"]["active_task_id"] == overflow[-1]["id"]
 
 
 def test_coding_acceptance_requires_system_verified_problem_specs(tmp_path):
@@ -677,6 +738,459 @@ def test_verified_real_provider_path_is_source_gated_and_not_course_specific(tmp
         assert body["knowledge_points"][0]["source_evidence"][0]["quote"]
 
 
+def test_task_can_disable_external_resource_discovery_without_touching_map_or_resources(
+    tmp_path,
+    monkeypatch,
+):
+    """The task preference gates discovery, not the learner's existing data."""
+    configure_orm(tmp_path / "generic-resource-opt-out.db")
+    workspace = "resource-opt-out"
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("notes.txt", b"A concept\n\nA second concept", "text/plain")},
+        )
+        assert material.status_code == 200, material.text
+        material_id = material.json()["id"]
+        receipt = _receipt(
+            material_id,
+            start=start,
+            deadline=start + timedelta(days=5),
+        )
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=receipt,
+        ).status_code == 200
+        first = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert first.status_code == 200, first.text
+        first_graph = first.json()
+        plan_before = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert plan_before.status_code == 200, plan_before.text
+        plan_before_payload = plan_before.json()
+        # Seed one previously verified row to ensure opting out does not
+        # delete resources that belong to the current task.
+        from app import active_teaching
+        from app.learning_resources import ensure_resource_schema
+
+        with active_teaching._connect() as connection:
+            ensure_resource_schema(connection)
+            connection.execute(
+                """INSERT INTO active_external_resources
+                   (id,workspace_id,knowledge_point_id,kind,title,description,
+                    url,host,provider_label,authority,source,search_query,
+                    discovery_meta,status,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?)""",
+                (
+                    "resource-existing",
+                    workspace,
+                    first_graph["knowledge_points"][0]["id"],
+                    "simulator",
+                    "Existing study tool",
+                    "A previously verified resource.",
+                    "https://example.org/study-tool",
+                    "example.org",
+                    "example.org",
+                    "institutional",
+                    "test_fixture",
+                    "study tool",
+                    "{}",
+                    "2026-01-01T00:00:00+00:00",
+                ),
+            )
+            connection.commit()
+
+        async def should_not_run(*_args, **_kwargs):
+            raise AssertionError("resource discovery must be skipped when opted out")
+
+        monkeypatch.setattr(
+            "app.generic_knowledge_api.discover_learning_resources",
+            should_not_run,
+        )
+        opted_out = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json={**receipt, "discover_external_resources": False},
+        )
+        assert opted_out.status_code == 200, opted_out.text
+        assert opted_out.json()["discover_external_resources"] is False
+
+        cached = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={"refresh_learning_resources": True},
+        )
+        assert cached.status_code == 200, cached.text
+        graph = cached.json()
+        assert graph["resource_discovery"]["status"] == "disabled"
+        assert graph["knowledge_points"]
+        assert [item["url"] for item in graph["learning_resources"]] == [
+            "https://example.org/study-tool"
+        ]
+
+        fetched = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map"
+        )
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["resource_discovery"]["status"] == "disabled"
+        assert fetched.json()["learning_resources"][0]["url"] == (
+            "https://example.org/study-tool"
+        )
+        plan_after = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert plan_after.status_code == 200, plan_after.text
+        assert plan_after.json()["id"] == plan_before_payload["id"]
+
+
+def test_taskwide_resource_discovery_is_queued_and_does_not_rebuild_plan(
+    tmp_path,
+    monkeypatch,
+):
+    """The classroom action prepares one task-level tool without blocking."""
+    configure_orm(tmp_path / "generic-resource-queue.db")
+    workspace = "resource-queue"
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={"file": ("notes.txt", b"First concept\n\nSecond concept", "text/plain")},
+        )
+        assert material.status_code == 200, material.text
+        material_id = material.json()["id"]
+        receipt = client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=_receipt(material_id, start=start, deadline=start + timedelta(days=5)),
+        )
+        assert receipt.status_code == 200, receipt.text
+        generated = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+        )
+        assert generated.status_code == 200, generated.text
+        point_count = len(generated.json()["knowledge_points"])
+        plan_before = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate",
+        ).json()
+
+        async def fake_discovery(connection, *, workspace_id, points, provider_session_id, force):
+            assert workspace_id == workspace
+            # The task-wide search intentionally uses one synthetic point so a
+            # 150-point course does not trigger 150 web searches.
+            assert len(points) == 1
+            assert provider_session_id == "provider-session"
+            assert force is True
+            return {
+                "status": "completed",
+                "resource_count": 0,
+                "searched_point_count": 1,
+                "warnings": [],
+                "provider_meta": {"mode": "test"},
+            }
+
+        monkeypatch.setattr(
+            "app.learning_resources.discover_learning_resources",
+            fake_discovery,
+        )
+        queued = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/resource-discovery/start",
+            json={"provider_session_id": "provider-session"},
+        )
+        assert queued.status_code == 202, queued.text
+        assert queued.json()["point_count"] == point_count
+        assert queued.json()["status"] in {"running", "completed"}
+
+        status = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/resource-discovery/status",
+        )
+        assert status.status_code == 200, status.text
+        assert status.json()["status"] == "completed"
+        assert status.json()["searched_point_count"] == 1
+
+        plan_after = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate",
+        ).json()
+        assert plan_after["id"] == plan_before["id"]
+
+
+def test_generic_map_discovers_grounded_external_tool_and_exposes_it_in_class(tmp_path, monkeypatch):
+    configure_orm(tmp_path / "generic-grounded-resource.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "gemini",
+            "base_url": "https://example.invalid",
+            "model": "gemini-2.5-flash",
+            "api_key": "test-only-key",
+        }
+    )
+    session = get_provider_session(public["provider_session_id"])
+    session.verified = True
+
+    class GroundedResourceProvider:
+        async def json(self, messages):
+            prompt = __import__("json").loads(messages[-1]["content"])
+            chunk_id = prompt["chunks"][0]["chunk_id"]
+            return {
+                "knowledge_points": [
+                    {
+                        "id": "projectile-motion",
+                        "name": "抛体运动轨迹",
+                        "explanation": "水平和竖直方向可分别分析。",
+                        "difficulty": "medium",
+                        "estimated_mastery_minutes": 50,
+                        "acceptance_method": "能解释参数变化如何影响轨迹",
+                        "source_chunk_ids": [chunk_id],
+                        "confidence": 0.9,
+                    }
+                ],
+                "dependencies": [],
+            }
+
+        async def grounded_web_search(self, prompt):
+            point_id = __import__("re").search(r"- id=([^ |]+)", prompt).group(1)
+            line = (
+                f"RESOURCE|{point_id}|simulator|institutional|"
+                "大学物理抛体模拟器|拖动初速度和角度即可观察轨迹变化"
+            )
+            return {
+                "text": line,
+                "sources": [
+                    {
+                        "index": 0,
+                        "url": "https://physics.example.edu/projectile-simulator",
+                        "title": "University Physics Simulator",
+                    }
+                ],
+                "supports": [
+                    {
+                        "start_index": 0,
+                        "end_index": len(line),
+                        "text": line,
+                        "source_indices": [0],
+                    }
+                ],
+                "queries": ["university projectile motion simulator"],
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "search_grounded": True,
+            }
+
+    monkeypatch.setattr(
+        "app.generic_knowledge_api.provider_for_session",
+        lambda _session: GroundedResourceProvider(),
+    )
+    monkeypatch.setattr(
+        "app.learning_resources.provider_for_session",
+        lambda _session: GroundedResourceProvider(),
+    )
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            "/api/active-teaching/workspaces/physics-tools/materials",
+            files={
+                "file": (
+                    "mechanics.txt",
+                    "抛体运动\n\n水平和竖直方向可分别分析。".encode(),
+                    "text/plain",
+                )
+            },
+        ).json()
+        assert client.put(
+            "/api/active-teaching/workspaces/physics-tools/receipt",
+            json=_receipt(
+                material["id"],
+                start=start,
+                deadline=start + timedelta(days=6),
+            ),
+        ).status_code == 200
+        graph_response = client.post(
+            "/api/active-teaching/workspaces/physics-tools/knowledge-map/generate",
+            json={"provider_session_id": session.id},
+        )
+        assert graph_response.status_code == 200, graph_response.text
+        graph = graph_response.json()
+        assert graph["resource_discovery"]["status"] == "completed"
+        assert len(graph["learning_resources"]) == 1
+        assert graph["learning_resources"][0]["source"] == "gemini_google_search_grounding"
+        assert graph["knowledge_points"][0]["learning_resources"][0]["kind"] == "simulator"
+
+        plan = client.post(
+            "/api/active-teaching/workspaces/physics-tools/mastery-plans/generate"
+        )
+        assert plan.status_code == 200, plan.text
+        classroom = client.post(
+            "/api/active-teaching/workspaces/physics-tools/sessions/start",
+            json={},
+        )
+        assert classroom.status_code == 200, classroom.text
+        resource = classroom.json()["state"]["practice_resources"][0]
+        assert resource["url"] == "https://physics.example.edu/projectile-simulator"
+        assert resource["authority"] == "institutional"
+        assert resource["description"] == "拖动初速度和角度即可观察轨迹变化"
+
+
+def test_deepseek_style_provider_uses_open_metasearch_for_arbitrary_material(
+    tmp_path,
+    monkeypatch,
+):
+    configure_orm(tmp_path / "generic-open-metasearch-resource.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "deepseek-v4-flash",
+            "api_key": "test-only-key",
+        }
+    )
+    session = get_provider_session(public["provider_session_id"])
+    session.verified = True
+
+    class DeepSeekStyleProvider:
+        async def grounded_web_search(self, _prompt):
+            raise ProviderError(
+                "PROVIDER_WEB_SEARCH_UNSUPPORTED",
+                "native search unavailable",
+                400,
+            )
+
+        async def json(self, messages):
+            prompt = __import__("json").loads(messages[-1]["content"])
+            if "chunks" in prompt:
+                chunk_id = prompt["chunks"][0]["chunk_id"]
+                return {
+                    "knowledge_points": [
+                        {
+                            "id": "thin-lens",
+                            "name": "薄透镜成像",
+                            "explanation": "物距、像距和焦距共同决定像。",
+                            "difficulty": "medium",
+                            "estimated_mastery_minutes": 45,
+                            "acceptance_method": "改变参数并解释像的位置和正倒",
+                            "source_chunk_ids": [chunk_id],
+                            "confidence": 0.93,
+                        }
+                    ],
+                    "dependencies": [],
+                }
+            if "search_candidates" not in prompt:
+                point_id = prompt["knowledge_points"][0]["id"]
+                return {
+                    "search_requests": [
+                        {
+                            "point_id": point_id,
+                            "needed": True,
+                            "query": "PhET geometric optics official simulation",
+                            "kind": "simulator",
+                            "reason": "拖动参数比只看公式更容易理解成像变化",
+                        }
+                    ]
+                }
+            return {
+                "selections": [
+                    {
+                        "point_id": prompt["knowledge_points"][0]["id"],
+                        "candidate_id": prompt["search_candidates"][0][
+                            "candidate_id"
+                        ],
+                        "authority": "institutional",
+                        "reason": "大学维护的交互模拟器，可直接改变变量并观察结果。",
+                    }
+                ]
+            }
+
+    async def fake_open_search(query, *, max_results=6):
+        assert query == "PhET geometric optics official simulation 中文 官方"
+        return {
+            "query": query,
+            "engine": "bing",
+            "errors": [],
+            "results": [
+                {
+                    "url": (
+                        "https://phet.colorado.edu/zh/simulations/"
+                        "geometric-optics"
+                    ),
+                    "title": "几何光学 - PhET 中文模拟",
+                    "snippet": "中文交互模拟器，可拖动透镜和镜面并观察成像变化。",
+                    "engine": "bing",
+                }
+            ],
+        }
+
+    provider = DeepSeekStyleProvider()
+    monkeypatch.setattr(
+        "app.generic_knowledge_api.provider_for_session",
+        lambda _session: provider,
+    )
+    monkeypatch.setattr(
+        "app.learning_resources.provider_for_session",
+        lambda _session: provider,
+    )
+    monkeypatch.setattr(
+        "app.learning_resources.search_web",
+        fake_open_search,
+    )
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            "/api/active-teaching/workspaces/deepseek-optics/materials",
+            files={
+                "file": (
+                    "optics.txt",
+                    "薄透镜成像\n\n物距、像距和焦距共同决定像。".encode(),
+                    "text/plain",
+                )
+            },
+        ).json()
+        assert client.put(
+            "/api/active-teaching/workspaces/deepseek-optics/receipt",
+            json=_receipt(
+                material["id"],
+                start=start,
+                deadline=start + timedelta(days=6),
+            ),
+        ).status_code == 200
+        graph_response = client.post(
+            (
+                "/api/active-teaching/workspaces/deepseek-optics/"
+                "knowledge-map/generate"
+            ),
+            json={"provider_session_id": session.id},
+        )
+        assert graph_response.status_code == 200, graph_response.text
+        graph = graph_response.json()
+        assert graph["resource_discovery"]["status"] == "completed"
+        assert graph["resource_discovery"]["provider_meta"]["search_modes"] == [
+            "open_metasearch_ai_selected"
+        ]
+        assert graph["learning_resources"][0]["source"] == (
+            "open_metasearch_ai_selected"
+        )
+        assert graph["learning_resources"][0]["url"].startswith(
+            "https://phet.colorado.edu/"
+        )
+        plan = client.post(
+            (
+                "/api/active-teaching/workspaces/deepseek-optics/"
+                "mastery-plans/generate"
+            )
+        )
+        assert plan.status_code == 200, plan.text
+        classroom = client.post(
+            "/api/active-teaching/workspaces/deepseek-optics/sessions/start",
+            json={},
+        )
+        assert classroom.status_code == 200, classroom.text
+        resource = classroom.json()["state"]["practice_resources"][0]
+        assert resource["kind"] == "simulator"
+        assert resource["authority"] == "institutional"
+        assert resource["open_mode"] == "new_tab"
+
+
 def test_provider_batches_are_merged_globally_for_long_material(tmp_path, monkeypatch):
     configure_orm(tmp_path / "generic-long-provider.db")
     reset_provider_sessions()
@@ -934,3 +1448,118 @@ def test_scheduler_does_not_strand_capacity_between_splittable_learning_units():
     daily_loads = [day["planned_task_minutes"] for day in initial_days]
     assert max(daily_loads) - min(daily_loads) <= 1
     assert unscheduled == 0
+
+
+def test_rebuilding_mastery_plan_preserves_completed_knowledge_points(tmp_path):
+    """Changing receipt inputs must not turn a completed point back to planned."""
+    configure_orm(tmp_path / "generic-progress-preservation.db")
+    workspace = "progress-preservation"
+    start = date.today()
+    with TestClient(app) as client:
+        material = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/materials",
+            files={
+                "file": (
+                    "progress.md",
+                    "# 第一个知识点\n先掌握第一个。\n\n# 第二个知识点\n再掌握第二个。".encode(),
+                    "text/markdown",
+                )
+            },
+        )
+        assert material.status_code == 200, material.text
+        material_id = material.json()["id"]
+        receipt = {
+            **_receipt(
+                material_id,
+                start=start,
+                deadline=start + timedelta(days=5),
+            ),
+            "allocation_mode": "system",
+            "review_rounds": 2,
+        }
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=receipt,
+        ).status_code == 200
+        graph = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert graph.status_code == 200, graph.text
+        point_id = graph.json()["knowledge_points"][0]["id"]
+        first_plan = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert first_plan.status_code == 200, first_plan.text
+
+        from app import active_teaching
+
+        with active_teaching._connect() as connection:
+            connection.execute(
+                "UPDATE active_knowledge_points SET mastery=1 WHERE id=?",
+                (point_id,),
+            )
+            connection.execute(
+                """UPDATE active_plan_tasks
+                   SET status='completed',completed_task_minutes=estimated_task_minutes
+                   WHERE workspace_id=? AND knowledge_point_id=? AND task_type='initial_learning'""",
+                (workspace, point_id),
+            )
+            connection.commit()
+
+        changed_receipt = {
+            **receipt,
+            "current_level": "intermediate",
+            "current_foundation": "intermediate",
+            "deadline": (start + timedelta(days=8)).isoformat(),
+        }
+        assert client.put(
+            f"/api/active-teaching/workspaces/{workspace}/receipt",
+            json=changed_receipt,
+        ).status_code == 200
+        # Change the source fingerprint so this exercises the destructive graph
+        # replacement path instead of merely returning the cached graph.
+        with active_teaching._connect() as connection:
+            connection.execute(
+                "UPDATE active_chunks SET text=text || ? WHERE material_id=?",
+                ("\n附加校验内容。", material_id),
+            )
+            connection.commit()
+        rebuilt_map = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map/generate",
+            json={},
+        )
+        assert rebuilt_map.status_code == 200, rebuilt_map.text
+        assert rebuilt_map.json()["extraction"]["provider_meta"]["cache_hit"] is False
+        rebuilt_point = next(
+            item
+            for item in rebuilt_map.json()["knowledge_points"]
+            if item["id"] == point_id
+        )
+        assert rebuilt_point["current_mastery"] == 1
+        rebuilt = client.post(
+            f"/api/active-teaching/workspaces/{workspace}/mastery-plans/generate"
+        )
+        assert rebuilt.status_code == 200, rebuilt.text
+        rebuilt_tasks = [
+            task
+            for task in rebuilt.json()["tasks"]
+            if task["knowledge_point_id"] == point_id
+            and task["task_type"] == "initial_learning"
+        ]
+        assert rebuilt_tasks
+        assert all(task["status"] == "completed" for task in rebuilt_tasks)
+        assert all(
+            task["completed_task_minutes"] == task["estimated_task_minutes"]
+            for task in rebuilt_tasks
+        )
+        current_graph = client.get(
+            f"/api/active-teaching/workspaces/{workspace}/knowledge-map"
+        )
+        assert current_graph.status_code == 200, current_graph.text
+        current_point = next(
+            item
+            for item in current_graph.json()["knowledge_points"]
+            if item["id"] == point_id
+        )
+        assert current_point["current_mastery"] == 1

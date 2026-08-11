@@ -5,6 +5,7 @@ import { expeditionApi, type ArtPackVersion, type AssetKind, type BattleEvent, t
 import { fallbackAssetUrl, resolveExpeditionAsset } from "./assetResolver"
 import "./expedition.css"
 import "./expedition-art.css"
+import "./expedition-art-warm.css"
 
 type View = "home" | "heroes" | "formation" | "gacha" | "stages" | "inventory" | "art-review"
 // The player faces right: row 1 / column 1 is the right-most front slot.

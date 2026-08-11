@@ -1,0 +1,59 @@
+{
+  "id": "tsubaki-live2d",
+  "displayName": "椿 · Live2D 教师",
+  "renderer": "live2d2d",
+  "license": "用户提供的本地非商用模拟模型；公开发布前必须另行确认原作者授权",
+  "skeleton": "/teacher2d/tsubaki-live2d/tsubaki.web.model3.json",
+  "textures": [
+    "/teacher2d/tsubaki-live2d/椿.4096/texture_00.png",
+    "/teacher2d/tsubaki-live2d/椿.4096/texture_01.png",
+    "/teacher2d/tsubaki-live2d/椿.4096/texture_02.png"
+  ],
+  "armature": "tsubaki",
+  "defaultAnimation": "idle",
+  "animationAliases": {
+    "idle": "idle",
+    "greeting": "greeting",
+    "thinking": "thinking",
+    "talking": "talking",
+    "explaining": "explaining",
+    "questioning": "questioning",
+    "praising": "praising",
+    "encouraging": "encouraging",
+    "confused": "confused",
+    "ending": "ending",
+    "error": "error"
+  },
+  "initialScale": 1,
+  "initialOffsetX": 0,
+  "initialOffsetY": 12,
+  "live2d": {
+    "coreScript": "/vendor/live2d/live2dcubismcore.min.js",
+    "textureLod": "single-auto",
+    "skins": {
+      "default": {
+        "label": "银白发"
+      },
+      "red-hair": {
+        "label": "山茶红发",
+        "partIds": [
+          "Part32",
+          "Part4",
+          "Part33",
+          "Part34",
+          "Part35"
+        ],
+        "multiplyColor": [0.72, 0.09, 0.08, 1],
+        "screenColor": [0.1, 0.004, 0.006, 1]
+      }
+    },
+    "expressions": {
+      "greeting": "blush",
+      "praising": "heart-eyes",
+      "encouraging": "blush",
+      "confused": "no-highlights",
+      "ending": "blush",
+      "error": "dark-face"
+    }
+  }
+}

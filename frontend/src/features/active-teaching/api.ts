@@ -30,6 +30,13 @@ export type ActiveLearningTaskSummary = {
     overdue_task_count: number;
     overdue_task_minutes: number;
     oldest_overdue_date: string | null;
+    overdue_day_count: number;
+    overdue_days: Array<{
+      date: string;
+      task_count: number;
+      remaining_task_minutes: number;
+      tasks: any[];
+    }>;
     overdue_tasks: any[];
     projected_review_items: any[];
     learning_order_policy: string;
@@ -58,6 +65,36 @@ export type ActiveTeacherVisualProfile = {
   description: string;
   manifest_url: string;
   interactive: boolean;
+};
+
+export type FocusMonitoringPrivacy = {
+  processing: "browser_local";
+  frames_stored: false;
+  video_uploaded: false;
+  audio_captured: false;
+  event_cap: number;
+};
+
+export type FocusMonitoringSession = {
+  id: string;
+  teaching_session_id: string;
+  workspace_id: string;
+  plan_id: string;
+  task_id: string;
+  status: "active" | "completed";
+  detector_kind: string;
+  camera_enabled: boolean;
+  started_at: string;
+  ended_at: string | null;
+  total_seconds: number;
+  focused_seconds: number;
+  distracted_seconds: number;
+  focus_rate: number;
+  distraction_count: number;
+  event_count: number;
+  end_reason: string;
+  summary: string;
+  privacy: FocusMonitoringPrivacy;
 };
 
 async function parseResponse(response: Response) {
@@ -126,6 +163,66 @@ export async function activeTeacherVisualProfiles(): Promise<ActiveTeacherVisual
   return payload.items || [];
 }
 
+export async function startFocusMonitoring(
+  teachingSessionId: string,
+): Promise<FocusMonitoringSession> {
+  return activeRequest(
+    `/sessions/${encodeURIComponent(teachingSessionId)}/focus-monitoring/start`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        detector_kind: "mediapipe_face_detector",
+        camera_enabled: true,
+      }),
+    },
+  );
+}
+
+export async function recordFocusMonitoringEvent(
+  focusId: string,
+  event: {
+    client_event_id: string;
+    event_type: "attention_lost" | "attention_restored";
+    reason: "face_absent" | "page_hidden" | "window_blurred" | "attention_restored";
+  },
+): Promise<{ accepted: boolean; reason?: string; recorded_at?: string }> {
+  return activeRequest(
+    `/focus-monitoring/${encodeURIComponent(focusId)}/events`,
+    {
+      method: "POST",
+      body: JSON.stringify(event),
+    },
+  );
+}
+
+export async function finishFocusMonitoring(
+  focusId: string,
+  reason:
+    | "user_finished"
+    | "lesson_finished"
+    | "page_closed"
+    | "component_unmounted"
+    | "camera_ended" = "user_finished",
+): Promise<FocusMonitoringSession> {
+  return activeRequest(
+    `/focus-monitoring/${encodeURIComponent(focusId)}/finish`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export async function focusMonitoringHistory(
+  teachingSessionId: string,
+  limit = 5,
+): Promise<FocusMonitoringSession[]> {
+  const payload = await activeRequest(
+    `/sessions/${encodeURIComponent(teachingSessionId)}/focus-monitoring?limit=${limit}`,
+  );
+  return payload.items || [];
+}
+
 export async function saveActiveTeacherPersona(
   input: Pick<ActiveTeacherPersona, "name" | "prompt" | "teaching_style" | "visual_profile_id"> & {
     id?: string;
@@ -185,4 +282,44 @@ export async function uploadActiveMaterial(workspaceId: string, file: File) {
     method: "POST",
     body: form,
   });
+}
+
+export async function uploadActiveTeachingAttachment(
+  sessionId: string,
+  file: File,
+) {
+  const form = new FormData();
+  form.append("file", file);
+  return activeRequest(
+    `/sessions/${encodeURIComponent(sessionId)}/attachments`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+}
+
+export async function warmActiveTeachingVoice() {
+  return activeRequest("/voice/warm", { method: "POST" }, 5_000);
+}
+
+export async function transcribeActiveTeachingVoice(
+  sessionId: string,
+  blob: Blob,
+  filename: string,
+) {
+  const form = new FormData();
+  form.append("file", blob, filename);
+  return activeRequest(
+    `/sessions/${encodeURIComponent(sessionId)}/voice/transcribe?language=auto`,
+    {
+      method: "POST",
+      body: form,
+    },
+    90_000,
+  ) as Promise<{
+    ok: boolean;
+    text: string;
+    engine: string;
+  }>;
 }

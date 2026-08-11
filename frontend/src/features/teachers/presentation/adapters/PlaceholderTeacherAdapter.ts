@@ -11,6 +11,7 @@ export class PlaceholderTeacherAdapter implements Teacher2DRenderer {
   listSkins() { return [] }
   setSkin(_name: string) {}
   setScale(_scale: number) {}
+  setOffset(_x: number, _y: number) {}
   setMirror(_mirrored: boolean) {}
   pause() {}
   resume() {}

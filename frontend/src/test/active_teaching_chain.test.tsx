@@ -1,7 +1,21 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ActiveTeachingChainView } from "../features/active-teaching/ActiveTeachingChainView";
+const localTeacherVoiceMocks = vi.hoisted(() => ({
+  speak: vi.fn(),
+  stop: vi.fn(),
+}));
+
+vi.mock("../features/voice/localTeacherVoice", () => ({
+  speakLocalTeacherVoice: localTeacherVoiceMocks.speak,
+  stopLocalTeacherVoice: localTeacherVoiceMocks.stop,
+}));
+
+import {
+  ActiveTeachingChainView,
+  resolveActiveTeacherPresentationState,
+  teacherMessageSegments,
+} from "../features/active-teaching/ActiveTeachingChainView";
 import { useMentorStore } from "../stores/useMentorStore";
 
 
@@ -171,6 +185,28 @@ const snapshot = {
   },
 };
 
+describe("teacher emphasis markup", () => {
+  it("turns explicit focus markers and concise markdown bold into safe focus segments", () => {
+    expect(
+      teacherMessageSegments(
+        "先记住[[重点:循环不变量]]，再检查 **边界条件**，普通解释保持原样。",
+      ),
+    ).toEqual([
+      { text: "先记住", focus: false },
+      { text: "循环不变量", focus: true },
+      { text: "，再检查 ", focus: false },
+      { text: "边界条件", focus: true },
+      { text: "，普通解释保持原样。", focus: false },
+    ]);
+  });
+
+  it("does not interpret arbitrary html as emphasis markup", () => {
+    expect(teacherMessageSegments("<script>alert(1)</script>")).toEqual([
+      { text: "<script>alert(1)</script>", focus: false },
+    ]);
+  });
+});
+
 const personaItems = [{
   id: "persona_active",
   name: "耐心主动教师",
@@ -211,6 +247,60 @@ describe("ActiveTeachingChainView", () => {
       provider: "fake",
       verified: false,
     });
+    localTeacherVoiceMocks.speak.mockReset();
+    localTeacherVoiceMocks.stop.mockReset();
+  });
+
+  it("drives distinct teacher poses from real teaching actions", () => {
+    expect(resolveActiveTeacherPresentationState(true, "explain", {})).toBe("thinking");
+    expect(resolveActiveTeacherPresentationState(false, "daily_briefing", {})).toBe("greeting");
+    expect(resolveActiveTeacherPresentationState(false, "guided_practice", {})).toBe("questioning");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {})).toBe("talking");
+    expect(resolveActiveTeacherPresentationState(false, "remediation_example", {})).toBe("encouraging");
+    expect(resolveActiveTeacherPresentationState(false, "source_conflict", {})).toBe("confused");
+    expect(resolveActiveTeacherPresentationState(false, "advance_route", {})).toBe("praising");
+    expect(resolveActiveTeacherPresentationState(false, "complete_route", {})).toBe("ending");
+    expect(resolveActiveTeacherPresentationState(false, "", {})).toBe("idle");
+  });
+
+  it("uses teaching-answer semantics when the provider action is generic", () => {
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {}, "做得很好，这个判断完全正确。"))
+      .toBe("praising");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {}, "没关系，已经很接近了，我们再试一次。"))
+      .toBe("encouraging");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {}, "现在请你想一想：为什么这里需要先排序？"))
+      .toBe("questioning");
+    expect(resolveActiveTeacherPresentationState(false, "model_general_answer", {}, "例如，我们可以分为三步来理解。"))
+      .toBe("explaining");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {}, "现有资料不足，暂时无法确认这个结论。"))
+      .toBe("confused");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {}, "这是基于当前资料得到的回答。"))
+      .toBe("talking");
+  });
+
+  it("keeps explicit workflow actions ahead of incidental wording", () => {
+    expect(resolveActiveTeacherPresentationState(false, "complete_route", {}, "你能总结一下吗？"))
+      .toBe("ending");
+    expect(resolveActiveTeacherPresentationState(false, "praise", {}, "为什么这个结果成立？"))
+      .toBe("praising");
+  });
+
+  it("passes generic provider answer semantics through to the rendered teacher", async () => {
+    const praisingSnapshot = structuredClone(snapshot);
+    praisingSnapshot.session.state.current_teaching_step = "grounded_answer";
+    praisingSnapshot.session.messages = [{
+      id: "generic-answer-praise",
+      role: "teacher",
+      action: "grounded_answer",
+      content: "做得很好，这个判断完全正确。",
+      citations: [],
+    }];
+    vi.stubGlobal("fetch", snapshotFetch(praisingSnapshot));
+
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    expect(await screen.findByTestId("teacher-companion-portrait"))
+      .toHaveAttribute("data-teacher-state", "praising");
   });
 
   it("shows only the current knowledge-point conversation after a new briefing", async () => {
@@ -246,6 +336,436 @@ describe("ActiveTeachingChainView", () => {
     expect(history).toHaveTextContent("当前知识点只显示这一轮开场");
     expect(history).not.toHaveTextContent("旧知识点开场");
     expect(history).not.toHaveTextContent("这是旧知识点的回答");
+  });
+
+  it("reads a teacher reply on demand and stops it when leaving the lesson", async () => {
+    localTeacherVoiceMocks.speak.mockImplementation(async (_text, options) => {
+      options?.onStart?.();
+      return { ok: true };
+    });
+    vi.stubGlobal("fetch", snapshotFetch());
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    fireEvent.click(await screen.findByTestId("active-continue-lesson"));
+    const speakButton = await screen.findByTestId("active-teacher-speak-message_1");
+    localTeacherVoiceMocks.stop.mockClear();
+    fireEvent.click(speakButton);
+
+    await waitFor(() => {
+      expect(localTeacherVoiceMocks.speak).toHaveBeenCalledWith(
+        "已暂停主路线并保存位置。",
+        expect.objectContaining({
+          replyKind: "teaching.correct",
+          onStart: expect.any(Function),
+          onEnd: expect.any(Function),
+          onError: expect.any(Function),
+        }),
+      );
+      expect(speakButton).toHaveTextContent("停止朗读");
+    });
+
+    fireEvent.click(screen.getByTestId("active-leave-lesson"));
+    await waitFor(() => expect(localTeacherVoiceMocks.stop).toHaveBeenCalled());
+    expect(speakButton).toHaveTextContent("听语音");
+  });
+
+  it("exposes loading voice preparation as a pressed stop control", async () => {
+    let resolveSpeech!: (result: { ok: boolean; reason?: string }) => void;
+    localTeacherVoiceMocks.speak.mockImplementation((_text, options) => new Promise(resolve => {
+      resolveSpeech = resolve;
+      options?.onPreparing?.("starting");
+    }));
+    vi.stubGlobal("fetch", snapshotFetch());
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const speakButton = await screen.findByTestId("active-teacher-speak-message_1");
+    localTeacherVoiceMocks.stop.mockClear();
+    fireEvent.click(speakButton);
+
+    await waitFor(() => {
+      expect(speakButton).toHaveAttribute("aria-label", "停止朗读这条教师回复");
+      expect(speakButton).toHaveAttribute("aria-pressed", "true");
+      expect(speakButton).toHaveTextContent("取消模型启动");
+    });
+
+    fireEvent.click(speakButton);
+    await waitFor(() => {
+      expect(localTeacherVoiceMocks.stop).toHaveBeenCalled();
+      expect(speakButton).toHaveAttribute("aria-label", "朗读这条教师回复");
+      expect(speakButton).toHaveAttribute("aria-pressed", "false");
+    });
+    resolveSpeech({ ok: false, reason: "cancelled" });
+  });
+
+  it("shows a truthful failure and stops voice when the view unmounts", async () => {
+    localTeacherVoiceMocks.speak.mockResolvedValue({
+      ok: false,
+      reason: "GPT-SoVITS 尚未就绪",
+    });
+    vi.stubGlobal("fetch", snapshotFetch());
+    const view = render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const speakButton = await screen.findByTestId("active-teacher-speak-message_1");
+    fireEvent.click(speakButton);
+    expect(await screen.findByTestId("active-teacher-speak-error-message_1"))
+      .toHaveTextContent("教师语音暂不可用：GPT-SoVITS 尚未就绪 请稍后重试。");
+    expect(speakButton).toHaveTextContent("重试朗读");
+
+    localTeacherVoiceMocks.stop.mockClear();
+    view.unmount();
+    expect(localTeacherVoiceMocks.stop).toHaveBeenCalled();
+  });
+
+  it("opens a source-matched official practice resource in a new tab", async () => {
+    const resourceSnapshot = structuredClone(snapshot);
+    (resourceSnapshot.session.state as Record<string, unknown>).practice_resources = [{
+      id: "leetcode-merge",
+      kind: "official_practice",
+      title: "合并两个有序数组 · 力扣官方真题",
+      description: "在官方判题环境完成当前知识点练习",
+      url: "https://leetcode.cn/problems/merge-sorted-array/",
+      host: "leetcode.cn",
+      provider: "力扣",
+      source: "gemini_google_search_grounding",
+      authority: "official",
+      open_mode: "new_tab",
+    }];
+    vi.stubGlobal("fetch", snapshotFetch(resourceSnapshot));
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const resources = await screen.findByTestId("active-practice-resources");
+    expect(resources).toHaveTextContent("去原站完成，再把结果带回来一起分析");
+    const link = screen.getByTestId(
+      "active-practice-resource-leetcode-merge",
+    );
+    expect(link).toHaveAttribute(
+      "href",
+      "https://leetcode.cn/problems/merge-sorted-array/",
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveTextContent("官方原题");
+  });
+
+  it("offers resource discovery inside the current lesson without rebuilding the plan", async () => {
+    useMentorStore.getState().setProvider("openai-compatible");
+    useMentorStore.getState().setProviderSession({
+      providerSessionId: "provider_session_1",
+      provider: "openai-compatible",
+      verified: true,
+    });
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const value = String(url);
+      if (value.endsWith("/resource-discovery/start") && init?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            status: "running",
+            run_id: "resource_run_1",
+            point_count: 1,
+            searched_point_count: 0,
+            resource_count: 0,
+            warnings: [],
+          }),
+        });
+      }
+      if (value.includes("/resource-discovery/status")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            status: "completed",
+            run_id: "resource_run_1",
+            point_count: 1,
+            searched_point_count: 1,
+            resource_count: 1,
+            warnings: [],
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => value.endsWith("/teacher-personas")
+          ? { items: personaItems }
+          : snapshot,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const action = await screen.findByTestId("active-classroom-resource-action");
+    const button = screen.getByRole("button", { name: "为本任务寻找通用链接" });
+    expect(action).toBeInTheDocument();
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([url, init]) => String(url).endsWith("/resource-discovery/start")
+          && init?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String(call![1].body))).toMatchObject({
+        provider_session_id: "provider_session_1",
+      });
+    });
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/resource-discovery/status"))).toBe(true),
+    );
+  });
+
+  it("uploads a screenshot and sends its session-scoped attachment id", async () => {
+    const attachment = {
+      id: "attachment_1",
+      original_filename: "leetcode-result.png",
+      media_type: "image/png",
+      size_bytes: 12,
+      width: 32,
+      height: 24,
+      status: "ready",
+      analysis_mode: "pending",
+      analysis_text: "",
+      file_url: "/api/active-teaching/attachments/attachment_1/file",
+      created_at: "2026-07-28T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockImplementation(
+      (url: string, init?: RequestInit) => {
+        const value = String(url);
+        let payload: any = snapshot;
+        if (value.endsWith("/teacher-personas")) {
+          payload = { items: personaItems };
+        } else if (
+          value.endsWith("/sessions/session_1/attachments")
+          && init?.method === "POST"
+        ) {
+          payload = attachment;
+        } else if (
+          value.endsWith("/sessions/session_1/advance")
+          && init?.method === "POST"
+        ) {
+          payload = snapshot.session;
+        }
+        return Promise.resolve({ ok: true, json: async () => payload });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const screenshot = new File(
+      [new Uint8Array([137, 80, 78, 71])],
+      "leetcode-result.png",
+      { type: "image/png" },
+    );
+    fireEvent.change(await screen.findByTestId("active-teacher-attachment"), {
+      target: { files: [screenshot] },
+    });
+    expect(await screen.findByTestId("active-attachment-tray")).toHaveTextContent(
+      "leetcode-result.png",
+    );
+    fireEvent.click(screen.getByTestId("active-send-teacher"));
+
+    await waitFor(() => {
+      const uploadCall = fetchMock.mock.calls.find(
+        ([url]) => String(url).endsWith("/sessions/session_1/attachments"),
+      );
+      expect(uploadCall?.[1]?.body).toBeInstanceOf(FormData);
+      const advanceCall = fetchMock.mock.calls.find(
+        ([url]) => String(url).endsWith("/sessions/session_1/advance"),
+      );
+      expect(JSON.parse(String(advanceCall?.[1]?.body))).toMatchObject({
+        message: "",
+        attachment_ids: ["attachment_1"],
+      });
+    });
+  });
+
+  it("accepts screenshots from clipboard items and files dropped anywhere in the dialogue", async () => {
+    let uploadedCount = 0;
+    const fetchMock = vi.fn().mockImplementation(
+      (url: string, init?: RequestInit) => {
+        const value = String(url);
+        let payload: any = snapshot;
+        if (value.endsWith("/teacher-personas")) {
+          payload = { items: personaItems };
+        } else if (
+          value.endsWith("/sessions/session_1/attachments")
+          && init?.method === "POST"
+        ) {
+          uploadedCount += 1;
+          const uploadedFile = (init.body as FormData).get("file") as File;
+          payload = {
+            id: `attachment_${uploadedCount}`,
+            original_filename: uploadedFile.name,
+            media_type: uploadedFile.type,
+            kind: "image",
+            previewable: true,
+            size_bytes: uploadedFile.size,
+            width: 32,
+            height: 24,
+            status: "ready",
+            analysis_mode: "pending",
+            analysis_text: "",
+            file_url: `/api/active-teaching/attachments/attachment_${uploadedCount}/file`,
+            created_at: "2026-07-28T00:00:00Z",
+          };
+        }
+        return Promise.resolve({ ok: true, json: async () => payload });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const pastedScreenshot = new File(
+      [new Uint8Array([137, 80, 78, 71])],
+      "clipboard-shot.png",
+      { type: "image/png" },
+    );
+    const input = await screen.findByTestId("active-teacher-input");
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [],
+        items: [{
+          kind: "file",
+          type: "image/png",
+          getAsFile: () => pastedScreenshot,
+        }],
+        types: ["Files"],
+      },
+    });
+    expect(await screen.findByTestId("active-attachment-tray")).toHaveTextContent(
+      "clipboard-shot.png",
+    );
+
+    const droppedScreenshot = new File(
+      [new Uint8Array([137, 80, 78, 71, 13])],
+      "dropped-shot.png",
+      { type: "image/png" },
+    );
+    fireEvent.drop(screen.getByTestId("active-classroom-dialogue"), {
+      dataTransfer: {
+        files: [droppedScreenshot],
+        items: [],
+        types: ["Files"],
+        dropEffect: "none",
+      },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("active-attachment-tray")).toHaveTextContent(
+        "dropped-shot.png",
+      );
+    });
+    expect(uploadedCount).toBe(2);
+  });
+
+  it("records once, stops once, and inserts the local transcript without sending", async () => {
+    class FakeMediaRecorder {
+      static isTypeSupported() {
+        return true;
+      }
+
+      state: RecordingState = "inactive";
+      mimeType = "audio/webm;codecs=opus";
+      private listeners = new Map<string, Array<(event: any) => void>>();
+
+      constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {}
+
+      addEventListener(type: string, listener: (event: any) => void) {
+        this.listeners.set(type, [...(this.listeners.get(type) || []), listener]);
+      }
+
+      start() {
+        this.state = "recording";
+      }
+
+      requestData() {}
+
+      stop() {
+        this.state = "inactive";
+        for (const listener of this.listeners.get("dataavailable") || []) {
+          listener({ data: new Blob(["voice"], { type: this.mimeType }) });
+        }
+        for (const listener of this.listeners.get("stop") || []) listener({});
+      }
+    }
+
+    const stopTrack = vi.fn();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    vi.stubGlobal("navigator", {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: stopTrack }],
+        }),
+      },
+    });
+    let resolveTranscript!: (value: any) => void;
+    const transcriptResponse = new Promise<any>((resolve) => {
+      resolveTranscript = resolve;
+    });
+    const fetchMock = vi.fn().mockImplementation(
+      (url: string, init?: RequestInit) => {
+        const value = String(url);
+        let payload: any = snapshot;
+        if (value.endsWith("/teacher-personas")) {
+          payload = { items: personaItems };
+        } else if (value.endsWith("/voice/warm")) {
+          payload = { available: true, ready: true, status: "ready" };
+        } else if (
+          value.includes("/sessions/session_1/voice/transcribe")
+          && init?.method === "POST"
+        ) {
+          return transcriptResponse;
+        }
+        return Promise.resolve({ ok: true, json: async () => payload });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const voiceButton = await screen.findByTestId("active-teacher-voice");
+    expect(voiceButton).toHaveTextContent("语音输入");
+    expect(voiceButton).toHaveAttribute(
+      "aria-label",
+      "开始语音输入（录音转文字）",
+    );
+    fireEvent.click(voiceButton);
+    expect(await screen.findByText(/■ 0s/)).toBeInTheDocument();
+    expect(voiceButton).toHaveAttribute(
+      "aria-label",
+      "停止语音输入并转成文字",
+    );
+    fireEvent.click(voiceButton);
+    await waitFor(() => {
+      expect(voiceButton).toHaveAttribute("title", "正在将录音转成文字");
+      expect(voiceButton).toHaveAttribute(
+        "aria-label",
+        "正在将语音输入转成文字",
+      );
+    });
+    await act(async () => {
+      resolveTranscript({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          text: "我想先看一个更简单的例子",
+          engine: "test-sensevoice",
+        }),
+      });
+      await transcriptResponse;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-teacher-input")).toHaveValue(
+        "我想先看一个更简单的例子",
+      );
+      expect(screen.getByTestId("active-teacher-voice-status")).toHaveTextContent(
+        "已转成文字",
+      );
+    });
+    expect(stopTrack).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some(
+      ([url]) => String(url).includes("/voice/transcribe"),
+    )).toBe(true);
+    expect(fetchMock.mock.calls.some(
+      ([url]) => String(url).includes("/sessions/session_1/advance"),
+    )).toBe(false);
   });
 
   it("offers to re-answer an old evidence-gated reply with the layered policy", async () => {
@@ -465,6 +985,22 @@ describe("ActiveTeachingChainView", () => {
           overdue_task_count: 1,
           overdue_task_minutes: 15,
           oldest_overdue_date: "2026-07-26",
+          overdue_day_count: 1,
+          overdue_days: [{
+            date: "2026-07-26",
+            task_count: 1,
+            remaining_task_minutes: 15,
+            tasks: [{
+              ...firstTodayTask,
+              id: "task_overdue",
+              title: "昨日基础 · 理解",
+              knowledge_point_id: "kp_overdue",
+              knowledge_point_name: "昨日基础",
+              day_date: "2026-07-26",
+              debt_date: "2026-07-26",
+              estimated_task_minutes: 15,
+            }],
+          }],
           overdue_tasks: [{
             ...firstTodayTask,
             id: "task_overdue",
@@ -614,6 +1150,41 @@ describe("ActiveTeachingChainView", () => {
     );
   });
 
+  it("lets the learner complete the current knowledge point without extra evidence", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+    const forceComplete = await screen.findByTestId("active-force-complete");
+    fireEvent.change(screen.getByTestId("active-teacher-input"), {
+      target: { value: "这段文字只留在输入框，不应作为完成消息发送。" },
+    });
+    expect(forceComplete).toBeEnabled();
+    fireEvent.click(forceComplete);
+    await waitFor(() => {
+      const forceCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).endsWith("/sessions/session_1/advance")
+          && init?.method === "POST"
+          && String(init?.body).includes('"force_complete":true'),
+      );
+      expect(forceCall).toBeTruthy();
+      expect(JSON.parse(String(forceCall?.[1]?.body))).toEqual({
+        force_complete: true,
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/active-teaching/sessions/session_1/advance",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"force_complete":true'),
+        }),
+      );
+    });
+    expect(screen.queryByTestId("active-pending-user-message")).not.toBeInTheDocument();
+    expect(screen.getByTestId("active-teacher-input")).toHaveValue(
+      "这段文字只留在输入框，不应作为完成消息发送。",
+    );
+  });
+
   it("shows the teacher and the learner message immediately while a reply is pending", async () => {
     let resolveAdvance: ((value: any) => void) | undefined;
     const advanceResponse = new Promise((resolve) => {
@@ -758,6 +1329,7 @@ describe("ActiveTeachingChainView", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     await screen.findByTestId("active-save-receipt");
+    expect(screen.getByTestId("active-discover-external-resources")).toBeDisabled();
     expect(screen.queryByTestId("active-daily-minutes")).not.toBeInTheDocument();
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("系统按总任务量平均分配");
     expect(screen.getByTestId("active-system-allocation")).toHaveTextContent("完整复习 2 轮");
@@ -984,6 +1556,10 @@ describe("ActiveTeachingChainView", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     const input = await screen.findByTestId("active-material-file");
+    const resourceToggle = screen.getByTestId("active-discover-external-resources");
+    expect(resourceToggle).toBeChecked();
+    fireEvent.click(resourceToggle);
+    expect(resourceToggle).not.toBeChecked();
     fireEvent.change(input, {
       target: {
         files: [new File(["# 任意主题\n正文"], "arbitrary.md", { type: "text/markdown" })],
@@ -999,6 +1575,7 @@ describe("ActiveTeachingChainView", () => {
       expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["uploaded_generic_1"]);
+      expect(JSON.parse(receiptCall![1].body).discover_external_resources).toBe(false);
     });
   });
 
@@ -1138,6 +1715,14 @@ describe("ActiveTeachingChainView", () => {
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
     fireEvent.click(await screen.findByTestId("active-task-archive-generic-active"));
+    const dialog = await screen.findByRole("dialog", { name: /归档“可整理的学习任务”/ });
+    expect(dialog).toHaveTextContent("不会删除");
+    expect(dialog).toHaveTextContent("可恢复");
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/active-teaching/workspaces/generic-active",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    fireEvent.click(screen.getByTestId("active-confirm-archive"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/active-teaching/workspaces/generic-active",

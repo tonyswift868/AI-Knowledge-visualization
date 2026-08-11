@@ -184,3 +184,177 @@
 .expedition-event-strip span{padding:3px 6px;background:#1b2424;color:#718682;font-size:8px}
 .expedition-event-strip span.current{background:#bda467;color:#17130c}
 @media (max-width:760px){.expedition-replay{padding:11px}.expedition-replay-stage{margin-inline:-3px}.expedition-replay-head h3{font-size:17px}.expedition-replay-controls b{width:100%;margin-left:0}}
+
+/* Warm expedition integration. Rewards may stay playful, but the page shell
+   belongs to the same calm study product as plans and the daily classroom. */
+.expedition-page{
+  --exp-accent:#4f836b;
+  --exp-accent-strong:#c47e52;
+  --exp-gold:#b8893d;
+  --exp-surface:#fffaf2;
+  --exp-surface-raised:#f4ecdf;
+  --exp-line:#d8cbb8;
+  --exp-muted:#766f66;
+  --exp-text:#303a34;
+  color:var(--exp-text);
+}
+.expedition-page-head h1,
+.expedition-panel-title h3,
+.expedition-banner-copy h2,
+.expedition-shared-training-level strong{color:#2f3933}
+.expedition-page-head p,
+.expedition-panel-title>span,
+.expedition-banner-copy p{color:var(--exp-muted)}
+.expedition-kicker{color:#4f836b;text-shadow:none}
+.expedition-art-status,
+.expedition-resource-bar>div,
+.expedition-tabs,
+.expedition-panel{
+  border-color:var(--exp-line);
+  background:linear-gradient(145deg,#fffdf8,#f5eee3);
+  box-shadow:0 12px 30px #705e4619;
+}
+.expedition-art-status.preview{border-color:#d2b882;background:linear-gradient(100deg,#fff8e8,#f5ead8)}
+.expedition-art-status b,
+.expedition-resource-bar b{color:#343b36}
+.expedition-art-status small,
+.expedition-resource-bar span{color:#7b746a}
+.expedition-tabs{background:#f5eee4}
+.expedition-tab{color:#6f6d66}
+.expedition-tab:hover,.expedition-tab.active{
+  border-color:#7fae93;
+  background:linear-gradient(135deg,#e5f1e7,#f3eadf);
+  color:#2f6b52;
+  box-shadow:0 6px 16px #4f836b17;
+}
+.expedition-icon-button{
+  border-color:#b7cbbd;
+  background:#eff7f0;
+  color:#41745d;
+}
+.expedition-icon-button:hover{border-color:#70a187;background:#e3f0e6}
+.expedition-primary{
+  border-color:#5f9c7d;
+  background:linear-gradient(135deg,#72b795,#97c9a8);
+  color:#173126;
+  box-shadow:0 8px 18px #4f836b22;
+}
+.expedition-primary:hover{background:linear-gradient(135deg,#86c6a5,#afd7b9)}
+.expedition-secondary,.expedition-small-button{
+  border-color:#b5c9ba;
+  background:#f4faf4;
+  color:#3f6f59;
+}
+.expedition-secondary:hover,.expedition-small-button:hover{border-color:#77a98d;background:#e7f2e9;color:#285e49}
+.expedition-hero-banner{
+  border-color:#c9c7ad;
+  background:
+    radial-gradient(circle at 86% 8%,#d9eadc 0,#eaf2e8 28%,transparent 52%),
+    linear-gradient(125deg,#fffaf1,#f3e7d8 70%);
+  box-shadow:0 22px 52px #75614627;
+}
+.expedition-cast-orbit{border-color:#72a68b57;box-shadow:0 0 0 25px #72a68b0b,0 0 50px #c67d4e20}
+.expedition-cast-card{color:#38443d}
+.expedition-cast-card small{color:#766f66}
+.expedition-hero-portrait{
+  border-color:#9db5a5;
+  background:linear-gradient(155deg,#dcece0,#f2e7db);
+  box-shadow:0 8px 18px #6e5d482a;
+}
+.expedition-hero-portrait img{background:linear-gradient(155deg,#e4efe6,#f5eadc)}
+.expedition-slot-row,
+.expedition-hero-card,
+.expedition-skill-grid article,
+.expedition-formation-slot,
+.expedition-roster-pool button,
+.expedition-lineup-list button,
+.expedition-inventory-list article,
+.expedition-pull-results>div,
+.expedition-rule-grid span{
+  border-color:#d9cdbb;
+  background:linear-gradient(145deg,#fffdf8,#f3ece1);
+  color:#3e4842;
+}
+.expedition-hero-card:hover,
+.expedition-hero-card.selected{
+  border-color:#76a98c;
+  background:linear-gradient(145deg,#e7f2e9,#f5ebdf);
+  box-shadow:0 8px 20px #6a594323;
+}
+.expedition-hero-card small,
+.expedition-slot-row small,
+.expedition-skill-grid p,
+.expedition-inventory-list p{color:#777168}
+.expedition-hero-card i,
+.expedition-ticket-wallet b{color:#a8752e}
+.expedition-detail-head,
+.expedition-hero-detail .expedition-detail-head{
+  border-color:#d1c5b5;
+  background:
+    radial-gradient(circle at 14% 20%,#d8e9dc 0,#edf3e8 30%,transparent 68%),
+    linear-gradient(115deg,#fffaf1,#f0e5d8);
+  box-shadow:0 14px 34px #705e461f;
+}
+.expedition-detail-head h2,
+.expedition-hero-detail .expedition-detail-head h2{color:#303a34;text-shadow:none}
+.expedition-detail-head p,
+.expedition-hero-detail .expedition-detail-head p{color:#736d65}
+.expedition-skill-grid span,
+.expedition-slot-index,
+.expedition-milestone b,
+.expedition-lineup-list>b,
+.expedition-formation-slot>span{color:#4f836b}
+.expedition-weakness{
+  border-left-color:#c47e52;
+  background:linear-gradient(100deg,#f7eadc,#eef3e9);
+}
+.expedition-weakness b{color:#4a4943}
+.expedition-weakness span{color:#746d64}
+.expedition-shared-training{
+  border-color:#d3c5b1;
+  background:linear-gradient(135deg,#fffaf1,#e9f1e8);
+  box-shadow:0 12px 30px #705e461c;
+}
+.expedition-shared-training-level span{color:#758276}
+.expedition-shared-training-level small,.expedition-formation-help{color:#756f66}
+.expedition-ticket-wallet span{border-color:#cdbda6;color:#695f52;background:#fff9ef}
+.expedition-formation-board.grid-3x3{
+  border-color:#d2c5b3;
+  background:radial-gradient(circle at 50% 44%,#e3eee4 0,#f4ecdf 52%,#fffaf3 100%);
+  box-shadow:inset 0 0 0 1px #ffffff90,0 18px 42px #705e461f;
+}
+.expedition-formation-board.grid-3x3 .expedition-formation-slot,
+.formation-grid .expedition-roster-pool button{
+  border-color:#cec4b4;
+  background:linear-gradient(145deg,#fffdf8,#eee7dc);
+}
+.expedition-formation-board.grid-3x3 .expedition-formation-slot.filled{
+  border-color:#76a98c;
+  background:linear-gradient(145deg,#e4f0e6,#f4e9dc);
+  box-shadow:0 8px 18px #705e461f;
+}
+.expedition-formation-board.grid-3x3 .expedition-formation-slot.empty{background:linear-gradient(145deg,#faf5ec,#eee7dc)}
+.expedition-formation-board.grid-3x3 .expedition-formation-slot.filled b{color:#344038}
+.expedition-formation-board.grid-3x3 .expedition-formation-slot small{color:#756f66}
+.expedition-gacha-card{
+  border-color:#d2c1a8;
+  background:linear-gradient(145deg,#fff7e8,#f3e8d6);
+}
+.expedition-gacha-art{background:radial-gradient(circle,#d9eadc,#f5eadc 68%);color:#4f836b}
+.expedition-gacha-card p,.expedition-gacha-card small{color:#786f64}
+.expedition-stage-hero{background:radial-gradient(circle at 84% 35%,#d9eadc,#fffaf2 55%)}
+.expedition-stage-hero p,.expedition-stage-meta{color:#756f66}
+.expedition-boss-card{border-color:#d0ad75;background:#fff5df;color:#94652e}
+.expedition-replay{
+  border-color:#cabda9;
+  background:linear-gradient(145deg,#fbf5eb,#eee7dc);
+  box-shadow:0 18px 42px #705e4627;
+}
+.expedition-replay-head .expedition-kicker{color:#8d7443}
+.expedition-replay-head h3{color:#403c35}
+.expedition-speed button{border-color:#c8bdac;background:#fffaf1;color:#6d6b64}
+.expedition-speed button.active{border-color:#4f836b;background:#76a98c;color:#14271e}
+.expedition-replay-stage{border-color:#9f8d73;background:#121a1b;box-shadow:0 18px 42px #5a49325c}
+.expedition-replay-controls .expedition-small-button{border-color:#b8c9bc;background:#f5faf5;color:#416d59}
+.expedition-event-strip span{background:#e6e2d8;color:#65736a}
+.expedition-event-strip span.current{background:#78a98e;color:#163126}

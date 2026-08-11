@@ -46,16 +46,20 @@ export class TeacherPresentationController {
   setState(state: TeacherPresentationState): void {
     this.semanticState = state
     if (state === "hidden") this.renderer?.pause()
-    else this.renderer?.playSemanticState(state)
+    else {
+      this.renderer?.resume()
+      this.renderer?.playSemanticState(state)
+    }
     this.publish({ semanticState: state, status: state === "hidden" ? "hidden" : this.snapshot.status })
   }
   playAnimation(name: string, loop = false): void { this.renderer?.playAnimation(name, loop) }
   setScale(value: number): void { this.renderer?.setScale(value) }
+  setOffset(x: number, y: number): void { this.renderer?.setOffset(x, y) }
   setMirror(value: boolean): void { this.renderer?.setMirror(value) }
   setSkin(value: string): void { this.renderer?.setSkin(value) }
   pause(): void { this.renderer?.pause(); this.publish({ status: "ready" }) }
   resume(): void { this.renderer?.resume(); this.publish({ status: "ready" }) }
-  reset(): void { this.renderer?.setScale(1); this.renderer?.setMirror(false); this.setState("idle") }
+  reset(): void { this.renderer?.setScale(1); this.renderer?.setOffset(0, 0); this.renderer?.setMirror(false); this.setState("idle") }
   getSnapshot(): TeacherRendererSnapshot { return this.snapshot }
   dispose(): void { this.mounted = false; this.renderer?.unload(); this.renderer = null; this.manifest = null }
 

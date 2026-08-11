@@ -33,6 +33,8 @@ const STORAGE_KEY = 'mentorflow_provider_state'
 const API_KEY_STORAGE_PREFIX = 'mentorflow_api_key_v1:'
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash'
 const defaultState: PersistedProvider = { mode: 'real', provider: 'openai-compatible', baseUrl: DEEPSEEK_BASE_URL, model: DEEPSEEK_DEFAULT_MODEL, providerSessionId: null, verified: false, expiresAt: null, latencyMs: null, lastTestedAt: null }
 
 function apiKeyStorageKey(provider: ProviderId) {
@@ -48,6 +50,10 @@ function readPersisted(): PersistedProvider {
     if (isDeepSeek) {
       value.baseUrl = DEEPSEEK_BASE_URL
       if (!value.model || value.model === 'fake' || value.model === 'deepseek-chat' || value.model === 'deepseek-reasoner') value.model = DEEPSEEK_DEFAULT_MODEL
+    }
+    if (value.provider === 'gemini') {
+      value.baseUrl = value.baseUrl || GEMINI_BASE_URL
+      value.model = value.model || GEMINI_DEFAULT_MODEL
     }
     return value
   } catch {
@@ -82,7 +88,10 @@ export const useMentorStore = create<ProviderStore>((set, get) => ({
     const deepSeekDefaults = provider === 'openai-compatible' && !sameProvider
       ? { baseUrl: DEEPSEEK_BASE_URL, model: DEEPSEEK_DEFAULT_MODEL }
       : {}
-    set({ ...deepSeekDefaults, provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: readApiKey(provider), verified: false, providerSessionId: sameProvider ? get().providerSessionId : null, lastError: '' })
+    const geminiDefaults = provider === 'gemini' && !sameProvider
+      ? { baseUrl: GEMINI_BASE_URL, model: GEMINI_DEFAULT_MODEL }
+      : {}
+    set({ ...deepSeekDefaults, ...geminiDefaults, provider, mode: provider === 'fake' ? 'demo' : 'real', apiKey: readApiKey(provider), verified: false, providerSessionId: sameProvider ? get().providerSessionId : null, lastError: '' })
     persist(get())
   },
   setBaseUrl: (baseUrl) => { set({ baseUrl, verified: false, lastError: '' }); persist(get()) },

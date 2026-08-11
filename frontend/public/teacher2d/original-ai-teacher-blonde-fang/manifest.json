@@ -1,10 +1,10 @@
 {
   "id": "mentorflow-blonde-fang-v9",
   "displayName": "艾莉丝 V9 双形态",
-  "renderer": "image2d",
+  "renderer": "layered2d",
   "prototypeOnly": false,
   "license": "Project-owned generated artwork",
-  "skeleton": "dom-css-v1",
+  "skeleton": "/teacher2d/original-ai-teacher-blonde-fang/layered-rig.json",
   "textures": [
     "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-teaching-heart-key.png",
     "/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-swimsuit-heart-key.png"

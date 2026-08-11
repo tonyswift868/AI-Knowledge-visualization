@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 from typing import Any
 
 import httpx
@@ -23,6 +24,62 @@ class ProviderError(Exception):
         self.details = details or {}
 
 
+def parse_json_object(raw: str) -> dict[str, Any] | None:
+    """Extract a JSON object from a model response without accepting prose as JSON.
+
+    Models sometimes wrap an otherwise valid object in a Markdown fence or add
+    a short lead-in/trailing sentence.  ``JSONDecoder.raw_decode`` lets us
+    recover the first complete object while still rejecting arrays and plain
+    text.  Callers that need a strict structured response can treat ``None``
+    as a protocol error; conversational callers may safely fall back to the
+    original text.
+    """
+
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def parse_conversational_payload(
+    raw: str,
+    *,
+    text_field: str,
+    fallback: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Return a usable conversational payload even when a model emits prose.
+
+    Structured planning and assessment callers should continue to use
+    :meth:`Provider.json`.  Teacher/chat expression callers may use this
+    helper because ordinary prose is a valid user-facing answer even when the
+    model ignored the requested JSON envelope.
+    """
+
+    parsed = parse_json_object(raw)
+    if parsed is not None:
+        return parsed, False
+    text = str(raw or "").strip()
+    if not text:
+        raise ProviderError(
+            "PROVIDER_EMPTY_RESPONSE",
+            "Provider 返回了空的教师回复",
+            502,
+        )
+    payload = dict(fallback or {})
+    payload[text_field] = text
+    return payload, True
+
+
 class Provider:
     provider_name = "unknown"
 
@@ -32,15 +89,44 @@ class Provider:
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         raise NotImplementedError
 
+    async def vision(
+        self,
+        prompt: str,
+        images: list[dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> str:
+        raise ProviderError(
+            "PROVIDER_VISION_UNSUPPORTED",
+            "当前 Provider 不支持图片理解",
+            422,
+            {"provider": self.provider_name},
+        )
+
+    async def grounded_web_search(
+        self,
+        prompt: str,
+        temperature: float = 0.1,
+    ) -> dict[str, Any]:
+        """Return a web-grounded answer together with machine-verifiable sources.
+
+        A normal language-model completion is not web search. Providers must
+        override this method only when their API returns source metadata for an
+        actual search call; callers can then reject uncited recommendations.
+        """
+        raise ProviderError(
+            "PROVIDER_WEB_SEARCH_UNSUPPORTED",
+            "当前 Provider 不支持带来源引用的联网检索",
+            422,
+            {"provider": self.provider_name},
+        )
+
     async def json(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> dict[str, Any]:
         raw = await self.text(messages, temperature)
-        try:
-            result = json.loads(raw)
-            if not isinstance(result, dict):
-                raise ValueError("Provider JSON must be an object")
+        result = parse_json_object(raw)
+        if result is not None:
             return result
-        except Exception as exc:
-            raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502) from exc
+        cause = ValueError("Provider JSON must be an object")
+        raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502) from cause
 
 
 class FakeProvider(Provider):
@@ -51,6 +137,14 @@ class FakeProvider(Provider):
 
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         return "Fake Provider：请依据资料证据完成一个可核验的小步骤。"
+
+    async def vision(
+        self,
+        prompt: str,
+        images: list[dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> str:
+        return "Fake Provider 未读取图片内容。"
 
     async def json(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> dict[str, Any]:
         text = "\n".join(str(x.get("content", "")) for x in messages)
@@ -114,6 +208,29 @@ class OpenAICompatibleProvider(HTTPProvider):
         except Exception as exc:
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "OpenAI-compatible 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
 
+    async def vision(
+        self,
+        prompt: str,
+        images: list[dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> str:
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for image in images:
+            encoded = base64.b64encode(image["data"]).decode("ascii")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{image['media_type']};base64,{encoded}",
+                        "detail": "high",
+                    },
+                }
+            )
+        return await self.text(
+            [{"role": "user", "content": content}],
+            temperature=temperature,
+        )
+
 
 class GeminiProvider(HTTPProvider):
     provider_name = "gemini"
@@ -130,6 +247,124 @@ class GeminiProvider(HTTPProvider):
         except Exception as exc:
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "Gemini 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
 
+    async def vision(
+        self,
+        prompt: str,
+        images: list[dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> str:
+        parts: list[dict[str, Any]] = [{"text": prompt}]
+        for image in images:
+            parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": image["media_type"],
+                        "data": base64.b64encode(image["data"]).decode("ascii"),
+                    }
+                }
+            )
+        response = await self.request(
+            "POST",
+            f"{self.base_url}/models/{self.model}:generateContent",
+            headers={"x-goog-api-key": self.key, "content-type": "application/json"},
+            json={
+                "contents": [{"parts": parts}],
+                "generationConfig": {"temperature": temperature},
+            },
+        )
+        if response.status_code >= 400:
+            raise self.response_error(response, self.provider_name)
+        try:
+            payload = response.json()
+            self.last_model = payload.get("modelVersion") or self.model
+            return str(payload["candidates"][0]["content"]["parts"][0]["text"])
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_SCHEMA_ERROR",
+                "Gemini 图片理解返回结构不兼容",
+                502,
+                {"provider": self.provider_name, "model": self.model},
+            ) from exc
+
+    async def grounded_web_search(
+        self,
+        prompt: str,
+        temperature: float = 0.1,
+    ) -> dict[str, Any]:
+        """Use Gemini's native Google Search grounding, not model recall."""
+        response = await self.request(
+            "POST",
+            f"{self.base_url}/models/{self.model}:generateContent",
+            headers={
+                "x-goog-api-key": self.key,
+                "content-type": "application/json",
+            },
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {"temperature": temperature},
+            },
+        )
+        if response.status_code >= 400:
+            raise self.response_error(response, self.provider_name)
+        try:
+            payload = response.json()
+            candidate = payload["candidates"][0]
+            self.last_model = payload.get("modelVersion") or self.model
+            text = "".join(
+                str(part.get("text") or "")
+                for part in candidate.get("content", {}).get("parts", [])
+            ).strip()
+            metadata = candidate.get("groundingMetadata") or {}
+            sources: list[dict[str, Any]] = []
+            for index, chunk in enumerate(metadata.get("groundingChunks") or []):
+                web = chunk.get("web") if isinstance(chunk, dict) else None
+                if not isinstance(web, dict) or not web.get("uri"):
+                    continue
+                sources.append(
+                    {
+                        "index": index,
+                        "url": str(web["uri"]),
+                        "title": str(web.get("title") or ""),
+                    }
+                )
+            supports: list[dict[str, Any]] = []
+            for support in metadata.get("groundingSupports") or []:
+                segment = support.get("segment") if isinstance(support, dict) else None
+                if not isinstance(segment, dict):
+                    continue
+                supports.append(
+                    {
+                        "start_index": int(segment.get("startIndex") or 0),
+                        "end_index": int(segment.get("endIndex") or 0),
+                        "text": str(segment.get("text") or ""),
+                        "source_indices": [
+                            int(value)
+                            for value in support.get("groundingChunkIndices") or []
+                        ],
+                    }
+                )
+            return {
+                "text": text,
+                "sources": sources,
+                "supports": supports,
+                "queries": [
+                    str(value)
+                    for value in metadata.get("webSearchQueries") or []
+                    if str(value).strip()
+                ],
+                "provider": self.provider_name,
+                "model": self.last_model or self.model,
+                "search_grounded": bool(sources),
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProviderError(
+                "PROVIDER_SEARCH_SCHEMA_ERROR",
+                "Gemini 联网检索返回结构不兼容",
+                502,
+                {"provider": self.provider_name, "model": self.model},
+            ) from exc
+
 
 class AnthropicProvider(HTTPProvider):
     provider_name = "anthropic"
@@ -144,6 +379,54 @@ class AnthropicProvider(HTTPProvider):
             return str(payload["content"][0]["text"])
         except Exception as exc:
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "Anthropic 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
+
+    async def vision(
+        self,
+        prompt: str,
+        images: list[dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> str:
+        content: list[dict[str, Any]] = []
+        for image in images:
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image["media_type"],
+                        "data": base64.b64encode(image["data"]).decode("ascii"),
+                    },
+                }
+            )
+        content.append({"type": "text", "text": prompt})
+        response = await self.request(
+            "POST",
+            self.base_url + "/messages",
+            headers={
+                "x-api-key": self.key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "max_tokens": 1200,
+                "messages": [{"role": "user", "content": content}],
+                "temperature": temperature,
+            },
+        )
+        if response.status_code >= 400:
+            raise self.response_error(response, self.provider_name)
+        try:
+            payload = response.json()
+            self.last_model = payload.get("model") or self.model
+            return str(payload["content"][0]["text"])
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_SCHEMA_ERROR",
+                "Anthropic 图片理解返回结构不兼容",
+                502,
+                {"provider": self.provider_name, "model": self.model},
+            ) from exc
 
 
 def get_provider(config: dict[str, Any] | None):
