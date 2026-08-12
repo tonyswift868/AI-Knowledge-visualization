@@ -15,7 +15,7 @@ import re
 import sqlite3
 import stat
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Iterable
 
 from .koikatsu_paths import KKS_RUNTIME_ROOT
 
@@ -408,3 +408,63 @@ def get_indexed_card(card_id: str) -> dict[str, Any]:
     item = _indexed_card_row(card_id)
     _resolve_snapshot_item(item)
     return item
+
+
+def lookup_cards(
+    card_ids: Iterable[str],
+    *,
+    index_path: Path = CARD_INDEX_PATH,
+) -> dict[str, dict[str, Any]]:
+    """Perform a bounded batch lookup for the cache-only prewarm worker.
+
+    This compatibility boundary reads only the generated SQLite snapshot. It
+    never walks the native card tree or opens card PNG payloads.
+    """
+
+    values: list[str] = []
+    for raw in card_ids:
+        token = str(raw or "").strip().casefold()
+        if _CARD_ID_RE.fullmatch(token) and token not in values:
+            values.append(token)
+        if len(values) >= 1000:
+            break
+    resolved_index = Path(index_path).expanduser().resolve()
+    if not values or not resolved_index.is_file():
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(
+            f"{resolved_index.as_uri()}?mode=ro&immutable=1",
+            uri=True,
+            timeout=1.0,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        metadata = connection.execute(
+            "SELECT schema_version, status FROM metadata WHERE singleton = 1"
+        ).fetchone()
+        if (
+            metadata is None
+            or str(metadata["schema_version"] or "") != CARD_INDEX_SCHEMA_VERSION
+            or str(metadata["status"] or "") not in {"ready", "partial"}
+        ):
+            return {}
+        for start in range(0, len(values), 900):
+            chunk = values[start : start + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = connection.execute(
+                "SELECT card_id, relative_path, folder, filename, mtime_ns, size "
+                f"FROM cards WHERE card_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            for row in rows:
+                item = _snapshot_row(row)
+                if item is not None:
+                    result[item["card_id"]] = item
+    except (OSError, sqlite3.Error):
+        return {}
+    finally:
+        if connection is not None:
+            connection.close()
+    return result

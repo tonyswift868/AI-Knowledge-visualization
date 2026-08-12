@@ -13,11 +13,15 @@ from alembic import command
 from alembic.config import Config
 
 from app import db, expedition_service, learning_run, orm, provider_service
+from app.database_convergence import audit_database_convergence, compatibility_write
 from app.database_recovery import (
     RecoveryError,
+    backup_database_pair,
     backup_sqlite,
     inspect_sqlite,
+    restore_database_pair,
     restore_sqlite,
+    verify_database_pair_bundle,
 )
 from app.orm import LearningRunORM, WorkspaceORM
 from app.security_redaction import REDACTED, redact, redact_text
@@ -29,6 +33,47 @@ def _alembic_config(database: Path) -> Config:
     config.set_main_option("script_location", str(backend / "alembic"))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{database.as_posix()}")
     return config
+
+
+def _database_pair(tmp_path: Path, *, with_data: bool = False) -> tuple[Path, Path]:
+    legacy = tmp_path / "app.db"
+    orm_path = tmp_path / "mentorflow_v2.db"
+    previous_db, previous_data = db.DB_PATH, db.DATA_DIR
+    try:
+        db.DB_PATH, db.DATA_DIR = legacy, tmp_path
+        db.init_db()
+    finally:
+        db.DB_PATH, db.DATA_DIR = previous_db, previous_data
+    command.upgrade(_alembic_config(orm_path), "head")
+    if with_data:
+        now = "2026-07-24T00:00:00+00:00"
+        with sqlite3.connect(legacy) as connection:
+            connection.execute(
+                "INSERT INTO workspaces "
+                "(id,title,description,status,character_id,allow_external_knowledge,"
+                "execution_mode,provider_name,provider_model,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "ws-shared",
+                    "Shared",
+                    "same",
+                    "active",
+                    "warm",
+                    0,
+                    "demo",
+                    "fake",
+                    "",
+                    now,
+                    now,
+                ),
+            )
+        engine = orm._create_engine(orm_path)
+        sessions = orm.sessionmaker(engine, expire_on_commit=False)
+        with sessions() as session:
+            session.add(WorkspaceORM(id="ws-shared", title="Shared", description="same"))
+            session.commit()
+        engine.dispose()
+    return legacy, orm_path
 
 
 def test_empty_orm_database_migrates_to_head_twice(tmp_path: Path):
@@ -118,6 +163,91 @@ def test_corrupt_backup_is_rejected_without_partial_destination(tmp_path: Path):
         restore_sqlite(corrupt, destination)
     assert not destination.exists()
     assert not destination.with_name(destination.name + ".partial").exists()
+
+
+def test_database_pair_is_auditable_backed_up_and_restored(tmp_path: Path):
+    legacy, orm_path = _database_pair(tmp_path, with_data=True)
+    report = audit_database_convergence(legacy, orm_path)
+    bundle = tmp_path / "pair.bundle"
+    destination = tmp_path / "restored"
+    assert report.consistent
+    assert backup_database_pair(legacy, orm_path, bundle)["idempotent"] is False
+    assert backup_database_pair(legacy, orm_path, bundle)["idempotent"] is True
+    assert restore_database_pair(bundle, destination)["idempotent"] is False
+    assert restore_database_pair(bundle, destination)["idempotent"] is True
+    assert verify_database_pair_bundle(bundle)["manifest_version"] == 1
+
+
+def test_database_convergence_reports_divergence(tmp_path: Path):
+    legacy, orm_path = _database_pair(tmp_path, with_data=True)
+    with sqlite3.connect(orm_path) as connection:
+        connection.execute("UPDATE orm_workspaces SET title='diverged' WHERE id='ws-shared'")
+    report = audit_database_convergence(legacy, orm_path)
+    assert not report.consistent
+    assert any(
+        issue.issue == "field_mismatch"
+        and issue.object_id == "ws-shared"
+        and issue.field == "title"
+        for issue in report.issues
+    )
+
+
+def test_compatibility_write_reports_mirror_failure_without_secret(caplog):
+    reported = []
+
+    def mirror():
+        raise RuntimeError("secret-user-payload")
+
+    with caplog.at_level("WARNING", logger="mentorflow.database_convergence"):
+        outcome = compatibility_write(
+            object_type="workspace",
+            object_id="ws-1",
+            primary_write=lambda: {"id": "ws-1"},
+            mirror_write=mirror,
+            issue_reporter=reported.append,
+        )
+    assert outcome.primary_value == {"id": "ws-1"}
+    assert outcome.mirror_succeeded is False
+    assert reported[0].issue == "mirror_write_failed"
+    assert "secret-user-payload" not in caplog.text
+
+
+def test_compatibility_write_does_not_mirror_after_primary_failure():
+    called = []
+
+    def primary():
+        raise ValueError("primary failed")
+
+    with pytest.raises(ValueError, match="primary failed"):
+        compatibility_write(
+            object_type="workspace",
+            object_id="ws-1",
+            primary_write=primary,
+            mirror_write=lambda: called.append("mirror"),
+        )
+    assert called == []
+
+
+def test_changed_source_cannot_replace_existing_database_pair(tmp_path: Path):
+    legacy, orm_path = _database_pair(tmp_path, with_data=True)
+    bundle = tmp_path / "pair.bundle"
+    backup_database_pair(legacy, orm_path, bundle)
+    with sqlite3.connect(legacy) as connection:
+        connection.execute("UPDATE workspaces SET title='changed' WHERE id='ws-shared'")
+    with pytest.raises(RecoveryError, match="different source state"):
+        backup_database_pair(legacy, orm_path, bundle)
+
+
+def test_tampered_database_pair_is_rejected_before_restore(tmp_path: Path):
+    legacy, orm_path = _database_pair(tmp_path)
+    bundle = tmp_path / "pair.bundle"
+    backup_database_pair(legacy, orm_path, bundle)
+    with (bundle / "app.db").open("ab") as handle:
+        handle.write(b"tamper")
+    destination = tmp_path / "must-not-exist"
+    with pytest.raises(RecoveryError, match="checksum mismatch"):
+        restore_database_pair(bundle, destination)
+    assert not destination.exists()
 
 
 class _InvalidJsonProvider(provider_service.Provider):

@@ -17,10 +17,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_ROOT = Path(__file__).resolve().parent
 DEFAULT_BLENDER = Path(
-    r"E:\CodexData\temp\blender-5.2.0-portable"
-    r"\blender-5.2.0-windows-x64\blender.exe"
+    PROJECT_ROOT
+    / "runtime"
+    / "local-tools"
+    / "blender-5.2.0-portable"
+    / "blender-5.2.0-windows-x64"
+    / "blender.exe"
 )
-DEFAULT_PROFILE = Path(r"E:\CodexData\temp\blender-kks-profile")
+DEFAULT_PROFILE = PROJECT_ROOT / "runtime" / "local-tools" / "blender-kks-profile"
+DEFAULT_WORK_ROOT = PROJECT_ROOT / "tmp" / "kks-web-pipeline"
 REQUIRED_NODES = {
     "cf_J_FaceBase",
     "cf_s_head",
@@ -160,8 +165,10 @@ def main() -> int:
         return 0
 
     owned_temporary = args.work_root is None
+    if owned_temporary:
+        DEFAULT_WORK_ROOT.mkdir(parents=True, exist_ok=True)
     work_root = (
-        Path(tempfile.mkdtemp(prefix=f"kks-web-{card_id}-"))
+        Path(tempfile.mkdtemp(prefix=f"kks-web-{card_id}-", dir=DEFAULT_WORK_ROOT))
         if owned_temporary
         else args.work_root.resolve()
     )

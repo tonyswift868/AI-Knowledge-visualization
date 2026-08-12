@@ -42,7 +42,7 @@ DEFAULT_QUEUE_ROOT = KKS_RUNTIME_ROOT / "native-conversion-queue"
 DEFAULT_WORK_ROOT = Path(
     os.getenv(
         "MENTORFLOW_KKS_NATIVE_WORK_ROOT",
-        r"E:\CodexData\temp\mentorflow-kks-native",
+        str(PROJECT_ROOT / "tmp" / "kks-native"),
     )
 )
 

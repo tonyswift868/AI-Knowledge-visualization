@@ -17,7 +17,7 @@ $Python = Join-Path $Root '.venv\Scripts\python.exe'
 $QaRoot = if ($env:MENTORFLOW_QA_ROOT) {
     [System.IO.Path]::GetFullPath($env:MENTORFLOW_QA_ROOT)
 } else {
-    Join-Path $env:LOCALAPPDATA 'MentorFlow\qa-runtime'
+    Join-Path $Root 'tmp\qa-runtime'
 }
 $StatePath = Join-Path $QaRoot 'runtime.json'
 $BackendPort = 8011
@@ -113,9 +113,6 @@ function Prepare-QaSnapshot {
     New-Item -ItemType Directory -Path $QaRoot -Force | Out-Null
 
     $qaData = Join-Path $QaRoot 'data'
-    $qaUploads = Join-Path $qaData 'active_teaching\uploads'
-    New-Item -ItemType Directory -Path $qaUploads -Force | Out-Null
-
     $legacySource = Join-Path $Root 'data\app.db'
     $ormSource = Join-Path $Root 'data\mentorflow_v2.db'
     $legacyDestination = Join-Path $qaData 'app.db'
@@ -124,12 +121,6 @@ function Prepare-QaSnapshot {
     Backup-SqliteDatabase -Source $legacySource -Destination $legacyDestination
     Backup-SqliteDatabase -Source $ormSource -Destination $ormDestination
 
-    $sourceUploads = Join-Path $Root 'data\active_teaching\uploads'
-    if (Test-Path -LiteralPath $sourceUploads) {
-        Get-ChildItem -LiteralPath $sourceUploads -Force |
-            Copy-Item -Destination $qaUploads -Recurse -Force
-    }
-
     $sanitizeProgram = @'
 import pathlib
 import sqlite3
@@ -137,8 +128,6 @@ import sys
 
 legacy_db = pathlib.Path(sys.argv[1]).resolve()
 orm_db = pathlib.Path(sys.argv[2]).resolve()
-source_uploads = str(pathlib.Path(sys.argv[3]).resolve())
-qa_uploads = str(pathlib.Path(sys.argv[4]).resolve())
 
 legacy = sqlite3.connect(legacy_db)
 try:
@@ -154,15 +143,11 @@ try:
     orm.execute(
         "UPDATE orm_workspaces SET execution_mode='demo', provider_name='fake', provider_model=''"
     )
-    orm.execute(
-        "UPDATE active_materials SET stored_path=replace(stored_path, ?, ?)",
-        (source_uploads, qa_uploads),
-    )
     orm.commit()
 finally:
     orm.close()
 '@
-    & $Python -c $sanitizeProgram $legacyDestination $ormDestination $sourceUploads $qaUploads
+    & $Python -c $sanitizeProgram $legacyDestination $ormDestination
     if ($LASTEXITCODE -ne 0) {
         throw 'QA database sanitization failed.'
     }

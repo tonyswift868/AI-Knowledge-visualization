@@ -36,9 +36,15 @@ from app.koikatsu_teacher_registry import (  # noqa: E402
 
 PIPELINE_ROOT = Path(__file__).resolve().parent / "kks_web_pipeline"
 DEFAULT_BLENDER = Path(
-    r"E:\CodexData\temp\blender-5.2.0-portable"
-    r"\blender-5.2.0-windows-x64\blender.exe"
+    PROJECT_ROOT
+    / "runtime"
+    / "local-tools"
+    / "blender-5.2.0-portable"
+    / "blender-5.2.0-windows-x64"
+    / "blender.exe"
 )
+DEFAULT_BLENDER_PROFILE = PROJECT_ROOT / "runtime" / "local-tools" / "blender-kks-profile"
+DEFAULT_WORK_ROOT = PROJECT_ROOT / "tmp" / "kks-web"
 CARD_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 STAGES = ("import", "bake", "export", "publish")
 
@@ -334,7 +340,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument(
         "--blender-profile",
         type=Path,
-        default=Path(os.getenv("MENTORFLOW_BLENDER_PROFILE", r"E:\CodexData\temp\blender-kks-profile")),
+        default=Path(os.getenv("MENTORFLOW_BLENDER_PROFILE", str(DEFAULT_BLENDER_PROFILE))),
         help="Profile containing enabled KKBP Importer/mmd_tools/Pillow (or set MENTORFLOW_BLENDER_PROFILE)",
     )
     value.add_argument("--texture-size", type=int, default=2048, choices=(1024, 2048, 4096))
@@ -354,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
     work_dir = (
         args.work_dir.resolve()
         if args.work_dir
-        else Path(tempfile.gettempdir(), "mentorflow-kks-web", card_id).resolve()
+        else (DEFAULT_WORK_ROOT / card_id).resolve()
     )
     output = args.output.resolve() if args.output else contained_publish_target(card_id)
     default_target = contained_publish_target(card_id)

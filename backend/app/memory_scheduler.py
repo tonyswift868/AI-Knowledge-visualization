@@ -215,3 +215,36 @@ class MemoryScheduler:
 
 def link_review_item(knowledge_node_id: str, review_item_id: str) -> ReviewItemLink:
     return ReviewItemLink(knowledge_node_id=knowledge_node_id, review_item_id=review_item_id)
+
+
+def memory_schedule_from_dict(raw: Mapping[str, Any]) -> MemorySchedule:
+    """Restore a persisted schedule through the public, validated contract."""
+
+    link_raw = raw.get("link") if isinstance(raw.get("link"), Mapping) else {}
+    link = link_review_item(
+        str(link_raw.get("knowledge_node_id") or raw.get("knowledge_node_id") or "current_node"),
+        str(link_raw.get("review_item_id") or raw.get("review_item_id") or "default"),
+    )
+
+    def parsed_datetime(value: Any, fallback: datetime | None = None) -> datetime | None:
+        if not value:
+            return fallback
+        try:
+            return _utc(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
+        except ValueError:
+            return fallback
+
+    due = parsed_datetime(raw.get("due"), utc_now())
+    assert due is not None
+    return MemorySchedule(
+        link=link,
+        provider=str(raw.get("provider") or MemoryScheduler.FALLBACK_PROVIDER),
+        due=due,
+        retrievability=round(max(0.0, min(1.0, float(raw.get("retrievability", 1.0)))), 4),
+        review_count=max(0, int(raw.get("review_count", 0))),
+        last_review=parsed_datetime(raw.get("last_review")),
+        last_rating=int(raw["last_rating"]) if raw.get("last_rating") is not None else None,
+        stability_days=max(0.0, float(raw.get("stability_days", 0.0))),
+        difficulty=max(1.0, min(10.0, float(raw.get("difficulty", 5.0)))),
+        native_card_json=str(raw["native_card_json"]) if raw.get("native_card_json") else None,
+    )

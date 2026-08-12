@@ -6,7 +6,12 @@ from enum import IntEnum
 
 import pytest
 
-from app.memory_scheduler import MemoryScheduler, ReviewRating, link_review_item
+from app.memory_scheduler import (
+    MemoryScheduler,
+    ReviewRating,
+    link_review_item,
+    memory_schedule_from_dict,
+)
 from app.persona_replay import PERSONAS, replay_all_personas, replay_persona
 from app.skill_models import (
     BKTParameters,
@@ -118,6 +123,32 @@ def test_corrupt_native_payload_degrades_truthfully_instead_of_breaking_learning
     reviewed = scheduler.review(broken, ReviewRating.HARD, reviewed_at=NOW)
     assert reviewed.provider == "compat-fallback-v1"
     assert reviewed.native_card_json is None
+
+
+def test_persisted_memory_schedule_round_trips_through_validated_contract():
+    scheduler = MemoryScheduler(prefer_native=False)
+    original = scheduler.review(
+        scheduler.new(link_review_item("node-17", "review-4"), now=NOW),
+        ReviewRating.GOOD,
+        reviewed_at=NOW,
+    )
+    restored = memory_schedule_from_dict(original.to_dict())
+    assert restored == original
+
+
+def test_persisted_memory_schedule_clamps_untrusted_numeric_fields():
+    restored = memory_schedule_from_dict(
+        {
+            "link": {"knowledge_node_id": "node", "review_item_id": "review"},
+            "due": "invalid",
+            "retrievability": 4,
+            "review_count": -5,
+            "difficulty": 99,
+        }
+    )
+    assert restored.retrievability == 1.0
+    assert restored.review_count == 0
+    assert restored.difficulty == 10.0
 
 
 def test_bkt_correct_and_incorrect_updates_are_explainable():

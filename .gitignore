@@ -37,6 +37,9 @@ frontend/tsconfig.tsbuildinfo
 /.tmp-kks-*/
 /tmp_*.png
 /output/
+/tmp/
+/cache/
+/runtime/local-tools/
 
 # Consolidated Koikatsu 3D local state. Lightweight web drivers, card presets,
 # registry metadata and inventory documents remain versioned beside it.

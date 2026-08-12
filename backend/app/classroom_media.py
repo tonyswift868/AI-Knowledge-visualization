@@ -34,6 +34,13 @@ DOCUMENT_SUFFIXES = {
 }
 CLASSROOM_ATTACHMENT_SUFFIXES = IMAGE_SUFFIXES | DOCUMENT_SUFFIXES
 CLASSROOM_AUDIO_SUFFIXES = {".webm", ".ogg", ".wav", ".mp3", ".m4a"}
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CLASSROOM_ASR_UPLOAD_ROOT = Path(
+    os.getenv(
+        "MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT",
+        str(PROJECT_ROOT / "tmp" / "classroom-asr"),
+    )
+).expanduser()
 
 
 def safe_attachment_name(value: str) -> str:
@@ -242,9 +249,10 @@ def extract_image_text(
 
 
 def _ai_agent_root() -> Path:
-    return Path(
-        os.getenv("MENTORFLOW_AI_AGENT_ROOT", "E:/aiPlay/ai_agent")
-    ).expanduser().resolve()
+    configured = str(os.getenv("MENTORFLOW_AI_AGENT_ROOT") or "").strip()
+    if not configured:
+        raise RuntimeError("本地 SenseVoice 组件未配置；请设置 MENTORFLOW_AI_AGENT_ROOT")
+    return Path(configured).expanduser().resolve()
 
 
 def _load_ai_agent_asr() -> Any:
@@ -331,8 +339,7 @@ def transcribe_classroom_audio(
         raise ValueError("没有录到声音")
     if len(data) > MAX_CLASSROOM_AUDIO_BYTES:
         raise ValueError("单次录音不能超过 20 MB")
-    root = _ai_agent_root()
-    upload_root = (root / "runtime" / "asr_uploads").resolve()
+    upload_root = CLASSROOM_ASR_UPLOAD_ROOT.resolve()
     upload_root.mkdir(parents=True, exist_ok=True)
     target = upload_root / (
         f"mentorflow_{int(time.time() * 1000)}_{os.getpid()}{suffix}"
