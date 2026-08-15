@@ -231,7 +231,7 @@ def _shape_fit(profile: dict[str, Any], record: dict[str, Any]) -> tuple[float, 
     fit = _learning_fit(record)
     best = " ".join(str(item) for item in fit.get("best_task_types", []) or [])
     labels = {
-        "coding_practice": ("力扣 编程 算法 题库 技术", "编程练习与题库式学习"), "practical_project": ("项目 交付 技术 应用", "项目交付与实践"),
+        "coding_practice": ("编程 算法 题库 技术", "编程练习与题库式学习"), "practical_project": ("项目 交付 技术 应用", "项目交付与实践"),
         "case_analysis": ("法律 证据 案件 论证", "证据论证与案例分析"), "language_acquisition": ("语言 英语 单词 翻译", "语言重复与迁移"),
         "concept_course": ("医学 概念 课程 诊断", "概念课程与解释"), "long_form_creation": ("写作 文章 研究 论文", "长篇创作与修订"),
         "memory_drill": ("记忆 面试 复习 背诵", "间隔复习与主动回忆"), "exam_cram": ("冲刺 考试 短期 每日", "短期冲刺与快速迁移"),

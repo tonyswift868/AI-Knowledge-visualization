@@ -47,10 +47,12 @@ export function TeacherCompanionPortrait({
   teacherName = "艾莉丝",
   presentationManifestUrl,
   state = "idle",
+  portrait = false,
   }: {
   teacherName?: string
   presentationManifestUrl?: string
   state?: TeacherCompanionState
+  portrait?: boolean
 }) {
   const [runtime, setRuntime] = useState<Teacher2DRuntime>("loading")
   const stateLabel: Record<TeacherCompanionState, string> = {
@@ -89,7 +91,7 @@ export function TeacherCompanionPortrait({
       </div>
       <div className="teacher-companion-character">
         <div className="teacher-companion-halo" aria-hidden="true" />
-        <Teacher2DStage teacherName={teacherName} state={state} compact manifestUrl={presentationManifestUrl} onRuntimeChange={setRuntime} />
+        <Teacher2DStage teacherName={teacherName} state={state} compact cameraPreset={portrait ? "full" : undefined} manifestUrl={presentationManifestUrl} onRuntimeChange={setRuntime} />
         <div className="teacher-companion-shadow" aria-hidden="true" />
       </div>
       <div className="teacher-companion-status">

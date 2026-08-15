@@ -17,6 +17,7 @@ data/uploads/*
 data/local_import_snapshots/*
 data/archive_previews/*
 data/expedition_art_pack_previews/*
+data/runtime-cache/*
 
 # Installed/local art-pack payloads are binary runtime state, not source.
 content/expedition_art_packs/*
@@ -30,6 +31,7 @@ content/expedition_art_packs/*
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+/release/
 /node_modules/
 /.playwright-cli/
 /.pytest_cache/

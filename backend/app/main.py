@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import mimetypes
 import os
+import re
 import time
+import zipfile
 from threading import Lock
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -17,13 +20,13 @@ from uuid import uuid4
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import db
 from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
 from .services import analyze, available_days, build_plan, create_source, inspect_local, parse_text, safe_path, scene_for_task, source_detail, tutor, uid, normalize
-from .orm import init_orm
+from .orm import init_orm, upgrade_orm_schema
 from .ingestion_secure import create_preview, consume_preview, parse_file, chunks as secure_chunks
 from .provider_service import get_provider, parse_conversational_payload, ProviderError
 from .retrieval_service import RetrievalService
@@ -31,7 +34,8 @@ from .grounding_service import critic as grounding_critic
 from .job_service import create_job, set_job
 from .url_fetcher_secure import fetch_safe
 from .core_errors import app_error_body, AppError
-from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
+from .security_redaction import redact
+from .provider_runtime import credential_owned_by, create_provider_session, create_verified_demo_session, delete_provider_credential, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
@@ -48,21 +52,38 @@ from .koikatsu_teacher_registry import KoikatsuTeacherError, default_card as def
 from .teacher_avatar_card_presets import list_card_presets as list_teacher_avatar_card_presets
 from .teacher_avatar_presets import activate_preset as activate_teacher_avatar_preset, list_presets as list_teacher_avatar_presets, resolve_preview as resolve_teacher_avatar_preset_preview
 from .spine_teacher_registry import SpineTeacherError, active_teacher as active_spine_teacher, import_package as import_spine_teacher_package, public_manifest as spine_teacher_manifest, resolve_asset as resolve_spine_teacher_asset
-from .active_teaching import router as active_teaching_router
+from .active_teaching import (
+    initialize_active_teaching_storage,
+    router as active_teaching_router,
+)
 from .focus_monitoring import router as focus_monitoring_router
-from .generic_knowledge_api import router as generic_knowledge_router
+from .generic_knowledge_api import (
+    recover_interrupted_knowledge_map_jobs,
+    router as generic_knowledge_router,
+)
 from .code_practice import router as code_practice_router
 from .casual_chat import router as casual_chat_router
 from .teacher_voice_pack import router as teacher_voice_pack_router
+from .local_auth_api import router as local_auth_router
+from . import local_auth
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
 )
 from .qwen_custom_private_runtime import shutdown_private_qwen_runtime
+from .conversion_adapters import ConversionRegistry, ConversionSource
+from .knowledge_policy import CONVERSION_POLICY
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PRESET_DIR = PROJECT_ROOT / "data" / "presets"
-PRESET_SETTINGS_FILE = PROJECT_ROOT / "data" / "preset_settings.json"
+DEFAULT_PRESET_DIR = Path(
+    os.getenv("MENTORFLOW_PRESET_ROOT", str(PROJECT_ROOT / "data" / "presets"))
+)
+PRESET_SETTINGS_FILE = Path(
+    os.getenv(
+        "MENTORFLOW_PRESET_SETTINGS_FILE",
+        str(DEFAULT_PRESET_DIR.parent / "preset_settings.json"),
+    )
+)
 _TASK_PROFILE_LOCK = Lock()
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,7 +96,10 @@ def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dic
 @asynccontextmanager
 async def lifespan(_app):
     db.init_db()
+    upgrade_orm_schema()
     init_orm()
+    initialize_active_teaching_storage()
+    recover_interrupted_knowledge_map_jobs()
     cleanup_expired_previews()
     # Missing or invalid engine release material is recorded fail-closed. The
     # bootstrap accepts only the fixed registry -> root-signed policy -> leaf
@@ -147,14 +171,154 @@ app.include_router(generic_knowledge_router)
 app.include_router(code_practice_router)
 app.include_router(casual_chat_router)
 app.include_router(teacher_voice_pack_router)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.include_router(local_auth_router)
+_configured_origins = [
+    item.strip().rstrip("/")
+    for item in os.getenv(
+        "MENTORFLOW_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if item.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_configured_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _ui_review_mode_enabled() -> bool:
+    """Use the cloned first account as context only for the marked UI copy."""
+    return os.getenv("MENTORFLOW_UI_REVIEW_MODE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _local_data_mode_enabled() -> bool:
+    """Use the local database without an account session when explicitly set."""
+    return os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     import uuid
     request.state.request_id=uuid.uuid4().hex
+    auth_required = os.getenv("MENTORFLOW_AUTH_REQUIRED", "").strip() == "1"
+    local_data_mode = (_local_data_mode_enabled() or _ui_review_mode_enabled()) and not auth_required
+    if local_data_mode:
+        # In standalone mode the local data directory is the user's identity.
+        # If the migrated database already has an owner, use that owner so
+        # existing workspace scoping remains intact.  A fresh database has no
+        # account row yet, so it stays intentionally unscoped until data is
+        # created; no synthetic account is written to SQLite.
+        user_id = local_auth.first_user_id()
+        if user_id:
+            request.state.local_user = {
+                "user_id": user_id,
+                "username": "ui-review" if _ui_review_mode_enabled() else "local-data",
+                # UI-review is an internal launcher flag, not a user identity.
+                # The packaged local mode must present the same neutral space
+                # label in every API response, including /auth/me.
+                "display_name": "本地学习空间",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+            }
+    if auth_required:
+        public_paths = {
+            "/api/health",
+            "/api/auth/status",
+            "/api/auth/register",
+            "/api/auth/login",
+            "/api/auth/password-reset/request",
+            "/api/auth/password-reset/confirm",
+        }
+        if request.url.path.startswith("/api/") and request.url.path not in public_paths:
+            authorization = request.headers.get("authorization", "")
+            bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+            token = request.cookies.get("mentorflow_session", "") or bearer
+            user = local_auth.authenticate(token, touch=True)
+            if not user:
+                return JSONResponse(
+                    status_code=401,
+                    content=app_error_body(
+                        "AUTH_REQUIRED",
+                        "请先登录后再使用 MentorFlow。",
+                        {},
+                        request.state.request_id,
+                    ),
+                )
+            request.state.local_user = user
+            workspace_id = None
+            direct_match = re.match(
+                r"^/api/(?:active-teaching/)?workspaces/([^/]+)",
+                request.url.path,
+            )
+            if direct_match:
+                workspace_id = direct_match.group(1)
+            else:
+                workspace_id = local_auth.resolve_resource_workspace(request.url.path)
+            reservation_created = False
+            if workspace_id:
+                owner_id = local_auth.workspace_owner_id(workspace_id)
+                if owner_id and owner_id != user["user_id"]:
+                    return JSONResponse(
+                        status_code=403,
+                        content=app_error_body(
+                            "WORKSPACE_ACCESS_DENIED",
+                            "这个学习空间属于其他账户。",
+                            {},
+                            request.state.request_id,
+                        ),
+                    )
+                if not owner_id and local_auth.workspace_exists(workspace_id):
+                    return JSONResponse(
+                        status_code=403,
+                        content=app_error_body(
+                            "WORKSPACE_OWNERSHIP_REQUIRED",
+                            "现有学习空间尚未归属当前账户。",
+                            {},
+                            request.state.request_id,
+                        ),
+                    )
+                if (
+                    direct_match
+                    and not owner_id
+                    and request.method in {"POST", "PUT", "PATCH"}
+                ):
+                    try:
+                        reservation_created = local_auth.claim_workspace(
+                            user["user_id"],
+                            workspace_id,
+                            claim_source="request_reservation",
+                        )
+                    except local_auth.LocalAuthError:
+                        return JSONResponse(
+                            status_code=403,
+                            content=app_error_body(
+                                "WORKSPACE_ACCESS_DENIED",
+                                "这个学习空间属于其他账户。",
+                                {},
+                                request.state.request_id,
+                            ),
+                        )
+            request.state.workspace_id = workspace_id
+            request.state.workspace_reservation_created = reservation_created
     response=await call_next(request)
+    if (
+        getattr(request.state, "workspace_reservation_created", False)
+        and response.status_code >= 400
+    ):
+        local_auth.release_empty_workspace_claim(
+            request.state.local_user["user_id"],
+            request.state.workspace_id,
+        )
     response.headers['X-Request-ID']=request.state.request_id
     return response
 
@@ -164,7 +328,14 @@ async def app_error_handler(request: Request, exc: AppError):
 
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
-    errors=json.loads(json.dumps(exc.errors(),default=str))
+    errors=redact([
+        {
+            "type": str(error.get("type") or "validation_error"),
+            "loc": [str(value) for value in error.get("loc") or []],
+            "msg": str(error.get("msg") or "invalid value"),
+        }
+        for error in exc.errors()
+    ])
     return JSONResponse(status_code=422,content=app_error_body('VALIDATION_ERROR','请求参数不符合要求',{'errors':errors},getattr(request.state,'request_id',None)))
 
 @app.exception_handler(HTTPException)
@@ -195,18 +366,58 @@ def fail(code: str, message: str, status: int = 400, details: dict | None = None
     raise HTTPException(status_code=status, detail={"error": {"code": code, "message": message, "details": details or {}, "request_id": uuid4().hex}})
 
 
-def preset_directory(requested: str | None = None) -> Path:
-    directory = Path(requested).expanduser() if requested else DEFAULT_PRESET_DIR
-    if not requested and PRESET_SETTINGS_FILE.exists():
+def _preset_scope(request: Request) -> tuple[Path, Path]:
+    """Return the approved root and settings file for the current account.
+
+    The first local account keeps the pre-authentication preset directory so
+    existing user data remains visible.  Every later account receives a new
+    directory.  When authentication is disabled (tests and legacy API use),
+    the old shared directory is retained for backwards compatibility.
+    """
+
+    default_root = (PRESET_SETTINGS_FILE.parent / "presets").resolve()
+    user = getattr(request.state, "local_user", None)
+    if not user:
+        return default_root, PRESET_SETTINGS_FILE
+    user_id = str(user.get("user_id") or "").strip()
+    try:
+        first_user = local_auth.first_user_id()
+    except Exception:
+        first_user = None
+    if user_id and first_user and user_id == first_user:
+        return default_root, PRESET_SETTINGS_FILE
+    # IDs are generated by local_auth and do not contain path separators.  The
+    # defensive character check keeps a malformed request from becoming a
+    # filesystem path even if a future auth backend supplies another ID shape.
+    safe_user_id = re.sub(r"[^A-Za-z0-9_.-]", "_", user_id) or "unknown"
+    account_root = (default_root / "users" / safe_user_id).resolve()
+    return account_root, account_root / "preset_settings.json"
+
+
+def preset_directory(request: Request, requested: str | None = None) -> Path:
+    approved_root, settings_file = _preset_scope(request)
+    directory = Path(requested).expanduser() if str(requested or "").strip() else approved_root
+    if not requested and settings_file.exists():
         try:
-            saved = json.loads(PRESET_SETTINGS_FILE.read_text(encoding="utf-8")).get("directory")
+            saved = json.loads(settings_file.read_text(encoding="utf-8")).get("directory")
             if saved:
                 directory = Path(saved).expanduser()
         except (OSError, ValueError, TypeError):
-            directory = DEFAULT_PRESET_DIR
-    directory = directory.resolve()
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+            directory = approved_root
+    try:
+        resolved_root = approved_root.resolve()
+        resolved_directory = directory.resolve()
+        within_root = resolved_directory == resolved_root or resolved_root in resolved_directory.parents
+    except OSError:
+        within_root = False
+        resolved_directory = directory
+    if not within_root:
+        fail(
+            "PRESET_DIRECTORY_NOT_ALLOWED",
+            "预设目录必须位于当前账户的专用数据目录内。",
+        )
+    resolved_directory.mkdir(parents=True, exist_ok=True)
+    return resolved_directory
 
 
 def preset_filename(name: str) -> str:
@@ -217,8 +428,8 @@ def preset_filename(name: str) -> str:
 
 
 @app.get("/api/presets")
-def list_presets(directory: str | None = None):
-    target = preset_directory(directory)
+def list_presets(request: Request, directory: str | None = None):
+    target = preset_directory(request, directory)
     items = []
     for item in sorted(target.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True):
         try:
@@ -231,17 +442,18 @@ def list_presets(directory: str | None = None):
 
 
 @app.post("/api/presets")
-def save_preset(body: dict[str, Any]):
+def save_preset(request: Request, body: dict[str, Any]):
     name = str(body.get("name") or "").strip()
     filename = preset_filename(name)
     form = body.get("form")
     if not isinstance(form, dict):
         fail("PRESET_FORM_REQUIRED", "预设内容不能为空")
-    target = preset_directory(body.get("directory"))
+    target = preset_directory(request, body.get("directory"))
     saved = {"name": name, "saved_at": datetime.now(timezone.utc).isoformat(), "form": form}
     (target / filename).write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
-    PRESET_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PRESET_SETTINGS_FILE.write_text(json.dumps({"directory": str(target)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    _approved_root, settings_file = _preset_scope(request)
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps({"directory": str(target)}, ensure_ascii=False, indent=2), encoding="utf-8")
     return saved | {"directory": str(target)}
 
 
@@ -264,12 +476,21 @@ def session_id_from(request: Request | None, body: dict[str, Any] | None) -> str
     return (body or {}).get("provider_session_id") or (request.headers.get("X-Provider-Session-ID") if request else None)
 
 
+def request_user_id(request: Request | None) -> str | None:
+    user = getattr(request.state, "local_user", None) if request is not None else None
+    user_id = str((user or {}).get("user_id") or "").strip()
+    return user_id or None
+
+
 def provider_for_workspace(workspace_id: str, request: Request | None = None, body: dict[str, Any] | None = None):
     ws = require_workspace(workspace_id)
     if ws.get("execution_mode", "demo") == "demo":
         return create_verified_demo_session()
     try:
-        session = require_provider_session(session_id_from(request, body))
+        session = require_provider_session(
+            session_id_from(request, body),
+            owner_user_id=request_user_id(request),
+        )
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
     if session.provider == "fake":
@@ -342,13 +563,17 @@ def health():
 
 
 @app.get("/api/workspaces")
-def list_workspaces():
+def list_workspaces(request: Request):
     items = [dict(x) for x in db.rows("workspaces", "status", "active")]
+    user = getattr(request.state, "local_user", None)
+    if user:
+        owned = set(local_auth.owned_workspace_ids(user["user_id"]))
+        items = [item for item in items if str(item.get("id")) in owned]
     return sorted(items, key=lambda item: str(item.get("created_at") or ""), reverse=True)
 
 
 @app.post("/api/workspaces")
-def create_workspace(body: WorkspaceIn):
+def create_workspace(body: WorkspaceIn, request: Request):
     provider_name, provider_model = ("fake", "fake") if body.execution_mode == "demo" else ("", "")
     if body.provider_session_id:
         try:
@@ -362,7 +587,18 @@ def create_workspace(body: WorkspaceIn):
                 fail("PROVIDER_SESSION_REAL_REQUIRED", "真实 Workspace 不能使用 Fake Provider")
             provider_name, provider_model = provider_session.provider, provider_session.model
     item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "persona_prompt": body.persona_prompt.strip(), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": db.now(), "updated_at": db.now()}
-    with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,persona_prompt,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:persona_prompt,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
+    user = getattr(request.state, "local_user", None)
+    claimed = False
+    if user:
+        claimed = local_auth.claim_workspace(
+            user["user_id"], item["id"], claim_source="workspace_create"
+        )
+    try:
+        with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,persona_prompt,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:persona_prompt,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
+    except Exception:
+        if claimed and user:
+            local_auth.release_empty_workspace_claim(user["user_id"], item["id"])
+        raise
     try:
         from .orm import SessionLocal, WorkspaceORM
         with SessionLocal() as session:
@@ -410,7 +646,18 @@ def patch_workspace_persona(workspace_id: str, body: dict[str, Any]):
 @app.delete("/api/workspaces/{workspace_id}")
 def delete_workspace(workspace_id: str):
     require_workspace(workspace_id)
-    with db.connection() as conn: conn.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
+    with db.connection() as conn:
+        # These two tables predate the workspace foreign-key graph.  Clean
+        # their workspace-scoped rows explicitly so removing a task cannot
+        # leave an orphaned chat or catalog request behind.
+        for table in ("casual_chat_sessions", "catalog_curation_requests"):
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if exists:
+                conn.execute(f"DELETE FROM {table} WHERE workspace_id = ?", (workspace_id,))
+        conn.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
     try:
         from .orm import SessionLocal, WorkspaceORM
         with SessionLocal() as session:
@@ -479,27 +726,43 @@ def add_local_source(workspace_id: str, body: LocalSourceIn):
 async def upload_source(workspace_id: str, file: UploadFile = File(...)):
     require_workspace(workspace_id)
     jid=create_job(workspace_id,"source_import"); set_job(jid,status="running",stage="validating",progress=10,message="Validating upload")
-    suffix = Path(file.filename or "").suffix.lower()
-    allowed_mimes={"","application/octet-stream","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/markdown","text/plain","text/html"}
-    if (file.content_type or "") not in allowed_mimes: fail("UNSUPPORTED_MIME", "文件 MIME 类型与扩展名不受支持")
-    if suffix not in {".pdf", ".docx", ".md", ".txt", ".html", ".htm"}: fail("UNSUPPORTED_FILE", "只支持 PDF、DOCX、Markdown、TXT 和 HTML")
+    filename = Path(file.filename or "material.bin").name
+    data = await file.read(CONVERSION_POLICY.maximum_input_bytes + 1)
+    if len(data) > CONVERSION_POLICY.maximum_input_bytes:
+        set_job(jid,status="failed",stage="validating",progress=100,error="INPUT_BUDGET_EXCEEDED",message="Upload rejected")
+        fail("INPUT_BUDGET_EXCEEDED", "文件超过能力注册表配置的单文件限制", 413)
+    conversion = ConversionRegistry().convert_safe(
+        ConversionSource(
+            name=filename,
+            data=data,
+            mime_type=str(file.content_type or ""),
+        )
+    )
+    if conversion.status != "ready" or conversion.metadata is None:
+        failure = conversion.failure
+        code = failure.code if failure else "CONVERSION_FAILED"
+        message = failure.message if failure else "文件转换未产生可用内容"
+        status = 415 if code in {"UNSUPPORTED_FORMAT", "VIDEO_UNSUPPORTED_IN_V1"} else 422
+        if code in {"INPUT_BUDGET_EXCEEDED", "OUTPUT_BUDGET_EXCEEDED"}:
+            status = 413
+        set_job(jid,status="failed",stage="parsing",progress=100,error=code,message="Parse failed")
+        fail(code, message, status, failure.details if failure else {})
+    suffix = Path(filename).suffix.lower()
     dest = Path(__file__).resolve().parents[2] / "data" / "uploads" / f"{uuid4().hex}{suffix}"; dest.parent.mkdir(parents=True, exist_ok=True)
-    data = await file.read()
-    if len(data) > 5_000_000: fail("FILE_TOO_LARGE", "单文件不能超过 5 MB")
     dest.write_bytes(data)
+    parts = [
+        {
+            "text": part.text,
+            "page_start": part.page_start,
+            "page_end": part.page_end,
+            "heading": part.heading,
+        }
+        for part in conversion.parts
+    ]
+    pages = conversion.metadata.page_count
+    text='\n\n'.join(part["text"] for part in parts)
     try:
-        parts,status,pages=parse_file(dest)
-        if status=='needs_ocr':
-            dest.unlink(missing_ok=True)
-            set_job(jid,status="succeeded",stage="parsing",progress=100,message="OCR required")
-            return {"title":file.filename or dest.name,"status":"needs_ocr","job_id":jid,"parse_error":"当前版本未启用 OCR，不生成假内容"}
-        text='\n\n'.join(x['text'] for x in parts)
-    except Exception as exc:
-        dest.unlink(missing_ok=True)
-        set_job(jid,status="failed",stage="parsing",progress=100,error=str(exc),message="Parse failed")
-        fail("PARSE_FAILED", f"文件解析失败：{exc}")
-    try:
-        result=source_detail(create_source(workspace_id, file.filename or dest.name, "upload", text, original_filename=file.filename or "", local_path=str(dest), page_count=pages, parts=parts)["id"]); result["job_id"]=jid; set_job(jid,status="succeeded",stage="saving",progress=100,message="Upload indexed"); return result
+        result=source_detail(create_source(workspace_id, filename, "upload", text, original_filename=filename, local_path=str(dest), page_count=pages, parts=parts)["id"]); result["job_id"]=jid; result["conversion"]={"adapter":conversion.metadata.adapter,"adapter_version":conversion.metadata.adapter_version,"warnings":list(conversion.metadata.warnings)}; set_job(jid,status="succeeded",stage="saving",progress=100,message="Upload indexed"); return result
     except ValueError as exc:
         dest.unlink(missing_ok=True)
         set_job(jid,status="failed",progress=100,error=str(exc),message="Duplicate source")
@@ -1053,10 +1316,10 @@ def get_session(session_id: str):
 
 
 @app.post("/api/sessions/{session_id}/messages")
-async def message_session(session_id: str, body: dict[str, Any]):
+async def message_session(session_id: str, request: Request, body: dict[str, Any]):
     item = db.row("sessions", "id", session_id)
     if not item: fail("SESSION_NOT_FOUND", "学习会话不存在", 404)
-    session = json.loads(item["payload"]); user_text = str(body.get("message", "")); bound_session = provider_for_workspace(item["workspace_id"], body=body | {"provider_session_id": body.get("provider_session_id") or session.get("provider_session_id")}); attach_workspace_provider(item["workspace_id"], bound_session)
+    session = json.loads(item["payload"]); user_text = str(body.get("message", "")); bound_session = provider_for_workspace(item["workspace_id"], request=request, body=body | {"provider_session_id": body.get("provider_session_id") or session.get("provider_session_id")}); attach_workspace_provider(item["workspace_id"], bound_session)
     if bound_session.provider == "fake":
         result = tutor(item["workspace_id"], item["lesson_id"], user_text, session_id)
     else:
@@ -1102,7 +1365,7 @@ async def evaluate_lesson_v2(lesson_id: str, request: Request, body: dict[str, A
             workspace_id = progress_row.workspace_id if progress_row else ""
     except Exception:
         workspace_id = ""
-    bound_session = provider_for_workspace(workspace_id, request, body) if workspace_id else create_verified_demo_session()
+    bound_session = provider_for_workspace(workspace_id, request, body) if workspace_id else create_verified_demo_session(request_user_id(request))
     if workspace_id:
         attach_workspace_provider(workspace_id, bound_session)
     text=str(body.get("response","")); used_hint=bool(body.get("used_hint",False)); independent=bool(body.get("independent",True)); evidence=str(body.get("evidence", ""))
@@ -1146,40 +1409,54 @@ async def evaluate_lesson(lesson_id: str, request: Request, body: dict[str, Any]
 
 
 @app.post("/api/provider-sessions")
-def create_provider_session_route(body: ProviderSessionCreateIn):
+def create_provider_session_route(request: Request, body: ProviderSessionCreateIn):
     try:
-        return create_provider_session(body.model_dump())
+        return create_provider_session(body.model_dump(), owner_user_id=request_user_id(request))
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
 
 
 @app.get("/api/provider-sessions/{session_id}")
-def get_provider_session_route(session_id: str):
-    session = get_provider_session(session_id)
+def get_provider_session_route(request: Request, session_id: str):
+    session = get_provider_session(session_id, owner_user_id=request_user_id(request))
     if not session:
         fail("PROVIDER_SESSION_NOT_FOUND", "Provider 会话不存在", 404)
     return public_session(session)
 
 
 @app.post("/api/provider-sessions/{session_id}/test")
-async def test_provider_session_route(session_id: str):
+async def test_provider_session_route(request: Request, session_id: str):
     try:
+        owner_user_id = request_user_id(request)
+        if not get_provider_session(session_id, owner_user_id=owner_user_id):
+            fail("PROVIDER_SESSION_NOT_FOUND", "Provider 会话不存在", 404)
         return await test_provider_session(session_id)
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
 
 
 @app.delete("/api/provider-sessions/{session_id}")
-def delete_provider_session_route(session_id: str):
-    return {"deleted": delete_provider_session(session_id)}
+def delete_provider_session_route(request: Request, session_id: str):
+    return {"deleted": delete_provider_session(session_id, owner_user_id=request_user_id(request))}
+
+
+@app.delete("/api/provider-credentials/{credential_ref}")
+def delete_provider_credential_route(request: Request, credential_ref: str):
+    try:
+        owner_user_id = request_user_id(request)
+        if owner_user_id is not None and not credential_owned_by(credential_ref, owner_user_id):
+            fail("PROVIDER_CREDENTIAL_NOT_FOUND", "Provider 凭据不存在", 404)
+        return {"deleted": delete_provider_credential(credential_ref)}
+    except ProviderError as exc:
+        fail(exc.code, exc.message, exc.status, exc.details)
 
 
 @app.post("/api/providers/test")
-async def test_provider(body: ProviderTestIn):
+async def test_provider(request: Request, body: ProviderTestIn):
     try:
-        session = create_provider_session(body.model_dump())
+        session = create_provider_session(body.model_dump(), owner_user_id=request_user_id(request))
         result = await test_provider_session(session["provider_session_id"])
-        return {**result, "message": "Provider 真实连接已验证；API Key 仅保存在当前后端进程内存。"}
+        return {**result, "message": "Provider 真实连接已验证；服务仅使用 Windows Credential Locker 引用。"}
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
 
@@ -2280,6 +2557,33 @@ def teacher_avatar_morph(model_id: str, request: Request, body: dict[str, Any]):
         return {"request_id": request.state.request_id, "item": update_teacher_avatar_morph(model_id, body)}
     except TeacherAvatarError as exc:
         _teacher_avatar_error(exc)
+
+
+@app.get("/api/teacher2d/{teacher_id}/download")
+def teacher_2d_download(teacher_id: str):
+    """Package one bundled 2D teacher without mixing it with user data.
+
+    The downloadable visual resource is deliberately separate from the local
+    migration archive.  This lets a new installation fetch the teacher stage
+    on its own while keeping the user's tasks and materials private.
+    """
+    if teacher_id != "tsubaki-live2d":
+        raise HTTPException(status_code=404, detail={"code": "TEACHER_2D_NOT_FOUND", "message": "2D 教师资源不存在"})
+    root = STATIC / "teacher2d" / teacher_id
+    if not root.is_dir():
+        raise HTTPException(status_code=503, detail={"code": "TEACHER_2D_UNAVAILABLE", "message": "当前安装包未包含 2D 教师资源"})
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.is_symlink():
+                continue
+            relative = path.relative_to(root).as_posix()
+            archive.write(path, f"{teacher_id}/{relative}")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{teacher_id}.zip"'},
+    )
 
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"

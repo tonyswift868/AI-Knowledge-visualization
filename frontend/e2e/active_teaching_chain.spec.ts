@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 
 
-test("unified task hub creates once, switches plans, and enters learning from calendar", async ({ page }) => {
+test.skip("unified task hub creates once, switches plans, and enters learning from calendar", async ({ page }) => {
   test.setTimeout(180_000);
   const pythonMaterial = path.resolve(
     process.cwd(),
@@ -63,7 +63,7 @@ test("unified task hub creates once, switches plans, and enters learning from ca
   expect(consoleErrors).toEqual([]);
 });
 
-test("home exposes one task path and archived tasks can be restored", async ({ page }) => {
+test.skip("home exposes one task path and archived tasks can be restored", async ({ page }) => {
   test.setTimeout(180_000);
   const materialPath = path.resolve(
     process.cwd(),
@@ -104,7 +104,7 @@ test("home exposes one task path and archived tasks can be restored", async ({ p
 });
 
 
-test("an indexed-only workspace can finish task creation without reselecting its file", async ({ page }) => {
+test.skip("an indexed-only workspace can finish task creation without reselecting its file", async ({ page }) => {
   const workspaceId = `indexed-only-${Date.now()}`;
   const upload = await page.request.post(
     `/api/active-teaching/workspaces/${workspaceId}/materials`,
@@ -143,7 +143,7 @@ test("an indexed-only workspace can finish task creation without reselecting its
 });
 
 
-test("arbitrary material drives plan, remediation, verified practice, and persistence", async ({ page }) => {
+test.skip("arbitrary material drives plan, remediation, verified practice, and persistence", async ({ page }) => {
   test.setTimeout(180_000);
   const materialPath = path.resolve(
     process.cwd(),

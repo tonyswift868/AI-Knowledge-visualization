@@ -103,8 +103,8 @@ def _detect_profile(workspace_id: str) -> dict[str, Any]:
     material, injection_filtered = _safe_material("\n".join(str(item.get("text") or "") for item in chunks[:12]))
     text = f"{goal} {goal_data.get('expected_output', '')} {material}"
     lower = text.lower()
-    if _contains(lower, ("leetcode", "算法", "数据结构", "代码", "编程", "二叉树", "图遍历")):
-        domain, shape, structure = "algorithms" if _contains(lower, ("leetcode", "算法", "数据结构")) else "programming", "coding_practice" if _contains(lower, ("代码", "编程")) else "large_question_bank", "prerequisite_graph"
+    if _contains(lower, ("算法", "数据结构", "代码", "编程", "题库")):
+        domain, shape, structure = "algorithms" if _contains(lower, ("算法", "数据结构", "题库")) else "programming", "coding_practice" if _contains(lower, ("代码", "编程")) else "large_question_bank", "prerequisite_graph"
         actions, artifacts = ["identify", "plan", "apply", "verify", "repair", "optimize", "transfer"], ["code", "algorithm_plan", "proof"]
     elif _contains(lower, ("法律", "法考", "案例", "证据", "责任", "判例")):
         domain, shape, structure, actions, artifacts = "law", "case_analysis", "evidence_network", ["classify", "compare", "argue", "verify", "infer"], ["argument", "comparison", "report"]

@@ -4,7 +4,7 @@ import asyncio
 import re
 import sqlite3
 
-from app import learning_resources
+from app import credential_store, learning_resources
 from app.learning_resources import (
     discover_learning_resources,
     discover_task_resources,
@@ -23,8 +23,34 @@ def _connection() -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
-    connection.execute(
-        "CREATE TABLE active_knowledge_points (id TEXT PRIMARY KEY)"
+    connection.executescript(
+        """
+        CREATE TABLE active_knowledge_points (id TEXT PRIMARY KEY);
+        CREATE TABLE active_external_resources (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL,
+            knowledge_point_id TEXT NOT NULL REFERENCES active_knowledge_points(id),
+            kind TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+            url TEXT NOT NULL, host TEXT NOT NULL, provider_label TEXT NOT NULL,
+            authority TEXT NOT NULL, source TEXT NOT NULL, search_query TEXT NOT NULL,
+            discovery_meta TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL,
+            UNIQUE(knowledge_point_id,url)
+        );
+        CREATE TABLE active_resource_discovery_runs (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL,
+            point_fingerprint TEXT NOT NULL, provider_meta TEXT NOT NULL,
+            searched_point_count INTEGER NOT NULL, resource_count INTEGER NOT NULL,
+            status TEXT NOT NULL, warnings TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        CREATE TABLE orm_learning_resources (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL,
+            map_revision_id TEXT NOT NULL, knowledge_point_id TEXT NOT NULL,
+            kind TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+            url TEXT NOT NULL, host TEXT NOT NULL, provider_label TEXT NOT NULL,
+            authority TEXT NOT NULL, source TEXT NOT NULL, search_query TEXT NOT NULL,
+            discovery_meta TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL,
+            UNIQUE(map_revision_id,knowledge_point_id,url)
+        );
+        """
     )
     ensure_resource_schema(connection)
     return connection
@@ -37,7 +63,7 @@ def _verified_gemini_session():
             "provider": "gemini",
             "base_url": "https://generativelanguage.googleapis.com/v1beta",
             "model": "gemini-2.5-flash",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     session = get_provider_session(public["provider_session_id"])
@@ -196,6 +222,38 @@ def test_uncited_model_url_is_rejected(monkeypatch):
     assert result["resource_count"] == 0
     assert any("没有 Google Search 引用元数据" in item for item in result["warnings"])
     assert public_resources(connection, "reject-uncited") == []
+
+
+def test_canonical_resource_discovery_never_writes_legacy_resource_rows(monkeypatch):
+    connection = _connection()
+    session = _verified_gemini_session()
+    provider = BatchGroundedProvider()
+    monkeypatch.setattr(
+        learning_resources,
+        "provider_for_session",
+        lambda _session: provider,
+    )
+    result = asyncio.run(
+        discover_learning_resources(
+            connection,
+            workspace_id="canonical-resource-task",
+            points=_points(1),
+            provider_session_id=session.id,
+            map_revision_id="revision-sentinel",
+        )
+    )
+    assert result["status"] == "completed"
+    assert result["provider_meta"]["map_revision_id"] == "revision-sentinel"
+    assert connection.execute(
+        "SELECT COUNT(*) FROM active_external_resources"
+    ).fetchone()[0] == 0
+    resources = public_resources(
+        connection,
+        "canonical-resource-task",
+        map_revision_id="revision-sentinel",
+    )
+    assert len(resources) == 1
+    assert resources[0]["knowledge_point_id"] == "point-000"
 
 
 def test_unsupported_search_is_not_cached_and_does_not_erase_verified_resources(
@@ -374,14 +432,14 @@ def test_openai_compatible_provider_plans_search_and_selects_only_real_candidate
     assert any("搜索结果之外" in warning for warning in result["warnings"])
 
 
-def test_task_level_leetcode_fallback_is_chinese_and_survives_no_provider():
+def test_task_level_without_provider_does_not_invent_catalog_resource():
     connection = _connection()
     points = [
         {
             "id": "point-000",
-            "name": "合并两个有序数组",
-            "explanation": "数组双指针与原地归并。",
-            "acceptance_method": "能独立编码并通过测试。",
+            "name": "随机领域哨兵概念",
+            "explanation": "只由测试输入定义的跨领域内容。",
+            "acceptance_method": "能解释哨兵内容并给出可观察结果。",
         }
     ]
     connection.execute(
@@ -393,20 +451,17 @@ def test_task_level_leetcode_fallback_is_chinese_and_survives_no_provider():
     result = asyncio.run(
         discover_task_resources(
             connection,
-            workspace_id="leetcode-task",
+            workspace_id="random-domain-task",
             points=points,
             provider_session_id=None,
-            task_label="完全掌握资料；leetcode_top_interview_150_zh.md",
+            task_label="完全掌握随机哨兵资料",
         )
     )
 
-    assert result["resource_count"] == 1
-    resources = public_resources(connection, "leetcode-task")
-    assert len(resources) == 1
-    assert resources[0]["url"] == "https://leetcode.cn/studyplan/top-interview-150/"
-    assert resources[0]["source"] == "official_catalog_fallback"
-    assert "中文" in resources[0]["title"]
-    assert result["provider_meta"]["fallback_used"] is True
+    assert result["status"] == "not_requested"
+    assert result["resource_count"] == 0
+    assert public_resources(connection, "random-domain-task") == []
+    assert result["provider_meta"]["mode"] == "unavailable"
 
 
 def test_open_search_rejects_english_candidate_when_no_chinese_page_exists():

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app import db  # noqa: E402
+from app import active_teaching, db, orm  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -40,34 +40,52 @@ def run_command(command: list[str], cwd: Path, timeout: int = 180) -> tuple[int,
 
 def main() -> int:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="mentorflow_archive_smoke_") as temp:
+    temp_parent = Path(r"E:\Codex\Temp")
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    previous_db = db.DB_PATH
+    previous_data = db.DATA_DIR
+    previous_orm_db = orm.ORM_DB
+    previous_upload_root = active_teaching.UPLOAD_ROOT
+    with tempfile.TemporaryDirectory(
+        prefix="mentorflow-archive-smoke-",
+        dir=temp_parent,
+    ) as temp:
         temp_root = Path(temp)
         db.DB_PATH = temp_root / "smoke.db"
         db.DATA_DIR = temp_root
-        with TestClient(app) as client:
-            workspace = client.post("/api/workspaces", json={"title": "Archive smoke", "execution_mode": "demo"}).json()["id"]
+        active_teaching.UPLOAD_ROOT = temp_root / "active-teaching-uploads"
+        orm.configure_orm(temp_root / "mentorflow_v2.db")
+        try:
+            with TestClient(app) as client:
+                workspace = client.post("/api/workspaces", json={"title": "Archive smoke", "execution_mode": "demo"}).json()["id"]
 
-            normal_zip = make_zip({"notes/java/jvm.md": "# JVM\n\nSafe evidence", "src/main.py": "print('not executed')"})
-            preview_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("study_bundle.zip", normal_zip, "application/zip")})
-            assert preview_response.status_code == 200, preview_response.text
-            preview = preview_response.json()
-            save_json("normal_preview.json", preview)
-            selected = [item["id"] for item in preview["tree"] if item["status"] == "supported"]
-            import_response = client.post(f"/api/workspaces/{workspace}/sources/archive/import", json={"preview_id": preview["preview_id"], "selected_file_ids": selected, "trust_level": "reference"})
-            assert import_response.status_code == 200, import_response.text
-            save_json("normal_import.json", import_response.json())
+                normal_zip = make_zip({"notes/java/jvm.md": "# JVM\n\nSafe evidence", "src/main.py": "print('not executed')"})
+                preview_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("study_bundle.zip", normal_zip, "application/zip")})
+                assert preview_response.status_code == 200, preview_response.text
+                preview = preview_response.json()
+                save_json("normal_preview.json", preview)
+                selected = [item["id"] for item in preview["tree"] if item["status"] == "supported"]
+                import_response = client.post(f"/api/workspaces/{workspace}/sources/archive/import", json={"preview_id": preview["preview_id"], "selected_file_ids": selected, "trust_level": "reference"})
+                assert import_response.status_code == 200, import_response.text
+                save_json("normal_import.json", import_response.json())
 
-            slip_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("zip_slip.zip", make_zip({"../escape.md": "blocked"}), "application/zip")})
-            assert slip_response.status_code == 400 and slip_response.json()["error"]["code"] == "ARCHIVE_PATH_TRAVERSAL"
-            save_json("zip_slip_rejection.json", slip_response.json())
+                slip_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("zip_slip.zip", make_zip({"../escape.md": "blocked"}), "application/zip")})
+                assert slip_response.status_code == 400 and slip_response.json()["error"]["code"] == "ARCHIVE_PATH_TRAVERSAL"
+                save_json("zip_slip_rejection.json", slip_response.json())
 
-            bomb_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("zip_bomb.zip", make_zip({"bomb.txt": "A" * 1_000_000}), "application/zip")})
-            assert bomb_response.status_code == 400 and bomb_response.json()["error"]["code"] == "ARCHIVE_SUSPICIOUS_COMPRESSION_RATIO"
-            save_json("zip_bomb_rejection.json", bomb_response.json())
+                bomb_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("zip_bomb.zip", make_zip({"bomb.txt": "A" * 1_000_000}), "application/zip")})
+                assert bomb_response.status_code == 400 and bomb_response.json()["error"]["code"] == "ARCHIVE_SUSPICIOUS_COMPRESSION_RATIO"
+                save_json("zip_bomb_rejection.json", bomb_response.json())
 
-            executable_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("executable.zip", make_zip({"run.exe": "MZ"}), "application/zip")})
-            assert executable_response.status_code == 200
-            save_json("executable_rejection.json", executable_response.json())
+                executable_response = client.post(f"/api/workspaces/{workspace}/sources/archive/preview", files={"file": ("executable.zip", make_zip({"run.exe": "MZ"}), "application/zip")})
+                assert executable_response.status_code == 200
+                save_json("executable_rejection.json", executable_response.json())
+        finally:
+            orm.engine.dispose()
+            orm.configure_orm(previous_orm_db)
+            active_teaching.UPLOAD_ROOT = previous_upload_root
+            db.DB_PATH = previous_db
+            db.DATA_DIR = previous_data
 
     test_code, test_output = run_command([str(ROOT / ".venv" / "Scripts" / "python.exe"), "-m", "pytest", "backend/tests/test_v6_archive_import.py", "-q"], ROOT)
     (ARTIFACTS / "test_results.txt").write_text(test_output, encoding="utf-8")

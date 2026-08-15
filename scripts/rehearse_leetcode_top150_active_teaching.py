@@ -1,16 +1,20 @@
-"""Run the real Top Interview 150 ingestion/plan/proactive-teaching rehearsal."""
+"""Retired course-specific rehearsal retained only as historical reference.
+
+The v1 product forbids Provider-free semantic generation and domain-specific
+fallbacks.  Executing this old script would upload material and write a receipt
+before its obsolete generation call fails, so ``main`` now stops before any
+TestClient or database write.  Use ``run_isolated_real_knowledge_map_acceptance``
+for the release gate.
+"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 MATERIAL = PROJECT_ROOT / "data" / "demo_materials" / "leetcode_top_interview_150_20260726.md"
 REPORT = PROJECT_ROOT / "reports" / "leetcode_top150_active_rehearsal_20260726.json"
 WORKSPACE = "leetcode-top150-rehearsal-20260726-v14"
@@ -23,6 +27,16 @@ def ensure_ok(response, label: str) -> dict:
 
 
 def main() -> None:
+    raise SystemExit(
+        "This live, Provider-free course rehearsal is retired. Run "
+        "scripts/run_isolated_real_knowledge_map_acceptance.py with an "
+        "mfcred_... reference instead."
+    )
+    # Historical flow below is intentionally unreachable. Keeping imports here
+    # ensures merely invoking the retired script cannot initialize the app.
+    from fastapi.testclient import TestClient
+    from app.main import app
+
     with TestClient(app) as client:
         with MATERIAL.open("rb") as handle:
             material = ensure_ok(

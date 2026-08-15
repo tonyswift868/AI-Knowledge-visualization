@@ -117,10 +117,14 @@ export function resolveSpineTeacherManifestUrl(search = window.location.search) 
 export function TeacherAvatarStudio({
   workspaceId = "default",
   compact = false,
+  standalone = false,
+  portrait = false,
   presentationState = "idle",
   }: {
   workspaceId?: string
   compact?: boolean
+  standalone?: boolean
+  portrait?: boolean
   presentationState?: TeacherCompanionState
 }) {
   const [items, setItems] = useState<TeacherAvatar[]>([])
@@ -241,6 +245,7 @@ export function TeacherAvatarStudio({
         <TeacherCompanionPortrait
           teacherName={spineTeacher?.display_name || "艾莉丝"}
           state={presentationState}
+          portrait={portrait}
         />
       </section>
     )
@@ -438,15 +443,15 @@ export function TeacherAvatarStudio({
     }
   }
 
-  return <section className={`teacher-avatar-studio ${compact ? "compact" : ""}`}>
+  return <section className={`teacher-avatar-studio ${compact ? "compact" : ""} ${standalone ? "standalone" : ""}`}>
       <div className="teacher-avatar-heading">
-      <div><span>{compact ? "LICENSED AVATAR ROSTER" : "2D AI TEACHER COMPANION"}</span><h2>{compact ? "今日教师模型" : "AI 教师角色库"}</h2><p>{compact ? "当前教师的课程展示模型。" : "以高质量 2D 角色、教学状态和自然互动构成教师陪伴体验。"}</p></div>
-        <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看备用 DragonBones 方案 <ExternalLink size={14} /></a>
+      <div><span>{compact ? "LICENSED AVATAR ROSTER" : "2D AI TEACHER COMPANION"}</span><h2>{compact ? "今日教师模型" : "教师人设与教学风格"}</h2><p>{compact ? "当前教师的课程展示模型。" : "先编辑可复用的教师人设，再按需调整课堂外观与模型资源。"}</p></div>
+        {!standalone && <a href="https://github.com/DragonBones/DragonBonesJS" target="_blank" rel="noreferrer">查看备用 DragonBones 方案 <ExternalLink size={14} /></a>}
     </div>
 
       {!compact && <section className="teacher-persona-library" aria-label="AI 教师人设库">
         <header>
-          <div><span>TEACHING PERSONA</span><h3>教师大脑与教学风格</h3></div>
+          <div><span>主要设置 · TEACHING PERSONA</span><h3>教师大脑与教学风格</h3></div>
           <button type="button" onClick={() => selectPersona("")}>＋ 新建人设</button>
         </header>
         <p>学习任务只选择这里的角色，不再各自保存一份难以管理的人设；此前任务里填写的内容会自动迁移到这里。</p>
@@ -507,19 +512,24 @@ export function TeacherAvatarStudio({
         {personaNotice && <div className="teacher-avatar-notice" role="status">{personaNotice}</div>}
       </section>}
 
-      {!compact && <div className="teacher-review-switch" role="group" aria-label="教师视觉审稿模式">
+      {!compact && <section className="teacher-visual-advanced" aria-label="视觉头像与模型高级设置">
+        <header className="teacher-visual-advanced__header">
+          <div><span>ADVANCED · VISUAL AVATAR</span><h3>视觉头像与模型高级设置</h3></div>
+          <p>人设决定教师如何教学；这里仅调整展示外观、骨骼和本地模型资源。</p>
+        </header>
+      <div className="teacher-review-switch" role="group" aria-label="教师视觉审稿模式">
         <button type="button" className={reviewMode === "mother-auburn" ? "active" : ""} aria-pressed={reviewMode === "mother-auburn"} onClick={() => setReviewMode("mother-auburn")}>教师 01 · 红发</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 小熊教学态</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-swimsuit" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-swimsuit"} onClick={() => setReviewMode("mother-blonde-fang-swimsuit")}>教师 02 · 泳装聊天态</button>
         <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>椿 · Live2D 动态</button>
         <span>当前默认教师使用 Cubism 原生网格、物理与语义动作；母图仅保留作历史对照。</span>
-      </div>}
+      </div>
 
       {!compact && (reviewMode !== "skeleton"
         ? <TeacherMotherImageReview candidate={reviewMode === "mother-auburn" ? "auburn" : reviewMode === "mother-blonde-fang-swimsuit" ? "blonde-fang-swimsuit" : "blonde-fang-teaching"} />
         : <TeacherCompanionStage teacherName={spineTeacher?.display_name || "艾莉丝"} spineManifestUrl={configuredSpineManifestUrl || spineTeacher?.manifest_url} />)}
 
-      {!compact && <form className="spine-teacher-import" onSubmit={event => { event.preventDefault(); void importSpineTeacher(event.currentTarget) }}>
+      <form className="spine-teacher-import" onSubmit={event => { event.preventDefault(); void importSpineTeacher(event.currentTarget) }}>
         <header>
           <div><span>SPINE 4.1 PACKAGE</span><h3>{spineTeacher ? `当前骨骼教师：${spineTeacher.display_name}` : "导入授权的 2D 骨骼教师"}</h3></div>
           <b>{spineTeacher ? "已启用" : "等待资源包"}</b>
@@ -537,20 +547,20 @@ export function TeacherAvatarStudio({
         </div>
         <button type="submit" disabled={busy}>{busy ? "正在验证…" : "验证并启用 Spine 教师"}</button>
         {spineNotice && <div className="teacher-avatar-notice" role="status">{spineNotice}</div>}
-      </form>}
+      </form>
 
-      {!compact && <details className="teacher-legacy-tools">
+      <details className="teacher-legacy-tools">
         <summary>旧版 3D / 恋活导入工具</summary>
         <p>仅用于迁移已有角色卡。当前 AI 教师展示默认使用 2D 角色舞台。</p>
         <Suspense fallback={<div className="teacher-avatar-empty" role="status">正在加载旧版 3D 导入工具…</div>}>
           <KoikatsuCardEditor modelUrl={koikatsuModelUrlOverride !== undefined ? koikatsuModelUrlOverride : (koikatsuBase?.model_url || undefined)} modelFormat={koikatsuBase?.format === "runtime-pack" ? undefined : koikatsuBase?.format} previewMorph={morph} onMorphChange={setMorph} onNativeCardChange={setKoikatsuNativeCardActive} onModelUrlChange={setKoikatsuModelUrlOverride} onPreviewChange={setKoikatsuCardPreviewUrl} show3dPreview={false} />
         </Suspense>
-      </details>}
+      </details>
 
-    {!compact && <section className="teacher-avatar-sources" aria-label="模型来源网站">
+    <section className="teacher-avatar-sources" aria-label="模型来源网站">
       <div className="teacher-avatar-sources-heading"><div><b>自行获取模型</b><span>打开来源页下载 VRM/GLB，确认作者许可后再导入。</span></div><FileDown size={20} /></div>
       <div className="teacher-avatar-source-links">{sourceLinks.map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer"><span><b>{source.label}</b><small>{source.note}</small></span><ExternalLink size={15} /></a>)}</div>
-    </section>}
+    </section>
 
     <div className="teacher-avatar-grid">
       <div className="teacher-avatar-preview-panel">
@@ -580,7 +590,7 @@ export function TeacherAvatarStudio({
       </div>}
 
       {active && koikatsuNativeCardActive && <div className="teacher-native-driver-note" role="status">恋活原生卡已启用统一身体驱动；请使用上方原生参数调整，避免同一参数被重复变形。</div>}
-      {!compact && characterPacks.length > 0 && <section className="teacher-character-packs" aria-label="可下载角色资源包">
+      {characterPacks.length > 0 && <section className="teacher-character-packs" aria-label="可下载角色资源包">
         <h3><FileDown size={16} />可下载角色资源包</h3>
         <small>下载ZIP后在下方导入；再次选择匹配角色卡时会自动启用完整模型。</small>
         <div>{characterPackGroups.map(([category, packs]) => <div className="teacher-character-pack-group" key={category}><h4>{category}</h4>{packs.map(pack => <a key={pack.pack_id} href={pack.download_url} download>
@@ -588,7 +598,7 @@ export function TeacherAvatarStudio({
           <em>{pack.installed ? "已安装" : "下载"}</em>
         </a>)}</div>)}</div>
       </section>}
-      {!compact && <form id="teacher-avatar-import" className="teacher-avatar-import" onSubmit={event => { event.preventDefault(); void importModel(event.currentTarget) }}>
+      <form id="teacher-avatar-import" className="teacher-avatar-import" onSubmit={event => { event.preventDefault(); void importModel(event.currentTarget) }}>
         <h3><Upload size={16} />导入已下载模型</h3>
         <small>支持 VRM、GLB 和 MentorFlow 恋活角色资源包 ZIP；资源只保存到本机，匹配角色卡后会自动启用。</small>
         <input type="file" name="file" accept=".vrm,.glb,.zip" multiple required />
@@ -596,16 +606,17 @@ export function TeacherAvatarStudio({
         <label><input type="checkbox" name="rights_confirmed" value="true" required />我确认拥有在本应用中使用该模型的授权</label>
         <label><input type="checkbox" name="adult_character_confirmed" value="true" required />我确认该教师角色为成年人设定</label>
         <button type="submit" disabled={busy}>{busy ? "正在导入…" : "加入本地轮换池"}</button>
-      </form>}
-      {!compact && <form id="teacher-card-import" className="teacher-card-import" onSubmit={event => { event.preventDefault(); void importCard(event.currentTarget) }}>
+      </form>
+      <form id="teacher-card-import" className="teacher-card-import" onSubmit={event => { event.preventDefault(); void importCard(event.currentTarget) }}>
         <h3>导入 MentorFlow 角色卡</h3>
         <small>支持 MentorFlow JSON/PNG，也支持恋活 Sunshine 原生 PNG；原生卡只转换参数与资源引用，不复制游戏本体或 Mod。</small>
         <input type="file" name="file" accept=".json,.png" required />
         <button type="submit" disabled={busy}>{busy ? "正在读取…" : "读取角色卡"}</button>
-      </form>}
+      </form>
       {notice && <div className="teacher-avatar-notice" role="status">{notice}</div>}
       </div>
     </div>
+      </section>}
   </section>
 }
 

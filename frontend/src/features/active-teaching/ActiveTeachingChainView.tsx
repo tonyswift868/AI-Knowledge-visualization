@@ -1,4 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import dagre from "@dagrejs/dagre";
+import {
+  Background,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  type Edge as FlowEdge,
+  type Node as FlowNode,
+} from "@xyflow/react";
+import ReactMarkdown from "react-markdown";
 import {
   activeLearningTasks,
   activeRequest,
@@ -8,12 +18,13 @@ import {
   type ActiveLearningTaskSummary,
   type ActiveTeacherPersona,
   uploadActiveMaterial,
+  uploadActiveUrlMaterial,
   uploadActiveTeachingAttachment,
   warmActiveTeachingVoice,
   transcribeActiveTeachingVoice,
 } from "./api";
 import { useMentorStore } from "../../stores/useMentorStore";
-import { reconnectSavedProvider } from "../../providerConnection";
+import { providerRequestContext, reconnectSavedProvider } from "../../providerConnection";
 import {
   TeacherCompanionPortrait,
   type TeacherCompanionState,
@@ -27,6 +38,7 @@ import "../teachers/teacher-avatar.css";
 import "../teachers/teacher-avatar-warm.css";
 import "./active-teaching.css";
 import { FocusMonitorPanel } from "./FocusMonitorPanel";
+import "@xyflow/react/dist/style.css";
 
 const isoAfterDays = (days: number) => {
   const value = new Date(Date.now() + days * 86400000);
@@ -34,6 +46,487 @@ const isoAfterDays = (days: number) => {
 };
 const ACTIVE_WORKSPACE_KEY = "mentorflow_active_teaching_workspace_v1";
 const ACTIVE_DRAFT_PREFIX = "mentorflow_active_task_draft_v1:";
+
+type KnowledgeMapEvidence = {
+  source_id?: string;
+  chunk_id?: string;
+  quote?: string;
+  heading?: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  [key: string]: unknown;
+};
+
+export type KnowledgeMapV1Node = {
+  id: string;
+  label: string;
+  summary: string;
+  layer: string;
+  kind: string;
+  reviewStatus: string;
+  planStatus: string;
+  mastery: number;
+  evidence: KnowledgeMapEvidence[];
+  raw: any;
+};
+
+export type KnowledgeMapV1Edge = {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  reviewStatus: string;
+  evidence: KnowledgeMapEvidence[];
+  raw: any;
+};
+
+export type KnowledgeMapV1 = {
+  id: string;
+  revision: number | string | null;
+  status: string;
+  failureReason: string;
+  nodes: KnowledgeMapV1Node[];
+  edges: KnowledgeMapV1Edge[];
+  candidates: any[];
+  warnings: string[];
+  raw: any;
+};
+
+const asArray = (value: unknown): any[] => Array.isArray(value) ? value : [];
+
+const stringValue = (...values: unknown[]) => {
+  const value = values.find((item) => item !== undefined && item !== null && String(item).trim());
+  return String(value ?? "").trim();
+};
+
+export const isKnowledgeJobTerminal = (status: unknown) => [
+  "ready", "ready_with_review", "completed", "complete", "succeeded", "done", "failed", "error", "unsupported", "cancelled",
+].includes(String(status || "").toLowerCase());
+
+export const isKnowledgeJobReady = (status: unknown) => ["ready", "ready_with_review", "completed", "complete", "succeeded", "done"]
+  .includes(String(status || "").toLowerCase());
+
+const knowledgeJobProcessingStatuses = [
+  "queued", "pending", "started", "running", "processing", "converting", "extracting", "validating",
+];
+
+/** Build the browser file filter from the canonical conversion registry. */
+export const materialAcceptFromCapabilities = (payload: any): string | undefined => {
+  const capabilities = asArray(payload?.registry?.capabilities || payload?.capabilities);
+  const accepted = new Set<string>();
+  capabilities.forEach((capability: any) => {
+    if (capability?.available === false || capability?.rejected === true) return;
+    asArray(capability?.suffixes).forEach((suffix) => {
+      const normalized = String(suffix || "").trim().toLowerCase();
+      if (normalized) accepted.add(normalized.startsWith(".") ? normalized : `.${normalized}`);
+    });
+    asArray(capability?.mime_types).forEach((mimeType) => {
+      const normalized = String(mimeType || "").trim().toLowerCase();
+      if (normalized) accepted.add(normalized);
+    });
+  });
+  return accepted.size ? Array.from(accepted).join(",") : undefined;
+};
+
+const reviewStatusFor = (...values: unknown[]) => {
+  const status = stringValue(...values).toLowerCase();
+  if (["pending", "review", "needs-review", "needs_review"].includes(status)) return "needs_review";
+  if (["confirmed", "accepted", "accept", "approved"].includes(status)) return "approved";
+  return status || "approved";
+};
+
+const evidenceFor = (value: any): KnowledgeMapEvidence[] => {
+  const source = value?.evidence ?? value?.source_evidence ?? value?.source_refs ?? value?.sources ?? value?.citations;
+  if (Array.isArray(source)) return source.filter(Boolean);
+  if (source && typeof source === "object") return [source];
+  return [];
+};
+
+const unwrapKnowledgeMap = (payload: any): any => {
+  const root = payload?.knowledge_map || payload?.map || payload?.data?.knowledge_map || payload?.data || payload;
+  if (root?.knowledge_graph && !root.nodes && !root.knowledge_points) return root.knowledge_graph;
+  return root;
+};
+
+/** Convert the v1 graph contract while retaining the active-teaching v0 shape. */
+export function normalizeKnowledgeMapV1(payload: any): KnowledgeMapV1 {
+  const root = unwrapKnowledgeMap(payload) || {};
+  const rawNodes = asArray(root.nodes || root.knowledge_points);
+  const nodes = rawNodes.map((item: any, index) => {
+    const masteryRaw = Number(item.mastery ?? item.current_mastery ?? item.mastery_estimate?.current_mastery ?? 0);
+    return {
+      id: stringValue(item.id, item.node_id, item.knowledge_point_id, `node-${index + 1}`),
+      label: stringValue(item.label, item.name, item.title, `知识点 ${index + 1}`),
+      summary: stringValue(item.summary, item.description, item.explanation),
+      layer: stringValue(item.layer, item.scope, item.kind) || "material",
+      kind: stringValue(item.node_type, item.kind, item.type) || "concept",
+      reviewStatus: reviewStatusFor(item.review_status, item.review, item.audit_status, item.needs_review ? "needs_review" : item.status),
+      planStatus: stringValue(item.plan_status, item.schedule_status)
+        || (item.planned || item.task_id ? "planned" : "unplanned"),
+      mastery: Number.isFinite(masteryRaw) ? Math.max(0, Math.min(1, masteryRaw > 1 ? masteryRaw / 100 : masteryRaw)) : 0,
+      evidence: evidenceFor(item),
+      raw: item,
+    };
+  });
+  const nodeIds = new Set(nodes.map((item) => item.id));
+  const rawEdges = asArray(root.edges || root.dependencies || root.relations);
+  const edges = rawEdges.map((item: any, index) => {
+    const source = stringValue(item.source, item.source_id, item.source_node_id, item.prerequisite_id, item.from, item.prerequisite);
+    const target = stringValue(item.target, item.target_id, item.target_node_id, item.dependent_id, item.to, item.dependent);
+    return {
+      id: stringValue(item.id, item.edge_id, `edge-${index + 1}`),
+      source,
+      target,
+      relation: stringValue(item.relation, item.type, item.relationship) || "prerequisite",
+      reviewStatus: reviewStatusFor(item.review_status, item.review, item.audit_status, item.needs_review ? "needs_review" : item.status),
+      evidence: evidenceFor(item),
+      raw: item,
+    };
+  }).filter((edge) => edge.source && edge.target && nodeIds.has(edge.source) && nodeIds.has(edge.target));
+  return {
+    id: stringValue(root.id, root.map_id),
+    revision: root.revision ?? null,
+    status: stringValue(root.status, root.state) || (nodes.length ? "ready" : "empty"),
+    failureReason: stringValue(root.failure_reason, root.failureReason, root.reason, root.error?.message),
+    nodes,
+    edges,
+    candidates: asArray(root.candidates || root.review_candidates || root.pending_candidates).map((item: any) => {
+      const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+      return {
+        ...payload,
+        ...item,
+        id: stringValue(item?.id, item?.candidate_id, payload?.id),
+        status: stringValue(item?.decision, item?.status, item?.review_status, payload?.status) || "needs_review",
+      };
+    }),
+    warnings: asArray(root.warnings).map((item) => String(item)),
+    raw: root,
+  };
+}
+
+export type MasteryPlanPreviewV1 = {
+  preview_id: string;
+  revision?: number | string;
+  revision_id?: string;
+  tasks: any[];
+  days: any[];
+  activation_blockers: any[];
+  extension_draft: any;
+  [key: string]: any;
+};
+
+export const planPreviewBlockerText = (blocker: any): string => {
+  if (typeof blocker === "string") return blocker;
+  return stringValue(blocker?.message, blocker?.reason, blocker?.detail, blocker?.source_id, blocker?.id)
+    || "存在未解决的资料审核项";
+};
+
+export const normalizeMasteryPlanPreview = (preview: any): any => {
+  const days = asArray(preview?.days || preview?.calendar).map((day: any) => ({
+    ...day,
+    tasks: asArray(day?.tasks).map((task: any) => ({
+      ...task,
+      estimated_task_minutes: task?.estimated_task_minutes ?? task?.planned_task_minutes ?? 0,
+      completed_task_minutes: task?.completed_task_minutes ?? 0,
+      actual_elapsed_minutes: task?.actual_elapsed_minutes ?? 0,
+    })),
+  }));
+  const tasks = asArray(preview?.tasks || days.flatMap((day: any) => day.tasks || [])).map((task: any) => ({
+    ...task,
+    estimated_task_minutes: task?.estimated_task_minutes ?? task?.planned_task_minutes ?? 0,
+    completed_task_minutes: task?.completed_task_minutes ?? 0,
+    actual_elapsed_minutes: task?.actual_elapsed_minutes ?? 0,
+  }));
+  const blockers = asArray(preview?.activation_blockers);
+  const extension = preview?.extension_draft || {};
+  return {
+    ...preview,
+    id: preview?.plan_id || preview?.preview_id,
+    plan_id: preview?.plan_id || preview?.preview_id,
+    tasks,
+    days,
+    calendar: days,
+    activation_blockers: blockers,
+    extension_draft: extension,
+    daily_task_minutes_budget: preview?.daily_task_minutes_budget ?? 0,
+    feasible: blockers.length === 0 && Number(preview?.unscheduled_task_minutes || 0) === 0,
+    total_mastery_task_minutes: preview?.total_mastery_task_minutes ?? preview?.total_estimated_task_minutes ?? 0,
+    initial_learning_task_minutes: preview?.initial_learning_task_minutes ?? tasks
+      .filter((task: any) => task.task_type === "initial_learning")
+      .reduce((sum: number, task: any) => sum + Number(task.estimated_task_minutes || 0), 0),
+    review_rounds: preview?.review_rounds,
+    warning: preview?.warning || "",
+  };
+};
+
+async function readActiveKnowledgeMapV1(workspaceId: string): Promise<KnowledgeMapV1> {
+  const workspacePath = `/workspaces/${encodeURIComponent(workspaceId)}`;
+  const mapPayload = await activeRequest(`${workspacePath}/knowledge-map?revision=active`);
+  const candidatePayload = await activeRequest(`${workspacePath}/knowledge-map/candidates?revision=active`).catch(() => null);
+  const normalized = normalizeKnowledgeMapV1(mapPayload);
+  const candidates = candidatePayload ? asArray(candidatePayload.candidates) : normalized.candidates;
+  return {
+    ...normalized,
+    candidates: normalizeKnowledgeMapV1({ ...normalized.raw, candidates }).candidates,
+  };
+}
+
+export function layoutKnowledgeMapV1(
+  nodes: KnowledgeMapV1Node[],
+  edges: KnowledgeMapV1Edge[],
+): FlowNode[] {
+  const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+  graph.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100, marginx: 24, marginy: 24 });
+  const width = 220;
+  const height = 104;
+  nodes.forEach((node) => graph.setNode(node.id, { width, height }));
+  edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
+  dagre.layout(graph);
+  return nodes.map((node) => {
+    const positioned = graph.node(node.id) || { x: width / 2, y: height / 2 };
+    return {
+      id: node.id,
+      position: { x: positioned.x - width / 2, y: positioned.y - height / 2 },
+      data: { label: node.kind === "theme" ? `主题 · ${node.label}` : node.label, node },
+      type: "default",
+      width,
+      height,
+      ariaLabel: `${node.kind === "theme" ? "主题" : "概念"}，${node.label}，${node.reviewStatus}，${node.planStatus}`,
+    };
+  });
+}
+
+type TeacherTurnBlock = {
+  type?: string;
+  block_type?: string;
+  kind?: string;
+  block_kind?: string;
+  content?: unknown;
+  text?: unknown;
+  markdown?: unknown;
+  code?: unknown;
+  value?: unknown;
+  items?: unknown;
+  steps?: unknown;
+  language?: string;
+};
+
+export type TeacherTurnV1 = {
+  state?: unknown;
+  concept?: unknown;
+  evidence?: unknown;
+  blocks?: TeacherTurnBlock[] | string[];
+  check?: unknown;
+  expected_learner_action?: unknown;
+  plain_text?: string;
+};
+
+const teacherValueText = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(teacherValueText).filter(Boolean).join("\n");
+  if (value && typeof value === "object") {
+    const item = value as Record<string, unknown>;
+    return teacherValueText(
+      item.content
+      ?? item.text
+      ?? item.prompt
+      ?? item.instruction
+      ?? item.quote
+      ?? item.excerpt
+      ?? item.value
+      ?? item.title
+      ?? item.label
+      ?? item.name
+      ?? item.status
+      ?? "",
+    );
+  }
+  return "";
+};
+
+function TeacherTurnValue({ value }: { value: unknown }) {
+  const text = teacherValueText(value);
+  return text ? <ReactMarkdown skipHtml>{text}</ReactMarkdown> : null;
+}
+
+function TeacherTurnBlockView({ block, index }: { block: TeacherTurnBlock | string; index: number }) {
+  const normalized: TeacherTurnBlock = typeof block === "string" ? { type: "markdown", content: block } : block || {};
+  const type = stringValue(normalized.type, normalized.block_type, normalized.kind, normalized.block_kind).toLowerCase() || "markdown";
+  const content = normalized.content ?? normalized.text ?? normalized.markdown ?? normalized.value ?? normalized.code ?? "";
+  if (type === "code") {
+    return (
+      <pre className="active-chain__teacher-code" data-testid={`teacher-turn-code-${index}`}>
+        <code className={normalized.language ? `language-${normalized.language}` : undefined}>{teacherValueText(normalized.code ?? content)}</code>
+      </pre>
+    );
+  }
+  if (normalized.code !== undefined) {
+    return (
+      <div className={`active-chain__teacher-block active-chain__teacher-block--${type}`} data-testid={`teacher-turn-block-${index}`}>
+        <TeacherTurnValue value={content} />
+        <pre className="active-chain__teacher-code" data-testid={`teacher-turn-code-${index}`}>
+          <code className={normalized.language ? `language-${normalized.language}` : undefined}>{teacherValueText(normalized.code)}</code>
+        </pre>
+      </div>
+    );
+  }
+  if (type === "steps" || type === "step" || Array.isArray(normalized.items)) {
+    const items = asArray(normalized.items ?? normalized.steps ?? content).map(teacherValueText).filter(Boolean);
+    const fallback = items.length ? items : teacherValueText(content).split(/\n+/).map((item) => item.trim()).filter(Boolean);
+    return (
+      <ol className="active-chain__teacher-steps" data-testid={`teacher-turn-steps-${index}`}>
+        {fallback.map((item, itemIndex) => <li key={`${itemIndex}-${item}`}><ReactMarkdown skipHtml>{item}</ReactMarkdown></li>)}
+      </ol>
+    );
+  }
+  return <div className={`active-chain__teacher-block active-chain__teacher-block--${type}`} data-testid={`teacher-turn-block-${index}`}><TeacherTurnValue value={content} /></div>;
+}
+
+/** Render structured TeacherTurnV1 content. Legacy string messages bypass this component. */
+export function TeacherTurnV1Renderer({ turn }: { turn: TeacherTurnV1 }) {
+  const blocks = asArray(turn.blocks) as Array<TeacherTurnBlock | string>;
+  return (
+    <div className="active-chain__teacher-turn" data-testid="teacher-turn-v1">
+      {turn.state !== undefined && <div className="active-chain__teacher-turn-state"><span>状态</span><TeacherTurnValue value={turn.state} /></div>}
+      {turn.concept !== undefined && <section><span>概念</span><TeacherTurnValue value={turn.concept} /></section>}
+      {turn.evidence !== undefined && <section><span>证据</span><TeacherTurnValue value={turn.evidence} /></section>}
+      {blocks.map((block, index) => <TeacherTurnBlockView block={block} index={index} key={`teacher-block-${index}`} />)}
+      {turn.check !== undefined && <section className="active-chain__teacher-check"><span>理解检查</span><TeacherTurnValue value={turn.check} /></section>}
+      {turn.expected_learner_action !== undefined && <section className="active-chain__teacher-action"><span>接下来</span><TeacherTurnValue value={turn.expected_learner_action} /></section>}
+    </div>
+  );
+}
+
+const teacherTurnFromMessage = (item: any): TeacherTurnV1 | null => {
+  const turn = item?.teacher_turn || item?.teacherTurn || item?.turn || item;
+  return Array.isArray(turn?.blocks) ? turn as TeacherTurnV1 : null;
+};
+
+const teacherMessageText = (item: any): string => {
+  const turn = teacherTurnFromMessage(item);
+  if (turn) return String(turn.plain_text || teacherValueText(turn.blocks) || item?.content || "");
+  return String(item?.content || item?.plain_text || "");
+};
+
+type KnowledgeMapV1Props = {
+  map: KnowledgeMapV1 | null;
+  capabilities?: any;
+  job?: any;
+  error?: string;
+  busy?: boolean;
+  onGenerate: () => void;
+  onDecision: (candidate: any, decision: "confirm" | "reject") => void;
+};
+
+export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGenerate, onDecision }: KnowledgeMapV1Props) {
+  const [showModelCommon, setShowModelCommon] = useState(false);
+  const [relationFilter, setRelationFilter] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
+  const [masteryFilter, setMasteryFilter] = useState("all");
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [selectedEdgeId, setSelectedEdgeId] = useState("");
+
+  const visibleNodes = useMemo(() => {
+    if (!map) return [];
+    return map.nodes.filter((node) => {
+      if (!showModelCommon && node.layer === "model_common") return false;
+      if (reviewFilter !== "all" && node.reviewStatus !== reviewFilter) return false;
+      if (planFilter !== "all" && node.planStatus !== planFilter) return false;
+      if (masteryFilter === "low" && node.mastery >= 0.34) return false;
+      if (masteryFilter === "medium" && (node.mastery < 0.34 || node.mastery >= 0.67)) return false;
+      if (masteryFilter === "high" && node.mastery < 0.67) return false;
+      return true;
+    });
+  }, [map, masteryFilter, planFilter, reviewFilter, showModelCommon]);
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
+  const visibleEdges = useMemo(() => (map?.edges || []).filter((edge) => (
+    visibleNodeIds.has(edge.source)
+    && visibleNodeIds.has(edge.target)
+    && (relationFilter === "all" || edge.relation === relationFilter)
+    && (reviewFilter === "all" || edge.reviewStatus === reviewFilter)
+  )), [map?.edges, relationFilter, reviewFilter, visibleNodeIds]);
+  const flowNodes = useMemo(() => layoutKnowledgeMapV1(visibleNodes, visibleEdges), [visibleEdges, visibleNodes]);
+  const flowEdges = useMemo<FlowEdge[]>(() => visibleEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: edge.relation,
+    animated: edge.reviewStatus === "needs_review",
+    ariaLabel: `${edge.relation}关系，${edge.reviewStatus}`,
+    style: { stroke: edge.reviewStatus === "needs_review" ? "#c88735" : "#5b9274", strokeWidth: 1.5 },
+  })), [visibleEdges]);
+  const selectedNode = map?.nodes.find((node) => node.id === selectedNodeId);
+  const selectedEdge = map?.edges.find((edge) => edge.id === selectedEdgeId);
+  const selectedEvidence = selectedNode?.evidence || selectedEdge?.evidence || [];
+  const capabilityUnsupported = capabilities?.supported === false
+    || capabilities?.knowledge_map === false
+    || capabilities?.knowledge_map?.supported === false;
+  const hasReviewCandidates = Boolean(map?.candidates.some((candidate: any) => ["pending", "needs_review", "review"].includes(String(candidate.status || candidate.review_status || "").toLowerCase())));
+  const jobStatus = String(job?.status || "").toLowerCase();
+  const mapStatus = capabilityUnsupported ? "unsupported" : (jobStatus && !isKnowledgeJobTerminal(jobStatus) ? jobStatus : (hasReviewCandidates ? "needs_review" : (map?.status || jobStatus || "empty")));
+  const unsupportedReason = map?.failureReason || capabilities?.reason || capabilities?.unsupported_reason || capabilities?.knowledge_map?.reason || "";
+  const relationOptions = Array.from(new Set((map?.edges || []).map((edge) => edge.relation).filter(Boolean)));
+  const capabilityWarnings = asArray(capabilities?.materials).filter((item: any) => item?.supported === false || item?.status === "unsupported" || item?.failure_reason).map((item: any) => `${item.original_filename || item.material_id || "资料"}：${item.failure_reason || item.reason || "当前能力不支持"}`);
+
+  return (
+    <section className="active-chain__map-v1" data-testid="active-knowledge-map-v1" aria-label="v1 交互知识地图">
+      <div className="active-chain__map-v1-head">
+        <div><span className="active-chain__step">KNOWLEDGE MAP V1</span><h3>可审核的知识地图</h3><p>资料节点、模型通识和教学计划分层显示；点击节点或关系查看证据。</p></div>
+        <button type="button" data-testid="active-knowledge-map-generate-v1" disabled={Boolean(busy) || knowledgeJobProcessingStatuses.includes(mapStatus)} onClick={onGenerate}>{knowledgeJobProcessingStatuses.includes(mapStatus) ? "正在生成…" : "生成/刷新地图"}</button>
+      </div>
+      {error && <div className="active-chain__error" role="alert">知识地图读取失败：{error}</div>}
+      {job && <div className="active-chain__map-status" role="status">任务 {job.status || "queued"}{job.progress !== undefined ? ` · ${job.progress}%` : ""}{job.message ? ` · ${job.message}` : ""}</div>}
+      {mapStatus === "unsupported" && <div className="active-chain__warning" role="note">当前能力不支持知识地图：{unsupportedReason || "后端未提供可用的抽取能力"}</div>}
+      {capabilityWarnings.map((warning) => <div className="active-chain__warning" role="note" key={warning}>{warning}</div>)}
+      {["failed", "error"].includes(mapStatus) && <div className="active-chain__error" role="alert">知识地图生成失败：{unsupportedReason || "请检查资料和服务状态后重试"}</div>}
+      {mapStatus === "needs_review" && <div className="active-chain__warning" role="note">地图需要审核后才会作为教学依据；候选节点不会自动进入主路线。</div>}
+      {!map && !error && <p className="active-chain__muted">尚未读取 v1 地图；可以生成一版新的地图。</p>}
+      {map && map.nodes.length === 0 && !["unsupported", "failed", "error"].includes(mapStatus) && <p className="active-chain__muted">当前没有可显示节点。请先导入资料，再生成知识地图。</p>}
+      {map && map.nodes.length > 0 && (
+        <>
+          <div className="active-chain__map-v1-filters" aria-label="知识地图筛选">
+            <label>关系<select value={relationFilter} onChange={(event) => setRelationFilter(event.target.value)}><option value="all">全部关系</option>{relationOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+            <label>审核<select value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}><option value="all">全部审核状态</option><option value="approved">已确认</option><option value="needs_review">需要审核</option><option value="rejected">已驳回</option></select></label>
+            <label>计划<select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}><option value="all">全部计划状态</option><option value="planned">已排入计划</option><option value="unplanned">未排入计划</option></select></label>
+            <label>掌握<select value={masteryFilter} onChange={(event) => setMasteryFilter(event.target.value)}><option value="all">全部掌握度</option><option value="low">0–33%</option><option value="medium">34–66%</option><option value="high">67–100%</option></select></label>
+            <label className="active-chain__map-toggle"><input type="checkbox" checked={showModelCommon} onChange={(event) => setShowModelCommon(event.target.checked)} />显示 model_common</label>
+          </div>
+          <div className="active-chain__map-v1-layout">
+            <div className="active-chain__map-v1-flow" data-testid="active-knowledge-map-flow">
+              {typeof ResizeObserver === "undefined" ? <p className="active-chain__muted">当前浏览器未提供图形布局观察器，已启用键盘列表后备。</p> : <ReactFlow
+                nodes={flowNodes}
+                edges={flowEdges}
+                fitView
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable
+                nodesFocusable
+                edgesFocusable
+                onNodeClick={(_event, node) => { setSelectedNodeId(node.id); setSelectedEdgeId(""); }}
+                onEdgeClick={(_event, edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}
+                aria-label="知识地图图形"
+              >
+                <Background />
+                <Controls showInteractive={false} />
+                <MiniMap pannable zoomable nodeColor={(node) => (node.data as any)?.node?.layer === "model_common" ? "#a9b3bd" : "#5b9274"} />
+              </ReactFlow>}
+            </div>
+            <div className="active-chain__map-v1-list" role="region" aria-label="知识地图键盘列表">
+              <h4>键盘可访问列表</h4>
+              {visibleNodes.length === 0 ? <p>当前筛选没有节点。</p> : <ul>{visibleNodes.map((node) => <li key={node.id}><button type="button" className={selectedNodeId === node.id ? "is-selected" : ""} onClick={() => { setSelectedNodeId(node.id); setSelectedEdgeId(""); }}>{node.label}<small>{node.kind === "theme" ? "主题" : "概念"} · {node.reviewStatus} · {node.planStatus}</small></button></li>)}</ul>}
+              {visibleEdges.length > 0 && <><h4>关系列表</h4><ul>{visibleEdges.map((edge) => <li key={edge.id}><button type="button" className={selectedEdgeId === edge.id ? "is-selected" : ""} onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}>{edge.relation}<small>{edge.source} → {edge.target}</small></button></li>)}</ul></>}
+            </div>
+          </div>
+          {(selectedNode || selectedEdge) && <aside className="active-chain__map-v1-evidence" data-testid="active-knowledge-map-evidence"><h4>{selectedNode ? selectedNode.label : `${selectedEdge?.relation || "关系"}关系`}</h4>{selectedNode?.summary && <p>{selectedNode.summary}</p>}<b>证据 {selectedEvidence.length} 条</b>{selectedEvidence.length ? <ul>{selectedEvidence.map((item, index) => <li key={`${item.source_id || "source"}-${item.chunk_id || index}`}><span>{item.heading || item.source_id || "资料来源"}</span><blockquote>{item.quote || teacherValueText(item)}</blockquote></li>)}</ul> : <p role="note">该对象暂无可显示证据。</p>}</aside>}
+          {map.candidates.length > 0 && <section className="active-chain__map-v1-candidates" aria-label="知识地图候选审核"><h4>候选审核</h4>{map.candidates.map((candidate: any, index) => { const candidateId = stringValue(candidate.id, candidate.candidate_id, `candidate-${index + 1}`); const status = stringValue(candidate.status, candidate.review_status) || "needs_review"; const candidateLabel = stringValue(candidate.label, candidate.name, candidate.title) || `${stringValue(candidate.source_id, candidate.prerequisite_id)} —${stringValue(candidate.relation, "prerequisite")}→ ${stringValue(candidate.target_id, candidate.dependent_id)}`; return <article key={candidateId}><div><b>{candidateLabel || candidateId}</b><span>{status}</span></div>{candidate.reason && <p>{candidate.reason}</p>}<div><button type="button" disabled={status === "confirmed" || status === "approved"} onClick={() => onDecision(candidate, "confirm")}>确认候选</button><button type="button" className="active-today__secondary" disabled={status === "rejected"} onClick={() => onDecision(candidate, "reject")}>驳回候选</button></div></article>; })}</section>}
+        </>
+      )}
+      {map?.warnings.map((warning) => <p className="active-chain__warning" key={warning}>{warning}</p>)}
+    </section>
+  );
+}
 
 const teacherActionLabels: Record<string, string> = {
   daily_briefing: "开场摸底",
@@ -242,14 +735,6 @@ type TeachingAttachment = {
 };
 
 const classroomAttachmentLimit = 6;
-const classroomAttachmentAccept = [
-  ".png", ".jpg", ".jpeg", ".webp",
-  ".pdf", ".docx", ".pptx", ".xlsx", ".epub", ".zip",
-  ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl",
-  ".yaml", ".yml", ".xml", ".toml", ".ini", ".log",
-  ".py", ".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".sql",
-  ".java", ".c", ".cpp", ".h", ".hpp", ".go", ".rs", ".ps1",
-].join(",");
 
 const clipboardImageExtension = (mediaType: string) => {
   const normalized = String(mediaType || "").toLowerCase();
@@ -517,6 +1002,18 @@ export function ActiveTeachingChainView({
   const [hint, setHint] = useState<any>(null);
   const [busy, setBusy] = useState("");
   const [resourceDiscoveryStatus, setResourceDiscoveryStatus] = useState<any>(null);
+  const [knowledgeMapV1, setKnowledgeMapV1] = useState<KnowledgeMapV1 | null>(null);
+  const [knowledgeMapCapabilities, setKnowledgeMapCapabilities] = useState<any>(null);
+  const [knowledgeMapJob, setKnowledgeMapJob] = useState<any>(null);
+  const [knowledgeMapError, setKnowledgeMapError] = useState("");
+  const [planningAssistantText, setPlanningAssistantText] = useState("");
+  const [planningAssistantMessages, setPlanningAssistantMessages] = useState<any[]>([]);
+  const [planningAssistantResources, setPlanningAssistantResources] = useState<any[]>([]);
+  const [planningAssistantBusy, setPlanningAssistantBusy] = useState(false);
+  const [plannerResource, setPlannerResource] = useState<any>(null);
+  const [planPreview, setPlanPreview] = useState<MasteryPlanPreviewV1 | null>(null);
+  const [extensionConfirmed, setExtensionConfirmed] = useState(false);
+  const [planActivationResult, setPlanActivationResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [draftLoadedWorkspace, setDraftLoadedWorkspace] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
@@ -528,6 +1025,11 @@ export function ActiveTeachingChainView({
   const voiceTimerRef = useRef<number | null>(null);
   const voiceScopeRef = useRef(0);
   const teacherVoiceScopeRef = useRef(0);
+  const knowledgeMapRequestSequence = useRef(0);
+  const materialAccept = useMemo(
+    () => materialAcceptFromCapabilities(knowledgeMapCapabilities),
+    [knowledgeMapCapabilities],
+  );
 
   const refresh = async (workspaceOverride?: string) => {
     const requestedWorkspaceId = workspaceOverride || activeWorkspaceId;
@@ -600,6 +1102,66 @@ export function ActiveTeachingChainView({
     }
     if (!storedDraft) setDraftLoadedWorkspace(requestedWorkspaceId);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const sequence = ++knowledgeMapRequestSequence.current;
+    setKnowledgeMapError("");
+    setKnowledgeMapCapabilities(null);
+    setKnowledgeMapJob(null);
+    setPlanPreview(null);
+    setExtensionConfirmed(false);
+    setPlanActivationResult(null);
+    const load = async () => {
+      const workspacePath = `/workspaces/${encodeURIComponent(activeWorkspaceId)}`;
+      const [capabilityResult, mapResult] = await Promise.allSettled([
+        activeRequest("/material-capabilities").catch(() => activeRequest(`${workspacePath}/material-capabilities`)),
+        readActiveKnowledgeMapV1(activeWorkspaceId),
+      ]);
+      if (cancelled || sequence !== knowledgeMapRequestSequence.current) return;
+      if (capabilityResult.status === "fulfilled") setKnowledgeMapCapabilities(capabilityResult.value);
+      else setKnowledgeMapCapabilities(null);
+      if (mapResult.status === "fulfilled") {
+        setKnowledgeMapV1(mapResult.value);
+      } else {
+        setKnowledgeMapV1(null);
+        setKnowledgeMapError(mapResult.reason?.message || "暂时无法读取 v1 地图");
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    const jobId = String(knowledgeMapJob?.job_id || knowledgeMapJob?.id || "");
+    const status = String(knowledgeMapJob?.status || "").toLowerCase();
+    if (!jobId || isKnowledgeJobTerminal(status)) return undefined;
+    let cancelled = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      try {
+        const workspacePath = `/workspaces/${encodeURIComponent(activeWorkspaceId)}`;
+        const nextJob = await activeRequest(`/knowledge-map/jobs/${encodeURIComponent(jobId)}`).catch(() => activeRequest(`${workspacePath}/knowledge-map/jobs/${encodeURIComponent(jobId)}`));
+        if (cancelled) return;
+        setKnowledgeMapJob(nextJob.job || nextJob);
+        const nextStatus = String(nextJob.status || nextJob.job?.status || "").toLowerCase();
+        if (isKnowledgeJobTerminal(nextStatus)) {
+          if (isKnowledgeJobReady(nextStatus)) {
+            const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+            if (!cancelled) setKnowledgeMapV1(latest);
+          } else if (!cancelled) {
+            setKnowledgeMapV1((current) => current ? { ...current, status: nextStatus, failureReason: nextJob.error?.message || nextJob.reason || "生成失败" } : current);
+          }
+          return;
+        }
+      } catch (reason: any) {
+        if (!cancelled) setKnowledgeMapError(reason?.message || "知识地图任务状态读取失败");
+      }
+      if (!cancelled) timer = window.setTimeout(poll, 1_000);
+    };
+    timer = window.setTimeout(poll, 250);
+    return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
+  }, [activeWorkspaceId, knowledgeMapJob?.id, knowledgeMapJob?.job_id, knowledgeMapJob?.status]);
 
   useEffect(() => {
     setDraftLoadedWorkspace(null);
@@ -777,6 +1339,7 @@ export function ActiveTeachingChainView({
     .reduce((total: number, item: any) => total + Number(item.chunk_count || 0), 0);
   const localKnowledgeBase = snapshot?.local_knowledge_base;
   const graph: any = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
+  const mapForV1 = knowledgeMapV1 || normalizeKnowledgeMapV1(graph);
   const resourceDiscovery = resourceDiscoveryStatus
     || graph.resource_discovery
     || { status: "not_run", resource_count: 0, warnings: [] };
@@ -795,6 +1358,7 @@ export function ActiveTeachingChainView({
     (graph.learning_resources || []).map((item: any) => String(item.knowledge_point_id || "")),
   ).size;
   const plan = snapshot?.plan;
+  const displayPlan = plan || (planPreview ? normalizeMasteryPlanPreview(planPreview) : null);
   const initialPhaseDays = (plan?.calendar || []).filter(
     (day: any) => ["initial_learning", "transition"].includes(day.study_phase),
   );
@@ -886,9 +1450,9 @@ export function ActiveTeachingChainView({
       Boolean(busy),
       latestTeacher?.action,
       session?.state,
-      latestTeacher?.content,
+      teacherMessageText(latestTeacher),
     );
-  }, [busy, latestTeacher?.action, latestTeacher?.content, session?.state]);
+  }, [busy, latestTeacher, session?.state]);
   useEffect(() => {
     teacherVoiceScopeRef.current += 1;
     stopLocalTeacherVoice();
@@ -1049,9 +1613,11 @@ export function ActiveTeachingChainView({
   // This option belongs to task creation. Existing receipts without the field
   // retain the historical behaviour (resource discovery enabled), while an
   // explicit false is preserved without changing the current plan.
-  const resourceDiscoveryEnabled = isTaskCreationFlow
-    ? discoverExternalResources
-    : savedResourceDiscoveryOption;
+  const resourceDiscoveryEnabled = plannerResource
+    ? false
+    : isTaskCreationFlow
+      ? discoverExternalResources
+      : savedResourceDiscoveryOption;
 
   const receiptPayload = (materialIds?: string[]) => ({
     learning_goal: goal,
@@ -1136,7 +1702,7 @@ export function ActiveTeachingChainView({
 
   const toggleTeacherVoicePlayback = async (item: any) => {
     const messageId = String(item?.id || "");
-    const text = readableTeacherVoiceText(String(item?.content || ""));
+    const text = readableTeacherVoiceText(teacherMessageText(item));
     const isCurrentPlayback = teacherVoicePlayback.messageId === messageId
       && ["loading", "playing"].includes(teacherVoicePlayback.state);
     if (isCurrentPlayback) {
@@ -1459,19 +2025,113 @@ export function ActiveTeachingChainView({
     return advance(item.content, item.understood, item.attachments);
   };
 
-  const generateKnowledgeMap = (
-    refreshLearningResources = false,
-    queueExternalResources = false,
-  ) =>
-    activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/generate`, {
-      method: "POST",
-      body: JSON.stringify({
-        provider_session_id: realProviderSessionId,
-        refresh_learning_resources: refreshLearningResources,
-        discover_external_resources: resourceDiscoveryEnabled,
-        queue_external_resources: queueExternalResources,
-      }),
-    }, 210_000);
+  const startKnowledgeMapV1 = async (materialIds?: string[]) => {
+    setKnowledgeMapError("");
+    const started = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/jobs`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          provider_session_id: realProviderSessionId,
+          material_ids: materialIds
+            || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
+        }),
+      },
+      15_000,
+    );
+    const job = started.job || started;
+    setKnowledgeMapJob(job);
+    return job;
+  };
+
+  const askPlanningAssistant = async () => {
+    const text = planningAssistantText.trim();
+    if (!text) {
+      setError("请先告诉 AI 资料助手你想学会什么，或希望找哪类资料。");
+      return;
+    }
+    if (!realProviderSessionId) {
+      setError("资料助手需要已验证的真实模型连接，请先在“模型连接”中保存并验证 Provider。");
+      return;
+    }
+    setPlanningAssistantBusy(true);
+    setError("");
+    const nextMessages = [...planningAssistantMessages, { role: "user", content: text }];
+    setPlanningAssistantMessages(nextMessages);
+    setPlanningAssistantText("");
+    try {
+      const result = await activeRequest(
+        `/workspaces/${encodeURIComponent(activeWorkspaceId)}/planning-assistant`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            message: text,
+            goal,
+            conversation: planningAssistantMessages,
+            ...providerRequestContext(),
+          }),
+        },
+        60_000,
+      );
+      setPlanningAssistantMessages((current) => [
+        ...current,
+        { role: "assistant", content: result.reply || "我已整理出下一步建议。" },
+      ]);
+      setPlanningAssistantResources(Array.isArray(result.resources) ? result.resources : []);
+      if (result.goal_summary) setGoal(String(result.goal_summary));
+      if (Array.isArray(result.warnings) && result.warnings.length) {
+        setError(result.warnings.join("；"));
+      }
+    } catch (reason: any) {
+      setError(reason?.message || "资料助手暂时无法回答，请稍后重试。");
+    } finally {
+      setPlanningAssistantBusy(false);
+    }
+  };
+
+  const readKnowledgeMapJobV1 = async (jobId: string) => {
+    const workspacePath = `/workspaces/${encodeURIComponent(activeWorkspaceId)}`;
+    const payload = await activeRequest(`/knowledge-map/jobs/${encodeURIComponent(jobId)}`)
+      .catch(() => activeRequest(`${workspacePath}/knowledge-map/jobs/${encodeURIComponent(jobId)}`));
+    return payload.job || payload;
+  };
+
+  const waitForKnowledgeMapV1 = async (started: any): Promise<KnowledgeMapV1> => {
+    const jobId = stringValue(started?.job_id, started?.id);
+    if (!jobId) throw new Error("知识地图任务没有返回 job_id");
+    const deadlineAt = Date.now() + 210_000;
+    let current = started;
+    while (!isKnowledgeJobTerminal(current?.status)) {
+      if (Date.now() >= deadlineAt) throw new Error("知识地图生成超时；任务仍保留，可稍后刷新查看状态");
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      current = await readKnowledgeMapJobV1(jobId);
+      setKnowledgeMapJob(current);
+    }
+    if (!isKnowledgeJobReady(current?.status)) {
+      throw new Error(current?.error?.message || current?.reason || `知识地图生成失败：${current?.status || "unknown"}`);
+    }
+    const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+    setKnowledgeMapV1(latest);
+    return latest;
+  };
+
+  const decideKnowledgeMapCandidate = async (candidate: any, decision: "confirm" | "reject") => {
+    const candidateId = stringValue(candidate.id, candidate.candidate_id);
+    if (!candidateId) return;
+    await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/candidates/${encodeURIComponent(candidateId)}/decision`,
+      {
+        method: "POST",
+        body: JSON.stringify({ decision, revision: mapForV1.revision }),
+      },
+    );
+    // A decision creates a new canonical revision. Never mutate the old
+    // revision locally: reload the active graph and candidate collection so
+    // evidence, status, and plan eligibility all come from the server.
+    setKnowledgeMapV1(await readActiveKnowledgeMapV1(activeWorkspaceId));
+    setPlanPreview(null);
+    setExtensionConfirmed(false);
+  };
 
   const startResourceDiscovery = async () => {
     if (!realProviderSessionId) {
@@ -1490,17 +2150,57 @@ export function ActiveTeachingChainView({
     return started;
   };
 
-  const generateMasteryPlan = () =>
-    activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/mastery-plans/generate`, {
-      method: "POST",
-    });
+  const previewMasteryPlan = async (revision: number | string | null = mapForV1.revision) => {
+    const preview = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/mastery-plans/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ revision: revision ?? "active" }),
+      },
+    );
+    if (!preview?.preview_id || !Array.isArray(preview?.days) || !Array.isArray(preview?.tasks)) {
+      throw new Error("计划预览响应不符合 mentorflow.mastery-plan-preview.v1");
+    }
+    setPlanPreview(preview);
+    setExtensionConfirmed(false);
+    setPlanActivationResult(null);
+    return preview;
+  };
+
+  const activateMasteryPlanPreview = async () => {
+    if (!planPreview?.preview_id) throw new Error("请先生成计划预览");
+    const blockers = asArray(planPreview.activation_blockers);
+    if (blockers.length) throw new Error(`存在 ${blockers.length} 项资料审核阻塞，确认或处理后才能激活计划`);
+    const extension = planPreview.extension_draft || {};
+    if (extension.requires_confirmation && !extensionConfirmed) {
+      throw new Error("当前容量需要顺延截止日，请先确认顺延草案");
+    }
+    const activated = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/mastery-plans/${encodeURIComponent(planPreview.preview_id)}/activate`,
+      {
+        method: "POST",
+        body: JSON.stringify(extension.requires_confirmation ? { confirm_extension: true } : {}),
+      },
+    );
+    setPlanActivationResult(activated);
+    setPlanPreview(null);
+    setExtensionConfirmed(false);
+    return activated;
+  };
 
   const createOrCompleteTask = async () => {
+    const importedPlannerResource = plannerResource?.url
+      ? await uploadActiveUrlMaterial(activeWorkspaceId, {
+          url: String(plannerResource.url),
+          title: String(plannerResource.title || "网页资料"),
+        })
+      : null;
     const uploaded = file
       ? await uploadActiveMaterial(activeWorkspaceId, file)
       : null;
     const ids = Array.from(new Set([
       ...materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
+      ...(importedPlannerResource ? [importedPlannerResource.id] : []),
       ...(uploaded ? [uploaded.id] : []),
     ]));
     if (!ids.length) throw new Error("请先选择并上传一份学习资料");
@@ -1508,12 +2208,15 @@ export function ActiveTeachingChainView({
     // Knowledge-map extraction and planning stay on the critical path.  Web
     // resources are optional enrichment and must be queued after the map is
     // ready, otherwise a slow/unsupported search can lock task creation.
-    await generateKnowledgeMap(false, true);
+    const job = await startKnowledgeMapV1(ids);
+    const latestMap = await waitForKnowledgeMapV1(job);
     if (resourceDiscoveryEnabled && realProviderSessionId) {
       await startResourceDiscovery();
     }
-    await generateMasteryPlan();
+    await previewMasteryPlan(latestMap.revision);
     setFile(null);
+    setPlannerResource(null);
+    try { localStorage.removeItem("mentorflow_planner_handoff_v1"); } catch { /* optional persistence */ }
   };
 
   const startTeacherLedLesson = async () => {
@@ -1542,8 +2245,31 @@ export function ActiveTeachingChainView({
       || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     setSnapshot(null);
     setFile(null);
-    setGoal("完全掌握上传资料，并能用可验证的方式独立应用");
-    setDiscoverExternalResources(true);
+    let handoff: any = null;
+    try {
+      const raw = localStorage.getItem("mentorflow_planner_handoff_v1");
+      if (raw) handoff = JSON.parse(raw);
+    } catch { handoff = null; }
+    const handoffResource = handoff?.resource && typeof handoff.resource === "object"
+      ? handoff.resource
+      : null;
+    const handoffDate = (...values: unknown[]) => {
+      const value = values.find((item) => (
+        typeof item === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.trim())
+      ));
+      return typeof value === "string" ? value.trim() : "";
+    };
+    setPlannerResource(handoffResource);
+    setPlanningAssistantResources(handoffResource ? [handoffResource] : []);
+    setPlanningAssistantMessages(handoffResource
+      ? [{ role: "assistant", content: "已收到你确认的资料。补充目标备注、开始日期和截止日期后，点击下方按钮，我会用这份资料生成知识地图和每日任务。" }]
+      : []);
+    setGoal(String(handoff?.goal || "完全掌握上传资料，并能用可验证的方式独立应用"));
+    if (handoffResource) {
+      setStartDate(handoffDate(handoff?.start_date, handoff?.startDate) || isoAfterDays(0));
+      setDeadline(handoffDate(handoff?.deadline, handoff?.end_date, handoff?.endDate) || isoAfterDays(21));
+    }
+    setDiscoverExternalResources(!handoffResource);
     setCreatingNewTask(true);
     setShowLesson(false);
     setActiveWorkspaceId(`learning-task-${suffix}`);
@@ -1771,7 +2497,7 @@ export function ActiveTeachingChainView({
       {
         method: "PUT",
         body: JSON.stringify({
-          language: "python",
+          language: "plaintext",
           code,
           expected_revision: draftRevision,
         }),
@@ -1848,6 +2574,8 @@ export function ActiveTeachingChainView({
             const progress = item.task_count
               ? Math.round(item.completed_task_count / item.task_count * 100)
               : 0;
+            const completedPoints = Number(item.completed_knowledge_point_count || 0);
+            const pointCount = Number(item.knowledge_point_count || 0);
             return (
               <article
                 className={item.workspace_id === activeWorkspaceId ? "is-active" : ""}
@@ -1863,7 +2591,10 @@ export function ActiveTeachingChainView({
                   }}
                 >
                   <span><b>{item.title}</b><em>{item.archived ? "已归档" : item.status === "learning" ? "学习中" : item.status === "planned" ? "已规划" : "待完善"}</em></span>
-                  <small>{item.knowledge_point_count} 个知识点 · {item.completed_task_count}/{item.task_count} 项</small>
+                  <small>
+                    {completedPoints}/{pointCount} 个知识点完成 ·
+                    {item.completed_task_count}/{item.task_count} 个阶段
+                  </small>
                   <i><span style={{ width: `${progress}%` }} /></i>
                 </button>
                 <button
@@ -2243,28 +2974,111 @@ export function ActiveTeachingChainView({
               ? `草稿已自动保存 · ${new Date(draftSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
               : "你填写的内容会自动保存在当前浏览器"}
           </span>
-          <h3>{plan ? "任务资料与学习条件" : "上传资料，系统自动完成知识地图和计划"}</h3>
-          <p className="active-chain__muted">只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。</p>
-          <input data-testid="active-material-file" type="file" accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.json,.yaml,.yml,.xml,.rtf,.pptx,.xlsx,.epub,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.go,.rs,.sql,.sh,.ps1" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-          <label>学习目标<textarea data-testid="active-goal" value={goal} onChange={(event) => setGoal(event.target.value)} /></label>
+          <h3>
+            {plannerResource
+              ? "补充规划条件，系统自动生成知识地图和每日任务"
+              : plan
+                ? "任务资料与学习条件"
+                : "上传资料，系统自动完成知识地图和计划"}
+          </h3>
+          <p className="active-chain__muted">
+            {plannerResource
+              ? "只填写目标备注、开始日期和截止日期；系统会根据已选资料自动生成知识地图和每日任务。"
+              : "只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。"}
+          </p>
+          {!plannerResource && <section className="active-chain__assistant" data-testid="planning-assistant">
+            <div>
+              <span className="active-chain__step">AI 资料助手</span>
+              <h4>先聊清楚，再决定用哪些资料</h4>
+              <p className="active-chain__muted">助手只会给出资料候选和权威性核对提示，不会自动把网页内容写进知识地图；你确认后再上传或选择资料。</p>
+            </div>
+            {planningAssistantMessages.length > 0 && (
+              <div className="active-chain__assistant-messages">
+                {planningAssistantMessages.slice(-4).map((item, index) => (
+                  <div key={`${item.role}-${index}`} className={item.role === "user" ? "is-user" : "is-assistant"}>
+                    <b>{item.role === "user" ? "你" : "AI 资料助手"}</b>
+                    <span>{item.content}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <textarea
+              value={planningAssistantText}
+              onChange={(event) => setPlanningAssistantText(event.target.value)}
+              placeholder="例如：我想在明确期限内学会一项能力，已有一份笔记，希望补齐权威资料和练习。"
+              rows={3}
+              data-testid="planning-assistant-input"
+            />
+            <button
+              type="button"
+              disabled={planningAssistantBusy || !realProviderSessionId}
+              onClick={() => void askPlanningAssistant()}
+              data-testid="planning-assistant-send"
+            >
+              {planningAssistantBusy ? "正在整理资料候选…" : "询问资料助手"}
+            </button>
+            {!realProviderSessionId && <small>连接并验证真实模型后可使用。</small>}
+            {planningAssistantResources.length > 0 && (
+              <div className="active-chain__assistant-resources">
+                <b>{plannerResource ? "已确认的资料" : "待你核对的资料候选"}</b>
+                {planningAssistantResources.map((item, index) => (
+                  <a href={item.url} target="_blank" rel="noreferrer" key={`${item.url}-${index}`}>
+                    <strong>{item.title || item.url}</strong>
+                    <span>{item.reason || item.authority_explanation || "请核对发布机构、作者、更新时间和内容范围。"}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>}
+          {plannerResource && (
+            <section className="active-chain__planner-handoff" data-testid="planner-resource-handoff">
+              <span className="active-chain__step">规划助手已交接</span>
+              <b>{plannerResource.title || plannerResource.url}</b>
+              <small>这份资料会在你点击“开始整理”后安全抓取，并自动生成知识地图和每日任务。</small>
+              <a href={plannerResource.url} target="_blank" rel="noreferrer">打开原文核对</a>
+            </section>
+          )}
+          {!plannerResource && (
+            <input data-testid="active-material-file" type="file" accept={materialAccept} onChange={(event) => setFile(event.target.files?.[0] || null)} />
+          )}
+          <label>
+            {plannerResource ? "目标备注" : "学习目标"}
+            <textarea
+              data-testid="active-goal"
+              value={goal}
+              onChange={(event) => setGoal(event.target.value)}
+              placeholder={plannerResource ? "补充这份资料对应的学习目标或完成标准。" : undefined}
+            />
+          </label>
           <div className="active-chain__row">
-            <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
+            {!plannerResource && (
+              <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
+            )}
             <label>开始日期<input data-testid="active-start-date" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
-            <label>
-              完整复习轮数
-              <select
-                data-testid="active-review-rounds"
-                value={reviewRounds}
-                onChange={(event) => setReviewRounds(Number(event.target.value))}
-              >
-                <option value={2}>2 轮（推荐）</option>
-                <option value={3}>3 轮</option>
-                <option value={4}>4 轮</option>
-              </select>
-            </label>
+            {!plannerResource && (
+              <label>
+                完整复习轮数
+                <select
+                  data-testid="active-review-rounds"
+                  value={reviewRounds}
+                  onChange={(event) => setReviewRounds(Number(event.target.value))}
+                >
+                  <option value={2}>2 轮（推荐）</option>
+                  <option value={3}>3 轮</option>
+                  <option value={4}>4 轮</option>
+                </select>
+              </label>
+            )}
           </div>
-          <div className="active-chain__allocation" data-testid="active-system-allocation">
+          {plannerResource && (
+            <div className="active-chain__allocation" data-testid="planner-auto-plan-notice">
+              <span>系统自动处理</span>
+              <b>自动生成知识地图和每日任务</b>
+              <small>提交后系统会读取已选资料，先建立知识地图，再按你的日期范围安排每日任务。</small>
+            </div>
+          )}
+          {!plannerResource && <div className="active-chain__allocation" data-testid="active-system-allocation">
             <span>系统按总任务量平均分配</span>
             <b>
               {plan && snapshot?.receipt?.allocation?.recommended_minutes_per_day
@@ -2280,8 +3094,8 @@ export function ActiveTeachingChainView({
                 ? ` ${phaseRange(transitionDays)} 是交界日：先完成首学，再用当天剩余任务量开始复习。`
                 : " 系统按顺序排入每天，不再强制按日期比例切开。"}
             </small>
-          </div>
-          <label className="active-chain__resource-option">
+          </div>}
+          {!plannerResource && <label className="active-chain__resource-option">
             <span>
               <input
                 data-testid="active-discover-external-resources"
@@ -2297,8 +3111,8 @@ export function ActiveTeachingChainView({
               每道题的深入讲解、示例和思路仍由教师按你的问题即时带着完成；没有可靠匹配时不会添加链接。
               {!isTaskCreationFlow && " 当前任务的创建选项已锁定；如需改变，请新建任务。"}
             </small>
-          </label>
-          <label>
+          </label>}
+          {!plannerResource && <label>
             AI 教师角色
             <select
               data-testid="active-teacher-persona"
@@ -2319,8 +3133,8 @@ export function ActiveTeachingChainView({
             <small>
               角色人设已统一放到左侧“AI教师角色库”管理；以前填写的人设会自动迁移并保留。
             </small>
-          </label>
-          <label>
+          </label>}
+          {!plannerResource && <label>
             我的兴趣或熟悉场景
             <input
               data-testid="active-learner-interests"
@@ -2328,8 +3142,8 @@ export function ActiveTeachingChainView({
               onChange={(event) => setLearnerInterests(event.target.value)}
               placeholder="例如：游戏、做饭、购物、篮球；教师会优先从这些生活经验举例"
             />
-          </label>
-          <details className="active-chain__advanced">
+          </label>}
+          {!plannerResource && <details className="active-chain__advanced">
             <summary>高级时间与学习偏好（可选）</summary>
             <fieldset>
               <legend>每周可学习日（未选日期为固定休息日）</legend>
@@ -2353,15 +3167,17 @@ export function ActiveTeachingChainView({
             </div>
             <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
             <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
-          </details>
+          </details>}
           {(!snapshot?.receipt || file) && (
             <button
               data-testid="active-upload"
-              disabled={(!file && !materials.some((item: any) => item.status === "ready")) || Boolean(busy)}
+              disabled={(!file && !plannerResource && !materials.some((item: any) => item.status === "ready")) || Boolean(busy)}
               onClick={() => run("创建学习任务", createOrCompleteTask)}
             >
               {busy === "创建学习任务"
                 ? `正在分析 ${readyChunkCount || "资料"} 个分块…`
+                : plannerResource
+                  ? "开始整理已选资料并生成计划"
                 : file
                   ? materials.length
                     ? "添加资料并生成知识地图与计划"
@@ -2380,13 +3196,19 @@ export function ActiveTeachingChainView({
               disabled={!materials.length || Boolean(file) || Boolean(busy) || !taskNeedsRecalculation}
               onClick={() => run("更新任务条件与计划", async () => {
                 await saveReceipt();
+                let revision: number | string | null = mapForV1.revision;
                 if (knowledgeInputsChanged) {
-                  await generateKnowledgeMap(false, true);
+                  const materialIds = materials
+                    .filter((item: any) => item.status === "ready")
+                    .map((item: any) => item.id);
+                  const job = await startKnowledgeMapV1(materialIds);
+                  const latestMap = await waitForKnowledgeMapV1(job);
+                  revision = latestMap.revision;
                   if (resourceDiscoveryEnabled && realProviderSessionId) {
                     await startResourceDiscovery();
                   }
                 }
-                await generateMasteryPlan();
+                await previewMasteryPlan(revision);
               })}
             >
               {planNeedsRestoration
@@ -2440,12 +3262,27 @@ export function ActiveTeachingChainView({
         <article className="active-chain__card">
           <span className="active-chain__step">02 · 计划知识地图</span>
           <h3>先看清要学什么，再进入日历</h3>
+          <KnowledgeMapV1Panel
+            map={mapForV1}
+            capabilities={knowledgeMapCapabilities}
+            job={knowledgeMapJob}
+            error={knowledgeMapError}
+            busy={Boolean(busy)}
+            onGenerate={() => run("生成 v1 知识地图", startKnowledgeMapV1)}
+            onDecision={(candidate, decision) => run(
+              decision === "confirm" ? "确认知识地图候选" : "驳回知识地图候选",
+              () => decideKnowledgeMapCandidate(candidate, decision),
+            )}
+          />
           <button
             data-testid="active-generate-graph"
-            disabled={!snapshot?.receipt || Boolean(busy) || graph.knowledge_points.length > 0}
-            onClick={() => run("从资料生成知识地图", generateKnowledgeMap)}
+            disabled={!snapshot?.receipt || Boolean(busy) || mapForV1.nodes.length > 0}
+            onClick={() => run("从资料生成知识地图", async () => {
+              const job = await startKnowledgeMapV1();
+              return waitForKnowledgeMapV1(job);
+            })}
           >
-            {graph.knowledge_points.length > 0
+            {mapForV1.nodes.length > 0
               ? "知识地图已生成（资料未变化，无需重复生成）"
               : "从上传资料生成知识地图"}
           </button>
@@ -2480,7 +3317,7 @@ export function ActiveTeachingChainView({
             <span>
               {graph.extraction?.mode === "provider_grounded"
                 ? "已验证真实 Provider 参与语义抽取，结果仍经过来源与结构校验。"
-                : "未配置真实 Provider 时使用可审计结构解析，不冒充 AI 语义抽取。"}
+                : "新地图必须使用已验证的真实 Provider；未连接时只允许读取既有活动地图。"}
             </span>
             {(graph.extraction?.warnings || []).map((warning: string) => <span key={warning}>{warning}</span>)}
           </div>
@@ -2602,44 +3439,82 @@ export function ActiveTeachingChainView({
           <h3>点击任意首学任务，直接进入对应课程</h3>
           <button
             data-testid="active-generate-plan"
-            disabled={!graph.knowledge_points.length || Boolean(busy) || Boolean(plan)}
-            onClick={() => run("生成完全掌握计划", generateMasteryPlan)}
+            disabled={(!graph.knowledge_points.length && !mapForV1.nodes.length) || Boolean(busy) || Boolean(plan) || Boolean(planPreview)}
+            onClick={() => run("预览完全掌握计划", () => previewMasteryPlan())}
           >
             {plan
               ? "完整掌握计划已生成（修改条件请在上方重新排程）"
-              : "生成完整掌握计划"}
+              : planPreview
+                ? "计划已预览，等待激活"
+                : "预览并生成完整掌握计划"}
           </button>
-          {plan && (
+          {planPreview && (
+            <section className="active-chain__plan-preview" data-testid="active-plan-preview">
+              <div className="active-chain__plan-preview-head">
+                <b>计划预览 · 尚未激活</b>
+                <span>地图 revision {planPreview.revision ?? mapForV1.revision ?? "—"}</span>
+              </div>
+              {asArray(planPreview.activation_blockers).length > 0 && (
+                <div className="active-chain__error" data-testid="active-plan-activation-blockers" role="alert">
+                  <b>资料审核阻塞，当前不能激活</b>
+                  <ul>{asArray(planPreview.activation_blockers).map((blocker, index) => <li key={`${planPreview.preview_id}-blocker-${index}`}>{planPreviewBlockerText(blocker)}</li>)}</ul>
+                </div>
+              )}
+              {planPreview.extension_draft?.required && (
+                <div className="active-chain__plan-extension" data-testid="active-plan-extension">
+                  <b>需要确认顺延</b>
+                  <span>原截止日：{planPreview.extension_draft.original_deadline || "—"}</span>
+                  <span>预计完成：{planPreview.extension_draft.expected_completion_date || "—"}</span>
+                  <span>新增日期：{asArray(planPreview.extension_draft.added_dates).length ? asArray(planPreview.extension_draft.added_dates).join("、") : "无"}</span>
+                  {planPreview.extension_draft.reason && <small>{planPreview.extension_draft.reason}</small>}
+                  <label><input type="checkbox" data-testid="active-plan-confirm-extension" checked={extensionConfirmed} onChange={(event) => setExtensionConfirmed(event.target.checked)} /> 我确认按上述顺延草案激活</label>
+                </div>
+              )}
+              <button
+                type="button"
+                data-testid="active-plan-activate"
+                disabled={Boolean(busy) || asArray(planPreview.activation_blockers).length > 0 || Boolean(planPreview.extension_draft?.requires_confirmation && !extensionConfirmed)}
+                onClick={() => run("激活掌握计划", activateMasteryPlanPreview)}
+              >
+                {planPreview.extension_draft?.requires_confirmation ? "确认顺延并激活计划" : "激活计划"}
+              </button>
+            </section>
+          )}
+          {planActivationResult?.execution_plan_id && (
+            <div className="active-chain__ok" data-testid="active-plan-activation-result">计划已激活 · 执行计划 {planActivationResult.execution_plan_id}</div>
+          )}
+          {(plan || planPreview) && (
             <>
+              {/** Preview data is normalized to the established calendar shape for the existing schedule UI. */}
               <div className="active-chain__metrics">
-                <strong data-testid="active-plan-budget">{plan.daily_task_minutes_budget}</strong><span>每日任务目标</span>
-                <strong>{plan.tasks.length}</strong><span>已保存任务</span>
-                <strong>{plan.unscheduled_task_minutes}</strong><span>未排分钟</span>
-                <strong data-testid="active-plan-feasible">{plan.feasible ? "可行" : "不可行"}</strong><span>容量结论</span>
+                <strong data-testid="active-plan-budget">{(displayPlan as any).daily_task_minutes_budget}</strong><span>每日任务目标</span>
+                <strong>{(displayPlan as any).tasks.length}</strong><span>{planPreview ? "预览任务" : "已保存任务"}</span>
+                <strong>{(displayPlan as any).unscheduled_task_minutes}</strong><span>未排分钟</span>
+                <strong data-testid="active-plan-feasible">{(displayPlan as any).feasible ? "可行" : "不可行"}</strong><span>容量结论</span>
               </div>
               <div className="active-chain__time">
-                <span>完全掌握预计 {plan.total_mastery_task_minutes ?? plan.total_estimated_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 任务分钟</span>
-                <span>第一遍预计 {plan.initial_learning_task_minutes ?? plan.tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 分钟</span>
+                <span>完全掌握预计 {(displayPlan as any).total_mastery_task_minutes ?? (displayPlan as any).total_estimated_task_minutes ?? (displayPlan as any).tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 任务分钟</span>
+                <span>第一遍预计 {(displayPlan as any).initial_learning_task_minutes ?? (displayPlan as any).tasks.reduce((sum: number, item: any) => sum + item.estimated_task_minutes, 0)} 分钟</span>
                 <span>
-                  完整复习 {plan.review_rounds ?? reviewRounds} 轮，共预计 {plan.projected_review_task_minutes ?? 0} 分钟
-                  （每轮约 {plan.one_review_round_task_minutes ?? 0} 分钟）
+                  完整复习 {(displayPlan as any).review_rounds ?? reviewRounds} 轮，共预计 {(displayPlan as any).projected_review_task_minutes ?? 0} 分钟
+                  （每轮约 {(displayPlan as any).one_review_round_task_minutes ?? 0} 分钟）
                 </span>
-                {plan.expected_actual_elapsed_minutes_range && (
+                {(displayPlan as any).expected_actual_elapsed_minutes_range && (
                   <span data-testid="active-expected-elapsed-range">
-                    预计真实耗时范围 {plan.expected_actual_elapsed_minutes_range.min}–
-                    {plan.expected_actual_elapsed_minutes_range.max} 分钟（不是任务完成量）
+                    预计真实耗时范围 {(displayPlan as any).expected_actual_elapsed_minutes_range.min}–
+                    {(displayPlan as any).expected_actual_elapsed_minutes_range.max} 分钟（不是任务完成量）
                   </span>
                 )}
-                <span>完成任务分钟 {plan.tasks.reduce((sum: number, item: any) => sum + item.completed_task_minutes, 0)}</span>
-                <span>实际耗时分钟 {plan.tasks.reduce((sum: number, item: any) => sum + item.actual_elapsed_minutes, 0).toFixed(3)}</span>
+                <span>完成任务分钟 {(displayPlan as any).tasks.reduce((sum: number, item: any) => sum + item.completed_task_minutes, 0)}</span>
+                <span>实际耗时分钟 {(displayPlan as any).tasks.reduce((sum: number, item: any) => sum + item.actual_elapsed_minutes, 0).toFixed(3)}</span>
               </div>
-              {plan.review_scheduling_policy && <p className="active-chain__muted">{plan.review_scheduling_policy}</p>}
-              {plan.warning && <div className="active-chain__warning">{plan.warning}</div>}
-              {(plan.tasks || []).some((task: any) => task.status === "unscheduled" && task.task_type === "initial_learning") && (
+              {(displayPlan as any).review_scheduling_policy && <p className="active-chain__muted">{(displayPlan as any).review_scheduling_policy}</p>}
+              {(displayPlan as any).warning && <div className="active-chain__warning">{(displayPlan as any).warning}</div>}
+              {((displayPlan as any).tasks || []).some((task: any) => task.status === "unscheduled" && task.task_type === "initial_learning") && (
                 <div className="active-chain__unscheduled" data-testid="active-unscheduled-tasks">
                   <b>超出当前日历，但任务仍已保留</b>
                   <span>这些知识点没有被删除；你可以直接进入学习，之后再调整截止日期或可用时间。</span>
-                  {(plan.tasks || [])
+                  {((displayPlan as any).tasks || [])
                     .filter((task: any) => task.status === "unscheduled" && task.task_type === "initial_learning")
                     .map((task: any) => (
                       <button
@@ -2656,9 +3531,9 @@ export function ActiveTeachingChainView({
                     ))}
                 </div>
               )}
-              {plan.calendar && (
+              {(displayPlan as any).calendar && (
                 <div className="active-chain__calendar" data-testid="active-plan-calendar">
-                  {plan.calendar
+                  {(displayPlan as any).calendar
                     .map((day: any) => (
                     <div className={`active-chain__day ${day.capacity_minutes === 0 ? "is-rest" : ""} ${day.tasks.some((task: any) => task.id === session?.state?.active_task_id) ? "is-current" : ""}`} key={day.date}>
                       <b>{day.date}</b>
@@ -2778,6 +3653,12 @@ export function ActiveTeachingChainView({
                     第 {currentKnowledgePointOrdinal.current}
                     {" / "}{currentKnowledgePointOrdinal.total} 个知识点
                   </p>
+                  <small className="active-classroom__progress-note">
+                    已完成 {Math.max(
+                      0,
+                      Number(activeTaskSummary?.completed_knowledge_point_count || 0),
+                    )} 个知识点；当前学习位置不会把复习阶段重复计数。
+                  </small>
                   <small>你可以随时打断、追问、要求换个例子。</small>
                 </div>
                 <FocusMonitorPanel teachingSessionId={session.session_id} />
@@ -2947,6 +3828,7 @@ export function ActiveTeachingChainView({
                 >
                   {currentConversationMessages.slice(-8).map((item: any) => {
                     const paragraphs = readableMessageParagraphs(item.content);
+                    const teacherTurn = item.role === "teacher" ? teacherTurnFromMessage(item) : null;
                     const visibleParagraphs = item.role === "teacher" ? paragraphs.slice(0, 2) : paragraphs;
                     const remainingParagraphs = item.role === "teacher" ? paragraphs.slice(2) : [];
                     const isCurrentTeacherVoice = item.role === "teacher"
@@ -2997,25 +3879,27 @@ export function ActiveTeachingChainView({
                             {teacherVoicePlayback.error}
                           </small>
                         )}
-                        {visibleParagraphs.map((paragraph, index) => (
-                          <TeacherMessageParagraph
-                            content={paragraph}
-                            key={`${item.id}-visible-${index}`}
-                            teacher={item.role === "teacher"}
-                          />
-                        ))}
-                        {remainingParagraphs.length > 0 && (
-                          <details className="active-chain__message-more">
-                            <summary>展开本轮完整讲解</summary>
-                            {remainingParagraphs.map((paragraph, index) => (
-                              <TeacherMessageParagraph
-                                content={paragraph}
-                                key={`${item.id}-remaining-${index}`}
-                                teacher={item.role === "teacher"}
-                              />
-                            ))}
-                          </details>
-                        )}
+                        {teacherTurn ? <TeacherTurnV1Renderer turn={teacherTurn} /> : <>
+                          {visibleParagraphs.map((paragraph, index) => (
+                            <TeacherMessageParagraph
+                              content={paragraph}
+                              key={`${item.id}-visible-${index}`}
+                              teacher={item.role === "teacher"}
+                            />
+                          ))}
+                          {remainingParagraphs.length > 0 && (
+                            <details className="active-chain__message-more">
+                              <summary>展开本轮完整讲解</summary>
+                              {remainingParagraphs.map((paragraph, index) => (
+                                <TeacherMessageParagraph
+                                  content={paragraph}
+                                  key={`${item.id}-remaining-${index}`}
+                                  teacher={item.role === "teacher"}
+                                />
+                              ))}
+                            </details>
+                          )}
+                        </>}
                         {(item.attachments || []).length > 0 && (
                           <div
                             className="active-classroom__message-attachments"
@@ -3155,7 +4039,7 @@ export function ActiveTeachingChainView({
                   <label className="active-classroom__attachment-button">
                     {attachmentBusy ? "上传中…" : "＋ 文件"}
                     <input
-                      accept={classroomAttachmentAccept}
+                      accept={materialAccept}
                       data-testid="active-teacher-attachment"
                       disabled={
                         attachmentBusy

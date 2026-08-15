@@ -15,12 +15,52 @@ import io
 from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import desc, select
 
+from .conversion_adapters import (
+    ConversionBudget,
+    ConversionError,
+    ConversionRegistry,
+    ConversionResult,
+    ConversionSource,
+)
+from .orm import (
+    ConversionManifestORM,
+    KnowledgeEdgeORM,
+    KnowledgeMapRevisionORM,
+    KnowledgeNodeORM,
+    SessionLocal,
+    SourceRevisionORM,
+)
+from .knowledge_policy import (
+    CONVERSION_POLICY,
+    POLICY_VERSION,
+    PROMPT_POLICY,
+    SCHEDULING_POLICY,
+    TEACHING_POLICY,
+    TEXT_LIMITS_POLICY,
+)
+from .teacher_turn_v1 import (
+    MAX_REMEDIATION_ATTEMPTS,
+    TeacherEvaluationV1,
+    TeacherExpressionV1,
+    TeacherTurnV1,
+    build_learner_preference_profile,
+    build_teacher_turn,
+    explicit_preferences_from_orm,
+    explicit_preferences_from_receipt,
+    manual_skip_transition,
+    merge_provider_expression,
+    persist_teacher_turn,
+    record_actual_elapsed,
+    transition_after_answer,
+    turn_from_dict,
+)
 from .provider_runtime import (
     generation_meta,
     provider_for_session,
@@ -41,6 +81,7 @@ from .classroom_media import (
     validate_attachment_bytes,
     warm_classroom_asr,
 )
+from .url_fetcher_secure import fetch_safe
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["active-teaching"])
@@ -51,13 +92,7 @@ UPLOAD_ROOT = Path(
         str(PROJECT_ROOT / "data" / "active_teaching" / "uploads"),
     )
 ).expanduser().resolve()
-SUPPORTED_SUFFIXES = {
-    ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx",
-    ".csv", ".json", ".yaml", ".yml", ".xml", ".rtf",
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".h",
-    ".go", ".rs", ".sql", ".sh", ".ps1",
-    ".pptx", ".xlsx", ".epub",
-}
+MATERIAL_CONVERSION_REGISTRY = ConversionRegistry()
 CONFUSION_MARKERS = ("不懂", "不理解", "为什么", "再解释", "没明白", "听不懂", "看不懂")
 UNDERSTOOD_MARKERS = ("懂了", "明白了", "理解了", "会了", "可以继续")
 QUESTION_FUNCTION_TERMS = {
@@ -73,9 +108,9 @@ QUESTION_FUNCTION_TERMS = {
     "不能",
     "么会",
 }
-MAX_MATERIAL_BYTES = 50 * 1024 * 1024
-MAX_ARCHIVE_ENTRIES = 5_000
-MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_MATERIAL_BYTES = CONVERSION_POLICY.maximum_input_bytes
+MAX_ARCHIVE_ENTRIES = CONVERSION_POLICY.maximum_archive_entries
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = CONVERSION_POLICY.maximum_expanded_bytes
 MAX_TEACHING_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_TEACHING_IMAGE_PIXELS = 40_000_000
 TEACHING_IMAGE_FORMATS = {
@@ -175,12 +210,83 @@ def _db_path() -> Path:
 
 def _connect() -> sqlite3.Connection:
     path = _db_path()
+    try:
+        connection = sqlite3.connect(
+            f"{path.resolve().as_uri()}?mode=rw",
+            uri=True,
+        )
+    except sqlite3.OperationalError as exc:
+        raise RuntimeError(
+            "DATABASE_MIGRATION_REQUIRED: active teaching database is unavailable"
+        ) from exc
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    _require_active_teaching_schema(connection)
+    return connection
+
+
+_ACTIVE_TEACHING_RUNTIME_TABLES = frozenset(
+    {
+        "active_materials",
+        "active_chunks",
+        "active_receipts",
+        "active_workspace_settings",
+        "active_learner_profiles",
+        "active_knowledge_memories",
+        "active_knowledge_progress_snapshots",
+        "active_teacher_personas",
+        "active_knowledge_points",
+        "active_dependencies",
+        "active_knowledge_conflicts",
+        "active_plans",
+        "active_plan_tasks",
+        "active_teaching_sessions",
+        "active_teaching_messages",
+        "active_teaching_attachments",
+        "active_mastery_evidence",
+        "active_task_time_events",
+        "active_review_items",
+        "active_review_attempts",
+        "active_replan_history",
+        "orm_learner_preferences",
+    }
+)
+
+
+def _require_active_teaching_schema(connection: sqlite3.Connection) -> None:
+    present = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    missing = sorted(_ACTIVE_TEACHING_RUNTIME_TABLES - present)
+    if missing:
+        connection.close()
+        raise RuntimeError(
+            "DATABASE_MIGRATION_REQUIRED: missing active teaching tables: "
+            + ", ".join(missing)
+        )
+
+
+def initialize_active_teaching_storage() -> None:
+    """Initialize legacy compatibility storage once during application startup.
+
+    Canonical v1 knowledge-map tables remain exclusively Alembic-owned.  This
+    startup-only bridge preserves the existing legacy classroom tables without
+    allowing an HTTP request to create or alter database schema.
+    """
+
+    path = _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
-    _init_schema(connection)
-    return connection
+    try:
+        _init_schema(connection)
+        _require_active_teaching_schema(connection)
+    finally:
+        connection.close()
 
 
 def _progress_snapshot_key(
@@ -320,6 +426,77 @@ def _progress_snapshots(
     return output
 
 
+def _knowledge_point_progress_summary(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    plan_id: str | None,
+) -> dict[str, int]:
+    """Return point-level completion separately from phase-task completion.
+
+    A knowledge point has several initial-learning phase rows, so exposing the
+    raw task count as "completed problems" is misleading (and was the source
+    of the old 1/150 report).  This projection is derived only from the
+    canonical active plan task statuses and never marks a point complete from
+    reviews, reminders, or a display-only mastery value.
+    """
+    point_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM active_knowledge_points WHERE workspace_id=?",
+            (workspace_id,),
+        ).fetchone()[0]
+    )
+    if not plan_id:
+        return {
+            "completed_knowledge_point_count": 0,
+            "initial_learning_task_count": 0,
+            "completed_initial_learning_task_count": 0,
+            "knowledge_point_count": point_count,
+        }
+    rows = connection.execute(
+        """SELECT knowledge_point_id,status
+           FROM active_plan_tasks
+           WHERE workspace_id=? AND plan_id=? AND task_type='initial_learning'
+           ORDER BY knowledge_point_id,id""",
+        (workspace_id, plan_id),
+    ).fetchall()
+    # v1 activation stores immutable execution tasks in the ORM table rather
+    # than the legacy active_plan_tasks table.  Keep the workspace index and
+    # desktop overview truthful without copying v1 concepts into legacy rows.
+    if not rows:
+        rows = connection.execute(
+            """SELECT knowledge_point_id,status
+               FROM orm_plan_execution_tasks
+               WHERE workspace_id=? AND plan_id=? AND task_type='initial_learning'
+               ORDER BY knowledge_point_id,id""",
+            (workspace_id, plan_id),
+        ).fetchall()
+        if point_count == 0:
+            point_count = int(
+                connection.execute(
+                    """SELECT COUNT(DISTINCT knowledge_point_id)
+                       FROM orm_plan_execution_tasks
+                       WHERE workspace_id=? AND plan_id=?""",
+                    (workspace_id, plan_id),
+                ).fetchone()[0]
+            )
+    by_point: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        by_point[str(row["knowledge_point_id"])].append(str(row["status"] or ""))
+    completed_points = sum(
+        bool(statuses) and all(status == "completed" for status in statuses)
+        for statuses in by_point.values()
+    )
+    completed_tasks = sum(
+        status == "completed" for statuses in by_point.values() for status in statuses
+    )
+    return {
+        "completed_knowledge_point_count": int(completed_points),
+        "initial_learning_task_count": len(rows),
+        "completed_initial_learning_task_count": int(completed_tasks),
+        "knowledge_point_count": point_count,
+    }
+
+
 def _init_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
@@ -336,6 +513,10 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             parse_error TEXT NOT NULL DEFAULT '',
             page_count INTEGER NOT NULL DEFAULT 0,
             parser_name TEXT NOT NULL,
+            archived INTEGER NOT NULL DEFAULT 0,
+            archived_at TEXT,
+            archive_reason TEXT NOT NULL DEFAULT '',
+            material_revision INTEGER NOT NULL DEFAULT 1,
             UNIQUE(workspace_id, sha256)
         );
         CREATE TABLE IF NOT EXISTS active_chunks (
@@ -591,6 +772,23 @@ def _init_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    # Material disposition is additive and reversible. This bridge runs only
+    # during application startup (never from an HTTP request); Alembic 0022
+    # covers databases that already have the legacy table.
+    existing_material_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(active_materials)").fetchall()
+    }
+    for column, ddl in (
+        ("archived", "INTEGER NOT NULL DEFAULT 0"),
+        ("archived_at", "TEXT"),
+        ("archive_reason", "TEXT NOT NULL DEFAULT ''"),
+        ("material_revision", "INTEGER NOT NULL DEFAULT 1"),
+    ):
+        if column not in existing_material_columns:
+            connection.execute(
+                f"ALTER TABLE active_materials ADD COLUMN {column} {ddl}"
+            )
     existing_task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(active_plan_tasks)").fetchall()
@@ -660,6 +858,11 @@ def _init_schema(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE active_teaching_messages "
             "ADD COLUMN attachment_ids TEXT NOT NULL DEFAULT '[]'"
+        )
+    if "teacher_turn_json" not in existing_message_columns:
+        connection.execute(
+            "ALTER TABLE active_teaching_messages "
+            "ADD COLUMN teacher_turn_json TEXT NOT NULL DEFAULT ''"
         )
     connection.execute(
         """CREATE INDEX IF NOT EXISTS idx_active_teaching_attachments_session
@@ -772,7 +975,7 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
         "SELECT 1 FROM active_teacher_personas LIMIT 1"
     ).fetchone():
         connection.execute(
-            """INSERT INTO active_teacher_personas
+            """INSERT OR IGNORE INTO active_teacher_personas
                (id,name,prompt,teaching_style,visual_profile_id,visual_profile_name,
                 visual_manifest_url,is_default,created_at,updated_at)
                VALUES (?,?,?,?,?,?,?,1,?,?)""",
@@ -1426,71 +1629,177 @@ def _parse_zip_xml_text(path: Path, kind: str) -> tuple[list[dict[str, Any]], in
         return parts, len(selected), f"stdlib-{kind}-xml"
 
 
-def _parse_file(path: Path) -> tuple[list[dict[str, Any]], int, str]:
-    suffix = path.suffix.lower()
-    if suffix not in SUPPORTED_SUFFIXES:
-        raise ValueError(f"不支持的文件格式：{suffix or '无扩展名'}")
-    text_suffixes = {
-        ".txt", ".md", ".markdown", ".csv", ".json", ".yaml", ".yml", ".xml", ".rtf",
-        ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".h",
-        ".go", ".rs", ".sql", ".sh", ".ps1",
-    }
-    if suffix in text_suffixes:
-        text, encoding = _read_text_with_fallback(path)
-        _validate_text_quality(text)
-        _validate_structured_text(text, suffix)
-        parts = _split_markdown(text) if suffix in {".md", ".markdown"} else _split_plain(text)
-        return parts, 1, f"{encoding}-{suffix.lstrip('.')}"
-    if suffix in {".html", ".htm"}:
-        from bs4 import BeautifulSoup
+def _parse_file(
+    path: Path,
+    media_type: str = "",
+) -> tuple[list[dict[str, Any]], int, str, ConversionResult]:
+    result = MATERIAL_CONVERSION_REGISTRY.convert_safe(
+        ConversionSource(name=path.name, path=path, mime_type=media_type),
+        budget=ConversionBudget(
+            max_input_bytes=MAX_MATERIAL_BYTES,
+            max_output_chars=CONVERSION_POLICY.maximum_output_characters,
+            timeout_seconds=CONVERSION_POLICY.timeout_seconds,
+            max_expanded_bytes=MAX_ARCHIVE_UNCOMPRESSED_BYTES,
+            max_archive_entries=MAX_ARCHIVE_ENTRIES,
+        ),
+    )
+    if result.status != "ready" or result.metadata is None:
+        failure = result.failure
+        raise ConversionError(
+            failure.code if failure else "MATERIAL_CONVERSION_FAILED",
+            failure.message if failure else "Material conversion produced no result",
+            retryable=bool(failure and failure.retryable),
+            details=(failure.details if failure else {}),
+        )
+    parts: list[dict[str, Any]] = []
+    char_cursor = 0
+    for ordinal, item in enumerate(result.parts, start=1):
+        text = item.text.strip()
+        if not text:
+            continue
+        parts.append(
+            {
+                "text": text,
+                "heading": item.heading[:300],
+                "heading_level": 3,
+                "page_start": item.page_start,
+                "page_end": item.page_end,
+                "paragraph_start": ordinal,
+                "paragraph_end": ordinal,
+                "char_start": char_cursor,
+                "char_end": char_cursor + len(text),
+                "bbox": list(item.bbox) if item.bbox else None,
+                "audio_start_ms": item.audio_start_ms,
+                "audio_end_ms": item.audio_end_ms,
+                "kind": item.kind,
+            }
+        )
+        char_cursor += len(text) + 2
+    return parts, int(result.metadata.page_count or 0), result.metadata.adapter, result
 
-        text, encoding = _read_text_with_fallback(path)
-        soup = BeautifulSoup(text, "html.parser")
-        text = "\n\n".join(item.get_text(" ", strip=True) for item in soup.select("h1,h2,h3,h4,h5,h6,p,li"))
-        return _split_plain(text), 1, f"beautifulsoup-{encoding}"
-    if suffix == ".docx":
-        from docx import Document
 
-        paragraphs = [paragraph.text.strip() for paragraph in Document(path).paragraphs if paragraph.text.strip()]
-        text = "\n\n".join(paragraphs)
-        return _split_plain(text), 1, "python-docx"
-    if suffix == ".pdf":
-        import fitz
+def _persist_source_conversion(
+    *,
+    workspace_id: str,
+    material_id: str,
+    source_hash: str,
+    target: Path,
+    media_type: str,
+    status: str,
+    result: ConversionResult | None,
+    failure: dict[str, Any] | None = None,
+) -> str:
+    """Persist the immutable source revision and its conversion receipt."""
 
-        document = fitz.open(path)
-        parts: list[dict[str, Any]] = []
-        char_cursor = 0
-        paragraph_cursor = 1
-        for page_number, page in enumerate(document, 1):
-            blocks = [item[4].strip() for item in page.get_text("blocks") if str(item[4]).strip()]
-            for block in blocks:
-                parts.append(
-                    {
-                        "text": block,
-                        "heading": block.splitlines()[0][:120],
-                        "heading_level": 3,
-                        "page_start": page_number,
-                        "page_end": page_number,
-                        "paragraph_start": paragraph_cursor,
-                        "paragraph_end": paragraph_cursor,
-                        "char_start": char_cursor,
-                        "char_end": char_cursor + len(block),
-                    }
-                )
-                char_cursor += len(block) + 2
-                paragraph_cursor += 1
-        return parts, len(document), "pymupdf"
-    if suffix in {".pptx", ".xlsx", ".epub"}:
-        return _parse_zip_xml_text(path, suffix.lstrip("."))
-    raise ValueError(f"不支持的文件格式：{suffix}")
+    source_revision_id = _id("source-revision")
+    metadata = result.metadata if result else None
+    part_locators = [
+        {
+            "ordinal": item.ordinal,
+            "kind": item.kind,
+            "page_start": item.page_start,
+            "page_end": item.page_end,
+            "bbox": list(item.bbox) if item.bbox else None,
+            "audio_start_ms": item.audio_start_ms,
+            "audio_end_ms": item.audio_end_ms,
+            "content_hash": _hash_text(item.text),
+        }
+        for item in (result.parts if result else ())
+    ]
+    with SessionLocal() as session:
+        session.add(
+            SourceRevisionORM(
+                id=source_revision_id,
+                workspace_id=workspace_id,
+                source_id=material_id,
+                revision=1,
+                source_hash=source_hash,
+                status=status,
+            )
+        )
+        session.add(
+            ConversionManifestORM(
+                id=_id("conversion"),
+                source_revision_id=source_revision_id,
+                adapter_name=(metadata.adapter if metadata else str((failure or {}).get("adapter") or "registry")),
+                adapter_version=(metadata.adapter_version if metadata else "conversion-registry.v1"),
+                mime_type=media_type,
+                source_path=str(target),
+                content_hash=source_hash,
+                metadata_json={
+                    "source_bytes": metadata.source_bytes if metadata else target.stat().st_size,
+                    "output_chars": metadata.output_chars if metadata else 0,
+                    "part_count": metadata.part_count if metadata else 0,
+                    "page_count": metadata.page_count if metadata else 0,
+                    "warnings": list(metadata.warnings) if metadata else [],
+                    "parts": part_locators,
+                },
+                status=status,
+                failure_json=failure or {},
+            )
+        )
+        session.commit()
+    return source_revision_id
 
 
 def _evidence(row: sqlite3.Row) -> dict[str, Any]:
     keys = set(row.keys())
+    material_id = str(row["material_id"])
+    material_url = ""
+    material_path = ""
+    try:
+        with _connect() as source_connection:
+            material_row = source_connection.execute(
+                "SELECT stored_path FROM active_materials WHERE id=?",
+                (material_id,),
+            ).fetchone()
+            if material_row:
+                material_path = str(material_row["stored_path"] or "") if "stored_path" in material_row.keys() else ""
+    except sqlite3.Error:
+        pass
+    source_revision_id = ""
+    adapter_name = ""
+    adapter_version = ""
+    locator: dict[str, Any] = {}
+    try:
+        with SessionLocal() as session:
+            revision = session.scalar(
+                select(SourceRevisionORM)
+                .where(SourceRevisionORM.source_id == material_id)
+                .order_by(desc(SourceRevisionORM.revision))
+            )
+            if revision is not None:
+                source_revision_id = revision.id
+                manifest = session.scalar(
+                    select(ConversionManifestORM)
+                    .where(ConversionManifestORM.source_revision_id == revision.id)
+                    .order_by(desc(ConversionManifestORM.created_at))
+                )
+                if manifest is not None:
+                    adapter_name = manifest.adapter_name
+                    adapter_version = manifest.adapter_version
+                    ordinal = int(row["ordinal"]) if "ordinal" in keys else 0
+                    locator = next(
+                        (
+                            dict(item)
+                            for item in (manifest.metadata_json or {}).get("parts") or []
+                            if int(item.get("ordinal") or 0) == ordinal
+                        ),
+                        {},
+                    )
+    except Exception:
+        # Legacy rows predate conversion manifests and remain readable, but
+        # they are classified as legacy_unverified by the v1 revision layer.
+        pass
+    quote = str(row["text"] or "")[:360]
     return {
-        "material_id": row["material_id"],
+        "material_id": material_id,
+        "source_id": material_id,
+        "source_revision_id": source_revision_id,
         "chunk_id": row["id"],
         "source_file": row["original_filename"] if "original_filename" in keys else None,
+        "original_url": material_url,
+        "stored_path": material_path,
         "heading": row["heading"] if "heading" in keys else "",
         "page_start": row["page_start"],
         "page_end": row["page_end"],
@@ -1499,15 +1808,22 @@ def _evidence(row: sqlite3.Row) -> dict[str, Any]:
         "char_start": row["char_start"],
         "char_end": row["char_end"],
         "content_hash": row["content_hash"],
-        "quote": row["text"][:360],
+        "bbox": locator.get("bbox"),
+        "audio_start_ms": locator.get("audio_start_ms"),
+        "audio_end_ms": locator.get("audio_end_ms"),
+        "quote": quote,
+        "quote_hash": _hash_text(quote),
+        "adapter_name": adapter_name,
+        "adapter_version": adapter_version,
     }
-
-
 def _public_material(connection: sqlite3.Connection, material_id: str) -> dict[str, Any]:
     row = connection.execute("SELECT * FROM active_materials WHERE id=?", (material_id,)).fetchone()
     if not row:
         _error("MATERIAL_NOT_FOUND", "学习资料不存在", 404)
     output = dict(row)
+    # Keep the database representation numeric for compatibility while making
+    # disposition explicit to desktop clients.
+    output["archived"] = bool(output.get("archived", 0))
     output["chunks"] = [
         dict(item)
         for item in connection.execute(
@@ -1521,13 +1837,6 @@ def _public_material(connection: sqlite3.Connection, material_id: str) -> dict[s
 @router.post("/workspaces/{workspace_id}/materials")
 async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
     filename = _safe_filename(file.filename or "material")
-    suffix = Path(filename).suffix.lower()
-    if suffix not in SUPPORTED_SUFFIXES:
-        _error(
-            "UNSUPPORTED_FILE_TYPE",
-            f"不支持的文件格式：{suffix or '无扩展名'}；支持 {', '.join(sorted(SUPPORTED_SUFFIXES))}",
-            415,
-        )
     payload = await file.read()
     if len(payload) > MAX_MATERIAL_BYTES:
         _error(
@@ -1538,6 +1847,7 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
             max_size_bytes=MAX_MATERIAL_BYTES,
         )
     sha256 = _hash_bytes(payload)
+    media_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
     with _connect() as connection:
         duplicate = connection.execute(
             "SELECT id FROM active_materials WHERE workspace_id=? AND sha256=?",
@@ -1560,11 +1870,27 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{sha256[:16]}-{filename}"
         target.write_bytes(payload)
+        conversion_result: ConversionResult | None = None
         try:
-            parts, page_count, parser_name = _parse_file(target)
+            parts, page_count, parser_name, conversion_result = _parse_file(target, media_type)
             if not parts:
                 raise ValueError("文件中没有可解析的正文")
         except Exception as exc:
+            registry_code = exc.code if isinstance(exc, ConversionError) else "MATERIAL_CONVERSION_FAILED"
+            code = (
+                "UNSUPPORTED_FILE_TYPE"
+                if registry_code == "UNSUPPORTED_FORMAT"
+                else registry_code
+                if registry_code == "VIDEO_UNSUPPORTED_IN_V1"
+                else "MATERIAL_PARSE_FAILED"
+            )
+            details = exc.details if isinstance(exc, ConversionError) else {}
+            failure = {
+                "code": code,
+                "message": str(exc),
+                "retryable": bool(isinstance(exc, ConversionError) and exc.retryable),
+                "details": {**details, "registry_code": registry_code},
+            }
             connection.execute(
                 """INSERT INTO active_materials
                    (id,workspace_id,original_filename,media_type,size_bytes,sha256,uploaded_at,stored_path,status,parse_error,page_count,parser_name)
@@ -1573,7 +1899,7 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
                     material_id,
                     workspace_id,
                     filename,
-                    file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                    media_type,
                     len(payload),
                     sha256,
                     _now(),
@@ -1585,7 +1911,18 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
                 ),
             )
             connection.commit()
-            _error("MATERIAL_PARSE_FAILED", f"资料解析失败：{exc}", 422, material_id=material_id)
+            _persist_source_conversion(
+                workspace_id=workspace_id,
+                material_id=material_id,
+                source_hash=sha256,
+                target=target,
+                media_type=media_type,
+                status="failed",
+                result=conversion_result,
+                failure=failure,
+            )
+            status_code = 415 if code in {"UNSUPPORTED_FILE_TYPE", "VIDEO_UNSUPPORTED_IN_V1"} else 422
+            _error(code, f"资料解析失败：{exc}", status_code, material_id=material_id, retryable=failure["retryable"])
         connection.execute(
             """INSERT INTO active_materials
                (id,workspace_id,original_filename,media_type,size_bytes,sha256,uploaded_at,stored_path,status,parse_error,page_count,parser_name)
@@ -1594,7 +1931,7 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
                 material_id,
                 workspace_id,
                 filename,
-                file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                media_type,
                 len(payload),
                 sha256,
                 _now(),
@@ -1628,20 +1965,297 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
                 ),
             )
         connection.commit()
+        _persist_source_conversion(
+            workspace_id=workspace_id,
+            material_id=material_id,
+            source_hash=sha256,
+            target=target,
+            media_type=media_type,
+            status="ready",
+            result=conversion_result,
+        )
         result = _public_material(connection, material_id)
         result["deduplicated"] = False
         return result
 
 
 @router.get("/workspaces/{workspace_id}/materials")
-def list_materials(workspace_id: str) -> list[dict[str, Any]]:
+def list_materials(workspace_id: str, include_archived: bool = False) -> list[dict[str, Any]]:
     with _connect() as connection:
+        clause = "" if include_archived else " AND COALESCE(archived,0)=0"
         return [
             _public_material(connection, row["id"])
             for row in connection.execute(
-                "SELECT id FROM active_materials WHERE workspace_id=? ORDER BY uploaded_at", (workspace_id,)
+                "SELECT id FROM active_materials WHERE workspace_id=?" + clause + " ORDER BY uploaded_at",
+                (workspace_id,),
             ).fetchall()
         ]
+
+
+def _set_material_disposition(
+    workspace_id: str,
+    material_id: str,
+    *,
+    archived: bool,
+    reason: str = "",
+) -> dict[str, Any]:
+    """Apply a reversible material disposition without deleting evidence."""
+
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM active_materials WHERE id=? AND workspace_id=?",
+            (material_id, workspace_id),
+        ).fetchone()
+        if row is None:
+            _error("MATERIAL_NOT_FOUND", "学习资料不存在", 404)
+        # Failed parses remain inspectable but cannot be made active by restore.
+        if not archived and str(row["status"] or "") != "ready":
+            _error(
+                "MATERIAL_NOT_READY",
+                "解析失败的资料不能恢复为可用资料",
+                409,
+                material_id=material_id,
+            )
+        next_archived = int(bool(archived))
+        next_reason = str(reason or "")[:500]
+        connection.execute(
+            """UPDATE active_materials
+               SET archived=?,archived_at=?,archive_reason=?,material_revision=COALESCE(material_revision,1)+1
+               WHERE id=? AND workspace_id=?""",
+            (
+                next_archived,
+                _now() if archived else None,
+                next_reason if archived else "",
+                material_id,
+                workspace_id,
+            ),
+        )
+        connection.commit()
+        result = _public_material(connection, material_id)
+        result["disposition"] = "archived" if archived else "active"
+        result["reversible"] = True
+        result["reason"] = (
+            "资料已归档；知识地图、学习计划与历史记录保持不变。"
+            if archived
+            else "资料已恢复；既有知识地图、学习计划与历史记录保持不变。"
+        )
+        return result
+
+
+@router.post("/workspaces/{workspace_id}/materials/{material_id}/archive")
+def archive_material(
+    workspace_id: str,
+    material_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    return _set_material_disposition(
+        workspace_id,
+        material_id,
+        archived=True,
+        reason=str((body or {}).get("reason") or "").strip(),
+    )
+
+
+@router.post("/workspaces/{workspace_id}/materials/{material_id}/restore")
+def restore_material(workspace_id: str, material_id: str) -> dict[str, Any]:
+    return _set_material_disposition(workspace_id, material_id, archived=False)
+
+
+@router.patch("/workspaces/{workspace_id}/materials/{material_id}")
+def update_material_disposition(
+    workspace_id: str,
+    material_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    payload = body or {}
+    if not isinstance(payload.get("archived"), bool):
+        _error("MATERIAL_DISPOSITION_REQUIRED", "archived 必须是布尔值", 422)
+    return _set_material_disposition(
+        workspace_id,
+        material_id,
+        archived=bool(payload["archived"]),
+        reason=str(payload.get("reason") or "").strip(),
+    )
+
+
+@router.delete("/workspaces/{workspace_id}/materials/{material_id}")
+def delete_material(
+    workspace_id: str,
+    material_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Delete means reversible archive unless an explicit safe purge is requested.
+
+    Desktop clients historically call DELETE for a material.  Keep that
+    contract safe by archiving by default; a physical purge requires a caller
+    supplied confirmation and zero references from plans, receipts, maps, or
+    knowledge points.
+    """
+
+    payload = body or {}
+    physical = bool(payload.get("physical") or payload.get("purge"))
+    confirm = bool(payload.get("confirm_unreferenced") or payload.get("confirm"))
+    if not physical or not confirm:
+        result = _set_material_disposition(
+            workspace_id,
+            material_id,
+            archived=True,
+            reason=str(payload.get("reason") or "deleted by client; retained as reversible archive").strip(),
+        )
+        result.update({"deleted": True, "physical_delete": False, "reversible": True})
+        return result
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM active_materials WHERE id=? AND workspace_id=?",
+            (material_id, workspace_id),
+        ).fetchone()
+        if row is None:
+            _error("MATERIAL_NOT_FOUND", "学习资料不存在", 404)
+        references: list[str] = []
+        if connection.execute(
+            "SELECT 1 FROM active_knowledge_points WHERE workspace_id=? AND material_id=? LIMIT 1",
+            (workspace_id, material_id),
+        ).fetchone():
+            references.append("active_knowledge_points")
+        receipt_rows = connection.execute(
+            "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
+        ).fetchall()
+        for receipt in receipt_rows:
+            try:
+                if material_id in {str(item) for item in (json.loads(receipt["payload"]).get("material_ids") or [])}:
+                    references.append("active_receipts")
+                    break
+            except (TypeError, json.JSONDecodeError):
+                continue
+        # Canonical map nodes keep evidence as JSON in ORM; inspect without
+        # deleting any immutable map history.
+        try:
+            canonical_refs = connection.execute(
+                "SELECT 1 FROM orm_knowledge_nodes WHERE map_revision_id IN (SELECT id FROM orm_knowledge_map_revisions WHERE workspace_id=?) AND source_refs LIKE ? LIMIT 1",
+                (workspace_id, f"%{material_id}%"),
+            ).fetchone()
+            if canonical_refs:
+                references.append("orm_knowledge_nodes")
+            needle = f"%{material_id}%"
+            canonical_checks = (
+                (
+                    "orm_knowledge_edges",
+                    """SELECT 1 FROM orm_knowledge_edges
+                       WHERE map_revision_id IN (SELECT id FROM orm_knowledge_map_revisions WHERE workspace_id=?)
+                         AND source_refs LIKE ? LIMIT 1""",
+                ),
+                (
+                    "orm_knowledge_map_revisions",
+                    """SELECT 1 FROM orm_knowledge_map_revisions
+                       WHERE workspace_id=? AND source_revisions LIKE ? LIMIT 1""",
+                ),
+                (
+                    "orm_plan_execution_tasks",
+                    """SELECT 1 FROM orm_plan_execution_tasks
+                       WHERE workspace_id=? AND (source_evidence LIKE ? OR concept_snapshot LIKE ?) LIMIT 1""",
+                ),
+                (
+                    "orm_plan_activation_records",
+                    """SELECT 1 FROM orm_plan_activation_records
+                       WHERE workspace_id=? AND plan_snapshot LIKE ? LIMIT 1""",
+                ),
+                (
+                    "orm_knowledge_map_jobs",
+                    """SELECT 1 FROM orm_knowledge_map_jobs
+                       WHERE workspace_id=? AND (request_json LIKE ? OR result_json LIKE ?) LIMIT 1""",
+                ),
+            )
+            for label, statement in canonical_checks:
+                params = (workspace_id,) + (needle,) * (statement.count("?") - 1)
+                if connection.execute(statement, params).fetchone():
+                    references.append(label)
+        except sqlite3.Error:
+            pass
+        if references:
+            _error(
+                "MATERIAL_REFERENCED",
+                "资料仍被学习历史或知识地图引用，请使用可恢复归档",
+                409,
+                references=sorted(set(references)),
+            )
+        stored_path = str(row["stored_path"] or "")
+        # Only conversion-only rows may be removed.  Any map, plan, or job
+        # reference above turns this operation into a safe 409 instead.
+        try:
+            revision_ids = [
+                str(item[0])
+                for item in connection.execute(
+                    "SELECT id FROM orm_source_revisions WHERE workspace_id=? AND source_id=?",
+                    (workspace_id, material_id),
+                ).fetchall()
+            ]
+            if revision_ids:
+                placeholders = ",".join("?" for _ in revision_ids)
+                connection.execute(
+                    f"DELETE FROM orm_conversion_manifests WHERE source_revision_id IN ({placeholders})",
+                    revision_ids,
+                )
+            connection.execute(
+                "DELETE FROM orm_material_dispositions WHERE workspace_id=? AND source_id=?",
+                (workspace_id, material_id),
+            )
+            connection.execute(
+                "DELETE FROM orm_source_revisions WHERE workspace_id=? AND source_id=?",
+                (workspace_id, material_id),
+            )
+        except sqlite3.Error:
+            pass
+        connection.execute("DELETE FROM active_materials WHERE id=? AND workspace_id=?", (material_id, workspace_id))
+        connection.commit()
+        if stored_path:
+            try:
+                path = Path(stored_path).resolve()
+                if path.is_file() and UPLOAD_ROOT.resolve() in path.parents:
+                    path.unlink()
+            except (OSError, ValueError):
+                # The database deletion is complete; a missing artifact is
+                # retained in the response for operator reconciliation.
+                pass
+        return {
+            "workspace_id": workspace_id,
+            "material_id": material_id,
+            "deleted": True,
+            "physical_delete": True,
+            "reversible": False,
+            "reason": "资料未被任何计划、回执或知识地图引用，且调用方明确确认后已物理删除。",
+        }
+
+
+@router.post("/workspaces/{workspace_id}/materials/url")
+async def upload_url_material(
+    workspace_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    """Fetch one user-confirmed public article and ingest it through the same registry.
+
+    URL candidates remain separate from the map until the learner confirms one;
+    this endpoint only creates the ordinary active material and never mutates a
+    receipt, knowledge map, plan, or mastery state.
+    """
+    url = str(body.get("url") or "").strip()
+    if not url:
+        _error("MATERIAL_URL_REQUIRED", "请先选择一份资料", 422)
+    try:
+        fetched = await fetch_safe(url)
+    except ValueError as exc:
+        _error("MATERIAL_URL_FETCH_FAILED", f"资料网页无法安全读取：{exc}", 422)
+    text = str(fetched.get("text") or "").strip()
+    if not text:
+        _error("MATERIAL_URL_EMPTY", "资料网页没有可索引的正文", 422)
+    title = str(body.get("title") or fetched.get("title") or "网页资料").strip()
+    safe_title = _safe_filename(title)[:120] or "网页资料"
+    # UploadFile is used only as an adapter here so URL imports and local files
+    # share exactly the same conversion, evidence, hashing, and deduplication path.
+    upload = UploadFile(file=io.BytesIO(text.encode("utf-8")), filename=f"{safe_title}.txt")
+    result = await upload_material(workspace_id, upload)
+    result["source_url"] = str(fetched.get("final_url") or url)
+    result["source_title"] = title
+    return result
 
 
 def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1672,11 +2286,14 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "system" if str(payload.get("allocation_mode") or "").casefold() == "system"
         else "manual"
     )
-    minutes = int(payload.get("daily_task_minutes") or 30)
-    if allocation_mode == "system" and not 10 <= minutes <= 720:
-        minutes = 30
-    elif not 10 <= minutes <= 720:
-        _error("INVALID_DAILY_TASK_MINUTES", "每日任务分钟预算必须在 10 到 720 之间", 422)
+    minutes = int(
+        payload.get("daily_task_minutes")
+        or SCHEDULING_POLICY.default_daily_task_minutes
+    )
+    if allocation_mode == "system" and not SCHEDULING_POLICY.minimum_daily_minutes <= minutes <= SCHEDULING_POLICY.maximum_special_date_minutes:
+        minutes = SCHEDULING_POLICY.default_daily_task_minutes
+    elif not SCHEDULING_POLICY.minimum_daily_minutes <= minutes <= SCHEDULING_POLICY.maximum_special_date_minutes:
+        _error("INVALID_DAILY_TASK_MINUTES", f"每日任务分钟预算必须在 {SCHEDULING_POLICY.minimum_daily_minutes} 到 {SCHEDULING_POLICY.maximum_special_date_minutes} 之间", 422)
     weekdays = sorted({int(item) for item in payload["study_weekdays"]})
     if not weekdays or any(item < 0 or item > 6 for item in weekdays):
         _error("INVALID_STUDY_WEEKDAYS", "每周可学习日期必须使用 0 到 6", 422)
@@ -1702,8 +2319,8 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         if special_day < start_date or special_day > deadline:
             _error("SPECIAL_DATE_OUTSIDE_RANGE", "特殊日期必须位于学习周期内", 422, value=raw_day)
         special_minutes = int(raw_minutes)
-        if not 0 <= special_minutes <= 720:
-            _error("INVALID_SPECIAL_DATE_MINUTES", "特殊日期分钟数必须在 0 到 720 之间", 422)
+        if not 0 <= special_minutes <= SCHEDULING_POLICY.maximum_special_date_minutes:
+            _error("INVALID_SPECIAL_DATE_MINUTES", f"特殊日期分钟数必须在 0 到 {SCHEDULING_POLICY.maximum_special_date_minutes} 之间", 422)
         special_date_minutes[special_day.isoformat()] = special_minutes
     raw_period_ratio = payload.get("initial_learning_period_ratio")
     initial_learning_period_ratio: float | None = None
@@ -1712,11 +2329,25 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
             initial_learning_period_ratio = float(raw_period_ratio)
         except (TypeError, ValueError):
             _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须是 0 到 1 之间的数字", 422)
-        if not 0.1 <= initial_learning_period_ratio <= 0.9:
-            _error("INVALID_LEARNING_PERIOD_RATIO", "首学周期比例必须在 0.1 到 0.9 之间", 422)
-    review_rounds = int(payload.get("review_rounds") or 2)
-    if review_rounds not in {2, 3, 4}:
-        _error("INVALID_REVIEW_ROUNDS", "完整复习轮数只能选择 2、3 或 4", 422)
+        if not (
+            SCHEDULING_POLICY.minimum_initial_learning_period_ratio
+            <= initial_learning_period_ratio
+            <= SCHEDULING_POLICY.maximum_initial_learning_period_ratio
+        ):
+            _error(
+                "INVALID_LEARNING_PERIOD_RATIO",
+                "首学周期比例必须在 "
+                f"{SCHEDULING_POLICY.minimum_initial_learning_period_ratio} 到 "
+                f"{SCHEDULING_POLICY.maximum_initial_learning_period_ratio} 之间",
+                422,
+            )
+    review_rounds = int(payload.get("review_rounds") or SCHEDULING_POLICY.default_review_rounds)
+    if not SCHEDULING_POLICY.minimum_review_rounds <= review_rounds <= SCHEDULING_POLICY.maximum_review_rounds:
+        _error(
+            "INVALID_REVIEW_ROUNDS",
+            f"完整复习轮数必须在 {SCHEDULING_POLICY.minimum_review_rounds} 到 {SCHEDULING_POLICY.maximum_review_rounds} 之间",
+            422,
+        )
     raw_resource_discovery = payload.get("discover_external_resources", True)
     if isinstance(raw_resource_discovery, str):
         discover_external_resources = raw_resource_discovery.strip().casefold() not in {
@@ -1743,19 +2374,19 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
         "notes": str(payload.get("notes") or ""),
-        "teacher_persona_id": str(payload.get("teacher_persona_id") or "")[:120],
-        "teacher_persona_name": str(payload.get("teacher_persona_name") or "")[:80],
-        "teacher_persona": str(payload.get("teacher_persona") or "")[:2000],
+        "teacher_persona_id": str(payload.get("teacher_persona_id") or "")[: TEXT_LIMITS_POLICY.preference_key_characters],
+        "teacher_persona_name": str(payload.get("teacher_persona_name") or "")[: TEXT_LIMITS_POLICY.brief_characters],
+        "teacher_persona": str(payload.get("teacher_persona") or "")[: TEXT_LIMITS_POLICY.long_text_characters],
         "teacher_visual_profile_id": str(
             payload.get("teacher_visual_profile_id") or ""
-        )[:120],
+        )[: TEXT_LIMITS_POLICY.preference_key_characters],
         "teacher_visual_profile_name": str(
             payload.get("teacher_visual_profile_name") or ""
-        )[:120],
+        )[: TEXT_LIMITS_POLICY.preference_key_characters],
         "teacher_visual_manifest_url": str(
             payload.get("teacher_visual_manifest_url") or ""
-        )[:500],
-        "learner_interests": str(payload.get("learner_interests") or "")[:1000],
+        )[: TEXT_LIMITS_POLICY.objective_characters],
+        "learner_interests": str(payload.get("learner_interests") or "")[: TEXT_LIMITS_POLICY.explanation_characters],
         "allow_schedule_suggestions": bool(payload.get("allow_schedule_suggestions", True)),
         # Keep this opt-in explicit for newly-created tasks while preserving
         # the historical behavior for receipts that predate the field.  The
@@ -1765,6 +2396,56 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "material_ids": list(dict.fromkeys(str(item) for item in payload["material_ids"])),
         "updated_at": _now(),
     }
+
+
+def _sync_receipt_learner_preference_profile(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    receipt: Mapping[str, Any],
+) -> None:
+    """Persist only the interests the learner explicitly entered in the receipt."""
+
+    profile = build_learner_preference_profile(
+        workspace_id=workspace_id,
+        explicit_preferences=explicit_preferences_from_receipt(receipt),
+    )
+    interests = [
+        item.value for item in profile.preferences if item.key == "interest"
+    ]
+    preference_id = "learner_pref_" + _hash_text(
+        f"{workspace_id}:interest"
+    )[:32]
+    if interests:
+        now = _now()
+        connection.execute(
+            """INSERT INTO orm_learner_preferences
+               (id,workspace_id,preference_key,value_json,source,status,revision,
+                created_at,updated_at)
+               VALUES (?,?,?,?,'explicit','active',1,?,?)
+               ON CONFLICT(workspace_id,preference_key) DO UPDATE SET
+                 value_json=excluded.value_json,
+                 source='explicit',
+                 status='active',
+                 revision=orm_learner_preferences.revision+1,
+                 updated_at=excluded.updated_at""",
+            (
+                preference_id,
+                workspace_id,
+                "interest",
+                json.dumps({"items": interests}, ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+    else:
+        connection.execute(
+            """UPDATE orm_learner_preferences
+               SET status='inactive',revision=revision+1,updated_at=?
+               WHERE workspace_id=? AND preference_key='interest'
+                 AND source='explicit' AND status!='inactive'""",
+            (_now(), workspace_id),
+        )
 
 
 @router.put("/workspaces/{workspace_id}/receipt")
@@ -1858,18 +2539,36 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 )
                 estimation_source = "existing_knowledge_map"
             else:
-                estimated_initial = max(90, chunk_count * 8 + 120)
+                estimated_initial = max(
+                    SCHEDULING_POLICY.structural_estimate_minimum_initial_minutes,
+                    chunk_count
+                    * SCHEDULING_POLICY.structural_estimate_minutes_per_chunk
+                    + SCHEDULING_POLICY.structural_estimate_base_minutes,
+                )
+                rounding = SCHEDULING_POLICY.allocation_rounding_minutes
                 estimated_review_round = max(
-                    30, math.ceil(estimated_initial * 0.12 / 5) * 5
+                    SCHEDULING_POLICY.structural_estimate_minimum_review_minutes,
+                    math.ceil(
+                        estimated_initial
+                        * SCHEDULING_POLICY.structural_estimate_review_ratio
+                        / rounding
+                    )
+                    * rounding,
                 )
                 estimation_source = "material_structure_estimate"
             estimated_total = (
                 estimated_initial
-                + estimated_review_round * int(receipt.get("review_rounds") or 2)
+                + estimated_review_round
+                * int(
+                    receipt.get("review_rounds")
+                    or SCHEDULING_POLICY.default_review_rounds
+                )
             )
+            rounding = SCHEDULING_POLICY.allocation_rounding_minutes
             recommended = max(
-                20,
-                math.ceil(estimated_total / len(study_dates) / 5) * 5,
+                SCHEDULING_POLICY.structural_estimate_minimum_daily_minutes,
+                math.ceil(estimated_total / len(study_dates) / rounding)
+                * rounding,
             )
             receipt["daily_task_minutes"] = recommended
             receipt["allocation"] = {
@@ -1877,7 +2576,10 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 "estimated_total_minutes": estimated_total,
                 "initial_learning_minutes": estimated_initial,
                 "one_review_round_minutes": estimated_review_round,
-                "review_rounds": int(receipt.get("review_rounds") or 2),
+                "review_rounds": int(
+                    receipt.get("review_rounds")
+                    or SCHEDULING_POLICY.default_review_rounds
+                ),
                 "buffer_rate": 0,
                 "available_study_days": len(study_dates),
                 "recommended_minutes_per_day": recommended,
@@ -1888,6 +2590,11 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
             """INSERT INTO active_receipts(workspace_id,payload,updated_at) VALUES (?,?,?)
                ON CONFLICT(workspace_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at""",
             (workspace_id, json.dumps(receipt, ensure_ascii=False), receipt["updated_at"]),
+        )
+        _sync_receipt_learner_preference_profile(
+            connection,
+            workspace_id=workspace_id,
+            receipt=receipt,
         )
         connection.commit()
     return receipt
@@ -1902,6 +2609,35 @@ def get_receipt(workspace_id: str) -> dict[str, Any]:
         if not row:
             _error("RECEIPT_NOT_FOUND", "学习回执尚未填写", 404)
         return json.loads(row["payload"])
+
+
+@router.get("/workspaces/{workspace_id}/learner-preference-profile")
+def get_learner_preference_profile(workspace_id: str) -> dict[str, Any]:
+    """Return the explicit-only profile used for teacher analogies."""
+
+    with _connect() as connection:
+        rows = connection.execute(
+            """SELECT preference_key,value_json,source,status,revision
+               FROM orm_learner_preferences
+               WHERE workspace_id=? AND source='explicit' AND status='active'
+               ORDER BY preference_key""",
+            (workspace_id,),
+        ).fetchall()
+    values = [
+        {
+            "preference_key": row["preference_key"],
+            "value_json": json.loads(row["value_json"] or "{}"),
+            "source": row["source"],
+            "status": row["status"],
+        }
+        for row in rows
+    ]
+    profile = build_learner_preference_profile(
+        workspace_id=workspace_id,
+        explicit_preferences=values,
+        revision=max((int(row["revision"] or 0) for row in rows), default=0),
+    )
+    return profile.model_dump(mode="json")
 
 
 def _extract_field(text: str, labels: Iterable[str]) -> str:
@@ -1960,8 +2696,16 @@ def _cycle_nodes(edges: list[tuple[str, str]]) -> set[str]:
     return cycles
 
 
-@router.post("/workspaces/{workspace_id}/knowledge-graph/generate")
+@router.post("/workspaces/{workspace_id}/knowledge-graph/generate", status_code=410)
 def generate_knowledge_graph(workspace_id: str) -> dict[str, Any]:
+    _error(
+        "LEGACY_KNOWLEDGE_GRAPH_ENDPOINT",
+        "旧知识图谱生成接口已停用，请使用 /api/active-teaching/workspaces/{workspace_id}/knowledge-map/jobs。",
+        410,
+        canonical_path=f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/jobs",
+    )
+    # Retained below only as source-history context; the explicit 410 above is
+    # the executable boundary and prevents the legacy generator from running.
     with _connect() as connection:
         receipt_row = connection.execute(
             "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
@@ -2230,12 +2974,105 @@ def _graph(connection: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
     }
 
 
+def _active_knowledge_map_revision(connection: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
+    """Read the canonical active ORM revision without routing back to itself."""
+    try:
+        with SessionLocal() as session:
+            revision = session.scalar(
+                select(KnowledgeMapRevisionORM)
+                .where(
+                    KnowledgeMapRevisionORM.workspace_id == workspace_id,
+                    KnowledgeMapRevisionORM.is_current.is_(True),
+                    KnowledgeMapRevisionORM.status.in_(["active", "ready_with_review"]),
+                )
+                .order_by(desc(KnowledgeMapRevisionORM.revision))
+            )
+            if revision is None:
+                return {}
+            node_rows = session.scalars(
+                select(KnowledgeNodeORM)
+                .where(KnowledgeNodeORM.map_revision_id == revision.id)
+                .order_by(KnowledgeNodeORM.node_id)
+            ).all()
+            edge_rows = session.scalars(
+                select(KnowledgeEdgeORM)
+                .where(KnowledgeEdgeORM.map_revision_id == revision.id)
+                .order_by(KnowledgeEdgeORM.edge_id)
+            ).all()
+            nodes = [
+                {
+                    "id": item.node_id,
+                    "name": item.label,
+                    "explanation": item.summary,
+                    "node_type": (item.history or {}).get("node_type", item.kind),
+                    "difficulty": (item.history or {}).get("difficulty", "medium"),
+                    "acceptance_method": (item.history or {}).get("acceptance_method", ""),
+                    "mastery_estimate": (item.history or {}).get("mastery_estimate", {}),
+                    "confidence": float((item.history or {}).get("confidence", 0.0)),
+                    "layer": (item.history or {}).get("layer", "material"),
+                    "status": item.status,
+                    "evidence": item.source_refs or [],
+                    "source_evidence": item.source_refs or [],
+                    "material_ids": sorted({
+                        str(ref.get("material_id") or ref.get("source_id") or "")
+                        for ref in (item.source_refs or [])
+                        if isinstance(ref, Mapping)
+                    }),
+                }
+                for item in node_rows
+            ]
+            edges = []
+            for item in edge_rows:
+                refs = list(item.source_refs or [])
+                metadata = (
+                    dict(refs[0])
+                    if refs and isinstance(refs[0], Mapping) and "relation" in refs[0]
+                    else {}
+                )
+                evidence = refs[1:] if metadata else refs
+                edges.append(
+                    {
+                        "id": item.edge_id,
+                        "source_id": item.source_node_id,
+                        "target_id": item.target_node_id,
+                        "prerequisite_id": item.source_node_id,
+                        "dependent_id": item.target_node_id,
+                        "relation": item.relation,
+                        "status": metadata.get("status", "pending"),
+                        "layer": metadata.get("layer", "material"),
+                        "reason": metadata.get("reason", ""),
+                        "evidence": evidence,
+                        "source_evidence": evidence,
+                    }
+                )
+            return {
+                "schema": "mentorflow.knowledge-map.v1",
+                "policy_version": POLICY_VERSION,
+                "workspace_id": workspace_id,
+                "revision": int(revision.revision),
+                "revision_id": revision.id,
+                "state": revision.status,
+                "source_fingerprint": revision.fingerprint,
+                "provider_meta": (revision.quality or {}).get("provider_meta", {}),
+                "quality": revision.quality or {},
+                "nodes": nodes,
+                "edges": edges,
+                "knowledge_points": nodes,
+            }
+    except Exception as exc:
+        raise RuntimeError("canonical knowledge-map revision could not be read") from exc
+
+
 @router.get("/workspaces/{workspace_id}/knowledge-graph")
 def get_knowledge_graph(workspace_id: str) -> dict[str, Any]:
     with _connect() as connection:
-        result = _graph(connection, workspace_id)
-        if not result["knowledge_points"]:
-            _error("KNOWLEDGE_GRAPH_NOT_FOUND", "知识图谱尚未生成", 404)
+        result = _active_knowledge_map_revision(connection, workspace_id)
+        if not result:
+            _error(
+                "KNOWLEDGE_MAP_NOT_FOUND",
+                "当前工作区没有可用的 active knowledge-map revision",
+                404,
+            )
         return result
 
 
@@ -2337,10 +3174,11 @@ def generate_plan(workspace_id: str) -> dict[str, Any]:
         task_specs = []
         for point in ordered:
             minutes = int(point["estimated_task_minutes"])
-            split_count = max(1, (minutes + min(120, budget) - 1) // min(120, budget))
+            segment_limit = min(SCHEDULING_POLICY.maximum_task_segment_minutes, budget)
+            split_count = max(1, (minutes + segment_limit - 1) // segment_limit)
             remaining = minutes
             for split_index in range(split_count):
-                part_minutes = min(remaining, min(120, budget))
+                part_minutes = min(remaining, segment_limit)
                 remaining -= part_minutes
                 suffix = f"（{split_index + 1}/{split_count}）" if split_count > 1 else ""
                 task_specs.append((point, suffix, part_minutes))
@@ -2458,12 +3296,10 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
         or receipt.get("current_level")
         or "beginner"
     ).casefold()
-    elapsed_multipliers = {
-        "zero_foundation": (1.3, 1.8),
-        "beginner": (1.15, 1.6),
-        "intermediate": (0.9, 1.3),
-        "advanced": (0.75, 1.1),
-    }.get(level, (1.0, 1.5))
+    elapsed_multipliers = SCHEDULING_POLICY.learner_level_elapsed_multipliers.get(
+        level,
+        SCHEDULING_POLICY.default_elapsed_multipliers,
+    )
     initial_minutes = sum(
         int(item["estimated_task_minutes"])
         for item in tasks
@@ -2537,7 +3373,10 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
     result["initial_learning_period_ratio"] = receipt.get(
         "initial_learning_period_ratio"
     )
-    result["review_rounds"] = int(receipt.get("review_rounds") or 2)
+    result["review_rounds"] = int(
+        receipt.get("review_rounds")
+        or SCHEDULING_POLICY.default_review_rounds
+    )
     result["one_review_round_task_minutes"] = int(
         (receipt.get("allocation") or {}).get("one_review_round_minutes") or 0
     )
@@ -2578,13 +3417,135 @@ def _citations_for_point(connection: sqlite3.Connection, point_id: str) -> list[
     return json.loads(row["source_evidence"]) if row else []
 
 
+def _execution_receipt(
+    connection: sqlite3.Connection,
+    plan_id: str,
+) -> dict[str, Any]:
+    row = connection.execute(
+        "SELECT receipt FROM active_plans WHERE id=?",
+        (plan_id,),
+    ).fetchone()
+    return _json_object(row["receipt"]) if row else {}
+
+
+def _uses_canonical_execution(
+    connection: sqlite3.Connection,
+    plan_id: str,
+) -> bool:
+    return str(_execution_receipt(connection, plan_id).get("activation_source") or "") in {
+        "mastery-plan-preview.v1",
+        "material-change-preview.v1",
+    }
+
+
 def _task_rows(connection: sqlite3.Connection, plan_id: str) -> list[sqlite3.Row]:
+    if _uses_canonical_execution(connection, plan_id):
+        return connection.execute(
+            """SELECT * FROM orm_plan_execution_tasks
+               WHERE plan_id=? AND task_type='initial_learning'
+               ORDER BY point_sequence,day_index,task_order,id""",
+            (plan_id,),
+        ).fetchall()
     return connection.execute(
         """SELECT * FROM active_plan_tasks
            WHERE plan_id=? AND task_type='initial_learning'
            ORDER BY point_sequence,day_index,task_order,id""",
         (plan_id,),
     ).fetchall()
+
+
+def _is_canonical_task(task: Mapping[str, Any] | sqlite3.Row) -> bool:
+    keys = task.keys() if hasattr(task, "keys") else ()
+    return "map_revision_id" in keys and bool(task["map_revision_id"])
+
+
+def _point_for_task(
+    connection: sqlite3.Connection,
+    task: Mapping[str, Any] | sqlite3.Row,
+) -> Mapping[str, Any] | sqlite3.Row:
+    """Resolve a task concept without projecting it into a legacy graph row."""
+
+    if not _is_canonical_task(task):
+        legacy = connection.execute(
+            "SELECT * FROM active_knowledge_points WHERE id=?",
+            (task["knowledge_point_id"],),
+        ).fetchone()
+        if legacy is not None:
+            return legacy
+        _error("ACTIVE_KNOWLEDGE_POINT_NOT_FOUND", "知识点不存在", 409)
+    snapshot = _json_object(task["concept_snapshot"])
+    if (
+        str(snapshot.get("map_revision_id") or "") != str(task["map_revision_id"])
+        or str(snapshot.get("knowledge_point_id") or "")
+        != str(task["knowledge_point_id"])
+    ):
+        _error(
+            "PLAN_CONCEPT_SNAPSHOT_INVALID",
+            "计划中的概念快照与知识地图修订不一致",
+            409,
+        )
+    evidence = snapshot.get("source_evidence") or []
+    if not isinstance(evidence, list):
+        evidence = []
+    latest_mastery = connection.execute(
+        """SELECT MAX(score) FROM orm_plan_mastery_events
+           WHERE map_revision_id=? AND knowledge_point_id=?
+             AND event_type='mastery_confirmed' AND passed=1""",
+        (task["map_revision_id"], task["knowledge_point_id"]),
+    ).fetchone()
+    mastery = float(latest_mastery[0] or 0) if latest_mastery else 0.0
+    material_id = next(
+        (
+            str(item.get("material_id") or item.get("source_id") or "")
+            for item in evidence
+            if isinstance(item, dict)
+        ),
+        "",
+    )
+    return {
+        "id": str(task["knowledge_point_id"]),
+        "workspace_id": str(task["workspace_id"]),
+        "material_id": material_id,
+        "normalized_name": str(task["knowledge_point_id"]),
+        "name": str(snapshot.get("name") or task["title"] or ""),
+        "explanation": str(snapshot.get("explanation") or task["objective"] or ""),
+        "difficulty": str(snapshot.get("difficulty") or "medium"),
+        "estimated_task_minutes": int(task["estimated_task_minutes"] or 0),
+        "mastery": mastery,
+        "acceptance_method": str(
+            snapshot.get("acceptance_method")
+            or task["acceptance_condition"]
+            or ""
+        ),
+        "source_evidence": json.dumps(evidence, ensure_ascii=False),
+        "isolated": 0,
+        "map_revision_id": str(task["map_revision_id"]),
+        "evidence_hash": str(snapshot.get("evidence_hash") or ""),
+    }
+
+
+def _add_task_elapsed(
+    connection: sqlite3.Connection,
+    task: Mapping[str, Any] | sqlite3.Row,
+    elapsed: float,
+) -> None:
+    table = "orm_plan_execution_tasks" if _is_canonical_task(task) else "active_plan_tasks"
+    connection.execute(
+        f"UPDATE {table} SET actual_elapsed_minutes=actual_elapsed_minutes+? WHERE id=?",
+        (elapsed, task["id"]),
+    )
+
+
+def _complete_execution_task(
+    connection: sqlite3.Connection,
+    task: Mapping[str, Any] | sqlite3.Row,
+) -> None:
+    table = "orm_plan_execution_tasks" if _is_canonical_task(task) else "active_plan_tasks"
+    connection.execute(
+        f"""UPDATE {table} SET status='completed',
+            completed_task_minutes=estimated_task_minutes WHERE id=?""",
+        (task["id"],),
+    )
 
 
 def _review_total_minutes_for_point(
@@ -2603,13 +3564,25 @@ def _review_total_minutes_for_point(
             except (TypeError, ValueError, json.JSONDecodeError):
                 minutes = 0
             if minutes > 0:
-                return max(5, min(120, minutes))
-    return max(5, min(60, round(int(point["estimated_task_minutes"]) * 0.2)))
+                return max(
+                    SCHEDULING_POLICY.minimum_review_task_minutes,
+                    min(SCHEDULING_POLICY.maximum_task_segment_minutes, minutes),
+                )
+    return max(
+        SCHEDULING_POLICY.minimum_review_task_minutes,
+        min(
+            SCHEDULING_POLICY.fallback_maximum_review_task_minutes,
+            round(
+                int(point["estimated_task_minutes"])
+                * SCHEDULING_POLICY.fallback_review_minutes_ratio
+            ),
+        ),
+    )
 
 
 def _review_occurrence_minutes(total_minutes: int, cycle: int) -> int:
     """Each configured cycle is one complete review of the knowledge point."""
-    return max(3, int(total_minutes))
+    return max(SCHEDULING_POLICY.minimum_review_occurrence_minutes, int(total_minutes))
 
 
 def _planned_review_due_date(
@@ -3005,13 +3978,22 @@ def _estimate_remediation_task_minutes(
     task: sqlite3.Row, point: sqlite3.Row, failure_count: int
 ) -> int:
     difficulty = str(point["difficulty"] or "medium").casefold()
-    factor = 0.25 if difficulty in {"easy", "简单"} else 0.35
-    if difficulty in {"hard", "困难"}:
-        factor = 0.45
-    estimate = round(int(task["estimated_task_minutes"]) * factor) + min(
-        20, max(0, failure_count) * 5
+    factor = (
+        TEACHING_POLICY.remediation_easy_factor
+        if difficulty in {"easy", "简单"}
+        else TEACHING_POLICY.remediation_default_factor
     )
-    return max(10, min(60, estimate))
+    if difficulty in {"hard", "困难"}:
+        factor = TEACHING_POLICY.remediation_hard_factor
+    estimate = round(int(task["estimated_task_minutes"]) * factor) + min(
+        TEACHING_POLICY.remediation_maximum_failure_increment_minutes,
+        max(0, failure_count)
+        * TEACHING_POLICY.remediation_failure_increment_minutes,
+    )
+    return max(
+        TEACHING_POLICY.remediation_minimum_task_minutes,
+        min(TEACHING_POLICY.remediation_maximum_task_minutes, estimate),
+    )
 
 
 def _create_remediation_task(
@@ -3203,12 +4185,7 @@ def _practice_resources_for_session(
         len(tasks) - 1,
     )
     task = tasks[route_index]
-    point = connection.execute(
-        "SELECT * FROM active_knowledge_points WHERE id=?",
-        (task["knowledge_point_id"],),
-    ).fetchone()
-    if not point:
-        return []
+    point = _point_for_task(connection, task)
     try:
         evidence = json.loads(point["source_evidence"])
     except (TypeError, json.JSONDecodeError):
@@ -3217,15 +4194,21 @@ def _practice_resources_for_session(
     resources: list[dict[str, str]] = []
     seen: set[str] = set()
     # Resources discovered during knowledge-map generation are backed by a
-    # real web-search citation. This replaces the old course-specific
-    # LeetCode ordinal catalog and works for any uploaded subject.
+    # real web-search citation and work for any uploaded subject.
     try:
         from .learning_resources import public_resources
 
+        plan_receipt = _execution_receipt(connection, str(session["plan_id"]))
+        map_revision_id = (
+            str(plan_receipt.get("knowledge_map_revision_id") or "")
+            if _is_canonical_task(task)
+            else None
+        )
         discovered_resources = []
         for candidate in public_resources(
             connection,
             str(session["workspace_id"]),
+            map_revision_id=map_revision_id,
         ):
             metadata = candidate.get("discovery_meta") or {}
             # A task-scoped resource is a general tool for the course (for
@@ -3272,8 +4255,7 @@ def _practice_resources_for_session(
             )
             seen.add(url)
     except sqlite3.Error:
-        # Old databases can still expose source-provided URLs. The generic
-        # schema is created by knowledge-map generation on the next rebuild.
+        # Resource failures never mutate or block the revision-bound lesson.
         pass
     for item in evidence:
         searchable = "\n".join(
@@ -3293,12 +4275,7 @@ def _practice_resources_for_session(
                 title=str(point["name"]),
                 url=raw_url,
                 source="uploaded_material",
-                authority=(
-                    "official"
-                    if (urlparse(raw_url).hostname or "").casefold()
-                    in {"leetcode.cn", "leetcode.com"}
-                    else "source_provided"
-                ),
+                authority="source_provided",
             )
             if resource and resource["url"] not in seen:
                 resources.append(resource)
@@ -3347,6 +4324,14 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
             attachment_ids = json.loads(item.get("attachment_ids") or "[]")
         except (TypeError, json.JSONDecodeError):
             attachment_ids = []
+        raw_teacher_turn = str(item.get("teacher_turn_json") or "").strip()
+        if raw_teacher_turn:
+            try:
+                item["teacher_turn"] = turn_from_dict(json.loads(raw_teacher_turn)).to_dict()
+            except (TypeError, ValueError, json.JSONDecodeError):
+                # A malformed historical turn must remain readable as its
+                # legacy plain-text message and must not become UI markup.
+                item.pop("teacher_turn", None)
         attachments = []
         for attachment_id in attachment_ids:
             attachment = connection.execute(
@@ -3365,22 +4350,14 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         state,
     )
     _sync_pending_reviews(connection, session_id, state)
-    incomplete_initial = int(
-        connection.execute(
-            """SELECT COUNT(*) FROM active_plan_tasks
-               WHERE plan_id=? AND task_type='initial_learning'
-                 AND status<>'completed'""",
-            (row["plan_id"],),
-        ).fetchone()[0]
-    )
-    incomplete_initial_points = int(
-        connection.execute(
-            """SELECT COUNT(DISTINCT knowledge_point_id)
-               FROM active_plan_tasks
-               WHERE plan_id=? AND task_type='initial_learning'
-                 AND status<>'completed'""",
-            (row["plan_id"],),
-        ).fetchone()[0]
+    incomplete_rows = [
+        task
+        for task in _task_rows(connection, row["plan_id"])
+        if str(task["status"]) != "completed"
+    ]
+    incomplete_initial = len(incomplete_rows)
+    incomplete_initial_points = len(
+        {str(task["knowledge_point_id"]) for task in incomplete_rows}
     )
     state["formal_review_gate"] = {
         "unlocked": incomplete_initial == 0,
@@ -3413,11 +4390,12 @@ def _record_message(
     content: str,
     citations: list[dict[str, Any]],
     attachment_ids: list[str] | None = None,
+    teacher_turn: Mapping[str, Any] | None = None,
 ) -> None:
     connection.execute(
         """INSERT INTO active_teaching_messages
-           (id,session_id,role,action,content,citations,attachment_ids,created_at)
-           VALUES (?,?,?,?,?,?,?,?)""",
+           (id,session_id,role,action,content,citations,attachment_ids,teacher_turn_json,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
         (
             _id("teaching_message"),
             session_id,
@@ -3426,6 +4404,7 @@ def _record_message(
             content,
             json.dumps(citations, ensure_ascii=False),
             json.dumps(attachment_ids or [], ensure_ascii=False),
+            json.dumps(dict(teacher_turn), ensure_ascii=False) if teacher_turn else "",
             _now(),
         ),
     )
@@ -3656,6 +4635,557 @@ async def _render_teacher_content(
     }
 
 
+def _v1_preferences(workspace_id: str, receipt: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Merge only explicit receipt/ORM preferences, keeping receipt order."""
+    values = [
+        *explicit_preferences_from_receipt(receipt),
+        *explicit_preferences_from_orm(workspace_id),
+    ]
+    output: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in values:
+        key = (str(item.get("key") or "interest"), str(item.get("value") or ""))
+        if not key[1] or key in seen:
+            continue
+        seen.add(key)
+        output.append({"key": key[0], "value": key[1], "source": "explicit"})
+    profile = build_learner_preference_profile(
+        workspace_id=workspace_id,
+        explicit_preferences=output,
+    )
+    return [item.model_dump(mode="json") for item in profile.preferences]
+
+
+def _v1_concept(point: sqlite3.Row, task: sqlite3.Row | None = None) -> dict[str, Any]:
+    acceptance = (
+        task["acceptance_condition"] if task is not None else point["acceptance_method"]
+    ) or point["acceptance_method"] or ""
+    return {
+        "id": str(point["id"]),
+        "name": str(point["name"] or ""),
+        "explanation": str(point["explanation"] or ""),
+        "acceptance_method": str(acceptance),
+    }
+
+
+async def _v1_prepare_turn(
+    *,
+    workspace_id: str,
+    point: sqlite3.Row,
+    task: sqlite3.Row,
+    receipt: Mapping[str, Any],
+    citations: list[dict[str, Any]],
+    state: Mapping[str, Any],
+    phase: str = "waiting_for_answer",
+    remediation_attempt: int = 0,
+    correction: str = "",
+    provider_session_id: str | None = None,
+) -> tuple[TeacherTurnV1, dict[str, Any]]:
+    turn = build_teacher_turn(
+        concept=_v1_concept(point, task),
+        evidence=citations,
+        explicit_preferences=_v1_preferences(workspace_id, receipt),
+        phase=phase,
+        remediation_attempt=remediation_attempt,
+        correction=correction,
+    )
+    generation: dict[str, Any] = {
+        "mode": "system_guided",
+        "provider": None,
+        "fallback_used": False,
+        "scope": "teacher_turn_v1_expression",
+        "knowledge_scope": "source_grounded",
+    }
+    if provider_session_id:
+        try:
+            provider_session = require_provider_session(provider_session_id)
+            expression_provider = provider_for_session(provider_session)
+            prompt = {
+                "prompt_version": PROMPT_POLICY.version,
+                "phase": phase,
+                "concept": _v1_concept(point, task),
+                "evidence": [
+                    {
+                        "chunk_id": item.get("chunk_id"),
+                        "quote": str(item.get("quote") or "")[:1_200],
+                    }
+                    for item in citations
+                ],
+                "analogy": next(
+                    (
+                        {
+                            "domain": item.get("domain"),
+                            "mapping": item.get("mapping"),
+                            "limitation": item.get("limitation"),
+                        }
+                        for item in turn.blocks
+                        if item.get("type") == "analogy"
+                    ),
+                    {},
+                ),
+                "check": turn.check,
+                "rules": list(PROMPT_POLICY.teacher_expression_rules),
+            }
+            messages = [
+                {
+                    "role": "system",
+                    "content": PROMPT_POLICY.teacher_expression_system_message,
+                },
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ]
+            if hasattr(expression_provider, "structured"):
+                expression = await expression_provider.structured(messages, TeacherExpressionV1)
+            else:
+                expression = TeacherExpressionV1.model_validate(
+                    await expression_provider.json(messages)
+                )
+        except ProviderError as exc:
+            _error(exc.code, exc.message, exc.status, **exc.details)
+        except Exception:
+            _error(
+                "PROVIDER_TEACHER_EXPRESSION_INVALID",
+                "Provider 未返回可验证的主动教学结构。",
+                502,
+            )
+        turn = merge_provider_expression(turn, expression)
+        generation = generation_meta(provider_session) | {
+            "scope": "teacher_turn_v1_expression",
+            "knowledge_scope": "source_grounded",
+            "prompt_version": PROMPT_POLICY.version,
+        }
+    return turn, generation
+
+
+def _v1_turn_with_state(
+    turn: TeacherTurnV1,
+    state: Mapping[str, Any],
+    plain_text: str | None = None,
+) -> TeacherTurnV1:
+    return TeacherTurnV1(
+        state=dict(state),
+        concept=dict(turn.concept),
+        evidence=[dict(item) for item in turn.evidence],
+        blocks=[dict(item) for item in turn.blocks],
+        check=dict(turn.check),
+        expected_learner_action=turn.expected_learner_action,
+        plain_text=plain_text or turn.plain_text,
+        schema_version=turn.schema_version,
+    )
+
+
+def _v1_record_turn(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    workspace_id: str,
+    state: dict[str, Any],
+    turn: TeacherTurnV1,
+    action: str,
+    citations: list[dict[str, Any]],
+    generation: dict[str, Any],
+) -> None:
+    state["teacher_turn_v1"] = turn.to_dict()
+    state["teacher_turn_v1_phase"] = str(turn.state.get("phase") or "")
+    state["teacher_turn_number"] = int(state.get("teacher_turn_number") or 0) + 1
+    waiting = bool(turn.state.get("waiting_for_answer"))
+    state["current_teaching_step"] = "v1_waiting_for_answer" if waiting else str(turn.state.get("phase") or action)
+    state["next_action"] = "evaluate_v1_answer" if waiting else str(action)
+    state["autonomy"] = {
+        "mode": "teacher_led_until_learner_input" if waiting else "teacher_led_state_transition",
+        "awaiting_learner": waiting,
+        "reason": "teacher_turn_v1_check" if waiting else str(turn.state.get("status") or action),
+    }
+    state["teacher_generation"] = generation
+    _record_message(
+        connection,
+        session_id,
+        "teacher",
+        action,
+        turn.plain_text,
+        citations,
+        teacher_turn=turn.to_dict(),
+    )
+    try:
+        persist_teacher_turn(
+            workspace_id=workspace_id,
+            turn=turn,
+            turn_key=f"active:{session_id}:{int(state['teacher_turn_number'])}",
+            turn_number=int(state["teacher_turn_number"]),
+            event_type=action,
+        )
+    except Exception:
+        state["teacher_turn_orm_persisted"] = False
+    else:
+        state["teacher_turn_orm_persisted"] = True
+
+
+async def _v1_answer_evidence(
+    message: str,
+    body: Mapping[str, Any],
+    point: sqlite3.Row,
+    citations: list[dict[str, Any]],
+    provider_session_id: str | None,
+) -> tuple[bool, float, list[str], dict[str, Any]]:
+    """Use observable answer content; a UI flag alone is not mastery evidence."""
+    lower = str(message or "").casefold()
+    if any(marker in lower for marker in CONFUSION_MARKERS):
+        return False, 0.0, ["explicit_confusion"], {
+            "mode": "application_precheck",
+            "reason": "learner_explicitly_reported_confusion",
+        }
+    score, passed, checks, evaluation = await _evaluate_understanding(
+        message=message,
+        point=point,
+        citations=citations,
+        provider_session_id=provider_session_id,
+    )
+    if bool(body.get("understood")):
+        evaluation = {**evaluation, "learner_claimed_understanding": True}
+    return passed, score, checks, evaluation
+
+
+def _v1_successful_task(
+    connection: sqlite3.Connection,
+    *,
+    task: sqlite3.Row,
+    point: sqlite3.Row,
+    state: dict[str, Any],
+    score: float,
+    evaluation: Mapping[str, Any],
+) -> None:
+    task_id = str(task["id"])
+    if str(task["status"]) != "completed":
+        _complete_execution_task(connection, task)
+        state["completed_task_minutes"] = int(state.get("completed_task_minutes") or 0) + int(task["estimated_task_minutes"] or 0)
+        state["completed_tasks"] = [*list(state.get("completed_tasks") or []), task_id]
+    independent = str(task["learning_phase"] or "integrated_initial") in {
+        "integrated_initial",
+        "independent_application",
+    }
+    if independent and _is_canonical_task(task):
+        event_key = f"mastery:{task_id}"
+        connection.execute(
+            """INSERT OR IGNORE INTO orm_plan_mastery_events
+               (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
+                evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
+               VALUES (?,?,?,?,?,?,?,'mastery_confirmed',?,1,?,?,?)""",
+            (
+                "plan_mastery_" + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
+                task["workspace_id"],
+                task["plan_id"],
+                task_id,
+                task["map_revision_id"],
+                point["id"],
+                point["evidence_hash"],
+                max(0.0, min(1.0, float(score))),
+                json.dumps(
+                    {
+                        "schema": "mentorflow.plan-mastery-event.v1",
+                        "evaluation": dict(evaluation),
+                        "task_status": "completed",
+                    },
+                    ensure_ascii=False,
+                ),
+                event_key,
+                _now(),
+            ),
+        )
+    elif independent:
+        connection.execute(
+            "UPDATE active_knowledge_points SET mastery=MAX(mastery,?) WHERE id=?",
+            (max(0.0, min(1.0, float(score))), point["id"]),
+        )
+    state["mastery_evidence"] = [
+        *list(state.get("mastery_evidence") or []),
+        {
+            "knowledge_point_id": str(point["id"]),
+            "task_id": task_id,
+            "score": round(float(score), 2),
+            "passed": True,
+            "evidence_type": "teacher_turn_v1_observable_answer",
+            "mastery_changed": independent,
+            "evaluation": dict(evaluation),
+        },
+    ][-20:]
+
+
+async def _v1_process_answer(
+    *,
+    connection: sqlite3.Connection,
+    session: sqlite3.Row,
+    state: dict[str, Any],
+    task: sqlite3.Row,
+    point: sqlite3.Row,
+    receipt: Mapping[str, Any],
+    message: str,
+    body: Mapping[str, Any],
+    citations: list[dict[str, Any]],
+    provider_session_id: str | None,
+    elapsed: float = 0.0,
+) -> dict[str, Any]:
+    """Process a v1 answer and emit exactly one next teacher turn."""
+    if bool(body.get("force_complete")):
+        next_state = manual_skip_transition(
+            (state.get("teacher_turn_v1") or {}).get("state") or state
+        )
+        next_state["manual_skip_task_id"] = str(task["id"])
+        turn, generation = await _v1_prepare_turn(
+            workspace_id=session["workspace_id"], point=point, task=task,
+            receipt=receipt, citations=citations, state=state, phase="blocked",
+        )
+        next_state["phase"] = "manual_skip"
+        next_state["status"] = "manual_skipped"
+        next_state["waiting_for_answer"] = False
+        turn = _v1_turn_with_state(
+            turn,
+            next_state,
+            f"已按你的选择暂时跳过“{point['name']}”。这不是掌握证明，任务和掌握度都保持不变；之后可以从这里恢复。",
+        )
+        _v1_record_turn(
+            connection, session_id=session["id"], workspace_id=session["workspace_id"],
+            state=state, turn=turn, action="manual_skip", citations=[], generation=generation,
+        )
+        if _is_canonical_task(task):
+            event_key = f"manual-skip:{task['id']}:{int(state.get('teacher_turn_number') or 0)}"
+            connection.execute(
+                """INSERT OR IGNORE INTO orm_plan_mastery_events
+                   (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
+                    evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
+                   VALUES (?,?,?,?,?,?,?,'manual_skip',0,0,?,?,?)""",
+                (
+                    "plan_skip_" + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
+                    task["workspace_id"],
+                    task["plan_id"],
+                    task["id"],
+                    task["map_revision_id"],
+                    point["id"],
+                    point["evidence_hash"],
+                    json.dumps(
+                        {
+                            "schema": "mentorflow.plan-mastery-event.v1",
+                            "mastery_changed": False,
+                            "reason": "learner_manual_skip",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    event_key,
+                    _now(),
+                ),
+            )
+        state.update({
+            "manual_skip": True,
+            "completed_as_mastered": False,
+            "mastery_changed": False,
+            "next_action": "advance_without_mastery",
+        })
+        tasks = _task_rows(connection, session["plan_id"])
+        current_index = next(
+            (index for index, candidate in enumerate(tasks) if str(candidate["id"]) == str(task["id"])),
+            int(state.get("route_index") or 0),
+        )
+        next_index = next(
+            (
+                index
+                for index, candidate in enumerate(tasks[current_index + 1 :], current_index + 1)
+                if str(candidate["knowledge_point_id"]) != str(point["id"])
+                and str(candidate["status"]) != "completed"
+            ),
+            len(tasks),
+        )
+        state["manual_skip_history"] = [
+            *list(state.get("manual_skip_history") or []),
+            {
+                "knowledge_point_id": str(point["id"]),
+                "knowledge_point_name": str(point["name"]),
+                "task_id": str(task["id"]),
+                "reason": "learner_self_assessed_mastery",
+                "mastery_changed": False,
+                "skipped_at": _now(),
+            },
+        ][-100:]
+        if next_index < len(tasks):
+            next_task = tasks[next_index]
+            next_point = _point_for_task(connection, next_task)
+            state["route_index"] = next_index
+            state["active_task_id"] = str(next_task["id"])
+            state["current_knowledge_point_id"] = str(next_point["id"])
+            state["estimated_task_minutes"] = int(next_task["estimated_task_minutes"] or 0)
+            next_citations = _merge_citations(
+                _search(
+                    connection,
+                    session["workspace_id"],
+                    f"{next_point['name']} {next_point['explanation']} {next_point['acceptance_method']}",
+                    plan_id=session["plan_id"],
+                ),
+                json.loads(next_point["source_evidence"]),
+            )
+            next_turn, next_generation = await _v1_prepare_turn(
+                workspace_id=session["workspace_id"],
+                point=next_point,
+                task=next_task,
+                receipt=receipt,
+                citations=next_citations,
+                state=state,
+                phase="waiting_for_answer",
+                provider_session_id=provider_session_id,
+            )
+            next_turn = _v1_turn_with_state(
+                next_turn,
+                next_turn.state,
+                f"已按你的自我判断略过“{point['name']}”；它不会计为教师验证掌握。\n\n"
+                f"下面进入“{next_point['name']}”。\n\n{next_turn.plain_text}",
+            )
+            _v1_record_turn(
+                connection,
+                session_id=session["id"],
+                workspace_id=session["workspace_id"],
+                state=state,
+                turn=next_turn,
+                action="teacher_turn_v1_self_assessed_next",
+                citations=next_citations,
+                generation=next_generation,
+            )
+        else:
+            state["route_index"] = len(tasks)
+            state["next_action"] = "review_self_assessed_skips"
+        connection.execute(
+            """UPDATE active_teaching_sessions
+               SET state=?,updated_at=?,actual_elapsed_minutes=actual_elapsed_minutes+?
+               WHERE id=?""",
+            (json.dumps(state, ensure_ascii=False), _now(), elapsed, session["id"]),
+        )
+        connection.commit()
+        return _public_session(connection, session["id"])
+
+    correct, score, answer_checks, evaluation = await _v1_answer_evidence(
+        message,
+        body,
+        point,
+        citations,
+        provider_session_id,
+    )
+    current_turn_state = (state.get("teacher_turn_v1") or {}).get("state") or {}
+    next_turn_state = transition_after_answer(current_turn_state, correct=correct, score=score)
+    if not correct:
+        attempt = int(next_turn_state.get("remediation_attempt") or 0)
+        phase = str(next_turn_state.get("phase") or "blocked")
+        correction = str(
+            PROMPT_POLICY.teacher_remediation_messages.get(
+                phase,
+                PROMPT_POLICY.teacher_remediation_messages["blocked"],
+            )
+        )
+        turn, generation = await _v1_prepare_turn(
+            workspace_id=session["workspace_id"], point=point, task=task,
+            receipt=receipt, citations=citations, state=state, phase=phase,
+            remediation_attempt=attempt, correction=correction,
+            provider_session_id=provider_session_id,
+        )
+        if phase == "blocked":
+            next_turn_state["waiting_for_answer"] = False
+            turn = _v1_turn_with_state(
+                turn,
+                next_turn_state,
+                f"我已经完成 {TEACHING_POLICY.maximum_remediation_attempts} 轮针对性补救，"
+                f"但仍没有足够证据确认“{point['name']}”。主路线已记录为 blocked，"
+                "掌握度不变；你可以补充资料或稍后重新安排。",
+            )
+        else:
+            turn = _v1_turn_with_state(turn, next_turn_state)
+        state["unresolved_confusions"] = [
+            *list(state.get("unresolved_confusions") or []),
+            {
+                "knowledge_point_id": str(point["id"]),
+                "attempt": attempt,
+                "message": message[:600],
+                "phase": phase,
+                "checks": answer_checks,
+                "evaluation": evaluation,
+            },
+        ][-20:]
+        state["remediation_attempt"] = attempt
+        state["blocked"] = phase == "blocked"
+        _v1_record_turn(
+            connection, session_id=session["id"], workspace_id=session["workspace_id"],
+            state=state, turn=turn, action=phase, citations=citations, generation=generation,
+        )
+        connection.execute(
+            """UPDATE active_teaching_sessions
+               SET state=?,updated_at=?,actual_elapsed_minutes=actual_elapsed_minutes+?
+               WHERE id=?""",
+            (json.dumps(state, ensure_ascii=False), _now(), elapsed, session["id"]),
+        )
+        connection.commit()
+        return _public_session(connection, session["id"])
+
+    _v1_successful_task(
+        connection,
+        task=task,
+        point=point,
+        state=state,
+        score=score,
+        evaluation=evaluation,
+    )
+    # Keep the durable cross-plan progress projection in sync with the
+    # canonical task statuses.  This is intentionally after the state
+    # transition so a restarted session and a newly generated plan see the
+    # same completed phases.
+    _capture_knowledge_progress(connection, session["workspace_id"])
+    tasks = _task_rows(connection, session["plan_id"])
+    next_index = next(
+        (index for index, candidate in enumerate(tasks) if str(candidate["status"]) != "completed"),
+        len(tasks),
+    )
+    state["route_index"] = next_index
+    state["remediation_attempt"] = 0
+    state["blocked"] = False
+    if next_index >= len(tasks):
+        next_state.update({"phase": "completed", "status": "completed", "waiting_for_answer": False})
+        turn, generation = await _v1_prepare_turn(
+            workspace_id=session["workspace_id"], point=point, task=task,
+            receipt=receipt, citations=citations, state=state, phase="blocked",
+        )
+        turn = _v1_turn_with_state(
+            turn, next_state,
+            f"“{point['name']}”已完成这一步的可观察检查；路线中没有待完成任务了。",
+        )
+        action = "teacher_turn_v1_completed"
+    else:
+        next_task = tasks[next_index]
+        next_point = _point_for_task(connection, next_task)
+        state["active_task_id"] = next_task["id"]
+        state["current_knowledge_point_id"] = next_point["id"]
+        state["estimated_task_minutes"] = next_task["estimated_task_minutes"]
+        next_citations = _merge_citations(
+            _search(
+                connection,
+                session["workspace_id"],
+                f"{next_point['name']} {next_point['explanation']} {next_point['acceptance_method']}",
+                plan_id=session["plan_id"],
+            ),
+            json.loads(next_point["source_evidence"]),
+        )
+        turn, generation = await _v1_prepare_turn(
+            workspace_id=session["workspace_id"], point=next_point, task=next_task,
+            receipt=receipt, citations=next_citations, state=state,
+            phase="waiting_for_answer", provider_session_id=provider_session_id,
+        )
+        citations = next_citations
+        action = "teacher_turn_v1_next_point"
+    _v1_record_turn(
+        connection, session_id=session["id"], workspace_id=session["workspace_id"],
+        state=state, turn=turn, action=action, citations=citations, generation=generation,
+    )
+    connection.execute(
+        """UPDATE active_teaching_sessions
+           SET state=?,updated_at=?,actual_elapsed_minutes=actual_elapsed_minutes+?
+           WHERE id=?""",
+        (json.dumps(state, ensure_ascii=False), _now(), elapsed, session["id"]),
+    )
+    connection.commit()
+    return _public_session(connection, session["id"])
+
+
 def _merge_citations(
     primary: list[dict[str, Any]], fallback: list[dict[str, Any]], limit: int = 5
 ) -> list[dict[str, Any]]:
@@ -3736,13 +5266,11 @@ def _formative_feedback_ready(message: str) -> bool:
 def _daily_route_summary(
     connection: sqlite3.Connection, plan_id: str, day_date: str
 ) -> dict[str, Any]:
-    rows = connection.execute(
-        """SELECT id,knowledge_point_id,title,estimated_task_minutes,status
-           FROM active_plan_tasks
-           WHERE plan_id=? AND day_date=? AND task_type='initial_learning'
-           ORDER BY task_order,id""",
-        (plan_id, day_date),
-    ).fetchall()
+    rows = [
+        row
+        for row in _task_rows(connection, plan_id)
+        if str(row["day_date"]) == str(day_date)
+    ]
     point_ids = list(dict.fromkeys(str(row["knowledge_point_id"]) for row in rows))
     return {
         "date": day_date,
@@ -3757,7 +5285,16 @@ def _daily_route_summary(
             "learner_practice",
             "assessment_or_remediation",
         ],
-        "tasks": [dict(row) for row in rows],
+        "tasks": [
+            {
+                "id": row["id"],
+                "knowledge_point_id": row["knowledge_point_id"],
+                "title": row["title"],
+                "estimated_task_minutes": row["estimated_task_minutes"],
+                "status": row["status"],
+            }
+            for row in rows
+        ],
     }
 
 
@@ -4266,17 +5803,26 @@ def _grade_understanding(message: str, point: sqlite3.Row) -> tuple[float, list[
     lowered_message = message.casefold()
     grounded_hits = sum(1 for term in reference_terms if term in lowered_message)
     checks = {
-        "substantive_answer": len(message.strip()) >= 30,
+        "substantive_answer": (
+            len(message.strip())
+            >= TEACHING_POLICY.minimum_substantive_answer_characters
+        ),
         "explains_relationship_or_steps": bool(
             re.search(r"因为|所以|关系|步骤|首先|然后|意味着|because|therefore|first|then", message, re.I)
         ),
         "example_or_application": bool(
             re.search(r"例如|比如|场景|应用|假设|example|apply", message, re.I)
         ),
-        "grounded_in_current_point": grounded_hits >= 2,
+        "grounded_in_current_point": (
+            grounded_hits >= TEACHING_POLICY.minimum_grounded_term_hits
+        ),
     }
     passed_checks = [name for name, passed in checks.items() if passed]
-    score = min(0.69, 0.35 + 0.08 * len(passed_checks))
+    score = min(
+        TEACHING_POLICY.heuristic_max_score,
+        TEACHING_POLICY.heuristic_base_score
+        + TEACHING_POLICY.heuristic_check_increment * len(passed_checks),
+    )
     return round(score, 2), passed_checks
 
 
@@ -4319,44 +5865,33 @@ async def _evaluate_understanding(
             }
             for item in citations
         ],
-        "rules": (
-            [
-                "The learner is submitting an external exercise result as completion evidence.",
-                "Judge whether the supplied text or attachment-reading result credibly shows that the current exercise was completed successfully.",
-                "A bare claim such as 'I passed' is insufficient; require observable result details such as Accepted, passed tests, output, or an equivalent completion artifact.",
-                "Do not require the learner to repeat a slow oral explanation when the external result already demonstrates the acceptance condition.",
-                "Score 0 to 1. criteria_met is true only when the evidence credibly demonstrates successful independent completion.",
-                "Return JSON only: score, criteria_met, rationale.",
-            ]
+        "prompt_version": PROMPT_POLICY.version,
+        "rules": list(
+            PROMPT_POLICY.teacher_external_evaluation_rules
             if external_completion_evidence
-            else [
-                "Judge only against the supplied acceptance method and source evidence.",
-                "Do not reward the learner merely for claiming to understand.",
-                "Score 0 to 1. criteria_met is true only when the answer demonstrates the observable acceptance condition.",
-                "Return JSON only: score, criteria_met, rationale.",
-            ]
+            else PROMPT_POLICY.teacher_evaluation_rules
         ),
     }
     try:
-        payload = await provider_for_session(provider_session).json(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a source-grounded rubric evaluator. You do not control "
-                        "course state and you cannot mark a task complete."
-                    ),
-                },
-                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-            ]
-        )
+        evaluator = provider_for_session(provider_session)
+        messages = [
+            {
+                "role": "system",
+                "content": PROMPT_POLICY.teacher_evaluation_system_message,
+            },
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+        ]
+
+        if hasattr(evaluator, "structured"):
+            evaluation = await evaluator.structured(messages, TeacherEvaluationV1)
+        else:
+            evaluation = TeacherEvaluationV1.model_validate(await evaluator.json(messages))
     except ProviderError as exc:
         _error(exc.code, exc.message, exc.status, **exc.details)
-    try:
-        provider_score = max(0.0, min(1.0, float(payload.get("score"))))
-    except (AttributeError, TypeError, ValueError):
+    except Exception as exc:
         _error("PROVIDER_ASSESSMENT_INVALID", "Provider 未返回有效的理解评分。", 502)
-    criteria_met = bool(payload.get("criteria_met"))
+    provider_score = float(evaluation.score)
+    criteria_met = bool(evaluation.criteria_met)
     required_prechecks = (
         set()
         if external_completion_evidence
@@ -4364,7 +5899,7 @@ async def _evaluate_understanding(
     )
     passed = (
         criteria_met
-        and provider_score >= 0.8
+        and provider_score >= TEACHING_POLICY.learner_claim_pass_floor
         and required_prechecks.issubset(precheck_checks)
     )
     return round(provider_score, 2), passed, precheck_checks, generation_meta(
@@ -4376,8 +5911,10 @@ async def _evaluate_understanding(
             else "grounded_rubric_evaluation"
         ),
         "criteria_met": criteria_met,
-        "rationale": str(payload.get("rationale") or "")[:1000],
-        "system_threshold": 0.8,
+        "rationale": str(evaluation.rationale or "")[:1000],
+        "misconception": str(evaluation.misconception or "")[:600],
+        "remediation_focus": str(evaluation.remediation_focus or "")[:600],
+        "system_threshold": TEACHING_POLICY.learner_claim_pass_floor,
         "required_prechecks": sorted(required_prechecks),
         "prechecks_satisfied": required_prechecks.issubset(precheck_checks),
     }
@@ -4457,12 +5994,13 @@ async def start_session(
             workspace_id=workspace_id,
             state=state,
         )
-        _sync_two_tier_memory(
-            connection,
-            workspace_id=workspace_id,
-            state=state,
-            navigation_event="session_started",
-        )
+        if str(receipt.get("activation_source") or "") != "mastery-plan-preview.v1":
+            _sync_two_tier_memory(
+                connection,
+                workspace_id=workspace_id,
+                state=state,
+                navigation_event="session_started",
+            )
         session_id = _id("active_session")
         started = _now()
         connection.execute(
@@ -4471,33 +6009,38 @@ async def start_session(
                VALUES (?,?,?,?,?,?,?)""",
             (session_id, workspace_id, plan_row["id"], json.dumps(state, ensure_ascii=False), started, started, 0.0),
         )
-        opening, citations = _daily_briefing(
-            connection,
+        first_point = _point_for_task(connection, first)
+        citations = _merge_citations(
+            _search(
+                connection,
+                workspace_id,
+                f"{first_point['name']} {first_point['explanation']} {first_point['acceptance_method']}",
+                plan_id=plan_row["id"],
+            ),
+            json.loads(first_point["source_evidence"]),
+        )
+        provider_session_id = str(body.get("provider_session_id") or "").strip() or None
+        turn, teacher_generation = await _v1_prepare_turn(
             workspace_id=workspace_id,
-            plan_id=plan_row["id"],
-            day_date=first["day_date"],
-        )
-        memory_sentence = _learner_memory_sentence(state)
-        if memory_sentence:
-            opening = f"{memory_sentence}\n\n{opening}"
-        opening, teacher_generation = await _render_teacher_content(
-            draft=opening,
-            action="daily_briefing",
+            point=first_point,
+            task=first,
+            receipt=receipt,
             citations=citations,
-            provider_session_id=str(body.get("provider_session_id") or "").strip() or None,
             state=state,
+            provider_session_id=provider_session_id,
         )
-        state["teacher_generation"] = teacher_generation
         if teacher_generation.get("mode") == "real":
             state["provider_session_id"] = teacher_generation.get("provider_session_id")
-        connection.execute(
-            "UPDATE active_teaching_sessions SET state=? WHERE id=?",
-            (json.dumps(state, ensure_ascii=False), session_id),
+        _v1_record_turn(
+            connection,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            state=state,
+            turn=turn,
+            action="teacher_turn_v1_opening",
+            citations=citations,
+            generation=teacher_generation,
         )
-        _record_message(
-            connection, session_id, "teacher", "daily_briefing", opening, citations
-        )
-        state["teacher_memory"]["last_interaction"] = "daily_briefing"
         connection.execute(
             "UPDATE active_teaching_sessions SET state=? WHERE id=?",
             (json.dumps(state, ensure_ascii=False), session_id),
@@ -4524,6 +6067,10 @@ async def teach_next(
         if not session:
             _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
         state = json.loads(session["state"])
+        if state.get("teacher_turn_v1"):
+            # The v1 opening is complete before the first learner message;
+            # repeated teach-next calls must not manufacture another turn.
+            return _public_session(connection, session_id)
         _sync_teacher_learner_model(
             connection,
             workspace_id=session["workspace_id"],
@@ -4538,10 +6085,7 @@ async def teach_next(
         tasks = _task_rows(connection, session["plan_id"])
         route_index = min(int(state["route_index"]), len(tasks) - 1)
         task = tasks[route_index]
-        point = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE id=?",
-            (task["knowledge_point_id"],),
-        ).fetchone()
+        point = _point_for_task(connection, task)
         citations = _merge_citations(
             _search(
                 connection,
@@ -5265,7 +6809,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
         route_index = min(int(state["route_index"]), len(tasks) - 1)
         task = tasks[route_index]
-        if direct_completion:
+        if direct_completion and not force_completion:
             current_point_id = str(task["knowledge_point_id"])
             completion_candidates = [
                 (index, candidate)
@@ -5289,9 +6833,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             state["active_task_id"] = task["id"]
             state["current_teaching_step"] = "check_understanding"
             state["next_action"] = "verify_external_completion"
-        point = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE id=?", (task["knowledge_point_id"],)
-        ).fetchone()
+        point = _point_for_task(connection, task)
         if force_completion:
             attachment_rows = []
             attachment_analysis = ""
@@ -5359,7 +6901,13 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         # the client/activity tracker. Time since the last message may include
         # refreshes, sleep or an abandoned tab and must not masquerade as study.
         try:
-            elapsed = max(0.0, min(60.0, float(body.get("actual_elapsed_minutes") or 0)))
+            elapsed = max(
+                0.0,
+                min(
+                    float(TEACHING_POLICY.maximum_elapsed_event_minutes),
+                    float(body.get("actual_elapsed_minutes") or 0),
+                ),
+            )
         except (TypeError, ValueError):
             _error("INVALID_ACTUAL_ELAPSED_MINUTES", "实际学习分钟必须是非负数字", 422)
         if elapsed > 0:
@@ -5387,10 +6935,11 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             if inserted == 0:
                 elapsed = 0.0
         state["actual_elapsed_minutes"] = round(float(state.get("actual_elapsed_minutes", 0)) + elapsed, 3)
-        connection.execute(
-            "UPDATE active_plan_tasks SET actual_elapsed_minutes=actual_elapsed_minutes+? WHERE id=?",
-            (elapsed, timing_task_id),
+        timing_task = next(
+            (candidate for candidate in tasks if str(candidate["id"]) == timing_task_id),
+            task,
         )
+        _add_task_elapsed(connection, timing_task, elapsed)
         if not force_completion:
             _record_message(
                 connection,
@@ -5444,30 +6993,31 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 + [{"role": "teacher", "action": action, "content": content[:600]}]
             )[-12:]
             state["teacher_memory"] = teacher_memory
-            _write_knowledge_memory(
-                connection,
-                workspace_id=session["workspace_id"],
-                point=point,
-                state=state,
-                role="learner",
-                message=visible_message,
-                confused=False,
-            )
-            _write_knowledge_memory(
-                connection,
-                workspace_id=session["workspace_id"],
-                point=point,
-                state=state,
-                role="teacher",
-                message=content,
-                teacher_action=action,
-            )
-            _sync_two_tier_memory(
-                connection,
-                workspace_id=session["workspace_id"],
-                state=state,
-                navigation_event="awaiting_attachment_text_fallback",
-            )
+            if not _is_canonical_task(task):
+                _write_knowledge_memory(
+                    connection,
+                    workspace_id=session["workspace_id"],
+                    point=point,
+                    state=state,
+                    role="learner",
+                    message=visible_message,
+                    confused=False,
+                )
+                _write_knowledge_memory(
+                    connection,
+                    workspace_id=session["workspace_id"],
+                    point=point,
+                    state=state,
+                    role="teacher",
+                    message=content,
+                    teacher_action=action,
+                )
+                _sync_two_tier_memory(
+                    connection,
+                    workspace_id=session["workspace_id"],
+                    state=state,
+                    navigation_event="awaiting_attachment_text_fallback",
+                )
             _record_message(
                 connection,
                 session_id,
@@ -5490,6 +7040,25 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             )
             connection.commit()
             return _public_session(connection, session_id)
+
+        if state.get("teacher_turn_v1"):
+            receipt_row = connection.execute(
+                "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+            ).fetchone()
+            receipt = json.loads(receipt_row["receipt"]) if receipt_row else {}
+            return await _v1_process_answer(
+                connection=connection,
+                session=session,
+                state=state,
+                task=task,
+                point=point,
+                receipt=receipt,
+                message=message,
+                body=body,
+                citations=citations,
+                provider_session_id=requested_provider_session_id,
+                elapsed=elapsed,
+            )
 
         lower = message.casefold()
         is_confused = any(marker in lower for marker in CONFUSION_MARKERS)
@@ -5636,12 +7205,8 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
             citations = question_hits
             knowledge_scope = "pedagogical_coaching"
             first_check = (
-                "你还记得 Java 里的数组下标从 0 开始吗？只回答“记得 / 不记得”即可。"
-                if "java" in lower
-                else (
-                    f"看着“{point['name']}”这个名称，你觉得它大概要把什么输入变成什么结果？"
-                    "完全不知道也可以直接回答“不知道”。"
-                )
+                f"看着“{point['name']}”这个名称，你觉得它大概要把什么输入变成什么结果？"
+                "完全不知道也可以直接回答“不知道”。"
             )
             content = (
                 "可以，我会带着你完成，而且这不是一道需要从资料里寻找事实答案的问题。"
@@ -6377,7 +7942,7 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/focus")
-def focus_session_task(
+async def focus_session_task(
     session_id: str,
     body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
@@ -6414,33 +7979,50 @@ def focus_session_task(
             max(0, len(tasks) - 1),
         )
         previous_task = tasks[previous_route_index]
-        previous_point = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE id=?",
-            (previous_task["knowledge_point_id"],),
-        ).fetchone()
-        target_point = connection.execute(
-            "SELECT * FROM active_knowledge_points WHERE id=?",
-            (task["knowledge_point_id"],),
-        ).fetchone()
+        previous_point = _point_for_task(connection, previous_task)
+        target_point = _point_for_task(connection, task)
         changed_point = (
             str(previous_task["knowledge_point_id"])
             != str(task["knowledge_point_id"])
         )
         previous_incomplete = str(previous_task["status"]) != "completed"
-        unmet_prerequisites = [
-            str(row["name"])
-            for row in connection.execute(
-                """SELECT prerequisite.name
-                   FROM active_dependencies dependency
-                   JOIN active_knowledge_points prerequisite
-                     ON prerequisite.id=dependency.prerequisite_id
-                   WHERE dependency.workspace_id=?
-                     AND dependency.dependent_id=?
-                     AND prerequisite.mastery<0.8
-                   ORDER BY prerequisite.name""",
-                (session["workspace_id"], task["knowledge_point_id"]),
-            ).fetchall()
-        ]
+        if _is_canonical_task(task):
+            completed_point_ids = {
+                str(candidate["knowledge_point_id"])
+                for candidate in tasks
+                if str(candidate["status"]) == "completed"
+            }
+            unmet_prerequisites = [
+                str(row["label"])
+                for row in connection.execute(
+                    """SELECT node.label,node.node_id
+                       FROM orm_knowledge_edges AS edge
+                       JOIN orm_knowledge_nodes AS node
+                         ON node.map_revision_id=edge.map_revision_id
+                        AND node.node_id=edge.source_node_id
+                       WHERE edge.map_revision_id=?
+                         AND edge.target_node_id=?
+                         AND edge.relation='prerequisite'
+                       ORDER BY node.label,node.node_id""",
+                    (task["map_revision_id"], task["knowledge_point_id"]),
+                ).fetchall()
+                if str(row["node_id"]) not in completed_point_ids
+            ]
+        else:
+            unmet_prerequisites = [
+                str(row["name"])
+                for row in connection.execute(
+                    """SELECT prerequisite.name
+                       FROM active_dependencies dependency
+                       JOIN active_knowledge_points prerequisite
+                         ON prerequisite.id=dependency.prerequisite_id
+                       WHERE dependency.workspace_id=?
+                         AND dependency.dependent_id=?
+                         AND prerequisite.mastery<0.8
+                       ORDER BY prerequisite.name""",
+                    (session["workspace_id"], task["knowledge_point_id"]),
+                ).fetchall()
+            ]
         scheduled_for_later = str(task["day_date"]) > date.today().isoformat()
         if changed_point and (scheduled_for_later or unmet_prerequisites):
             navigation_kind = "future_jump"
@@ -6448,7 +8030,7 @@ def focus_session_task(
             navigation_kind = "cross_point_jump"
         else:
             navigation_kind = "resume_point"
-        if changed_point and previous_point:
+        if changed_point and previous_point and not _is_canonical_task(task):
             _write_knowledge_memory(
                 connection,
                 workspace_id=session["workspace_id"],
@@ -6469,13 +8051,12 @@ def focus_session_task(
         state["next_action"] = "explain_current_point"
         state["estimated_task_minutes"] = task["estimated_task_minutes"]
         state["active_task_id"] = task["id"]
-        state["today_remaining_task_minutes"] = int(
-            connection.execute(
-                """SELECT COALESCE(SUM(estimated_task_minutes-completed_task_minutes),0)
-                   FROM active_plan_tasks
-                   WHERE plan_id=? AND day_date=? AND status<>'completed'""",
-                (session["plan_id"], task["day_date"]),
-            ).fetchone()[0]
+        state["today_remaining_task_minutes"] = sum(
+            int(candidate["estimated_task_minutes"] or 0)
+            - int(candidate["completed_task_minutes"] or 0)
+            for candidate in tasks
+            if str(candidate["day_date"]) == str(task["day_date"])
+            and str(candidate["status"]) != "completed"
         )
         state["today_plan"] = _daily_route_summary(
             connection, session["plan_id"], task["day_date"]
@@ -6504,48 +8085,44 @@ def focus_session_task(
             workspace_id=session["workspace_id"],
             state=state,
         )
-        _sync_two_tier_memory(
+        if not _is_canonical_task(task):
+            _sync_two_tier_memory(
+                connection,
+                workspace_id=session["workspace_id"],
+                state=state,
+                navigation_event=navigation_kind,
+            )
+        receipt_row = connection.execute(
+            "SELECT receipt FROM active_plans WHERE id=?", (session["plan_id"],)
+        ).fetchone()
+        receipt = json.loads(receipt_row["receipt"]) if receipt_row else {}
+        citations = _merge_citations(
+            _search(
+                connection,
+                session["workspace_id"],
+                f"{target_point['name']} {target_point['explanation']} {target_point['acceptance_method']}",
+                plan_id=session["plan_id"],
+            ),
+            json.loads(target_point["source_evidence"]),
+        )
+        turn, generation = await _v1_prepare_turn(
+            workspace_id=session["workspace_id"],
+            point=target_point,
+            task=task,
+            receipt=receipt,
+            citations=citations,
+            state=state,
+            provider_session_id=str(state.get("provider_session_id") or "").strip() or None,
+        )
+        _v1_record_turn(
             connection,
+            session_id=session_id,
             workspace_id=session["workspace_id"],
             state=state,
-            navigation_event=navigation_kind,
-        )
-        readiness, citations = _point_readiness_prompt(connection, task=task)
-        if navigation_kind == "future_jump":
-            reasons = []
-            if scheduled_for_later:
-                reasons.append(f"它原计划在 {task['day_date']} 开放")
-            if unmet_prerequisites:
-                reasons.append(f"前面还有“{'、'.join(unmet_prerequisites)}”没有掌握")
-            readiness = (
-                f"我看到你像把时间往前拨了一下，从“{previous_point['name']}”"
-                f"跳到了还未开放的“{target_point['name']}”。"
-                "我知道你可以这样穿梭，也已经替你记住了原来的位置。"
-                f"{'；'.join(reasons)}。你可以先预览，但我不会假装这些前置已经学会。"
-                f"\n\n{readiness}"
-            )
-        elif navigation_kind == "cross_point_jump":
-            readiness = (
-                f"我看到你从“{previous_point['name']}”跳到了“{target_point['name']}”。"
-                f"{'前一个知识点还学到一半，我会保留那个断点。' if previous_incomplete else '前一个知识点的进度已经记下了。'}"
-                "我们不是换了一个失忆的老师，只是把课堂时间线切到了这里。"
-                f"\n\n{readiness}"
-            )
-        elif navigation_kind == "resume_point":
-            point_memory = state.get("current_knowledge_memory") or {}
-            if point_memory.get("recent_interactions"):
-                readiness = (
-                    f"我们回到“{target_point['name']}”了。上次停留的位置和卡点我都还记得，"
-                    "不用从头假装初次见面。"
-                    f"\n\n{readiness}"
-                )
-        _record_message(
-            connection,
-            session_id,
-            "teacher",
-            "daily_briefing",
-            readiness,
-            citations,
+            turn=turn,
+            action="teacher_turn_v1_focus",
+            citations=citations,
+            generation=generation,
         )
         connection.execute(
             """UPDATE active_teaching_sessions
@@ -6865,14 +8442,15 @@ async def submit_review(
             (session["plan_id"],),
         ).fetchone()
         configured_review_rounds = max(
-            2,
+            SCHEDULING_POLICY.minimum_review_rounds,
             min(
-                4,
+                SCHEDULING_POLICY.maximum_review_rounds,
                 int(
-                    json.loads(plan_receipt_row["receipt"]).get("review_rounds") or 2
+                    json.loads(plan_receipt_row["receipt"]).get("review_rounds")
+                    or SCHEDULING_POLICY.default_review_rounds
                 )
                 if plan_receipt_row
-                else 2,
+                else SCHEDULING_POLICY.default_review_rounds,
             ),
         )
         if passed:
@@ -6883,7 +8461,8 @@ async def submit_review(
                 next_due = None
                 next_status = "completed"
             else:
-                next_interval = (1, 3, 7)[min(2, next_step - 1)]
+                intervals = SCHEDULING_POLICY.review_intervals_days
+                next_interval = intervals[min(len(intervals) - 1, next_step - 1)]
                 fallback_due = (
                     reviewed_on + timedelta(days=next_interval)
                 ).isoformat()
@@ -7096,8 +8675,14 @@ def _remaining_projected_review_minutes(
     connection: sqlite3.Connection, plan: sqlite3.Row
 ) -> int:
     configured_review_rounds = max(
-        2,
-        min(4, int(json.loads(plan["receipt"]).get("review_rounds") or 2)),
+        SCHEDULING_POLICY.minimum_review_rounds,
+        min(
+            SCHEDULING_POLICY.maximum_review_rounds,
+            int(
+                json.loads(plan["receipt"]).get("review_rounds")
+                or SCHEDULING_POLICY.default_review_rounds
+            ),
+        ),
     )
     initial_minutes = int(
         connection.execute(
@@ -7850,6 +9435,7 @@ def _workspace_day_overview(
 
 @router.get("/workspaces")
 def list_learning_workspaces(
+    request: Request,
     include_archived: bool = False,
     day: str = "",
 ) -> dict[str, Any]:
@@ -7865,6 +9451,17 @@ def list_learning_workspaces(
                    ORDER BY workspace_id"""
             ).fetchall()
         ]
+        user = getattr(request.state, "local_user", None)
+        # Pure local mode is a single data directory, not an account-scoped
+        # service.  Do not hide newly imported workspaces simply because a
+        # legacy UI-review owner row predates them.  Account mode keeps the
+        # ownership filter below through the authenticated request context.
+        auth_required = os.getenv("MENTORFLOW_AUTH_REQUIRED", "").strip() == "1"
+        if user and auth_required:
+            from . import local_auth
+
+            owned = set(local_auth.owned_workspace_ids(user["user_id"]))
+            workspace_ids = [item for item in workspace_ids if item in owned]
         items: list[dict[str, Any]] = []
         for workspace_id in workspace_ids:
             settings_row = connection.execute(
@@ -7936,6 +9533,34 @@ def list_learning_workspaces(
                     "total": int(count_row["total"]),
                     "completed": int(count_row["completed"]),
                 }
+                if task_counts["total"] == 0:
+                    v1_task_row = connection.execute(
+                        """SELECT id,title,day_date,estimated_task_minutes,status,
+                                  task_type,learning_phase
+                           FROM orm_plan_execution_tasks
+                           WHERE workspace_id=? AND plan_id=? AND status<>'completed'
+                           ORDER BY day_date,task_order,id LIMIT 1""",
+                        (workspace_id, plan["id"]),
+                    ).fetchone()
+                    if v1_task_row:
+                        next_task = dict(v1_task_row)
+                    v1_count_row = connection.execute(
+                        """SELECT COUNT(*) AS total,
+                                  COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END),0)
+                                      AS completed
+                           FROM orm_plan_execution_tasks
+                           WHERE workspace_id=? AND plan_id=?""",
+                        (workspace_id, plan["id"]),
+                    ).fetchone()
+                    task_counts = {
+                        "total": int(v1_count_row["total"]),
+                        "completed": int(v1_count_row["completed"]),
+                    }
+            point_progress = _knowledge_point_progress_summary(
+                connection,
+                workspace_id,
+                str(plan["id"]) if plan else None,
+            )
             updated_candidates = [
                 str(value)
                 for value in (
@@ -7968,6 +9593,7 @@ def list_learning_workspaces(
                     "material_count": int(counts["material_count"]),
                     "ready_material_count": int(counts["ready_material_count"]),
                     "knowledge_point_count": point_count,
+                    **point_progress,
                     "plan_id": plan["id"] if plan else None,
                     "plan_feasible": bool(plan["feasible"]) if plan else None,
                     "session_id": session["id"] if session else None,
@@ -8030,3 +9656,130 @@ def update_learning_workspace(workspace_id: str, payload: dict[str, Any]) -> dic
         )
         connection.commit()
     return {"workspace_id": workspace_id, "archived": archived}
+
+
+@router.delete("/workspaces/{workspace_id}")
+def delete_learning_workspace(workspace_id: str) -> dict[str, Any]:
+    """Remove an unstarted local task while protecting any learning history.
+
+    The desktop intentionally offers this only for tasks with no completed
+    work.  The server repeats that guard so a client cannot accidentally erase
+    a task that already has classroom or mastery records.
+    """
+    upload_roots = [
+        Path(os.getenv("MENTORFLOW_ACTIVE_UPLOAD_ROOT", str(PROJECT_ROOT / "data" / "active_teaching" / "uploads"))).resolve(),
+        Path(os.getenv("MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT", str(PROJECT_ROOT / "data" / "classroom" / "uploads"))).resolve(),
+    ]
+    paths_to_remove: list[Path] = []
+    with _connect() as connection:
+        exists = connection.execute(
+            """SELECT 1 FROM active_materials WHERE workspace_id=?
+               UNION SELECT 1 FROM active_receipts WHERE workspace_id=?
+               UNION SELECT 1 FROM active_plans WHERE workspace_id=?
+               LIMIT 1""",
+            (workspace_id, workspace_id, workspace_id),
+        ).fetchone()
+        if not exists:
+            _error("LEARNING_WORKSPACE_NOT_FOUND", "学习任务不存在", 404)
+        progress = connection.execute(
+            """SELECT
+                 COALESCE((SELECT SUM(completed_task_count) FROM active_knowledge_progress_snapshots WHERE workspace_id=?),0)
+                 + COALESCE((SELECT SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM active_plan_tasks WHERE workspace_id=?),0)
+                 + COALESCE((SELECT COUNT(*) FROM active_teaching_sessions WHERE workspace_id=?),0)
+                 + COALESCE((SELECT COUNT(*) FROM active_mastery_evidence e JOIN active_teaching_sessions s ON s.id=e.session_id WHERE s.workspace_id=?),0)
+                 AS progress""",
+            (workspace_id, workspace_id, workspace_id, workspace_id),
+        ).fetchone()
+        if int(progress["progress"] or 0) > 0:
+            _error("LEARNING_WORKSPACE_PROTECTED", "这个任务已经有学习进度，不能删除", 409)
+
+        # Canonical maps and plans are append-only audit records.  The legacy
+        # delete route must not erase only half of a learning space or leave a
+        # ghost canonical plan behind.  Such workspaces are archive-only until
+        # a dedicated audited whole-space purge exists.
+        try:
+            canonical = connection.execute(
+                """SELECT 1 FROM orm_source_revisions WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_knowledge_map_revisions WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_knowledge_map_jobs WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_material_dispositions WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_plan_activation_records WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_plan_execution_tasks WHERE workspace_id=?
+                   UNION SELECT 1 FROM orm_plan_mastery_events WHERE workspace_id=?
+                   LIMIT 1""",
+                (workspace_id,) * 7,
+            ).fetchone()
+        except sqlite3.Error:
+            canonical = None
+        if canonical:
+            _error(
+                "LEARNING_WORKSPACE_ARCHIVE_REQUIRED",
+                "这个计划包含可审计的知识地图或学习历史，只能归档，不能永久删除",
+                409,
+            )
+
+        for row in connection.execute(
+            "SELECT stored_path FROM active_materials WHERE workspace_id=? AND stored_path<>''",
+            (workspace_id,),
+        ).fetchall():
+            paths_to_remove.append(Path(str(row["stored_path"])).resolve())
+        for row in connection.execute(
+            "SELECT stored_path FROM active_teaching_attachments WHERE workspace_id=? AND stored_path<>''",
+            (workspace_id,),
+        ).fetchall():
+            paths_to_remove.append(Path(str(row["stored_path"])).resolve())
+
+        plan_ids = [row[0] for row in connection.execute("SELECT id FROM active_plans WHERE workspace_id=?", (workspace_id,)).fetchall()]
+        session_ids = [row[0] for row in connection.execute("SELECT id FROM active_teaching_sessions WHERE workspace_id=?", (workspace_id,)).fetchall()]
+        task_ids = [row[0] for row in connection.execute("SELECT id FROM active_plan_tasks WHERE workspace_id=?", (workspace_id,)).fetchall()]
+        point_ids = [row[0] for row in connection.execute("SELECT id FROM active_knowledge_points WHERE workspace_id=?", (workspace_id,)).fetchall()]
+        review_ids = [row[0] for row in connection.execute("SELECT id FROM active_review_items WHERE workspace_id=?", (workspace_id,)).fetchall()]
+
+        def delete_in(table: str, column: str, values: list[str]) -> None:
+            if not values:
+                return
+            placeholders = ",".join("?" for _ in values)
+            connection.execute(f"DELETE FROM {table} WHERE {column} IN ({placeholders})", values)
+
+        # Delete dependent rows first; all identifiers come from this workspace.
+        delete_in("active_review_attempts", "review_item_id", review_ids)
+        delete_in("active_review_attempts", "session_id", session_ids)
+        delete_in("active_task_time_events", "task_id", task_ids)
+        delete_in("active_task_time_events", "session_id", session_ids)
+        delete_in("active_mastery_evidence", "session_id", session_ids)
+        delete_in("active_mastery_evidence", "knowledge_point_id", point_ids)
+        delete_in("active_teaching_messages", "session_id", session_ids)
+        delete_in("active_teaching_attachments", "session_id", session_ids)
+        delete_in("active_replan_history", "session_id", session_ids)
+        delete_in("active_replan_history", "plan_id", plan_ids)
+        connection.execute("DELETE FROM active_review_attempts WHERE plan_task_id IN (SELECT id FROM active_plan_tasks WHERE workspace_id=?)", (workspace_id,))
+        connection.execute("DELETE FROM active_review_items WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_teaching_sessions WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_plan_calendars WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_plan_tasks WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_plans WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_knowledge_conflicts WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_dependencies WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_knowledge_memories WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_point_details WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_knowledge_points WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_chunks WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_materials WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_external_resources WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_resource_discovery_runs WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_knowledge_progress_snapshots WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_receipts WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_workspace_settings WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_plan_calendars WHERE workspace_id=?", (workspace_id,))
+        connection.execute("DELETE FROM active_teaching_attachments WHERE workspace_id=?", (workspace_id,))
+        connection.commit()
+
+    for path in paths_to_remove:
+        if not path.is_file():
+            continue
+        if any(path == root or root in path.parents for root in upload_roots):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    return {"workspace_id": workspace_id, "deleted": True}

@@ -21,6 +21,12 @@ TASK_BASE_MINUTES: Mapping[str, int] = {
     "review": 20,
     "transfer_test": 30,
     "final_task": 45,
+    # Keep coding work distinct from conceptual explanation/review.  These
+    # values are policy inputs, not completion-time measurements.
+    "coding_solution": 40,
+    "coding_practice": 45,
+    "concept_understanding": 25,
+    "concept_review": 20,
 }
 DIFFICULTY_FACTOR: Mapping[str, float] = {
     "easy": 0.8,
@@ -49,12 +55,37 @@ class MinuteEstimate:
     upper_minutes: int
     confidence: float
     reasons: tuple[str, ...]
+    task_kind: str = "concept_understanding"
+    difficulty: str = "medium"
+    evidence: Mapping[str, object] = field(default_factory=dict)
+    provider_metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         if not 0 < self.lower_minutes <= self.estimated_minutes <= self.upper_minutes:
             raise ValueError("minute interval must contain the estimate")
+        if not str(self.task_kind or "").strip():
+            raise ValueError("task_kind is required")
+        if not isinstance(self.evidence, Mapping):
+            raise ValueError("evidence must be a mapping")
+        if not isinstance(self.provider_metadata, Mapping):
+            raise ValueError("provider_metadata must be a mapping")
+
+    def as_dict(self) -> dict[str, object]:
+        """Serialize an explainable estimate without conflating elapsed time."""
+
+        return {
+            "estimated_minutes": self.estimated_minutes,
+            "lower_minutes": self.lower_minutes,
+            "upper_minutes": self.upper_minutes,
+            "confidence": self.confidence,
+            "reasons": list(self.reasons),
+            "task_kind": self.task_kind,
+            "difficulty": self.difficulty,
+            "evidence": dict(self.evidence),
+            "provider_metadata": dict(self.provider_metadata),
+        }
 
 
 @dataclass(frozen=True)
@@ -81,17 +112,40 @@ def estimate_task_minutes(
     practice_items: int = 1,
     expected_hint_level: int = 0,
     evidence_count: int = 1,
+    task_kind: str | None = None,
+    evidence: Mapping[str, object] | None = None,
+    provider_estimate_minutes: int | None = None,
+    provider_metadata: Mapping[str, object] | None = None,
 ) -> MinuteEstimate:
     """Estimate cognitive task time from stable, inspectable inputs."""
 
-    base = TASK_BASE_MINUTES.get(task_type, 25)
+    normalized_type = str(task_kind or task_type or "concept_understanding").strip().casefold()
+    if evidence is not None and not isinstance(evidence, Mapping):
+        raise ValueError("evidence must be a mapping")
+    if provider_metadata is not None and not isinstance(provider_metadata, Mapping):
+        raise ValueError("provider_metadata must be a mapping")
+    if provider_estimate_minutes is not None and int(provider_estimate_minutes) <= 0:
+        raise ValueError("provider_estimate_minutes must be positive")
+    base = TASK_BASE_MINUTES.get(normalized_type, TASK_BASE_MINUTES.get(task_type, 25))
     difficulty_factor = DIFFICULTY_FACTOR.get(difficulty, 1.0)
     level_factor = LEVEL_FACTOR.get(learner_level, 1.0)
     practice_factor = 1.0 + max(0, practice_items - 1) * 0.16
     hint_factor = 1.0 + max(0, expected_hint_level) * 0.08
     evidence_factor = 1.0 + max(0, evidence_count - 1) * 0.04
-    estimate = _bounded_minutes(
+    structural_estimate = _bounded_minutes(
         base * difficulty_factor * level_factor * practice_factor * hint_factor * evidence_factor
+    )
+    # A provider is a bounded estimator only: its proposal is blended with the
+    # deterministic policy estimate and constrained to a conservative interval.
+    provider_value = None
+    if provider_estimate_minutes is not None:
+        provider_value = _bounded_minutes(int(provider_estimate_minutes))
+        provider_value = max(
+            _bounded_minutes(structural_estimate * 0.5),
+            min(_bounded_minutes(structural_estimate * 1.5), provider_value),
+        )
+    estimate = _bounded_minutes(
+        structural_estimate if provider_value is None else structural_estimate * 0.6 + provider_value * 0.4
     )
     known_type = task_type in TASK_BASE_MINUTES
     known_difficulty = difficulty in DIFFICULTY_FACTOR
@@ -109,13 +163,98 @@ def estimate_task_minutes(
         confidence=confidence,
         reasons=(
             f"task_type={task_type}",
+            f"task_kind={normalized_type}",
             f"difficulty={difficulty}",
             f"learner_level={learner_level}",
             f"practice_items={max(0, practice_items)}",
             f"expected_hint_level={max(0, expected_hint_level)}",
             f"evidence_count={max(0, evidence_count)}",
+            "provider_bounded=true" if provider_value is not None else "provider_bounded=false",
         ),
+        task_kind=normalized_type,
+        difficulty=str(difficulty or "medium").strip().casefold(),
+        evidence=dict(evidence or {"count": max(0, evidence_count)}),
+        provider_metadata={
+            **dict(provider_metadata or {}),
+            **({"proposed_minutes": int(provider_estimate_minutes), "bounded_minutes": provider_value} if provider_value is not None else {}),
+        },
     )
+
+
+def estimate_provider_task_minutes(
+    *,
+    goal: str,
+    learner_level: str,
+    learning_style: str,
+    concept_or_task_kind: str,
+    evidence_size: int,
+    evidence_count: int,
+    expected_output: str,
+    mode: str,
+    hints: int = 0,
+    review_rounds: int = 0,
+    schedule_constraints: Mapping[str, object] | None = None,
+    difficulty: str = "medium",
+    provider_estimate_minutes: int | None = None,
+    provider_metadata: Mapping[str, object] | None = None,
+) -> MinuteEstimate:
+    """Validate comprehensive provider input and return a bounded estimate.
+
+    ``mode`` is intentionally explicit so coding solution/practice cannot be
+    silently treated as concept understanding/review.  Schedule constraints
+    are evidence for the estimator, never permission to mutate a schedule.
+    """
+
+    text_fields = {
+        "goal": goal,
+        "learner_level": learner_level,
+        "learning_style": learning_style,
+        "concept_or_task_kind": concept_or_task_kind,
+        "expected_output": expected_output,
+        "mode": mode,
+    }
+    if any(not str(value or "").strip() for value in text_fields.values()):
+        raise ValueError("provider estimator requires goal, learner, task kind, output, and mode")
+    if evidence_size < 0 or evidence_count < 0 or hints < 0 or review_rounds < 0:
+        raise ValueError("provider estimator counts cannot be negative")
+    normalized_mode = str(mode).strip().casefold()
+    mode_aliases = {
+        "coding": "coding_practice",
+        "coding_solution": "coding_solution",
+        "coding_practice": "coding_practice",
+        "understand": "concept_understanding",
+        "concept_understanding": "concept_understanding",
+        "review": "concept_review",
+        "concept_review": "concept_review",
+    }
+    task_kind = mode_aliases.get(normalized_mode)
+    if task_kind is None:
+        raise ValueError("mode must distinguish coding_solution, coding_practice, concept_understanding, or concept_review")
+    schedule = dict(schedule_constraints or {})
+    estimate = estimate_task_minutes(
+        task_type=task_kind,
+        task_kind=task_kind,
+        difficulty=difficulty,
+        learner_level=learner_level,
+        practice_items=max(1, review_rounds + (1 if task_kind == "coding_practice" else 0)),
+        expected_hint_level=hints,
+        evidence_count=max(1, evidence_count),
+        evidence={
+            "size": int(evidence_size),
+            "count": int(evidence_count),
+            "expected_output": str(expected_output).strip(),
+            "goal": str(goal).strip(),
+            "schedule_constraints": schedule,
+        },
+        provider_estimate_minutes=provider_estimate_minutes,
+        provider_metadata={
+            **dict(provider_metadata or {}),
+            "provider_input_schema": "mentorflow.task-duration-estimator.v1",
+            "learner_level": str(learner_level).strip(),
+            "learning_style": str(learning_style).strip(),
+        },
+    )
+    return estimate
 
 
 def observe_minutes(state: TaskMinuteState, observed_minutes: int) -> TaskMinuteState:

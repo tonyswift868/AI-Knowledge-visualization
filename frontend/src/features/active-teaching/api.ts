@@ -14,6 +14,9 @@ export type ActiveLearningTaskSummary = {
   status: "setting_up" | "planned" | "learning";
   material_count: number;
   knowledge_point_count: number;
+  completed_knowledge_point_count?: number;
+  initial_learning_task_count?: number;
+  completed_initial_learning_task_count?: number;
   plan_id: string | null;
   session_id: string | null;
   task_count: number;
@@ -282,6 +285,16 @@ export async function uploadActiveMaterial(workspaceId: string, file: File) {
     method: "POST",
     body: form,
   });
+}
+
+export async function uploadActiveUrlMaterial(
+  workspaceId: string,
+  resource: { url: string; title?: string },
+) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/materials/url`, {
+    method: "POST",
+    body: JSON.stringify(resource),
+  }, 60_000);
 }
 
 export async function uploadActiveTeachingAttachment(

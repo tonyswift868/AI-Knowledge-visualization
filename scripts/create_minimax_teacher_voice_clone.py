@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Create one private MiniMax voice clone and auditable audition files.
 
-The API key is read from a caller-provided file and is never written to an
-artifact or included in an exception message.  Output generations are
+The caller supplies only a Windows Credential Locker reference.  The secret is
+resolved in memory and is never read from a project file, written to an
+artifact, or included in an exception message.  Output generations are
 CREATE_NEW so a failed or partial attempt is never silently reused.
 """
 
@@ -12,6 +13,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,8 +22,13 @@ from uuid import uuid4
 import requests
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+
+from app.credential_store import CredentialStoreError, get_secret  # noqa: E402
+
+
 API_ROOT = "https://api.minimaxi.com/v1"
-MODEL = "speech-2.8-hd"
 VOICE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{6,254}[A-Za-z0-9]$")
 
 
@@ -61,15 +68,17 @@ def checked_json(response: requests.Response, label: str) -> dict[str, Any]:
 def tts(
     session: requests.Session,
     *,
+    api_root: str,
+    model: str,
     voice_id: str,
     text: str,
     speed: float,
     destination: Path,
 ) -> dict[str, Any]:
     response = session.post(
-        f"{API_ROOT}/t2a_v2",
+        f"{api_root}/t2a_v2",
         json={
-            "model": MODEL,
+            "model": model,
             "text": text,
             "stream": False,
             "voice_setting": {"voice_id": voice_id, "speed": speed, "vol": 1.0, "pitch": 0},
@@ -107,15 +116,24 @@ def tts(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--key-file", type=Path, required=True)
+    parser.add_argument("--credential-ref", required=True)
+    parser.add_argument("--api-root", default=API_ROOT)
+    parser.add_argument("--model", required=True)
     parser.add_argument("--audio", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--voice-id")
     args = parser.parse_args()
 
-    key = args.key_file.read_text(encoding="utf-8-sig").strip()
-    if not key or any(character.isspace() for character in key):
-        raise CloneError("API key file must contain one non-empty token")
+    try:
+        key = get_secret(args.credential_ref)
+    except CredentialStoreError as exc:
+        raise CloneError(f"{exc.code}: {exc.message}") from exc
+    api_root = str(args.api_root).strip().rstrip("/")
+    model = str(args.model).strip()
+    if not api_root.startswith("https://"):
+        raise CloneError("MiniMax API root must use HTTPS")
+    if not model:
+        raise CloneError("MiniMax model must be configured explicitly")
     audio = args.audio.resolve(strict=True)
     if not audio.is_file() or audio.suffix.lower() not in {".mp3", ".m4a", ".wav"}:
         raise CloneError("clone audio must be an MP3, M4A, or WAV file")
@@ -134,7 +152,7 @@ def main() -> int:
     try:
         with audio.open("rb") as handle:
             upload_response = session.post(
-                f"{API_ROOT}/files/upload",
+                f"{api_root}/files/upload",
                 data={"purpose": "voice_clone"},
                 files={"file": (audio.name, handle, "audio/mpeg")},
                 timeout=300,
@@ -147,12 +165,12 @@ def main() -> int:
 
         clone_text = "别怕。<#0.45#>我只是想把你留在身边。<#0.65#>再久一点点。"
         clone_response = session.post(
-            f"{API_ROOT}/voice_clone",
+            f"{api_root}/voice_clone",
             json={
                 "file_id": file_id,
                 "voice_id": voice_id,
                 "text": clone_text,
-                "model": MODEL,
+                "model": model,
                 "language_boost": "Chinese",
                 "need_noise_reduction": False,
                 "need_volume_normalization": False,
@@ -163,17 +181,17 @@ def main() -> int:
         clone = checked_json(clone_response, "voice clone")
 
         outputs = [
-            tts(session, voice_id=voice_id, text="别怕，我只是想把你留在身边，再久一点点。", speed=1.0, destination=generation / "01_native_1x.mp3"),
-            tts(session, voice_id=voice_id, text=clone_text, speed=0.80, destination=generation / "02_slow_080x.mp3"),
-            tts(session, voice_id=voice_id, text="你可以去任何地方。<#0.70#>只要最后，还是回到我这里。", speed=0.80, destination=generation / "03_style_080x.mp3"),
+            tts(session, api_root=api_root, model=model, voice_id=voice_id, text="别怕，我只是想把你留在身边，再久一点点。", speed=1.0, destination=generation / "01_native_1x.mp3"),
+            tts(session, api_root=api_root, model=model, voice_id=voice_id, text=clone_text, speed=0.80, destination=generation / "02_slow_080x.mp3"),
+            tts(session, api_root=api_root, model=model, voice_id=voice_id, text="你可以去任何地方。<#0.70#>只要最后，还是回到我这里。", speed=0.80, destination=generation / "03_style_080x.mp3"),
         ]
         receipt = {
             "schema": "mentorflow.minimax-private-voice-clone.v1",
             "status": "passed",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "provider": "MiniMax",
-            "api_root": API_ROOT,
-            "model": MODEL,
+            "api_root": api_root,
+            "model": model,
             "voice_id": voice_id,
             "scope": "private_local_evaluation",
             "source": {"path": str(audio), "bytes": audio.stat().st_size, "sha256": sha256(audio)},

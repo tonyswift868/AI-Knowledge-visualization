@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
+import json
 import re
-from collections import defaultdict, deque
 from datetime import date, timedelta
 from typing import Any, Iterable
+
+from .knowledge_map_v1 import provider_payload_model
+from .planning_policy import estimate_provider_task_minutes
+from .knowledge_policy import (
+    MASTERY_ESTIMATION_POLICY,
+    PROVIDER_POLICY,
+    SCHEDULING_POLICY,
+    TEXT_LIMITS_POLICY,
+)
 
 
 def normalize_name(value: str) -> str:
@@ -15,17 +25,16 @@ def merge_provider_batches(
     nodes: Iterable[dict[str, Any]],
     edges: Iterable[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
-    """Merge independently extracted knowledge maps into one acyclic graph.
+    """Combine provider batches without semantic identity guessing.
 
-    Provider-local identifiers are remapped to the first node with the same
-    normalized name.  Evidence chunk identifiers retain their first-seen order.
-    Edges are then replayed in input order; dangling edges, remapped self-loops,
-    duplicate edges, and edges that would introduce a cycle are omitted with an
-    explicit warning.  Inputs are not mutated.
+    A repeated display name is not proof that two records describe the same
+    concept (especially across materials).  v1 therefore preserves every
+    provider-local node and only remaps the edges that explicitly refer to it.
+    Evidence identifiers retain their first-seen order.  Inputs are not
+    mutated.
     """
 
     merged_nodes: list[dict[str, Any]] = []
-    canonical_by_name: dict[str, dict[str, Any]] = {}
     canonical_id_by_input_id: dict[str, str] = {}
     warnings: list[str] = []
 
@@ -33,71 +42,26 @@ def merge_provider_batches(
         node = deepcopy(source_node)
         input_id = str(node.get("local_id") or node.get("id") or "").strip()
         name = str(node.get("name") or "").strip()
-        normalized = normalize_name(name)
-        if not input_id or not normalized:
+        if not input_id or not normalize_name(name):
             warnings.append(f"跳过无法全局合并的节点：index={index}，缺少 id 或规范化名称")
             continue
-
-        canonical = canonical_by_name.get(normalized)
-        if canonical is None:
-            source_chunk_ids = [
-                str(item)
-                for item in node.get("source_chunk_ids") or []
-                if str(item)
-            ]
-            node["source_chunk_ids"] = list(dict.fromkeys(source_chunk_ids))
-            canonical_by_name[normalized] = node
-            canonical_id_by_input_id[input_id] = input_id
-            merged_nodes.append(node)
+        if input_id in canonical_id_by_input_id:
+            # Duplicate local ids are ambiguous and must not silently overwrite
+            # an earlier batch.  Keep the first record and make the omission
+            # visible to the caller.
+            warnings.append(f"跳过重复 Provider 节点 id：{input_id}")
             continue
-
-        canonical_id = str(canonical.get("local_id") or canonical.get("id"))
-        canonical_id_by_input_id[input_id] = canonical_id
-        chunk_ids = [
+        source_chunk_ids = [
             str(item)
-            for item in [
-                *(canonical.get("source_chunk_ids") or []),
-                *(node.get("source_chunk_ids") or []),
-            ]
+            for item in node.get("source_chunk_ids") or []
             if str(item)
         ]
-        canonical["source_chunk_ids"] = list(dict.fromkeys(chunk_ids))
-
-        # Validated batches carry full evidence rather than only chunk ids.
-        # Merge it too so the global node cannot lose traceability.
-        evidence = [
-            *deepcopy(canonical.get("source_evidence") or []),
-            *deepcopy(node.get("source_evidence") or []),
-        ]
-        if evidence:
-            unique_evidence: list[dict[str, Any]] = []
-            seen_evidence: set[tuple[str, int, int]] = set()
-            for item in evidence:
-                key = evidence_key(item)
-                if key not in seen_evidence:
-                    seen_evidence.add(key)
-                    unique_evidence.append(item)
-            canonical["source_evidence"] = unique_evidence
-        warnings.append(
-            f"合并规范化同名节点：{input_id} -> {canonical_id}（{name}）"
-        )
+        node["source_chunk_ids"] = list(dict.fromkeys(source_chunk_ids))
+        canonical_id_by_input_id[input_id] = input_id
+        merged_nodes.append(node)
 
     accepted_edges: list[dict[str, Any]] = []
     accepted_pairs: set[tuple[str, str]] = set()
-    outgoing: dict[str, set[str]] = defaultdict(set)
-
-    def has_path(start: str, target: str) -> bool:
-        pending: deque[str] = deque([start])
-        visited: set[str] = set()
-        while pending:
-            current = pending.popleft()
-            if current == target:
-                return True
-            if current in visited:
-                continue
-            visited.add(current)
-            pending.extend(outgoing[current] - visited)
-        return False
 
     for index, source_edge in enumerate(edges):
         edge = deepcopy(source_edge)
@@ -117,14 +81,10 @@ def merge_provider_batches(
         if pair in accepted_pairs:
             warnings.append(f"丢弃重复依赖边：{source} -> {target}")
             continue
-        if has_path(target, source):
-            warnings.append(f"丢弃会形成循环的依赖边：{source} -> {target}")
-            continue
         edge["prerequisite_id"] = source
         edge["dependent_id"] = target
         accepted_edges.append(edge)
         accepted_pairs.add(pair)
-        outgoing[source].add(target)
 
     return merged_nodes, accepted_edges, warnings
 
@@ -136,39 +96,113 @@ def mastery_time_estimate(
     current_level: str,
     explicit_minutes: int | None = None,
     explicit_minutes_source: str | None = None,
+    task_kind: str = "concept_understanding",
+    goal: str = "",
+    learner_style: str = "",
+    expected_output: str = "",
+    mode: str | None = None,
+    evidence_size: int | None = None,
+    evidence_count: int = 1,
+    hints: int = 0,
+    review_rounds: int = 0,
+    schedule_constraints: dict[str, Any] | None = None,
+    provider_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Estimate standard task minutes, never actual elapsed time.
 
     The estimate is deterministic and inspectable. A real provider may propose
     values, but callers must still bound and validate them.
     """
+    policy = MASTERY_ESTIMATION_POLICY
+    # A structured provider proposal is advisory.  Validate comprehensive
+    # context and blend it through the bounded estimator before scheduling.
+    provider_estimate = (
+        explicit_minutes
+        if explicit_minutes_source not in {"source_provided_duration", "", None}
+        else None
+    )
+    if provider_estimate is not None and mode:
+        estimate = estimate_provider_task_minutes(
+            goal=goal or "material learning goal",
+            learner_level=current_level,
+            learning_style=learner_style or "unspecified",
+            concept_or_task_kind=task_kind,
+            evidence_size=max(0, int(evidence_size if evidence_size is not None else len(text))),
+            evidence_count=max(1, int(evidence_count)),
+            expected_output=expected_output or "observable learner evidence",
+            mode=mode,
+            hints=max(0, int(hints)),
+            review_rounds=max(0, int(review_rounds)),
+            schedule_constraints=schedule_constraints or {},
+            difficulty=difficulty,
+            provider_estimate_minutes=provider_estimate,
+            provider_metadata=provider_metadata or {},
+        )
+        total = estimate.estimated_minutes
+        phases = {
+            "understand_minutes": max(policy.phase_minimum_minutes["understand"], round(total * policy.phase_ratios["understand"])),
+            "recall_minutes": max(policy.phase_minimum_minutes["recall"], round(total * policy.phase_ratios["recall"])),
+            "guided_practice_minutes": max(policy.phase_minimum_minutes["guided_practice"], round(total * policy.phase_ratios["guided_practice"])),
+            "independent_application_minutes": max(policy.phase_minimum_minutes["independent_application"], round(total * policy.phase_ratios["independent_application"])),
+        }
+        phases["review_minutes"] = max(
+            policy.phase_minimum_minutes["review"],
+            total - sum(phases.values()),
+        )
+        total = sum(phases.values())
+        return {
+            **phases,
+            "total_mastery_task_minutes": total,
+            "basis": "provider_bounded:comprehensive_context",
+            "confidence": estimate.confidence,
+            "is_source_provided_duration": False,
+            "task_kind": estimate.task_kind,
+            "difficulty": estimate.difficulty,
+            "evidence": dict(estimate.evidence),
+            "provider_metadata": dict(estimate.provider_metadata),
+            "signals": {
+                "provider_estimate_minutes": provider_estimate,
+                "bounded_estimate_minutes": estimate.estimated_minutes,
+                "reasons": list(estimate.reasons),
+            },
+        }
     difficulty_value = str(difficulty or "medium").casefold()
     difficulty_factor = (
-        1.58
+        policy.difficulty_factors["hard"]
         if any(item in difficulty_value for item in ("hard", "困难", "高级"))
-        else 0.72
+        else policy.difficulty_factors["easy"]
         if any(item in difficulty_value for item in ("easy", "简单", "基础"))
-        else 1.08
+        else policy.difficulty_factors["medium"]
     )
     level_value = str(current_level or "beginner").casefold()
     level_factor = (
-        1.45
+        policy.learner_level_factors["beginner"]
         if any(item in level_value for item in ("zero", "beginner", "零基础", "初级"))
-        else 0.82
+        else policy.learner_level_factors["advanced"]
         if any(item in level_value for item in ("advanced", "高级", "专家"))
-        else 1.0
+        else policy.learner_level_factors["intermediate"]
     )
-    information_units = max(1.0, min(8.0, len(text.strip()) / 700.0))
+    information_units = max(
+        policy.minimum_information_units,
+        min(
+            policy.maximum_information_units,
+            len(text.strip()) / float(policy.information_unit_characters),
+        ),
+    )
     base = int(
         explicit_minutes
-        or round((15 + information_units * 8) * difficulty_factor * level_factor)
+        or round(
+            (policy.base_minutes + information_units * policy.minutes_per_information_unit)
+            * difficulty_factor
+            * level_factor
+        )
     )
-    base = max(15, min(360, base))
-    understand = max(5, round(base * 0.30))
-    recall = max(5, round(base * 0.12))
-    guided = max(5, round(base * 0.23))
-    independent = max(8, round(base * 0.25))
-    review = max(5, base - understand - recall - guided - independent)
+    base = max(policy.minimum_total_minutes, min(policy.maximum_total_minutes, base))
+    understand = max(policy.phase_minimum_minutes["understand"], round(base * policy.phase_ratios["understand"]))
+    recall = max(policy.phase_minimum_minutes["recall"], round(base * policy.phase_ratios["recall"]))
+    guided = max(policy.phase_minimum_minutes["guided_practice"], round(base * policy.phase_ratios["guided_practice"]))
+    independent = max(policy.phase_minimum_minutes["independent_application"], round(base * policy.phase_ratios["independent_application"]))
+    review = max(policy.phase_minimum_minutes["review"], base - understand - recall - guided - independent)
     total_mastery = understand + recall + guided + independent + review
     explicit_basis = str(explicit_minutes_source or "").strip()
     if explicit_minutes is not None:
@@ -187,6 +221,13 @@ def mastery_time_estimate(
         "basis": basis,
         "confidence": confidence,
         "is_source_provided_duration": explicit_basis == "source_provided_duration",
+        "task_kind": str(task_kind or "concept_understanding").strip().casefold(),
+        "difficulty": difficulty_value,
+        "evidence": {
+            "size": max(0, int(evidence_size if evidence_size is not None else len(text))),
+            "count": max(0, int(evidence_count)),
+        },
+        "provider_metadata": dict(provider_metadata or {}),
         "signals": {
             "content_units": round(information_units, 2),
             "difficulty_factor": difficulty_factor,
@@ -210,34 +251,54 @@ def validate_provider_map(
     evidence_by_chunk: dict[str, dict[str, Any]],
     current_level: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str]]:
-    raw_nodes = payload.get("knowledge_points")
-    if not isinstance(raw_nodes, list) or not raw_nodes:
-        raise ValueError("Provider 未返回 knowledge_points 数组")
+    validated = provider_payload_model(payload)
+    normalized_payload = validated.model_dump()
+    raw_nodes = normalized_payload.get("knowledge_points")
     nodes: list[dict[str, Any]] = []
-    aliases: dict[str, str] = {}
+    provider_id_aliases: dict[str, str] = {}
+    semantic_signatures: set[str] = set()
     warnings: list[str] = []
     for index, raw in enumerate(raw_nodes):
         if not isinstance(raw, dict):
             raise ValueError(f"knowledge_points[{index}] 不是对象")
         source_keys = [str(item) for item in raw.get("source_chunk_ids") or []]
         evidence = [evidence_by_chunk[item] for item in source_keys if item in evidence_by_chunk]
-        if not evidence:
+        layer = str(raw.get("layer") or "material").casefold()
+        if layer == "material" and not evidence:
             warnings.append(f"拦截无来源知识点：{str(raw.get('name') or index)}")
             continue
         name = str(raw.get("name") or "").strip()
         if not name:
             warnings.append(f"拦截空名称知识点：{index}")
             continue
-        normalized = normalize_name(name)
-        if normalized in aliases:
-            existing = next(item for item in nodes if item["local_id"] == aliases[normalized])
-            known = {evidence_key(item) for item in existing["source_evidence"]}
-            existing["source_evidence"].extend(
-                item for item in evidence if evidence_key(item) not in known
-            )
+        provider_id = str(raw.get("id") or f"provider-node-{index + 1}")
+        signature_payload = {
+            "name": name.casefold(),
+            "node_type": str(raw.get("node_type") or "concept").casefold(),
+            "evidence": sorted(
+                (
+                    str(item.get("source_id") or item.get("material_id") or ""),
+                    str(item.get("source_revision_id") or ""),
+                    str(item.get("content_hash") or ""),
+                    int(item.get("char_start") or 0),
+                    int(item.get("char_end") or 0),
+                )
+                for item in evidence
+            ),
+        }
+        semantic_signature = hashlib.sha256(
+            json.dumps(signature_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        if semantic_signature in semantic_signatures:
+            warnings.append(f"复用证据与语义签名完全一致的 Provider 节点：{provider_id}")
             continue
-        local_id = str(raw.get("id") or f"node-{len(nodes) + 1}")
-        aliases[normalized] = local_id
+        if provider_id in provider_id_aliases:
+            warnings.append(f"拦截重复 Provider 节点 id：{provider_id}")
+            continue
+        node_type = str(raw.get("node_type") or "concept").casefold()
+        local_id = f"{node_type}-{semantic_signature[:24]}"
+        provider_id_aliases[provider_id] = local_id
+        semantic_signatures.add(semantic_signature)
         explicit = raw.get("estimated_mastery_minutes")
         try:
             explicit_minutes = int(explicit) if explicit is not None else None
@@ -254,30 +315,63 @@ def validate_provider_map(
         nodes.append(
             {
                 "local_id": local_id,
-                "name": name[:240],
-                "explanation": str(raw.get("explanation") or "").strip()[:1200],
-                "difficulty": str(raw.get("difficulty") or "medium")[:40],
-                "acceptance_method": str(raw.get("acceptance_method") or "").strip()[:800],
+                "name": name[: TEXT_LIMITS_POLICY.concept_name_characters],
+                "explanation": str(raw.get("explanation") or "").strip()[
+                    : TEXT_LIMITS_POLICY.explanation_characters
+                ],
+                "difficulty": str(raw.get("difficulty") or "medium")[
+                    : TEXT_LIMITS_POLICY.short_label_characters
+                ],
+                "acceptance_method": str(raw.get("acceptance_method") or "").strip()[
+                    : TEXT_LIMITS_POLICY.acceptance_characters
+                ],
+                "node_type": node_type,
                 "mastery_estimate": estimate,
                 "source_evidence": evidence,
-                "confidence": max(0.0, min(1.0, float(raw.get("confidence") or 0.7))),
+                "confidence": max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(
+                            raw.get("confidence")
+                            or PROVIDER_POLICY.default_knowledge_confidence
+                        ),
+                    ),
+                ),
+                "semantic_signature": semantic_signature,
+                "layer": layer,
+                "status": "pending" if layer == "model_common" else "confirmed",
             }
         )
     if not nodes:
         raise ValueError("所有 Provider 知识点都因缺少可验证来源而被拦截")
     node_ids = {item["local_id"] for item in nodes}
     edges: list[dict[str, str]] = []
-    for raw in payload.get("dependencies") or []:
+    for raw in normalized_payload.get("dependencies") or []:
         if not isinstance(raw, dict):
             continue
-        source = str(raw.get("prerequisite_id") or "")
-        target = str(raw.get("dependent_id") or "")
+        source = provider_id_aliases.get(str(raw.get("prerequisite_id") or ""), "")
+        target = provider_id_aliases.get(str(raw.get("dependent_id") or ""), "")
         if source in node_ids and target in node_ids and source != target:
+            raw_relation = str(raw.get("relation") or "prerequisite")
+            layer = str(raw.get("layer") or "material")
+            if raw_relation == "model_common":
+                layer = "model_common"
+                raw_relation = "related"
             edges.append(
                 {
                     "prerequisite_id": source,
                     "dependent_id": target,
-                    "reason": str(raw.get("reason") or "Provider 从资料结构中识别的前置关系")[:600],
+                    "reason": str(
+                        raw.get("reason") or "Provider 从资料结构中识别的关系"
+                    )[: TEXT_LIMITS_POLICY.medium_text_characters],
+                    "relation": raw_relation,
+                    "layer": layer,
+                    # Provider output proposes relationships; only application
+                    # or explicit learner review can confirm them.
+                    "status": "pending",
+                    "confirmed": False,
+                    "source_chunk_ids": [str(item) for item in raw.get("source_chunk_ids") or []],
                 }
             )
     return nodes, edges, warnings
@@ -302,7 +396,7 @@ def calendar_capacities(receipt: dict[str, Any]) -> list[dict[str, Any]]:
             capacity = 0
             reason = "unavailable_date"
         elif iso in special and capacity > 0:
-            capacity = max(0, min(720, special[iso]))
+            capacity = max(0, min(SCHEDULING_POLICY.maximum_special_date_minutes, special[iso]))
             reason = "special_availability"
         result.append(
             {
@@ -344,7 +438,7 @@ def schedule_by_capacity(
         int(
             review_rounds
             if review_rounds is not None
-            else receipt.get("review_rounds") or 2
+            else receipt.get("review_rounds") or SCHEDULING_POLICY.default_review_rounds
         ),
     )
     day_cursor = 0
@@ -400,7 +494,7 @@ def schedule_by_capacity(
             if capacity_left <= 0:
                 day_cursor += 1
                 continue
-            minutes = min(remaining, capacity_left, 120)
+            minutes = min(remaining, capacity_left, SCHEDULING_POLICY.maximum_task_segment_minutes)
             append_part(day, minutes, part)
             remaining -= minutes
             remaining_total -= minutes

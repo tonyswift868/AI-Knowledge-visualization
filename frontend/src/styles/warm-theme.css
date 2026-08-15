@@ -22,6 +22,11 @@
   --warm-sand:#eadcc9;
   --warm-apricot:#f3cfa9;
   --warm-shadow:rgba(78,61,43,.11);
+  --pink:#c96f96;
+  --pink-strong:#a94f79;
+  --pink-soft:#fff0f5;
+  --pink-line:#edc2d3;
+  --pink-ink:#8d3f62;
 }
 html{background:#f5f0e7}
 body{
@@ -44,10 +49,10 @@ body{
 }
 .brand-mark{
   color:#fffdf7;
-  background:linear-gradient(145deg,#5d957a,#3e6f5a);
-  box-shadow:0 7px 18px rgba(65,113,91,.2);
+  background:linear-gradient(145deg,#d98eaf,#a94f79);
+  box-shadow:0 7px 18px rgba(169,79,121,.24);
 }
-.brand b{color:#2d3832}
+.brand b{color:#3b2b3f}
 .brand span,.space-switch span,.sidebar-bottom span{color:#817b72}
 .space-label,.eyebrow,.block-type,.risk-label{color:#8a7d6e}
 .space-switch{
@@ -62,15 +67,15 @@ body{
 }
 .sidebar nav button,.ghost{color:#716f68}
 .sidebar nav button:hover{
-  color:#355f4f;
-  background:#efe9dd;
+  color:var(--pink-ink);
+  background:#fff0f5;
 }
 .sidebar nav button.active{
-  color:#315f4d;
-  background:linear-gradient(90deg,#e0eee5,#ebf1e9);
-  box-shadow:inset 0 0 0 1px #c9dfd2;
+  color:var(--pink-ink);
+  background:linear-gradient(90deg,#ffe8f0,#fff5f8);
+  box-shadow:inset 0 0 0 1px var(--pink-line),0 6px 18px rgba(169,79,121,.08);
 }
-.sidebar nav button.active:before{background:#4f836b}
+.sidebar nav button.active:before{background:var(--pink)}
 .safety{
   color:#46765f;
   border-color:#ded4c6;
@@ -126,16 +131,17 @@ body{
   bottom:-145px;
   border:28px solid rgba(103,153,125,.09);
 }
+.hero:after{border-color:rgba(201,111,150,.13)}
 .hero>div{position:relative;z-index:1}
 .hero .eyebrow{
   display:inline-flex;
   align-items:center;
   gap:7px;
   padding:7px 10px;
-  border:1px solid #d6e4da;
+  border:1px solid var(--pink-line);
   border-radius:999px;
-  color:#4d7863;
-  background:#f4faf5;
+  color:var(--pink-ink);
+  background:var(--pink-soft);
   letter-spacing:.11em;
 }
 .hero h1,.create-intro h1,.page-title h1{color:#2e342f}
@@ -146,17 +152,17 @@ body{
   line-height:1.14;
   letter-spacing:-.065em;
 }
-.hero h1 em,.create-intro h1 em,.page-title h1 em{color:#4b7e66}
+.hero h1 em,.create-intro h1 em,.page-title h1 em{color:var(--pink-strong)}
 .hero p,.create-intro p,.page-title p{color:#716d65}
 .hero p{font-size:15px;line-height:1.85}
 .primary{
   color:#fffdf8;
-  background:linear-gradient(145deg,#5a9276,#44745f);
-  box-shadow:0 10px 24px rgba(67,116,94,.2);
+  background:linear-gradient(145deg,#d17e9f,#a94f79);
+  box-shadow:0 10px 24px rgba(169,79,121,.2);
 }
 .primary:hover{
   color:#fff;
-  background:linear-gradient(145deg,#68a084,#4d8069);
+  background:linear-gradient(145deg,#df91af,#b85d86);
   transform:translateY(-1px);
 }
 .secondary{
@@ -165,7 +171,13 @@ body{
   background:rgba(255,253,248,.9);
   box-shadow:0 7px 20px rgba(87,68,45,.06);
 }
-.secondary:hover{color:#355f4e;background:#fff;border-color:#bcd4c6}
+.secondary:hover{color:var(--pink-ink);background:#fff;border-color:var(--pink-line)}
+.dashboard-grid>.source-card{
+  border-color:var(--pink-line);
+  background:linear-gradient(145deg,#fffafc,#f8e8ee);
+}
+.dashboard-grid>.source-card .card-kicker,.dashboard-grid>.source-card svg{color:var(--pink-ink)}
+.pill.pink-pill{color:var(--pink-ink);border-color:var(--pink-line);background:var(--pink-soft)}
 .text-button{color:#4b7e66}
 .hero-orbit{width:350px;height:300px}
 .orbit{
@@ -290,3 +302,81 @@ body{
   .hero h1{font-size:34px}
   .hero-actions{flex-wrap:wrap}
 }
+
+/*
+ * Gentle product surface
+ *
+ * The component structure stays local to MentorFlow; these final tokens borrow
+ * the open-source design-system pattern used by Radix/Cloudscape-style apps:
+ * one neutral canvas, one semantic accent, predictable focus rings, and a
+ * restrained elevation scale.  Keeping the layer here means every existing
+ * page (including the teacher and planning tools) receives the same calmer
+ * treatment without duplicating colors in feature CSS.
+ */
+:root{
+  --mf-canvas:#f7f4ee;
+  --mf-surface:#fffdfa;
+  --mf-surface-soft:#f3eee6;
+  --mf-ink:#303833;
+  --mf-muted:#77766e;
+  --mf-line:#e3dbcf;
+  --mf-accent:#c5678f;
+  --mf-accent-strong:#a94f79;
+  --mf-accent-soft:#fdebf2;
+  --mf-accent-wash:#fff6f9;
+  --mf-shadow:0 10px 28px rgba(86,70,51,.07);
+}
+html,body{background:var(--mf-canvas)}
+body{
+  color:var(--mf-ink);
+  background:
+    radial-gradient(circle at 88% -8%,rgba(239,218,194,.38),transparent 29rem),
+    radial-gradient(circle at 16% 12%,rgba(224,237,226,.34),transparent 26rem),
+    var(--mf-canvas);
+}
+button,input,textarea,select{transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,color .16s ease,transform .16s ease}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{
+  outline:3px solid rgba(88,138,114,.24);
+  outline-offset:2px;
+}
+.sidebar{
+  background:rgba(255,253,249,.96);
+  border-right-color:var(--mf-line);
+  box-shadow:8px 0 26px rgba(86,70,51,.045);
+}
+.sidebar nav{gap:7px}
+.sidebar nav button{min-height:42px;border-radius:12px;color:#77766f}
+.sidebar nav button:hover{background:var(--mf-accent-soft);color:var(--mf-accent-strong)}
+.sidebar nav button.active{background:linear-gradient(90deg,#fde7f0,#fff7fa);color:var(--mf-accent-strong);box-shadow:inset 0 0 0 1px #edc2d3,0 6px 18px rgba(169,79,121,.08)}
+.sidebar nav button.active:before{background:var(--mf-accent)}
+.main{background:linear-gradient(180deg,rgba(255,253,249,.32),rgba(247,244,238,.7))}
+.topbar{background:rgba(255,253,249,.8);border-bottom-color:var(--mf-line)}
+.content{padding-top:46px}
+.page-title h1,.hero h1,.create-intro h1{font-weight:750;letter-spacing:-.045em}
+.page-title p,.hero p,.create-intro p{color:var(--mf-muted);line-height:1.8}
+.hero{border-radius:28px;box-shadow:0 18px 48px rgba(86,70,51,.08);background:linear-gradient(135deg,#fffdfa 0,#fbf5eb 60%,#f7eadb 100%)}
+.card,.goal-card,.signal-card,.source-card,.plan-summary,.calendar-mini,.full-calendar-panel,.form-panel,.stat-card,.empty-state,.tutor-panel,.lesson-stage{
+  border-color:var(--mf-line);
+  box-shadow:var(--mf-shadow);
+}
+.card,.goal-card,.signal-card,.source-card,.plan-summary,.calendar-mini,.full-calendar-panel,.form-panel,.stat-card{border-radius:16px}
+.primary{background:linear-gradient(145deg,#d17e9f,#a94f79);box-shadow:0 7px 16px rgba(169,79,121,.16)}
+.primary:hover{background:linear-gradient(145deg,#df91af,#b85d86);transform:translateY(-1px);box-shadow:0 9px 20px rgba(169,79,121,.2)}
+.secondary{color:#5d4e55;background:#fffdfa;border-color:#d9d1c6;box-shadow:0 5px 14px rgba(86,70,51,.045)}
+.secondary:hover{color:var(--mf-accent-strong);background:#fff7fa;border-color:#edc2d3}
+.form-panel input,.form-panel textarea,.form-panel select,.provider-form input,.provider-form select,
+.source-import-row>input,.chat-compose{border-color:#d9d1c6;background:#fffdfa}
+.form-panel input:focus,.form-panel textarea:focus,.form-panel select:focus,.provider-form input:focus,.provider-form select:focus,.source-import-row>input:focus,.chat-compose:focus-within{
+  border-color:#d795b2;
+  box-shadow:0 0 0 3px rgba(197,103,143,.14);
+}
+.tutor-panel,.lesson-stage{background:#fffdfa}
+.tutor-header{border-bottom-color:var(--mf-line)}
+.tutor-welcome{background:#fff3f7;border-color:#edc2d3;color:#7c4760}
+.bubble.tutor{background:#f5f1ea;color:#4b504b}
+.bubble.user{background:#fdebf2;color:#713d57}
+.chat-compose{background:#fffdfa}
+.chat-compose textarea{color:var(--mf-ink)}
+.source-row,.citation-card,.source-import-panel{background:linear-gradient(145deg,#fffafc,#f9edf2);border-color:#edc2d3}
+.source-row{border-radius:12px}
+.toast{background:#a94f79;border-color:#d795b2}

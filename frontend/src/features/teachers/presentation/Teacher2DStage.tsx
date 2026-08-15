@@ -39,6 +39,7 @@ type Props = {
   teacherName?: string
   state?: TeacherPresentationState | string
   compact?: boolean
+  cameraPreset?: CameraPreset
   manifestUrl?: string
   skin?: string
   onSkinChange?: (skin: string) => void
@@ -52,7 +53,7 @@ function initiallyReducedMotion(): boolean {
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
-export function Teacher2DStage({ teacherName = "艾莉丝", state = "idle", compact = false, manifestUrl = DEFAULT_TEACHER_MANIFEST_URL, skin, onSkinChange, onRuntimeChange, controllerFactory }: Props) {
+export function Teacher2DStage({ teacherName = "艾莉丝", state = "idle", compact = false, cameraPreset, manifestUrl = DEFAULT_TEACHER_MANIFEST_URL, skin, onSkinChange, onRuntimeChange, controllerFactory }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const controllerRef = useRef<TeacherPresentationController | null>(null)
   const skinRef = useRef(skin)
@@ -61,7 +62,7 @@ export function Teacher2DStage({ teacherName = "艾莉丝", state = "idle", comp
   const [paused, setPaused] = useState(initiallyReducedMotion)
   const [mirrored, setMirrored] = useState(false)
   const [debug, setDebug] = useState(false)
-  const defaultCameraPreset: CameraPreset = compact ? "half" : "full"
+  const defaultCameraPreset: CameraPreset = cameraPreset || (compact ? "half" : "full")
   const [camera, setCamera] = useState<TeacherCamera>(() => ({ preset: defaultCameraPreset, ...cameraPresets[defaultCameraPreset] }))
   const cameraRef = useRef(camera)
   const [selectedAnimation, setSelectedAnimation] = useState("")
@@ -120,9 +121,10 @@ export function Teacher2DStage({ teacherName = "艾莉丝", state = "idle", comp
     skinRef.current = skin
     if (!skin) return
     if (snapshot.skins.length && !snapshot.skins.includes(skin)) return
+    if (selectedSkin === skin) return
     setSelectedSkin(skin)
     controllerRef.current?.setSkin(skin)
-  }, [skin, snapshot.skins])
+  }, [selectedSkin, skin, snapshot.skins])
   useEffect(() => {
     if (snapshot.status !== "ready" || !snapshot.skins.length) return
     const requested = skinRef.current
@@ -131,7 +133,8 @@ export function Teacher2DStage({ teacherName = "艾莉丝", state = "idle", comp
       : snapshot.skins.includes(selectedSkin)
         ? selectedSkin
         : snapshot.skins[0]
-    if (next !== selectedSkin) setSelectedSkin(next)
+    if (next === selectedSkin) return
+    setSelectedSkin(next)
     controllerRef.current?.setSkin(next)
   }, [selectedSkin, snapshot.skins, snapshot.status])
 

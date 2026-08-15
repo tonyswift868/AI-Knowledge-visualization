@@ -40,6 +40,37 @@ def test_health_and_workspace_crud(client):
     assert client.patch(f"/api/workspaces/{ws['id']}", json={"title":"新标题"}).json()["title"] == "新标题"
 
 
+def test_legacy_source_upload_uses_the_canonical_conversion_registry(client):
+    ws = make_workspace(client)
+    response = client.post(
+        f"/api/workspaces/{ws['id']}/sources/upload",
+        files={
+            "file": (
+                "pretty.json",
+                b'{\n  "arbitrary": {\n    "sentinel": "REGISTRY-742"\n  }\n}',
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["conversion"]["adapter"] == "native-structured-data"
+    detail = client.get(f"/api/sources/{payload['id']}").json()
+    assert any("REGISTRY-742" in item["text"] for item in detail["chunks"])
+
+
+def test_legacy_source_upload_rejects_unknown_format_explicitly(client):
+    ws = make_workspace(client)
+    response = client.post(
+        f"/api/workspaces/{ws['id']}/sources/upload",
+        files={"file": ("unknown.xyz", b"arbitrary bytes", "application/x-unknown")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "UNSUPPORTED_FORMAT"
+
+
 def test_source_goal_feasibility_plan_and_task(client):
     ws = make_workspace(client)
     source = client.post(f"/api/workspaces/{ws['id']}/sources/text", json={"title":"资料一","text":"# 关键概念\n\n这是一个足够长的真实资料片段，用于建立可以被引用的知识证据。"})
@@ -102,7 +133,7 @@ def test_conflict_endpoint_returns_both_evidence_metadata(client):
 
 
 def test_provider_key_not_persisted(client):
-    result = client.post("/api/providers/test", json={"provider":"fake","api_key":"do-not-store"})
+    result = client.post("/api/providers/test", json={"provider":"fake"})
     assert result.status_code == 200 and result.json()["ok"] is True
 
 
@@ -201,6 +232,48 @@ def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
     response = client.post("/api/presets", json={"name": "junction-escape", "directory": str(junction), "form": {}})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+
+
+def test_authenticated_accounts_get_isolated_preset_directories(client, tmp_path, monkeypatch):
+    from app import main as main_module
+
+    monkeypatch.setenv("MENTORFLOW_AUTH_REQUIRED", "1")
+    monkeypatch.setattr(main_module, "PRESET_SETTINGS_FILE", tmp_path / "preset_settings.json")
+    first = client.post(
+        "/api/auth/register",
+        json={
+            "username": "Preset_Owner",
+            "display_name": "预设所有者",
+            "password": "Correct-Horse-42",
+            "claim_existing_data": True,
+        },
+    )
+    assert first.status_code == 201, first.text
+    saved = client.post(
+        "/api/presets",
+        json={"name": "Owner Only", "form": {"title": "private"}},
+    )
+    assert saved.status_code == 200, saved.text
+    legacy_directory = saved.json()["directory"]
+    assert client.post("/api/auth/logout").status_code == 204
+
+    second = client.post(
+        "/api/auth/register",
+        json={
+            "username": "Preset_Other",
+            "display_name": "另一个账户",
+            "password": "Another-Horse-43",
+            "claim_existing_data": False,
+        },
+    )
+    assert second.status_code == 201, second.text
+    assert client.get("/api/presets").json()["presets"] == []
+    denied = client.post(
+        "/api/presets",
+        json={"name": "escape", "directory": legacy_directory, "form": {}},
+    )
+    assert denied.status_code == 400
+    assert denied.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
 
 
 def test_kks_routes_report_explicit_unavailable_capability(client):

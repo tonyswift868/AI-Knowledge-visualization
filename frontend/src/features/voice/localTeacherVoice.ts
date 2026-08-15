@@ -46,12 +46,6 @@ const PROGRESSIVE_CHUNK_MAX_CHARS = 220
 let cachedVoiceBytes = 0
 
 const normalizeTeacherVoiceCode = (value: string): string => value
-  .replace(/\bfast\.next\.next\b/gi, "快指针连续向前两步")
-  .replace(/\bslow\.next\b/gi, "慢指针向前一步")
-  .replace(/\bhead\.next\b/gi, "头节点的下一个节点")
-  .replace(/\bself\.val\b/gi, "自身的值")
-  .replace(/\bself\.next\b/gi, "自身的下一个节点")
-  .replace(/\bListNode\b/g, "链表节点")
   .replace(/\b__init__\b/g, "初始化")
   .replace(/\bNone\b/g, "空值")
   .replace(/\bTrue\b/g, "真")
@@ -62,10 +56,8 @@ const normalizeTeacherVoiceCode = (value: string): string => value
   .replace(/!=/g, " 不等于 ")
   .replace(/<=/g, " 小于等于 ")
   .replace(/>=/g, " 大于等于 ")
-  .replace(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g, "$1 的 $2")
+  .replace(/\.([A-Za-z_]\w*)\b/g, " 的 $1")
   .replace(/\bself\b/g, "自身")
-  .replace(/\bnext\b/g, "下一个节点")
-  .replace(/\bval\b/g, "值")
   .replace(/([a-z])([A-Z])/g, "$1 $2")
   .replace(/[_()[\]{}]/g, " ")
   .replace(/[:;,]/g, "，")
@@ -82,10 +74,6 @@ export function normalizeTeacherVoiceText(text: string): string {
   return source
     .replace(/```[^\n]*\n?[\s\S]*?```/g, "。")
     .replace(/`([^`\n]+)`/g, (_match, code: string) => ` ${normalizeTeacherVoiceCode(code)} `)
-    .replace(/\bfast\.next\.next\b/gi, "快指针连续向前两步")
-    .replace(/\bslow\.next\b/gi, "慢指针向前一步")
-    .replace(/\bhead\.next\b/gi, "头节点的下一个节点")
-    .replace(/\bListNode\b/g, "链表节点")
     .replace(/\bNone\b/g, "空值")
     .replace(/\bTrue\b/g, "真")
     .replace(/\bFalse\b/g, "假")

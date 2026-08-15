@@ -234,8 +234,8 @@ describe("teacher voice", () => {
       "先看 `ListNode`，`fast.next.next` 表示快指针。\n\n```python\nreturn None\n```",
     )
 
-    expect(normalized).toContain("链表节点")
-    expect(normalized).toContain("快指针连续向前两步")
+    expect(normalized).toContain("List Node")
+    expect(normalized).toContain("fast 的 next 的 next")
     expect(normalized).not.toContain("```")
     expect(normalized).not.toContain("fast.next.next")
   })

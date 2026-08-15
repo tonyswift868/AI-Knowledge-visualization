@@ -38,6 +38,10 @@ const lifecycleCopy: Record<VoicePackLifecycle, { label: string; detail: string 
     label: "未安装",
     detail: "下载离线教师声包后会自动设为默认；没有可用声包时只保留文字。",
   },
+  not_found: {
+    label: "未找到",
+    detail: "当前项目和已注册目录中没有可用教师声包；可以下载可用声包，或选择本地目录匹配。",
+  },
   installing: {
     label: "安装中",
     detail: "正在把声包安全写入本机，请保持此页面打开。",
@@ -77,6 +81,25 @@ function jobIsPending(job: TeacherVoiceJob | null): boolean {
   return Boolean(job && ["installing", "verifying"].includes(job.lifecycle))
 }
 
+type LocalVoiceSelection = {
+  matched: boolean
+  path: string
+  fileCount: number
+}
+
+function localFilePath(file: File): string {
+  const candidate = file as File & { webkitRelativePath?: string }
+  return String(candidate.webkitRelativePath || file.name || "").trim()
+}
+
+function matchesLocalVoicePack(file: File): boolean {
+  const path = localFilePath(file).toLowerCase()
+  if (!path) return false
+  const hasVoiceIdentity = /(mentorflow-original-iris|teacher|voice|tts|sovits|qwen)/.test(path)
+  const isPackFile = /\.(zip|7z|tar|gz|json|onnx|pt|pth|safetensors|bin|ckpt|yaml|yml|wav)$/i.test(path)
+  return hasVoiceIdentity && isPackFile
+}
+
 export function VoicePackSettings() {
   const mountedRef = useRef(true)
   const refreshGenerationRef = useRef(0)
@@ -88,6 +111,8 @@ export function VoicePackSettings() {
   const [action, setAction] = useState("")
   const [notice, setNotice] = useState("")
   const [error, setError] = useState("")
+  const [localSelection, setLocalSelection] = useState<LocalVoiceSelection | null>(null)
+  const localPickerRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -229,6 +254,7 @@ export function VoicePackSettings() {
     if (status?.activePack?.packId && status.activePack.version) return "ready"
     if (packs.some(pack => pack.state === "installed" || pack.state === "active")) return "installed"
     if (packs.some(pack => pack.state === "failed")) return "error"
+    if (!packs.length) return "not_found"
     return "not_installed"
   }, [error, job, loading, packs, status?.activePack])
 
@@ -338,6 +364,16 @@ export function VoicePackSettings() {
     }
   }
 
+  const chooseLocalVoicePack = (files: FileList | null) => {
+    const selected = Array.from(files || [])
+    const match = selected.find(matchesLocalVoicePack)
+    setLocalSelection({
+      matched: Boolean(match),
+      path: match ? localFilePath(match) : "",
+      fileCount: selected.length,
+    })
+  }
+
   return (
     <section className="voice-pack-settings" data-testid="voice-pack-settings" aria-labelledby="voice-pack-title">
       <div className="voice-pack-settings__header">
@@ -425,7 +461,38 @@ export function VoicePackSettings() {
           )
         })}
         {!loading && packs.length === 0 && (
-          <div className="voice-pack-settings__empty">当前没有可安装的教师声包，请稍后刷新。文字回复仍可正常使用。</div>
+          <div className="voice-pack-settings__empty">
+            <b>未找到可安装的教师声包</b>
+            <span>文字回复仍可正常使用。你可以选择本地声包目录，或等待后端注册可下载版本。</span>
+          </div>
+        )}
+      </div>
+
+      <div className="voice-pack-settings__local" data-testid="voice-local-resource-picker">
+        <div>
+          <b>从本地匹配教师声包</b>
+          <small>选择声包 ZIP、模型文件，或包含声包文件的目录；浏览器只读取文件名来匹配，不会上传原始文件。</small>
+        </div>
+        <button className="secondary voice-pack-settings__local-picker" type="button" onClick={() => localPickerRef.current?.click()}>
+          选择本地声包或目录
+        </button>
+        <input
+          ref={localPickerRef}
+          className="voice-pack-settings__local-picker-input"
+          data-testid="voice-pack-local-picker"
+          aria-label="本地声包文件和目录"
+          type="file"
+          multiple
+          accept=".zip,.7z,.tar,.gz,.json,.onnx,.pt,.pth,.safetensors,.bin,.ckpt,.yaml,.yml,.wav"
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+          onChange={event => chooseLocalVoicePack(event.currentTarget.files)}
+        />
+        {localSelection && (
+          <div className="voice-pack-settings__local-state" data-testid="voice-local-resource-state" role="status">
+            {localSelection.matched
+              ? `已匹配本地候选：${localSelection.path}（${localSelection.fileCount} 个文件，尚未导入）`
+              : `未找到可识别的教师声包（已检查 ${localSelection.fileCount} 个文件）`}
+          </div>
         )}
       </div>
 

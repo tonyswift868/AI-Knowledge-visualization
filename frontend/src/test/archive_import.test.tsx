@@ -23,9 +23,14 @@ function mockFetch(importResponse: any = { imported: [], duplicates: [], failed:
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('V6 secure ZIP import UI', () => {
-  it('accept includes zip and all first-party text formats', () => {
+  it('derives accept from the canonical material capability response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(
+      String(url).includes('/material-capabilities')
+        ? { registry: { capabilities: [{ available: true, rejected: false, suffixes: ['.zip', '.markdown'], mime_types: ['application/zip'] }] } }
+        : [],
+    ), { status: 200 }))))
     render(<SourceImportPanel ws={{ id: 'w1' } as any} text="source" />)
-    expect(screen.getByTestId('file-input')).toHaveAttribute('accept', expect.stringContaining('.zip'))
+    await waitFor(() => expect(screen.getByTestId('file-input')).toHaveAttribute('accept', expect.stringContaining('.zip')))
     expect(screen.getByTestId('file-input')).toHaveAttribute('accept', expect.stringContaining('.markdown'))
   })
 

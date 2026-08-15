@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import json
 import base64
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
+from pydantic import BaseModel
+
+from .knowledge_policy import PROVIDER_POLICY
+
+
+StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 
 PROVIDER_TIMEOUT = httpx.Timeout(
-    timeout=90.0,
-    connect=10.0,
-    write=30.0,
-    pool=10.0,
+    timeout=PROVIDER_POLICY.total_timeout_seconds,
+    connect=PROVIDER_POLICY.connect_timeout_seconds,
+    write=PROVIDER_POLICY.write_timeout_seconds,
+    pool=PROVIDER_POLICY.pool_timeout_seconds,
 )
 
 
@@ -128,6 +134,26 @@ class Provider:
         cause = ValueError("Provider JSON must be an object")
         raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502) from cause
 
+    async def structured(
+        self,
+        messages: list[dict[str, Any]],
+        response_model: type[StructuredModel],
+        temperature: float = 0.2,
+    ) -> StructuredModel:
+        """Validate adapter JSON against the application-owned Pydantic schema."""
+
+        try:
+            return response_model.model_validate(await self.json(messages, temperature))
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_STRUCTURED_OUTPUT_INVALID",
+                "Provider 结构化输出不符合知识地图协议",
+                502,
+                {"provider": self.provider_name},
+            ) from exc
+
 
 class FakeProvider(Provider):
     provider_name = "fake"
@@ -190,12 +216,23 @@ class HTTPProvider(Provider):
 class OpenAICompatibleProvider(HTTPProvider):
     provider_name = "openai_compatible"
 
-    def completions_url(self) -> str:
+    def api_base_url(self) -> str:
+        """Return the OpenAI SDK base URL matching ``completions_url``.
+
+        Users may enter a server root, an OpenAI-style ``/v1`` root, or the
+        complete chat-completions endpoint.  The handwritten transport has
+        historically accepted all three, so Instructor must preserve that
+        contract instead of silently calling a different route.
+        """
+
         if self.base_url.endswith("/chat/completions"):
-            return self.base_url
+            return self.base_url.removesuffix("/chat/completions")
         if self.base_url.endswith("/v1"):
-            return self.base_url + "/chat/completions"
-        return self.base_url + "/v1/chat/completions"
+            return self.base_url
+        return self.base_url + "/v1"
+
+    def completions_url(self) -> str:
+        return self.api_base_url() + "/chat/completions"
 
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         response = await self.request("POST", self.completions_url(), headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"}, json={"model": self.model, "messages": messages, "temperature": temperature})
@@ -207,6 +244,41 @@ class OpenAICompatibleProvider(HTTPProvider):
             return str(payload["choices"][0]["message"]["content"])
         except Exception as exc:
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "OpenAI-compatible 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
+
+    async def structured(
+        self,
+        messages: list[dict[str, Any]],
+        response_model: type[StructuredModel],
+        temperature: float = 0.2,
+    ) -> StructuredModel:
+        """Use Instructor retries/schema transport on the existing Provider config."""
+
+        try:
+            import instructor
+            from openai import AsyncOpenAI
+
+            client = instructor.from_openai(
+                AsyncOpenAI(api_key=self.key, base_url=self.api_base_url(), timeout=PROVIDER_TIMEOUT),
+                mode=instructor.Mode.JSON,
+            )
+            result = await client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                response_model=response_model,
+                temperature=temperature,
+                max_retries=PROVIDER_POLICY.structured_max_retries,
+            )
+            self.last_model = self.model
+            return result
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_STRUCTURED_OUTPUT_INVALID",
+                "OpenAI-compatible Provider 未能返回可验证结构",
+                502,
+                {"provider": self.provider_name, "model": self.model},
+            ) from exc
 
     async def vision(
         self,

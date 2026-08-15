@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app import credential_store
+from app import generic_knowledge_api as generic_api
 from app.main import app
 from app.orm import configure_orm
 from app.provider_runtime import (
@@ -30,6 +34,144 @@ MATERIAL = """### 1. 两数之和
 """
 
 
+class _StateMapProvider:
+    async def json(self, messages):
+        prompt = json.loads(messages[-1]["content"])
+        chunks = prompt["chunks"]
+        first = chunks[0]["chunk_id"]
+        second = chunks[-1]["chunk_id"]
+        all_chunks = [item["chunk_id"] for item in chunks]
+        return {
+            "knowledge_points": [
+                {
+                    "id": "state-theme",
+                    "name": "资料主题",
+                    "explanation": "资料中的算法学习主题。",
+                    "node_type": "theme",
+                    "layer": "material",
+                    "source_chunk_ids": all_chunks,
+                },
+                {
+                    "id": "two-sum",
+                    "name": "两数之和",
+                    "explanation": "使用哈希映射记录已经访问的值。",
+                    "node_type": "concept",
+                    "layer": "material",
+                    "source_chunk_ids": [first],
+                    "acceptance_method": "独立编码并解释一次遍历。",
+                    "estimated_task_minutes": 40,
+                },
+                {
+                    "id": "three-sum",
+                    "name": "三数之和",
+                    "explanation": "排序后使用双指针并去重。",
+                    "node_type": "concept",
+                    "layer": "material",
+                    "source_chunk_ids": [second],
+                    "acceptance_method": "独立处理去重和边界。",
+                    "estimated_task_minutes": 60,
+                },
+            ],
+            "dependencies": [
+                {
+                    "prerequisite_id": "state-theme",
+                    "dependent_id": "two-sum",
+                    "relation": "contains",
+                    "layer": "material",
+                    "source_chunk_ids": [first],
+                },
+                {
+                    "prerequisite_id": "state-theme",
+                    "dependent_id": "three-sum",
+                    "relation": "contains",
+                    "layer": "material",
+                    "source_chunk_ids": [second],
+                },
+                {
+                    "prerequisite_id": "two-sum",
+                    "dependent_id": "three-sum",
+                    "relation": "prerequisite",
+                    "layer": "material",
+                    "source_chunk_ids": [second],
+                },
+            ],
+        }
+
+
+@pytest.fixture(autouse=True)
+def _state_map_provider(monkeypatch):
+    monkeypatch.setattr(generic_api, "provider_for_session", lambda _session: _StateMapProvider())
+
+
+def _activate_v1_plan(client: TestClient, workspace_id: str, material_id: str) -> str:
+    provider = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "state-map-provider",
+            "credential_ref": credential_store.store_secret("test-only-key"),
+        }
+    )
+    provider_session = get_provider_session(provider["provider_session_id"])
+    assert provider_session is not None
+    provider_session.verified = True
+    queued = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/jobs",
+        json={
+            "provider_session_id": provider["provider_session_id"],
+            "material_ids": [material_id],
+        },
+    )
+    assert queued.status_code == 202, queued.text
+    job = queued.json()
+    for _ in range(300):
+        if job.get("status") in {"ready", "ready_with_review", "failed", "cancelled"}:
+            break
+        time.sleep(0.01)
+        job_response = client.get(
+            f"/api/active-teaching/knowledge-map/jobs/{job['id']}"
+        )
+        assert job_response.status_code == 200, job_response.text
+        job = job_response.json()
+    assert job.get("status") in {"ready", "ready_with_review"}, job
+    while True:
+        candidates_response = client.get(
+            f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/candidates"
+        )
+        assert candidates_response.status_code == 200, candidates_response.text
+        pending = [
+            item
+            for item in candidates_response.json().get("candidates", [])
+            if item.get("status") == "pending" and item.get("candidate_type") == "edge"
+        ]
+        if not pending:
+            break
+        decision = client.post(
+            f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/"
+            f"candidates/{pending[0]['id']}/decision",
+            json={"decision": "confirmed", "reason": "v1 contract regression"},
+        )
+        assert decision.status_code == 200, decision.text
+    graph = client.get(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map",
+        params={"revision": "active"},
+    )
+    assert graph.status_code == 200, graph.text
+    preview = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/mastery-plans/preview",
+        json={"revision": graph.json()["revision"]},
+    )
+    assert preview.status_code == 200, preview.text
+    activation = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/mastery-plans/"
+        f"{preview.json()['preview_id']}/activate",
+        json={"confirm_extension": True},
+    )
+    assert activation.status_code == 200, activation.text
+    assert activation.json()["status"] == "active"
+    return preview.json()["preview_id"]
+
+
 def _bootstrap(client: TestClient) -> tuple[str, str]:
     material = client.post(
         "/api/active-teaching/workspaces/state/materials",
@@ -47,10 +189,9 @@ def _bootstrap(client: TestClient) -> tuple[str, str]:
             "material_ids": [material["id"]],
         },
     )
-    client.post("/api/active-teaching/workspaces/state/knowledge-graph/generate")
-    plan = client.post("/api/active-teaching/workspaces/state/plans/generate").json()
+    plan_id = _activate_v1_plan(client, "state", material["id"])
     session = client.post("/api/active-teaching/workspaces/state/sessions/start").json()
-    return plan["id"], session["session_id"]
+    return plan_id, session["session_id"]
 
 
 def _bootstrap_without_session(client: TestClient) -> str:
@@ -70,10 +211,7 @@ def _bootstrap_without_session(client: TestClient) -> str:
             "material_ids": [material["id"]],
         },
     )
-    client.post(
-        "/api/active-teaching/workspaces/provider-teacher/knowledge-graph/generate"
-    )
-    client.post("/api/active-teaching/workspaces/provider-teacher/plans/generate")
+    _activate_v1_plan(client, "provider-teacher", material["id"])
     return material["id"]
 
 
@@ -84,21 +222,28 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
         opening = client.get(
             f"/api/active-teaching/sessions/{session_id}"
         ).json()
-        assert opening["messages"][-1]["action"] == "daily_briefing"
+        assert opening["messages"][-1]["action"] == "teacher_turn_v1_opening"
         assert opening["state"]["autonomy"] == {
             "mode": "teacher_led_dialogue",
             "awaiting_learner": True,
             "reason": "learner_can_interrupt",
         }
-        assert "只看第一个" in opening["messages"][-1]["content"]
-        assert "A．完全没写过代码" in opening["messages"][-1]["content"]
+        turn = opening["state"]["teacher_turn_v1"]
+        assert [block["type"] for block in turn["blocks"]] == [
+            "objective",
+            "explanation",
+            "analogy",
+            "worked_example",
+        ]
+        assert turn["check"]["prompt"]
+        assert turn["state"]["waiting_for_answer"] is True
 
         explanation = client.post(
             f"/api/active-teaching/sessions/{session_id}/teach-next",
             json={},
         )
         assert explanation.status_code == 200, explanation.text
-        assert explanation.json()["messages"][-1]["action"] == "explain"
+        assert explanation.json()["messages"] == opening["messages"]
         assert explanation.json()["state"]["autonomy"]["awaiting_learner"] is True
 
         invitation = client.post(
@@ -107,38 +252,21 @@ def test_teacher_leads_one_readable_turn_then_always_allows_learner_input(tmp_pa
         )
         assert invitation.status_code == 200, invitation.text
         assert len(invitation.json()["messages"]) == len(explanation.json()["messages"])
-        assert invitation.json()["messages"][-1]["action"] == "explain"
-        assert invitation.json()["state"]["current_teaching_step"] == "concept_check"
+        assert invitation.json()["messages"][-1]["action"] == "teacher_turn_v1_opening"
         assert invitation.json()["state"]["autonomy"]["awaiting_learner"] is True
         assert invitation.json()["state"]["formal_review_gate"]["unlocked"] is False
 
-        answer = client.post(
+        correction = client.post(
             f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "为什么这里要使用哈希映射？"},
+            json={"message": "我还不理解这里的对象和关系。"},
         )
-        assert answer.status_code == 200, answer.text
-        assert answer.json()["messages"][-1]["action"] == "grounded_answer"
-        assert answer.json()["messages"][-1]["citations"]
-        assert "为什么这里要使用哈希映射" in answer.json()["messages"][-1]["content"]
-        assert "直接回答" in answer.json()["messages"][-1]["content"]
-        assert answer.json()["state"]["current_teaching_step"] == "question_invitation"
-        assert answer.json()["state"]["autonomy"] == {
-            "mode": "teacher_led_question_dialogue",
-            "awaiting_learner": True,
-            "reason": "follow_up_question_invited",
-        }
-
-        practice = client.post(
-            f"/api/active-teaching/sessions/{session_id}/advance",
-            json={"message": "没有问题了，开始练习"},
+        assert correction.status_code == 200, correction.text
+        corrected = correction.json()
+        assert corrected["state"]["teacher_turn_v1"]["state"]["phase"] == (
+            "targeted_correction"
         )
-        assert practice.status_code == 200, practice.text
-        assert practice.json()["messages"][-1]["action"] == "guided_practice"
-        assert practice.json()["state"]["current_teaching_step"] == "check_understanding"
-        assert practice.json()["state"]["autonomy"]["reason"] == "learner_practice_required"
-        assert len(practice.json()["messages"]) == 6
-        assert practice.json()["state"]["today_plan"]["task_count"] > 0
-        assert practice.json()["state"]["today_plan"]["knowledge_point_count"] > 0
+        assert corrected["state"]["teacher_turn_v1"]["state"]["waiting_for_answer"] is True
+        assert corrected["state"]["mastery_changed"] is False
 
 
 def test_daily_briefing_accepts_a_baseline_reply_and_pauses_after_one_explanation(tmp_path):
@@ -209,7 +337,7 @@ def test_real_provider_may_answer_stable_general_question_without_fake_citations
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "general-knowledge-test",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])
@@ -330,7 +458,7 @@ def test_verified_external_result_completes_all_initial_steps_for_current_point(
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "external-result-test",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])
@@ -416,7 +544,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "teaching-expression-test",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])
@@ -540,7 +668,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
                 "provider": "openai-compatible",
                 "base_url": "https://example.invalid",
                 "model": "teaching-expression-test",
-                "api_key": "test-only-key",
+                "credential_ref": credential_store.store_secret("test-only-key"),
             }
         )
         replacement_session = get_provider_session(
@@ -569,7 +697,7 @@ def test_real_provider_is_expression_only_and_state_machine_keeps_control(tmp_pa
                 "provider": "openai-compatible",
                 "base_url": "https://example.invalid",
                 "model": "different-evaluator",
-                "api_key": "test-only-key",
+                "credential_ref": credential_store.store_secret("test-only-key"),
             }
         )
         other_session = get_provider_session(other_public["provider_session_id"])
@@ -607,7 +735,7 @@ def test_stale_expression_provider_does_not_strand_a_durable_lesson(tmp_path, mo
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "teaching-expression-test",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])
@@ -644,7 +772,7 @@ def test_stale_expression_provider_does_not_strand_a_durable_lesson(tmp_path, mo
                 "provider": "openai-compatible",
                 "base_url": "https://example.invalid",
                 "model": "teaching-expression-test",
-                "api_key": "test-only-key",
+                "credential_ref": credential_store.store_secret("test-only-key"),
             }
         )
         replacement = get_provider_session(replacement_public["provider_session_id"])
@@ -668,7 +796,7 @@ def test_provider_high_score_cannot_bypass_required_grounded_prechecks(tmp_path,
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "overly-permissive-evaluator",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])
@@ -847,7 +975,7 @@ def test_persisted_review_queue_executes_two_complete_review_rounds(
             "provider": "openai-compatible",
             "base_url": "https://example.invalid",
             "model": "review-cycle-evaluator",
-            "api_key": "test-only-key",
+            "credential_ref": credential_store.store_secret("test-only-key"),
         }
     )
     provider_session = get_provider_session(public["provider_session_id"])

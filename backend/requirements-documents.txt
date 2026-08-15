@@ -1,0 +1,2 @@
+# Optional complex-document conversion runtime. Core text/code adapters do not need it.
+docling==2.119.0

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
 import mimetypes
 import os
-import sys
 import threading
 import time
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from . import asr_supervisor
 from .conversion_adapters import ConversionBudget, ConversionRegistry, ConversionSource
 
 
@@ -38,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CLASSROOM_ASR_UPLOAD_ROOT = Path(
     os.getenv(
         "MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT",
-        str(PROJECT_ROOT / "tmp" / "classroom-asr"),
+        str(asr_supervisor.upload_root()),
     )
 ).expanduser()
 
@@ -203,8 +202,6 @@ def extract_attachment_text(
     )
 
 
-_ASR_LOCK = threading.Lock()
-_ASR_MODULE: Any | None = None
 _OCR_LOCK = threading.Lock()
 _OCR_ENGINE: Any | None = None
 
@@ -248,43 +245,11 @@ def extract_image_text(
     return "\n".join(texts)[:budget], "rapidocr_ppocrv6"
 
 
-def _ai_agent_root() -> Path:
-    configured = str(os.getenv("MENTORFLOW_AI_AGENT_ROOT") or "").strip()
-    if not configured:
-        raise RuntimeError("本地 SenseVoice 组件未配置；请设置 MENTORFLOW_AI_AGENT_ROOT")
-    return Path(configured).expanduser().resolve()
-
-
-def _load_ai_agent_asr() -> Any:
-    global _ASR_MODULE
-    if _ASR_MODULE is not None:
-        return _ASR_MODULE
-    with _ASR_LOCK:
-        if _ASR_MODULE is not None:
-            return _ASR_MODULE
-        root = _ai_agent_root()
-        module_path = root / "agent_core" / "local_asr_sensevoice_client.py"
-        if not module_path.is_file():
-            raise RuntimeError("本地 SenseVoice 组件尚未安装")
-        spec = importlib.util.spec_from_file_location(
-            "mentorflow_shared_sensevoice_client",
-            module_path,
-        )
-        if not spec or not spec.loader:
-            raise RuntimeError("无法加载本地 SenseVoice 组件")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-        _ASR_MODULE = module
-        return module
-
-
 def classroom_asr_status() -> dict[str, Any]:
     try:
-        module = _load_ai_agent_asr()
-        status = module.status()
+        status = asr_supervisor.status()
         return {
-            "available": bool(module.assets_ready()),
+            "available": bool(status.get("available")),
             "ready": bool(status.get("ok")),
             "engine": str(
                 status.get("engine") or "sherpa-onnx-sensevoice-int8"
@@ -305,10 +270,9 @@ def classroom_asr_status() -> dict[str, Any]:
 
 def warm_classroom_asr() -> dict[str, Any]:
     try:
-        module = _load_ai_agent_asr()
-        result = module.warm(wait_seconds=0.15)
+        result = asr_supervisor.warm(wait_seconds=0.15)
         return {
-            "available": bool(module.assets_ready()),
+            "available": bool(result.get("available")),
             "ready": bool(result.get("ok")),
             "engine": str(
                 result.get("engine") or "sherpa-onnx-sensevoice-int8"
@@ -346,8 +310,7 @@ def transcribe_classroom_audio(
     )
     target.write_bytes(data)
     try:
-        module = _load_ai_agent_asr()
-        result = module.transcribe(target, str(language or "auto")[:16], timeout=45)
+        result = asr_supervisor.transcribe(target, str(language or "auto")[:16], timeout=45)
         text = str(result.get("text") or "").strip()
         if not result.get("ok") or not text:
             error = "没有检测到有效语音" if result.get("blank_audio") else str(
@@ -361,6 +324,13 @@ def transcribe_classroom_audio(
                 result.get("engine") or "sherpa-onnx-sensevoice-int8"
             ),
             "audio_bytes": len(data),
+            "segments": [
+                {
+                    "start_ms": 0,
+                    "end_ms": result.get("duration_ms"),
+                    "text": text[:20_000],
+                }
+            ],
             "temporary_audio_deleted": True,
         }
     finally:

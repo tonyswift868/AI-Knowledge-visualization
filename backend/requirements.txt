@@ -18,3 +18,7 @@ rapidocr>=3.9,<4
 onnxruntime>=1.28,<2
 edge-tts>=7.2.8,<8
 cryptography>=45,<47
+instructor==1.15.4
+keyring==25.7.0
+argon2-cffi==25.1.0
+networkx==3.6.1

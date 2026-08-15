@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WorkspaceIn(BaseModel):
@@ -111,10 +111,12 @@ class FeasibilityConfirmIn(BaseModel):
 
 
 class ProviderTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: Literal["fake", "openai-compatible", "gemini", "claude"]
     base_url: str = ""
     model: str = ""
-    api_key: str = ""
+    credential_ref: str = Field(default="", max_length=160)
     temperature: float = Field(default=0.2, ge=0, le=2)
 
 

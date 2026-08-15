@@ -1,8 +1,8 @@
 """Server-owned MiniMax teacher voice provider.
 
-The browser never receives the API key.  Configuration is intentionally split
-between a non-secret voice profile and a secret key file/environment value.
-Readiness checks are local-only and never contact MiniMax.
+The browser never receives the API key. Configuration contains only an opaque
+Windows Credential Locker reference; there is no plaintext file or environment
+fallback. Readiness checks are local-only and never contact MiniMax.
 """
 
 from __future__ import annotations
@@ -11,16 +11,16 @@ import json
 import hashlib
 import os
 import re
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from .credential_store import CredentialStoreError, get_secret
+
 
 API_URL = "https://api.minimaxi.com/v1/t2a_v2"
-DEFAULT_MODEL = "speech-2.8-hd"
 _VOICE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{6,254}[A-Za-z0-9]$")
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
 _MAX_CONFIG_BYTES = 32 * 1024
@@ -39,6 +39,7 @@ class MiniMaxTeacherVoiceError(RuntimeError):
 class MiniMaxTeacherVoiceConfig:
     voice_id: str
     model: str
+    credential_ref: str
     speed_lively: float
     speed_relaxed: float
     profile: str
@@ -63,13 +64,6 @@ def _config_path() -> Path:
     if explicit:
         return Path(explicit).expanduser().resolve()
     return (_project_root() / "backend" / "config" / "voice" / "minimax_teacher_voice.local.json").resolve()
-
-
-def _key_file_path() -> Path:
-    explicit = str(os.getenv("MENTORFLOW_MINIMAX_API_KEY_FILE") or "").strip()
-    if explicit:
-        return Path(explicit).expanduser().resolve()
-    return (_project_root() / "MINIMAX_API_KEY.txt").resolve()
 
 
 def _read_object(path: Path) -> dict[str, Any]:
@@ -103,10 +97,21 @@ def load_minimax_teacher_voice_config() -> MiniMaxTeacherVoiceConfig:
             "MiniMax 教师声线配置无效",
         )
     voice_id = str(raw.get("voice_id") or "").strip()
-    model = str(raw.get("model") or DEFAULT_MODEL).strip()
+    model = str(raw.get("model") or "").strip()
+    credential_ref = str(
+        os.getenv("MENTORFLOW_MINIMAX_CREDENTIAL_REF")
+        or raw.get("credential_ref")
+        or ""
+    ).strip()
     profile = str(raw.get("profile") or "teacher-private-clone").strip()
     speeds = raw.get("speeds")
-    if not _VOICE_ID.fullmatch(voice_id) or model != DEFAULT_MODEL or not profile or not isinstance(speeds, dict):
+    if (
+        not _VOICE_ID.fullmatch(voice_id)
+        or not model
+        or not credential_ref
+        or not profile
+        or not isinstance(speeds, dict)
+    ):
         raise MiniMaxTeacherVoiceError(
             "VOICE_MINIMAX_CONFIG_INVALID",
             "MiniMax 教师声线配置无效",
@@ -124,30 +129,29 @@ def load_minimax_teacher_voice_config() -> MiniMaxTeacherVoiceConfig:
             "VOICE_MINIMAX_CONFIG_INVALID",
             "MiniMax 教师声线速度配置无效",
         )
-    return MiniMaxTeacherVoiceConfig(voice_id, model, lively, relaxed, profile)
+    return MiniMaxTeacherVoiceConfig(
+        voice_id,
+        model,
+        credential_ref,
+        lively,
+        relaxed,
+        profile,
+    )
 
 
-def _read_api_key() -> str:
-    direct = str(os.getenv("MENTORFLOW_MINIMAX_API_KEY") or "").strip()
-    if direct:
-        key = direct
-    else:
-        path = _key_file_path()
-        try:
-            metadata = os.lstat(path)
-            if (
-                not stat.S_ISREG(metadata.st_mode)
-                or stat.S_ISLNK(metadata.st_mode)
-                or int(getattr(metadata, "st_nlink", 1) or 1) > 1
-                or metadata.st_size > 4096
-            ):
-                raise OSError("missing or oversized key file")
-            key = path.read_text(encoding="utf-8-sig").strip()
-        except (OSError, UnicodeError) as exc:
-            raise MiniMaxTeacherVoiceError(
-                "VOICE_MINIMAX_KEY_MISSING",
-                "服务器尚未配置 MiniMax 语音凭据",
-            ) from exc
+def _read_api_key(credential_ref: str) -> str:
+    try:
+        key = get_secret(credential_ref)
+    except CredentialStoreError as exc:
+        code = (
+            "VOICE_MINIMAX_KEY_MISSING"
+            if exc.code in {"CREDENTIAL_REQUIRED", "CREDENTIAL_NOT_FOUND"}
+            else "VOICE_MINIMAX_KEY_INVALID"
+        )
+        raise MiniMaxTeacherVoiceError(
+            code,
+            "服务器尚未配置可用的 MiniMax Credential Locker 引用",
+        ) from exc
     if not key or len(key) > 2048 or any(character.isspace() for character in key):
         raise MiniMaxTeacherVoiceError(
             "VOICE_MINIMAX_KEY_INVALID",
@@ -160,7 +164,7 @@ def minimax_teacher_voice_status() -> dict[str, Any]:
     """Return safe local readiness metadata without making a network call."""
     try:
         config = load_minimax_teacher_voice_config()
-        _read_api_key()
+        _read_api_key(config.credential_ref)
     except MiniMaxTeacherVoiceError as exc:
         return {
             "ok": False,
@@ -182,7 +186,7 @@ def minimax_teacher_voice_status() -> dict[str, Any]:
 
 async def synthesize_minimax_teacher_voice(text: str, style: str) -> MiniMaxSynthesis:
     config = load_minimax_teacher_voice_config()
-    key = _read_api_key()
+    key = _read_api_key(config.credential_ref)
     speed = config.speed_lively if style == "lively" else config.speed_relaxed
     payload = {
         "model": config.model,

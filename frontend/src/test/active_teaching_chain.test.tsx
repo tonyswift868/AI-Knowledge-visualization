@@ -225,14 +225,62 @@ const personaItems = [{
   updated_at: "2026-07-27T00:00:00Z",
 }];
 
+const canonicalMap = {
+  map_id: "knowledge-map:generic-active",
+  revision_id: "kmr_test_1",
+  revision: 1,
+  status: "active",
+  nodes: [{
+    id: "kp_1",
+    name: "资料内知识点",
+    explanation: "来自资料的可追溯解释",
+    difficulty: "medium",
+    layer: "material",
+    status: "confirmed",
+    evidence: [{
+      material_id: "material_1",
+      source_id: "material_1",
+      source_revision_id: "source-revision-1",
+      chunk_id: "chunk_1",
+      char_start: 0,
+      char_end: 20,
+      quote: "来自用户上传资料的原文。",
+    }],
+  }],
+  edges: [],
+  candidates: [],
+  warnings: [],
+};
+
+const canonicalPlanPreview = {
+  schema: "mentorflow.mastery-plan-preview.v1",
+  preview_id: "plan_preview_test_1",
+  revision_id: "kmr_test_1",
+  revision: 1,
+  tasks: snapshot.plan.tasks,
+  days: snapshot.plan.calendar,
+  activation_blockers: [],
+  extension_draft: { requires_confirmation: false },
+  total_mastery_task_minutes: 40,
+  daily_task_minutes_budget: 120,
+};
+
 const snapshotFetch = (value: any = snapshot) =>
-  vi.fn().mockImplementation((url: string) =>
-    Promise.resolve({
-      ok: true,
-      json: async () => String(url).endsWith("/teacher-personas")
-        ? { items: personaItems }
-        : value,
-    }));
+  vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const endpoint = String(url);
+    let payload = value;
+    if (endpoint.endsWith("/teacher-personas")) payload = { items: personaItems };
+    else if (endpoint.includes("/knowledge-map?revision=active")) payload = canonicalMap;
+    else if (endpoint.includes("/knowledge-map/candidates?revision=active")) payload = { candidates: [] };
+    else if (endpoint.endsWith("/knowledge-map/jobs") && init?.method === "POST") {
+      payload = { id: "km_job_test_1", status: "ready", revision_id: "kmr_test_1" };
+    } else if (endpoint.includes("/knowledge-map/jobs/")) {
+      payload = { id: "km_job_test_1", status: "ready", revision_id: "kmr_test_1" };
+    } else if (endpoint.endsWith("/mastery-plans/preview") && init?.method === "POST") {
+      payload = canonicalPlanPreview;
+    }
+    return Promise.resolve({ ok: true, json: async () => payload });
+  });
 
 
 describe("ActiveTeachingChainView", () => {
@@ -241,7 +289,7 @@ describe("ActiveTeachingChainView", () => {
     vi.unstubAllGlobals();
     localStorage.clear();
     useMentorStore.getState().setProvider("fake");
-    useMentorStore.getState().setApiKey("");
+    useMentorStore.getState().setCredentialRef("");
     useMentorStore.getState().setProviderSession({
       providerSessionId: "",
       provider: "fake",
@@ -1256,7 +1304,7 @@ describe("ActiveTeachingChainView", () => {
     useMentorStore.getState().setProvider("openai-compatible");
     useMentorStore.getState().setBaseUrl("https://mock.provider/v1");
     useMentorStore.getState().setModel("mock-model");
-    useMentorStore.getState().setApiKey("saved-browser-key");
+    useMentorStore.getState().setCredentialRef("mfcred_saved_reference");
     useMentorStore.getState().setProviderSession({
       providerSessionId: "ps_lost",
       provider: "openai-compatible",
@@ -1355,12 +1403,12 @@ describe("ActiveTeachingChainView", () => {
       expect(JSON.stringify(body)).not.toMatch(/leetcode|hot150|面试经典/iu);
       expect(
         fetchMock.mock.calls.some(
-          ([url]) => String(url).endsWith("/knowledge-map/generate"),
+          ([url]) => String(url).endsWith("/knowledge-map/jobs"),
         ),
       ).toBe(false);
       expect(
         fetchMock.mock.calls.some(
-          ([url]) => String(url).endsWith("/mastery-plans/generate"),
+          ([url]) => String(url).endsWith("/mastery-plans/preview"),
         ),
       ).toBe(true);
     });
@@ -1485,7 +1533,7 @@ describe("ActiveTeachingChainView", () => {
   });
 
   it("replans without rebuilding the knowledge map when foundation changes", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
+    const fetchMock = snapshotFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
     const foundation = await screen.findByTestId("active-foundation");
@@ -1498,8 +1546,8 @@ describe("ActiveTeachingChainView", () => {
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
       expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(false);
-      expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/jobs"))).toBe(false);
+      expect(urls.some((url) => url.endsWith("/mastery-plans/preview"))).toBe(true);
     });
   });
 
@@ -1517,7 +1565,7 @@ describe("ActiveTeachingChainView", () => {
           json: async () => snapshotReads === 1 ? snapshot : savedAfterFailure,
         };
       }
-      if (url.endsWith("/mastery-plans/generate")) {
+      if (url.endsWith("/mastery-plans/preview")) {
         return {
           ok: false,
           json: async () => ({ error: { message: "重新排程失败" } }),
@@ -1547,9 +1595,18 @@ describe("ActiveTeachingChainView", () => {
       session: null,
     };
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const endpoint = String(url);
       let payload: any = emptySnapshot;
-      if (String(url).endsWith("/materials") && init?.method === "POST") {
+      if (endpoint.endsWith("/materials") && init?.method === "POST") {
         payload = { id: "uploaded_generic_1", status: "ready" };
+      } else if (endpoint.endsWith("/knowledge-map/jobs") && init?.method === "POST") {
+        payload = { id: "km_job_upload", status: "ready", revision_id: "kmr_test_1" };
+      } else if (endpoint.includes("/knowledge-map?revision=active")) {
+        payload = canonicalMap;
+      } else if (endpoint.includes("/knowledge-map/candidates?revision=active")) {
+        payload = { candidates: [] };
+      } else if (endpoint.endsWith("/mastery-plans/preview") && init?.method === "POST") {
+        payload = canonicalPlanPreview;
       }
       return Promise.resolve({ ok: true, json: async () => payload });
     });
@@ -1571,8 +1628,8 @@ describe("ActiveTeachingChainView", () => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
       expect(urls.some((url) => url.endsWith("/materials"))).toBe(true);
       expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/jobs"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/mastery-plans/preview"))).toBe(true);
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(JSON.parse(receiptCall![1].body).material_ids).toEqual(["uploaded_generic_1"]);
       expect(JSON.parse(receiptCall![1].body).discover_external_resources).toBe(false);
@@ -1587,10 +1644,7 @@ describe("ActiveTeachingChainView", () => {
       plan: null,
       session: null,
     };
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => indexedOnlySnapshot,
-    });
+    const fetchMock = snapshotFetch(indexedOnlySnapshot);
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" />);
 
@@ -1607,8 +1661,8 @@ describe("ActiveTeachingChainView", () => {
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
       expect(urls.some((url) => url.endsWith("/receipt"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/knowledge-map/generate"))).toBe(true);
-      expect(urls.some((url) => url.endsWith("/mastery-plans/generate"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/knowledge-map/jobs"))).toBe(true);
+      expect(urls.some((url) => url.endsWith("/mastery-plans/preview"))).toBe(true);
       expect(
         fetchMock.mock.calls.some(
           ([url, init]) => String(url).endsWith("/materials") && init?.method === "POST",

@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db
+from app import credential_store, db
 from app.main import app
 from app.provider_runtime import get_provider_session
 from app import provider_service
@@ -45,7 +45,8 @@ def install_mock_provider(monkeypatch, status=200, content=None, model="deepseek
 
 
 def make_real_session(client):
-    created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "deepseek-chat", "api_key": "v5-secret"})
+    credential_store.store_secret("v5-secret", "mfcred_v5_test")
+    created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "deepseek-chat", "credential_ref": "mfcred_v5_test"})
     assert created.status_code == 200, created.text
     tested = client.post(f"/api/provider-sessions/{created.json()['provider_session_id']}/test")
     assert tested.status_code == 200, tested.text
@@ -129,13 +130,28 @@ def test_plan_generation_binds_session_and_exposes_meta(client, monkeypatch):
 
 def test_provider_failure_never_falls_back_to_fake(client, monkeypatch):
     install_mock_provider(monkeypatch, status=401)
-    created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "deepseek-chat", "api_key": "bad-key"}).json()
+    credential_store.store_secret("bad-key", "mfcred_bad_test")
+    created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "deepseek-chat", "credential_ref": "mfcred_bad_test"}).json()
     failed = client.post(f"/api/provider-sessions/{created['provider_session_id']}/test")
     assert failed.status_code == 401 and failed.json()["error"]["code"] == "PROVIDER_AUTH_FAILED"
     workspace = client.post("/api/workspaces", json={"title": "No fallback", "execution_mode": "real"}).json()
     assert client.post(f"/api/workspaces/{workspace['id']}/sources/text", json={"title": "资料", "text": "# 证据\n\nReal"}).status_code == 200
     assert make_goal(client, workspace["id"]).status_code == 200
     assert client.post(f"/api/workspaces/{workspace['id']}/feasibility/analyze", json={}).status_code == 428
+
+
+def test_provider_session_api_rejects_raw_keys(client):
+    response = client.post(
+        "/api/provider-sessions",
+        json={
+            "provider": "openai-compatible",
+            "base_url": "https://mock.deepseek.test/v1",
+            "model": "deepseek-chat",
+            "api_key": "must-not-cross-api",
+        },
+    )
+    assert response.status_code == 422
+    assert "must-not-cross-api" not in response.text
 
 
 def test_provider_session_has_no_time_limit_and_can_be_deleted(client, monkeypatch):
@@ -192,6 +208,53 @@ def test_provider_session_get_is_safe(client, monkeypatch):
     result = make_real_session(client)
     fetched = client.get(f"/api/provider-sessions/{result['provider_session_id']}")
     assert fetched.status_code == 200 and "api_key" not in fetched.text and "v5-secret" not in fetched.text
+
+
+def test_authenticated_accounts_cannot_reuse_each_others_provider_session(client, monkeypatch):
+    """A guessed process-local session id must not cross the account boundary."""
+
+    monkeypatch.setenv("MENTORFLOW_AUTH_REQUIRED", "1")
+    install_mock_provider(monkeypatch)
+    credential_store.store_secret("owner-secret", "mfcred_owner_test")
+
+    first = client.post(
+        "/api/auth/register",
+        json={
+            "username": "OwnerAlpha",
+            "display_name": "Owner Alpha",
+            "password": "Correct-Horse-42",
+            "claim_existing_data": True,
+        },
+    )
+    assert first.status_code == 201, first.text
+    created = client.post(
+        "/api/provider-sessions",
+        json={
+            "provider": "openai-compatible",
+            "base_url": "https://mock.deepseek.test/v1",
+            "model": "deepseek-chat",
+            "credential_ref": "mfcred_owner_test",
+        },
+    )
+    assert created.status_code == 200, created.text
+    session_id = created.json()["provider_session_id"]
+
+    client.post("/api/auth/logout")
+    second = client.post(
+        "/api/auth/register",
+        json={
+            "username": "OwnerBeta",
+            "display_name": "Owner Beta",
+            "password": "Correct-Horse-43",
+            "claim_existing_data": False,
+        },
+    )
+    assert second.status_code == 201, second.text
+
+    assert client.get(f"/api/provider-sessions/{session_id}").status_code == 404
+    assert client.post(f"/api/provider-sessions/{session_id}/test").status_code == 404
+    assert client.delete(f"/api/provider-sessions/{session_id}").json() == {"deleted": False}
+    assert client.delete("/api/provider-credentials/mfcred_owner_test").status_code == 404
 
 
 def test_evaluator_requires_and_reports_real_provider(client, monkeypatch):

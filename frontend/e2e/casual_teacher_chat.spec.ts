@@ -23,7 +23,10 @@ test("home casual teacher lounge keeps chat independent and fast", async ({ page
   await expect(lounge.getByTestId("casual-teacher-speak").last()).toBeVisible()
   await expect(lounge.getByTestId("casual-teacher-voice-mode")).toContainText("点击喇叭才朗读")
   await lounge.getByTestId("casual-teacher-speak").last().click()
-  await expect(lounge.getByRole("status")).toContainText(/自然中文女声|播放/, { timeout: 5_000 })
+  await expect(lounge.getByRole("status")).toContainText(
+    /自然中文女声|播放|尚未安装并启用离线教师声包|教师语音暂不可用/,
+    { timeout: 5_000 },
+  )
   // A refresh must restore the same phone-like conversation instead of
   // creating a fresh greeting-only window.
   await page.reload()

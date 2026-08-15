@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+from .knowledge_policy import RESOURCE_DISCOVERY_POLICY, TEXT_LIMITS_POLICY
 from .provider_runtime import (
     generation_meta,
     provider_for_session,
@@ -18,7 +19,7 @@ from .provider_service import ProviderError
 from .open_search import OpenSearchError, OpenSearchUnsupported, search_web
 
 
-RESOURCE_BATCH_SIZE = 10
+RESOURCE_BATCH_SIZE = RESOURCE_DISCOVERY_POLICY.batch_size
 ALLOWED_RESOURCE_KINDS = {
     "official_practice",
     "interactive_tool",
@@ -77,136 +78,24 @@ def _candidate_has_chinese(candidate: dict[str, str]) -> bool:
     )
 
 
-def _task_official_fallbacks(
-    *,
-    points: list[dict[str, Any]],
-    task_label: str,
-) -> list[dict[str, Any]]:
-    """Return a known Chinese first-party entry when the material identifies it.
-
-    This is deliberately a small, source-aware catalog rather than a generic
-    URL generator.  It keeps task creation useful when a provider/search engine
-    is slow or unavailable, while still leaving point-specific recommendations
-    to the grounded search pipeline.
-    """
-    if not points:
-        return []
-    corpus = " ".join(
-        [
-            str(task_label or ""),
-            *(str(point.get("name") or "") for point in points[:24]),
-        ]
-    ).casefold()
-    if not re.search(r"力扣|leetcode", corpus, re.IGNORECASE):
-        return []
-    if not re.search(r"150|面试经典|top.?interview", corpus, re.IGNORECASE):
-        url = "https://leetcode.cn/problemset/"
-        title = "力扣官方题库（中文）"
-        description = "力扣官方中文题库；教师会根据当前知识点补充思路、示例和练习建议。"
-        query = "力扣 官方中文题库"
-    else:
-        url = "https://leetcode.cn/studyplan/top-interview-150/"
-        title = "力扣·面试经典 150 题（官方中文学习计划）"
-        description = "力扣官方中文学习计划入口；教师负责逐题讲解和追问，不在任务创建时生成冗长题解。"
-        query = "力扣 面试经典 150 题 中文 官方"
-    return [
-        {
-            "knowledge_point_id": str(points[0].get("id") or ""),
-            "kind": "official_practice",
-            "title": title,
-            "description": description,
-            "url": url,
-            "host": "leetcode.cn",
-            "provider": "力扣官方",
-            "authority": "official",
-            "source": "official_catalog_fallback",
-            "search_query": query,
-            "discovery_meta": {
-                "search_grounded": False,
-                "official_catalog": True,
-                "scope": "task",
-                "fallback_reason": "已识别为力扣资料，先提供稳定的中文官方入口",
-            },
-        }
-    ]
-
-
-def _persist_task_fallbacks(
-    connection: sqlite3.Connection,
-    *,
-    workspace_id: str,
-    resources: list[dict[str, Any]],
-    task_label: str,
-) -> int:
-    """Upsert deterministic task-level official entries without touching progress."""
-    persisted = 0
-    for item in resources:
-        if not item.get("knowledge_point_id") or not _safe_url(item.get("url")):
-            continue
-        metadata = dict(item.get("discovery_meta") or {})
-        metadata.update({"scope": "task", "task_label": task_label})
-        connection.execute(
-            """INSERT OR IGNORE INTO active_external_resources
-               (id,workspace_id,knowledge_point_id,kind,title,description,url,host,
-                provider_label,authority,source,search_query,discovery_meta,status,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?)""",
-            (
-                _id("learning_resource"),
-                workspace_id,
-                str(item["knowledge_point_id"]),
-                str(item.get("kind") or "reference"),
-                str(item.get("title") or "")[:180],
-                str(item.get("description") or "")[:600],
-                str(item["url"]),
-                str(item.get("host") or "")[:180],
-                str(item.get("provider") or "官方资源")[:180],
-                str(item.get("authority") or "official"),
-                str(item.get("source") or "official_catalog_fallback"),
-                str(item.get("search_query") or "")[:1000],
-                json.dumps(metadata, ensure_ascii=False),
-                _now(),
-            ),
-        )
-        persisted += 1
-    return persisted
-
-
 def ensure_resource_schema(connection: sqlite3.Connection) -> None:
-    connection.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS active_external_resources (
-            id TEXT PRIMARY KEY,
-            workspace_id TEXT NOT NULL,
-            knowledge_point_id TEXT NOT NULL
-                REFERENCES active_knowledge_points(id) ON DELETE CASCADE,
-            kind TEXT NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT NOT NULL,
-            url TEXT NOT NULL,
-            host TEXT NOT NULL,
-            provider_label TEXT NOT NULL,
-            authority TEXT NOT NULL,
-            source TEXT NOT NULL,
-            search_query TEXT NOT NULL,
-            discovery_meta TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active',
-            created_at TEXT NOT NULL,
-            UNIQUE(knowledge_point_id, url)
-        );
-        CREATE TABLE IF NOT EXISTS active_resource_discovery_runs (
-            id TEXT PRIMARY KEY,
-            workspace_id TEXT NOT NULL,
-            point_fingerprint TEXT NOT NULL,
-            provider_meta TEXT NOT NULL,
-            searched_point_count INTEGER NOT NULL,
-            resource_count INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            warnings TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
-        """
-    )
-    connection.commit()
+    required = {
+        "active_external_resources",
+        "active_resource_discovery_runs",
+        "orm_learning_resources",
+    }
+    present = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    missing = sorted(required - present)
+    if missing:
+        raise RuntimeError(
+            "DATABASE_MIGRATION_REQUIRED: missing resource tables: "
+            + ", ".join(missing)
+        )
 
 
 def _point_fingerprint(points: list[dict[str, Any]]) -> str:
@@ -232,15 +121,26 @@ def _point_fingerprint(points: list[dict[str, Any]]) -> str:
 def public_resources(
     connection: sqlite3.Connection,
     workspace_id: str,
+    *,
+    map_revision_id: str | None = None,
 ) -> list[dict[str, Any]]:
     ensure_resource_schema(connection)
     output: list[dict[str, Any]] = []
-    for row in connection.execute(
-        """SELECT * FROM active_external_resources
-           WHERE workspace_id=? AND status='active'
-           ORDER BY knowledge_point_id,created_at,id""",
-        (workspace_id,),
-    ).fetchall():
+    if map_revision_id:
+        rows = connection.execute(
+            """SELECT * FROM orm_learning_resources
+               WHERE workspace_id=? AND map_revision_id=? AND status='active'
+               ORDER BY knowledge_point_id,created_at,id""",
+            (workspace_id, map_revision_id),
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            """SELECT * FROM active_external_resources
+               WHERE workspace_id=? AND status='active'
+               ORDER BY knowledge_point_id,created_at,id""",
+            (workspace_id,),
+        ).fetchall()
+    for row in rows:
         item = dict(row)
         item["discovery_meta"] = json.loads(item["discovery_meta"])
         item["provider"] = item.pop("provider_label")
@@ -264,9 +164,9 @@ def resources_for_point(
 def _batch_prompt(points: list[dict[str, Any]]) -> str:
     point_lines = "\n".join(
         (
-            f"- id={point['id']} | 名称={str(point.get('name') or '')[:180]} | "
-            f"内容={str(point.get('explanation') or '')[:600]} | "
-            f"验收={str(point.get('acceptance_method') or '')[:320]}"
+            f"- id={point['id']} | 名称={str(point.get('name') or '')[:TEXT_LIMITS_POLICY.concept_name_characters]} | "
+            f"内容={str(point.get('explanation') or '')[:TEXT_LIMITS_POLICY.medium_text_characters]} | "
+            f"验收={str(point.get('acceptance_method') or '')[:TEXT_LIMITS_POLICY.brief_characters]}"
         )
         for point in points
     )
@@ -277,10 +177,11 @@ def _batch_prompt(points: list[dict[str, Any]]) -> str:
 单纯搜索结果页或只重复资料内容的博客。必须给具体深链接；没有高质量资源就返回 NONE。
 
 语言要求（必须遵守）：搜索查询、资源标题、资源说明和推荐理由全部使用简体中文；优先中文官网、
-官方中文页面和中文文档（例如力扣/LeetCode 优先使用 leetcode.cn）。没有中文官方页面时不要保存英文页面，
+官方中文页面和中文文档。没有中文官方页面时不要保存英文页面，
 也不要为了凑结果返回英文博客；宁可返回 NONE。
 
-每个知识点最多推荐 2 个资源。本批次最多推荐 10 个。每条推荐必须由本次真实搜索结果支持。
+每个知识点最多推荐 {RESOURCE_DISCOVERY_POLICY.maximum_resources_per_point} 个资源。
+本批次最多处理 {RESOURCE_DISCOVERY_POLICY.batch_size} 个知识点。每条推荐必须由本次真实搜索结果支持。
 输出只能逐行使用以下格式，不要 Markdown，不要在字段内使用竖线：
 RESOURCE|知识点id|official_practice/interactive_tool/simulator/official_documentation/visualization/reference|official/institutional/search_grounded|简短标题|为什么此资源能提升该知识点的学习效率
 或：
@@ -303,10 +204,9 @@ def _open_search_plan_messages(
             "只有交互工具、官方原题、官方文档、大学模拟器或直接练习页能明显提高效率时才搜索",
             "不要为每个知识点机械搜索",
             "不要搜索泛泛首页、营销文章、聚合转载、盗版或低质量博客",
-            "最多为本批次 8 个知识点生成搜索请求",
+            f"最多为本批次 {RESOURCE_DISCOVERY_POLICY.maximum_search_requests_per_batch} 个知识点生成搜索请求",
             "point_id 必须原样取自输入",
             "所有 query、reason 必须使用简体中文；优先中文官网和官方中文页；没有中文页面就不搜索",
-            "涉及 LeetCode 时优先搜索‘力扣 中文 官方题目’并优先 leetcode.cn",
         ],
         "response_schema": {
             "search_requests": [
@@ -325,11 +225,15 @@ def _open_search_plan_messages(
         "knowledge_points": [
             {
                 "id": str(point.get("id") or ""),
-                "name": str(point.get("name") or "")[:180],
-                "explanation": str(point.get("explanation") or "")[:600],
+                "name": str(point.get("name") or "")[
+                    : TEXT_LIMITS_POLICY.concept_name_characters
+                ],
+                "explanation": str(point.get("explanation") or "")[
+                    : TEXT_LIMITS_POLICY.medium_text_characters
+                ],
                 "acceptance_method": str(
                     point.get("acceptance_method") or ""
-                )[:320],
+                )[: TEXT_LIMITS_POLICY.brief_characters],
             }
             for point in points
         ],
@@ -362,7 +266,9 @@ def _parse_search_requests(
         if not isinstance(raw, dict) or raw.get("needed") is False:
             continue
         point_id = str(raw.get("point_id") or "").strip()
-        query = _ensure_chinese_query(str(raw.get("query") or ""))[:360]
+        query = _ensure_chinese_query(str(raw.get("query") or ""))[
+            : TEXT_LIMITS_POLICY.medium_text_characters
+        ]
         if (
             point_id not in allowed_point_ids
             or point_id in seen
@@ -377,11 +283,13 @@ def _parse_search_requests(
                 "point_id": point_id,
                 "query": query,
                 "kind": kind,
-                "reason": str(raw.get("reason") or "")[:600],
+                "reason": str(raw.get("reason") or "")[
+                    : TEXT_LIMITS_POLICY.medium_text_characters
+                ],
             }
         )
         seen.add(point_id)
-        if len(requests) >= 8:
+        if len(requests) >= RESOURCE_DISCOVERY_POLICY.maximum_search_requests_per_batch:
             break
     return requests
 
@@ -398,7 +306,7 @@ def _open_search_selection_messages(
             "没有合格候选就不要选择。"
         ),
         "rules": [
-            "每个知识点最多选择 2 个候选",
+            f"每个知识点最多选择 {RESOURCE_DISCOVERY_POLICY.maximum_resources_per_point} 个候选",
             "优先官方原题、第一方文档、大学或权威机构工具、可直接交互的模拟器",
             "拒绝泛泛首页、营销页、聚合转载、盗版、低质量博客和只重复概念的文章",
             "candidate_id 和 point_id 必须原样取自输入",
@@ -419,10 +327,12 @@ def _open_search_selection_messages(
         "knowledge_points": [
             {
                 "id": str(point.get("id") or ""),
-                "name": str(point.get("name") or "")[:180],
+                "name": str(point.get("name") or "")[
+                    : TEXT_LIMITS_POLICY.concept_name_characters
+                ],
                 "acceptance_method": str(
                     point.get("acceptance_method") or ""
-                )[:320],
+                )[: TEXT_LIMITS_POLICY.brief_characters],
             }
             for point in points
         ],
@@ -496,19 +406,27 @@ def _parse_open_search_selections(
         if not url:
             continue
         key = (point_id, url)
-        if key in seen or per_point.get(point_id, 0) >= 2:
+        if (
+            key in seen
+            or per_point.get(point_id, 0)
+            >= RESOURCE_DISCOVERY_POLICY.maximum_resources_per_point
+        ):
             continue
         authority = str(raw.get("authority") or "search_grounded").strip()
         if authority not in ALLOWED_AUTHORITIES:
             authority = "search_grounded"
-        reason = str(raw.get("reason") or request["reason"]).strip()[:600]
+        reason = str(raw.get("reason") or request["reason"]).strip()[
+            : TEXT_LIMITS_POLICY.medium_text_characters
+        ]
         host = str(urlparse(url).hostname or "")
         engine = str(candidate.get("engine") or "metasearch")
         output.append(
             {
                 "knowledge_point_id": point_id,
                 "kind": request["kind"],
-                "title": str(candidate.get("title") or host)[:180],
+                "title": str(candidate.get("title") or host)[
+                    : TEXT_LIMITS_POLICY.concept_name_characters
+                ],
                 "description": reason,
                 "url": url,
                 "host": host,
@@ -555,7 +473,10 @@ async def _discover_with_open_search(
     warnings: list[str] = []
     for request in requests:
         try:
-            result = await search_web(request["query"], max_results=6)
+            result = await search_web(
+                request["query"],
+                max_results=RESOURCE_DISCOVERY_POLICY.maximum_search_results_per_query,
+            )
         except OpenSearchError as exc:
             warnings.append(
                 f"“{request['query'][:100]}”搜索失败：{exc}"
@@ -568,7 +489,9 @@ async def _discover_with_open_search(
                         f"{request['point_id']}-candidate-{index + 1}"
                     ),
                     "point_id": request["point_id"],
-                    "title": str(item.get("title") or "")[:240],
+                    "title": str(item.get("title") or "")[
+                        : TEXT_LIMITS_POLICY.concept_name_characters
+                    ],
                     "url": str(item.get("url") or ""),
                     "snippet": str(item.get("snippet") or "")[:500],
                     "engine": str(item.get("engine") or result.get("engine") or ""),
@@ -576,7 +499,11 @@ async def _discover_with_open_search(
             )
     if not candidates:
         if warnings:
-            raise OpenSearchError("；".join(warnings[:3]))
+            raise OpenSearchError(
+                "；".join(
+                    warnings[: RESOURCE_DISCOVERY_POLICY.maximum_reported_warnings]
+                )
+            )
         return [], [], len(requests)
     try:
         selection_payload = await json_call(
@@ -696,7 +623,11 @@ def _parse_grounded_lines(
     per_point: dict[str, int] = {}
     for item in recommendations:
         key = (item["knowledge_point_id"], item["url"])
-        if key in seen or per_point.get(item["knowledge_point_id"], 0) >= 2:
+        if (
+            key in seen
+            or per_point.get(item["knowledge_point_id"], 0)
+            >= RESOURCE_DISCOVERY_POLICY.maximum_resources_per_point
+        ):
             continue
         seen.add(key)
         per_point[item["knowledge_point_id"]] = (
@@ -712,6 +643,7 @@ async def discover_learning_resources(
     workspace_id: str,
     points: list[dict[str, Any]],
     provider_session_id: str | None,
+    map_revision_id: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     """Discover only search-grounded resources; never invent a URL."""
@@ -739,12 +671,17 @@ async def discover_learning_resources(
             and str(latest_meta.get("model") or "") == str(session.model)
         )
     )
+    cache_revision_matches = (
+        str(latest_meta.get("map_revision_id") or "")
+        == str(map_revision_id or "")
+    )
     if (
         not force
         and latest
         and str(latest["point_fingerprint"]) == fingerprint
         and str(latest["status"]) == "completed"
         and cache_provider_matches
+        and cache_revision_matches
     ):
         return {
             "status": str(latest["status"]),
@@ -827,41 +764,64 @@ async def discover_learning_resources(
     # task-level catalog fallback add a stable official entry when applicable.
     replace_resources = status in {"completed", "partial"} and bool(all_resources)
     if replace_resources:
-        connection.execute(
-            "DELETE FROM active_external_resources WHERE workspace_id=?",
-            (workspace_id,),
-        )
-        for item in all_resources:
+        if map_revision_id:
             connection.execute(
-                """INSERT OR IGNORE INTO active_external_resources
-                   (id,workspace_id,knowledge_point_id,kind,title,description,url,host,
-                    provider_label,authority,source,search_query,discovery_meta,status,created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?)""",
-                (
-                    _id("learning_resource"),
-                    workspace_id,
-                    item["knowledge_point_id"],
-                    item["kind"],
-                    item["title"],
-                    item["description"],
-                    item["url"],
-                    item["host"],
-                    item["provider"],
-                    item["authority"],
-                    item["source"],
-                    item["search_query"],
-                    json.dumps(item["discovery_meta"], ensure_ascii=False),
-                    _now(),
-                ),
+                """DELETE FROM orm_learning_resources
+                   WHERE workspace_id=? AND map_revision_id=?""",
+                (workspace_id, map_revision_id),
             )
+        else:
+            connection.execute(
+                "DELETE FROM active_external_resources WHERE workspace_id=?",
+                (workspace_id,),
+            )
+        for item in all_resources:
+            common_values = (
+                _id("learning_resource"),
+                workspace_id,
+                item["knowledge_point_id"],
+                item["kind"],
+                item["title"],
+                item["description"],
+                item["url"],
+                item["host"],
+                item["provider"],
+                item["authority"],
+                item["source"],
+                item["search_query"],
+                json.dumps(item["discovery_meta"], ensure_ascii=False),
+                _now(),
+            )
+            if map_revision_id:
+                connection.execute(
+                    """INSERT OR IGNORE INTO orm_learning_resources
+                       (id,workspace_id,knowledge_point_id,kind,title,description,url,host,
+                        provider_label,authority,source,search_query,discovery_meta,created_at,
+                        map_revision_id,status)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active')""",
+                    (*common_values, map_revision_id),
+                )
+            else:
+                connection.execute(
+                    """INSERT OR IGNORE INTO active_external_resources
+                       (id,workspace_id,knowledge_point_id,kind,title,description,url,host,
+                        provider_label,authority,source,search_query,discovery_meta,status,created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?)""",
+                    common_values,
+                )
     resource_count = (
         len(all_resources)
         if replace_resources
         else int(
             connection.execute(
-                """SELECT COUNT(*) FROM active_external_resources
-                   WHERE workspace_id=? AND status='active'""",
-                (workspace_id,),
+                (
+                    """SELECT COUNT(*) FROM orm_learning_resources
+                       WHERE workspace_id=? AND map_revision_id=? AND status='active'"""
+                    if map_revision_id
+                    else """SELECT COUNT(*) FROM active_external_resources
+                       WHERE workspace_id=? AND status='active'"""
+                ),
+                (workspace_id, map_revision_id) if map_revision_id else (workspace_id,),
             ).fetchone()[0]
         )
     )
@@ -871,6 +831,7 @@ async def discover_learning_resources(
         "search_grounded": bool(search_modes)
         and status in {"completed", "partial"},
         "search_modes": sorted(search_modes),
+        "map_revision_id": str(map_revision_id or ""),
     }
     connection.execute(
         """INSERT INTO active_resource_discovery_runs
@@ -906,6 +867,7 @@ async def discover_task_resources(
     workspace_id: str,
     points: list[dict[str, Any]],
     provider_session_id: str | None,
+    map_revision_id: str | None = None,
     task_label: str = "",
     force: bool = False,
 ) -> dict[str, Any]:
@@ -929,7 +891,10 @@ async def discover_task_resources(
             "provider_meta": {"mode": "missing_knowledge_map", "scope": "task"},
         }
     anchor = points[0]
-    names = [str(point.get("name") or "").strip() for point in points[:24]]
+    names = [
+        str(point.get("name") or "").strip()
+        for point in points[: RESOURCE_DISCOVERY_POLICY.maximum_task_point_names]
+    ]
     names = [name for name in names if name]
     label = " ".join(str(task_label or "").split())[:400]
     if not label:
@@ -946,25 +911,12 @@ async def discover_task_resources(
             "不要为单个知识点机械推荐页面。"
         ),
     }
-    fallback_resources = _task_official_fallbacks(
-        points=points,
-        task_label=label,
-    )
-    if fallback_resources:
-        # Commit before the provider/search call so the stable Chinese entry is
-        # visible even when network discovery is slow or unavailable.
-        _persist_task_fallbacks(
-            connection,
-            workspace_id=workspace_id,
-            resources=fallback_resources,
-            task_label=label,
-        )
-        connection.commit()
     result = await discover_learning_resources(
         connection,
         workspace_id=workspace_id,
         points=[task_point],
         provider_session_id=provider_session_id,
+        map_revision_id=map_revision_id,
         force=force,
     )
     scope_meta = {
@@ -977,19 +929,18 @@ async def discover_task_resources(
     # The underlying helper persists a run and resource rows.  Mark the
     # resulting rows as task-scoped without changing the existing schema or
     # invalidating the per-point resource API.
-    fallback_count = 0
-    if fallback_resources:
-        fallback_count = _persist_task_fallbacks(
-            connection,
-            workspace_id=workspace_id,
-            resources=fallback_resources,
-            task_label=label,
-        )
     if str(result.get("status") or "") in {"completed", "partial"}:
-        rows = connection.execute(
-            "SELECT id,discovery_meta FROM active_external_resources WHERE workspace_id=?",
-            (workspace_id,),
-        ).fetchall()
+        if map_revision_id:
+            rows = connection.execute(
+                """SELECT id,discovery_meta FROM orm_learning_resources
+                   WHERE workspace_id=? AND map_revision_id=?""",
+                (workspace_id, map_revision_id),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                "SELECT id,discovery_meta FROM active_external_resources WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchall()
         for row in rows:
             try:
                 metadata = json.loads(row["discovery_meta"] or "{}")
@@ -997,28 +948,25 @@ async def discover_task_resources(
                 metadata = {}
             metadata.update({"scope": "task", "task_label": label})
             connection.execute(
-                "UPDATE active_external_resources SET discovery_meta=? WHERE id=?",
+                f"UPDATE {'orm_learning_resources' if map_revision_id else 'active_external_resources'} SET discovery_meta=? WHERE id=?",
                 (json.dumps(metadata, ensure_ascii=False), row["id"]),
             )
-    current_resource_count = int(
-        connection.execute(
-            """SELECT COUNT(*) FROM active_external_resources
-               WHERE workspace_id=? AND status='active'""",
-            (workspace_id,),
-        ).fetchone()[0]
-    )
-    if fallback_count:
-        scope_meta.update(
-            {
-                "fallback_used": True,
-                "fallback_resource_count": fallback_count,
-            }
+    if map_revision_id:
+        current_resource_count = int(
+            connection.execute(
+                """SELECT COUNT(*) FROM orm_learning_resources
+                   WHERE workspace_id=? AND map_revision_id=? AND status='active'""",
+                (workspace_id, map_revision_id),
+            ).fetchone()[0]
         )
-        result = {
-            **result,
-            "resource_count": current_resource_count,
-            "provider_meta": scope_meta,
-        }
+    else:
+        current_resource_count = int(
+            connection.execute(
+                """SELECT COUNT(*) FROM active_external_resources
+                   WHERE workspace_id=? AND status='active'""",
+                (workspace_id,),
+            ).fetchone()[0]
+        )
     latest = connection.execute(
         """SELECT id,provider_meta FROM active_resource_discovery_runs
            WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",

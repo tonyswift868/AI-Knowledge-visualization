@@ -1,0 +1,214 @@
+{
+  "schema_version": "mentorflow.policy-registry.v1",
+  "knowledge_map": {
+    "policy_id": "mentorflow.knowledge-map",
+    "version": "v1",
+    "domain_agnostic": true,
+    "require_verified_provider": true,
+    "allow_structural_fallback": false,
+    "auto_merge_by_name": false,
+    "external_discovery_changes_map": false,
+    "required_evidence_schema": "EvidenceSegmentV1",
+    "accepted_relation_types": ["contains", "prerequisite", "related", "contrast"],
+    "relation_layers": ["material", "model_common"],
+    "plan_relation_types": ["contains", "prerequisite"],
+    "quality_gate": {
+      "provider_payload_valid": true,
+      "graph_acyclic": true,
+      "evidence_complete": true,
+      "material_dispositions_complete": true
+    },
+    "maximum_decision_reason_chars": 800,
+    "isolated_node_warning_ratio": 0.5
+  },
+  "mastery_estimation": {
+    "version": "mastery-estimation.v1",
+    "information_unit_characters": 700,
+    "minimum_information_units": 1.0,
+    "maximum_information_units": 8.0,
+    "base_minutes": 15,
+    "minutes_per_information_unit": 8,
+    "minimum_total_minutes": 15,
+    "maximum_total_minutes": 360,
+    "difficulty_factors": {"easy": 0.72, "medium": 1.08, "hard": 1.58},
+    "learner_level_factors": {"beginner": 1.45, "intermediate": 1.0, "advanced": 0.82},
+    "phase_ratios": {
+      "understand": 0.30,
+      "recall": 0.12,
+      "guided_practice": 0.23,
+      "independent_application": 0.25
+    },
+    "phase_minimum_minutes": {
+      "understand": 5,
+      "recall": 5,
+      "guided_practice": 5,
+      "independent_application": 8,
+      "review": 5
+    }
+  },
+  "scheduling": {
+    "version": "scheduling.v1",
+    "maximum_task_segment_minutes": 120,
+    "maximum_special_date_minutes": 720,
+    "minimum_daily_minutes": 10,
+    "default_daily_task_minutes": 30,
+    "default_review_rounds": 2,
+    "minimum_review_rounds": 2,
+    "maximum_review_rounds": 4,
+    "maximum_extension_days": 3660,
+    "allocation_rounding_minutes": 5,
+    "minimum_initial_learning_period_ratio": 0.1,
+    "maximum_initial_learning_period_ratio": 0.9,
+    "structural_estimate_minimum_initial_minutes": 90,
+    "structural_estimate_base_minutes": 120,
+    "structural_estimate_minutes_per_chunk": 8,
+    "structural_estimate_minimum_review_minutes": 30,
+    "structural_estimate_review_ratio": 0.12,
+    "structural_estimate_minimum_daily_minutes": 20,
+    "review_intervals_days": [1, 3, 7],
+    "minimum_review_task_minutes": 5,
+    "fallback_maximum_review_task_minutes": 60,
+    "fallback_review_minutes_ratio": 0.2,
+    "minimum_review_occurrence_minutes": 3,
+    "learner_level_elapsed_multipliers": {
+      "zero_foundation": [1.3, 1.8],
+      "beginner": [1.15, 1.6],
+      "intermediate": [0.9, 1.3],
+      "advanced": [0.75, 1.1]
+    },
+    "default_elapsed_multipliers": [1.0, 1.5]
+  },
+  "teaching": {
+    "version": "teacher-turn.v1",
+    "maximum_remediation_attempts": 2,
+    "required_opening_blocks": ["objective", "explanation", "analogy", "worked_example", "check"],
+    "maximum_elapsed_event_minutes": 60.0,
+    "minimum_substantive_answer_characters": 30,
+    "minimum_grounded_term_hits": 2,
+    "heuristic_base_score": 0.35,
+    "heuristic_check_increment": 0.08,
+    "heuristic_max_score": 0.69,
+    "learner_claim_pass_floor": 0.8,
+    "remediation_easy_factor": 0.25,
+    "remediation_default_factor": 0.35,
+    "remediation_hard_factor": 0.45,
+    "remediation_failure_increment_minutes": 5,
+    "remediation_maximum_failure_increment_minutes": 20,
+    "remediation_minimum_task_minutes": 10,
+    "remediation_maximum_task_minutes": 60
+  },
+  "text_limits": {
+    "version": "text-limits.v1",
+    "identifier_characters": 160,
+    "short_label_characters": 40,
+    "preference_key_characters": 120,
+    "preference_value_characters": 160,
+    "concept_name_characters": 240,
+    "brief_characters": 320,
+    "objective_characters": 500,
+    "medium_text_characters": 600,
+    "acceptance_characters": 800,
+    "explanation_characters": 1200,
+    "long_text_characters": 2000,
+    "code_characters": 4000,
+    "provider_chunk_characters": 5000,
+    "structured_block_characters": 12000,
+    "plain_text_characters": 20000,
+    "maximum_preference_entries": 20
+  },
+  "material_conversion": {
+    "version": "conversion-budget.v2",
+    "maximum_input_bytes": 52428800,
+    "maximum_output_characters": 2000000,
+    "timeout_seconds": 120.0,
+    "maximum_expanded_bytes": 104857600,
+    "maximum_archive_entries": 5000,
+    "text_quality_sample_characters": 200000,
+    "maximum_control_character_ratio": 0.01,
+    "maximum_replacement_character_ratio": 0.001,
+    "signature_probe_bytes": 4096,
+    "minimum_nested_timeout_seconds": 0.1,
+    "docling": {
+      "version": "2.119.0",
+      "enable_pdf_ocr": true,
+      "enable_table_structure": false,
+      "compile_layout_model": false,
+      "ocr_backend": "onnxruntime",
+      "ocr_languages": ["chinese"],
+      "ocr_text_score": 0.5,
+      "ocr_scale": 3.0
+    }
+  },
+  "provider": {
+    "version": "provider-policy.v1",
+    "extraction_batch_size": 24,
+    "default_batch_concurrency": 4,
+    "maximum_batch_concurrency": 6,
+    "structured_max_retries": 2,
+    "total_timeout_seconds": 90.0,
+    "connect_timeout_seconds": 10.0,
+    "write_timeout_seconds": 30.0,
+    "pool_timeout_seconds": 10.0,
+    "default_knowledge_confidence": 0.7
+  },
+  "resource_discovery": {
+    "version": "resource-discovery.v1",
+    "batch_size": 10,
+    "maximum_search_requests_per_batch": 8,
+    "maximum_resources_per_point": 2,
+    "maximum_search_results_per_query": 6,
+    "maximum_task_point_names": 24,
+    "maximum_reported_warnings": 3
+  },
+  "prompts": {
+    "version": "prompts.v1",
+    "knowledge_map_system_message": "You are a domain-agnostic curriculum analyst. Return only schema-valid JSON. Keep material claims and model-common suggestions in their declared layers.",
+    "knowledge_map_rules": [
+      "Create explicit theme nodes and concept nodes; every material concept must be the target of a material contains relation from a material theme.",
+      "A material node must cite one or more supplied chunk ids that support that node.",
+      "A material relation must cite one or more supplied chunk ids that directly support that relation; never infer relation evidence from its endpoint nodes.",
+      "A model_common node or relation must not cite supplied chunks and remains an unconfirmed review candidate.",
+      "Do not invent dependencies; include prerequisite only when learning the target genuinely requires the source.",
+      "Estimate complete mastery task minutes, not page dwell time."
+    ],
+    "teacher_expression_system_message": "You are the expression layer of a teacher-led lesson. Produce schema-valid teaching content, but never change state, mastery, evidence, scheduling, or the required check sequence.",
+    "teacher_expression_rules": [
+      "Explain only from the supplied concept and evidence; distinguish an analogy from evidence.",
+      "Return a complete explanation, a structurally matched analogy, and a worked example with observable input and output.",
+      "When the concept is code-related, include runnable or near-runnable code plus an expected result; otherwise leave code_example empty.",
+      "Write exactly one minimal check prompt that tests the supplied acceptance condition.",
+      "Do not ask whether the learner is ready and do not claim that the learner has mastered the concept."
+    ],
+    "teacher_evaluation_system_message": "You are a source-grounded rubric evaluator. You may return a validated assessment, but you do not control course state and cannot mark a task complete.",
+    "teacher_evaluation_rules": [
+      "Judge only against the supplied acceptance method and source evidence.",
+      "Do not reward the learner merely for claiming to understand.",
+      "Score from 0 to 1 and set criteria_met only when the observable acceptance condition is demonstrated.",
+      "Identify one concrete misconception or remediation focus when criteria are not met."
+    ],
+    "teacher_external_evaluation_rules": [
+      "Judge whether the supplied text or attachment result credibly proves successful completion of the current exercise.",
+      "A bare claim such as passed is insufficient; require observable details such as accepted status, passed tests, output, or an equivalent artifact.",
+      "Do not require a repeated oral explanation when external evidence already demonstrates the acceptance condition.",
+      "Score from 0 to 1 and set criteria_met only when successful independent completion is credibly demonstrated."
+    ],
+    "teacher_neutral_domain": "一个可观察的通用流程",
+    "teacher_analogy_label_template": "把“{concept}”映射到“{domain}”的结构",
+    "teacher_analogy_content_template": "在“{domain}”中识别对象与条件，再追踪动作如何改变状态，最后用可观察结果检查是否达到目标；把这四个位置逐一映射回“{concept}”。",
+    "teacher_analogy_mapping": [
+      {"concept_element": "对象或输入", "analogy_element": "流程中的对象", "relation": "对应"},
+      {"concept_element": "成立条件", "analogy_element": "流程的触发条件", "relation": "约束"},
+      {"concept_element": "变化步骤", "analogy_element": "流程的状态变化", "relation": "顺序"},
+      {"concept_element": "验收结果", "analogy_element": "流程的可观察结果", "relation": "检验"}
+    ],
+    "teacher_analogy_limitation": "类比只解释结构，不构成材料证据；无法从材料确认的事实必须保持未确认。",
+    "teacher_worked_example_template": "围绕“{concept}”构造一个最小完整例子：明确输入与成立条件，逐步展示状态变化，并给出可以复核的输出或验收结果。若概念涉及代码，示例必须同时说明输入、关键语句和预期输出。",
+    "teacher_check_template": "请用自己的话说明“{concept}”，给出一个具体例子，并解释它如何满足验收条件：{acceptance}",
+    "teacher_expected_action": "回答最小检查；如果卡住，请明确指出不确定的对象、条件、步骤或结果。",
+    "teacher_remediation_messages": {
+      "targeted_correction": "把回答拆成对象、条件、动作、结果四部分，只重做证据不足或相互矛盾的部分。",
+      "alternate_example_or_prerequisite": "换用另一组输入和条件重新演示；如果仍无法推进，先指出缺失的前置概念并回到对应证据。",
+      "blocked": "补救次数已经达到策略上限；记录阻塞点并返回对应材料证据，不把当前状态记为掌握。"
+    }
+  }
+}

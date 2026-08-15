@@ -330,47 +330,15 @@ def build_knowledge_map(
     *,
     previous: KnowledgeMap | None = None,
 ) -> KnowledgeMap:
-    """Generate a deterministic, Provider-free, source-grounded knowledge map."""
+    """Fail closed: v1 generation is owned by the canonical Provider job API.
 
-    if not workspace_id.strip():
-        raise ValueError("workspace_id is required")
-    docs = sorted(tuple(documents), key=lambda item: item.source_id)
-    if not docs:
-        raise ValueError("at least one source document is required")
-    source_ids = [document.source_id for document in docs]
-    if len(source_ids) != len(set(source_ids)):
-        raise ValueError("source_id must be unique within a map generation")
-    if previous is not None and previous.workspace_id != workspace_id:
-        raise ValueError("previous map belongs to another workspace")
+    The remaining types and readers in this module support old persisted maps.
+    Keeping a callable Provider-free builder would allow a future route to
+    accidentally recreate an unverified structural map, so the legacy write
+    path is intentionally disabled.
+    """
 
-    raw_nodes = [_node_for_chunk(document, chunk) for document in docs for chunk in document.chunks]
-    merged, duplicate_count = _merge_same_semantic(raw_nodes)
-    nodes = _apply_previous(merged, previous)
-    edges = _prerequisite_edges(docs, nodes)
-    quality = _quality(docs, nodes, edges, duplicate_count)
-    fingerprint = _fingerprint(workspace_id, docs, nodes, edges)
-
-    if previous is not None and fingerprint == previous.fingerprint:
-        return previous
-
-    warnings: list[str] = []
-    if quality.orphan_count:
-        warnings.append(f"{quality.orphan_count} active nodes are isolated")
-    if quality.duplicate_node_ratio:
-        warnings.append("Repeated semantic headings were merged deterministically")
-    if quality.chunk_coverage_ratio < 1:
-        warnings.append("Some chunks are not represented by active nodes")
-
-    return KnowledgeMap(
-        map_id=_stable_id(workspace_id, prefix="km"),
-        workspace_id=workspace_id,
-        revision=1 if previous is None else previous.revision + 1,
-        generation_mode="deterministic_fallback",
-        provider_used=False,
-        source_revisions=tuple((document.source_id, document.revision) for document in docs),
-        nodes=tuple(nodes),
-        edges=tuple(edges),
-        quality=quality,
-        fingerprint=fingerprint,
-        warnings=tuple(warnings),
+    del workspace_id, documents, previous
+    raise RuntimeError(
+        "PROVIDER_VERIFICATION_REQUIRED: use the canonical knowledge-map jobs API"
     )

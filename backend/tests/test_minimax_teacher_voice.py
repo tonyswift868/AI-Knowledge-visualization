@@ -5,10 +5,11 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app import casual_chat, minimax_teacher_voice as minimax
+from app import casual_chat, credential_store, minimax_teacher_voice as minimax
 
 
-def _configure(tmp_path: Path, monkeypatch, *, key: str = "test-secret-key") -> tuple[Path, Path]:
+def _configure(tmp_path: Path, monkeypatch, *, key: str = "test-secret-key") -> tuple[Path, str]:
+    credential_ref = credential_store.store_secret(key)
     config = tmp_path / "minimax.json"
     config.write_text(
         json.dumps(
@@ -17,18 +18,16 @@ def _configure(tmp_path: Path, monkeypatch, *, key: str = "test-secret-key") -> 
                 "enabled": True,
                 "voice_id": "MentorFlowTestVoice123",
                 "model": "speech-2.8-hd",
+                "credential_ref": credential_ref,
                 "profile": "test-private-profile",
                 "speeds": {"lively": 1.0, "relaxed": 1.0},
             }
         ),
         encoding="utf-8",
     )
-    key_file = tmp_path / "key.txt"
-    key_file.write_text(key, encoding="utf-8")
     monkeypatch.setenv("MENTORFLOW_MINIMAX_VOICE_CONFIG", str(config))
-    monkeypatch.setenv("MENTORFLOW_MINIMAX_API_KEY_FILE", str(key_file))
-    monkeypatch.delenv("MENTORFLOW_MINIMAX_API_KEY", raising=False)
-    return config, key_file
+    monkeypatch.delenv("MENTORFLOW_MINIMAX_CREDENTIAL_REF", raising=False)
+    return config, credential_ref
 
 
 def test_status_is_local_only_and_never_exposes_key(tmp_path, monkeypatch):

@@ -3,7 +3,9 @@ from datetime import datetime, date, timezone
 from typing import Any
 from pathlib import Path
 import os
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, create_engine, inspect, text
+import sys
+from threading import Lock
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 ROOT=Path(__file__).resolve().parents[2]; DATA=ROOT/'data'
@@ -14,6 +16,7 @@ def _create_engine(database_path: Path):
 
 engine=_create_engine(ORM_DB)
 _session_factory=sessionmaker(engine,expire_on_commit=False)
+_migration_lock = Lock()
 
 def SessionLocal(*args, **kwargs):
     """Return a session from the currently configured ORM database.
@@ -34,8 +37,68 @@ def configure_orm(database_path: str | Path):
     _session_factory=sessionmaker(engine,expire_on_commit=False)
     previous_engine.dispose()
     return engine
+
+
+def upgrade_orm_schema(revision: str = "head") -> None:
+    """Run explicit Alembic migrations at process startup, never per request."""
+
+    from alembic import command
+    from alembic.config import Config
+
+    # Historical migrations deliberately keep their original ``app.*``
+    # imports. A frozen desktop bundle exposes this package as ``backend.app``;
+    # register aliases so those immutable migration files load the same module
+    # objects instead of creating a second ORM engine.
+    if getattr(sys, "frozen", False):
+        import backend.app as backend_app
+        from . import expedition_orm
+
+        sys.modules.setdefault("app", backend_app)
+        sys.modules.setdefault("app.orm", sys.modules[__name__])
+        sys.modules.setdefault("app.expedition_orm", expedition_orm)
+
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    # Historical migration modules import ``app.orm``.  When FastAPI is
+    # launched as ``backend.app.main`` from the repository root, Alembic must
+    # prepend the backend directory rather than the process working directory.
+    config.set_main_option("prepend_sys_path", str(backend_root))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{ORM_DB.as_posix()}")
+    # Startup migrations run inside the application process.  Alembic's CLI
+    # logging configuration must not replace handlers already installed by the
+    # host, otherwise later runtime and shutdown failures become invisible.
+    config.attributes["configure_logger"] = False
+    backend_import_root = str(backend_root)
+    added_backend_import_root = backend_import_root not in sys.path
+    if added_backend_import_root:
+        sys.path.insert(0, backend_import_root)
+    try:
+        with _migration_lock:
+            command.upgrade(config, revision)
+    finally:
+        if added_backend_import_root:
+            try:
+                sys.path.remove(backend_import_root)
+            except ValueError:
+                pass
 def utcnow(): return datetime.now(timezone.utc)
 class Base(DeclarativeBase): pass
+# Keep v1 knowledge-map/teacher tables on a dedicated metadata registry.  The
+# 0012 migration (and legacy request bootstrap) intentionally use
+# ``Base.metadata.create_all``; keeping these tables separate guarantees that
+# 0013, rather than request handling, is the only creator of their schema.
+class KnowledgeMapBase(DeclarativeBase): pass
+MIGRATION_OWNED_KNOWLEDGE_TABLES = frozenset({
+    'orm_source_revisions',
+    'orm_conversion_manifests',
+    'orm_knowledge_map_revisions',
+    'orm_knowledge_nodes',
+    'orm_knowledge_edges',
+    'orm_plan_execution_tasks',
+    'orm_plan_mastery_events',
+    'orm_learning_resources',
+})
 class WorkspaceORM(Base):
     __tablename__='orm_workspaces'; id:Mapped[str]=mapped_column(String(64),primary_key=True); title:Mapped[str]=mapped_column(String(120)); description:Mapped[str]=mapped_column(Text,default=''); character_id:Mapped[str]=mapped_column(String(32),default='warm'); allow_external_knowledge:Mapped[bool]=mapped_column(Boolean,default=False); execution_mode:Mapped[str]=mapped_column(String(16),default='demo'); provider_name:Mapped[str]=mapped_column(String(64),default='fake'); provider_model:Mapped[str]=mapped_column(String(128),default=''); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); sources:Mapped[list['SourceORM']]=relationship(cascade='all,delete-orphan'); goals:Mapped[list['GoalORM']]=relationship(cascade='all,delete-orphan'); plans:Mapped[list['PlanORM']]=relationship(cascade='all,delete-orphan')
 class GoalORM(Base):
@@ -117,17 +180,300 @@ class SourceRevisionORM(Base):
 class ConversionManifestORM(Base):
     __tablename__='orm_conversion_manifests'; id:Mapped[str]=mapped_column(String(96),primary_key=True); source_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_source_revisions.id',ondelete='CASCADE'),index=True); adapter_name:Mapped[str]=mapped_column(String(80)); adapter_version:Mapped[str]=mapped_column(String(32)); mime_type:Mapped[str]=mapped_column(String(120),default=''); source_path:Mapped[str]=mapped_column(Text,default=''); content_hash:Mapped[str]=mapped_column(String(128)); metadata_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); status:Mapped[str]=mapped_column(String(24),default='ready'); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow)
 class KnowledgeMapRevisionORM(Base):
-    __tablename__='orm_knowledge_map_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); map_id:Mapped[str]=mapped_column(String(64),index=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); is_current:Mapped[bool]=mapped_column(Boolean,default=True,index=True); generation_mode:Mapped[str]=mapped_column(String(40)); provider_used:Mapped[bool]=mapped_column(Boolean,default=False); source_revisions:Mapped[list[Any]]=mapped_column(JSON,default=list); quality:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); fingerprint:Mapped[str]=mapped_column(String(128)); warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('workspace_id','revision',name='uq_orm_knowledge_map_revision'),)
+    __tablename__='orm_knowledge_map_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); map_id:Mapped[str]=mapped_column(String(64),index=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); is_current:Mapped[bool]=mapped_column(Boolean,default=True,index=True); status:Mapped[str]=mapped_column(String(24),default='staged',index=True); generation_mode:Mapped[str]=mapped_column(String(40)); provider_used:Mapped[bool]=mapped_column(Boolean,default=False); source_revisions:Mapped[list[Any]]=mapped_column(JSON,default=list); quality:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); fingerprint:Mapped[str]=mapped_column(String(128)); warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); staging_token:Mapped[str]=mapped_column(String(128),default=''); staged_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); activation_id:Mapped[str|None]=mapped_column(String(96),nullable=True); activated_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('workspace_id','revision',name='uq_orm_knowledge_map_revision'),Index('ix_orm_knowledge_map_revision_workspace_status','workspace_id','status'))
 class KnowledgeNodeORM(Base):
     __tablename__='orm_knowledge_nodes'; id:Mapped[str]=mapped_column(String(160),primary_key=True); map_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_knowledge_map_revisions.id',ondelete='CASCADE'),index=True); node_id:Mapped[str]=mapped_column(String(64),index=True); source_id:Mapped[str]=mapped_column(String(64),index=True); semantic_key:Mapped[str]=mapped_column(String(240)); label:Mapped[str]=mapped_column(String(240)); summary:Mapped[str]=mapped_column(Text); kind:Mapped[str]=mapped_column(String(40)); revision:Mapped[int]=mapped_column(Integer); status:Mapped[str]=mapped_column(String(24)); content_hash:Mapped[str]=mapped_column(String(128)); source_refs:Mapped[list[Any]]=mapped_column(JSON,default=list); history:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); __table_args__=(UniqueConstraint('map_revision_id','node_id',name='uq_orm_knowledge_node_revision'),)
 class KnowledgeEdgeORM(Base):
     __tablename__='orm_knowledge_edges'; id:Mapped[str]=mapped_column(String(160),primary_key=True); map_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_knowledge_map_revisions.id',ondelete='CASCADE'),index=True); edge_id:Mapped[str]=mapped_column(String(64),index=True); source_node_id:Mapped[str]=mapped_column(String(64)); target_node_id:Mapped[str]=mapped_column(String(64)); relation:Mapped[str]=mapped_column(String(40)); source_refs:Mapped[list[Any]]=mapped_column(JSON,default=list); __table_args__=(UniqueConstraint('map_revision_id','edge_id',name='uq_orm_knowledge_edge_revision'),)
+
+
+class KnowledgeMapJobORM(KnowledgeMapBase):
+    """Durable, retryable work item for a knowledge-map revision."""
+
+    __tablename__ = 'orm_knowledge_map_jobs'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    map_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Database-level FK is owned by Alembic 0013.  The target belongs to the
+    # legacy metadata registry, so this mapper deliberately keeps only the
+    # scalar column instead of an unresolved cross-metadata ForeignKey.
+    map_revision_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    job_type: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(32), default='queued', index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    request_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    failure_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_knowledge_map_job_idempotency'),
+        Index('ix_orm_knowledge_map_job_workspace_status', 'workspace_id', 'status'),
+        Index('ix_orm_knowledge_map_job_revision_status', 'map_revision_id', 'status'),
+    )
+
+
+class MaterialDispositionORM(KnowledgeMapBase):
+    """Explicit workspace decision for source material used by map generation."""
+
+    __tablename__ = 'orm_material_dispositions'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    source_id: Mapped[str] = mapped_column(String(64), index=True)
+    source_revision_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    map_revision_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    material_key: Mapped[str] = mapped_column(String(160))
+    disposition: Mapped[str] = mapped_column(String(32), default='pending', index=True)
+    status: Mapped[str] = mapped_column(String(24), default='pending', index=True)
+    reason: Mapped[str] = mapped_column(Text, default='')
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'map_revision_id', 'material_key', name='uq_orm_material_disposition_revision'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_material_disposition_idempotency'),
+        Index('ix_orm_material_disposition_workspace_status', 'workspace_id', 'status'),
+    )
+
+
+class ReviewCandidateORM(KnowledgeMapBase):
+    """Review queue item kept separate from immutable map revision contents."""
+
+    __tablename__ = 'orm_knowledge_review_candidates'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    map_revision_id: Mapped[str] = mapped_column(String(96), index=True)
+    candidate_key: Mapped[str] = mapped_column(String(160))
+    candidate_type: Mapped[str] = mapped_column(String(40), default='node')
+    node_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    edge_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default='pending', index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    evidence: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    reviewer_id: Mapped[str] = mapped_column(String(64), default='')
+    decision_reason: Mapped[str] = mapped_column(Text, default='')
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('map_revision_id', 'candidate_key', name='uq_orm_knowledge_review_candidate_key'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_knowledge_review_candidate_idempotency'),
+        Index('ix_orm_knowledge_review_candidate_workspace_status', 'workspace_id', 'status'),
+        Index('ix_orm_knowledge_review_candidate_revision_status', 'map_revision_id', 'status'),
+    )
+
+
+class PlanActivationRecordORM(KnowledgeMapBase):
+    """Append-only activation audit for draft and active learning plans."""
+
+    __tablename__ = 'orm_plan_activation_records'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), index=True)
+    previous_plan_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(24), default='draft', index=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    plan_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    reason: Mapped[str] = mapped_column(Text, default='')
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'plan_id', 'plan_revision', name='uq_orm_plan_activation_revision'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_plan_activation_idempotency'),
+        Index('ix_orm_plan_activation_workspace_status', 'workspace_id', 'status'),
+    )
+
+
+class PlanExecutionTaskORM(KnowledgeMapBase):
+    """Mutable execution state for one immutable canonical plan snapshot.
+
+    This table deliberately does not project canonical nodes into the legacy
+    ``active_knowledge_*`` registry.  ``concept_snapshot`` keeps the exact
+    revision-bound teaching fields while ``knowledge_point_id`` remains the
+    stable canonical node id.
+    """
+
+    __tablename__ = 'orm_plan_execution_tasks'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    map_revision_id: Mapped[str] = mapped_column(String(96), index=True)
+    knowledge_point_id: Mapped[str] = mapped_column(String(64), index=True)
+    day_date: Mapped[str] = mapped_column(String(10), index=True)
+    original_day_date: Mapped[str] = mapped_column(String(10), default='')
+    day_index: Mapped[int] = mapped_column(Integer)
+    task_order: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(240))
+    objective: Mapped[str] = mapped_column(Text)
+    source_evidence: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    acceptance_condition: Mapped[str] = mapped_column(Text, default='')
+    concept_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    estimated_task_minutes: Mapped[int] = mapped_column(Integer)
+    completed_task_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    actual_elapsed_minutes: Mapped[float] = mapped_column(Float, default=0)
+    status: Mapped[str] = mapped_column(String(24), default='planned', index=True)
+    task_type: Mapped[str] = mapped_column(String(32), default='initial_learning')
+    learning_phase: Mapped[str] = mapped_column(String(40), default='understand')
+    point_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    phase_part_index: Mapped[int] = mapped_column(Integer, default=1)
+    phase_part_count: Mapped[int] = mapped_column(Integer, default=1)
+    linked_review_item_id: Mapped[str] = mapped_column(String(96), default='')
+    review_cycle: Mapped[int] = mapped_column(Integer, default=0)
+    origin_task_id: Mapped[str] = mapped_column(String(96), default='')
+    not_before_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    trigger_reason: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('plan_id', 'id', name='uq_orm_plan_execution_task'),
+        Index('ix_orm_plan_execution_route', 'plan_id', 'task_type', 'point_sequence', 'day_index', 'task_order'),
+    )
+
+
+class PlanMasteryEventORM(KnowledgeMapBase):
+    """Append-only mastery/manual-skip evidence tied to one map revision."""
+
+    __tablename__ = 'orm_plan_mastery_events'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), index=True)
+    task_id: Mapped[str] = mapped_column(String(96), index=True)
+    map_revision_id: Mapped[str] = mapped_column(String(96), index=True)
+    knowledge_point_id: Mapped[str] = mapped_column(String(64), index=True)
+    evidence_hash: Mapped[str] = mapped_column(String(128))
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    score: Mapped[float] = mapped_column(Float, default=0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(160))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_plan_mastery_event_idempotency'),
+        Index('ix_orm_plan_mastery_node_revision', 'map_revision_id', 'knowledge_point_id'),
+    )
+
+
+class LearningResourceORM(KnowledgeMapBase):
+    """External resource selected independently for a canonical map revision."""
+
+    __tablename__ = 'orm_learning_resources'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    map_revision_id: Mapped[str] = mapped_column(String(96), index=True)
+    knowledge_point_id: Mapped[str] = mapped_column(String(64), index=True)
+    kind: Mapped[str] = mapped_column(String(48))
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text, default='')
+    url: Mapped[str] = mapped_column(Text)
+    host: Mapped[str] = mapped_column(String(240), default='')
+    provider_label: Mapped[str] = mapped_column(String(160), default='')
+    authority: Mapped[str] = mapped_column(String(64), default='')
+    source: Mapped[str] = mapped_column(String(64), default='')
+    search_query: Mapped[str] = mapped_column(Text, default='')
+    discovery_meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default='active', index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('map_revision_id', 'knowledge_point_id', 'url', name='uq_orm_learning_resource_revision_url'),
+        Index('ix_orm_learning_resource_workspace_revision', 'workspace_id', 'map_revision_id', 'status'),
+    )
+
+
+class LearnerPreferenceORM(KnowledgeMapBase):
+    """One explicit, auditable learner preference per workspace and key."""
+
+    __tablename__ = 'orm_learner_preferences'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    preference_key: Mapped[str] = mapped_column(String(120))
+    value_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(24), default='explicit')
+    status: Mapped[str] = mapped_column(String(24), default='active', index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'preference_key', name='uq_orm_learner_preference_key'),
+        Index('ix_orm_learner_preference_workspace_status', 'workspace_id', 'status'),
+    )
+
+
+class TeacherTurnORM(KnowledgeMapBase):
+    """Durable teacher response/turn, including grounding and chosen action."""
+
+    __tablename__ = 'orm_teacher_turns'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    learning_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    turn_key: Mapped[str] = mapped_column(String(160))
+    turn_number: Mapped[int] = mapped_column(Integer, default=0)
+    role: Mapped[str] = mapped_column(String(24), default='teacher')
+    content: Mapped[str] = mapped_column(Text)
+    phase: Mapped[str] = mapped_column(String(40), default='')
+    action_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    grounding_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    state_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'turn_key', name='uq_orm_teacher_turn_key'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_teacher_turn_idempotency'),
+        Index('ix_orm_teacher_turn_workspace_created', 'workspace_id', 'created_at'),
+    )
+
+
+class TeacherEventORM(KnowledgeMapBase):
+    """Append-only event log associated with a persisted teacher turn."""
+
+    __tablename__ = 'orm_teacher_events'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    teacher_turn_id: Mapped[str | None] = mapped_column(
+        ForeignKey('orm_teacher_turns.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    event_key: Mapped[str] = mapped_column(String(160))
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(24), default='pending', index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'event_key', name='uq_orm_teacher_event_key'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_teacher_event_idempotency'),
+        Index('ix_orm_teacher_event_workspace_status', 'workspace_id', 'status'),
+    )
+
+
+# Short aliases keep imports ergonomic for callers that use the domain nouns.
+MapJobORM = KnowledgeMapJobORM
+KnowledgeMaterialDispositionORM = MaterialDispositionORM
+KnowledgeReviewCandidateORM = ReviewCandidateORM
 def init_orm():
     DATA.mkdir(parents=True, exist_ok=True)
     # Register the optional global expedition models before creating tables.
     # Importing here avoids a module cycle while preserving the existing ORM.
     from . import expedition_orm  # noqa: F401
-    Base.metadata.create_all(engine)
+    # Knowledge-map foundation tables are migration-owned.  Creating the
+    # remaining legacy/runtime tables here preserves the established startup
+    # contract without letting a request bypass Alembic 0012/0013.
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            table
+            for table in Base.metadata.sorted_tables
+            if table.name not in MIGRATION_OWNED_KNOWLEDGE_TABLES
+        ],
+    )
     columns = {column["name"] for column in inspect(engine).get_columns("orm_workspaces")}
     additions = {"execution_mode": "VARCHAR(16) DEFAULT 'demo' NOT NULL", "provider_name": "VARCHAR(64) DEFAULT 'fake' NOT NULL", "provider_model": "VARCHAR(128) DEFAULT '' NOT NULL"}
     with engine.begin() as connection:

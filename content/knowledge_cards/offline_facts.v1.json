@@ -1,0 +1,5005 @@
+{
+  "catalog_version": "offline_facts.v1",
+  "items": [
+    {
+      "id": "nist-si-001",
+      "topic": "计量",
+      "title": "米是长度基本单位",
+      "body": "国际单位制把米（m）规定为长度的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—metre",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-002",
+      "topic": "计量",
+      "title": "千克是质量基本单位",
+      "body": "国际单位制把千克（kg）规定为质量的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—kilogram",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-003",
+      "topic": "计量",
+      "title": "秒是时间基本单位",
+      "body": "国际单位制把秒（s）规定为时间的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—second",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-004",
+      "topic": "计量",
+      "title": "安培是电流基本单位",
+      "body": "国际单位制把安培（A）规定为电流的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—ampere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-005",
+      "topic": "计量",
+      "title": "开尔文是温度基本单位",
+      "body": "国际单位制把开尔文（K）规定为热力学温度的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—kelvin",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-006",
+      "topic": "计量",
+      "title": "摩尔是物质的量单位",
+      "body": "国际单位制把摩尔（mol）规定为物质的量基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—mole",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-007",
+      "topic": "计量",
+      "title": "坎德拉是发光强度单位",
+      "body": "国际单位制把坎德拉（cd）规定为发光强度的基本单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI base units—candela",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-008",
+      "topic": "计量",
+      "title": "秒由铯频率定义",
+      "body": "秒与铯-133原子基态超精细跃迁频率的固定数值相联系。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—second",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-009",
+      "topic": "计量",
+      "title": "米与光速相联系",
+      "body": "米由真空光速的固定数值和秒共同定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—metre",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-010",
+      "topic": "计量",
+      "title": "千克与普朗克常数相联系",
+      "body": "千克由普朗克常数的固定数值和米、秒共同定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—kilogram",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-011",
+      "topic": "计量",
+      "title": "安培与基本电荷相联系",
+      "body": "安培由基本电荷的固定数值和秒共同定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—ampere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-012",
+      "topic": "计量",
+      "title": "开尔文与玻尔兹曼常数相联系",
+      "body": "开尔文由玻尔兹曼常数的固定数值和千克、米、秒共同定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—kelvin",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-013",
+      "topic": "计量",
+      "title": "摩尔与阿伏伽德罗常数相联系",
+      "body": "摩尔由阿伏伽德罗常数的固定数值定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—mole",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-si-014",
+      "topic": "计量",
+      "title": "坎德拉与光效能相联系",
+      "body": "坎德拉通过频率540太赫兹的单色辐射光效能定义。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "SI definitions—candela",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-015",
+      "topic": "计量",
+      "title": "quetta表示10的30次方",
+      "body": "SI词头quetta（Q）表示乘以10的30次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—quetta",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-016",
+      "topic": "计量",
+      "title": "ronna表示10的27次方",
+      "body": "SI词头ronna（R）表示乘以10的27次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—ronna",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-017",
+      "topic": "计量",
+      "title": "yotta表示10的24次方",
+      "body": "SI词头yotta（Y）表示乘以10的24次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—yotta",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-018",
+      "topic": "计量",
+      "title": "zetta表示10的21次方",
+      "body": "SI词头zetta（Z）表示乘以10的21次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—zetta",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-019",
+      "topic": "计量",
+      "title": "exa表示10的18次方",
+      "body": "SI词头exa（E）表示乘以10的18次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—exa",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-020",
+      "topic": "计量",
+      "title": "peta表示10的15次方",
+      "body": "SI词头peta（P）表示乘以10的15次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—peta",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-021",
+      "topic": "计量",
+      "title": "tera表示10的12次方",
+      "body": "SI词头tera（T）表示乘以10的12次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—tera",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-022",
+      "topic": "计量",
+      "title": "giga表示10的9次方",
+      "body": "SI词头giga（G）表示乘以10的9次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—giga",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-023",
+      "topic": "计量",
+      "title": "mega表示10的6次方",
+      "body": "SI词头mega（M）表示乘以10的6次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—mega",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-024",
+      "topic": "计量",
+      "title": "kilo表示10的3次方",
+      "body": "SI词头kilo（k）表示乘以10的3次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—kilo",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-025",
+      "topic": "计量",
+      "title": "hecto表示10的2次方",
+      "body": "SI词头hecto（h）表示乘以10的2次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—hecto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-026",
+      "topic": "计量",
+      "title": "deca表示10的1次方",
+      "body": "SI词头deca（da）表示乘以10的1次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—deca",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-027",
+      "topic": "计量",
+      "title": "deci表示10的负1次方",
+      "body": "SI词头deci（d）表示乘以10的负1次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—deci",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-028",
+      "topic": "计量",
+      "title": "centi表示10的负2次方",
+      "body": "SI词头centi（c）表示乘以10的负2次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—centi",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-029",
+      "topic": "计量",
+      "title": "milli表示10的负3次方",
+      "body": "SI词头milli（m）表示乘以10的负3次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—milli",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-030",
+      "topic": "计量",
+      "title": "micro表示10的负6次方",
+      "body": "SI词头micro（μ）表示乘以10的负6次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—micro",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-031",
+      "topic": "计量",
+      "title": "nano表示10的负9次方",
+      "body": "SI词头nano（n）表示乘以10的负9次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—nano",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-032",
+      "topic": "计量",
+      "title": "pico表示10的负12次方",
+      "body": "SI词头pico（p）表示乘以10的负12次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—pico",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-033",
+      "topic": "计量",
+      "title": "femto表示10的负15次方",
+      "body": "SI词头femto（f）表示乘以10的负15次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—femto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-034",
+      "topic": "计量",
+      "title": "atto表示10的负18次方",
+      "body": "SI词头atto（a）表示乘以10的负18次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—atto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-035",
+      "topic": "计量",
+      "title": "zepto表示10的负21次方",
+      "body": "SI词头zepto（z）表示乘以10的负21次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—zepto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-036",
+      "topic": "计量",
+      "title": "yocto表示10的负24次方",
+      "body": "SI词头yocto（y）表示乘以10的负24次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—yocto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-037",
+      "topic": "计量",
+      "title": "ronto表示10的负27次方",
+      "body": "SI词头ronto（r）表示乘以10的负27次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—ronto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-prefix-038",
+      "topic": "计量",
+      "title": "quecto表示10的负30次方",
+      "body": "SI词头quecto（q）表示乘以10的负30次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-prefixes",
+      "source_locator": "SI prefixes—quecto",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-039",
+      "topic": "物理常数",
+      "title": "真空光速",
+      "body": "真空中的光速被定义为299792458米每秒。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "speed of light in vacuum",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-040",
+      "topic": "物理常数",
+      "title": "普朗克常数",
+      "body": "普朗克常数的定义值为6.62607015×10的负34次方焦耳秒。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Planck constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-041",
+      "topic": "物理常数",
+      "title": "基本电荷",
+      "body": "基本电荷的定义值为1.602176634×10的负19次方库仑。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "elementary charge",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-042",
+      "topic": "物理常数",
+      "title": "阿伏伽德罗常数",
+      "body": "阿伏伽德罗常数的定义值为6.02214076×10的23次方每摩尔。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Avogadro constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-043",
+      "topic": "物理常数",
+      "title": "玻尔兹曼常数",
+      "body": "玻尔兹曼常数的定义值为1.380649×10的负23次方焦耳每开尔文。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Boltzmann constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-044",
+      "topic": "物理常数",
+      "title": "万有引力常数",
+      "body": "NIST列出的万有引力常数约为6.67430×10的负11次方立方米每千克秒平方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Newtonian constant of gravitation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-045",
+      "topic": "物理常数",
+      "title": "标准重力加速度",
+      "body": "标准重力加速度的约定值为9.80665米每秒平方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "standard acceleration of gravity",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-046",
+      "topic": "物理常数",
+      "title": "标准大气压",
+      "body": "标准大气压等于101325帕斯卡。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "standard atmosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-047",
+      "topic": "物理常数",
+      "title": "电子质量",
+      "body": "NIST列出的电子静质量约为9.109×10的负31次方千克。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "electron mass",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-048",
+      "topic": "物理常数",
+      "title": "质子质量",
+      "body": "NIST列出的质子静质量约为1.673×10的负27次方千克。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "proton mass",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-049",
+      "topic": "物理常数",
+      "title": "中子质量",
+      "body": "NIST列出的中子静质量约为1.675×10的负27次方千克。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "neutron mass",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-050",
+      "topic": "物理常数",
+      "title": "原子质量常数",
+      "body": "原子质量常数约为1.66054×10的负27次方千克。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "atomic mass constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-051",
+      "topic": "物理常数",
+      "title": "法拉第常数",
+      "body": "法拉第常数的定义值为96485.33212库仑每摩尔。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Faraday constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-052",
+      "topic": "物理常数",
+      "title": "摩尔气体常数",
+      "body": "摩尔气体常数约为8.314462618焦耳每摩尔开尔文。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "molar gas constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-053",
+      "topic": "物理常数",
+      "title": "斯忒藩—玻尔兹曼常数",
+      "body": "斯忒藩—玻尔兹曼常数约为5.670374419×10的负8次方瓦每平方米开尔文四次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Stefan-Boltzmann constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-054",
+      "topic": "物理常数",
+      "title": "精细结构常数",
+      "body": "精细结构常数是无量纲常数，NIST给出的数值约为7.297×10的负3次方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "fine-structure constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-055",
+      "topic": "物理常数",
+      "title": "玻尔半径",
+      "body": "玻尔半径约为5.292×10的负11次方米，是原子尺度的长度常数。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Bohr radius",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-056",
+      "topic": "物理常数",
+      "title": "里德伯常数",
+      "body": "里德伯常数约为10973731.568每米，常用于原子光谱关系。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "Rydberg constant",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-057",
+      "topic": "物理常数",
+      "title": "电子伏特",
+      "body": "电子伏特的定义值为1.602176634×10的负19次方焦耳。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://physics.nist.gov/cuu/Constants/",
+      "source_locator": "electron volt",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-const-058",
+      "topic": "计量",
+      "title": "摄氏温度换算",
+      "body": "摄氏温度的数值等于热力学温度数值减去273.15。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "degree Celsius",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-059",
+      "topic": "计量",
+      "title": "弧度是无量纲单位",
+      "body": "弧度由弧长与半径之比定义，在SI中属于无量纲导出单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—radian",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-060",
+      "topic": "计量",
+      "title": "球面度是无量纲单位",
+      "body": "球面度由球面面积与半径平方之比定义，在SI中属于无量纲导出单位。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—steradian",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-061",
+      "topic": "计量",
+      "title": "赫兹表示每秒一次",
+      "body": "赫兹（Hz）是频率单位，等于每秒一次，即每秒的周期数。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—hertz",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-062",
+      "topic": "计量",
+      "title": "牛顿表示力",
+      "body": "牛顿（N）是力的单位，等于千克米每秒平方。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—newton",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-063",
+      "topic": "计量",
+      "title": "帕斯卡表示压强",
+      "body": "帕斯卡（Pa）是压强单位，等于一牛顿每平方米。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—pascal",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-064",
+      "topic": "计量",
+      "title": "焦耳表示能量",
+      "body": "焦耳（J）是能量单位，等于一牛顿米。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—joule",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-065",
+      "topic": "计量",
+      "title": "瓦特表示功率",
+      "body": "瓦特（W）是功率单位，等于每秒一焦耳。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—watt",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-066",
+      "topic": "计量",
+      "title": "库仑表示电荷量",
+      "body": "库仑（C）是电荷量单位，等于一安培秒。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—coulomb",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-067",
+      "topic": "计量",
+      "title": "伏特表示电势差",
+      "body": "伏特（V）是电势差单位，等于一瓦特每安培。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—volt",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-068",
+      "topic": "计量",
+      "title": "欧姆表示电阻",
+      "body": "欧姆（Ω）是电阻单位，等于一伏特每安培。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—ohm",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-069",
+      "topic": "计量",
+      "title": "西门子表示电导",
+      "body": "西门子（S）是电导单位，等于一安培每伏特。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—siemens",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-070",
+      "topic": "计量",
+      "title": "韦伯表示磁通量",
+      "body": "韦伯（Wb）是磁通量单位，等于一伏特秒。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—weber",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-071",
+      "topic": "计量",
+      "title": "特斯拉表示磁通量密度",
+      "body": "特斯拉（T）是磁通量密度单位，等于一韦伯每平方米。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—tesla",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-072",
+      "topic": "计量",
+      "title": "亨利表示电感",
+      "body": "亨利（H）是电感单位，等于一韦伯每安培。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—henry",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-073",
+      "topic": "计量",
+      "title": "流明表示光通量",
+      "body": "流明（lm）是光通量单位，等于一坎德拉球面度。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—lumen",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-074",
+      "topic": "计量",
+      "title": "勒克斯表示照度",
+      "body": "勒克斯（lx）是照度单位，等于一流明每平方米。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived units—lux",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nist-unit-075",
+      "topic": "计量",
+      "title": "导出单位来自基本单位",
+      "body": "SI导出单位由七个基本单位的乘积或商组合得到。",
+      "source_name": "美国国家标准与技术研究院（NIST）",
+      "source_url": "https://www.nist.gov/pml/owm/metric-si/si-units",
+      "source_locator": "derived SI units",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家标准与技术研究院（NIST）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-076",
+      "topic": "太阳系",
+      "title": "太阳是一颗恒星",
+      "body": "太阳是位于太阳系中心、由自身发光发热的恒星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/",
+      "source_locator": "solar system overview—Sun",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-077",
+      "topic": "太阳系",
+      "title": "太阳系年龄",
+      "body": "NASA资料把太阳系形成时间概括为约46亿年前。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/",
+      "source_locator": "solar system overview—formation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-078",
+      "topic": "太阳系",
+      "title": "太阳占据主要质量",
+      "body": "太阳约占太阳系总质量的绝大部分，因此其引力主导行星运动。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/",
+      "source_locator": "solar system overview—Sun mass",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-079",
+      "topic": "行星",
+      "title": "水星离太阳最近",
+      "body": "水星是距离太阳最近的行星，也是太阳系最小的行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mercury/",
+      "source_locator": "Mercury overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-080",
+      "topic": "行星",
+      "title": "水星公转周期短",
+      "body": "水星绕太阳公转一周约需88个地球日。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mercury/",
+      "source_locator": "Mercury—year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-081",
+      "topic": "行星",
+      "title": "金星表面最热",
+      "body": "金星拥有浓厚大气和强烈温室效应，表面温度在行星中最高。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/venus/",
+      "source_locator": "Venus overview—temperature",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-082",
+      "topic": "行星",
+      "title": "金星自转方向特殊",
+      "body": "金星自转方向与多数行星相反，呈逆行自转。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/venus/",
+      "source_locator": "Venus overview—rotation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-083",
+      "topic": "行星",
+      "title": "地球是第三颗行星",
+      "body": "地球按距太阳远近排序是太阳系的第三颗行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/earth/",
+      "source_locator": "Earth overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-084",
+      "topic": "行星",
+      "title": "地球表面有液态水",
+      "body": "在太阳系已知天体中，地球表面拥有大量稳定的液态水。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/earth/",
+      "source_locator": "Earth overview—water",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-085",
+      "topic": "月球",
+      "title": "月球是地球卫星",
+      "body": "月球是地球唯一的天然卫星，绕地球运行。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/",
+      "source_locator": "Moon overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-086",
+      "topic": "行星",
+      "title": "火星呈红色",
+      "body": "火星表面尘土中的氧化铁使它从太空看起来呈红色。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mars/",
+      "source_locator": "Mars overview—red planet",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-087",
+      "topic": "行星",
+      "title": "奥林帕斯山很高",
+      "body": "火星上的奥林帕斯山是太阳系已知最高的火山。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mars/",
+      "source_locator": "Mars—Olympus Mons",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-088",
+      "topic": "行星",
+      "title": "木星最大",
+      "body": "木星是太阳系体积和质量最大的行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/jupiter/",
+      "source_locator": "Jupiter overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-089",
+      "topic": "行星",
+      "title": "木星有大红斑",
+      "body": "木星大红斑是其大气中的巨大风暴系统。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/jupiter/",
+      "source_locator": "Jupiter—Great Red Spot",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-090",
+      "topic": "行星",
+      "title": "木星有四颗伽利略卫星",
+      "body": "木星的四颗伽利略卫星是木卫一、木卫二、木卫三和木卫四。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/moons/jupiter-moons/",
+      "source_locator": "Jupiter moons—Galilean moons",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-091",
+      "topic": "行星",
+      "title": "土星拥有明亮光环",
+      "body": "土星周围的光环主要由冰粒和岩石碎片组成。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/saturn/",
+      "source_locator": "Saturn overview—rings",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-092",
+      "topic": "行星",
+      "title": "土星平均密度小于水",
+      "body": "按整体平均密度比较，土星的密度小于液态水的密度。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/saturn/",
+      "source_locator": "Saturn overview—density",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-093",
+      "topic": "行星",
+      "title": "天王星近似侧躺",
+      "body": "天王星自转轴倾角很大，看起来像在轨道平面上侧躺着运行。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/uranus/",
+      "source_locator": "Uranus overview—tilt",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-094",
+      "topic": "行星",
+      "title": "天王星呈蓝绿色",
+      "body": "天王星大气中的甲烷吸收红光，使行星外观呈蓝绿色。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/uranus/",
+      "source_locator": "Uranus overview—color",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-095",
+      "topic": "行星",
+      "title": "海王星风速很高",
+      "body": "海王星大气中观测到太阳系行星级别的高速风。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/neptune/",
+      "source_locator": "Neptune overview—winds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-096",
+      "topic": "行星",
+      "title": "海王星公转很慢",
+      "body": "海王星绕太阳公转一周约需165个地球年。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/neptune/",
+      "source_locator": "Neptune overview—year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-097",
+      "topic": "矮行星",
+      "title": "冥王星属于矮行星",
+      "body": "冥王星位于柯伊伯带，是被正式归类的矮行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/dwarf-planets/pluto/",
+      "source_locator": "Pluto overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-098",
+      "topic": "矮行星",
+      "title": "谷神星位于小行星带",
+      "body": "谷神星是小行星带中最大的天体，并被归类为矮行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/dwarf-planets/ceres/",
+      "source_locator": "Ceres overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-099",
+      "topic": "太阳系",
+      "title": "柯伊伯带在海王星外侧",
+      "body": "柯伊伯带是海王星轨道外的冰质小天体分布区域。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/kuiper-belt/",
+      "source_locator": "Kuiper Belt overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-100",
+      "topic": "太阳系",
+      "title": "奥尔特云非常遥远",
+      "body": "NASA将奥尔特云描述为包围太阳系的遥远、近似球形冰质天体云。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/oort-cloud/",
+      "source_locator": "Oort Cloud overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-101",
+      "topic": "小天体",
+      "title": "小行星是岩石残余",
+      "body": "小行星是太阳系形成时期留下的岩石或金属小天体。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/asteroids/",
+      "source_locator": "Asteroids overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-102",
+      "topic": "小天体",
+      "title": "彗星含冰和尘埃",
+      "body": "彗星通常由冰、尘埃和岩石组成，靠近太阳时可能形成彗发和彗尾。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/comets/",
+      "source_locator": "Comets overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-103",
+      "topic": "小天体",
+      "title": "流星体在太空中",
+      "body": "流星体指仍在太空中运行的较小岩石或金属碎片。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/meteors-meteorites/",
+      "source_locator": "Meteors and meteorites overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-104",
+      "topic": "小天体",
+      "title": "流星是大气中的光迹",
+      "body": "流星是流星体进入大气并因发光形成的可见光迹。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/meteors-meteorites/",
+      "source_locator": "Meteors and meteorites overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-105",
+      "topic": "小天体",
+      "title": "陨石到达地面",
+      "body": "穿过大气后仍有部分物质落到地面的流星体残片称为陨石。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/meteors-meteorites/",
+      "source_locator": "Meteors and meteorites overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-106",
+      "topic": "太阳系",
+      "title": "天文单位表示日地距离",
+      "body": "天文单位是地球到太阳平均距离的尺度，约为1.496亿千米。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/solar-system-facts/",
+      "source_locator": "Solar System facts—astronomical unit",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-107",
+      "topic": "太阳系",
+      "title": "阳光到达地球需约八分钟",
+      "body": "从太阳表面发出的光到达地球平均需要约八分二十秒。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/facts/",
+      "source_locator": "Sun facts—light travel time",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-108",
+      "topic": "行星",
+      "title": "行星轨道近似椭圆",
+      "body": "行星绕太阳的轨道不是完美圆形，而是近似椭圆。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/solar-system-facts/",
+      "source_locator": "Solar System facts—orbits",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-109",
+      "topic": "地球",
+      "title": "地轴倾角造成季节",
+      "body": "地球自转轴相对轨道面倾斜，地轴指向变化与公转共同造成季节。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-observatory/earths-seasons/",
+      "source_locator": "Earth seasons",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-110",
+      "topic": "地球",
+      "title": "地球自转带来昼夜",
+      "body": "地球绕自转轴旋转，使不同经度依次面向或背向太阳而产生昼夜。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-facts/",
+      "source_locator": "Earth facts—rotation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-111",
+      "topic": "地球",
+      "title": "地球绕太阳约一年",
+      "body": "地球完成一次绕太阳公转约需365.24个地球日。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-facts/",
+      "source_locator": "Earth facts—revolution",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-112",
+      "topic": "月球",
+      "title": "月相来自反射光几何",
+      "body": "月相变化主要由太阳照亮月球的部分与地球观察角度变化造成。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/moon-phases/",
+      "source_locator": "Moon phases",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-113",
+      "topic": "月球",
+      "title": "月球发生潮汐锁定",
+      "body": "月球自转一周与绕地球公转一周时间相近，因此总以近似同一面朝向地球。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/moon-phases/",
+      "source_locator": "Moon rotation and orbit",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-114",
+      "topic": "月球",
+      "title": "月海是玄武岩平原",
+      "body": "月球表面许多暗色月海是古代熔岩冷却形成的玄武岩平原。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/lunar-geology/",
+      "source_locator": "Lunar geology—maria",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-115",
+      "topic": "月球",
+      "title": "月面陨石坑来自撞击",
+      "body": "月球表面的许多圆形凹坑由小天体撞击形成，因缺少强烈侵蚀而能长期保存。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/lunar-geology/",
+      "source_locator": "Lunar geology—craters",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-116",
+      "topic": "地球",
+      "title": "潮汐主要受月球引力影响",
+      "body": "海平面周期性涨落主要由月球引力作用，太阳引力也会参与调制。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/tides/",
+      "source_locator": "Moon tides",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-117",
+      "topic": "月球",
+      "title": "日食是月球遮挡太阳",
+      "body": "当月球运行到太阳与地球之间并形成合适排列时，月球会遮挡部分或全部太阳盘面。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/earths-moon/solar-eclipses/",
+      "source_locator": "Solar eclipses",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-118",
+      "topic": "月球",
+      "title": "月食是地球影子投向月球",
+      "body": "当月球进入地球背向太阳一侧的影子时，会发生月食。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/moon/earths-moon/lunar-eclipses/",
+      "source_locator": "Lunar eclipses",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-119",
+      "topic": "载人航天",
+      "title": "空间站处于持续自由落体",
+      "body": "国际空间站和其中物体一起绕地球自由落体，因此表现出微重力环境。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://www.nasa.gov/international-space-station/",
+      "source_locator": "International Space Station—microgravity",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-120",
+      "topic": "空间望远镜",
+      "title": "哈勃望远镜绕地球运行",
+      "body": "哈勃空间望远镜位于地球低轨道，从太空观测天体。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/mission/hubble/",
+      "source_locator": "Hubble mission overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-121",
+      "topic": "空间望远镜",
+      "title": "韦布望远镜观测红外",
+      "body": "詹姆斯·韦布空间望远镜主要在红外波段观测宇宙。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/mission/webb/",
+      "source_locator": "Webb mission overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-122",
+      "topic": "火星",
+      "title": "火星有两颗小卫星",
+      "body": "火星的天然卫星是火卫一（Phobos）和火卫二（Deimos）。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/moons/mars-moons/",
+      "source_locator": "Mars moons overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-123",
+      "topic": "金星",
+      "title": "金星大气富含二氧化碳",
+      "body": "金星大气以二氧化碳为主，并具有很高的表面压力。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/venus/",
+      "source_locator": "Venus atmosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-124",
+      "topic": "火星",
+      "title": "火星大气很稀薄",
+      "body": "火星大气比地球稀薄得多，主要成分是二氧化碳。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mars/",
+      "source_locator": "Mars atmosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-125",
+      "topic": "地球",
+      "title": "磁层偏转太阳风",
+      "body": "地球磁场形成磁层，可使许多带电太阳风粒子偏转到地球周围。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/magnetosphere/",
+      "source_locator": "Earth magnetosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-126",
+      "topic": "太阳",
+      "title": "极光与带电粒子有关",
+      "body": "太阳风带电粒子沿地磁场进入高层大气并激发气体，可产生极光。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-observatory/auroras/",
+      "source_locator": "Aurora science",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-127",
+      "topic": "太阳",
+      "title": "太阳风是带电粒子流",
+      "body": "太阳持续向行星际空间释放由带电粒子组成的太阳风。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-wind/",
+      "source_locator": "Solar wind",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-128",
+      "topic": "太阳",
+      "title": "太阳黑子相对较冷",
+      "body": "太阳黑子是光球上的较暗区域，温度相对周围光球更低。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/sunspots/",
+      "source_locator": "Sunspots",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-129",
+      "topic": "太阳",
+      "title": "太阳耀斑是突发能量释放",
+      "body": "太阳耀斑是太阳大气中短时间内释放大量能量的爆发现象。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-flares/",
+      "source_locator": "Solar flares",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-130",
+      "topic": "太阳",
+      "title": "日冕物质抛射会喷出等离子体",
+      "body": "日冕物质抛射是太阳日冕向行星际空间抛出的巨大等离子体云。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/coronal-mass-ejections/",
+      "source_locator": "Coronal mass ejections",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-131",
+      "topic": "太阳",
+      "title": "太阳活动有约十一年周期",
+      "body": "太阳黑子和许多太阳活动指标大致按约十一年周期起伏。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-cycle/",
+      "source_locator": "Solar cycle",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-132",
+      "topic": "太阳",
+      "title": "光球是可见表面",
+      "body": "太阳光球是从地球可直接看到的太阳大气层区域。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-structure/",
+      "source_locator": "Solar structure—photosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-133",
+      "topic": "太阳",
+      "title": "日冕是太阳外层大气",
+      "body": "日冕是太阳大气的最外层，温度很高且延伸到行星际空间。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-structure/",
+      "source_locator": "Solar structure—corona",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-134",
+      "topic": "太阳",
+      "title": "太阳核心进行核聚变",
+      "body": "太阳核心通过氢核聚变形成氦并释放支撑太阳的能量。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-structure/",
+      "source_locator": "Solar structure—core",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-135",
+      "topic": "太阳",
+      "title": "太阳能量来自核心",
+      "body": "太阳辐射的主要能量源是核心中的核聚变反应。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/solar-structure/",
+      "source_locator": "Solar structure—energy",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-136",
+      "topic": "水星",
+      "title": "水星几乎没有厚大气",
+      "body": "水星缺乏像地球那样的稠密大气，表面附近主要是极稀薄外逸层。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mercury/",
+      "source_locator": "Mercury atmosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-137",
+      "topic": "金星",
+      "title": "金星自转日长于公转年",
+      "body": "金星自转一周所需时间比绕太阳公转一周的时间更长。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/venus/",
+      "source_locator": "Venus day and year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-138",
+      "topic": "火星",
+      "title": "火星一天约二十四点六小时",
+      "body": "火星自转一周约24.6小时，这个周期被称为一个火星太阳日。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/mars/",
+      "source_locator": "Mars day",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-139",
+      "topic": "木星",
+      "title": "木星自转最快",
+      "body": "在八大行星中，木星完成一次自转所需时间最短，约十小时。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/jupiter/",
+      "source_locator": "Jupiter rotation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-140",
+      "topic": "天王星",
+      "title": "天王星公转约八十四年",
+      "body": "天王星绕太阳一周约需84个地球年。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/uranus/",
+      "source_locator": "Uranus year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-141",
+      "topic": "海王星",
+      "title": "海王星一年约一百六十五年",
+      "body": "海王星完成一次绕太阳公转约需165个地球年。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/planets/neptune/",
+      "source_locator": "Neptune year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-142",
+      "topic": "行星",
+      "title": "太阳系有八颗行星",
+      "body": "按NASA的太阳系概览，太阳系的八颗行星从内向外依次绕太阳运行。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/",
+      "source_locator": "solar system overview—eight planets",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-143",
+      "topic": "太阳系",
+      "title": "黄道面是行星轨道近似平面",
+      "body": "多数行星的轨道大致位于同一平面，这一平面常称为黄道面。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/solar-system/solar-system-facts/",
+      "source_locator": "Solar System facts—ecliptic",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-144",
+      "topic": "太阳系",
+      "title": "日球层由太阳风塑造",
+      "body": "太阳风向外扩展形成日球层，构成太阳在星际空间中的巨大气泡。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/heliosphere/",
+      "source_locator": "Heliosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-145",
+      "topic": "太阳系",
+      "title": "日球层顶是边界区域",
+      "body": "越过日球层顶后，航天器进入星际介质主导的空间。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/sun/heliosphere/",
+      "source_locator": "Heliopause",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-146",
+      "topic": "宇宙",
+      "title": "系外行星绕其他恒星",
+      "body": "系外行星是太阳系之外、围绕其他恒星运行的行星。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/exoplanets/",
+      "source_locator": "Exoplanets overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-147",
+      "topic": "宇宙",
+      "title": "凌日会使恒星亮度下降",
+      "body": "系外行星从恒星前方经过时，望远镜可测到恒星亮度的微小周期性下降。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/exoplanets/ways-to-find-a-planet/",
+      "source_locator": "Exoplanet detection—transit",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-148",
+      "topic": "宇宙",
+      "title": "宜居带是可能有液态水的区域",
+      "body": "宜居带指恒星周围温度条件可能允许行星表面存在液态水的距离范围。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/exoplanets/what-is-an-exoplanet/",
+      "source_locator": "Exoplanet—habitable zone",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-149",
+      "topic": "宇宙",
+      "title": "光年是距离单位",
+      "body": "光年表示光在真空中一年传播的距离，而不是时间单位。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/learn/what-is-a-light-year/",
+      "source_locator": "What is a light-year",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-150",
+      "topic": "宇宙",
+      "title": "银河系是棒旋星系",
+      "body": "银河系包含太阳系，是一个具有棒状结构的旋涡星系。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/universe/galaxies/milky-way/",
+      "source_locator": "Milky Way overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-151",
+      "topic": "宇宙",
+      "title": "宇宙正在膨胀",
+      "body": "遥远星系光谱的整体红移支持宇宙空间正在膨胀的观测结论。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/universe/overview/",
+      "source_locator": "Universe overview—expansion",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-152",
+      "topic": "宇宙",
+      "title": "宇宙微波背景是早期余辉",
+      "body": "宇宙微波背景辐射是早期宇宙留下的微弱微波余辉。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/universe/overview/",
+      "source_locator": "Universe overview—cosmic microwave background",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-153",
+      "topic": "地球",
+      "title": "臭氧层吸收紫外线",
+      "body": "平流层臭氧能吸收一部分太阳紫外辐射，是地球大气的重要保护层。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-observatory/ozone/",
+      "source_locator": "Earth ozone",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-154",
+      "topic": "地球",
+      "title": "对流层承载天气",
+      "body": "对流层是地球大气最低层，大多数天气现象发生在这里。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-observatory/atmosphere/",
+      "source_locator": "Earth atmosphere—troposphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "nasa-155",
+      "topic": "地球",
+      "title": "平流层位于对流层之上",
+      "body": "平流层位于对流层上方，臭氧层主要分布在其内部。",
+      "source_name": "美国国家航空航天局（NASA）",
+      "source_url": "https://science.nasa.gov/earth/earth-observatory/atmosphere/",
+      "source_locator": "Earth atmosphere—stratosphere",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家航空航天局（NASA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-156",
+      "topic": "海洋",
+      "title": "海洋覆盖地球大部分表面",
+      "body": "NOAA资料显示，海洋覆盖地球表面约71%的面积。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—coverage",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-157",
+      "topic": "海洋",
+      "title": "海洋含有地球大部分水",
+      "body": "地球上约97%的水存在于海洋中，主要以咸水形式存在。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—water",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-158",
+      "topic": "海洋",
+      "title": "海洋通常分为五大洋",
+      "body": "NOAA按地理区域把全球海洋划分为太平洋、大西洋、印度洋、南大洋和北冰洋。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—five oceans",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-159",
+      "topic": "海洋",
+      "title": "太平洋面积最大",
+      "body": "太平洋是五大洋中面积最大的海洋，也包含最深的海沟区域。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—Pacific",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-160",
+      "topic": "海洋",
+      "title": "大西洋面积居第二",
+      "body": "大西洋是五大洋中面积第二大的海洋，连接美洲、欧洲和非洲附近海域。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—Atlantic",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-161",
+      "topic": "海洋",
+      "title": "印度洋位于三大洲之间",
+      "body": "印度洋大体位于非洲、亚洲、澳大利亚和南极洲之间。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—Indian Ocean",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-162",
+      "topic": "海洋",
+      "title": "南大洋环绕南极洲",
+      "body": "南大洋位于南极洲周围，并与其他大洋相连。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—Southern Ocean",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-163",
+      "topic": "海洋",
+      "title": "北冰洋面积最小",
+      "body": "北冰洋是五大洋中面积最小、位置最北的海洋。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—Arctic Ocean",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-164",
+      "topic": "海洋",
+      "title": "海水平均盐度约三十五",
+      "body": "全球海水平均盐度常用约35个实用盐度单位表示，但不同海域会有差异。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/",
+      "source_locator": "Ocean facts—salinity",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-165",
+      "topic": "海洋",
+      "title": "温跃层温度变化快",
+      "body": "温跃层是海水温度随深度快速变化的层段。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/04property1.html",
+      "source_locator": "Ocean properties—thermocline",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-166",
+      "topic": "海洋",
+      "title": "盐跃层盐度变化快",
+      "body": "盐跃层是海水盐度随深度快速变化的层段。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/04property2.html",
+      "source_locator": "Ocean properties—halocline",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-167",
+      "topic": "海洋",
+      "title": "密度跃层密度变化快",
+      "body": "密度跃层是海水密度随深度快速变化的层段。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/04property3.html",
+      "source_locator": "Ocean properties—pycnocline",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-168",
+      "topic": "海洋",
+      "title": "海浪传递能量",
+      "body": "风在海面上作用会形成波浪，波浪主要传递能量而非整体搬运水体。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_waves/",
+      "source_locator": "Ocean waves tutorial",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-169",
+      "topic": "海洋",
+      "title": "潮汐主要由引力产生",
+      "body": "潮汐是海面周期性涨落，主要由月球和太阳引力及地球自转共同造成。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_tides/",
+      "source_locator": "Tides tutorial",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-170",
+      "topic": "海洋",
+      "title": "大潮出现在朔望月附近",
+      "body": "新月和满月附近太阳、地球、月球排列使潮差通常较大，形成大潮。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_tides/tides04_cycles.html",
+      "source_locator": "Tides—spring tides",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-171",
+      "topic": "海洋",
+      "title": "小潮出现在两弦月附近",
+      "body": "上弦月和下弦月附近太阳与月球引潮作用部分抵消，潮差通常较小。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_tides/tides04_cycles.html",
+      "source_locator": "Tides—neap tides",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-172",
+      "topic": "海洋",
+      "title": "表层洋流受风驱动",
+      "body": "海洋表层洋流的重要驱动力来自持续风场和地球自转效应。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/",
+      "source_locator": "Ocean currents tutorial—surface currents",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-173",
+      "topic": "海洋",
+      "title": "深层洋流受密度差驱动",
+      "body": "深层海流与海水温度、盐度造成的密度差有关。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/05conveyor1.html",
+      "source_locator": "Ocean currents—density circulation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-174",
+      "topic": "海洋",
+      "title": "温盐环流连接深海",
+      "body": "全球温盐环流由温度和盐度造成的密度差推动，可连接表层与深层海水。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/05conveyor1.html",
+      "source_locator": "Ocean conveyor belt",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-175",
+      "topic": "海洋",
+      "title": "上升流带来深层营养盐",
+      "body": "上升流把较冷、含营养盐的深层海水带到表层，能影响海洋生产力。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/05conveyor1.html",
+      "source_locator": "Ocean currents—upwelling",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-176",
+      "topic": "海洋",
+      "title": "下沉流把表层水带入深海",
+      "body": "下沉过程把表层海水输送到更深处，是海洋垂向循环的一部分。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/05conveyor1.html",
+      "source_locator": "Ocean currents—downwelling",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-177",
+      "topic": "海洋",
+      "title": "海洋吸收多余热量",
+      "body": "海洋吸收了地球气候系统中相当大部分的多余热量。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/oceans-and-climate.html",
+      "source_locator": "Ocean and climate—heat",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-178",
+      "topic": "海洋",
+      "title": "海洋吸收二氧化碳",
+      "body": "海洋会从大气吸收一部分二氧化碳，并参与全球碳循环。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/ocean-acidification.html",
+      "source_locator": "Ocean acidification—carbon dioxide",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-179",
+      "topic": "海洋生态",
+      "title": "珊瑚礁支持丰富生物",
+      "body": "珊瑚礁为许多海洋生物提供栖息地，是高生物多样性的生态系统。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_corals/",
+      "source_locator": "Coral reef ecosystem",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-180",
+      "topic": "海洋生态",
+      "title": "海带林是近岸生态系统",
+      "body": "海带林由大型褐藻形成，为近岸生物提供结构和食物。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_kelp/",
+      "source_locator": "Kelp forest ecosystem",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-181",
+      "topic": "海岸",
+      "title": "河口混合淡水和海水",
+      "body": "河口是河流与海洋交汇处，淡水和咸水在这里混合。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_estuaries/",
+      "source_locator": "Estuaries tutorial",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-182",
+      "topic": "海岸",
+      "title": "湿地可截留沉积物",
+      "body": "沿海湿地中的植被和沉积物能截留部分陆源颗粒物。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_estuaries/",
+      "source_locator": "Estuary wetlands",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-183",
+      "topic": "海洋",
+      "title": "水压随深度增加",
+      "body": "海水上方的水体重量随深度增加，因此海洋静水压力通常随深度升高。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/facts/pressure.html",
+      "source_locator": "Ocean pressure",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-184",
+      "topic": "海洋",
+      "title": "声音在水中传播更快",
+      "body": "在常见条件下，声音在海水中的传播速度比在空气中更快。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_sounds/",
+      "source_locator": "Sound in the ocean",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-ocean-185",
+      "topic": "海洋",
+      "title": "海水盐度影响密度",
+      "body": "在其他条件相近时，盐度升高会使海水密度增大。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://oceanservice.noaa.gov/education/tutorial_currents/04property2.html",
+      "source_locator": "Ocean properties—salinity and density",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-186",
+      "topic": "大气",
+      "title": "地球大气以氮气为主",
+      "body": "干燥空气按体积分数计主要是氮气，约占78%。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/layers-of-the-atmosphere",
+      "source_locator": "JetStream—atmospheric composition",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-187",
+      "topic": "大气",
+      "title": "氧气约占空气五分之一",
+      "body": "干燥空气按体积分数计氧气约占21%，其余还包括氩气等成分。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/layers-of-the-atmosphere",
+      "source_locator": "JetStream—atmospheric composition",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-188",
+      "topic": "大气",
+      "title": "水汽含量变化很大",
+      "body": "水蒸气在大气中的比例随地点、时间和天气状况变化明显。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/layers-of-the-atmosphere",
+      "source_locator": "JetStream—water vapor",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-189",
+      "topic": "大气",
+      "title": "气压通常随高度下降",
+      "body": "随着海拔升高，上方空气柱变短，测得的平均气压通常降低。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/atmosphere/air-pressure",
+      "source_locator": "JetStream—air pressure",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-190",
+      "topic": "大气",
+      "title": "湿度描述空气中的水汽",
+      "body": "湿度是描述空气中水蒸气含量的物理量，可用多种方式表示。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/atmosphere/moisture",
+      "source_locator": "JetStream—moisture",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-191",
+      "topic": "大气",
+      "title": "露点是开始凝结的温度",
+      "body": "露点温度是空气在压力基本不变时达到饱和并开始凝结所对应的温度。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/atmosphere/moisture",
+      "source_locator": "JetStream—dew point",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-192",
+      "topic": "云",
+      "title": "云由凝结形成",
+      "body": "空气上升冷却并达到饱和时，水汽可在微小颗粒上凝结形成云滴或冰晶。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/clouds",
+      "source_locator": "JetStream—cloud formation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-193",
+      "topic": "云",
+      "title": "卷云位于高空",
+      "body": "卷云通常位于较高的大气层，由冰晶组成，外观纤细呈丝状。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/clouds/cirrus-clouds",
+      "source_locator": "JetStream—cirrus clouds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-194",
+      "topic": "云",
+      "title": "层云呈水平层状",
+      "body": "层云通常形成连续的低层云幕，外观平坦而有层次。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/clouds/stratus-clouds",
+      "source_locator": "JetStream—stratus clouds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-195",
+      "topic": "云",
+      "title": "积云呈团块状",
+      "body": "积云通常具有蓬松的团块外形，垂直发展程度可因环境而不同。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/clouds/cumulus-clouds",
+      "source_locator": "JetStream—cumulus clouds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-196",
+      "topic": "云",
+      "title": "积雨云可有强烈垂直发展",
+      "body": "积雨云是高耸的对流云体，常与雷雨等强对流天气相关。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/clouds/cumulonimbus-clouds",
+      "source_locator": "JetStream—cumulonimbus clouds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-197",
+      "topic": "天气",
+      "title": "锋面是气团交界",
+      "body": "锋面是性质不同的气团之间的过渡边界，常伴随天气变化。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/fronts",
+      "source_locator": "JetStream—fronts",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-198",
+      "topic": "天气",
+      "title": "冷锋是冷空气推进",
+      "body": "冷锋表示较冷空气推进并抬升较暖空气的锋面。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/fronts/cold-fronts",
+      "source_locator": "JetStream—cold fronts",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-199",
+      "topic": "天气",
+      "title": "暖锋是暖空气推进",
+      "body": "暖锋表示较暖空气沿较冷空气上方缓慢推进的锋面。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/fronts/warm-fronts",
+      "source_locator": "JetStream—warm fronts",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-200",
+      "topic": "天气",
+      "title": "急流位于高空",
+      "body": "急流是对流层上部附近狭长而快速的高空风带。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/jet-stream",
+      "source_locator": "JetStream—jet stream",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-201",
+      "topic": "气候",
+      "title": "厄尔尼诺是暖事件",
+      "body": "厄尔尼诺通常指热带太平洋中东部海表温度异常偏暖的气候现象。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/education/resource-collections/weather-atmosphere/el-nino",
+      "source_locator": "NOAA El Niño",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-202",
+      "topic": "气候",
+      "title": "拉尼娜是冷事件",
+      "body": "拉尼娜通常指热带太平洋中东部海表温度异常偏冷的气候现象。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/education/resource-collections/weather-atmosphere/la-nina",
+      "source_locator": "NOAA La Niña",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-203",
+      "topic": "气候",
+      "title": "ENSO是海气耦合现象",
+      "body": "ENSO包含厄尔尼诺、拉尼娜及中性状态，反映热带太平洋海气变化。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/education/resource-collections/weather-atmosphere/el-nino",
+      "source_locator": "NOAA ENSO overview",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-204",
+      "topic": "天气",
+      "title": "闪电是电荷放电",
+      "body": "闪电是云内、云间或云地之间发生的强烈电荷放电现象。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/lightning",
+      "source_locator": "JetStream—lightning",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "noaa-weather-205",
+      "topic": "天气",
+      "title": "雷声来自空气膨胀",
+      "body": "闪电通道瞬间加热空气，使空气快速膨胀并产生我们听到的雷声。",
+      "source_name": "美国国家海洋和大气管理局（NOAA）",
+      "source_url": "https://www.noaa.gov/jetstream/lightning/thunder",
+      "source_locator": "JetStream—thunder",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国国家海洋和大气管理局（NOAA）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-206",
+      "topic": "地质",
+      "title": "岩石循环连接三类岩石",
+      "body": "岩浆岩、沉积岩和变质岩可在地质作用下相互转化，构成岩石循环。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—rock cycle",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-rock-207",
+      "topic": "地质",
+      "title": "岩浆冷却形成火成岩",
+      "body": "岩浆或熔岩冷却结晶会形成火成岩。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—igneous rocks",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-rock-208",
+      "topic": "地质",
+      "title": "沉积物固结形成沉积岩",
+      "body": "沉积物经过压实、胶结等过程可以形成沉积岩。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—sedimentary rocks",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-rock-209",
+      "topic": "地质",
+      "title": "热压作用形成变质岩",
+      "body": "已有岩石在高温、高压或流体作用下改变矿物和结构，可形成变质岩。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—metamorphic rocks",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-mineral-210",
+      "topic": "地质",
+      "title": "矿物具有晶体结构",
+      "body": "矿物是自然形成的无机固体，通常具有有序的晶体结构和确定的化学组成范围。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—minerals",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-mineral-211",
+      "topic": "地质",
+      "title": "莫氏硬度比较抗划性",
+      "body": "莫氏硬度标度用一组标准矿物比较材料抵抗刻划的相对能力。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—hardness",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-mineral-212",
+      "topic": "地质",
+      "title": "石英主要成分是二氧化硅",
+      "body": "石英是常见矿物，化学式为二氧化硅，晶体结构属于硅酸盐体系。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—quartz",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-mineral-213",
+      "topic": "地质",
+      "title": "长石是地壳常见矿物",
+      "body": "长石族矿物广泛存在于地壳，是许多火成岩和变质岩的重要组成。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—feldspar",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-soil-214",
+      "topic": "地质",
+      "title": "土壤来自风化和有机质",
+      "body": "土壤由矿物颗粒、有机质、水、空气及生物作用共同形成。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—soil and water",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-tectonic-215",
+      "topic": "地质",
+      "title": "岩石圈由板块组成",
+      "body": "地球岩石圈被分成多个板块，板块在更软的地幔上部缓慢运动。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—tectonic plates",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-tectonic-216",
+      "topic": "地质",
+      "title": "离散边界使板块分开",
+      "body": "离散型板块边界处，板块相互远离并可能形成新的地壳。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—divergent boundaries",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-tectonic-217",
+      "topic": "地质",
+      "title": "汇聚边界使板块碰撞",
+      "body": "汇聚型板块边界处，板块相互靠近，可能发生俯冲或大陆碰撞。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—convergent boundaries",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-tectonic-218",
+      "topic": "地质",
+      "title": "转换边界发生水平错动",
+      "body": "转换型板块边界处，板块主要沿边界水平相向滑动。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—transform boundaries",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-219",
+      "topic": "地震",
+      "title": "地震释放弹性能量",
+      "body": "地震是地壳或岩石圈内部突然释放积累的弹性能量并产生地震波的过程。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—earthquake energy",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-220",
+      "topic": "地震",
+      "title": "震源是能量开始释放处",
+      "body": "震源（或焦点）指地下发生破裂并开始释放地震能量的位置。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—focus",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-221",
+      "topic": "地震",
+      "title": "震中位于震源正上方",
+      "body": "震中是震源在地表的垂直投影位置。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—epicenter",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-222",
+      "topic": "地震",
+      "title": "P波是压缩波",
+      "body": "P波以介质压缩和伸张方式传播，通常是最先到达地震仪的体波。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—P waves",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-223",
+      "topic": "地震",
+      "title": "S波产生剪切运动",
+      "body": "S波使介质发生垂直于传播方向的剪切运动，不能通过液体传播。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—S waves",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-224",
+      "topic": "地震",
+      "title": "表面波沿地表传播",
+      "body": "表面波沿地球表面传播，通常比体波衰减更慢。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—surface waves",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-225",
+      "topic": "地震",
+      "title": "震级描述地震大小",
+      "body": "震级是描述地震源释放能量或地震大小的量，单次地震对应一个震级值。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—magnitude",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-226",
+      "topic": "地震",
+      "title": "烈度描述地点影响",
+      "body": "烈度描述某一地点感受到的震动和损害程度，会随距离与地质条件变化。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—intensity",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-quake-227",
+      "topic": "地震",
+      "title": "断层是可发生错动的裂面",
+      "body": "断层是岩体发生相对位移的破裂面或破裂带。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/earthquake-hazards/science",
+      "source_locator": "Earthquake science—faults",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-228",
+      "topic": "火山",
+      "title": "熔岩是到达地表的岩浆",
+      "body": "岩浆从火山口或裂隙流到地表后称为熔岩。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/volcano-hazards",
+      "source_locator": "Volcano hazards—lava",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-229",
+      "topic": "火山",
+      "title": "盾状火山坡度平缓",
+      "body": "盾状火山由流动性较强的熔岩多次铺展形成，整体宽阔而坡度较缓。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/volcano-hazards",
+      "source_locator": "Volcano hazards—shield volcano",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-230",
+      "topic": "火山",
+      "title": "层状火山由多层物质组成",
+      "body": "层状火山通常由熔岩、火山灰和其他喷出物交替堆积形成。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/volcano-hazards",
+      "source_locator": "Volcano hazards—stratovolcano",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-231",
+      "topic": "火山",
+      "title": "渣锥是小型火山锥",
+      "body": "渣锥主要由火山喷出的碎屑物在火山口周围堆积形成。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/volcano-hazards",
+      "source_locator": "Volcano hazards—cinder cone",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-232",
+      "topic": "火山",
+      "title": "破火山口由塌陷形成",
+      "body": "大型喷发后地下岩浆房部分排空，火山顶部可能塌陷形成破火山口。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/volcano-hazards",
+      "source_locator": "Volcano hazards—caldera",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-233",
+      "topic": "地热",
+      "title": "间歇泉周期性喷出热水",
+      "body": "间歇泉是地下水受热后通过通道周期性喷出热水和蒸汽的地热现象。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—geothermal water",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-volcano-234",
+      "topic": "地热",
+      "title": "温泉是自然涌出的热水",
+      "body": "温泉是地下水被地热加热后在地表或近地表自然出露的水体。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—hot springs",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-235",
+      "topic": "水文",
+      "title": "地下水存在于孔隙和裂隙",
+      "body": "地下水是填充土壤孔隙、沉积物孔隙或岩石裂隙中的地下水体。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—groundwater",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-236",
+      "topic": "水文",
+      "title": "含水层能够储存和传输水",
+      "body": "含水层是能储存地下水并以有用速率传输地下水的地质材料。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—aquifers",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-237",
+      "topic": "水文",
+      "title": "地下水面是饱和带顶部",
+      "body": "地下水面是地下饱和带的上边界，深度会随地形和补给条件变化。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—water table",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-238",
+      "topic": "水文",
+      "title": "补给来自下渗",
+      "body": "降水或地表水向下渗入土壤和岩石并进入饱和带的过程称为地下水补给。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—groundwater recharge",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-239",
+      "topic": "水文",
+      "title": "泉是地下水出露",
+      "body": "当地下水自然流到地表形成稳定或季节性出水点时，称为泉。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—springs",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-240",
+      "topic": "水文",
+      "title": "流域汇集地表水",
+      "body": "流域是地表水沿地形汇入同一河流、湖泊或出口的陆地区域。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—watersheds",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-241",
+      "topic": "水文",
+      "title": "径流是地表流动的水",
+      "body": "降水或融雪在地表汇集并流向溪流、河流或湖泊的水称为地表径流。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—runoff",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-geomorph-242",
+      "topic": "地貌",
+      "title": "侵蚀移走地表物质",
+      "body": "水、风、冰或重力作用把土壤和岩石颗粒从原地移走的过程称为侵蚀。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/landslide-hazards/science",
+      "source_locator": "Landslide science—erosion",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-geomorph-243",
+      "topic": "地貌",
+      "title": "沉积是物质堆积",
+      "body": "被水、风、冰或重力搬运的沉积物在能量降低处堆积，形成沉积作用。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—deposition",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-geomorph-244",
+      "topic": "地质灾害",
+      "title": "滑坡是坡体下移",
+      "body": "滑坡是土体、岩体或碎屑沿坡面向下运动的地质过程。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/landslide-hazards/science",
+      "source_locator": "Landslide science—definition",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-geomorph-245",
+      "topic": "地质灾害",
+      "title": "岩溶可形成塌陷洼地",
+      "body": "可溶岩被地下水溶蚀后，地表可能形成塌陷或下沉的洼地。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—sinkholes",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-glacier-246",
+      "topic": "冰冻圈",
+      "title": "冰川是缓慢流动的冰体",
+      "body": "冰川是由多年积雪压实形成并在重力作用下缓慢流动的巨大冰体。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—glaciers",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-247",
+      "topic": "水文",
+      "title": "水循环连接海陆大气",
+      "body": "蒸发、凝结、降水、下渗和径流等过程共同构成地球水循环。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—water cycle",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-248",
+      "topic": "水文",
+      "title": "蒸发把液态水变成水汽",
+      "body": "液态水从海洋、湖泊、土壤或生物表面进入大气的过程称为蒸发或蒸散。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—evaporation",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-water-249",
+      "topic": "水文",
+      "title": "流量站测量河流流量",
+      "body": "河流测站通过水位、流速和断面等观测估算单位时间通过的水量。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/water-science-school",
+      "source_locator": "Water Science School—streamflow",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    },
+    {
+      "id": "usgs-map-250",
+      "topic": "地理信息",
+      "title": "等高线连接相同高程",
+      "body": "地形图上的等高线把海拔相同的点连接起来，可表达地形起伏。",
+      "source_name": "美国地质调查局（USGS）",
+      "source_url": "https://www.usgs.gov/programs/national-cooperative-geologic-mapping-program",
+      "source_locator": "Geologic mapping—contours",
+      "license": "美国政府作品；文字为中文改写，保留来源署名。",
+      "license_note": "Public domain where applicable; text paraphrased.",
+      "usage_note": "仅作离线科普，不构成专业建议。",
+      "attribution": "美国地质调查局（USGS）",
+      "reviewed_at": "2026-08-16",
+      "language": "zh-CN",
+      "safety_tags": [
+        "safe",
+        "educational"
+      ],
+      "status": "reviewed"
+    }
+  ]
+}

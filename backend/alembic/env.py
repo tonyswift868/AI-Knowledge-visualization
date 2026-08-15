@@ -1,10 +1,19 @@
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from app.orm import Base
+try:
+    # ``alembic`` is normally invoked from ``backend`` and exposes ``app`` as
+    # the top-level package.  In-process startup from the repository root uses
+    # ``backend.app`` instead.  Supporting both package roots keeps the same
+    # migration environment usable by the CLI and by FastAPI lifespan startup.
+    from app.orm import Base
+except ModuleNotFoundError as exc:
+    if exc.name != "app":
+        raise
+    from backend.app.orm import Base
 
 config = context.config
-if config.config_file_name:
+if config.config_file_name and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata
 

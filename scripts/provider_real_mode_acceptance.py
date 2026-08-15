@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app import db, provider_service  # noqa: E402
+from app import active_teaching, db, orm, provider_runtime, provider_service  # noqa: E402
 from app.main import app  # noqa: E402
 from app.provider_runtime import reset_provider_sessions  # noqa: E402
 
@@ -29,6 +29,8 @@ def main() -> int:
     secret = "acceptance-secret-must-not-escape"
     captured: list[dict] = []
     old_db, old_data = db.DB_PATH, db.DATA_DIR
+    old_orm_db = orm.ORM_DB
+    old_upload_root = active_teaching.UPLOAD_ROOT
     reset_provider_sessions()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -37,6 +39,7 @@ def main() -> int:
         return httpx.Response(200, json={"id": "acceptance-response", "model": "mock-deepseek", "choices": [{"message": {"content": json.dumps({"title": "Acceptance plan", "message": "Acceptance tutor response", "status": "grounded"})}}]})
 
     real_client = provider_service.httpx.AsyncClient
+    real_get_secret = provider_runtime.get_secret
     transport = httpx.MockTransport(handler)
 
     def client_factory(*args, **kwargs):
@@ -44,12 +47,20 @@ def main() -> int:
         return real_client(*args, **kwargs)
 
     provider_service.httpx.AsyncClient = client_factory
+    provider_runtime.get_secret = lambda credential_ref: secret if credential_ref == "mfcred_acceptance_mock" else ""
     try:
-        with tempfile.TemporaryDirectory(prefix="mentorflow-v5-acceptance-") as temporary:
+        acceptance_temp_root = Path(r"E:\Codex\Temp")
+        acceptance_temp_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="mentorflow-v5-acceptance-",
+            dir=acceptance_temp_root,
+        ) as temporary:
             db.DB_PATH = Path(temporary) / "app.db"
             db.DATA_DIR = Path(temporary)
+            active_teaching.UPLOAD_ROOT = Path(temporary) / "active-teaching-uploads"
+            orm.configure_orm(Path(temporary) / "mentorflow_v2.db")
             with TestClient(app) as client:
-                created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "mock-deepseek", "api_key": secret})
+                created = client.post("/api/provider-sessions", json={"provider": "openai-compatible", "base_url": "https://mock.deepseek.test/v1", "model": "mock-deepseek", "credential_ref": "mfcred_acceptance_mock"})
                 assert created.status_code == 200, created.text
                 session_id = created.json()["provider_session_id"]
                 tested = client.post(f"/api/provider-sessions/{session_id}/test")
@@ -80,6 +91,10 @@ def main() -> int:
                 (output / "network_contract.md").write_text("# Network contract evidence\n\nThe captured MockTransport request was POST `/chat/completions` with the selected model in JSON and an Authorization header redacted before writing this artifact. Browser API calls carry only `provider_session_id`; API Key is never returned by the ProviderSession API.\n\nCaptured request count: " + str(len(captured)) + "\n", encoding="utf-8")
     finally:
         provider_service.httpx.AsyncClient = real_client
+        provider_runtime.get_secret = real_get_secret
+        orm.engine.dispose()
+        orm.configure_orm(old_orm_db)
+        active_teaching.UPLOAD_ROOT = old_upload_root
         db.DB_PATH, db.DATA_DIR = old_db, old_data
 
     backend_code, backend_output = run_command([sys.executable, "-m", "pytest", "backend/tests", "-q"], ROOT)

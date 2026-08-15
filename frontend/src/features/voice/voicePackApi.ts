@@ -2,6 +2,7 @@ const TEACHER_VOICE_API = "/api/teacher-voice"
 
 export type VoicePackLifecycle =
   | "not_installed"
+  | "not_found"
   | "installing"
   | "verifying"
   | "installed"

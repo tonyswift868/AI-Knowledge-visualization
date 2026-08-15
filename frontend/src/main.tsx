@@ -8,6 +8,7 @@ import './styles/local-path.css'
 import './styles/components.css'
 import './styles/grounding-fixes.css'
 import './styles/warm-theme.css'
+import './styles/standalone-tools.css'
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error: Error | null}> {
   state={error:null as Error | null}
   static getDerivedStateFromError(error: Error){return {error}}

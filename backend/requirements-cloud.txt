@@ -1,0 +1,2 @@
+# Optional cloud-only integrations; keep desktop builds free of cloud SDKs.
+tencentcloud-sdk-python==3.1.156

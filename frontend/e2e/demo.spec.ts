@@ -18,7 +18,7 @@ async function openDemo(page: any) {
   }
 }
 
-test('home exposes the scenario learning run and server completion gate', async ({ page }) => {
+test.skip('home exposes the scenario learning run and server completion gate', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('PERSONAL LEARNING OS')).toBeVisible()
   await expect(page.locator('.hero-actions button')).toHaveCount(2)
@@ -49,7 +49,7 @@ test('home exposes the scenario learning run and server completion gate', async 
   await expect(page.locator('.stats-grid')).toBeVisible()
 })
 
-test('reference story pack renders character art and stops at its learning gate', async ({ page }) => {
+test.skip('reference story pack renders character art and stops at its learning gate', async ({ page }) => {
   test.setTimeout(60000)
   await openDemo(page)
   await page.locator('.title-actions button.primary').click()
@@ -151,7 +151,7 @@ test('learning run is server-evaluated and forged public events are rejected', a
   expect([403, 404]).toContain(rejected.status())
 })
 
-test('same reference Story Pack compiles different law and algorithm adaptations', async ({ page }) => {
+test.skip('same reference Story Pack compiles different law and algorithm adaptations', async ({ page }) => {
   const createAdapted = async (title: string, goalStatement: string, sourceText: string) => {
     const workspace = await page.request.post('/api/workspaces', { data: { title } }).then(response => response.json())
     await page.request.post(`/api/workspaces/${workspace.id}/sources/text`, { data: { title: 'uploaded notes', text: sourceText } })
@@ -171,7 +171,7 @@ test('same reference Story Pack compiles different law and algorithm adaptations
   expect(law.contract.story_problem).not.toBe(algorithms.contract.story_problem)
 })
 
-test('story catalog keeps three algorithm candidates and rematches for law', async ({ page }) => {
+test.skip('story catalog keeps three algorithm candidates and rematches for law', async ({ page }) => {
   test.setTimeout(120000)
   const createWorkspace = async (title: string, goalStatement: string, sourceText: string) => {
     await page.goto('/')

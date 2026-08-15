@@ -1,0 +1,14 @@
+{
+  "schema": "mentorflow.version.v1",
+  "product": "MentorFlow",
+  "version": "1.0.0",
+  "channel": "stable",
+  "update": {
+    "provider": "github",
+    "enabled": false,
+    "owner": "",
+    "repo": "",
+    "asset_name_pattern": "MentorFlow-{version}-win-x64.zip",
+    "staging_root": "E:\\MentorFlowUpdates"
+  }
+}

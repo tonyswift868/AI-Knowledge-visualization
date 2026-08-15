@@ -4,7 +4,11 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import httpx
+import pytest
+
 from app import active_teaching, main, provider_service
+from app.knowledge_map_v1 import ProviderPayloadV1
 from app.provider_runtime import create_verified_demo_session
 
 
@@ -18,6 +22,120 @@ def test_parse_json_object_accepts_markdown_wrapped_object() -> None:
 
 def test_parse_json_object_rejects_plain_text() -> None:
     assert provider_service.parse_json_object("我会用 Java 继续完成这道题。") is None
+
+
+def test_openai_instructor_and_text_transport_share_the_same_api_root() -> None:
+    cases = {
+        "https://provider.example": "https://provider.example/v1",
+        "https://provider.example/v1": "https://provider.example/v1",
+        "https://provider.example/v1/chat/completions": "https://provider.example/v1",
+    }
+    for configured, expected_root in cases.items():
+        provider = provider_service.OpenAICompatibleProvider(
+            configured,
+            "configured-model",
+            "secret",
+        )
+        assert provider.api_base_url() == expected_root
+        assert provider.completions_url() == expected_root + "/chat/completions"
+
+
+@pytest.mark.parametrize(
+    ("provider_factory", "response_payload"),
+    [
+        (
+            lambda: provider_service.GeminiProvider(
+                "https://gemini.example", "gemini-contract", "secret"
+            ),
+            lambda content: {
+                "modelVersion": "gemini-contract",
+                "candidates": [{"content": {"parts": [{"text": content}]}}],
+            },
+        ),
+        (
+            lambda: provider_service.AnthropicProvider(
+                "https://claude.example", "claude-contract", "secret"
+            ),
+            lambda content: {
+                "model": "claude-contract",
+                "content": [{"type": "text", "text": content}],
+            },
+        ),
+    ],
+)
+def test_gemini_and_claude_contracts_validate_the_same_knowledge_map_schema(
+    provider_factory,
+    response_payload,
+) -> None:
+    payload = {
+        "knowledge_points": [
+            {
+                "local_id": "theme",
+                "name": "Arbitrary theme",
+                "node_type": "theme",
+                "source_chunk_ids": ["chunk-a"],
+            },
+            {
+                "local_id": "concept",
+                "name": "Arbitrary concept",
+                "node_type": "concept",
+                "source_chunk_ids": ["chunk-a"],
+            },
+        ],
+        "dependencies": [
+            {
+                "prerequisite_id": "theme",
+                "dependent_id": "concept",
+                "relation": "contains",
+                "source_chunk_ids": ["chunk-a"],
+            }
+        ],
+    }
+    provider = provider_factory()
+
+    async def request(method, url, **_kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request(method, url),
+            json=response_payload(json.dumps(payload)),
+        )
+
+    provider.request = request
+    result = asyncio.run(
+        provider.structured(
+            [{"role": "user", "content": "return the contract"}],
+            ProviderPayloadV1,
+        )
+    )
+
+    assert result.knowledge_points[0].node_type == "theme"
+    assert result.dependencies[0].relation == "contains"
+
+
+def test_abnormal_provider_contract_fails_closed() -> None:
+    provider = provider_service.GeminiProvider(
+        "https://gemini.example", "gemini-contract", "secret"
+    )
+
+    async def request(method, url, **_kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request(method, url),
+            json={
+                "modelVersion": "gemini-contract",
+                "candidates": [{"content": {"parts": [{"text": "not-json"}]}}],
+            },
+        )
+
+    provider.request = request
+    with pytest.raises(provider_service.ProviderError) as captured:
+        asyncio.run(
+            provider.structured(
+                [{"role": "user", "content": "return the contract"}],
+                ProviderPayloadV1,
+            )
+        )
+    assert captured.value.code == "INVALID_PROVIDER_JSON"
 
 
 def test_conversational_payload_keeps_plain_text() -> None:

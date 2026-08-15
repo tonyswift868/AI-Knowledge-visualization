@@ -38,8 +38,8 @@ import { StoryCatalogView } from "./features/story-catalog/StoryCatalogView";
 import { speakLocalTeacherVoice, stopLocalTeacherVoice } from "./features/voice/localTeacherVoice";
 import { createLearningRun, requestLearningHint, sendLearningRunMessage, submitLearningRun, submitQuickQuiz } from "./features/learning-run/api";
 import { ExpeditionView } from "./features/expedition/ExpeditionView";
-import { ActiveTeachingChainView } from "./features/active-teaching/ActiveTeachingChainView";
-import { CasualTeacherChat } from "./features/casual-chat/CasualTeacherChat";
+import { ActiveTeachingChainView, materialAcceptFromCapabilities } from "./features/active-teaching/ActiveTeachingChainView";
+import { CasualTeacherChat, type PlannerHandoff } from "./features/casual-chat/CasualTeacherChat";
 import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
 
@@ -238,12 +238,12 @@ export function App() {
       .catch(() => {});
   }, []);
   useEffect(() => {
-    if (providerState.provider === "fake" || !providerState.apiKey.trim()) return;
+    if (providerState.provider === "fake" || !providerState.credentialRef) return;
     const configKey = [
       providerState.provider,
       providerState.baseUrl,
       providerState.model,
-      providerState.apiKey,
+      providerState.credentialRef,
     ].join("\n");
     if (!providerState.verified && autoConnectFailureRef.current === configKey) return;
     let cancelled = false;
@@ -262,7 +262,7 @@ export function App() {
       cancelled = true;
     };
   }, [
-    providerState.apiKey,
+    providerState.credentialRef,
     providerState.baseUrl,
     providerState.model,
     providerState.provider,
@@ -457,6 +457,63 @@ export function App() {
     [allDays],
   );
   const realVerified = providerState.mode === "real" && providerState.verified;
+  const standaloneTool = new URLSearchParams(window.location.search).get("tool");
+  useEffect(() => {
+    // The desktop shell embeds these tools at narrow widths. Keep the
+    // document itself fluid while a standalone route is mounted; app.css
+    // intentionally keeps the full dashboard wide for the native sidebar.
+    document.documentElement.dataset.mfStandalone = standaloneTool || "";
+    return () => {
+      delete document.documentElement.dataset.mfStandalone;
+    };
+  }, [standaloneTool]);
+  function handoffPlannerToTask(handoff: PlannerHandoff) {
+    try {
+      localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify(handoff));
+    } catch {
+      // The active task can still be created if browser storage is unavailable.
+    }
+    setWs(null);
+    setPlan(null);
+    setAssessment(null);
+    setAllowExternalKnowledge(false);
+    setActiveCreateRequest((current) => current + 1);
+    setTab("active");
+    setStepState(0);
+    setMaxStep(0);
+    setToast("资料候选已交给学习计划；补充日期后即可开始整理。");
+  }
+  if (standaloneTool === "planner") {
+    return (
+      <StandalonePlannerTool
+        workspaceId={ws?.id || "general-learning"}
+        onStartPlan={(handoff) => {
+          try {
+            localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify(handoff));
+          } catch {
+            // The desktop shell can still reopen the task page; the handoff is optional storage.
+          }
+          window.location.href = "/";
+        }}
+      />
+    );
+  }
+  if (standaloneTool === "casual") {
+    return <StandaloneCasualTool workspaceId={ws?.id || ""} />;
+  }
+  if (standaloneTool === "expedition") {
+    return <StandaloneExpeditionTool />;
+  }
+  if (standaloneTool === "teacher-stage") {
+    const requestedWorkspaceId = new URLSearchParams(window.location.search).get("workspaceId") || ws?.id || "default";
+    return <StandaloneTeacherStage workspaceId={requestedWorkspaceId} />;
+  }
+  if (standaloneTool === "teacher-resources") {
+    return <StandaloneTeacherResources />;
+  }
+  if (standaloneTool === "teachers") {
+    return <StandaloneTeacherModeling workspaceId={ws?.id || "default"} />;
+  }
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -569,7 +626,7 @@ export function App() {
                 setTab("active");
               }}
             />
-            <CasualTeacherChat workspaceId={ws?.id || ""} />
+            <CasualTeacherChat workspaceId={ws?.id || "general-learning"} mode="planner" onStartPlan={handoffPlannerToTask} />
             </>
           )}{" "}
           {tab === "story" && (
@@ -620,7 +677,7 @@ export function App() {
           )}{" "}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
-          {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || ""} />}
+          {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || "general-learning"} mode="casual" />}
           {tab === "active" && (
             <ActiveTeachingChainView
               workspaceId={ws?.id || "general-learning"}
@@ -641,6 +698,185 @@ export function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function StandaloneCasualTool({ workspaceId }: { workspaceId: string }) {
+  return (
+    <main className="standalone-tool-shell">
+      <header className="standalone-tool-header">
+        <div>
+          <div className="eyebrow">MENTORFLOW · 辅助工具</div>
+          <h1>教师闲聊</h1>
+          <p>自由交流不占用学习计划；需要正式学习时，请回到桌面端的任务和原生课堂。</p>
+        </div>
+        <span className="standalone-tool-badge">本地工具</span>
+      </header>
+      <div className="standalone-tool-content">
+        <CasualTeacherChat workspaceId={workspaceId} />
+      </div>
+    </main>
+  );
+}
+
+function StandalonePlannerTool({
+  workspaceId,
+  onStartPlan,
+}: {
+  workspaceId: string;
+  onStartPlan: (handoff: PlannerHandoff) => void;
+}) {
+  return (
+    <main className="standalone-tool-shell">
+      <header className="standalone-tool-header">
+        <div>
+          <div className="eyebrow">MENTORFLOW · 学习规划</div>
+          <h1>创建计划</h1>
+          <p>需求 → 资料 → 计划：先说清目标，再确认资料候选，最后进入学习计划。</p>
+        </div>
+        <span className="standalone-tool-badge">需求驱动</span>
+      </header>
+      <div className="standalone-tool-content">
+        <CasualTeacherChat workspaceId={workspaceId} mode="planner" onStartPlan={onStartPlan} />
+      </div>
+    </main>
+  );
+}
+
+function StandaloneExpeditionTool() {
+  return (
+    <main className="standalone-tool-shell expedition-standalone-shell">
+      <header className="standalone-tool-header">
+        <div>
+          <div className="eyebrow">MENTORFLOW · 学习成长空间</div>
+          <h1>学习远征</h1>
+          <p>把额外的探索、训练和成长记录放在这里；它不会改变正式学习计划。</p>
+        </div>
+        <span className="standalone-tool-badge">独立空间</span>
+      </header>
+      <div className="standalone-tool-content">
+        <ExpeditionView />
+      </div>
+    </main>
+  );
+}
+
+function StandaloneTeacherStage({ workspaceId }: { workspaceId: string }) {
+  useEffect(() => {
+    const previousMargin = document.body.style.margin;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.margin = "0";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.margin = previousMargin;
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+  return (
+    <main className="teacher-stage-standalone" aria-label="课堂 2D 教师">
+      <Suspense fallback={<div className="empty-state">正在加载 2D 教师…</div>}>
+        <TeacherAvatarStudio workspaceId={workspaceId} compact portrait presentationState="explaining" />
+      </Suspense>
+    </main>
+  );
+}
+
+function localResourcePath(file: File): string {
+  const candidate = file as File & { webkitRelativePath?: string };
+  return String(candidate.webkitRelativePath || file.name || "").trim();
+}
+
+function matchesLocalTeacher2DResource(file: File): boolean {
+  const path = localResourcePath(file).toLowerCase();
+  if (!path) return false;
+  const has2DIdentity = /(tsubaki-live2d|live2d|teacher2d|model3\.json|\.moc3|\.model3\.json)/.test(path);
+  const isSupportedFile = /\.(zip|7z|tar|gz|json|moc3|model3\.json|png|jpg|jpeg)$/i.test(path);
+  return has2DIdentity && isSupportedFile;
+}
+
+function StandaloneTeacherResources() {
+  const [local2DMatch, setLocal2DMatch] = useState<{ matched: boolean; path: string; fileCount: number } | null>(null);
+  const local2DPickerRef = useRef<HTMLInputElement | null>(null);
+
+  function chooseLocal2DResource(files: FileList | null) {
+    const selected = Array.from(files || []);
+    const match = selected.find(matchesLocalTeacher2DResource);
+    setLocal2DMatch({
+      matched: Boolean(match),
+      path: match ? localResourcePath(match) : "",
+      fileCount: selected.length,
+    });
+  }
+
+  return (
+    <main className="standalone-tool-shell teacher-resources-shell">
+      <header className="standalone-tool-header">
+        <div>
+          <div className="eyebrow">MENTORFLOW · 新设备准备</div>
+          <h1>准备教师资源</h1>
+          <p>新环境没有迁移包时，可以在这里一次性准备离线教师语音和 2D 骨骼资源。</p>
+        </div>
+        <span className="standalone-tool-badge">本地资源</span>
+      </header>
+      <div className="standalone-tool-content teacher-resources-content">
+        <section className="resource-download-card" aria-labelledby="teacher-resource-title">
+          <div>
+            <div className="eyebrow">2D TEACHER</div>
+            <h2 id="teacher-resource-title">下载椿 · 2D 教师骨骼</h2>
+            <p>这是本项目内置的 Live2D 教师资源包。下载后可以保存到任意位置，迁移时和本地数据包分开管理。</p>
+          </div>
+          <a className="primary" href="/api/teacher2d/tsubaki-live2d/download" download>
+            下载 2D 资源包
+          </a>
+          <div className="resource-download-card__local" data-testid="teacher-2d-resource-picker">
+            <b>匹配本地 2D 资源</b>
+            <span>如果当前环境没有项目内置资源，可以选择本地目录或资源包；系统只根据文件名匹配。</span>
+            <button className="secondary" type="button" onClick={() => local2DPickerRef.current?.click()}>
+              选择本地 2D 目录或文件
+            </button>
+            <input
+              ref={local2DPickerRef}
+              data-testid="teacher-2d-local-picker"
+              aria-label="本地 2D 资源文件和目录"
+              hidden
+              type="file"
+              multiple
+              accept=".zip,.7z,.tar,.gz,.json,.moc3,.model3.json,.png,.jpg,.jpeg"
+              {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+              onChange={event => chooseLocal2DResource(event.currentTarget.files)}
+            />
+            <small data-testid="teacher-2d-resource-state" role="status">
+              {!local2DMatch
+                ? "未匹配本地 2D 资源；可选择目录或下载资源包。"
+                : local2DMatch.matched
+                  ? `已匹配本地 2D 资源：${local2DMatch.path}（${local2DMatch.fileCount} 个文件）`
+                  : `未找到可识别的 2D 资源（已检查 ${local2DMatch.fileCount} 个文件）。`}
+            </small>
+          </div>
+        </section>
+        <VoicePackSettings />
+      </div>
+    </main>
+  );
+}
+
+function StandaloneTeacherModeling({ workspaceId }: { workspaceId: string }) {
+  return (
+    <main className="standalone-tool-shell">
+      <header className="standalone-tool-header">
+        <div>
+          <div className="eyebrow">MENTORFLOW · 原生课堂工具</div>
+          <h1>教师建模</h1>
+          <p>编辑教师名称、教学风格和课堂外观；保存后回到原生课堂即可选择并应用。</p>
+        </div>
+        <span className="standalone-tool-badge">本地工具</span>
+      </header>
+      <div className="standalone-tool-content">
+        <Suspense fallback={<div className="empty-state">正在加载教师建模…</div>}>
+          <TeacherAvatarStudio workspaceId={workspaceId} standalone />
+        </Suspense>
+      </div>
+    </main>
   );
 }
 
@@ -863,7 +1099,7 @@ export function Create({
               <input
                 value={form.title}
                 onChange={(e) => setField("title", e.target.value)}
-                placeholder="例如：Java 面试冲刺"
+                placeholder="例如：准备一次专业能力考核"
               />
             </label>
             <label>
@@ -1162,7 +1398,13 @@ export function SourceImportPanel({ ws, text }: { ws: Workspace | null; text: st
   const [archiveSearch, setArchiveSearch] = useState("")
   const [archiveResult, setArchiveResult] = useState<any | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [materialCapabilities, setMaterialCapabilities] = useState<any>(null)
   useEffect(() => { if (ws?.id) request<any[]>(`/workspaces/${ws.id}/sources`).then(setSources).catch(() => setSources([])) }, [ws?.id])
+  useEffect(() => {
+    request<any>("/active-teaching/material-capabilities")
+      .then(setMaterialCapabilities)
+      .catch(() => setMaterialCapabilities(null))
+  }, [])
   async function refreshSources() { if (ws?.id) setSources(await request<any[]>(`/workspaces/${ws.id}/sources`)) }
   async function removeSource(id: string) { if (!ws?.id) return; await request(`/sources/${id}`, { method: "DELETE" }); await refreshSources(); setStatus("Source deleted") }
   async function previewArchive(file: File) {
@@ -1217,6 +1459,7 @@ export function SourceImportPanel({ ws, text }: { ws: Workspace | null; text: st
     catch (e: any) { setStatus(e.message) } finally { setBusy(false) }
   }
   const visibleArchiveItems = (archivePreview?.tree || []).filter((item: any) => archiveFilter === "all" || item.kind === archiveFilter).filter((item: any) => !archiveSearch || item.relative_path.toLowerCase().includes(archiveSearch.toLowerCase()))
+  const materialAccept = materialAcceptFromCapabilities(materialCapabilities)
   const toggleArchiveSelection = (id: string) => setArchiveSelected(items => items.includes(id) ? items.filter(item => item !== id) : [...items, id])
   const selectSupported = (kind?: string) => setArchiveSelected((archivePreview?.tree || []).filter((item: any) => item.status === "supported" && (!kind || item.kind === kind)).map((item: any) => item.id))
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -1225,8 +1468,8 @@ export function SourceImportPanel({ ws, text }: { ws: Workspace | null; text: st
     if (dropped.length) { setFiles(dropped); setStatus(`${dropped.length} 个文件已接收，请点击“上传并解析”`) }
   }
   return <div className={`source-import-panel ${dragActive ? "drag-active" : ""}`} data-testid="source-drop-zone" onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragActive(true) }} onDragOver={e => { e.preventDefault(); e.stopPropagation() }} onDragLeave={e => { e.preventDefault(); e.stopPropagation(); if (e.currentTarget === e.target) setDragActive(false) }} onDrop={handleDrop}>
-    <div className="dropzone"><Upload size={23} /><b>拖入 PDF、DOCX、Markdown、TXT、HTML 或 ZIP 资料包</b><span>文件会在本地解析并生成带来源的知识片段</span><small>支持安全 ZIP 资料包 · ZIP 100 MB · 解压后总计 500 MB · 单文件 50 MB</small></div>
-    <div className="source-import-row"><label className="file-picker">选择文件<input data-testid="file-input" type="file" multiple accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm,.zip" onChange={e => setFiles(Array.from(e.target.files || []))} /></label><span>{files.length ? `${files.length} 个文件已选择` : "拖入 PDF、DOCX、Markdown、TXT、HTML 或 ZIP 资料包"}</span><button className="secondary" onClick={upload} disabled={busy || !files.length}>上传并解析</button></div>
+    <div className="dropzone"><Upload size={23} /><b>拖入运行时能力注册表支持的资料</b><span>文件会在本地解析并生成带来源的知识片段</span><small>具体格式、适配器状态和限制来自统一材料能力接口；不支持的材料会明确拒绝</small></div>
+    <div className="source-import-row"><label className="file-picker">选择文件<input data-testid="file-input" type="file" multiple accept={materialAccept} onChange={e => setFiles(Array.from(e.target.files || []))} /></label><span>{files.length ? `${files.length} 个文件已选择` : "拖入能力注册表当前可处理的资料"}</span><button className="secondary" onClick={upload} disabled={busy || !files.length}>上传并解析</button></div>
     <div className="source-import-row"><input aria-label="URL 导入" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/article"/><button className="secondary" onClick={importUrl} disabled={busy || !url}>导入 URL</button><button className="secondary" onClick={importText} disabled={busy || !text.trim()}>导入粘贴文本</button></div>
     {status && <div className="local-message" role="status">{status}</div>}
     {archiveResult && <div className="archive-result" aria-label="Archive import result"><b>ZIP 导入结果</b><span>成功 {archiveResult.imported?.length || 0}</span><span>重复 {archiveResult.duplicates?.length || 0}</span><span>失败 {archiveResult.failed?.length || 0}</span><span>忽略 {archiveResult.ignored?.length || 0}</span></div>}
@@ -1988,54 +2231,56 @@ function Progress({ progress, plan, completed }: any) {
 export function Settings() {
   const state = useMentorStore();
   const [message, setMessage] = useState("");
-  const labels: Record<string, string> = { fake: "Fake Provider", "openai-compatible": "DeepSeek", gemini: "Gemini", claude: "Anthropic Claude" };
-  const defaultBaseUrl = state.provider === "openai-compatible"
-    ? "https://api.deepseek.com"
-    : state.provider === "gemini"
-      ? "https://generativelanguage.googleapis.com/v1beta"
-      : "";
+  const labels: Record<string, string> = { fake: "Fake Provider", "openai-compatible": "OpenAI Compatible", gemini: "Gemini", claude: "Anthropic Claude" };
   const test = async () => {
     try {
-      const baseUrl = state.baseUrl.trim() || defaultBaseUrl;
-      if (baseUrl && !state.baseUrl) state.setBaseUrl(baseUrl);
-      const created = await request<any>("/provider-sessions", { method: "POST", body: JSON.stringify({ provider: state.provider, base_url: baseUrl, model: state.model, api_key: state.apiKey }) });
+      const baseUrl = state.baseUrl.trim();
+      const model = state.model.trim();
+      if (state.provider !== "fake" && (!baseUrl || !model || !state.credentialRef)) throw new Error("请显式填写 Base URL、Model 和 Windows 凭据引用");
+      const created = await request<any>("/provider-sessions", { method: "POST", body: JSON.stringify({ provider: state.provider, base_url: baseUrl, model, ...(state.credentialRef ? { credential_ref: state.credentialRef } : {}) }) });
       const result = await request<any>(`/provider-sessions/${created.provider_session_id}/test`, { method: "POST" });
-      state.setProviderSession({ providerSessionId: result.provider_session_id, provider: state.provider, baseUrl: state.baseUrl, model: state.model, verified: true, expiresAt: result.expires_at, latencyMs: result.latency_ms, lastTestedAt: result.last_tested_at });
+      state.setProviderSession({ providerSessionId: result.provider_session_id, provider: state.provider, baseUrl, model, credentialRef: result.credential_ref || created.credential_ref || state.credentialRef, verified: true, expiresAt: result.expires_at, latencyMs: result.latency_ms, lastTestedAt: result.last_tested_at });
       setMessage(`已连接 · ${result.provider} · ${result.model_reported || result.model_requested} · ${result.latency_ms} ms · ${result.request_id}`);
     } catch (e: any) { state.setLastError(e.message); setMessage(`连接失败：${e.message}`); }
   };
-  const diagnostics = JSON.stringify({ ...providerDiagnostic(state), api_key: undefined }, null, 2);
+  const clearKey = async () => {
+    try {
+      if (state.credentialRef) await request(`/provider-credentials/${encodeURIComponent(state.credentialRef)}`, { method: "DELETE" });
+      state.clearCredential();
+      setMessage("Windows Credential Locker 中的 Provider 凭据已清除。");
+    } catch (e: any) { state.setLastError(e.message); setMessage(`清除失败：${e.message}`); }
+  };
+  const diagnostics = JSON.stringify(providerDiagnostic(state), null, 2);
   return <>
-    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>配置和 API Key 会自动保存到当前浏览器本机，并在启动、过期或后端重启后自动恢复连接；Key 不写入项目文件或数据库，也不会出现在诊断信息中。</p></div></div>
+    <div className="page-title"><div><div className="eyebrow">PROVIDER · BYOK</div><h1>把模型接入你的工作流。</h1><p>先在本机终端把 Key 写入 Windows Credential Locker；浏览器和 API 只使用不可反解的凭据引用。</p></div></div>
     <div className="settings-grid">
       <section className="card provider-form">
         <div className="card-kicker"><Settings2 size={16} />模型 Provider</div>
-        <label>Provider<select value={state.provider} onChange={e => state.setProvider(e.target.value as any)}><option value="openai-compatible">DeepSeek（OpenAI Compatible）</option><option value="fake">Fake Provider（仅 Demo）</option><option value="gemini">Google Gemini</option><option value="claude">Anthropic Claude</option></select></label>
+        <label>Provider<select value={state.provider} onChange={e => state.setProvider(e.target.value as any)}><option value="openai-compatible">OpenAI Compatible</option><option value="fake">Fake Provider（仅 Demo）</option><option value="gemini">Google Gemini</option><option value="claude">Anthropic Claude</option></select></label>
         {state.provider !== "fake" && <>
-          <label>Base URL<input value={state.baseUrl || defaultBaseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder={state.provider === "gemini" ? "留空使用 Google Gemini API" : "留空使用 https://api.deepseek.com"} /></label>
-          {state.provider === "openai-compatible"
-            ? <label>Model<select value={state.model || "deepseek-v4-pro"} onChange={e => state.setModel(e.target.value)}><option value="deepseek-v4-pro">DeepSeek V4 Pro（默认）</option><option value="deepseek-v4-flash">DeepSeek V4 Flash</option></select></label>
-            : <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="输入 Provider 模型 ID" /></label>}
-          <label>API Key<input type="password" value={state.apiKey} onChange={e => state.setApiKey(e.target.value)} placeholder="自动保存到当前浏览器本机" /></label>
+          <label>Base URL<input value={state.baseUrl} onChange={e => state.setBaseUrl(e.target.value)} placeholder="显式输入 Provider API Base URL" /></label>
+          <label>Model<input value={state.model} onChange={e => state.setModel(e.target.value)} placeholder="显式输入 Provider 模型 ID" /></label>
+          <label>Credential Reference<input value={state.credentialRef || ""} onChange={e => state.setCredentialRef(e.target.value)} placeholder="运行 scripts/store_provider_credential.py 后粘贴引用" /></label>
         </>}
+        {state.legacyBrowserCredentialDetected && <div className="provider-error" role="alert">检测到旧版浏览器密钥，已在未读取内容的情况下删除该本地副本。请轮换对应 Provider 密钥。 <button onClick={state.clearLegacyBrowserCredential}>知道了</button></div>}
         <div className="key-note">
           <ShieldCheck size={16} />
           <span>
             {state.provider === "fake"
               ? "Fake 只用于明确的 Demo Workspace。"
               : state.verified
-                ? "真实 Provider 已验证；Key 仅保存在当前浏览器本机。"
-                : state.apiKey
-                  ? "Key 已保存；系统会自动连接，失败时仍不会切换到 Fake。"
-                  : "尚未填写 API Key；当前不能建立真实 ProviderSession，也不会冒充真实 AI。"}
+                ? "真实 Provider 已验证；这里只保留 Windows 凭据引用。"
+                : state.credentialRef
+                  ? "已选择 Windows 凭据引用；可以验证连接。"
+                  : "尚未填写凭据引用；请先运行本机凭据写入脚本，当前不会建立真实 ProviderSession。"}
           </span>
-          <button disabled={!state.apiKey} onClick={() => state.setApiKey("")}>清除 Key</button>
+          <button disabled={!state.credentialRef} onClick={clearKey}>清除凭据</button>
         </div>
         <button className="primary" onClick={test}>{state.provider === "fake" ? "测试 Fake Provider" : `测试 ${labels[state.provider]}`} <Check size={16} /></button>
         {state.lastError && <div className="provider-error" role="alert">{state.lastError}</div>}
         {message && <div className="success-note">{message}</div>}
       </section>
-      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅保存于当前浏览器本机，不写项目文件或数据库", "API Key 不进 URL、诊断信息或接口响应", "应用会自动恢复已保存的真实 Provider 连接", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
+      <section className="card security-card"><div className="card-kicker"><ShieldCheck size={16} />诊断与安全</div><div className="diagnostic-panel"><b>当前诊断</b><pre>{diagnostics}</pre><button className="secondary" onClick={() => navigator.clipboard?.writeText(diagnostics)}>复制诊断信息</button></div>{["API Key 仅由本机终端写入 Windows Credential Locker", "API 和浏览器只流转凭据引用，不接收原始 Key", "浏览器通过凭据引用恢复真实 Provider 连接", "真实请求失败不会静默回退 Fake"].map(x => <div className="security-row" key={x}><Check size={15} /><span>{x}</span></div>)}</section>
     </div>
     <VoicePackSettings />
   </>

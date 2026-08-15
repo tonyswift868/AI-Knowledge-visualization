@@ -63,7 +63,7 @@ export async function request<T>(
       && !path.startsWith("/provider-sessions")
       && RECOVERABLE_PROVIDER_SESSION_ERRORS.has(code)
       && state.provider !== "fake"
-      && state.apiKey.trim()
+      && state.credentialRef
     ) {
       try {
         const restored = await reconnectSavedProvider();
@@ -106,7 +106,7 @@ let providerReconnectInFlight: Promise<any> | null = null;
 export function reconnectSavedProvider(): Promise<any> {
   if (providerReconnectInFlight) return providerReconnectInFlight;
   const state = useMentorStore.getState();
-  if (state.provider === "fake" || !state.apiKey.trim()) {
+  if (state.provider === "fake" || !state.credentialRef) {
     return Promise.resolve(null);
   }
   providerReconnectInFlight = (async () => {
@@ -124,6 +124,7 @@ export function reconnectSavedProvider(): Promise<any> {
             provider: state.provider,
             baseUrl: state.baseUrl,
             model: state.model,
+            credentialRef: current.credential_ref || state.credentialRef,
             verified: true,
             expiresAt: current.expires_at,
             latencyMs: current.latency_ms,
@@ -136,15 +137,14 @@ export function reconnectSavedProvider(): Promise<any> {
         // from the browser-local provider configuration and credential.
       }
     }
-    const baseUrl = state.baseUrl.trim()
-      || (state.provider === "openai-compatible" ? "https://api.deepseek.com" : "");
+    const baseUrl = state.baseUrl.trim();
     const created = await request<any>("/provider-sessions", {
       method: "POST",
       body: JSON.stringify({
         provider: state.provider,
         base_url: baseUrl,
         model: state.model,
-        api_key: state.apiKey,
+        credential_ref: state.credentialRef,
       }),
     });
     const result = await request<any>(
@@ -156,6 +156,7 @@ export function reconnectSavedProvider(): Promise<any> {
       provider: state.provider,
       baseUrl,
       model: state.model,
+      credentialRef: result.credential_ref || state.credentialRef,
       verified: true,
       expiresAt: result.expires_at,
       latencyMs: result.latency_ms,

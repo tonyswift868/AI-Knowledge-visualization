@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { MessageCircle, Send, Settings2, Sparkles, Volume2 } from "lucide-react"
-import { activeTeacherPersonas, type ActiveTeacherPersona } from "../active-teaching/api"
+import { ArrowRight, BookOpen, Check, MessageCircle, Send, Settings2, Sparkles, Volume2 } from "lucide-react"
+import { activeRequest, activeTeacherPersonas, type ActiveTeacherPersona } from "../active-teaching/api"
 import { providerRequestContext, request } from "../../providerConnection"
 import {
   speakLocalTeacherVoice,
@@ -23,6 +23,21 @@ type CasualSession = {
   messages?: Array<{ role: "user" | "teacher"; content: string }>;
   created_at?: string;
   updated_at?: string;
+}
+
+export type PlannerResource = {
+  url: string
+  title?: string
+  snippet?: string
+  reason?: string
+  authority_explanation?: string
+  engine?: string
+}
+
+export type PlannerHandoff = {
+  goal: string
+  resource: PlannerResource
+  created_at: string
 }
 
 const FALLBACK_TEACHERS: CasualTeacher[] = [
@@ -131,7 +146,147 @@ function makeGreeting(teacher: CasualTeacher): CasualMessage {
   }
 }
 
-export function CasualTeacherChat({ workspaceId = "" }: { workspaceId?: string }) {
+function LearningPlanner({
+  workspaceId,
+  onStartPlan,
+}: {
+  workspaceId: string
+  onStartPlan?: (handoff: PlannerHandoff) => void
+}) {
+  const [input, setInput] = useState("")
+  const [goal, setGoal] = useState("")
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([])
+  const [resources, setResources] = useState<PlannerResource[]>([])
+  const [selectedUrl, setSelectedUrl] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState("")
+  const [handoffDone, setHandoffDone] = useState(false)
+
+  async function ask() {
+    const text = input.trim()
+    if (!text || busy) return
+    setBusy(true)
+    setNotice("")
+    setMessages(current => [...current, { role: "user", content: text }])
+    setInput("")
+    try {
+      const result = await activeRequest(
+        `/workspaces/${encodeURIComponent(workspaceId || "general-learning")}/planning-assistant`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            message: text,
+            goal,
+            conversation: messages,
+            ...providerRequestContext(),
+          }),
+        },
+        60_000,
+      )
+      const seenUrls = new Set<string>()
+      const nextResources = (Array.isArray(result.resources) ? result.resources : [])
+        .filter((item: any) => {
+          const url = String(item?.url || "").trim()
+          if (!url || seenUrls.has(url)) return false
+          seenUrls.add(url)
+          return true
+        })
+        .slice(0, 3) as PlannerResource[]
+      setMessages(current => [...current, { role: "assistant", content: String(result.reply || "我已整理出下一步建议。") }])
+      setResources(nextResources)
+      setSelectedUrl("")
+      const nextGoal = String(result.goal_summary || text).trim()
+      if (nextGoal) {
+        setGoal(nextGoal)
+      }
+      if (!nextResources.length) {
+        setNotice((result.warnings || []).join("；") || "暂时没有可核对的公开资料候选，请补充范围或换一种描述。")
+      }
+    } catch (error: any) {
+      setNotice(error?.message || "规划助手暂时不可用，请先验证模型连接后重试。")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startPlan() {
+    const resource = resources.find(item => item.url === selectedUrl)
+    if (!resource) {
+      setNotice("请先从候选资料中选择一份，再开始整理。")
+      return
+    }
+    const handoff: PlannerHandoff = {
+      goal: goal.trim() || "根据已选资料建立可验证的学习计划",
+      resource,
+      created_at: new Date().toISOString(),
+    }
+    setHandoffDone(true)
+    onStartPlan?.(handoff)
+  }
+
+  return (
+    <section className="planning-companion" data-testid="learning-planner" aria-label="学习规划助手">
+      <header className="planning-companion__header">
+        <div>
+          <div className="eyebrow"><BookOpen size={14} /> LEARNING PLANNER</div>
+          <h2>创建计划</h2>
+          <p>教师会把你的需求整理成目标，再从公开检索中挑出最多三份候选资料。你确认一份后，才会进入资料整理和计划生成。</p>
+        </div>
+        <div className="planning-companion__badge"><Sparkles size={15} /> 需求 → 资料 → 计划</div>
+      </header>
+      <div className="planning-companion__layout">
+        <aside className="planning-companion__teacher">
+          <div className="planning-companion__portrait" data-testid="planner-teacher-portrait">
+            <div className="planning-companion__portrait-glow" />
+            <img src="/assets/teachers/mentor-iris-explaining.png" alt="学习规划教师" />
+          </div>
+          <strong>规划教师</strong>
+          <span>先确认目标，再让系统工作</span>
+          <div className="planning-companion__steps">
+            <span className="is-active"><b>1</b>描述需求</span>
+            <span className={resources.length ? "is-active" : ""}><b>2</b>核对资料</span>
+            <span className={handoffDone ? "is-active" : ""}><b>3</b>进入计划</span>
+          </div>
+        </aside>
+        <div className="planning-companion__main">
+          <div className="planning-companion__messages" aria-live="polite">
+            {!messages.length && <div className="planning-companion__welcome"><b>可以这样说：</b><span>“我想在一个明确期限内学会一项能力，已有一份笔记，希望补齐权威资料和练习。”</span><small>不需要先准备文件，先把目标、范围和时间说出来就行。</small></div>}
+            {messages.map((item, index) => (
+              <div key={`${item.role}-${index}`} className={`planning-companion__message ${item.role}`}>
+                <b>{item.role === "user" ? "你" : "规划教师"}</b><span>{item.content}</span>
+              </div>
+            ))}
+            {busy && <div className="planning-companion__typing">正在整理需求并检索可核对资料…</div>}
+          </div>
+          <div className="planning-companion__composer">
+            <textarea data-testid="planning-companion-input" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder="告诉教师你的学习目标、面向的场景、已有资料和希望完成的时间…" />
+            <button type="button" data-testid="planning-companion-send" className="primary" onClick={() => void ask()} disabled={busy || !input.trim()}><Send size={16} /> {busy ? "整理中" : "开始规划"}</button>
+          </div>
+          {resources.length > 0 && (
+            <section className="planning-companion__resources" aria-label="推荐资料">
+              <div className="planning-companion__resources-head"><div><b>推荐资料（最多三份）</b><span>候选来自实时检索；请打开核对发布机构、作者和内容范围。</span></div><span className="planning-companion__verified-note">待你确认</span></div>
+              <div className="planning-companion__resource-grid">
+                {resources.map((item, index) => (
+                  <label key={`${item.url}-${index}`} className={`planning-companion__resource ${selectedUrl === item.url ? "is-selected" : ""}`}>
+                    <input type="radio" name="planner-resource" checked={selectedUrl === item.url} onChange={() => setSelectedUrl(item.url)} />
+                    <span className="planning-companion__resource-index">0{index + 1}</span>
+                    <span className="planning-companion__resource-copy"><strong>{item.title || item.url}</strong><small>{item.reason || "与当前学习目标相关，仍需你确认范围。"}</small><em>{item.authority_explanation || "请核对发布机构、作者、更新时间和内容范围。"}</em><a href={item.url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>打开原文 <ArrowRight size={13} /></a></span>
+                  </label>
+                ))}
+              </div>
+              <button type="button" className="planning-companion__start" data-testid="planning-companion-start" onClick={startPlan} disabled={!selectedUrl || handoffDone}>{handoffDone ? <><Check size={16} /> 已交给学习计划</> : <>采用这份资料，开始整理 <ArrowRight size={16} /></>}</button>
+            </section>
+          )}
+          {notice && <div className="planning-companion__notice" role="status">{notice}</div>}
+          <p className="planning-companion__footnote">资料确认后，系统会自动进入学习计划：你只需补充目标备注、开始日期和截止日期，知识地图与每日任务由系统计算。</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+export function CasualTeacherChat({ workspaceId = "", mode = "casual", onStartPlan }: { workspaceId?: string; mode?: "planner" | "casual"; onStartPlan?: (handoff: PlannerHandoff) => void }) {
+  if (mode === "planner") return <LearningPlanner workspaceId={workspaceId} onStartPlan={onStartPlan} />
   const [teachers, setTeachers] = useState<CasualTeacher[]>(FALLBACK_TEACHERS)
   const [teacherId, setTeacherId] = useState(() => {
     try { return localStorage.getItem(SELECTED_KEY) || "warm" } catch { return "warm" }

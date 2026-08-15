@@ -165,6 +165,36 @@ describe("2D teacher companion stage", () => {
     expect(mount).toHaveBeenCalledTimes(1)
   })
 
+  it("does not feed renderer skin snapshots back into an update loop", async () => {
+    let publish: TeacherPresentationControllerOptions["onSnapshot"] = () => undefined
+    const ready = () => ({
+      status: "ready" as const,
+      renderer: "image2d" as const,
+      armature: "teacher-v9",
+      currentAnimation: "idle",
+      semanticState: "idle" as const,
+      animations: ["idle"],
+      skins: ["teaching", "swimsuit"],
+      canvasWidth: 420,
+      canvasHeight: 680,
+      webgl: false,
+      loadedTextures: ["/teaching.png", "/swimsuit.png"],
+    })
+    const setSkin = vi.fn(() => publish(ready()))
+    const controllerFactory = (options: TeacherPresentationControllerOptions) => {
+      publish = options.onSnapshot
+      return fakeController(options, {
+        mount: vi.fn(async () => options.onSnapshot(ready())),
+        setSkin,
+      })
+    }
+
+    render(<Teacher2DStage controllerFactory={controllerFactory} />)
+
+    await screen.findByTestId("teacher-form-swimsuit")
+    await waitFor(() => expect(setSkin).toHaveBeenCalledTimes(1))
+  })
+
   it("keeps surrounding learning UI available when the model fails", async () => {
     const controllerFactory = (options: TeacherPresentationControllerOptions) => fakeController(options, {
       mount: vi.fn(async () => {

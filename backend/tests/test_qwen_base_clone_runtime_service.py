@@ -1639,8 +1639,11 @@ def test_new_generation_reverifies_policy_and_registry_bytes(
         expected = "TRUST_POLICY_SIGNATURE_INVALID"
     else:
         assert registry_path is not None
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-        registry_path.write_text(json.dumps(registry, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        # The checked-in registry is already serialized with the same
+        # sorted/indented JSON shape, so reserializing it can be a no-op.
+        # Change the signed bytes without changing the parsed document to
+        # prove that byte-level binding is rechecked before every launch.
+        registry_path.write_bytes(registry_path.read_bytes() + b"\n")
         expected = "TRUST_BINDING_CHANGED"
     with pytest.raises(LocalVoiceRuntimeError) as blocked:
         captured["before_launch"]()
