@@ -134,6 +134,17 @@ class Provider:
         cause = ValueError("Provider JSON must be an object")
         raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502) from cause
 
+    async def compact_json(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        max_tokens: int,
+        temperature: float = 0.2,
+    ) -> dict[str, Any]:
+        """Return bounded JSON; adapters may use provider-native fast controls."""
+
+        return await self.json(messages, temperature)
+
     async def structured(
         self,
         messages: list[dict[str, Any]],
@@ -244,6 +255,56 @@ class OpenAICompatibleProvider(HTTPProvider):
             return str(payload["choices"][0]["message"]["content"])
         except Exception as exc:
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "OpenAI-compatible 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
+
+    async def compact_json(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        max_tokens: int,
+        temperature: float = 0.2,
+    ) -> dict[str, Any]:
+        """Use bounded JSON mode and disable DeepSeek thinking for small UI cards."""
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max(64, int(max_tokens)),
+            "response_format": {"type": "json_object"},
+        }
+        if "api.deepseek.com" in self.base_url.casefold():
+            payload["thinking"] = {"type": "disabled"}
+        response = await self.request(
+            "POST",
+            self.completions_url(),
+            headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"},
+            json=payload,
+        )
+        if response.status_code >= 400:
+            raise self.response_error(response, self.provider_name)
+        try:
+            body = response.json()
+            choice = body["choices"][0]
+            self.last_model = body.get("model") or self.model
+            if choice.get("finish_reason") == "length":
+                raise ProviderError(
+                    "PROVIDER_OUTPUT_TRUNCATED",
+                    "Provider 输出超过卡片长度限制",
+                    502,
+                )
+            result = parse_json_object(str(choice["message"]["content"] or ""))
+            if result is None:
+                raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502)
+            return result
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_SCHEMA_ERROR",
+                "OpenAI-compatible 返回结构不兼容",
+                502,
+                {"provider": self.provider_name, "model": self.model},
+            ) from exc
 
     async def structured(
         self,

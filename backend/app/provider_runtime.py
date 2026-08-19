@@ -113,6 +113,32 @@ def require_provider_session(session_id: str | None, verified: bool = True, *, o
     return session
 
 
+def latest_verified_provider_session(*, owner_user_id: str | None = None) -> ProviderSession | None:
+    """Return the newest usable real session for the current local owner.
+
+    The desktop shell and its embedded WebEngine share one loopback backend,
+    but not one JavaScript storage area.  This read-only lookup lets the web
+    surface adopt the already verified process-local handle without exposing
+    the API key or creating another credential.
+    """
+
+    now = _now()
+    candidates = [
+        session
+        for session in _sessions.values()
+        if session.verified
+        and session.provider != "fake"
+        and (session.expires_at is None or session.expires_at > now)
+        and (owner_user_id is None or session.owner_user_id == owner_user_id)
+    ]
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda session: session.last_tested_at or session.created_at,
+    )
+
+
 def same_provider_configuration(left: ProviderSession, right: ProviderSession) -> bool:
     """Return whether two sessions represent the same evaluator configuration.
 

@@ -22,7 +22,7 @@
     "isolated_node_warning_ratio": 0.5
   },
   "mastery_estimation": {
-    "version": "mastery-estimation.v1",
+    "version": "mastery-estimation.v2",
     "information_unit_characters": 700,
     "minimum_information_units": 1.0,
     "maximum_information_units": 8.0,
@@ -44,7 +44,23 @@
       "guided_practice": 5,
       "independent_application": 8,
       "review": 5
-    }
+    },
+    "minutes_per_evidence_chunk": 2.0,
+    "minutes_per_material_unit": 2.0,
+    "minutes_per_structural_unit": 1.5,
+    "minutes_per_dependency_depth": 3.0,
+    "complexity_factors": {"low": 0.82, "medium": 1.0, "high": 1.28, "unknown": 1.08},
+    "novelty_factors": {"familiar": 0.88, "mixed": 1.0, "new": 1.2, "unknown": 1.08},
+    "output_requirement_factors": {"none": 0.9, "explanation": 1.0, "artifact": 1.16, "transfer": 1.28, "unknown": 1.08},
+    "mode_factors": {"concept_understanding": 1.0, "concept_review": 0.7, "coding_solution": 1.18, "coding_practice": 1.3, "unknown": 1.08},
+    "review_round_ratio": 0.22,
+    "subsequent_review_ratio": 1.0,
+    "provider_blend_weight": 0.25,
+    "provider_lower_bound_ratio": 0.7,
+    "provider_upper_bound_ratio": 1.45,
+    "uncertainty_base_ratio": 0.18,
+    "uncertainty_volume_ratio": 0.06,
+    "uncertainty_missing_input_ratio": 0.08
   },
   "scheduling": {
     "version": "scheduling.v1",
@@ -149,6 +165,68 @@
     "connect_timeout_seconds": 10.0,
     "write_timeout_seconds": 30.0,
     "pool_timeout_seconds": 10.0,
+    "life_analogy_timeout_seconds": 30.0,
+    "life_analogy_max_tokens": 700,
+    "life_analogy_history_limit": 12,
+    "life_analogy_formats": [
+      "熟人对话复盘",
+      "手机界面瞬间",
+      "二选一微型实验",
+      "连锁反应",
+      "家务步骤对照",
+      "排队规则冲突",
+      "购物售后插曲",
+      "反常识对照",
+      "失败复盘清单",
+      "通勤临场选择",
+      "一句冷笑话加拆解",
+      "群聊消息误会"
+    ],
+    "life_analogy_humor_cues": [
+      "朋友式吐槽：先让场景真实，再用一句短促反差帮助记忆；没有自然笑点就不要硬塞",
+      "一本正经的生活观察：只把日常细节稍微推离谱一点，因果映射必须准确",
+      "冷面吐槽：笑点来自人人遇到过的麻烦，不要变成鸡汤或童话",
+      "轻微黑色幽默：只能嘲讽自己的尴尬或荒诞规则，不涉及真实受害者、弱势群体、自残或灾难",
+      "评论区式转折：结尾可意外，但前面的生活处境必须一眼能认出来",
+      "谐音或错位梗：可以俗一点，但不能为了梗牺牲概念映射",
+      "离谱小账单：可自然闪过‘飞八分钱’式表达，不合适就不用，更不能解释梗",
+      "熟人随口讲的怪事：有具体动作和后果，不要写成教材案例"
+    ],
+    "life_analogy_meme_cues": [
+      {"key": "fly_eight_cents", "phrase": "哦对了，飞八分钱", "placement": "embedded", "usage": "作为无指向的抽象怪话嵌进一个正在发生的动作或对话，后面必须继续产生可见反应或后果；不得单独贴在结尾，不得关联真人姓名、亲属、坟墓、死亡、攻击对象或解释来源"},
+      {"key": "not_bro", "phrase": "不是哥们", "usage": "面对自己或朋友刚做出的明显错误操作时短促吐槽，后面必须接具体问题"},
+      {"key": "honest_mercy", "phrase": "已老实，求放过", "usage": "连续失败或被正常规则限制后进行自嘲，不能把系统规则写成恶意报复"},
+      {"key": "who_does_this", "phrase": "谁家好人", "usage": "吐槽一种确实不合理的操作，后面必须紧跟那项具体操作"},
+      {"key": "clown_me", "phrase": "小丑竟是我自己", "usage": "核对后发现错误确实来自自己时自嘲，不能用于他人受损场景"},
+      {"key": "dont_rush", "phrase": "你先别急", "usage": "结果尚未确认、应该先停止重复操作并核对时使用"},
+      {"key": "is_this_reasonable", "phrase": "这合理吗", "usage": "真实结果与预期相反时短促反问，随后必须给出可验证原因"},
+      {"key": "so_we_play", "phrase": "好好好，这么玩是吧", "usage": "规则真实但第一次遇到时感到意外，用来自嘲而不是攻击服务人员"},
+      {"key": "cant_hold", "phrase": "这下真绷不住了", "usage": "自己的操作导致轻微尴尬或失败时收尾，不能涉及真实受害者"}
+    ],
+    "life_analogy_scene_families": [
+      {"key": "phone_messages", "label": "手机消息或群聊", "cues": ["手机", "消息", "群聊", "未读", "撤回"], "situations": [{"key": "wrong_chat", "prompt": "把消息发错群后及时撤回，再重新选对联系人", "mechanism_tags": ["compensation", "reversible_action", "rollback"], "required_groups": [["发错", "错群"], ["撤回"], ["重新", "联系人"]]}, {"key": "unread_pile", "prompt": "忙碌时未读消息不断堆积，只能按重要程度逐条处理", "mechanism_tags": ["priority_queue", "backpressure", "triage"], "required_groups": [["未读", "消息"], ["堆积", "不断"], ["重要", "优先", "逐条"]]}]},
+      {"key": "delivery_pickup", "label": "外卖、快递或取件", "cues": ["外卖", "快递", "取件", "骑手", "取件码"], "situations": [{"key": "wrong_code", "prompt": "在快递柜连续输错取件码，短暂锁定后再试", "mechanism_tags": ["rate_limit", "cooldown", "lockout"], "required_groups": [["快递柜", "取件"], ["输错", "错"], ["锁定", "稍后再试", "倒计时"]]}, {"key": "shop_pauses_orders", "prompt": "用餐高峰订单堆积，餐厅暂时关闭新订单，做完手头订单后再恢复接单", "mechanism_tags": ["backpressure", "load_shedding"], "required_groups": [["高峰", "订单堆积", "忙不过来"], ["暂停接单", "关闭新订单"], ["恢复接单", "做完手头"]]}]},
+      {"key": "queue_ticket", "label": "餐厅、银行或办事窗口排队叫号", "cues": ["排队", "队伍", "取号", "叫号", "窗口"], "situations": [{"key": "missed_number", "prompt": "取号后暂时离开，回来发现已经过号，只能重新排队", "mechanism_tags": ["timeout", "lease_expiry", "requeue"], "required_groups": [["取号", "叫号"], ["离开", "回来"], ["过号", "重新排队"]]}, {"key": "one_window", "prompt": "多个队伍最终都要经过同一个办理窗口，窗口忙时所有人一起等", "mechanism_tags": ["bottleneck", "serialization", "contention"], "required_groups": [["多个队伍", "几条队伍"], ["同一个窗口", "一个窗口"], ["一起等", "堵住", "排队"]]}]},
+      {"key": "home_chores", "label": "做饭、冰箱、洗衣或收拾房间", "cues": ["做饭", "冰箱", "洗衣", "衣服", "收拾", "厨房"], "situations": [{"key": "cooking_order", "prompt": "做饭时漏掉或颠倒一道真实步骤，直到成品异常才发现", "mechanism_tags": ["dependency_order", "precondition", "pipeline"], "required_groups": [["做饭", "炒", "煮"], ["漏", "颠倒", "先后"], ["成品", "味道", "出锅"]]}, {"key": "laundry_sort", "prompt": "洗衣前按颜色和洗涤方式分堆，避免衣服染色或损坏", "mechanism_tags": ["partition", "classification", "validation"], "required_groups": [["洗衣", "衣服"], ["分开", "分堆", "颜色"], ["染色", "掉色", "损坏"]]}]},
+      {"key": "work_handoff", "label": "同事交接、会议或请假", "cues": ["同事", "交接", "会议", "请假", "群里"], "situations": [{"key": "missing_handoff", "prompt": "同事请假前漏交接一项信息，接手的人做到一半才发现", "mechanism_tags": ["missing_dependency", "single_point_failure", "incomplete_context"], "required_groups": [["同事", "请假"], ["交接", "漏"], ["做到一半", "才发现"]]}, {"key": "message_interrupt", "prompt": "工作时群消息不断打断，每次切回原任务都要重新找思路", "mechanism_tags": ["context_switching", "batching", "interrupt_cost"], "required_groups": [["群消息", "消息"], ["打断", "切回"], ["重新找", "重新想", "思路"]]}]},
+      {"key": "commute_navigation", "label": "打车、导航、堵车或换乘", "cues": ["打车", "导航", "堵车", "地铁", "换乘", "公交"], "situations": [{"key": "reroute", "prompt": "导航发现前方堵车后重新规划路线，旧路线不再采用", "mechanism_tags": ["replanning", "dynamic_update", "invalidation"], "required_groups": [["导航"], ["堵车"], ["重新规划", "换路线", "绕路"]]}, {"key": "pickup_point", "prompt": "打车时司机和乘客因定位偏差互相寻找，确认同一上车点后才碰面", "mechanism_tags": ["handshake", "coordinate_alignment", "protocol_agreement"], "required_groups": [["司机"], ["乘客", "我"], ["上车点", "定位", "碰面"]]}]},
+      {"key": "shopping_refund", "label": "购物、退款、优惠券或账单", "cues": ["购物", "退款", "优惠券", "账单", "下单", "付款"], "situations": [{"key": "coupon_threshold", "prompt": "结账时优惠券因门槛或适用商品不符而无法使用", "mechanism_tags": ["predicate", "precondition", "rule_matching"], "required_groups": [["优惠券"], ["门槛", "满减", "适用商品"], ["不能用", "无法使用", "不适用"]]}, {"key": "duplicate_order", "prompt": "付款页面转圈时重复点击，担心是否产生两笔订单并去核对账单", "mechanism_tags": ["idempotency", "deduplication", "request_identity"], "required_groups": [["付款", "下单"], ["重复点击", "又点"], ["两笔", "重复订单", "核对账单"]]}]},
+      {"key": "friends_meal", "label": "朋友约饭、迟到或AA", "cues": ["朋友", "约饭", "迟到", "AA", "聚餐", "买单"], "situations": [{"key": "late_friend", "prompt": "朋友聚餐时有人迟到，其他人决定等他还是先点菜", "mechanism_tags": ["timeout_policy", "quorum", "latency_tradeoff"], "required_groups": [["朋友", "聚餐"], ["迟到"], ["等", "先点菜"]]}, {"key": "aa_missing", "prompt": "聚餐AA后有人忘记转账，发起人对照账单逐个确认", "mechanism_tags": ["reconciliation", "audit", "completion_tracking"], "required_groups": [["AA", "聚餐"], ["忘记转账", "没转"], ["账单", "逐个确认", "核对"]]}]},
+      {"key": "gaming_session", "label": "游戏匹配、存档或掉线", "cues": ["游戏", "匹配", "存档", "掉线", "队友", "重连"], "situations": [{"key": "checkpoint", "prompt": "游戏闯关失败后从最近存档点继续，而不是从头重来", "mechanism_tags": ["checkpoint", "rollback", "recovery"], "required_groups": [["游戏", "闯关"], ["失败", "死了"], ["存档", "不是从头"]]}, {"key": "teammate_disconnect", "prompt": "联机时队友掉线，队伍等待他重连或调整分工", "mechanism_tags": ["fault_tolerance", "graceful_degradation", "recovery"], "required_groups": [["队友", "联机"], ["掉线"], ["重连", "调整分工"]]}]},
+      {"key": "study_deadline", "label": "作业、考试、复习或截止时间", "cues": ["作业", "考试", "复习", "截止", "提交", "笔记"], "situations": [{"key": "upload_deadline", "prompt": "截止时间前上传作业，提交后主动刷新或再次检查提交记录，确认系统确实显示成功", "mechanism_tags": ["acknowledgement", "verification", "commit_confirmation"], "required_groups": [["作业"], ["提交", "上传"], ["刷新", "再次检查", "提交记录", "确认记录"]]}, {"key": "wrong_answer_book", "prompt": "复习时先看错题记录，再针对薄弱部分安排练习", "mechanism_tags": ["feedback_loop", "adaptive_priority", "error_driven_learning"], "required_groups": [["复习"], ["错题"], ["薄弱", "针对", "练习"]]}]},
+      {"key": "rent_home", "label": "租房、水电、门锁或室友", "cues": ["租房", "房租", "水电", "门锁", "室友", "钥匙"], "situations": [{"key": "split_bills", "prompt": "室友月底按账单分摊水电费并核对谁已经转账", "mechanism_tags": ["reconciliation", "partition", "completion_tracking"], "required_groups": [["室友"], ["水电", "账单"], ["分摊", "转账", "核对"]]}, {"key": "forgot_key", "prompt": "出门忘带钥匙，只能联系室友开门或去取备用钥匙", "mechanism_tags": ["fallback", "redundancy", "single_point_failure"], "required_groups": [["钥匙"], ["忘带", "没带"], ["室友", "备用钥匙"]]}]},
+      {"key": "daily_payment", "label": "扫码、转账、余额或自动续费", "cues": ["扫码", "转账", "余额", "续费", "支付", "扣款"], "situations": [{"key": "payment_pending", "prompt": "扫码支付后页面显示处理中，先查账单再决定是否重付", "mechanism_tags": ["state_machine", "verification_before_retry", "idempotency"], "required_groups": [["支付", "扫码"], ["处理中", "转圈"], ["查账单", "核对", "再付"]]}, {"key": "auto_renew", "prompt": "收到自动续费扣款提醒后，去设置里关闭下一周期续费", "mechanism_tags": ["lifecycle", "configuration_change", "deferred_effect"], "required_groups": [["续费", "扣款"], ["设置"], ["下一周期", "下个月", "以后"]]}]}
+    ],
+    "life_analogy_unfamiliar_actor_terms": [
+      "小猫", "小狗", "精灵", "外星人", "会说话的物件", "成精", "魔法学校", "动物王国"
+    ],
+    "life_analogy_scene_forbidden_terms": [
+      "算法", "程序", "代码", "数据库", "缓存", "线程", "进程", "事务", "接口", "神经网络", "哈希", "递归", "并发", "分布式", "服务器", "网络协议", "内存", "拓扑", "回溯", "死锁", "乐观锁", "悲观锁", "原子操作", "依赖注入"
+    ],
+    "life_analogy_inanimate_actor_terms": [
+      "衣服", "袜子", "冰箱", "洗衣机", "手机", "快递柜", "电梯", "优惠券", "账单", "钥匙", "导航", "消息", "按钮", "订单", "存档"
+    ],
+    "life_analogy_speech_verbs": ["说", "喊", "嘀咕", "争吵", "抱怨"],
     "default_knowledge_confidence": 0.7
   },
   "resource_discovery": {

@@ -24,13 +24,40 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _looks_like_shared_root(candidate: Path) -> bool:
+    """Recognize the reused ASR project without importing or modifying it."""
+
+    return (
+        (candidate / "agent_core" / "local_asr_sensevoice_client.py").is_file()
+        and (candidate / "tools" / "kristina_sensevoice_worker.py").is_file()
+    )
+
+
 def shared_root() -> Path:
     configured = str(os.getenv("MENTORFLOW_AI_AGENT_ROOT") or "").strip()
-    return (
-        Path(configured).expanduser().resolve()
-        if configured
-        else (project_root().parent / "ai_agent").resolve()
-    )
+    if configured:
+        # An explicit deployment setting is authoritative.  Returning an
+        # invalid configured root lets the status endpoint fail clearly rather
+        # than silently selecting a different installation.
+        return Path(configured).expanduser().resolve()
+
+    # A source checkout has ``ai_agent`` beside this project.  A frozen app
+    # lives several levels deeper (release/distributable/MentorFlow/_internal),
+    # so inspect its ancestors as well.  This is signature-based discovery,
+    # not a machine-specific absolute path, and it never copies sibling code.
+    root = project_root().resolve()
+    candidates: list[Path] = []
+    for anchor in (root, *root.parents):
+        candidate = (anchor / "ai_agent").resolve()
+        if candidate not in candidates:
+            candidates.append(candidate)
+    legacy_candidate = (root.parent / "ai_agent").resolve()
+    if legacy_candidate not in candidates:
+        candidates.insert(0, legacy_candidate)
+    for candidate in candidates:
+        if _looks_like_shared_root(candidate):
+            return candidate
+    return legacy_candidate
 
 
 def worker_port() -> int:

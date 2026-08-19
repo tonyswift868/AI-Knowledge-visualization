@@ -10,11 +10,12 @@ import sqlite3
 import stat
 import subprocess
 import sys
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,14 +29,20 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from backend.app.credential_store import CredentialStoreError, store_secret
 from backend.app.sms_gateway import SmsGatewayError, public_config, save_config
-from .local_migration import MigrationError, export_migration_archive, import_migration_archive
-from .version import VERSION_MANIFEST, version_display
+from .local_migration import (
+    MigrationError,
+    export_migration_archive,
+    import_migration_archive,
+    write_next_launch_data_root_pointer,
+)
+from .version import VERSION_MANIFEST
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -110,6 +117,17 @@ def diagnostics_text(origin: str, *, local_mode: bool = False) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def diagnostics_summary(report: str) -> str:
+    integrity = [line.strip().casefold() for line in report.splitlines() if "完整性：" in line]
+    foreign_keys = [line.strip() for line in report.splitlines() if "外键错误：" in line]
+    missing = [line.strip() for line in report.splitlines() if line.strip().endswith("：不存在")]
+    if missing:
+        return "有本地数据文件尚未就绪，点击详情查看。"
+    if integrity and all(line.endswith("：ok") for line in integrity) and all(line.endswith("：0") for line in foreign_keys):
+        return "本地数据完整，没有发现缺失或关联错误。"
+    return "本地数据需要检查，点击详情查看。"
 
 
 def create_manual_backup() -> Path:
@@ -234,7 +252,15 @@ class SystemPage(QWidget):
         self.online_updates_enabled = bool(online_updates_enabled)
         self.last_backup: Path | None = None
         self.data_root = self._resolve_data_root()
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mentorflow-settings")
+        self._diagnostics_future: Future[str] | None = None
+        self._data_future: Future[Any] | None = None
+        self._data_action = ""
         self._build()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        super().closeEvent(event)
 
     @staticmethod
     def _resolve_data_root() -> Path:
@@ -252,8 +278,16 @@ class SystemPage(QWidget):
             "true",
             "yes",
         }
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroller = QScrollArea()
+        scroller.setWidgetResizable(True)
+        scroller.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(38, 32, 38, 32)
+        scroller.setWidget(content)
+        outer.addWidget(scroller)
         heading = QLabel("设置")
         heading.setObjectName("pageHeading")
         layout.addWidget(heading)
@@ -273,11 +307,10 @@ class SystemPage(QWidget):
         settings_layout.addWidget(QLabel("版本与常用设置"))
         settings_layout.addWidget(
             QLabel(
-                f"版本：{version_display(VERSION_MANIFEST)} · 构建：本地原生版 · "
-                "数据架构：主动教学 v1"
+                f"MentorFlow {VERSION_MANIFEST.get('version') or 'unknown'} · 本地版"
             )
         )
-        common_hint = QLabel("这里只保留日常会用到的入口；数据迁移、在线动态和技术诊断分别放在下方。")
+        common_hint = QLabel("常用设置放在这里；换设备和本地数据检查在下方。")
         common_hint.setObjectName("pageSubtitle")
         common_hint.setWordWrap(True)
         settings_layout.addWidget(common_hint)
@@ -285,57 +318,9 @@ class SystemPage(QWidget):
         provider = QPushButton("打开模型连接")
         provider.clicked.connect(lambda: self._open_section("provider"))
         settings_actions.addWidget(provider)
-        tutorial = QPushButton("重新播放新手引导")
-        tutorial.clicked.connect(self._restart_tutorial)
-        settings_actions.addWidget(tutorial)
         settings_actions.addStretch()
         settings_layout.addLayout(settings_actions)
-        self.settings_status = QLabel("可以在这里查看版本或进入模型连接。")
-        self.settings_status.setObjectName("inlineStatus")
-        self.settings_status.setWordWrap(True)
-        settings_layout.addWidget(self.settings_status)
         layout.addWidget(settings_card)
-
-        online_card = QFrame()
-        online_card.setObjectName("explanationCard")
-        online_layout = QVBoxLayout(online_card)
-        online_layout.setSpacing(10)
-        online_layout.addWidget(QLabel("官方动态（可选）"))
-        online_hint = QLabel(
-            "默认完全离线。开启后只访问应用内列出的官方技术来源，并把最新结果缓存在本地。"
-        )
-        online_hint.setWordWrap(True)
-        online_layout.addWidget(online_hint)
-        online_actions = QHBoxLayout()
-        online_toggle = QCheckBox("允许加载官方在线更新（默认关闭）")
-        self.online_toggle = online_toggle
-        online_toggle.blockSignals(True)
-        online_toggle.setChecked(self.online_updates_enabled)
-        online_toggle.blockSignals(False)
-        online_toggle.toggled.connect(self._set_online_updates)
-        online_actions.addWidget(online_toggle)
-        reload_updates = QPushButton("立即刷新官方动态")
-        self.reload_updates_button = reload_updates
-        reload_updates.setEnabled(self.online_updates_enabled)
-        reload_updates.clicked.connect(self._reload_official_updates)
-        online_actions.addWidget(reload_updates)
-        online_actions.addStretch()
-        online_layout.addLayout(online_actions)
-        self.online_progress = QProgressBar()
-        self.online_progress.setRange(0, 0)
-        self.online_progress.setTextVisible(False)
-        self.online_progress.setMaximumHeight(5)
-        self.online_progress.setVisible(False)
-        online_layout.addWidget(self.online_progress)
-        self.online_status = QLabel(
-            "在线动态已开启，点击“立即刷新”获取内容。"
-            if self.online_updates_enabled
-            else "在线动态已关闭，不会发起网络请求。"
-        )
-        self.online_status.setObjectName("inlineStatus")
-        self.online_status.setWordWrap(True)
-        online_layout.addWidget(self.online_status)
-        layout.addWidget(online_card)
 
         if local_mode:
             local_card = QFrame()
@@ -343,15 +328,10 @@ class SystemPage(QWidget):
             local_layout = QVBoxLayout(local_card)
             local_layout.setSpacing(10)
             local_layout.addWidget(QLabel("换设备：导出或导入本地数据"))
-            configured_root = os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
-            database_path = os.getenv("MENTORFLOW_ORM_DB", "").strip() or os.getenv("MENTORFLOW_DB", "").strip()
-            if configured_root:
-                root_text = configured_root
-            elif database_path:
-                root_text = str(Path(database_path).resolve().parent.parent)
-            else:
-                root_text = "由当前本地运行配置决定"
-            local_layout.addWidget(QLabel("当前数据目录：" + root_text))
+            # Use the same resolved root used by export/import.  Reporting the
+            # raw environment value here used to make a review copy appear to
+            # point at E:\\MentorFlowData even when its databases lived elsewhere.
+            local_layout.addWidget(QLabel("当前数据目录：" + str(self.data_root)))
             package_note = QLabel(
                 "软件安装包和用户数据包是两件东西：安装包可以发给任何人，迁移压缩包只属于当前本地学习空间。"
             )
@@ -469,13 +449,13 @@ class SystemPage(QWidget):
         diagnostics_card.setObjectName("explanationCard")
         diagnostics_layout = QVBoxLayout(diagnostics_card)
         diagnostics_layout.setSpacing(10)
-        diagnostics_layout.addWidget(QLabel("本地安全与技术诊断"))
+        diagnostics_layout.addWidget(QLabel("本地数据检查"))
         diagnostics_hint = QLabel(
-            "平时无需打开。遇到数据或启动问题时，可检查数据库、复制报告，或创建带校验清单的内部备份。"
+            "这里会检查学习数据是否完整；发现问题时再展开详情。"
         )
         diagnostics_hint.setWordWrap(True)
         diagnostics_layout.addWidget(diagnostics_hint)
-        self.diagnostics_toggle = QPushButton("查看技术诊断")
+        self.diagnostics_toggle = QPushButton("查看详情")
         self.diagnostics_toggle.setCheckable(True)
         self.diagnostics_toggle.toggled.connect(self._toggle_diagnostics)
         diagnostics_layout.addWidget(self.diagnostics_toggle, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -487,7 +467,7 @@ class SystemPage(QWidget):
         self.refresh_button = refresh
         refresh.clicked.connect(self.refresh)
         actions.addWidget(refresh)
-        copy = QPushButton("复制诊断信息")
+        copy = QPushButton("复制详情")
         copy.clicked.connect(self.copy_diagnostics)
         actions.addWidget(copy)
         backup = QPushButton("创建安全备份")
@@ -511,7 +491,7 @@ class SystemPage(QWidget):
         diagnostics_layout.addWidget(self.report)
         self.diagnostics_actions.setVisible(False)
         self.report.setVisible(False)
-        self.diagnostics_status = QLabel("技术诊断已收起。")
+        self.diagnostics_status = QLabel("正在检查本地数据…")
         self.diagnostics_status.setObjectName("inlineStatus")
         self.diagnostics_status.setWordWrap(True)
         diagnostics_layout.addWidget(self.diagnostics_status)
@@ -523,34 +503,46 @@ class SystemPage(QWidget):
             self.refresh_sms_gateway()
 
     def refresh(self) -> None:
+        if self._diagnostics_future is not None and not self._diagnostics_future.done():
+            self.diagnostics_status.setText("本地数据检查正在进行…")
+            return
         if hasattr(self, "refresh_button"):
             self.refresh_button.setEnabled(False)
             self.refresh_button.setText("检查中……")
         if hasattr(self, "diagnostics_status"):
             self.diagnostics_status.setText("正在只读检查本地数据库……")
-        QApplication.processEvents()
+        local_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {"1", "true", "yes"}
+        self._diagnostics_future = self._executor.submit(
+            diagnostics_text,
+            self.origin,
+            local_mode=local_mode,
+        )
+        QTimer.singleShot(40, self._poll_diagnostics)
+
+    def _poll_diagnostics(self) -> None:
+        future = self._diagnostics_future
+        if future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, self._poll_diagnostics)
+            return
+        self._diagnostics_future = None
         try:
-            local_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {"1", "true", "yes"}
-            self.report.setPlainText(diagnostics_text(self.origin, local_mode=local_mode))
-            if hasattr(self, "diagnostics_status"):
-                self.diagnostics_status.setText("检查完成；数据库未被修改。")
+            report = future.result()
+            self.report.setPlainText(report)
+            self.diagnostics_status.setText(diagnostics_summary(report))
         except (OSError, sqlite3.Error) as exc:
             self.report.setPlainText(f"诊断失败：{exc}")
-            if hasattr(self, "diagnostics_status"):
-                self.diagnostics_status.setText(f"检查失败：{exc}")
+            self.diagnostics_status.setText(f"检查失败：{exc}")
         finally:
-            if hasattr(self, "refresh_button"):
-                self.refresh_button.setEnabled(True)
-                self.refresh_button.setText("重新检查")
+            self.refresh_button.setEnabled(True)
+            self.refresh_button.setText("重新检查")
 
     def _open_section(self, section: str) -> None:
         if self.open_section:
-            if hasattr(self, "settings_status"):
-                self.settings_status.setText("正在打开模型连接……")
             self.open_section(section)
 
     def _restart_tutorial(self) -> None:
-        self.settings_status.setText("新手引导已重新开始；可按“跳过”随时退出。")
         if self.restart_tutorial_callback:
             self.restart_tutorial_callback()
         else:
@@ -583,12 +575,11 @@ class SystemPage(QWidget):
     def _toggle_diagnostics(self, visible: bool) -> None:
         self.diagnostics_actions.setVisible(bool(visible))
         self.report.setVisible(bool(visible))
-        self.diagnostics_toggle.setText("收起技术诊断" if visible else "查看技术诊断")
-        self.diagnostics_status.setText(
-            "技术诊断已展开；所有数据库检查均为只读。"
-            if visible
-            else "技术诊断已收起。"
-        )
+        self.diagnostics_toggle.setText("收起详情" if visible else "查看详情")
+        if visible:
+            self.diagnostics_status.setText("详细信息已展开。")
+        else:
+            self.diagnostics_status.setText(diagnostics_summary(self.report.toPlainText()))
 
     def copy_diagnostics(self) -> None:
         QApplication.clipboard().setText(self.report.toPlainText())
@@ -612,26 +603,13 @@ class SystemPage(QWidget):
         self.export_button.setText("正在导出……")
         self.migration_status.setText(f"正在导出到：{output}")
         self.report.appendPlainText(f"\n正在导出迁移压缩包：{output}")
-        QApplication.processEvents()
-        try:
-            result = export_migration_archive(self.data_root, output)
-        except (MigrationError, OSError, sqlite3.Error) as exc:
-            self.migration_status.setText(f"导出失败：{exc}")
-            QMessageBox.critical(self, "导出失败", str(exc))
-            return
-        finally:
+        if not self._start_data_action(
+            "export",
+            lambda: export_migration_archive(self.data_root, output),
+        ):
             self.export_button.setEnabled(True)
             self.export_button.setText("导出我的数据包")
-        self.report.appendPlainText(
-            f"导出完成：{result['archive']}\n"
-            f"已打包 {result['files']} 个文件；压缩包不包含 Windows Credential Locker 中的 API Key。"
-        )
-        self.migration_status.setText(f"导出完成：{result['archive']}")
-        QMessageBox.information(
-            self,
-            "迁移包已生成",
-            f"迁移压缩包已保存到：\n{result['archive']}\n\n换设备时在此页面选择“导入迁移压缩包”。",
-        )
+            return
 
     def import_migration(self) -> None:
         archive_name, _ = QFileDialog.getOpenFileName(
@@ -671,23 +649,101 @@ class SystemPage(QWidget):
         self.import_button.setEnabled(False)
         self.import_button.setText("正在验证并导入……")
         self.migration_status.setText("正在验证压缩包完整性并导入到新目录……")
-        QApplication.processEvents()
-        try:
-            result = import_migration_archive(Path(archive_name), target_path)
-        except (MigrationError, OSError, ValueError) as exc:
-            self.migration_status.setText(f"导入失败：{exc}")
-            QMessageBox.critical(self, "导入失败", str(exc))
-            return
-        finally:
+        if not self._start_data_action(
+            "import",
+            lambda: import_migration_archive(Path(archive_name), target_path),
+        ):
             self.import_button.setEnabled(True)
             self.import_button.setText("在新设备导入数据包")
-        self.report.appendPlainText(f"导入完成：{result['target']}（{result['files']} 个文件）")
-        self.migration_status.setText(f"导入完成：{result['target']}")
-        QMessageBox.information(
-            self,
-            "迁移包已导入",
-            f"数据已导入到：\n{result['target']}\n\n请退出软件，并在新环境启动时将本地数据目录指向这个目录。",
-        )
+            return
+
+    def _start_data_action(self, kind: str, work: Callable[[], Any]) -> bool:
+        if self._data_future is not None and not self._data_future.done():
+            if hasattr(self, "migration_status"):
+                self.migration_status.setText("上一项数据操作仍在进行，请稍候。")
+            return False
+        self._data_action = kind
+        self._data_future = self._executor.submit(work)
+        QTimer.singleShot(40, self._poll_data_action)
+        return True
+
+    def _poll_data_action(self) -> None:
+        future = self._data_future
+        if future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, self._poll_data_action)
+            return
+        self._data_future = None
+        action = self._data_action
+        self._data_action = ""
+        try:
+            result = future.result()
+        except (MigrationError, OSError, sqlite3.Error, ValueError, RuntimeError) as exc:
+            if action == "backup":
+                self.backup_button.setEnabled(True)
+                self.backup_button.setText("创建安全备份")
+                self.diagnostics_status.setText(f"备份失败：{exc}")
+                QMessageBox.critical(self, "备份失败", str(exc))
+            else:
+                button = self.export_button if action == "export" else self.import_button
+                button.setEnabled(True)
+                button.setText("导出我的数据包" if action == "export" else "在新设备导入数据包")
+                self.migration_status.setText(f"{'导出' if action == 'export' else '导入'}失败：{exc}")
+                QMessageBox.critical(self, f"{'导出' if action == 'export' else '导入'}失败", str(exc))
+            return
+        if action == "export":
+            self.export_button.setEnabled(True)
+            self.export_button.setText("导出我的数据包")
+            self.report.appendPlainText(
+                f"导出完成：{result['archive']}\n"
+                f"已打包 {result['files']} 个文件；压缩包不包含 Windows Credential Locker 中的 API Key。"
+            )
+            self.migration_status.setText(f"导出完成：{result['archive']}")
+            QMessageBox.information(
+                self,
+                "迁移包已生成",
+                f"迁移压缩包已保存到：\n{result['archive']}\n\n换设备时在此页面选择“导入迁移压缩包”。",
+            )
+        elif action == "import":
+            self.import_button.setEnabled(True)
+            self.import_button.setText("在新设备导入数据包")
+            target = Path(result["target"])
+            try:
+                pointer = write_next_launch_data_root_pointer(self.data_root, target)
+            except MigrationError as exc:
+                self.report.appendPlainText(
+                    f"导入完成：{target}（{result['files']} 个文件），但下一次启动指针保存失败：{exc}"
+                )
+                self.migration_status.setText(f"导入完成：{target}；指针保存失败：{exc}")
+                QMessageBox.warning(
+                    self,
+                    "迁移包已导入，但需要手动指定目录",
+                    f"数据已导入到：\n{target}\n\n下一次启动时请手动将本地数据目录指向该目录。",
+                )
+                return
+            self.report.appendPlainText(
+                f"导入完成：{target}（{result['files']} 个文件）\n"
+                f"下一次启动数据目录指针：{pointer}"
+            )
+            self.migration_status.setText(f"导入完成：{target}；下一次启动将使用该目录。")
+            QMessageBox.information(
+                self,
+                "迁移包已导入",
+                f"数据已导入到：\n{target}\n\n"
+                f"已保存下一次启动数据目录指针：\n{pointer}\n\n"
+                "请退出软件后重新启动 MentorFlow；当前运行中的数据目录不会被切换或覆盖。",
+            )
+        elif action == "backup":
+            self.last_backup = Path(result)
+            self.backup_button.setEnabled(True)
+            self.backup_button.setText("创建安全备份")
+            self.open_backup_button.setEnabled(True)
+            self.diagnostics_status.setText(f"安全备份已创建：{self.last_backup}")
+            self.report.appendPlainText(
+                f"\n备份完成：{self.last_backup}\n"
+                "其中包含 SHA-256 清单、SQLite 完整性与行数报告、以及 RESTORE.txt。"
+            )
 
     def change_password(self) -> None:
         current = self.password_current.text()
@@ -711,22 +767,10 @@ class SystemPage(QWidget):
         self.backup_button.setText("正在创建……")
         self.diagnostics_status.setText("正在创建带 SHA-256 清单的安全备份……")
         self.report.appendPlainText("\n正在创建备份，请稍候……")
-        QApplication.processEvents()
-        try:
-            self.last_backup = create_manual_backup()
-        except (OSError, RuntimeError) as exc:
-            self.diagnostics_status.setText(f"备份失败：{exc}")
-            QMessageBox.critical(self, "备份失败", str(exc))
-            return
-        finally:
+        if not self._start_data_action("backup", create_manual_backup):
             self.backup_button.setEnabled(True)
             self.backup_button.setText("创建安全备份")
-        self.open_backup_button.setEnabled(True)
-        self.diagnostics_status.setText(f"安全备份已创建：{self.last_backup}")
-        self.report.appendPlainText(
-            f"\n备份完成：{self.last_backup}\n"
-            "其中包含 SHA-256 清单、SQLite 完整性与行数报告、以及 RESTORE.txt。"
-        )
+            return
 
     def open_backup(self) -> None:
         if self.last_backup:

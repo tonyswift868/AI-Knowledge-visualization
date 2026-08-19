@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import math
 import os
+import re
 import sqlite3
+import unicodedata
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Body, Request
 from fastapi import Query
@@ -16,6 +20,7 @@ from fastapi import Query
 from . import active_teaching
 from .generic_knowledge import (
     calendar_capacities,
+    dedupe_source_family_evidence,
     merge_provider_batches,
     schedule_by_capacity,
     validate_provider_map,
@@ -51,6 +56,7 @@ from .orm import (
     PlanActivationRecordORM,
     PlanExecutionTaskORM,
     PlanMasteryEventORM,
+    PlanningAssistantCacheORM,
     ReviewCandidateORM,
     SessionLocal,
     SourceRevisionORM,
@@ -65,6 +71,8 @@ from .learning_resources import (
     public_resources,
 )
 from .open_search import OpenSearchError, search_web
+from .video_transcript import classify_video_url
+from .resource_references import parse_direct_resource_references
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["generic-active-teaching"])
@@ -87,6 +95,148 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+KNOWLEDGE_MAP_PROGRESS_SCHEMA = "mentorflow.knowledge-map-progress.v1"
+
+
+def _v1_progress_total_units(material_count: int, chunk_count: int) -> int:
+    """Return the count of real checkpoints used by a map job.
+
+    One conversion checkpoint, one checkpoint per selected material, one per
+    provider extraction batch, one validation checkpoint, and one activation
+    checkpoint are all known before work starts.  No elapsed-time estimates or
+    timer ticks are included.
+    """
+
+    batch_count = max(1, math.ceil(max(0, int(chunk_count)) / max(1, PROVIDER_BATCH_SIZE)))
+    return max(1, 1 + max(0, int(material_count)) + batch_count + 1 + 1)
+
+
+def _v1_progress_last_good(session: Any, workspace_id: str) -> dict[str, Any] | None:
+    revision = session.scalar(
+        select(KnowledgeMapRevisionORM)
+        .where(
+            KnowledgeMapRevisionORM.workspace_id == workspace_id,
+            KnowledgeMapRevisionORM.is_current.is_(True),
+            KnowledgeMapRevisionORM.status.in_(
+                ["active", "ready", "ready_with_review"]
+            ),
+        )
+        .order_by(desc(KnowledgeMapRevisionORM.revision))
+    )
+    if revision is None:
+        return None
+    return {
+        "revision_id": str(revision.id),
+        "revision": int(revision.revision),
+        "status": str(revision.status),
+    }
+
+
+def _v1_progress_defaults(
+    *,
+    status: str,
+    total_units: int,
+    last_good_revision: dict[str, Any] | None = None,
+    updated_at: str = "",
+) -> dict[str, Any]:
+    phase = {
+        "queued": "queued",
+        "converting": "converting",
+        "extracting": "extracting",
+        "validating": "validating",
+        "ready": "completed",
+        "ready_with_review": "completed",
+        "failed": "failed",
+    }.get(status, status or "queued")
+    completed = int(total_units) if phase == "completed" else 0
+    return {
+        "schema": KNOWLEDGE_MAP_PROGRESS_SCHEMA,
+        "version": 1,
+        "phase": phase,
+        "completed_units": completed,
+        "total_units": max(1, int(total_units)),
+        "percent": 100.0 if phase == "completed" else 0.0,
+        "message": {
+            "queued": "知识地图任务已排队",
+            "converting": "正在校验并转换资料",
+            "extracting": "正在按资料批次提取知识点",
+            "validating": "正在验证证据与关系",
+            "completed": "知识地图已激活",
+            "failed": "知识地图生成失败，已保留上一版地图",
+        }.get(phase, "知识地图任务处理中"),
+        "sequence": 0,
+        "updated_at": updated_at,
+        "last_good_revision": last_good_revision,
+        "last_good_revision_id": (
+            str(last_good_revision.get("revision_id") or "")
+            if last_good_revision
+            else ""
+        ),
+    }
+
+
+def _activity_by_day(session: Any, plan_id: str) -> dict[str, dict[str, float]]:
+    """Aggregate explicit elapsed events by recorded local date.
+
+    ``active_task_time_events`` is shared with the legacy classroom runtime;
+    task IDs from either execution table are accepted so this projection stays
+    additive for canonical plans as well.
+    """
+
+    connection = session.connection()
+    tables = {
+        str(item[0])
+        for item in connection.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).all()
+    }
+    if "active_task_time_events" not in tables:
+        return {}
+    plan_tables = {
+        str(item[0])
+        for item in connection.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('active_plan_tasks','orm_plan_execution_tasks')"
+        ).all()
+    }
+    if not plan_tables:
+        return {}
+    task_queries: list[str] = []
+    params: list[Any] = []
+    if "active_plan_tasks" in plan_tables:
+        task_queries.append("SELECT id FROM active_plan_tasks WHERE plan_id=?")
+        params.append(plan_id)
+    if "orm_plan_execution_tasks" in plan_tables:
+        task_queries.append("SELECT id FROM orm_plan_execution_tasks WHERE plan_id=?")
+        params.append(plan_id)
+    task_ids = [
+        str(item[0])
+        for item in connection.exec_driver_sql(" UNION ".join(task_queries), tuple(params)).all()
+    ]
+    if not task_ids:
+        return {}
+    placeholders = ",".join("?" for _ in task_ids)
+    rows = connection.exec_driver_sql(
+        f"SELECT recorded_at,elapsed_minutes FROM active_task_time_events WHERE task_id IN ({placeholders})",
+        tuple(task_ids),
+    ).mappings().all()
+    result: dict[str, dict[str, float]] = {}
+    for row in rows:
+        day = active_teaching.local_date_from_utc(row["recorded_at"])
+        if not day:
+            continue
+        bucket = result.setdefault(
+            day,
+            {"actual_elapsed_minutes": 0.0, "activity_event_count": 0},
+        )
+        bucket["actual_elapsed_minutes"] = round(
+            float(bucket["actual_elapsed_minutes"])
+            + float(row["elapsed_minutes"] or 0),
+            3,
+        )
+        bucket["activity_event_count"] += 1
+    return result
+
+
 def _external_resource_discovery_enabled(receipt: dict[str, Any]) -> bool:
     """Return the task-scoped external-resource preference.
 
@@ -101,6 +251,1232 @@ def _external_resource_discovery_enabled(receipt: dict[str, Any]) -> bool:
     if isinstance(value, str):
         return value.strip().casefold() not in {"", "0", "false", "no", "off"}
     return bool(value)
+
+
+_PLANNING_FACT_KEYS = (
+    "objective",
+    "purpose",
+    "timeframe",
+    "named_materials",
+    "mastery_criteria",
+    "practice_requirements",
+)
+_PLANNING_SEARCH_FLAGS = (
+    "allow_external_search",
+    "search_resources",
+    "find_resources",
+    "resource_search_authorized",
+)
+
+
+def _planning_text(value: Any, limit: int = 500) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _planning_text_list(value: Any, limit: int = 8) -> list[str]:
+    if isinstance(value, str):
+        values = re.split(r"[\n,，、;；]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        values = list(value)
+    else:
+        values = []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("title") or item.get("value")
+        text = _planning_text(item, 240)
+        if not text or text.casefold() in seen:
+            continue
+        seen.add(text.casefold())
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _planning_material_list(value: Any, limit: int = 8) -> list[str]:
+    """Keep source identifiers while dropping adjacent planning commands.
+
+    Material extraction often sees a sentence shaped like ``资料，并安排计划``.
+    The clause after the conjunction is an action, not another source name.
+    This boundary is language-level and deliberately contains no product,
+    course, platform, or subject identifiers.
+    """
+
+    result: list[str] = []
+    for candidate in _planning_text_list(value, limit=limit * 2):
+        text = re.split(
+            r"\s*(?:，|,)?\s*(?:并且?|然后|之后|再)\s*(?:请|帮我)?\s*"
+            r"(?:安排|制定|生成|创建|开始|进入|继续|规划|做(?:出)?|拟定|编制|设计)"
+            r"(?:相应|完整|学习)?(?:计划|路线|日程|任务)?",
+            candidate,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip(" ，,、;；:：")
+        # A Provider may return the complete request clause ("请找到资料并且
+        # 做出相应计划") as a material name.  Once the command prefix is
+        # visible, discard the whole value rather than retaining "请找到资料".
+        if re.match(
+            r"^(?:请|帮我|请你)?\s*(?:找到|找|搜索|检索|查找|查询|搜集|推荐|提供)"
+            r"\s*(?:公开)?(?:资料|教材|课程|资源|来源|文档|书籍|网站|视频|material|source|resource)",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        if not text or re.fullmatch(
+            r"(?:并且?|然后|之后|再)?\s*(?:请|帮我)?\s*"
+            r"(?:安排|制定|生成|创建|开始|进入|继续|规划|做(?:出)?|拟定|编制|设计)"
+            r"(?:相应|完整|学习)?(?:计划|路线|日程|任务)?",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        if text.casefold() not in {item.casefold() for item in result}:
+            result.append(text[:240])
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _planning_extract_user_facts(message: str, goal: str = "") -> dict[str, Any]:
+    """Extract only explicit, portable signals before asking the Provider.
+
+    This is intentionally a conservative backstop.  The Provider remains the
+    semantic extractor, while these patterns ensure facts in a user turn are
+    not discarded when a model omits one field from its structured response.
+    No course, exam, language, or domain names belong here.
+    """
+    text = _planning_text(message, 4000)
+    context = " ".join(item for item in (goal, text) if item)
+    facts: dict[str, Any] = {key: ([]) for key in _PLANNING_FACT_KEYS}
+    facts["objective"] = ""
+    facts["purpose"] = ""
+    facts["timeframe"] = ""
+    facts["mastery_criteria"] = ""
+
+    objective_patterns = (
+        r"(?:我想(?:要)?|希望|目标是|目的是|需要|想学会|想掌握|want to|would like to|need to|learn|master)\s*([^。！？!?;；\n]{2,180})",
+        r"(?:学习目标|目标)\s*[:：]\s*([^。！？!?;；\n]{2,180})",
+    )
+    for pattern in objective_patterns:
+        match = re.search(pattern, context, flags=re.IGNORECASE)
+        if match:
+            facts["objective"] = _planning_text(match.group(1), 300)
+            break
+
+    purpose_patterns = (
+        r"(?:为了|用于|目的是|因而|so that|for)\s*([^。！？!?;；\n]{2,160})",
+    )
+    for pattern in purpose_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            facts["purpose"] = _planning_text(match.group(1), 260)
+            break
+
+    timeframe_patterns = (
+        r"(?:在|within|in|by|before)\s*([0-9一二三四五六七八九十两百千万年月日周天小时分钟\-/. ]{1,36}(?:内|前|后|截止|之前|完成)?|[^。！？!?;；\n]{1,28}(?:天|周|月|年|小时|分钟)(?:内|后|前)?)",
+        r"(?:within|in|by|before)\s*([^.;,\n]{1,32}\b(?:days?|weeks?|months?|hours?|minutes?)\b)",
+        r"([0-9]{4}[年\-/][0-9]{1,2}(?:月|\-)?[0-9]{0,2}(?:日)?)[^。！？!?;；\n]{0,8}(?:前|截止|之前|完成)",
+    )
+    for pattern in timeframe_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            value = _planning_text(match.group(1), 120)
+            if value:
+                facts["timeframe"] = value
+                break
+
+    # Quoted names, URLs, and labels following a generic material noun are
+    # useful identifiers while avoiding assumptions about their domain.
+    materials: list[str] = []
+    materials.extend(
+        _planning_text_list(
+            [match.group(1) for match in re.finditer(r"[\"“「『]([^\"”」』]{2,120})[\"”」』]", text)]
+        )
+    )
+    materials.extend(
+        _planning_text_list(
+            [match.group(0) for match in re.finditer(r"https?://[^\s，。；;）)]+|(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s，。；;）)]*)?", text)]
+        )
+    )
+    for match in re.finditer(
+        r"(?:资料|教材|课程|来源|文档|书籍|网站|视频|\bmaterial\b|\bsource\b|\bcourse\b|\bbook\b|\bdocument\b|\bwebsite\b|\bvideo\b)\s*[:：]?\s*([^，。；;\n]{2,100})",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        materials.extend(_planning_text_list([match.group(1)], limit=3))
+    facts["named_materials"] = _planning_material_list(materials)
+
+    mastery_patterns = (
+        r"(?:掌握标准|验收标准|达标标准|掌握要求|熟练标准|mastery(?:\s+(?:criteria|means))?|success\s+(?:means|criteria))\s*[:：]?\s*([^。！？!?;；\n]{2,180})",
+        r"(?:能够|可以|be able to)\s*([^。！？!?;；\n]{2,180})",
+    )
+    for pattern in mastery_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            facts["mastery_criteria"] = _planning_text(match.group(1), 300)
+            break
+
+    practice_patterns = (
+        r"(?:练习|刷题|例题|题目|实践|exercise|practice|problem)s?\s*[:：]?\s*([^。！？!?;；\n]{0,140})",
+        r"(?:完成|做|包含|需要)\s*([^。！？!?;；\n]{1,140}(?:练习|题|exercise|practice|problem)[^。！？!?;；\n]*)",
+    )
+    practice: list[str] = []
+    for pattern in practice_patterns:
+        values = []
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            # A bare noun such as "练习" carries no requirement; retain the
+            # surrounding explicit detail when one is present.
+            if match.lastindex and match.group(1) and match.group(1).strip():
+                values.append(match.group(0))
+            elif not match.lastindex:
+                values.append(match.group(0))
+        practice.extend(_planning_text_list(values, limit=8))
+    facts["practice_requirements"] = _planning_text_list(practice)
+    return facts
+
+
+def _planning_merge_facts(model_facts: Any, user_facts: dict[str, Any]) -> dict[str, Any]:
+    raw = model_facts if isinstance(model_facts, dict) else {}
+    merged: dict[str, Any] = {}
+    for key in _PLANNING_FACT_KEYS:
+        if key in {"named_materials", "practice_requirements"}:
+            list_normalizer = _planning_material_list if key == "named_materials" else _planning_text_list
+            merged[key] = list_normalizer(raw.get(key))
+            for item in list_normalizer(user_facts.get(key)):
+                if item.casefold() not in {value.casefold() for value in merged[key]}:
+                    merged[key].append(item)
+            merged[key] = merged[key][:8]
+        else:
+            merged[key] = _planning_text(raw.get(key), 500)
+            if not merged[key]:
+                merged[key] = _planning_text(user_facts.get(key), 500)
+    return merged
+
+
+def _planning_search_authorized(body: dict[str, Any], message: str, result: dict[str, Any]) -> bool:
+    for key in _PLANNING_SEARCH_FLAGS:
+        value = body.get(key)
+        if isinstance(value, str):
+            if value.strip().casefold() in {"1", "true", "yes", "on", "是", "允许"}:
+                return True
+        elif value is True:
+            return True
+    # Search is opt-in.  These are generic request verbs/nouns, not domain
+    # identifiers; naming a source without asking to find it is not enough.
+    request_verb = re.search(
+        r"(?:帮我|请|想要|希望|需要)?\s*(?:找|搜索|检索|查找|查询|搜集|推荐|提供|search|find|look\s*up)",
+        message,
+        flags=re.IGNORECASE,
+    )
+    resource_noun = re.search(
+        r"(?:资料|教材|课程|链接|资源|来源|参考|文档|书籍|视频|resource|material|course|book|source|link)",
+        message,
+        flags=re.IGNORECASE,
+    )
+    # A Provider's structured field is advisory; authorization must still be
+    # explicit in this request.  This prevents an over-eager model response
+    # from silently starting a public search for an ordinary learning goal.
+    return bool(request_verb and resource_noun and result.get("resource_search_authorized") is not False)
+
+
+def _planning_existing_materials(workspace_id: str) -> list[dict[str, Any]]:
+    """Return ready local sources as choices without changing any state.
+
+    The planning assistant is intentionally usable before a map or plan exists.
+    Reading the material index here lets a repeated goal continue from an
+    already-uploaded file instead of asking the learner to upload it again.
+    """
+
+    try:
+        with active_teaching._connect() as connection:
+            rows = connection.execute(
+                """SELECT id, original_filename, media_type, status, size_bytes,
+                          uploaded_at, source_kind
+                   FROM active_materials
+                   WHERE workspace_id=? AND COALESCE(archived,0)=0
+                   ORDER BY uploaded_at,id""",
+                (workspace_id,),
+            ).fetchall()
+    except (sqlite3.Error, RuntimeError):
+        # Older stores may not have the optional provenance column yet.  The
+        # planning flow must remain useful rather than failing the whole turn.
+        try:
+            with active_teaching._connect() as connection:
+                rows = connection.execute(
+                    """SELECT id, original_filename, media_type, status, size_bytes,
+                              uploaded_at
+                       FROM active_materials
+                       WHERE workspace_id=? AND COALESCE(archived,0)=0
+                       ORDER BY uploaded_at,id""",
+                    (workspace_id,),
+                ).fetchall()
+        except (sqlite3.Error, RuntimeError):
+            return []
+    return [
+        {
+            "id": str(row["id"]),
+            "title": str(row["original_filename"] or row["id"]),
+            "filename": str(row["original_filename"] or ""),
+            "media_type": str(row["media_type"] or ""),
+            "status": str(row["status"] or ""),
+            "ready": str(row["status"] or "").casefold() == "ready",
+            "size_bytes": int(row["size_bytes"] or 0),
+            "uploaded_at": str(row["uploaded_at"] or ""),
+            "source_kind": str(row["source_kind"] or "uploaded_file")
+            if "source_kind" in row.keys()
+            else "uploaded_file",
+        }
+        for row in rows
+    ]
+
+
+def _planning_source_options(
+    workspace_id: str,
+    materials: list[dict[str, Any]],
+    resources: list[dict[str, Any]],
+    *,
+    authorized: bool,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build explicit source choices for the next planning step.
+
+    Search candidates remain unaccepted URLs.  Upload and AI discovery are
+    always represented as alternatives so an empty search result cannot leave
+    the learner at a dead end.
+    """
+
+    ready_materials = [item for item in materials if item.get("ready")]
+    choices: list[dict[str, Any]] = []
+    if ready_materials:
+        choices.append(
+            {
+                "id": "use_existing_materials",
+                "kind": "existing_materials",
+                "available": True,
+                "material_ids": [str(item["id"]) for item in ready_materials],
+                "materials": ready_materials[:8],
+                "requires_confirmation": False,
+                "label": "使用已上传资料",
+            }
+        )
+    choices.append(
+        {
+            "id": "upload_material",
+            "kind": "upload",
+            "available": True,
+            "requires_confirmation": True,
+            "label": "上传本地资料",
+            "endpoint": f"/api/active-teaching/workspaces/{workspace_id}/materials",
+        }
+    )
+    choices.append(
+        {
+            "id": "discover_external_resources",
+            "kind": "ai_discovery",
+            "available": bool(authorized),
+            "authorized": bool(authorized),
+            "requires_confirmation": True,
+            "label": "让 AI 搜索公开候选",
+            "note": (
+                "搜索结果仅作为候选，选择并确认后才会导入。"
+                if authorized
+                else "请明确授权搜索后再开始公开资料检索。"
+            ),
+        }
+    )
+    if resources:
+        choices.insert(
+            0,
+            {
+                "id": "review_candidate_resources",
+                "kind": "candidate_resources",
+                "available": True,
+                "requires_confirmation": True,
+                "resources": resources,
+                "label": "核对候选资料",
+            },
+        )
+    return {
+        "status": "candidates" if resources else "choose_source",
+        "choices": choices,
+        "candidate_count": len(resources),
+        "ready_material_count": len(ready_materials),
+        "retry": {
+            "available": bool(authorized and not resources),
+            "action": "retry_public_search",
+            "label": "重试公开搜索",
+            "reason": (
+                "搜索暂时没有返回候选；可以重试，或改用上传/已有资料。"
+                if warnings
+                else "可以调整关键词后重试公开搜索。"
+            ),
+        },
+        "no_resource_reason": (
+            "搜索没有返回可核对的公开候选；可以上传资料、使用已上传资料，或调整搜索授权后重试。"
+            if not resources
+            else ""
+        ),
+    }
+
+
+def _planning_queries(result: dict[str, Any], facts: dict[str, Any], authorized: bool) -> list[dict[str, str]]:
+    if not authorized:
+        return []
+    provider_queries: list[dict[str, str]] = []
+    for item in result.get("search_queries") or []:
+        if not isinstance(item, dict):
+            continue
+        query = _planning_text(item.get("query"), 360)
+        if query:
+            provider_queries.append({"query": query, "reason": _planning_text(item.get("reason"), 500)})
+    output: list[dict[str, str]] = []
+    names = list(facts.get("named_materials") or [])
+    # Every explicitly named source receives a precise query, even if the
+    # Provider returned no query or omitted the name from its suggestion.
+    for name in names:
+        query = next(
+            (item["query"] for item in provider_queries if name.casefold() in item["query"].casefold()),
+            "",
+        )
+        reason = ""
+        if query:
+            reason = next(
+                (item["reason"] for item in provider_queries if item["query"] == query),
+                "",
+            )
+        if not query:
+            context = " ".join(
+                item
+                for item in (
+                    str(facts.get("objective") or ""),
+                    str(facts.get("purpose") or ""),
+                    str(result.get("goal_summary") or ""),
+                )
+                if item
+            )
+            query = f'"{name}" {context} official source'.strip()
+            reason = "查找用户明确提及资料的可核验公开来源。"
+        output.append({"query": query[:360], "reason": reason})
+    output.extend(provider_queries)
+    # A Provider is allowed to return no query for a short, otherwise valid
+    # goal.  Once the learner has explicitly authorized discovery, derive one
+    # portable query from the goal so the flow can still advance deterministically.
+    if not output:
+        context = " ".join(
+            item
+            for item in (
+                str(facts.get("objective") or ""),
+                str(facts.get("purpose") or ""),
+                str(result.get("goal_summary") or ""),
+            )
+            if item
+        ).strip()
+        if context:
+            output.append(
+                {
+                    "query": f"{context} authoritative guide learning resources",
+                    "reason": "根据已确认的学习目标查找可核验的公开资料候选。",
+                }
+            )
+    unique: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in output:
+        query = _planning_text(item.get("query"), 360)
+        if not query or query.casefold() in seen:
+            continue
+        seen.add(query.casefold())
+        unique.append({"query": query, "reason": _planning_text(item.get("reason"), 500)})
+        if len(unique) >= 3:
+            break
+    return unique
+
+
+def _planning_requests_companion_search(message: str) -> bool:
+    """Return whether the current user turn explicitly asks for more sources."""
+
+    text = str(message or "")
+    pattern = re.compile(
+        r"(?:找|搜索|搜一下|推荐|补充|新增|再来|换一批).{0,12}(?:资料|讲义|笔记|文档|教材|课程|视频|来源)|"
+        r"(?:资料|讲义|笔记|文档|教材|课程|视频|来源).{0,12}(?:找|搜索|推荐|补充|新增|再来|换一批)",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        prefix = text[max(0, match.start() - 8):match.start()]
+        phrase = text[max(0, match.start() - 8):match.end()]
+        if re.search(r"(?:不要|不用|无需|不需要|别|停止|禁止)\s*$", prefix):
+            continue
+        if re.search(r"(?:不要|不用|无需|不需要|别|停止|禁止).{0,6}(?:找|搜索|推荐)", phrase):
+            continue
+        return True
+    return False
+
+
+def _planning_handoff_goal(result: dict[str, Any], facts: dict[str, Any]) -> str:
+    base = _planning_text(result.get("goal_summary"), 700) or _planning_text(facts.get("objective"), 500)
+    additions = (
+        ("目的", facts.get("purpose")),
+        ("时间范围", facts.get("timeframe")),
+        ("掌握标准", facts.get("mastery_criteria")),
+        ("练习要求", "、".join(facts.get("practice_requirements") or [])),
+    )
+    for label, value in additions:
+        value = _planning_text(value, 300)
+        if value and value.casefold() not in base.casefold():
+            base = f"{base}；{label}：{value}" if base else f"{label}：{value}"
+    return base[:1200]
+
+
+def _planning_missing_questions(result: dict[str, Any], facts: dict[str, Any], *, authorized: bool, has_resources: bool) -> list[str]:
+    if not facts.get("objective"):
+        return ["请用一句话说明你希望最终独立完成或证明什么。"]
+    if not facts.get("named_materials") and not authorized and not has_resources:
+        return ["请提供要使用的资料名称，或明确授权我搜索公开候选。"]
+    # Baseline, hours, and preference questions belong to scheduling after the
+    # goal/material handoff. They must not displace facts already supplied in
+    # this planning turn, even when a Provider emits a generic questionnaire.
+    return []
+
+
+PLANNING_SEARCH_CONCURRENCY = 3
+PLANNING_SEARCH_TIMEOUT_SECONDS = 12.0
+PLANNING_PROVIDER_CACHE_SCHEMA = "mentorflow.planning-assistant-provider.v1"
+PLANNING_SEARCH_CACHE_SCHEMA = "mentorflow.planning-resource-search.v1"
+PLANNING_PROVIDER_CACHE_TTL_SECONDS = max(
+    300,
+    min(7 * 24 * 60 * 60, int(os.getenv("MENTORFLOW_PLANNING_CACHE_TTL_SECONDS", "86400"))),
+)
+_PLANNING_PROVIDER_INFLIGHT: dict[str, asyncio.Task[dict[str, Any]]] = {}
+
+
+def _planning_provider_fingerprint(session: Any) -> str:
+    """Identify the billable model configuration without credential material.
+
+    Provider session IDs and Credential Locker references are intentionally
+    excluded so a verified preset can reuse its local cache after restart.
+    """
+
+    payload = {
+        "provider": str(getattr(session, "provider", "") or "").replace("-", "_").strip().casefold(),
+        "base_url": str(getattr(session, "base_url", "") or "").strip().rstrip("/").casefold(),
+        "model": str(getattr(session, "model", "") or "").strip(),
+        "temperature": round(float(getattr(session, "temperature", 0.2)), 4),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _planning_provider_cache_identity(
+    session: Any,
+    *,
+    message: str,
+    goal: str,
+    history: list[dict[str, Any]],
+    search_authorized: bool,
+) -> tuple[str, str, str]:
+    def cache_text(value: Any, limit: int) -> str:
+        normalized = unicodedata.normalize("NFKC", _planning_text(value, limit))
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    normalized_history = [
+        {
+            "role": str(item.get("role") or ""),
+            "content": cache_text(item.get("content"), 4000),
+        }
+        for item in history[-8:]
+    ]
+    request_payload = {
+        "schema": PLANNING_PROVIDER_CACHE_SCHEMA,
+        "policy_version": POLICY_VERSION,
+        "prompt_policy_version": PROMPT_POLICY.version,
+        "message": cache_text(message, 4000),
+        "goal": cache_text(goal, 1200),
+        "conversation": normalized_history,
+        "resource_search_authorized": bool(search_authorized),
+    }
+    request_hash = hashlib.sha256(
+        json.dumps(request_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    provider_fingerprint = _planning_provider_fingerprint(session)
+    cache_key = hashlib.sha256(
+        f"{PLANNING_PROVIDER_CACHE_SCHEMA}:{provider_fingerprint}:{request_hash}".encode("utf-8")
+    ).hexdigest()
+    return cache_key, provider_fingerprint, request_hash
+
+
+def _planning_cache_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _planning_provider_cache_read(
+    cache_key: str,
+    *,
+    expected_provider_fingerprint: str | None = None,
+) -> dict[str, Any] | None:
+    """Return a validated, unexpired local cache entry; fail open on DB errors."""
+
+    try:
+        with SessionLocal() as db:
+            row = db.get(PlanningAssistantCacheORM, cache_key)
+            expires_at = _planning_cache_datetime(row.expires_at) if row else None
+            if row is None or expires_at is None or expires_at <= datetime.now(timezone.utc):
+                return None
+            if expected_provider_fingerprint and row.provider_fingerprint != expected_provider_fingerprint:
+                return None
+            value = row.value_json
+            if not isinstance(value, dict) or row.schema_version != PLANNING_PROVIDER_CACHE_SCHEMA:
+                return None
+            row.hit_count = int(row.hit_count or 0) + 1
+            row.last_hit_at = datetime.now(timezone.utc)
+            db.commit()
+            return dict(value)
+    except Exception:
+        return None
+
+
+def _planning_provider_cache_value(result: Any) -> dict[str, Any] | None:
+    """Whitelist and bound Provider output before it can enter durable cache."""
+
+    if not isinstance(result, dict):
+        return None
+    known = result.get("known_facts") if isinstance(result.get("known_facts"), dict) else {}
+    queries = []
+    for item in result.get("search_queries") or []:
+        if not isinstance(item, dict):
+            continue
+        query = _planning_text(item.get("query"), 360)
+        if query:
+            queries.append({"query": query, "reason": _planning_text(item.get("reason"), 500)})
+        if len(queries) >= 3:
+            break
+    value = {
+        "reply": _planning_text(result.get("reply"), 1200),
+        "goal_summary": _planning_text(result.get("goal_summary"), 1200),
+        "handoff_goal": _planning_text(result.get("handoff_goal"), 1200),
+        "known_facts": {
+            "objective": _planning_text(known.get("objective"), 500),
+            "purpose": _planning_text(known.get("purpose"), 500),
+            "timeframe": _planning_text(known.get("timeframe"), 120),
+            "named_materials": _planning_material_list(known.get("named_materials")),
+            "mastery_criteria": _planning_text(known.get("mastery_criteria"), 500),
+            "practice_requirements": _planning_text_list(known.get("practice_requirements")),
+        },
+        "missing_questions": _planning_text_list(result.get("missing_questions"), limit=1),
+        "assessment_intent": _planning_text(result.get("assessment_intent"), 80),
+        "resource_search_authorized": result.get("resource_search_authorized") is True,
+        "search_queries": queries,
+        "next_step": _planning_text(result.get("next_step"), 80),
+    }
+    # A response without any usable planning fact is not worth persisting: a
+    # later retry should be allowed to ask the Provider again instead of being
+    # trapped behind a poisoned cache entry.
+    facts = value["known_facts"]
+    if not value["goal_summary"] and not facts["objective"] and not facts["named_materials"]:
+        return None
+    return value
+
+
+def _planning_provider_cache_write(
+    *,
+    cache_key: str,
+    provider_fingerprint: str,
+    request_hash: str,
+    value: dict[str, Any],
+) -> None:
+    try:
+        now = datetime.now(timezone.utc)
+        with SessionLocal() as db:
+            row = db.get(PlanningAssistantCacheORM, cache_key)
+            if row is None:
+                row = PlanningAssistantCacheORM(
+                    cache_key=cache_key,
+                    cache_kind="provider_interpretation",
+                    provider_fingerprint=provider_fingerprint,
+                    request_hash=request_hash,
+                    value_json=value,
+                    schema_version=PLANNING_PROVIDER_CACHE_SCHEMA,
+                    hit_count=0,
+                    created_at=now,
+                    expires_at=now + timedelta(seconds=PLANNING_PROVIDER_CACHE_TTL_SECONDS),
+                )
+                db.add(row)
+            else:
+                row.value_json = value
+                row.schema_version = PLANNING_PROVIDER_CACHE_SCHEMA
+                row.expires_at = now + timedelta(seconds=PLANNING_PROVIDER_CACHE_TTL_SECONDS)
+            db.commit()
+    except Exception:
+        # Cache availability must never turn a valid planning response into an
+        # error or trigger a second Provider call inside the same request.
+        return
+
+
+async def _planning_provider_result(
+    *,
+    provider: Any,
+    messages: list[dict[str, str]],
+    cache_key: str,
+    provider_fingerprint: str,
+    request_hash: str,
+    preferred_cache_key: str = "",
+) -> tuple[dict[str, Any], bool, bool, str]:
+    preferred = str(preferred_cache_key or "").strip()
+    if re.fullmatch(r"[0-9a-f]{64}", preferred):
+        cached = _planning_provider_cache_read(
+            preferred,
+            expected_provider_fingerprint=provider_fingerprint,
+        )
+        if cached is not None:
+            return cached, True, False, preferred
+    cached = _planning_provider_cache_read(
+        cache_key,
+        expected_provider_fingerprint=provider_fingerprint,
+    )
+    if cached is not None:
+        return cached, True, False, cache_key
+
+    task = _PLANNING_PROVIDER_INFLIGHT.get(cache_key)
+    shared_inflight = task is not None
+    if task is None:
+        async def generate_and_cache() -> dict[str, Any]:
+            compact = getattr(provider, "compact_json", None)
+            raw = (
+                await compact(messages, max_tokens=1100, temperature=0.1)
+                if callable(compact)
+                else await provider.json(messages)
+            )
+            if not isinstance(raw, dict):
+                raise ValueError("规划助手返回不是对象")
+            value = _planning_provider_cache_value(raw)
+            if value is not None:
+                _planning_provider_cache_write(
+                    cache_key=cache_key,
+                    provider_fingerprint=provider_fingerprint,
+                    request_hash=request_hash,
+                    value=value,
+                )
+                return value
+            # The existing endpoint can still derive a useful blocking
+            # question from a sparse response.  Serve it once, but deliberately
+            # do not cache it so a retry may obtain a complete interpretation.
+            return dict(raw)
+
+        task = asyncio.create_task(generate_and_cache())
+        _PLANNING_PROVIDER_INFLIGHT[cache_key] = task
+
+        def remove_finished(finished: asyncio.Task[dict[str, Any]]) -> None:
+            if _PLANNING_PROVIDER_INFLIGHT.get(cache_key) is finished:
+                _PLANNING_PROVIDER_INFLIGHT.pop(cache_key, None)
+
+        task.add_done_callback(remove_finished)
+    return await asyncio.shield(task), False, shared_inflight, cache_key
+
+
+def _planning_search_cache_key(query: str) -> tuple[str, str]:
+    normalized = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", query)).strip()
+    request_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return (
+        hashlib.sha256(f"{PLANNING_SEARCH_CACHE_SCHEMA}:{request_hash}".encode("utf-8")).hexdigest(),
+        request_hash,
+    )
+
+
+def _planning_search_cache_read(query: str) -> dict[str, Any] | None:
+    cache_key, _ = _planning_search_cache_key(query)
+    try:
+        with SessionLocal() as db:
+            row = db.get(PlanningAssistantCacheORM, cache_key)
+            expires_at = _planning_cache_datetime(row.expires_at) if row else None
+            if (
+                row is None
+                or row.schema_version != PLANNING_SEARCH_CACHE_SCHEMA
+                or expires_at is None
+                or expires_at <= datetime.now(timezone.utc)
+                or not isinstance(row.value_json, dict)
+            ):
+                return None
+            row.hit_count = int(row.hit_count or 0) + 1
+            row.last_hit_at = datetime.now(timezone.utc)
+            db.commit()
+            return dict(row.value_json)
+    except Exception:
+        return None
+
+
+def _planning_search_cache_write(query: str, payload: dict[str, Any]) -> None:
+    results: list[dict[str, Any]] = []
+    for item in payload.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        url = _planning_result_url(item.get("url") or item.get("href"))
+        if not url:
+            continue
+        results.append(
+            {
+                "url": url,
+                "title": _planning_text(item.get("title"), 240),
+                "snippet": _planning_text(item.get("snippet") or item.get("content"), 800),
+                "engine": _planning_text(item.get("engine"), 80),
+            }
+        )
+        if len(results) >= 5:
+            break
+    # Transport/adapter errors must be retried, never made durable.  A clean
+    # empty result receives only a short negative TTL.
+    if payload.get("errors"):
+        return
+    cache_key, request_hash = _planning_search_cache_key(query)
+    ttl = 6 * 60 * 60 if results else 5 * 60
+    now = datetime.now(timezone.utc)
+    try:
+        with SessionLocal() as db:
+            row = db.get(PlanningAssistantCacheORM, cache_key)
+            if row is None:
+                row = PlanningAssistantCacheORM(
+                    cache_key=cache_key,
+                    cache_kind="resource_search",
+                    provider_fingerprint="public_search",
+                    request_hash=request_hash,
+                    value_json={"results": results},
+                    schema_version=PLANNING_SEARCH_CACHE_SCHEMA,
+                    hit_count=0,
+                    created_at=now,
+                    expires_at=now + timedelta(seconds=ttl),
+                )
+                db.add(row)
+            else:
+                row.value_json = {"results": results}
+                row.schema_version = PLANNING_SEARCH_CACHE_SCHEMA
+                row.expires_at = now + timedelta(seconds=ttl)
+            db.commit()
+    except Exception:
+        return
+
+
+def _planning_result_url(value: Any) -> str:
+    """Accept only the public HTTPS URLs returned by the search adapter.
+
+    The planning assistant never constructs a URL.  Keeping this boundary in
+    the API layer also protects tests or alternate search adapters that return
+    an unvalidated result shape.
+    """
+
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return ""
+    if parsed.scheme.casefold() != "https" or not parsed.hostname:
+        return ""
+    host = parsed.hostname.casefold().strip(".")
+    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local") or host.endswith(".internal"):
+        return ""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address and (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved):
+        return ""
+    return candidate
+
+
+_PLANNING_MEDIA_KINDS = {
+    "video_collection",
+    "video",
+    "notes",
+    "document",
+    "unknown",
+}
+
+
+def _planning_direct_resource_candidates(*values: Any) -> list[dict[str, Any]]:
+    """Compatibility wrapper for the versioned exact-reference registry."""
+
+    return parse_direct_resource_references(*values)[0]
+
+
+def _planning_identity_url(value: Any) -> str:
+    """Normalize a URL only for identity comparison; never construct one."""
+
+    url = _planning_result_url(value)
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").casefold().strip(".")
+        port = f":{parsed.port}" if parsed.port else ""
+        path = parsed.path.rstrip("/") or "/"
+        return f"{parsed.scheme.casefold()}://{host}{port}{path}{('?' + parsed.query) if parsed.query else ''}"
+    except (TypeError, ValueError):
+        return url
+
+
+def _planning_resource_media_kind(candidate: Mapping[str, Any]) -> tuple[str, str]:
+    """Classify a candidate using explicit metadata first, then neutral cues."""
+
+    raw_kind = str(
+        candidate.get("media_kind")
+        or candidate.get("kind")
+        or candidate.get("content_type")
+        or candidate.get("resource_type")
+        or ""
+    ).strip().casefold().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "collection": "video_collection",
+        "playlist": "video_collection",
+        "course": "video_collection",
+        "series": "video_collection",
+        "video_series": "video_collection",
+        "full_collection": "video_collection",
+        "full_video_collection": "video_collection",
+        "lecture": "video",
+        "video_clip": "video",
+        "single_video": "video",
+        "note": "notes",
+        "lecture_notes": "notes",
+        "handout": "notes",
+        "article": "document",
+        "pdf": "document",
+        "doc": "document",
+        "webpage": "document",
+    }
+    kind = aliases.get(raw_kind, raw_kind if raw_kind in _PLANNING_MEDIA_KINDS else "")
+    title = " ".join(
+        str(candidate.get(field) or "")
+        for field in ("title", "snippet", "description")
+    ).casefold()
+    url = str(candidate.get("url") or candidate.get("href") or "").casefold()
+    if not kind:
+        if bool(candidate.get("is_collection") or candidate.get("playlist") or candidate.get("full_collection")):
+            kind = "video_collection"
+        elif re.search(r"(?:playlist|course|series|collection|全集|合集|系列|课程|全套)", title + " " + url):
+            kind = "video_collection"
+        elif re.search(r"(?:notes?|handout|讲义|笔记|课堂笔记|讲稿)", title):
+            kind = "notes"
+        elif re.search(r"(?:\.pdf(?:$|[?#])|document|文档|教材|article|指南|manual)", title + " " + url):
+            kind = "document"
+        elif bool(candidate.get("duration_seconds") or candidate.get("video") or re.search(r"(?:watch|video|youtu|bilibili)", url)):
+            kind = "video"
+        else:
+            kind = "unknown"
+    role = {
+        "video_collection": "full_collection",
+        "video": "single_video",
+        "notes": "companion_notes",
+        "document": "companion_document",
+        "unknown": "unknown",
+    }[kind]
+    return kind, role
+
+
+def _planning_evidence_status(candidate: Mapping[str, Any], field: str) -> dict[str, Any]:
+    raw = candidate.get(f"{field}_evidence")
+    if isinstance(raw, Mapping):
+        status = str(raw.get("status") or "unknown").strip().casefold()
+        value = raw.get("value")
+        basis = str(raw.get("basis") or raw.get("source") or "").strip()
+    else:
+        if field == "authority":
+            value = candidate.get("authority") or candidate.get("publisher") or candidate.get("institution") or candidate.get("author")
+        elif field == "popularity":
+            value = candidate.get("popularity")
+            if value in (None, "", [], {}):
+                # Search position is relevance ordering, not evidence that a
+                # resource is popular.  Only observable audience metrics may
+                # populate this field.
+                value = candidate.get("views") or candidate.get("view_count") or candidate.get("likes")
+        else:
+            value = candidate.get(field)
+        basis = str(candidate.get(f"{field}_source") or "").strip()
+        status = "observed" if value not in (None, "", [], {}) else "unknown"
+        if candidate.get(f"{field}_verified") is True or candidate.get(f"{field}_status") == "verified":
+            status = "verified"
+    if status not in {"verified", "observed", "unknown"}:
+        status = "unknown"
+    # A provider/search result cannot turn an absent value into a claim.
+    if value in (None, "", [], {}):
+        value = None
+        status = "unknown"
+    return {"status": status, "value": value, "basis": basis or None}
+
+
+def _planning_candidate_stable_id(candidate: Mapping[str, Any]) -> str:
+    explicit = str(
+        candidate.get("stable_id")
+        or candidate.get("candidate_id")
+        or candidate.get("identity")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    url = _planning_identity_url(candidate.get("url") or candidate.get("href"))
+    if url:
+        source = url
+    else:
+        # Name-only resources are scoped by query/source so independent
+        # sources with the same display title do not auto-merge.
+        source = "|".join(
+            str(candidate.get(field) or "").strip().casefold()
+            for field in ("title", "query", "engine")
+        )
+    return "resource-" + hashlib.sha256(source.encode("utf-8")).hexdigest()[:24]
+
+
+def _planning_normalize_resource(candidate: Mapping[str, Any], *, retained: bool = False) -> dict[str, Any]:
+    raw = dict(candidate)
+    url = _planning_result_url(raw.get("url") or raw.get("href"))
+    kind, role = _planning_resource_media_kind(raw)
+    authority = _planning_evidence_status(raw, "authority")
+    popularity = _planning_evidence_status(raw, "popularity")
+    stable_id = _planning_candidate_stable_id({**raw, "url": url})
+    rank_score = 0
+    rank_reasons: list[str] = []
+    if kind == "video_collection":
+        rank_score += 100
+        rank_reasons.append("完整视频合集/课程覆盖范围更大")
+    elif kind == "video":
+        rank_score += 60
+        rank_reasons.append("单个视频可作为主题入口，但覆盖范围需核对")
+    elif kind in {"notes", "document"}:
+        rank_score += 35
+        rank_reasons.append("可作为视频的讲义、笔记或文档伴随证据")
+    if raw.get("direct_user_reference") is True:
+        rank_score += 1000
+        rank_reasons.insert(0, "用户提供了精确资源标识，优先展示原始地址")
+    if authority["status"] in {"verified", "observed"}:
+        rank_score += 20 if authority["status"] == "verified" else 10
+        rank_reasons.append("存在可核对的权威性证据")
+    else:
+        rank_reasons.append("权威性未知，需由学习者核对发布机构或作者")
+    if popularity["status"] in {"verified", "observed"}:
+        rank_score += 5
+        rank_reasons.append("存在可观察的受欢迎度证据")
+    else:
+        rank_reasons.append("受欢迎度未知，未根据搜索顺序虚构排名")
+    previous_merge = raw.get("merge_metadata") if isinstance(raw.get("merge_metadata"), Mapping) else {}
+    merged_from = list(previous_merge.get("merged_from") or []) if isinstance(previous_merge, Mapping) else []
+    if stable_id not in merged_from:
+        merged_from.append(stable_id)
+    output = {
+        **raw,
+        "id": str(raw.get("id") or stable_id),
+        "candidate_id": stable_id,
+        "stable_id": stable_id,
+        "identity": stable_id,
+        "url": url,
+        "title": str(raw.get("title") or urlparse(url).hostname or "未命名资料")[:240],
+        "snippet": str(raw.get("snippet") or raw.get("content") or "")[:800],
+        "media_kind": kind,
+        "coverage_role": role,
+        "authority_evidence": authority,
+        "popularity_evidence": popularity,
+        "authority_explanation": str(
+            raw.get("authority_explanation")
+            or "候选资料的权威性需核对发布机构、作者、版本和内容范围。"
+        )[:500],
+        "rank_score": rank_score,
+        "rank_reasons": rank_reasons,
+        "merge_metadata": {
+            "stable_id": stable_id,
+            "merge_key": _planning_identity_url(url) or stable_id,
+            "retained": bool(retained or previous_merge.get("retained")),
+            "selected": bool(raw.get("selected") or previous_merge.get("selected")),
+            "merged_from": list(dict.fromkeys(str(item) for item in merged_from if str(item))),
+        },
+    }
+    # Keep unknown authority/popularity explicit at top level for clients that
+    # cannot yet consume the nested evidence shape.
+    output["authority_status"] = authority["status"]
+    output["popularity_status"] = popularity["status"]
+    output["retained"] = bool(output["merge_metadata"]["retained"])
+    return output
+
+
+def merge_planning_resource_candidates(
+    retained: list[Mapping[str, Any]] | None,
+    fresh: list[Mapping[str, Any]] | None,
+    *,
+    max_resources: int = 3,
+) -> list[dict[str, Any]]:
+    """Merge refinement-turn candidates by stable identity without mutation."""
+
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for source, is_retained in ((retained or [], True), (fresh or [], False)):
+        for raw in source:
+            if not isinstance(raw, Mapping):
+                continue
+            item = _planning_normalize_resource(raw, retained=is_retained)
+            key = item["stable_id"]
+            if key not in merged:
+                merged[key] = item
+                order.append(key)
+                continue
+            previous = merged[key]
+            # Fresh metadata can improve a retained candidate, but retention
+            # and selection flags are never lost between turns.
+            combined = {
+                **previous,
+                **{key_name: value for key_name, value in item.items() if value not in (None, "", [], {})},
+                "retained": bool(previous.get("retained") or item.get("retained")),
+                "selected": bool(previous.get("selected") or item.get("selected")),
+            }
+            old_merge = previous.get("merge_metadata") if isinstance(previous.get("merge_metadata"), Mapping) else {}
+            new_merge = item.get("merge_metadata") if isinstance(item.get("merge_metadata"), Mapping) else {}
+            combined["merge_metadata"] = {
+                **dict(old_merge),
+                **dict(new_merge),
+                "retained": bool(old_merge.get("retained") or new_merge.get("retained")),
+                "selected": bool(old_merge.get("selected") or new_merge.get("selected")),
+                "merged_from": list(dict.fromkeys([
+                    *(str(value) for value in old_merge.get("merged_from") or []),
+                    *(str(value) for value in new_merge.get("merged_from") or []),
+                ])),
+            }
+            merged[key] = combined
+    values = [merged[key] for key in order]
+    # Only reorder when there is an observable rank signal.  Unknown evidence
+    # retains search/refinement order for backward compatibility and auditability.
+    if any(int(item.get("rank_score") or 0) > 0 for item in values):
+        values = sorted(values, key=lambda item: (-int(item.get("rank_score") or 0), order.index(item["stable_id"])))
+    cap = max(1, int(max_resources))
+    retained_values = [item for item in values if item.get("retained") or item.get("selected")]
+    visible = values[:cap]
+    for item in retained_values:
+        if item not in visible:
+            visible.append(item)
+    return visible
+
+
+def _planning_retained_candidates(body: Mapping[str, Any]) -> list[dict[str, Any]]:
+    values: list[Any] = []
+    for key in (
+        "retained_candidates",
+        "selected_candidates",
+        "previous_candidates",
+        "retained_resources",
+        "previous_resources",
+        "candidate_resources",
+    ):
+        value = body.get(key)
+        if isinstance(value, list):
+            values.extend(value)
+        elif isinstance(value, Mapping):
+            values.append(value)
+    return [dict(item) for item in values if isinstance(item, Mapping)]
+
+
+async def _planning_search_resources(
+    queries: list[dict[str, str]],
+    *,
+    max_resources: int = 3,
+    timeout_seconds: float = PLANNING_SEARCH_TIMEOUT_SECONDS,
+    cache_stats: dict[str, int] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Search at most three queries concurrently with deterministic merging.
+
+    ``asyncio.gather`` preserves input order even when individual requests
+    finish out of order.  This gives the UI stable results while reducing the
+    request wall time to one bounded timeout instead of three serial waits.
+    Each query yields either a result payload or an explicit warning; a
+    timeout/error never becomes a fabricated candidate URL.
+    """
+
+    bounded_queries = [item for item in queries[:PLANNING_SEARCH_CONCURRENCY] if item.get("query")]
+    if not bounded_queries:
+        return [], []
+
+    async def run_one(item: dict[str, str]) -> tuple[dict[str, str], dict[str, Any] | None, str]:
+        query = str(item.get("query") or "")
+        try:
+            payload = await asyncio.wait_for(
+                search_web(query, max_results=5),
+                timeout=max(0.1, float(timeout_seconds)),
+            )
+            if not isinstance(payload, dict):
+                return item, None, f"{query}：搜索返回格式无效，已跳过。"
+            _planning_search_cache_write(query, payload)
+            return item, payload, ""
+        except asyncio.TimeoutError:
+            return item, None, f"{query}：搜索超时（{float(timeout_seconds):g}s），已跳过该查询。"
+        except OpenSearchError as exc:
+            return item, None, f"{query}：{exc}"
+        except Exception as exc:  # defensive boundary for alternate adapters
+            return item, None, f"{query}：搜索失败（{type(exc).__name__}），已跳过。"
+
+    responses: list[tuple[dict[str, str], dict[str, Any] | None, str] | None] = [
+        None for _ in bounded_queries
+    ]
+    missing_indexes: list[int] = []
+    cached_urls: set[str] = set()
+    for index, item in enumerate(bounded_queries):
+        cached = _planning_search_cache_read(str(item.get("query") or ""))
+        if cached is None:
+            missing_indexes.append(index)
+            continue
+        responses[index] = (item, cached, "")
+        if cache_stats is not None:
+            cache_stats["hits"] = int(cache_stats.get("hits", 0)) + 1
+        for candidate in cached.get("results") or []:
+            if isinstance(candidate, dict):
+                url = _planning_result_url(candidate.get("url") or candidate.get("href"))
+                if url:
+                    cached_urls.add(url)
+
+    # If cached queries already satisfy the UI's candidate cap, do not wait on
+    # another slow or failing public engine merely to discard its results.
+    if len(cached_urls) < max(1, int(max_resources)) and missing_indexes:
+        fresh = await asyncio.gather(*(run_one(bounded_queries[index]) for index in missing_indexes))
+        for index, response in zip(missing_indexes, fresh, strict=True):
+            responses[index] = response
+    resolved_responses = [response for response in responses if response is not None]
+    if cache_stats is not None:
+        cache_stats["queries"] = len(bounded_queries)
+    resources: list[dict[str, Any]] = []
+    resource_urls: set[str] = set()
+    warnings: list[str] = []
+    for item, payload, warning in resolved_responses:
+        if warning:
+            warnings.append(warning)
+        if payload is None:
+            continue
+        if not isinstance(payload.get("results"), list) or not payload.get("results"):
+            warnings.append(f"{item['query']}：未返回可用结果。")
+            continue
+        for candidate in payload.get("results") or []:
+            if not isinstance(candidate, dict):
+                continue
+            url = _planning_result_url(candidate.get("url") or candidate.get("href"))
+            if not url or url in resource_urls:
+                continue
+            resource_urls.add(url)
+            resources.append(
+                _planning_normalize_resource(
+                    {
+                        **candidate,
+                        "url": url,
+                        "title": str(candidate.get("title") or "")[:240],
+                        "snippet": str(candidate.get("snippet") or candidate.get("content") or "")[:800],
+                        "query": item["query"],
+                        "reason": item.get("reason") or "",
+                        "authority_explanation": "搜索结果仅作为候选；请核对发布机构、作者、更新时间和内容是否与目标匹配。",
+                        "engine": str(candidate.get("engine") or ""),
+                    }
+                )
+            )
+        for error in payload.get("errors") or []:
+            text = _planning_text(error, 360)
+            if text:
+                warnings.append(f"{item['query']}：{text}")
+    # Search adapters may return a short clip before a full collection.  Rank
+    # only on observable metadata, then apply the public candidate cap.
+    return merge_planning_resource_candidates([], resources, max_resources=max_resources), warnings
 
 
 @router.post("/workspaces/{workspace_id}/planning-assistant")
@@ -125,21 +1501,63 @@ async def planning_assistant(
         item for item in (body.get("conversation") or [])
         if isinstance(item, dict) and str(item.get("role") or "") in {"user", "assistant"}
     ][-8:]
+    goal = _planning_text(body.get("goal"), 1200)
+    # Only user-authored turns may become exact direct references.  Provider
+    # summaries and assistant messages are deliberately excluded so a model
+    # cannot promote a fabricated URL into a high-priority user reference.
+    direct_candidates, direct_warnings = parse_direct_resource_references(
+        message,
+        [
+            item.get("content")
+            for item in history
+            if isinstance(item, Mapping) and str(item.get("role") or "") == "user"
+        ],
+    )
+    user_facts = _planning_extract_user_facts(message, goal)
+    request_search_authorized = _planning_search_authorized(body, message, {})
     prompt = {
-        "goal": str(body.get("goal") or "").strip()[:1200],
+        "goal": goal,
         "message": message,
         "conversation": history,
+        "user_facts_detected": user_facts,
+        "resource_search_authorized": request_search_authorized,
+        "exact_user_references": [
+            {
+                "url": item.get("url"),
+                "identifier": item.get("direct_identifier"),
+            }
+            for item in direct_candidates
+        ],
         "requirements": [
             "只输出一个合法的 JSON 对象，不要 Markdown 代码围栏、解释性前后缀或其它文字；字段必须严格使用 response_schema 中的名称",
-            "用简体中文回答，先澄清学习目标、现有资料和限制，再给出下一步建议",
-            "需要查资料时只返回检索查询，不要编造网址；查询要适用于用户描述的领域",
+            "先从 message、goal 和 conversation 中提取用户已经明确说出的事实，不要再次询问这些事实；不得把推测写成已知事实",
+            "known_facts 必须保留 objective、purpose、timeframe、named_materials、mastery_criteria、practice_requirements 六个字段；数组只放用户明确提及的项目",
+            "assessment_intent 默认 independent_performance；只有用户明确不需要独立作答、练习或评估时才使用其它值",
+            "需要查资料时只返回检索查询，不要编造网址；只有用户明确请求或通过 resource_search_authorized/请求字段授权时才允许外部搜索",
+            "exact_user_references 已由系统解析，必须原样保留；不得搜索相似资源来替换它，只能搜索配套或补充资料",
             "资源建议优先寻找发布机构、标准组织、大学、官方文档或作者可核验的原始资料；每份候选必须说明为什么可能权威，最终是否采用由用户确认",
+            "如果用户希望系统学习或学习一整套内容，检索查询要区分完整课程合集/播放列表与单个视频；不要用短视频冒充完整课程",
+            "除主要视频或课程合集外，另行检索可核验的配套讲义、笔记或文档，使用户可以组合选择；不要假定不同网址就代表独立作者或独立证据",
             "当用户明确要资料时，最多返回三份互不重复的综合候选；不足三份就如实返回实际找到的数量，不要补造链接",
+            "missing_questions 只列真正阻塞下一步的问题，最多一个；已有答案不能再次提问",
+            "handoff_goal 必须保留 mastery_criteria 和 practice_requirements，供后续计划使用",
             "不要修改学习任务、知识地图、计划或掌握度",
         ],
         "response_schema": {
             "reply": "给学习者看的简短回复",
             "goal_summary": "归纳后的学习目标",
+            "handoff_goal": "交给计划流程的完整目标，必须含掌握标准和练习要求",
+            "known_facts": {
+                "objective": "用户想达成的结果",
+                "purpose": "学习用途或背景；未知时为空字符串",
+                "timeframe": "明确的时间范围；未知时为空字符串",
+                "named_materials": ["用户提及的资料、书籍、课程、网站或作者名称"],
+                "mastery_criteria": "用户要求的掌握/验收标准；未知时为空字符串",
+                "practice_requirements": ["用户要求的练习、题目或实践方式"],
+            },
+            "missing_questions": ["最多一个真正阻塞的问题"],
+            "assessment_intent": "independent_performance|guided_understanding|recognition_only|self_assessment",
+            "resource_search_authorized": "仅当用户明确请求或授权搜索时为 true",
             "search_queries": [
                 {"query": "适合公开搜索的精确查询", "reason": "为什么需要这个查询"}
             ],
@@ -147,14 +1565,31 @@ async def planning_assistant(
         },
     }
     try:
-        result = await provider.json(
-            [
+        # This is an interactive planning turn, not a long-form extraction.
+        # Use the provider's bounded JSON transport so DeepSeek-compatible
+        # endpoints disable hidden reasoning and cannot spend the whole UI
+        # timeout producing an unnecessarily long answer.
+        messages = [
                 {
                     "role": "system",
                     "content": "你是 MentorFlow 的通用学习规划助手，只负责澄清目标和准备资料候选，不得宣称已生成知识地图。",
                 },
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ]
+        cache_key, provider_fingerprint, request_hash = _planning_provider_cache_identity(
+            session,
+            message=message,
+            goal=goal,
+            history=history,
+            search_authorized=request_search_authorized,
+        )
+        result, provider_cache_hit, shared_inflight, provider_cache_ref = await _planning_provider_result(
+            provider=provider,
+            messages=messages,
+            cache_key=cache_key,
+            provider_fingerprint=provider_fingerprint,
+            request_hash=request_hash,
+            preferred_cache_key=str(body.get("provider_cache_ref") or ""),
         )
     except ProviderError as exc:
         active_teaching._error(exc.code, exc.message, exc.status, **exc.details)
@@ -162,52 +1597,133 @@ async def planning_assistant(
         active_teaching._error("PLANNING_ASSISTANT_PROVIDER_INVALID", f"规划助手返回失败：{exc}", 502)
     if not isinstance(result, dict):
         active_teaching._error("PLANNING_ASSISTANT_PROVIDER_INVALID", "规划助手返回不是对象", 502)
-    queries = []
-    for item in result.get("search_queries") or []:
-        if not isinstance(item, dict):
-            continue
-        query = " ".join(str(item.get("query") or "").split())[:360]
-        if query:
-            queries.append({"query": query, "reason": str(item.get("reason") or "")[:500]})
-    queries = queries[:3]
-    resources: list[dict[str, Any]] = []
-    resource_urls: set[str] = set()
-    warnings: list[str] = []
-    for item in queries:
-        if len(resources) >= 3:
-            break
-        try:
-            search = await search_web(item["query"], max_results=5)
-        except OpenSearchError as exc:
-            warnings.append(f"{item['query']}：{exc}")
-            continue
-        for candidate in search.get("results") or []:
-            if len(resources) >= 3:
-                break
-            url = str(candidate.get("url") or "").strip()
-            if not url or url in resource_urls:
-                continue
-            resource_urls.add(url)
-            resources.append(
-                {
-                    "url": url,
-                    "title": str(candidate.get("title") or "")[:240],
-                    "snippet": str(candidate.get("snippet") or "")[:800],
-                    "query": item["query"],
-                    "reason": item["reason"],
-                    "authority_explanation": "搜索结果仅作为候选；请核对发布机构、作者、更新时间和内容是否与目标匹配。",
-                    "engine": candidate.get("engine"),
-                }
-            )
+    facts = _planning_merge_facts(result.get("known_facts"), user_facts)
+    authorized = _planning_search_authorized(body, message, result)
+    queries = _planning_queries(result, facts, authorized)
+    # A malformed exact-looking identifier is a correction request, not
+    # permission to substitute a vaguely related search result.
+    if direct_warnings and not direct_candidates:
+        queries = []
+    elif direct_candidates and not _planning_requests_companion_search(message):
+        # The exact source is already known.  Do not spend time searching for
+        # an approximate replacement unless this turn explicitly requests
+        # companion material or a new discovery round.
+        queries = []
+    search_cache_stats: dict[str, int] = {}
+    resources, warnings = await _planning_search_resources(queries, cache_stats=search_cache_stats)
+    warnings.extend(direct_warnings)
+    resources = merge_planning_resource_candidates(
+        [],
+        [*direct_candidates, *resources],
+        max_resources=max(3, len(direct_candidates)),
+    )
+    retained_candidates = _planning_retained_candidates(body)
+    # Refinement turns are read-only: selected/retained candidates come back
+    # with their stable identity and are merged with this turn's fresh batch.
+    # No source is imported and no plan state is changed here.
+    resources = merge_planning_resource_candidates(
+        retained_candidates,
+        resources,
+        max_resources=max(3, len(retained_candidates)),
+    )
+    existing_materials = _planning_existing_materials(workspace_id)
+    ready_materials = [item for item in existing_materials if item.get("ready")]
+    missing_questions = _planning_missing_questions(
+        result,
+        facts,
+        authorized=authorized,
+        has_resources=bool(resources or ready_materials),
+    )
+    handoff_goal = _planning_handoff_goal(result, facts)
+    contradiction = bool(
+        re.search(
+            r"(?:不需要|无需|不要|不做|只想了解|只看讲解|仅阅读|不用练习|no\s+(?:practice|exercise|assessment)|without\s+(?:practice|solving|assessment))",
+            message,
+            flags=re.IGNORECASE,
+        )
+    )
+    requested_intent = _planning_text(result.get("assessment_intent"), 80)
+    allowed_intents = {"guided_understanding", "recognition_only", "self_assessment"}
+    assessment_intent = requested_intent if contradiction and requested_intent in allowed_intents else "independent_performance"
+    source_options = _planning_source_options(
+        workspace_id,
+        existing_materials,
+        resources,
+        authorized=authorized,
+        warnings=warnings,
+    )
+    if direct_warnings and not direct_candidates:
+        reply = direct_warnings[0]
+    elif not missing_questions and resources:
+        reply = "我已按你提供的目标和资料名称找到候选，请核对来源并选择一份或多份后继续。"
+    elif not missing_questions and (facts.get("named_materials") or ready_materials) and not resources:
+        reply = (
+            "我保留了你已提及的资料；当前没有可核对的公开候选。"
+            "你可以直接使用已上传资料、上传本地文件，或授权我搜索公开候选。"
+        )
+    elif missing_questions:
+        reply = (
+            f"为了继续，我只需要确认：{missing_questions[0]}"
+            "；也可以直接上传资料，或明确授权我搜索公开候选。"
+        )
+    else:
+        reply = _planning_text(result.get("reply"), 1200) or "已整理好目标，可以选择上传资料或让 AI 搜索公开候选后继续。"
+    if direct_warnings and not direct_candidates:
+        next_step = "choose_source"
+    elif resources:
+        next_step = "show_resources"
+    elif missing_questions:
+        next_step = "ask_for_material" if "资料" in missing_questions[0] or "授权" in missing_questions[0] else "ask_for_schedule"
+    elif not ready_materials and not facts.get("named_materials"):
+        # Keep the source decision visible even when the goal is complete but
+        # public search returned nothing.  The client can offer upload and a
+        # new explicitly-authorized discovery attempt instead of dead-ending
+        # on the scheduling questionnaire.
+        next_step = "choose_source"
+    elif not facts.get("timeframe"):
+        next_step = "ask_for_schedule"
+    else:
+        next_step = "ready_for_schedule"
     return {
         "workspace_id": workspace_id,
-        "reply": str(result.get("reply") or "").strip(),
-        "goal_summary": str(result.get("goal_summary") or "").strip(),
-        "next_step": str(result.get("next_step") or "ask_for_material"),
+        "reply": reply,
+        "goal_summary": handoff_goal,
+        "handoff_goal": handoff_goal,
+        "known_facts": facts,
+        "missing_questions": missing_questions,
+        "assessment_intent": assessment_intent,
+        "resource_search_authorized": authorized,
+        "next_step": next_step,
         "queries": queries,
         "resources": resources,
+        "resource_bundle": {
+            "schema": "mentorflow.planning-resource-bundle.v1",
+            "candidates": resources,
+            "retained_candidate_ids": [
+                str(item.get("stable_id") or item.get("candidate_id") or item.get("id"))
+                for item in resources
+                if item.get("retained") or item.get("selected")
+            ],
+            "merge": {
+                "strategy": "stable_identity_union",
+                "retained_input_count": len(retained_candidates),
+                "fresh_input_count": max(0, len(resources) - len(retained_candidates)),
+            },
+        },
+        "existing_materials": existing_materials,
+        "source_options": source_options,
         "warnings": warnings,
         "provider": generation_meta(session),
+        "cache": {
+            "schema": PLANNING_PROVIDER_CACHE_SCHEMA,
+            "provider_hit": provider_cache_hit,
+            "shared_inflight": shared_inflight,
+            "provider_call_saved": bool(provider_cache_hit or shared_inflight),
+            "ttl_seconds": PLANNING_PROVIDER_CACHE_TTL_SECONDS,
+            "provider_ref": provider_cache_ref,
+            "search_hits": int(search_cache_stats.get("hits", 0)),
+            "search_queries": int(search_cache_stats.get("queries", 0)),
+        },
         "mutated": False,
     }
 
@@ -576,6 +2092,12 @@ def _v1_capability_for_material(row: sqlite3.Row) -> dict[str, Any]:
     report["material_id"] = str(row["id"])
     report["filename"] = str(row["original_filename"])
     report["parser_name"] = str(row["parser_name"] or "")
+    source_url = str(row["source_url"] or "") if "source_url" in row.keys() else ""
+    source_kind = str(row["source_kind"] or "uploaded_file") if "source_kind" in row.keys() else "uploaded_file"
+    report["source_url"] = source_url
+    report["source_kind"] = source_kind
+    if source_url:
+        report["video_capability"] = classify_video_url(source_url)
     return report
 
 
@@ -699,6 +2221,43 @@ def _v1_job_payload(connection: sqlite3.Connection, row: Any) -> dict[str, Any]:
                 disposition_query.order_by(MaterialDispositionORM.source_id)
             ).all()
         ]
+        total_units = int(
+            (job.progress_json or {}).get("total_units")
+            or request.get("progress_total_units")
+            or _v1_progress_total_units(
+                len(request.get("material_ids") or []),
+                len(request.get("material_ids") or []),
+            )
+        )
+        progress = dict(job.progress_json or {})
+        if not progress:
+            progress = _v1_progress_defaults(
+                status=str(job.status),
+                total_units=total_units,
+                last_good_revision=_v1_progress_last_good(session, str(job.workspace_id)),
+                updated_at=job.updated_at.isoformat() if job.updated_at else "",
+            )
+        else:
+            # Rows created before migration 0024 may have a partially empty
+            # JSON default.  Normalize the response without pretending work
+            # was done and without mutating the stored job on a GET.
+            progress.setdefault("schema", KNOWLEDGE_MAP_PROGRESS_SCHEMA)
+            progress.setdefault("version", 1)
+            progress.setdefault("phase", str(job.status or "queued"))
+            progress.setdefault("completed_units", 0)
+            progress.setdefault("total_units", max(1, total_units))
+            progress.setdefault("percent", 0.0)
+            progress.setdefault("message", "知识地图任务处理中")
+            progress.setdefault("sequence", 0)
+            progress.setdefault("updated_at", job.updated_at.isoformat() if job.updated_at else "")
+            progress.setdefault(
+                "last_good_revision",
+                _v1_progress_last_good(session, str(job.workspace_id)),
+            )
+            progress.setdefault(
+                "last_good_revision_id",
+                str((progress.get("last_good_revision") or {}).get("revision_id") or ""),
+            )
         return {
             "id": job.id,
             "workspace_id": job.workspace_id,
@@ -715,6 +2274,9 @@ def _v1_job_payload(connection: sqlite3.Connection, row: Any) -> dict[str, Any]:
             "updated_at": job.updated_at.isoformat() if job.updated_at else "",
             "started_at": job.started_at.isoformat() if job.started_at else "",
             "finished_at": job.finished_at.isoformat() if job.finished_at else "",
+            "progress": progress,
+            "last_good_revision": progress.get("last_good_revision"),
+            "last_good_revision_id": progress.get("last_good_revision_id", ""),
             "dispositions": dispositions,
         }
 
@@ -728,6 +2290,32 @@ def _v1_graph_payload(
     source_fingerprint: str,
     provider_meta: dict[str, Any],
 ) -> dict[str, Any]:
+    def display_fields(raw: Mapping[str, Any], evidence: list[dict[str, Any]]) -> tuple[str, str]:
+        """Keep map cards meaningful even when a provider omits a label.
+
+        Evidence is the only safe fallback: no subject or domain is inferred
+        from an empty node.  The first quote/heading is concise enough for a
+        card and remains auditable through the full evidence payload.
+        """
+
+        fallback = ""
+        for item in evidence:
+            if not isinstance(item, dict):
+                continue
+            fallback = str(item.get("heading") or item.get("quote") or "").strip()
+            if fallback:
+                break
+        fallback = " ".join(fallback.split())
+        title = str(raw.get("name") or raw.get("label") or "").strip()
+        if not title:
+            title = (fallback[:96] + "…") if len(fallback) > 96 else fallback
+        if not title:
+            title = str(raw.get("id") or "未命名概念").strip() or "未命名概念"
+        summary = str(raw.get("explanation") or raw.get("summary") or "").strip()
+        if not summary:
+            summary = fallback[:320]
+        return title, summary
+
     def segment(value: Mapping[str, Any]) -> dict[str, Any]:
         raw = dict(value)
         raw.setdefault("source_id", raw.get("material_id", ""))
@@ -740,11 +2328,12 @@ def _v1_graph_payload(
     public_nodes: list[dict[str, Any]] = []
     for raw in nodes:
         evidence = [segment(item) for item in raw.get("source_evidence") or raw.get("evidence") or []]
+        title, summary = display_fields(raw, evidence)
         public_nodes.append(
             {
                 "id": str(raw["id"]),
-                "name": str(raw.get("name") or ""),
-                "explanation": str(raw.get("explanation") or ""),
+                "name": title,
+                "explanation": summary,
                 "difficulty": str(raw.get("difficulty") or "medium"),
                 "node_type": str(raw.get("node_type") or "concept"),
                 "acceptance_method": str(raw.get("acceptance_method") or ""),
@@ -810,11 +2399,25 @@ def _v1_revision_payload(connection: sqlite3.Connection, row: sqlite3.Row) -> di
         nodes = []
         for item in node_rows:
             evidence = item.source_refs or []
+            fallback = ""
+            for source in evidence:
+                if not isinstance(source, dict):
+                    continue
+                fallback = str(source.get("heading") or source.get("quote") or "").strip()
+                if fallback:
+                    break
+            fallback = " ".join(fallback.split())
+            title = str(item.label or "").strip()
+            if not title:
+                title = (fallback[:96] + "…") if len(fallback) > 96 else fallback
+            if not title:
+                title = str(item.semantic_key or item.node_id or "未命名概念").strip() or "未命名概念"
+            summary = str(item.summary or "").strip() or fallback[:320]
             nodes.append(
                 {
                     "id": item.node_id,
-                    "name": item.label,
-                    "explanation": item.summary,
+                    "name": title,
+                    "explanation": summary,
                     "difficulty": (item.history or {}).get("difficulty", "medium"),
                     "node_type": (item.history or {}).get("node_type", item.kind or "concept"),
                     "acceptance_method": (item.history or {}).get("acceptance_method", ""),
@@ -911,9 +2514,12 @@ def _v1_update_job(
     cache_hit: bool | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
+    phase: str | None = None,
+    completed_units: int | None = None,
+    total_units: int | None = None,
+    message: str | None = None,
+    last_good_revision: dict[str, Any] | None = None,
 ) -> None:
-    from datetime import datetime
-
     def parse(value: str | None):
         return datetime.fromisoformat(value) if value else None
 
@@ -933,6 +2539,90 @@ def _v1_update_job(
             job.started_at = parse(started_at)
         if finished_at is not None:
             job.finished_at = parse(finished_at)
+        request = dict(job.request_json or {})
+        progress = dict(job.progress_json or {})
+        known_total = int(
+            total_units
+            or progress.get("total_units")
+            or request.get("progress_total_units")
+            or _v1_progress_total_units(
+                len(request.get("material_ids") or []),
+                len(request.get("material_ids") or []),
+            )
+        )
+        if not progress:
+            progress = _v1_progress_defaults(
+                status=status,
+                total_units=known_total,
+                last_good_revision=_v1_progress_last_good(session, str(job.workspace_id)),
+            )
+        else:
+            progress.setdefault("schema", KNOWLEDGE_MAP_PROGRESS_SCHEMA)
+            progress.setdefault("version", 1)
+            progress.setdefault("completed_units", 0)
+            progress.setdefault("total_units", known_total)
+            progress.setdefault("sequence", 0)
+            progress.setdefault("last_good_revision", None)
+            progress.setdefault(
+                "last_good_revision_id",
+                str((progress.get("last_good_revision") or {}).get("revision_id") or ""),
+            )
+        if total_units is not None:
+            progress["total_units"] = max(1, int(total_units))
+        else:
+            progress["total_units"] = max(1, int(progress.get("total_units") or known_total))
+        if completed_units is not None:
+            progress["completed_units"] = max(
+                int(progress.get("completed_units") or 0),
+                min(int(completed_units), int(progress["total_units"])),
+            )
+        completed = max(
+            0,
+            min(
+                int(progress.get("completed_units") or 0),
+                int(progress.get("total_units") or 1),
+            ),
+        )
+        if status in {"ready", "ready_with_review"}:
+            progress["phase"] = "completed"
+            progress["completed_units"] = int(progress["total_units"])
+            completed = int(progress["total_units"])
+            progress["message"] = message or "知识地图已激活"
+        else:
+            progress["phase"] = phase or progress.get("phase") or status or "queued"
+            if message is not None:
+                progress["message"] = message
+        if status == "failed":
+            progress["phase"] = "failed"
+            progress["message"] = message or "知识地图生成失败，已保留上一版地图"
+        if last_good_revision is not None:
+            progress["last_good_revision"] = dict(last_good_revision)
+        elif not progress.get("last_good_revision"):
+            progress["last_good_revision"] = _v1_progress_last_good(
+                session, str(job.workspace_id)
+            )
+        progress["last_good_revision_id"] = str(
+            (progress.get("last_good_revision") or {}).get("revision_id") or ""
+        )
+        progress["percent"] = round(
+            100.0 * completed / max(1, int(progress["total_units"])), 2
+        )
+        # Every persisted update gets a strictly increasing sequence and UTC
+        # timestamp, even when several provider batches finish in one tick.
+        previous_updated = progress.get("updated_at") or ""
+        stamp = datetime.now(timezone.utc)
+        try:
+            previous_dt = datetime.fromisoformat(str(previous_updated))
+            if previous_dt.tzinfo is None:
+                previous_dt = previous_dt.replace(tzinfo=timezone.utc)
+            if stamp <= previous_dt:
+                stamp = previous_dt + timedelta(microseconds=1)
+        except (TypeError, ValueError):
+            pass
+        progress["sequence"] = int(progress.get("sequence") or 0) + 1
+        progress["updated_at"] = stamp.isoformat()
+        job.progress_json = progress
+        job.updated_at = stamp
         session.commit()
 
 
@@ -948,6 +2638,7 @@ def recover_interrupted_knowledge_map_jobs() -> int:
     }
     finished = datetime.now(timezone.utc)
     recovered = 0
+    recovered_ids: list[str] = []
     with SessionLocal() as session:
         jobs = session.scalars(
             select(KnowledgeMapJobORM).where(
@@ -974,7 +2665,29 @@ def recover_interrupted_knowledge_map_jobs() -> int:
                         "status": "failed",
                     }
             recovered += 1
+            recovered_ids.append(str(job.id))
         session.commit()
+    # Persist the same versioned failure checkpoint used by normal worker
+    # failures.  This is intentionally outside the recovery transaction so a
+    # single malformed legacy JSON row cannot roll back other recoveries.
+    for recovered_id in recovered_ids:
+        # ``_v1_update_job`` persists through the ORM session; the legacy
+        # connection parameter is retained for API compatibility.  Use an
+        # isolated handle here so startup recovery also works before the
+        # legacy active-teaching schema is opened.
+        connection = sqlite3.connect(":memory:")
+        try:
+            _v1_update_job(
+                connection,
+                recovered_id,
+                status="failed",
+                error=error,
+                finished_at=finished.isoformat(),
+                phase="failed",
+                message=error["message"],
+            )
+        finally:
+            connection.close()
     return recovered
 
 
@@ -991,7 +2704,6 @@ async def _run_v1_job(
     started = _now()
     try:
         with active_teaching._connect() as connection:
-            _v1_update_job(connection, job_id, status="converting", started_at=started)
             chunks = _evidence_chunks(connection, workspace_id, material_ids)
             current_source_fingerprint = _v1_source_fingerprint(chunks)
             if current_source_fingerprint != source_fingerprint:
@@ -1004,6 +2716,29 @@ async def _run_v1_job(
                 "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
             ).fetchone()
             receipt = _v1_json(receipt_row["payload"], {}) if receipt_row else {}
+            total_units = _v1_progress_total_units(len(material_ids), len(chunks))
+            _v1_update_job(
+                connection,
+                job_id,
+                status="converting",
+                started_at=started,
+                phase="converting",
+                total_units=total_units,
+                completed_units=0,
+                message="正在校验并转换资料",
+            )
+            # Conversion/source verification is a completed checkpoint only
+            # after the queued fingerprint has been checked against current
+            # evidence.
+            _v1_update_job(
+                connection,
+                job_id,
+                status="converting",
+                phase="converting",
+                total_units=total_units,
+                completed_units=1,
+                message="资料转换与来源校验完成",
+            )
         provider_session = require_provider_session(provider_session_id)
         if str(provider_session.provider).replace("-", "_").casefold() == "fake":
             raise ProviderError("PROVIDER_VERIFICATION_REQUIRED", "Fake Provider 不能用于通用知识地图 v1", 428)
@@ -1013,12 +2748,38 @@ async def _run_v1_job(
                 "Provider 配置在知识地图任务排队后发生变化，请重新发起生成",
                 409,
             )
+        total_units = _v1_progress_total_units(len(material_ids), len(chunks))
+        provider_done = 0
         with active_teaching._connect() as connection:
-            _v1_update_job(connection, job_id, status="extracting")
+            _v1_update_job(
+                connection,
+                job_id,
+                status="extracting",
+                phase="extracting",
+                total_units=total_units,
+                completed_units=1,
+                message="开始按资料批次提取知识点",
+            )
+
+        def on_batch_complete(batch_index: int, batch_total: int) -> None:
+            nonlocal provider_done
+            provider_done = max(provider_done, int(batch_index))
+            with active_teaching._connect() as connection:
+                _v1_update_job(
+                    connection,
+                    job_id,
+                    status="extracting",
+                    phase="extracting",
+                    total_units=total_units,
+                    completed_units=1 + provider_done,
+                    message=f"已完成 {provider_done}/{batch_total} 个资料提取批次",
+                )
+
         nodes, edges, warnings, provider_meta = await _provider_nodes(
             chunks,
             str(receipt.get("current_level") or receipt.get("current_foundation") or "beginner"),
             provider_session_id,
+            on_batch_complete=on_batch_complete,
         )
         provider_meta = {**provider_meta, "policy_version": POLICY_VERSION, "fallback_used": False}
         evidence_by_chunk = {str(chunk["id"]): active_teaching._evidence(chunk) for chunk in chunks}
@@ -1035,7 +2796,15 @@ async def _run_v1_job(
                 evidence = [evidence_by_chunk[str(item)] for item in edge.get("source_chunk_ids") or [] if str(item) in evidence_by_chunk]
             edge_payloads.append({**edge, "source_evidence": evidence})
         with active_teaching._connect() as connection:
-            _v1_update_job(connection, job_id, status="validating")
+            _v1_update_job(
+                connection,
+                job_id,
+                status="validating",
+                phase="validating",
+                total_units=total_units,
+                completed_units=1 + provider_done,
+                message="提取完成，正在验证证据与关系",
+            )
         proposed_graph_gate = validate_graph_v1(
             node_payloads,
             edge_payloads,
@@ -1056,6 +2825,15 @@ async def _run_v1_job(
                 job_id=job_id,
                 material_ids=material_ids,
                 evidence_material_ids=material_evidence,
+            )
+            _v1_update_job(
+                connection,
+                job_id,
+                status="validating",
+                phase="validating",
+                total_units=total_units,
+                completed_units=1 + len(material_ids) + provider_done,
+                message="资料处理结果已记录，继续执行质量校验",
             )
         quality = {
             "status": "passed" if node_payloads else "failed",
@@ -1083,6 +2861,16 @@ async def _run_v1_job(
         }
         if quality["status"] != "passed" or not quality["evidence_complete"] or not quality["material_dispositions_complete"]:
             raise ValueError("knowledge map quality gate failed")
+        with active_teaching._connect() as connection:
+            _v1_update_job(
+                connection,
+                job_id,
+                status="validating",
+                phase="validating",
+                total_units=total_units,
+                completed_units=1 + len(material_ids) + provider_done + 1,
+                message="知识地图证据、结构与哈希校验通过",
+            )
         graph = _v1_graph_payload(node_payloads, edge_payloads, workspace_id=workspace_id, revision=0, source_fingerprint=source_fingerprint, provider_meta=provider_meta)
         with SessionLocal() as session:
             revision_row = session.scalar(
@@ -1210,7 +2998,18 @@ async def _run_v1_job(
             session.commit()
         final_status = "ready_with_review" if has_material_review else "ready"
         with active_teaching._connect() as connection:
-            _v1_update_job(connection, job_id, status=final_status, result={"revision": revision, "revision_id": revision_id, "quality": quality}, revision_id=revision_id, finished_at=_now())
+            _v1_update_job(
+                connection,
+                job_id,
+                status=final_status,
+                result={"revision": revision, "revision_id": revision_id, "quality": quality},
+                revision_id=revision_id,
+                finished_at=_now(),
+                phase="completed",
+                total_units=total_units,
+                completed_units=total_units,
+                message="知识地图已激活",
+            )
     except BaseException as exc:
         error = _v1_error_from_exception(exc)
         try:
@@ -1223,7 +3022,15 @@ async def _run_v1_job(
                     evidence_material_ids=set(),
                     failure_reason=f"generation_failed:{error['code']}",
                 )
-                _v1_update_job(connection, job_id, status="failed", error=error, finished_at=_now())
+                _v1_update_job(
+                    connection,
+                    job_id,
+                    status="failed",
+                    error=error,
+                    finished_at=_now(),
+                    phase="failed",
+                    message=str(error.get("message") or "知识地图生成失败，已保留上一版地图"),
+                )
             with SessionLocal() as session:
                 failed_revision = session.scalar(
                     select(KnowledgeMapRevisionORM).where(
@@ -1295,6 +3102,16 @@ def _v1_create_job_orm(
                 ).order_by(desc(KnowledgeMapRevisionORM.revision))
             )
             job_id = active_teaching._id("kmv1job")
+            total_units = _v1_progress_total_units(len(material_ids), len(chunks))
+            last_good_revision = (
+                {
+                    "revision_id": str(active.id),
+                    "revision": int(active.revision),
+                    "status": str(active.status),
+                }
+                if active is not None
+                else None
+            )
             job = KnowledgeMapJobORM(
                 id=job_id,
                 workspace_id=workspace_id,
@@ -1307,7 +3124,14 @@ def _v1_create_job_orm(
                     "source_fingerprint": fingerprint,
                     "generation_fingerprint": generation_fingerprint,
                     "policy_version": POLICY_VERSION,
+                    "progress_total_units": total_units,
                 },
+                progress_json=_v1_progress_defaults(
+                    status="queued",
+                    total_units=total_units,
+                    last_good_revision=last_good_revision,
+                    updated_at=_now(),
+                ),
             )
             session.add(job)
             if (
@@ -1323,7 +3147,21 @@ def _v1_create_job_orm(
                 }
                 job.map_revision_id = active.id
                 job.status = "ready_with_review" if active.status == "ready_with_review" else "ready"
-                job.finished_at = job.updated_at
+                cache_stamp = datetime.now(timezone.utc)
+                job.updated_at = cache_stamp
+                job.finished_at = cache_stamp
+                job.progress_json = _v1_progress_defaults(
+                    status=job.status,
+                    total_units=total_units,
+                    last_good_revision=last_good_revision
+                    or {
+                        "revision_id": str(active.id),
+                        "revision": int(active.revision),
+                        "status": str(active.status),
+                    },
+                    updated_at=cache_stamp.isoformat(),
+                )
+                job.progress_json["sequence"] = 1
                 session.commit()
                 return _v1_job_payload(connection, job)
             next_revision = max(
@@ -1400,18 +3238,25 @@ def _v1_create_job(
 
 def _evidence_chunks(connection: sqlite3.Connection, workspace_id: str, material_ids: list[str]) -> list[sqlite3.Row]:
     placeholders = ",".join("?" for _ in material_ids)
-    return connection.execute(
-        f"""SELECT * FROM active_chunks
-            WHERE workspace_id=? AND material_id IN ({placeholders})
-            ORDER BY material_id,ordinal""",
+    rows = connection.execute(
+        f"""SELECT active_chunks.*, active_materials.source_kind,
+                      active_materials.provenance_json
+               FROM active_chunks
+               JOIN active_materials ON active_materials.id=active_chunks.material_id
+            WHERE active_chunks.workspace_id=? AND active_chunks.material_id IN ({placeholders})
+            ORDER BY active_chunks.material_id,active_chunks.ordinal""",
         (workspace_id, *material_ids),
     ).fetchall()
+    # Keep primary transcript evidence as the sole contributor when a selected
+    # companion explicitly declares itself a derived same-family artifact.
+    return dedupe_source_family_evidence(rows)
 
 
 async def _provider_nodes(
     chunks: list[sqlite3.Row],
     current_level: str,
     session_id: str,
+    on_batch_complete: Callable[[int, int], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str], dict[str, Any]]:
     try:
         session = require_provider_session(session_id)
@@ -1512,6 +3357,11 @@ async def _provider_nodes(
             session,
             latency_ms=max(1, int((datetime.now(timezone.utc) - started).total_seconds() * 1000)),
         )
+        if on_batch_complete is not None:
+            # The callback runs only after provider response validation and
+            # stable local-id remapping, so each increment represents a real
+            # completed extraction batch rather than elapsed time.
+            on_batch_complete(batch_index + 1, len(batches))
         return batch_nodes, batch_edges, batch_warnings, batch_meta
 
     batches = [
@@ -1969,6 +3819,7 @@ def get_knowledge_map(
 def material_capabilities(
     workspace_id: str,
     material_id: str | None = Query(default=None),
+    url: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """Expose conversion capabilities from the one adapter registry."""
     with active_teaching._connect() as connection:
@@ -1988,7 +3839,7 @@ def material_capabilities(
                     (workspace_id,),
                 ).fetchall()
             ]
-        return {
+        output = {
             "schema": "mentorflow.material-capabilities.v1",
             "policy_version": POLICY_VERSION,
             "registry": _v1_capability_report(ConversionRegistry().capability_report()),
@@ -1997,17 +3848,23 @@ def material_capabilities(
                 for row in _v1_material_rows(connection, workspace_id, material_ids)
             ],
         }
+        if url:
+            output["video_capability"] = classify_video_url(url)
+        return output
 
 
 @router.get("/material-capabilities")
-def canonical_material_capabilities() -> dict[str, Any]:
+def canonical_material_capabilities(url: str | None = Query(default=None)) -> dict[str, Any]:
     """Canonical v1 capability receipt; workspace aliases add material rows."""
-    return {
+    output = {
         "schema": "mentorflow.material-capabilities.v1",
         "policy_version": POLICY_VERSION,
         "registry": _v1_capability_report(ConversionRegistry().capability_report()),
         "materials": [],
     }
+    if url:
+        output["video_capability"] = classify_video_url(url)
+    return output
 
 
 @router.get("/runtime-policy")
@@ -2407,6 +4264,10 @@ def _v1_update_candidate_orm(
             )
         ).all():
             plan_record.status = "stale"
+            plan_row = session.scalar(select(PlanORM).where(PlanORM.id == plan_record.plan_id))
+            if plan_row is not None:
+                plan_row.status = "stale"
+                plan_row.stale = True
         session.commit()
         return {
             "candidate": {
@@ -2478,6 +4339,67 @@ def _v1_plan_order(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> 
     return [node_by_id[node_id] for node_id in reduced["order"]]
 
 
+_PREVIEW_RECEIPT_FIELDS = (
+    "start_date",
+    "deadline",
+    "study_weekdays",
+    "fixed_rest_weekdays",
+    "unavailable_dates",
+    "special_date_minutes",
+    "daily_task_minutes",
+    "review_rounds",
+    "allocation_mode",
+    "allow_schedule_suggestions",
+)
+
+
+def _v1_preview_receipt(receipt: dict[str, Any], body: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Overlay selected scheduling conditions for a draft-only preview.
+
+    Desktop clients historically saved the receipt before asking for a
+    preview.  API consumers may instead send edited conditions directly to
+    this endpoint.  Applying a small, whitelisted overlay keeps capacity
+    calculations accurate without mutating the saved receipt or active plan.
+    """
+
+    effective = dict(receipt)
+    overlays: list[dict[str, Any]] = []
+    for key in ("conditions", "schedule_conditions", "selected_conditions", "receipt"):
+        value = body.get(key)
+        if isinstance(value, dict):
+            overlays.append(value)
+    overlays.append(body)
+    changed = False
+    for overlay in overlays:
+        for key in _PREVIEW_RECEIPT_FIELDS:
+            if key not in overlay:
+                continue
+            value = overlay.get(key)
+            if key in {"study_weekdays", "fixed_rest_weekdays", "unavailable_dates"}:
+                if isinstance(value, str):
+                    value = [item.strip() for item in re.split(r"[,，、;；\s]+", value) if item.strip()]
+                elif isinstance(value, (tuple, set)):
+                    value = list(value)
+                elif not isinstance(value, list):
+                    continue
+                if key in {"study_weekdays", "fixed_rest_weekdays"}:
+                    normalized_days: list[int] = []
+                    for item in value:
+                        try:
+                            day = int(item)
+                        except (TypeError, ValueError):
+                            continue
+                        if 0 <= day <= 6 and day not in normalized_days:
+                            normalized_days.append(day)
+                    value = sorted(normalized_days)
+            if key == "special_date_minutes" and not isinstance(value, dict):
+                continue
+            if effective.get(key) != value:
+                effective[key] = value
+                changed = True
+    return effective, changed
+
+
 def _v1_preview_plan_orm(
     workspace_id: str,
     body: dict[str, Any],
@@ -2489,7 +4411,8 @@ def _v1_preview_plan_orm(
         receipt_row = connection.execute("SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)).fetchone()
         if not receipt_row:
             active_teaching._error("RECEIPT_REQUIRED", "请先保存学习条件", 409)
-        receipt = _v1_json(receipt_row["payload"], {})
+        saved_receipt = _v1_json(receipt_row["payload"], {})
+        receipt, conditions_changed = _v1_preview_receipt(saved_receipt, body)
         graph = _v1_revision_payload(connection, revision)
         ordered = _v1_plan_order(graph.get("nodes") or [], graph.get("edges") or [])
         items = [{"id": item["id"], "name": item["name"], "mastery_estimate": item.get("mastery_estimate") or {}, "source_evidence": item.get("evidence") or [], "acceptance_method": item.get("acceptance_method") or ""} for item in ordered]
@@ -2500,6 +4423,70 @@ def _v1_preview_plan_orm(
                 int(receipt.get("review_rounds") or SCHEDULING_POLICY.default_review_rounds),
             ),
         )
+        # Calculate the workload from the current revision before scheduling.
+        # A saved receipt can carry a stale system-assigned daily capacity (for
+        # example, after the knowledge map was regenerated).  Scheduling with
+        # that value first can incorrectly produce an extension draft even
+        # though the current map fits in the original learning window.
+        initial_learning_minutes = sum(
+            int(
+                (estimate.get("initial_learning_minutes") or sum(
+                    int(estimate.get(key) or 0)
+                    for key in (
+                        "understand_minutes",
+                        "recall_minutes",
+                        "guided_practice_minutes",
+                        "independent_application_minutes",
+                    )
+                ))
+            )
+            for estimate in (
+                item.get("mastery_estimate") or {}
+                for item in items
+            )
+        )
+        one_review_round_minutes = sum(
+            int(estimate.get("one_review_round_minutes") or estimate.get("review_minutes") or 0)
+            for estimate in (item.get("mastery_estimate") or {} for item in items)
+        )
+        projected_review_minutes = one_review_round_minutes * review_rounds
+        total_mastery_minutes = initial_learning_minutes + projected_review_minutes
+        if str(receipt.get("allocation_mode") or "").strip().casefold() == "system":
+            # Count only the dates in the original receipt window.  The
+            # capacity helper already applies weekdays, unavailable dates, and
+            # special-date overrides; extension days are deliberately ignored
+            # for this recommendation.
+            available_study_days = sum(
+                1
+                for day in calendar_capacities(receipt)
+                if int(day.get("capacity_minutes") or 0) > 0
+            )
+            rounding = SCHEDULING_POLICY.allocation_rounding_minutes
+            recommended = min(
+                SCHEDULING_POLICY.maximum_special_date_minutes,
+                max(
+                    SCHEDULING_POLICY.minimum_daily_minutes,
+                    math.ceil(total_mastery_minutes / max(1, available_study_days) / rounding)
+                    * rounding,
+                ),
+            )
+            receipt["daily_task_minutes"] = recommended
+            receipt["allocation"] = {
+                **dict(receipt.get("allocation") or {}),
+                "mode": "system",
+                "estimated_total_minutes": total_mastery_minutes,
+                "available_study_days": available_study_days,
+                "initial_learning_minutes": initial_learning_minutes,
+                "one_review_round_minutes": one_review_round_minutes,
+                "review_rounds": review_rounds,
+                "projected_review_minutes": projected_review_minutes,
+                "recommended_minutes_per_day": recommended,
+                "buffer_rate": 0,
+                "reason": (
+                    "完整首学一次与所选完整复习轮次合并计量后，"
+                    "平均分配到全部可学习日；首学结束当天可直接进入复习。"
+                ),
+            }
         calendar, unscheduled = schedule_by_capacity(
             items,
             receipt,
@@ -2593,8 +4580,53 @@ def _v1_preview_plan_orm(
         scheduled_days = [
             day
             for day in effective_calendar
-            if int(day.get("planned_task_minutes") or 0) > 0 or day.get("tasks")
+            if int(day.get("planned_task_minutes") or 0) > 0
+            or day.get("tasks")
+            or int(day.get("projected_review_task_minutes") or 0) > 0
+            or day.get("projected_review_items")
         ]
+        initial_tasks = [task for day in effective_calendar for task in day.get("tasks") or []]
+        review_tasks: list[dict[str, Any]] = []
+        for day in effective_calendar:
+            for review_item in day.get("projected_review_items") or []:
+                review_item = dict(review_item)
+                day_date = str(day.get("date") or "")
+                point_id = str(review_item.get("knowledge_point_id") or "")
+                review_round = max(1, int(review_item.get("review_round") or 0))
+                part_index = max(1, int(review_item.get("part_index") or 1))
+                task_id = "preview_review_task_" + hashlib.sha256(
+                    f"{preview_id}:{day_date}:{point_id}:{review_round}:{part_index}".encode("utf-8")
+                ).hexdigest()[:32]
+                minutes = max(1, int(review_item.get("projected_review_task_minutes") or 0))
+                review_tasks.append(
+                    {
+                        **review_item,
+                        "id": task_id,
+                        "day_date": day_date,
+                        "planned_task_minutes": minutes,
+                        "estimated_task_minutes": minutes,
+                        "completed_task_minutes": 0,
+                        "actual_elapsed_minutes": 0.0,
+                        "task_type": "review",
+                        "learning_phase": "review",
+                        "status": str(review_item.get("status") or "awaiting_initial_mastery"),
+                    }
+                )
+        all_preview_tasks = [*initial_tasks, *review_tasks]
+        feedback = {
+            "status": "extension_required" if requires_extension else "capacity_sufficient",
+            "message": (
+                "当前条件下容量不足；请确认顺延草案，或调整截止日、学习日和每日容量后重新预览。"
+                if requires_extension
+                else "当前条件下容量足够；确认后即可激活这份计划预览。"
+            ),
+            "actions": (
+                ["confirm_extension", "edit_schedule_and_repreview"]
+                if requires_extension
+                else ["activate_preview", "edit_schedule_and_repreview"]
+            ),
+            "recomputed_from_selected_conditions": bool(conditions_changed),
+        }
         plan = {
             "schema": "mentorflow.mastery-plan-preview.v1",
             "preview_id": preview_id,
@@ -2602,12 +4634,36 @@ def _v1_preview_plan_orm(
             "revision": int(revision.revision),
             "revision_id": str(revision.id),
             "status": "preview",
+            "draft": True,
+            "active_plan_untouched": True,
             "fingerprint": fingerprint,
-            "tasks": [task for day in effective_calendar for task in day.get("tasks") or []],
+            "receipt": receipt,
+            "allocation": dict(receipt.get("allocation") or {}),
+            "selected_conditions": {
+                key: receipt.get(key)
+                for key in _PREVIEW_RECEIPT_FIELDS
+                if key in receipt
+            },
+            "conditions_changed": bool(conditions_changed),
+            "tasks": all_preview_tasks,
+            "initial_tasks": initial_tasks,
+            "review_tasks": review_tasks,
+            "initial_learning_task_count": len(initial_tasks),
+            "review_task_count": len(review_tasks),
             "days": effective_calendar,
             "total_estimated_task_minutes": sum(
-                int(day.get("planned_task_minutes") or 0) for day in effective_calendar
+                int(day.get("planned_task_minutes") or 0)
+                + int(day.get("projected_review_task_minutes") or 0)
+                for day in effective_calendar
             ),
+            "initial_learning_minutes": initial_learning_minutes,
+            "initial_learning_task_minutes": sum(int(day.get("planned_task_minutes") or 0) for day in effective_calendar),
+            "one_review_round_minutes": one_review_round_minutes,
+            "projected_review_minutes": projected_review_minutes,
+            "projected_review_task_minutes": sum(int(day.get("projected_review_task_minutes") or 0) for day in effective_calendar),
+            "total_mastery_minutes": total_mastery_minutes,
+            "total_mastery_task_minutes": total_mastery_minutes,
+            "total_estimated_task_minutes_semantics": "initial_learning_plus_projected_reviews",
             "unscheduled_task_minutes": int(unscheduled),
             "review_rounds": review_rounds,
             "activation_blockers": unresolved_materials,
@@ -2625,6 +4681,7 @@ def _v1_preview_plan_orm(
                 "added_dates": added_dates,
                 "requires_confirmation": requires_extension,
             },
+            "feedback": feedback,
             "excluded_unconfirmed_relations": [
                 edge for edge in graph.get("edges") or []
                 if str(edge.get("relation") or "") in {"contains", "prerequisite"}
@@ -2669,7 +4726,11 @@ def _v1_preview_plan_orm(
                 status="preview",
                 is_current=False,
                 plan_snapshot=plan,
-                reason="staged knowledge-map preview",
+                reason=(
+                    "staged knowledge-map preview with recalculated capacity"
+                    if conditions_changed
+                    else "staged knowledge-map preview"
+                ),
                 idempotency_key=f"preview:{preview_id}",
             ))
             session.commit()
@@ -2722,6 +4783,7 @@ def _execution_task_snapshot(item: PlanExecutionTaskORM) -> dict[str, Any]:
         "planned_task_minutes": int(item.estimated_task_minutes),
         "estimated_task_minutes": int(item.estimated_task_minutes),
         "completed_task_minutes": int(item.completed_task_minutes or 0),
+        **active_teaching.task_completion_fields(item.completed_at),
         "actual_elapsed_minutes": float(item.actual_elapsed_minutes or 0),
         "status": item.status,
         "task_type": item.task_type,
@@ -2888,6 +4950,8 @@ def _v1_preview_material_change(
             history = dict(node.history or {})
             estimate = dict(history.get("mastery_estimate") or {})
             minutes = max(1, int(estimate.get("understand_minutes") or estimate.get("total_mastery_task_minutes") or 25))
+            node_title = str(node.label or node.semantic_key or node.node_id or "未命名概念")
+            node_summary = str(node.summary or "").strip() or node_title
             task_id = "material_addition_task_" + hashlib.sha256(
                 f"{current.plan_id}:{revision.id}:{node.node_id}".encode("utf-8")
             ).hexdigest()[:32]
@@ -2901,16 +4965,16 @@ def _v1_preview_material_change(
                     "original_day_date": "",
                     "day_index": 999999,
                     "task_order": 999999,
-                    "title": str(node.label),
-                    "objective": str(node.summary or "理解并应用该新增知识点"),
+                    "title": node_title,
+                    "objective": node_summary,
                     "source_evidence": evidence,
                     "acceptance_condition": str(history.get("acceptance_method") or "能够独立解释并应用"),
                     "concept_snapshot": {
                         "schema": "mentorflow.plan-concept-snapshot.v1",
                         "map_revision_id": revision.id,
                         "knowledge_point_id": node.node_id,
-                        "name": str(node.label),
-                        "explanation": str(node.summary or ""),
+                        "name": node_title,
+                        "explanation": node_summary,
                         "difficulty": str(history.get("difficulty") or "medium"),
                         "acceptance_method": str(history.get("acceptance_method") or ""),
                         "source_evidence": evidence,
@@ -2939,6 +5003,74 @@ def _v1_preview_material_change(
         receipt = _v1_json(receipt_row[0], {}) if receipt_row else dict((current.plan_snapshot or {}).get("receipt") or {})
         if not receipt.get("deadline"):
             active_teaching._error("RECEIPT_REQUIRED", "计划缺少截止日", 409)
+        review_rounds = max(
+            SCHEDULING_POLICY.minimum_review_rounds,
+            min(
+                SCHEDULING_POLICY.maximum_review_rounds,
+                int(receipt.get("review_rounds") or SCHEDULING_POLICY.default_review_rounds),
+            ),
+        )
+        # A material-change preview must carry the same initial-plus-review
+        # workload contract as a fresh canonical preview.  Existing execution
+        # rows (including their review rows) are preserved; only new nodes get
+        # deterministic projected review rows here.
+        node_by_id = {str(node.node_id): node for node in new_nodes}
+        for addition in list(additions):
+            node = node_by_id.get(str(addition.get("knowledge_point_id") or ""))
+            estimate = dict((node.history if node is not None else {}).get("mastery_estimate") or {})
+            initial_minutes = int(
+                estimate.get("initial_learning_minutes")
+                or sum(int(estimate.get(key) or 0) for key in ("understand_minutes", "recall_minutes", "guided_practice_minutes", "independent_application_minutes"))
+                or addition.get("planned_task_minutes")
+                or 1
+            )
+            addition["planned_task_minutes"] = max(1, initial_minutes)
+            addition["estimated_task_minutes"] = max(1, initial_minutes)
+            addition["initial_learning_minutes"] = max(1, initial_minutes)
+            review_minutes = int(estimate.get("one_review_round_minutes") or estimate.get("review_minutes") or 0)
+            review_round_values = list(estimate.get("review_round_minutes") or [])
+            # A source that only supplied an initial-learning estimate has no
+            # evidence-backed review workload yet.  Do not invent one-minute
+            # review tasks merely to satisfy the configured round count; the
+            # canonical fresh-plan scheduler follows the same rule.
+            if review_minutes <= 0 and not any(int(value or 0) > 0 for value in review_round_values):
+                continue
+            for review_round in range(1, review_rounds + 1):
+                minutes = int(review_round_values[review_round - 1]) if review_round - 1 < len(review_round_values) else review_minutes
+                minutes = max(1, minutes)
+                review_id = "material_addition_review_" + hashlib.sha256(
+                    f"{current.plan_id}:{revision.id}:{addition['knowledge_point_id']}:{review_round}".encode("utf-8")
+                ).hexdigest()[:32]
+                additions.append(
+                    {
+                        "id": review_id,
+                        "origin_task_id": str(addition.get("id") or ""),
+                        "knowledge_point_id": addition["knowledge_point_id"],
+                        "day_date": "",
+                        "original_day_date": "",
+                        "day_index": 999999,
+                        "task_order": 999999,
+                        "title": f"{addition.get('title') or addition['knowledge_point_id']} · 第 {review_round} 次间隔复习",
+                        "objective": "在不依赖答案或提示的情况下完成延迟复测。",
+                        "source_evidence": list(addition.get("source_evidence") or []),
+                        "acceptance_condition": str(addition.get("acceptance_condition") or "能够独立解释并应用"),
+                        "concept_snapshot": dict(addition.get("concept_snapshot") or {}),
+                        "planned_task_minutes": minutes,
+                        "estimated_task_minutes": minutes,
+                        "completed_task_minutes": 0,
+                        "actual_elapsed_minutes": 0.0,
+                        "status": "planned",
+                        "task_type": "review",
+                        "learning_phase": "review",
+                        "point_sequence": int(addition.get("point_sequence") or 0),
+                        "phase_part_index": 1,
+                        "phase_part_count": 1,
+                        "linked_review_item_id": "material_addition_review_item_" + review_id.rsplit("_", 1)[-1],
+                        "review_cycle": review_round,
+                        "not_before_date": None,
+                        "trigger_reason": "material-addition-review-projection",
+                    }
+                )
         today = date.today()
         calendar, additions, effective_deadline, unscheduled = _material_change_calendar(
             receipt=receipt,
@@ -2959,6 +5091,10 @@ def _v1_preview_material_change(
         # Preserve unscheduled rows in the snapshot so the desktop can explain
         # blockers without losing the proposed task identity.
         all_tasks.extend(task for task in additions if task.get("status") == "unscheduled")
+        initial_tasks = [task for task in all_tasks if str(task.get("task_type") or "initial_learning") != "review"]
+        review_tasks = [task for task in all_tasks if str(task.get("task_type") or "") == "review"]
+        initial_learning_minutes = sum(int(task.get("planned_task_minutes") or 0) for task in initial_tasks)
+        projected_review_minutes = sum(int(task.get("planned_task_minutes") or 0) for task in review_tasks)
         added_task_ids = [str(item["id"]) for item in additions]
         snapshot = {
             "schema": "mentorflow.material-change-preview.v1",
@@ -2972,9 +5108,20 @@ def _v1_preview_material_change(
             "material_ids": sorted(material_ids),
             "added_material_ids": sorted(material_ids),
             "tasks": all_tasks,
+            "initial_tasks": initial_tasks,
+            "review_tasks": review_tasks,
+            "initial_learning_task_count": len(initial_tasks),
+            "review_task_count": len(review_tasks),
             "days": calendar,
             "calendar": calendar,
             "total_estimated_task_minutes": sum(int(item.get("planned_task_minutes") or 0) for item in all_tasks),
+            "initial_learning_minutes": initial_learning_minutes,
+            "initial_learning_task_minutes": initial_learning_minutes,
+            "projected_review_minutes": projected_review_minutes,
+            "projected_review_task_minutes": projected_review_minutes,
+            "total_mastery_minutes": initial_learning_minutes + projected_review_minutes,
+            "total_mastery_task_minutes": initial_learning_minutes + projected_review_minutes,
+            "review_rounds": review_rounds,
             "unscheduled_task_minutes": sum(int(item.get("planned_task_minutes") or 0) for item in additions if item.get("status") == "unscheduled"),
             "totals": {
                 "estimated_minutes": sum(int(item.get("planned_task_minutes") or 0) for item in all_tasks),
@@ -3105,7 +5252,10 @@ def _v1_materialize_teaching_projection(
     planned_node_ids = {
         str(task.get("knowledge_point_id") or "")
         for day in snapshot.get("days") or []
-        for task in day.get("tasks") or []
+        for task in [
+            *(day.get("tasks") or []),
+            *(day.get("projected_review_items") or []),
+        ]
         if str(task.get("knowledge_point_id") or "")
     }
     if not planned_node_ids:
@@ -3156,7 +5306,20 @@ def _v1_materialize_teaching_projection(
         ),
     )
 
-    task_count = 0
+    # Activation is normally guarded by the activation-record status, but keep
+    # materialization itself idempotent as well.  This matters when an older
+    # caller retries after a transaction boundary: deterministic task IDs can
+    # be reused without creating duplicate execution rows or minutes.
+    existing_task_ids = {
+        str(item.id)
+        for item in session.scalars(
+            select(PlanExecutionTaskORM).where(
+                PlanExecutionTaskORM.plan_id == record.plan_id,
+            )
+        ).all()
+    }
+    materialized_task_ids = set(existing_task_ids)
+    initial_task_ids_by_point: dict[str, list[str]] = defaultdict(list)
     for day_index, day in enumerate(snapshot.get("days") or []):
         for task_order, task in enumerate(day.get("tasks") or [], start=1):
             canonical_node_id = str(task.get("knowledge_point_id") or "")
@@ -3169,6 +5332,9 @@ def _v1_materialize_teaching_projection(
                     f"{canonical_node_id}:{task.get('learning_phase')}:{task.get('phase_part_index')}"
                 ).encode("utf-8")
             ).hexdigest()[:32]
+            initial_task_ids_by_point.setdefault(canonical_node_id, []).append(task_id)
+            if task_id in materialized_task_ids:
+                continue
             history = dict(node.history or {})
             evidence = [
                 dict(item)
@@ -3218,12 +5384,121 @@ def _v1_materialize_teaching_projection(
                     phase_part_count=int(task.get("phase_part_count") or 1),
                 )
             )
-            task_count += 1
+            materialized_task_ids.add(task_id)
+
+    # ``projected_review_items`` are part of the canonical preview's workload,
+    # not display-only metadata.  Persist one ORM execution row per scheduled
+    # occurrence/segment so each configured review round has a stable,
+    # routable task identity and is counted exactly once.
+    for day_index, day in enumerate(snapshot.get("days") or []):
+        review_order = len(day.get("tasks") or []) + 1
+        for item in day.get("projected_review_items") or []:
+            canonical_node_id = str(item.get("knowledge_point_id") or "")
+            node = nodes.get(canonical_node_id)
+            if node is None:
+                raise ValueError("projected review references a node outside its knowledge-map revision")
+            review_round = max(1, int(item.get("review_round") or 0))
+            part_index = max(1, int(item.get("part_index") or 1))
+            part_count = max(part_index, int(item.get("part_count") or 1))
+            day_date = str(day.get("date") or expected_deadline)
+            review_key = (
+                f"{record.plan_id}:{day_date}:{canonical_node_id}:"
+                f"review:{review_round}:{part_index}"
+            )
+            task_id = "active_v1_review_task_" + hashlib.sha256(
+                review_key.encode("utf-8")
+            ).hexdigest()[:32]
+            linked_review_item_id = "active_v1_review_item_" + hashlib.sha256(
+                review_key.encode("utf-8")
+            ).hexdigest()[:32]
+            if task_id in materialized_task_ids:
+                review_order += 1
+                continue
+            history = dict(node.history or {})
+            evidence = [
+                dict(source)
+                for source in (node.source_refs or [])
+                if isinstance(source, dict)
+            ]
+            acceptance = str(
+                history.get("acceptance_method")
+                or "能够在不依赖答案或提示的情况下独立回忆并应用"
+            )
+            minutes = max(1, int(item.get("projected_review_task_minutes") or 0))
+            node_title = str(node.label or node.semantic_key or node.node_id or "未命名概念")
+            title = f"{node_title} · 第 {review_round} 次间隔复习"
+            if part_count > 1:
+                title += f"（{part_index}/{part_count}）"
+            origin_task_id = (
+                initial_task_ids_by_point.get(canonical_node_id) or [""]
+            )[-1]
+            session.add(
+                PlanExecutionTaskORM(
+                    id=task_id,
+                    plan_id=record.plan_id,
+                    workspace_id=workspace_id,
+                    map_revision_id=revision.id,
+                    knowledge_point_id=canonical_node_id,
+                    day_date=day_date,
+                    original_day_date=day_date,
+                    day_index=day_index,
+                    task_order=review_order,
+                    title=title,
+                    objective=(
+                        "在不依赖答案或提示的情况下完成延迟复测；"
+                        "只有独立通过才增加复习掌握证据。"
+                    ),
+                    source_evidence=evidence,
+                    acceptance_condition=acceptance,
+                    concept_snapshot={
+                        "schema": "mentorflow.plan-concept-snapshot.v1",
+                        "map_revision_id": revision.id,
+                        "knowledge_point_id": canonical_node_id,
+                        "name": node_title,
+                        "explanation": str(node.summary or ""),
+                        "difficulty": str(history.get("difficulty") or "medium"),
+                        "node_type": str(history.get("node_type") or node.kind or "concept"),
+                        "acceptance_method": acceptance,
+                        "source_evidence": evidence,
+                        "evidence_hash": evidence_fingerprint(evidence),
+                    },
+                    estimated_task_minutes=minutes,
+                    completed_task_minutes=0,
+                    actual_elapsed_minutes=0,
+                    status="planned",
+                    task_type="review",
+                    learning_phase="review",
+                    point_sequence=int(item.get("point_sequence") or 0),
+                    phase_part_index=part_index,
+                    phase_part_count=part_count,
+                    linked_review_item_id=linked_review_item_id,
+                    review_cycle=review_round,
+                    origin_task_id=origin_task_id,
+                    not_before_date=day_date,
+                    trigger_reason="mastery-plan-preview-projection",
+                )
+            )
+            materialized_task_ids.add(task_id)
+            review_order += 1
+    task_count = len(materialized_task_ids)
     if task_count == 0:
         active_teaching._error("ACTIVE_PLAN_EMPTY", "计划预览没有可执行任务", 409)
+    # Force pending ORM rows into the same unit of work before reporting the
+    # projection.  The sum is intentionally derived from execution rows rather
+    # than adding preview fields a second time, preventing review double-counts.
+    session.flush()
+    execution_task_minutes = sum(
+        int(item.estimated_task_minutes or 0)
+        for item in session.scalars(
+            select(PlanExecutionTaskORM).where(
+                PlanExecutionTaskORM.plan_id == record.plan_id,
+            )
+        ).all()
+    )
     return {
         "execution_plan_id": record.plan_id,
         "execution_task_count": task_count,
+        "execution_task_minutes": execution_task_minutes,
         "execution_projection": "orm-plan-execution.v1",
     }
 
@@ -3289,7 +5564,10 @@ def _v1_materialize_material_change_projection(
         if node is None and old is None:
             continue
         task_id = "active_material_change_task_" + hashlib.sha256(
-            f"{record.plan_id}:{origin_id}:{point_id}:{raw.get('day_date')}".encode("utf-8")
+            (
+                f"{record.plan_id}:{origin_id}:{point_id}:{raw.get('day_date')}:"
+                f"{raw.get('task_type')}:{raw.get('review_cycle')}:{raw.get('id')}"
+            ).encode("utf-8")
         ).hexdigest()[:32]
         history = dict((node.history if node is not None else {}) or {})
         evidence = list(raw.get("source_evidence") or (node.source_refs if node is not None else []) or [])
@@ -3321,6 +5599,7 @@ def _v1_materialize_material_change_projection(
                 concept_snapshot=dict(old.concept_snapshot if old is not None else raw.get("concept_snapshot") or {}),
                 estimated_task_minutes=int(old.estimated_task_minutes if old is not None else raw.get("planned_task_minutes") or 1),
                 completed_task_minutes=int(old.completed_task_minutes if old is not None else raw.get("completed_task_minutes") or 0),
+                completed_at=old.completed_at if old is not None else None,
                 actual_elapsed_minutes=float(old.actual_elapsed_minutes if old is not None else raw.get("actual_elapsed_minutes") or 0),
                 status=status,
                 task_type=str(old.task_type if old is not None else raw.get("task_type") or "initial_learning"),
@@ -3360,9 +5639,17 @@ def _v1_materialize_material_change_projection(
                 )
     if task_count == 0:
         active_teaching._error("ACTIVE_PLAN_EMPTY", "新增资料计划没有可执行任务", 409)
+    session.flush()
+    execution_task_minutes = sum(
+        int(item.estimated_task_minutes or 0)
+        for item in session.scalars(
+            select(PlanExecutionTaskORM).where(PlanExecutionTaskORM.plan_id == record.plan_id)
+        ).all()
+    )
     return {
         "execution_plan_id": record.plan_id,
         "execution_task_count": task_count,
+        "execution_task_minutes": execution_task_minutes,
         "execution_projection": "orm-plan-execution.v1",
         "preserved_task_count": len(old_rows),
         "mastery_history_preserved": True,
@@ -3381,7 +5668,20 @@ def _activate_mastery_plan_v1(
         if row is None:
             active_teaching._error("PLAN_PREVIEW_NOT_FOUND", "计划预览不存在", 404)
         if row.status == "active":
-            return {**(row.plan_snapshot or {}), "status": "active"}
+            # Idempotent activation is a successful no-op, but callers need a
+            # user-readable explanation rather than an indistinguishable
+            # silent repeat.  Keep the historical top-level status for clients
+            # that only inspect ``status`` and add explicit activation metadata.
+            return {
+                **(row.plan_snapshot or {}),
+                "status": "active",
+                "activation": {
+                    "status": "already_active",
+                    "no_op": True,
+                    "reason": "这份计划已经激活，无需重复操作。",
+                    "message": "当前计划未发生变化；如需调整条件，请先重新生成计划预览。",
+                },
+            }
         revision = session.scalar(select(KnowledgeMapRevisionORM).where(KnowledgeMapRevisionORM.id == str((row.plan_snapshot or {}).get("revision_id") or "")))
         if revision is None or not revision.is_current or revision.status not in {"active", "ready", "ready_with_review"}:
             active_teaching._error("KNOWLEDGE_MAP_REVISION_NOT_ACTIVE", "计划所依据的 revision 已不是 active", 409)
@@ -3400,6 +5700,20 @@ def _activate_mastery_plan_v1(
                 "当前容量需要顺延截止日，请先确认顺延草案",
                 409,
                 extension_draft=extension,
+            )
+        # A direct preview may have overlaid scheduling conditions without
+        # saving them first.  Commit that draft only at explicit activation so
+        # the previous receipt/plan stays untouched while the user reviews it.
+        activation_receipt = dict((row.plan_snapshot or {}).get("receipt") or {})
+        if activation_receipt:
+            activation_receipt["deadline"] = str(
+                extension.get("expected_completion_date")
+                or activation_receipt.get("deadline")
+                or date.today().isoformat()
+            )
+            session.connection().exec_driver_sql(
+                "UPDATE active_receipts SET payload=?,updated_at=? WHERE workspace_id=?",
+                (json.dumps(activation_receipt, ensure_ascii=False), _now(), workspace_id),
             )
         if str((row.plan_snapshot or {}).get("change_type") or "") == "material_addition.v1":
             base_plan_id = str((row.plan_snapshot or {}).get("base_plan_id") or row.previous_plan_id or "")
@@ -3510,6 +5824,105 @@ def _cancel_material_change_preview(workspace_id: str, preview_id: str) -> dict[
         return snapshot
 
 
+def _v1_mark_plan_stale_if_map_changed(
+    session: Any,
+    *,
+    workspace_id: str,
+    record: PlanActivationRecordORM,
+) -> dict[str, Any]:
+    """Compare an active plan with the current map without replacing it.
+
+    A map revision is immutable, so an active plan remains a valid last-good
+    snapshot after a newer map is activated.  Its execution pointer is marked
+    stale and the nearest unactivated preview is exposed for an explicit user
+    choice; no draft is silently activated here.
+    """
+
+    current_map = session.scalar(
+        select(KnowledgeMapRevisionORM)
+        .where(
+            KnowledgeMapRevisionORM.workspace_id == workspace_id,
+            KnowledgeMapRevisionORM.is_current.is_(True),
+            KnowledgeMapRevisionORM.status.in_(["active", "ready", "ready_with_review"]),
+        )
+        .order_by(desc(KnowledgeMapRevisionORM.revision))
+    )
+    snapshot = dict(record.plan_snapshot or {})
+    old_revision_id = str(snapshot.get("revision_id") or "")
+    old_revision = int(snapshot.get("revision") or record.plan_revision or 0)
+    map_changed = bool(
+        current_map is not None
+        and ((old_revision_id and old_revision_id != str(current_map.id)) or (not old_revision_id and old_revision != int(current_map.revision)))
+    )
+    plan_row = session.scalar(select(PlanORM).where(PlanORM.id == record.plan_id))
+    if map_changed:
+        if record.status == "active":
+            record.status = "stale"
+        if plan_row is not None:
+            plan_row.status = "stale"
+            plan_row.stale = True
+    old_estimate = {
+        "revision": old_revision,
+        "revision_id": old_revision_id,
+        "initial_learning_minutes": int(snapshot.get("initial_learning_minutes") or snapshot.get("initial_learning_task_minutes") or 0),
+        "projected_review_minutes": int(snapshot.get("projected_review_minutes") or snapshot.get("projected_review_task_minutes") or 0),
+        "total_estimated_task_minutes": int(snapshot.get("total_estimated_task_minutes") or 0),
+    }
+    pending_record = session.scalar(
+        select(PlanActivationRecordORM)
+        .where(
+            PlanActivationRecordORM.workspace_id == workspace_id,
+            PlanActivationRecordORM.status == "preview",
+            PlanActivationRecordORM.plan_id != record.plan_id,
+        )
+        .order_by(desc(PlanActivationRecordORM.created_at))
+    )
+    pending_snapshot = dict(pending_record.plan_snapshot or {}) if pending_record is not None else {}
+    pending_estimate = None
+    if pending_snapshot:
+        pending_allocation = dict(pending_snapshot.get("allocation") or {})
+        pending_estimate = {
+            "preview_id": str(pending_record.plan_id),
+            "revision": int(pending_snapshot.get("revision") or pending_record.plan_revision or 0),
+            "revision_id": str(pending_snapshot.get("revision_id") or ""),
+            "initial_learning_minutes": int(pending_snapshot.get("initial_learning_minutes") or pending_snapshot.get("initial_learning_task_minutes") or 0),
+            "projected_review_minutes": int(pending_snapshot.get("projected_review_minutes") or pending_snapshot.get("projected_review_task_minutes") or 0),
+            "total_estimated_task_minutes": int(pending_snapshot.get("total_estimated_task_minutes") or 0),
+            "allocation": pending_allocation,
+            "recommended_minutes_per_day": int(
+                pending_allocation.get("recommended_minutes_per_day")
+                or (pending_snapshot.get("receipt") or {}).get("daily_task_minutes")
+                or 0
+            ),
+            "available_study_days": int(pending_allocation.get("available_study_days") or 0),
+            "status": "preview",
+        }
+    if map_changed:
+        snapshot["status"] = "stale"
+        snapshot["stale"] = True
+        snapshot["stale_reason"] = "knowledge_map_revision_changed"
+        snapshot["stale_against_revision"] = int(current_map.revision) if current_map is not None else None
+        snapshot["stale_against_revision_id"] = str(current_map.id) if current_map is not None else ""
+        snapshot["old_plan_estimate"] = old_estimate
+        snapshot["pending_plan_estimate"] = pending_estimate
+        snapshot["estimate_comparison"] = {"old": old_estimate, "pending": pending_estimate}
+        record.plan_snapshot = snapshot
+    if map_changed or record.status == "stale":
+        session.commit()
+    return {
+        "stale": map_changed or record.status == "stale",
+        "stale_reason": "knowledge_map_revision_changed" if map_changed else ("knowledge_map_revision_changed" if record.status == "stale" else ""),
+        "plan_revision": old_revision,
+        "plan_revision_id": old_revision_id,
+        "current_map_revision": int(current_map.revision) if current_map is not None else None,
+        "current_map_revision_id": str(current_map.id) if current_map is not None else "",
+        "old_plan_estimate": old_estimate,
+        "pending_plan_estimate": pending_estimate,
+        "estimate_comparison": {"old": old_estimate, "pending": pending_estimate},
+        "plan_row_stale": bool(plan_row.stale) if plan_row is not None else bool(map_changed),
+    }
+
+
 @router.post("/workspaces/{workspace_id}/material-changes/{preview_id}/cancel")
 def cancel_material_change(workspace_id: str, preview_id: str) -> dict[str, Any]:
     return _cancel_material_change_preview(workspace_id, preview_id.strip())
@@ -3534,6 +5947,11 @@ def current_mastery_plan_v1(workspace_id: str) -> dict[str, Any]:
         )
         if record is None:
             active_teaching._error("ACTIVE_PLAN_NOT_FOUND", "当前没有已激活的规范计划", 404)
+        map_plan_state = _v1_mark_plan_stale_if_map_changed(
+            session,
+            workspace_id=workspace_id,
+            record=record,
+        )
         execution_rows = session.scalars(
             select(PlanExecutionTaskORM)
             .where(PlanExecutionTaskORM.plan_id == record.plan_id)
@@ -3550,6 +5968,7 @@ def current_mastery_plan_v1(workspace_id: str) -> dict[str, Any]:
                 "is_current": bool(record.is_current),
                 "plan_id": record.plan_id,
                 "activated_at": record.activated_at.isoformat() if record.activated_at else None,
+                **map_plan_state,
                 "execution_tasks": [
                     {
                         "id": item.id,
@@ -3563,15 +5982,23 @@ def current_mastery_plan_v1(workspace_id: str) -> dict[str, Any]:
                         "acceptance_condition": item.acceptance_condition,
                         "estimated_task_minutes": item.estimated_task_minutes,
                         "completed_task_minutes": item.completed_task_minutes,
+                        **active_teaching.task_completion_fields(item.completed_at),
                         "actual_elapsed_minutes": item.actual_elapsed_minutes,
                         "status": item.status,
                         "task_type": item.task_type,
                         "learning_phase": item.learning_phase,
+                        "point_sequence": item.point_sequence,
                         "phase_part_index": item.phase_part_index,
                         "phase_part_count": item.phase_part_count,
+                        "linked_review_item_id": item.linked_review_item_id,
+                        "review_cycle": item.review_cycle,
+                        "origin_task_id": item.origin_task_id,
+                        "not_before_date": item.not_before_date,
+                        "trigger_reason": item.trigger_reason,
                     }
                     for item in execution_rows
                 ],
+                "activity_by_day": _activity_by_day(session, record.plan_id),
             }
         )
         return snapshot

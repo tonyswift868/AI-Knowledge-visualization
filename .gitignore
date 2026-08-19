@@ -35,6 +35,8 @@ frontend/tsconfig.tsbuildinfo
 /node_modules/
 /.playwright-cli/
 /.pytest_cache/
+**/.pytest_cache/
+/CodexTemp*/
 /.tmp-ilspy/
 /.tmp-kks-*/
 /tmp_*.png

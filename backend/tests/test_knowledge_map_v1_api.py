@@ -309,9 +309,12 @@ def test_v1_orm_job_candidate_plan_and_last_good(migrated_api, monkeypatch):
         skipped_payload = skipped.json()
         assert skipped_payload["state"]["current_knowledge_point_id"] != point_before_skip
         assert skipped_payload["state"]["teacher_turn_v1"]["state"]["waiting_for_answer"] is True
-        assert skipped_payload["state"]["mastery_changed"] is False
-        assert skipped_payload["state"]["manual_skip_history"][-1]["mastery_changed"] is False
-        assert "不会计为教师验证掌握" in skipped_payload["messages"][-1]["content"]
+        assert skipped_payload["state"]["mastery_changed"] is True
+        assert skipped_payload["state"]["completion_origin"] == "self_attested"
+        assert skipped_payload["state"]["provider_verified"] is False
+        assert skipped_payload["state"]["self_attested_completion_evidence_id"]
+        assert "下面进入" in skipped_payload["messages"][-1]["content"]
+        assert "并非教师验证掌握" not in skipped_payload["messages"][-1]["content"]
 
         graph_before_discovery = client.get(
             "/api/active-teaching/workspaces/v1/knowledge-map",
@@ -404,13 +407,13 @@ def test_v1_orm_job_candidate_plan_and_last_good(migrated_api, monkeypatch):
                 "SELECT COUNT(*) FROM active_knowledge_points WHERE workspace_id=?",
                 ("v1",),
             ).fetchone()[0] == 0
-            manual_skip = connection.execute(
+            self_attested = connection.execute(
                 """SELECT event_type,passed FROM orm_plan_mastery_events
                    WHERE workspace_id=? ORDER BY occurred_at,id""",
                 ("v1",),
             ).fetchall()
-            assert [(row["event_type"], row["passed"]) for row in manual_skip] == [
-                ("manual_skip", 0)
+            assert [(row["event_type"], row["passed"]) for row in self_attested] == [
+                ("self_attested_completion", 1)
             ]
             independent_task = connection.execute(
                 """SELECT * FROM orm_plan_execution_tasks

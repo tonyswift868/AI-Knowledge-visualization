@@ -43,24 +43,6 @@ def _catalog_candidates() -> tuple[Path, ...]:
     return tuple(dict.fromkeys(path.resolve() for path in candidates))
 
 
-def _analogy_catalog_candidates() -> tuple[Path, ...]:
-    roots: list[Path] = []
-    frozen_root = getattr(sys, "_MEIPASS", None)
-    if frozen_root:
-        roots.append(Path(frozen_root))
-    source_root = Path(__file__).resolve().parents[1]
-    roots.extend((source_root, source_root / "package", Path.cwd()))
-    candidates: list[Path] = []
-    for root in roots:
-        candidates.extend(
-            (
-                root / "content" / "knowledge_cards" / "programmer_analogies.v1.json",
-                root / "package" / "content" / "knowledge_cards" / "programmer_analogies.v1.json",
-            )
-        )
-    return tuple(dict.fromkeys(path.resolve() for path in candidates))
-
-
 def _entries(payload: Any) -> Iterable[Any]:
     if isinstance(payload, list):
         return payload
@@ -129,46 +111,10 @@ def load_offline_facts(path: str | os.PathLike[str] | None = None) -> tuple[tupl
     return _FALLBACK_FACTS
 
 
-def load_programmer_analogies(
-    path: str | os.PathLike[str] | None = None,
-) -> tuple[tuple[str, str, str], ...]:
-    """Load the curated developer-term analogies used by the overview."""
-
-    candidates = (Path(path),) if path else _analogy_catalog_candidates()
-    for candidate in candidates:
-        try:
-            if not candidate.is_file():
-                continue
-            payload = json.loads(candidate.read_text(encoding="utf-8"))
-            return validate_catalog(payload, minimum=60)
-        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
-            continue
-    return (
-        (
-            "缓存 Cache",
-            "像把常用调料放在灶台边：先拿近处的副本，过期或缺货时才回仓库取。",
-            "MDN Web Docs · https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching",
-        ),
-        (
-            "Git 提交 Commit",
-            "像给工程现场拍一张带说明的存档照片：之后能回看这一刻，但照片不会替你收拾现场。",
-            "Git 官方文档 · https://git-scm.com/docs/gitglossary.html",
-        ),
-        (
-            "数据库事务 Transaction",
-            "像银行转账必须把扣款和入账装进同一个操作袋：要么一起成功，要么一起撤回。",
-            "PostgreSQL 文档 · https://www.postgresql.org/docs/current/tutorial-transactions.html",
-        ),
-    )
-
-
 OFFLINE_FACTS = load_offline_facts()
-PROGRAMMER_ANALOGIES = load_programmer_analogies()
 
 __all__ = [
     "OFFLINE_FACTS",
-    "PROGRAMMER_ANALOGIES",
     "load_offline_facts",
-    "load_programmer_analogies",
     "validate_catalog",
 ]

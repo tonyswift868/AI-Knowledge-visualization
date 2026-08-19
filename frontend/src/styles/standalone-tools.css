@@ -253,9 +253,9 @@ html[data-mf-standalone] body {
   min-width: 0;
   color: var(--tool-ink);
   background:
-    radial-gradient(circle at 92% -8%, rgba(239, 218, 194, .54), transparent 32rem),
-    radial-gradient(circle at 14% 10%, rgba(224, 237, 226, .38), transparent 28rem),
-    #f7f4ee;
+    radial-gradient(circle at 92% -8%, rgba(248, 215, 229, .58), transparent 32rem),
+    radial-gradient(circle at 12% 12%, rgba(255, 238, 211, .52), transparent 30rem),
+    linear-gradient(145deg, #fffaf7, #f8f1eb 64%, #fff3f7);
 }
 .standalone-tool-header,
 .standalone-tool-content { width: min(1160px, 100%); }
@@ -269,6 +269,7 @@ html[data-mf-standalone] body {
 .standalone-tool-content { margin-top: 22px; }
 .standalone-tool-content .casual-teacher-chat,
 .standalone-tool-content .planning-companion { margin-top: 0; }
+.standalone-tool-content .planning-companion__header { display: none; }
 .resource-download-card {
   border-color: #edc2d3;
   background: linear-gradient(145deg, #fffdfa, #fff0f5);
@@ -337,6 +338,9 @@ html[data-mf-standalone] body {
 .planning-companion__main {
   border-color: var(--tool-line);
   background: rgba(255, 253, 250, .9);
+}
+.planning-companion__portrait {
+  background: radial-gradient(circle at 50% 28%, #fff5cb 0, #ffe9f1 52%, #f4ede6 100%) !important;
 }
 .casual-teacher-chat__label,
 .casual-teacher-chat__setting,

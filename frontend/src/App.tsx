@@ -31,6 +31,7 @@ import {
   providerRequestContext,
   reconnectSavedProvider,
   request,
+  syncCurrentProviderSession,
 } from "./providerConnection";
 export { providerRequestContext, reconnectSavedProvider } from "./providerConnection";
 import { useNarrativeStore } from "./stores/useNarrativeStore";
@@ -168,6 +169,7 @@ export function App() {
   const [progress, setProgress] = useState<any>(null);
   const [toast, setToast] = useState("");
   const [activeCreateRequest, setActiveCreateRequest] = useState(0);
+  const [pendingPlannerFile, setPendingPlannerFile] = useState<File | null>(null);
   const [step, setStepState] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -238,6 +240,29 @@ export function App() {
       .catch(() => {});
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    let attempts = 0;
+    const retryDeadline = Date.now() + 6_000;
+    const sync = async () => {
+      const state = useMentorStore.getState();
+      if (cancelled || state.verified || state.provider === "fake" || state.mode === "demo") return;
+      attempts += 1;
+      try {
+        const current = await syncCurrentProviderSession();
+        if (current || cancelled) return;
+      } catch {
+        if (cancelled) return;
+      }
+      if (attempts < 12 && Date.now() < retryDeadline) timer = window.setTimeout(sync, 350);
+    };
+    void sync();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
     if (providerState.provider === "fake" || !providerState.credentialRef) return;
     const configKey = [
       providerState.provider,
@@ -247,12 +272,22 @@ export function App() {
     ].join("\n");
     if (!providerState.verified && autoConnectFailureRef.current === configKey) return;
     let cancelled = false;
-    reconnectSavedProvider()
+    (async () => {
+      // The native shell and this embedded page share the loopback backend,
+      // but not browser storage.  Prefer the shell's already verified handle
+      // before attempting to recreate a session from stale browser state.
+      const adopted = await syncCurrentProviderSession();
+      if (adopted || useMentorStore.getState().verified) return adopted;
+      return reconnectSavedProvider();
+    })()
       .then(() => {
         if (!cancelled) autoConnectFailureRef.current = "";
       })
       .catch((reason: any) => {
         if (cancelled) return;
+        // A slower reconnect must never invalidate a newer successful desktop
+        // adoption that completed while this request was in flight.
+        if (useMentorStore.getState().verified) return;
         autoConnectFailureRef.current = configKey;
         useMentorStore.getState().setLastError(
           `已保存配置，但自动连接失败：${reason?.message || "请检查 Provider 配置"}`,
@@ -477,6 +512,7 @@ export function App() {
     setPlan(null);
     setAssessment(null);
     setAllowExternalKnowledge(false);
+    setPendingPlannerFile(handoff.materialFile || null);
     setActiveCreateRequest((current) => current + 1);
     setTab("active");
     setStepState(0);
@@ -491,15 +527,26 @@ export function App() {
           try {
             localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify(handoff));
           } catch {
-            // The desktop shell can still reopen the task page; the handoff is optional storage.
+            // The finalization view can still continue in memory when browser
+            // storage is unavailable.
           }
-          window.location.href = "/";
         }}
       />
     );
   }
   if (standaloneTool === "casual") {
     return <StandaloneCasualTool workspaceId={ws?.id || ""} />;
+  }
+  if (standaloneTool === "progress") {
+    return (
+      <div className="standalone-tool standalone-tool--progress">
+        <header className="standalone-tool__header">
+          <span>学习检测</span>
+          <small>只读取当前计划的完成、掌握、复习与风险记录</small>
+        </header>
+        <Progress progress={progress} plan={plan} completed={completed} />
+      </div>
+    );
   }
   if (standaloneTool === "expedition") {
     return <StandaloneExpeditionTool />;
@@ -609,6 +656,7 @@ export function App() {
             <Home
               onCreate={() => {
                 setWs(null);
+                setPendingPlannerFile(null);
                 setAllowExternalKnowledge(false);
                 setPlan(null);
                 setAssessment(null);
@@ -682,6 +730,7 @@ export function App() {
             <ActiveTeachingChainView
               workspaceId={ws?.id || "general-learning"}
               createRequest={activeCreateRequest}
+              initialMaterialFile={pendingPlannerFile}
               onCreateRequestConsumed={() => setActiveCreateRequest(0)}
             />
           )}
@@ -719,25 +768,68 @@ function StandaloneCasualTool({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function StandalonePlannerTool({
+export function StandalonePlannerTool({
   workspaceId,
   onStartPlan,
 }: {
   workspaceId: string;
   onStartPlan: (handoff: PlannerHandoff) => void;
 }) {
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [finalizing, setFinalizing] = useState(() => {
+    try {
+      const handoff = JSON.parse(localStorage.getItem("mentorflow_planner_handoff_v1") || "null");
+      return Boolean(
+        (Array.isArray(handoff?.resources) && handoff.resources.length)
+        || handoff?.resource?.url
+        || handoff?.resource?.title,
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (finalizing) {
+    return (
+      <main className="standalone-tool-shell planner-finalize-shell" data-testid="standalone-planner-finalize">
+        <header className="standalone-tool-header">
+          <div>
+            <h1>完成计划设置</h1>
+            <p>资料已经选好。确认学习目标、开始日期和截止日期，然后生成知识地图与每日任务。</p>
+          </div>
+          <span className="standalone-tool-badge">第 3 步 · 创建计划</span>
+        </header>
+        <div className="standalone-tool-content">
+          <ActiveTeachingChainView
+            workspaceId={workspaceId}
+            createRequest={1}
+            initialMaterialFile={pendingFile}
+            compactPlannerFlow
+          />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="standalone-tool-shell">
       <header className="standalone-tool-header">
         <div>
-          <div className="eyebrow">MENTORFLOW · 学习规划</div>
-          <h1>创建计划</h1>
-          <p>需求 → 资料 → 计划：先说清目标，再确认资料候选，最后进入学习计划。</p>
+          <h1>先说说你想学什么</h1>
+          <p>告诉规划教师你的目标和时间；资料确认后，再进入学习计划。</p>
         </div>
-        <span className="standalone-tool-badge">需求驱动</span>
+        <span className="standalone-tool-badge">从目标开始</span>
       </header>
       <div className="standalone-tool-content">
-        <CasualTeacherChat workspaceId={workspaceId} mode="planner" onStartPlan={onStartPlan} />
+        <CasualTeacherChat
+          workspaceId={workspaceId}
+          mode="planner"
+          onStartPlan={(handoff) => {
+            onStartPlan(handoff);
+            setPendingFile(handoff.materialFile || null);
+            setFinalizing(true);
+          }}
+        />
       </div>
     </main>
   );

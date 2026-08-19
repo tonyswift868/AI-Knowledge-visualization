@@ -49,6 +49,25 @@ class MasteryEstimationPolicy(BaseModel):
     learner_level_factors: Mapping[str, float]
     phase_ratios: Mapping[str, float]
     phase_minimum_minutes: Mapping[str, int]
+    # v2 keeps all estimator coefficients in the file-backed policy.  These
+    # inputs deliberately describe evidence and learning work, not a domain
+    # or course title.
+    minutes_per_evidence_chunk: float = Field(ge=0)
+    minutes_per_material_unit: float = Field(ge=0)
+    minutes_per_structural_unit: float = Field(ge=0)
+    minutes_per_dependency_depth: float = Field(ge=0)
+    complexity_factors: Mapping[str, float]
+    novelty_factors: Mapping[str, float]
+    output_requirement_factors: Mapping[str, float]
+    mode_factors: Mapping[str, float]
+    review_round_ratio: float = Field(gt=0, lt=1)
+    subsequent_review_ratio: float = Field(gt=0, le=1)
+    provider_blend_weight: float = Field(ge=0, le=1)
+    provider_lower_bound_ratio: float = Field(gt=0, le=1)
+    provider_upper_bound_ratio: float = Field(gt=1)
+    uncertainty_base_ratio: float = Field(gt=0, lt=1)
+    uncertainty_volume_ratio: float = Field(ge=0, lt=1)
+    uncertainty_missing_input_ratio: float = Field(ge=0, lt=1)
 
 
 class SchedulingPolicy(BaseModel):
@@ -169,6 +188,17 @@ class ProviderPolicy(BaseModel):
     connect_timeout_seconds: float = Field(gt=0)
     write_timeout_seconds: float = Field(gt=0)
     pool_timeout_seconds: float = Field(gt=0)
+    life_analogy_timeout_seconds: float = Field(gt=0)
+    life_analogy_max_tokens: int = Field(gt=0)
+    life_analogy_history_limit: int = Field(ge=8, le=200)
+    life_analogy_formats: list[str] = Field(min_length=8)
+    life_analogy_humor_cues: list[str] = Field(min_length=5)
+    life_analogy_meme_cues: list[Mapping[str, str]] = Field(min_length=6)
+    life_analogy_scene_families: list[Mapping[str, Any]] = Field(min_length=8)
+    life_analogy_unfamiliar_actor_terms: list[str] = Field(min_length=4)
+    life_analogy_scene_forbidden_terms: list[str] = Field(min_length=8)
+    life_analogy_inanimate_actor_terms: list[str] = Field(min_length=8)
+    life_analogy_speech_verbs: list[str] = Field(min_length=4)
     default_knowledge_confidence: float = Field(ge=0, le=1)
 
 

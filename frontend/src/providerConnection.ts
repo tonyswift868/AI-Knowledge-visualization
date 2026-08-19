@@ -103,6 +103,81 @@ export function providerRequestContext(): Record<string, string> {
 
 let providerReconnectInFlight: Promise<any> | null = null;
 
+let currentProviderSyncInFlight: Promise<any> | null = null;
+
+const PROVIDER_SYNC_TIMEOUT_MS = 4_000;
+
+/**
+ * Adopt the verified process-local Provider handle exposed by the native
+ * desktop shell.  The embedded WebEngine has its own Zustand/localStorage
+ * state, so it cannot rely on the desktop's in-memory session directly.
+ *
+ * This endpoint only returns a session handle and a credential reference; the
+ * raw Provider credential is never accepted or copied into browser state.
+ */
+export function syncCurrentProviderSession(timeoutMs = PROVIDER_SYNC_TIMEOUT_MS): Promise<any> {
+  if (currentProviderSyncInFlight) return currentProviderSyncInFlight;
+  const initialState = useMentorStore.getState();
+  // Explicit Fake/Demo mode is intentionally local and must not be replaced by
+  // an unrelated desktop Provider session discovered on the shared backend.
+  if (initialState.provider === "fake" || initialState.mode === "demo") {
+    return Promise.resolve(null);
+  }
+  currentProviderSyncInFlight = (async () => {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        controller?.abort();
+        const error = new Error("模型连接同步超时，请稍候重试") as RequestError;
+        error.code = "PROVIDER_SESSION_SYNC_TIMEOUT";
+        error.status = 408;
+        reject(error);
+      }, Math.max(1, timeoutMs));
+    });
+    try {
+      const response = await Promise.race([
+        fetch(`${API}/provider-sessions/current`, {
+          headers: { "Content-Type": "application/json" },
+          signal: controller?.signal,
+        }),
+        timeoutPromise,
+      ]);
+      if (response.status === 404 || response.status === 428) return null;
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "模型连接同步失败");
+      const state = useMentorStore.getState();
+      if (state.provider === "fake" || state.mode === "demo") return null;
+      const rawProvider = String(data.provider || "openai-compatible");
+      const provider = rawProvider === "openai_compatible" ? "openai-compatible" : rawProvider;
+      if (
+        !["openai-compatible", "gemini", "claude"].includes(provider)
+        || data.verified !== true
+        || !String(data.provider_session_id || "").trim()
+      ) return null;
+      if (data.expires_at && new Date(String(data.expires_at)).getTime() <= Date.now()) return null;
+      const latency = Number(data.latency_ms);
+      state.setProviderSession({
+        providerSessionId: String(data.provider_session_id),
+        provider: provider as any,
+        baseUrl: String(data.base_url || state.baseUrl || ""),
+        model: String(data.model_reported || data.model_requested || state.model || ""),
+        credentialRef: String(data.credential_ref || state.credentialRef || "") || null,
+        verified: true,
+        expiresAt: data.expires_at || null,
+        latencyMs: Number.isFinite(latency) ? latency : null,
+        lastTestedAt: data.last_tested_at || null,
+      });
+      return data;
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
+  })().finally(() => {
+    currentProviderSyncInFlight = null;
+  });
+  return currentProviderSyncInFlight;
+}
+
 export function reconnectSavedProvider(): Promise<any> {
   if (providerReconnectInFlight) return providerReconnectInFlight;
   const state = useMentorStore.getState();

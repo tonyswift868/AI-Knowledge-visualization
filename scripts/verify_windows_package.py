@@ -252,7 +252,17 @@ def check_sqlite_root(data_root: Path, *, package_root: Path | None = None) -> d
     report: dict[str, Any] = {"root": str(data_root), "databases": 0, "errors": []}
     if not data_root.exists():
         return report
-    for candidate in sorted(data_root.rglob("*.db")) + sorted(data_root.rglob("*.sqlite")) + sorted(data_root.rglob("*.sqlite3")):
+    # A MentorFlow data root also contains immutable backups and disposable
+    # UI-review copies.  Those are deliberately historical and must not make a
+    # check of the *active* local databases fail.  When a standard root is
+    # supplied, inspect only its canonical ``data`` directory; callers may
+    # still pass that directory directly.
+    database_root = data_root / "data" if (data_root / "data").is_dir() else data_root
+    report["database_root"] = str(database_root)
+    candidates = []
+    for pattern in ("*.db", "*.sqlite", "*.sqlite3"):
+        candidates.extend(sorted(database_root.glob(pattern)))
+    for candidate in candidates:
         if not candidate.is_file() or candidate.name.endswith(("-wal", "-shm")):
             continue
         report["databases"] += 1
@@ -298,14 +308,21 @@ def smoke_launch(executable: Path, package_root: Path, *, seconds: float = 5.0) 
         }
     )
     process: subprocess.Popen[bytes] | None = None
+    stderr_file = None
+    stderr_path = temporary / "smoke-stderr.log"
     started = time.monotonic()
     try:
+        # Do not use PIPE here: Qt/WebEngine can emit enough startup diagnostics
+        # to fill the Windows pipe buffer before the GUI reaches its timed
+        # smoke exit, which looks like a hung application.  A bounded temporary
+        # file preserves diagnostics without back-pressure.
+        stderr_file = stderr_path.open("wb")
         process = subprocess.Popen(
             [str(executable)],
             cwd=str(package_root),
             env=environment,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=stderr_file,
         )
         # The native application owns the smoke duration and exits after its
         # health-controlled check.  Give it a bounded startup margin, but do
@@ -313,7 +330,10 @@ def smoke_launch(executable: Path, package_root: Path, *, seconds: float = 5.0) 
         result = process.wait(timeout=max(10.0, seconds + 8.0))
         if result == 0:
             return {"ok": True, "returncode": result, "elapsed": round(time.monotonic() - started, 2)}
-        stderr = (process.stderr.read(4096) if process.stderr else b"").decode(errors="replace").strip()
+        stderr_file.flush()
+        stderr_file.close()
+        stderr_file = None
+        stderr = stderr_path.read_bytes()[-4096:].decode(errors="replace").strip()
         return {"ok": False, "error": f"MentorFlow exited with code {result}: {stderr[-500:]}"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "MentorFlow did not complete its health-aware smoke exit before timeout"}
@@ -327,6 +347,8 @@ def smoke_launch(executable: Path, package_root: Path, *, seconds: float = 5.0) 
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        if stderr_file is not None:
+            stderr_file.close()
         shutil.rmtree(temporary, ignore_errors=True)
 
 

@@ -158,6 +158,53 @@ def test_validate_url_rejects_private_address(monkeypatch):
         validate_public_url('http://example.test')
 
 
+def test_validate_url_allows_proxy_fake_dns_only_with_loopback_proxy(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [
+            (socket.AF_INET, 0, 0, '', ('198.18.1.91', 0)),
+            (socket.AF_INET6, 0, 0, '', ('fdfe:dcba:9876::14e', 0, 0, 0)),
+        ],
+    )
+    monkeypatch.setenv('HTTPS_PROXY', 'http://127.0.0.1:7897')
+    assert validate_public_url('https://example.test').hostname == 'example.test'
+
+
+def test_validate_url_rejects_proxy_fake_dns_without_local_proxy(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [(socket.AF_INET, 0, 0, '', ('198.18.1.91', 0))],
+    )
+    monkeypatch.delenv('HTTPS_PROXY', raising=False)
+    monkeypatch.delenv('https_proxy', raising=False)
+    monkeypatch.delenv('ALL_PROXY', raising=False)
+    monkeypatch.delenv('all_proxy', raising=False)
+    with pytest.raises(ValueError):
+        validate_public_url('https://example.test')
+
+
+def test_validate_url_still_rejects_literal_private_target_with_proxy(monkeypatch):
+    monkeypatch.setenv('HTTPS_PROXY', 'http://127.0.0.1:7897')
+    with pytest.raises(ValueError):
+        validate_public_url('https://127.0.0.1/private')
+
+
+def test_validate_url_rejects_mixed_fake_and_private_dns(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [
+            (socket.AF_INET, 0, 0, '', ('198.18.1.91', 0)),
+            (socket.AF_INET, 0, 0, '', ('10.0.0.5', 0)),
+        ],
+    )
+    monkeypatch.setenv('HTTPS_PROXY', 'http://127.0.0.1:7897')
+    with pytest.raises(ValueError):
+        validate_public_url('https://example.test')
+
+
 def test_fetch_cleans_html_and_uses_user_agent(monkeypatch):
     class Response:
         status_code = 200
@@ -202,6 +249,44 @@ def test_openai_provider_parses_response(monkeypatch):
     async def request(*args, **kwargs): return SimpleNamespace(status_code=200, json=lambda: {'choices': [{'message': {'content': 'ok'}}]})
     p = OpenAICompatibleProvider('https://provider.test', 'm', 'secret'); p.request = request
     assert asyncio.run(p.text([{'role': 'user', 'content': 'hi'}])) == 'ok'
+
+
+def test_deepseek_compact_json_disables_thinking_and_caps_output():
+    captured = {}
+
+    async def request(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                'model': 'deepseek-v4-flash',
+                'choices': [
+                    {
+                        'finish_reason': 'stop',
+                        'message': {'content': '{"title":"袜子开会"}'},
+                    }
+                ],
+            },
+        )
+
+    provider = OpenAICompatibleProvider(
+        'https://api.deepseek.com/v1',
+        'deepseek-v4-flash',
+        'secret',
+    )
+    provider.request = request
+    result = asyncio.run(
+        provider.compact_json(
+            [{'role': 'user', 'content': 'hi'}],
+            max_tokens=480,
+            temperature=0.65,
+        )
+    )
+
+    assert result == {'title': '袜子开会'}
+    assert captured['json']['max_tokens'] == 480
+    assert captured['json']['response_format'] == {'type': 'json_object'}
+    assert captured['json']['thinking'] == {'type': 'disabled'}
 
 
 def test_gemini_provider_parses_response():

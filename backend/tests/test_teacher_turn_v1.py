@@ -15,6 +15,7 @@ from app.teacher_turn_v1 import (
     manual_skip_transition,
     merge_provider_expression,
     record_actual_elapsed,
+    self_attested_completion_transition,
     transition_after_answer,
     turn_from_dict,
 )
@@ -151,6 +152,19 @@ def test_manual_skip_is_not_mastery_and_elapsed_does_not_touch_estimate():
     assert skipped["completed_as_mastered"] is False
     assert elapsed["actual_elapsed_minutes"] == 5
     assert elapsed["estimated_task_minutes"] == 45
+
+
+def test_self_attested_completion_is_completed_and_mastered_without_waiting():
+    state = self_attested_completion_transition(
+        {**build_teacher_turn(concept=_concept()).state, "estimated_task_minutes": 45}
+    )
+
+    assert state["status"] == "completed"
+    assert state["phase"] == "self_attested_completion"
+    assert state["completion_origin"] == "self_attested"
+    assert state["provider_verified"] is False
+    assert state["mastery_changed"] is True
+    assert state["completed_as_mastered"] is True
 
 
 def test_turn_payload_is_json_round_trippable_and_html_is_not_raw():

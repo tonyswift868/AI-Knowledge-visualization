@@ -289,12 +289,51 @@ export async function uploadActiveMaterial(workspaceId: string, file: File) {
 
 export async function uploadActiveUrlMaterial(
   workspaceId: string,
-  resource: { url: string; title?: string },
+  resource: {
+    url: string;
+    title?: string;
+    find_additional_materials?: boolean;
+    selected_candidate_ids?: string[];
+    selected_candidate_urls?: string[];
+    confirm_transcript?: boolean;
+    confirm_supplement_only?: boolean;
+  },
 ) {
   return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/materials/url`, {
     method: "POST",
     body: JSON.stringify(resource),
   }, 60_000);
+}
+
+export async function searchVideoSupplementaryMaterials(
+  workspaceId: string,
+  resource: { url: string; title?: string; query?: string },
+) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/materials/video/search`, {
+    method: "POST",
+    body: JSON.stringify({
+      ...resource,
+      find_additional_materials: true,
+    }),
+  }, 60_000);
+}
+
+export async function ingestVideoMaterial(
+  workspaceId: string,
+  resource: {
+    url: string;
+    title?: string;
+    find_additional_materials: boolean;
+    selected_candidate_ids?: string[];
+    selected_candidate_urls?: string[];
+    confirm_transcript?: boolean;
+    confirm_supplement_only?: boolean;
+  },
+) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/materials/video/ingest`, {
+    method: "POST",
+    body: JSON.stringify(resource),
+  }, 90_000);
 }
 
 export async function uploadActiveTeachingAttachment(

@@ -632,6 +632,31 @@ def manual_skip_transition(state: Mapping[str, Any]) -> dict[str, Any]:
     return next_state
 
 
+def self_attested_completion_transition(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Complete the current teaching point by learner attestation.
+
+    This is deliberately separate from :func:`manual_skip_transition`:
+    an explicit learner assertion completes and masters the point immediately.
+    The origin remains auditable without creating a second UI workflow.
+    """
+
+    next_state = dict(state)
+    next_state.update(
+        {
+            "phase": "self_attested_completion",
+            "status": "completed",
+            "waiting_for_answer": False,
+            "self_attested_completion": True,
+            "completion_origin": "self_attested",
+            "provider_verified": False,
+            "mastery_changed": True,
+            "completed_as_mastered": True,
+            "last_answer_passed": True,
+        }
+    )
+    return next_state
+
+
 def record_actual_elapsed(state: Mapping[str, Any], elapsed_minutes: Any) -> dict[str, Any]:
     """Accumulate actual activity only; estimated task minutes are immutable."""
 
@@ -796,6 +821,7 @@ __all__ = [
     "explicit_preferences_from_orm",
     "explicit_preferences_from_receipt",
     "manual_skip_transition",
+    "self_attested_completion_transition",
     "merge_provider_expression",
     "persist_teacher_turn",
     "record_actual_elapsed",

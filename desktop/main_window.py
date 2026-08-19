@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import json
+import hashlib
 import os
 import math
+import re
+from urllib.parse import urlparse
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, QPoint, QPointF, QRect
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PySide6.QtCore import QDate, QSettings, Qt, QTimer, QUrl, QPoint, QPointF, QRect, QSize, Signal
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPen, QPolygonF, QTextCharFormat
 from PySide6.QtNetwork import QNetworkCookie
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
+    QApplication,
     QDialog,
+    QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -26,6 +32,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -40,12 +47,12 @@ from PySide6.QtWidgets import (
 from .api import ApiError, DesktopApi
 from .knowledge_map_view import KnowledgeMapView
 from .materials_page import MaterialsPage
-from .plans_page import PlansPage
+from .plans_page import PlanCalendar, PlansPage, flattened_tasks
 from .classroom_page import ClassroomPage
 from .system_page import SystemPage
-from .facts import PROGRAMMER_ANALOGIES
 from .official_feed import OfficialFeedService, OfficialUpdate
 from .version import version_display
+from .web_links import install_external_link_handler
 from backend.app.credential_store import CredentialStoreError, store_secret
 
 
@@ -57,6 +64,29 @@ TASK_THEMES = {
     "lavender": {"label": "薰衣草紫", "background": "#f4efff", "accent": "#8068b7", "symbol": "✧"},
     "mint": {"label": "薄荷青", "background": "#eaf8f6", "accent": "#3b9a91", "symbol": "❋"},
 }
+
+
+class ClickableCard(QFrame):
+    """A keyboard and mouse accessible card used for user-owned actions."""
+
+    activated = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.activated.emit()
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.activated.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class TaskCardWidget(QFrame):
@@ -78,8 +108,9 @@ class TaskCardWidget(QFrame):
     ) -> None:
         super().__init__()
         self.setObjectName("taskCard")
-        self.setMinimumHeight(112)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(124)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.apply_theme(theme)
         outer = QHBoxLayout(self)
         outer.setContentsMargins(15, 12, 12, 12)
@@ -98,7 +129,9 @@ class TaskCardWidget(QFrame):
         heading.addWidget(icon)
         title_label = QLabel(title)
         title_label.setObjectName("taskCardTitle")
-        title_label.setWordWrap(False)
+        title_label.setMinimumWidth(0)
+        title_label.setWordWrap(True)
+        title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         title_label.setToolTip(title)
         heading.addWidget(title_label, 1)
         status_label = QLabel(status)
@@ -144,6 +177,50 @@ class TaskCardWidget(QFrame):
             f"background: transparent; }} QLabel#taskCardStatus {{ color: {theme['accent']}; "
             f"font-weight: 700; background: transparent; }}"
         )
+
+
+class ResponsiveCardList(QListWidget):
+    """Keep embedded cards fitted to the live viewport, including after resize.
+
+    ``QListWidgetItem.setSizeHint(widget.sizeHint())`` freezes the width that a
+    card happened to request when it was first rendered.  That is why a card
+    generated in a wide window remained wide after the learner resized the
+    application.  Recompute the row width from the current viewport instead.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # Embedded cards must never force a second, horizontal scrolling lane.
+        # The viewport already accounts for the vertical bar, so rows are
+        # sized to that live width and the list keeps only the useful vertical
+        # scroll affordance.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self.fit_cards_to_viewport)
+
+    def fit_cards_to_viewport(self) -> None:
+        viewport_width = max(0, self.viewport().width())
+        # QListWidget's item margin and frame can otherwise make an embedded
+        # card a handful of pixels wider than the viewport. Keep a small
+        # breathing gap while preserving the minimum usable card width.
+        width = max(220, viewport_width - 12)
+        if viewport_width and width > viewport_width:
+            width = viewport_width
+        for row in range(self.count()):
+            item = self.item(row)
+            card = self.itemWidget(item)
+            if card is None:
+                continue
+            card.setMinimumWidth(0)
+            card.setMaximumWidth(width)
+            card.resize(width, card.height())
+            height = max(124, card.minimumSizeHint().height(), card.sizeHint().height())
+            item.setSizeHint(QSize(width, height))
+        self.updateGeometries()
 
 
 class SpotlightTutorial(QWidget):
@@ -216,8 +293,25 @@ class SpotlightTutorial(QWidget):
 
     def _position_card(self) -> None:
         target = self._target_rect()
-        width = min(self.card.maximumWidth(), max(420, self.width() - 80))
-        self.card.resize(width, self.card.sizeHint().height())
+        # Keep the guide inside the overlay at the supported minimum size and
+        # on high-DPI displays where font metrics can make the natural card
+        # wider than the available viewport.
+        available_width = max(1, self.width() - 40)
+        if not self.isVisible():
+            # The constructor runs before the overlay receives its parent
+            # geometry.  Keep a usable provisional size until showEvent.
+            width = min(self.card.maximumWidth(), max(420, self.card.sizeHint().width()))
+        else:
+            width = min(self.card.maximumWidth(), max(280, available_width))
+        natural_height = self.card.sizeHint().height()
+        if not self.isVisible():
+            # A hidden child reports the default 30px parent height; do not
+            # collapse the card while waiting for the real overlay resize.
+            height = max(160, natural_height)
+        else:
+            available_height = max(1, self.height() - 40)
+            height = min(natural_height, available_height)
+        self.card.resize(width, height)
         candidates = (
             QPoint(max(30, target.left()), target.bottom() + 24),
             QPoint(max(30, target.left()), target.top() - self.card.height() - 24),
@@ -274,6 +368,10 @@ class SpotlightTutorial(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPolygon(QPolygonF([QPointF(end), QPointF(left), QPointF(right)]))
 
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        self._position_card()
+
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._position_card()
@@ -308,12 +406,36 @@ class MainWindow(QMainWindow):
     DEEPSEEK_BASE_URL = "https://api.deepseek.com"
     DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
 
+    @classmethod
+    def _normalized_provider_model(cls, base_url: str, model: str) -> str:
+        """Upgrade only DeepSeek's retired aliases; preserve every custom provider model."""
+
+        host = (urlparse(str(base_url)).hostname or "").casefold()
+        value = str(model or "").strip()
+        if host == "api.deepseek.com" and value.casefold() in {
+            "deepseek-chat",
+            "deepseek-reasoner",
+        }:
+            return cls.DEEPSEEK_FLASH_MODEL
+        return value
+
     def __init__(self, api: DesktopApi, user: dict, origin: str):
         super().__init__()
         self.api = api
         self.user = user
         self.origin = origin
         self.settings = QSettings("MentorFlow", "MentorFlow")
+        analogy_policy_version = "v12"
+        if str(self.settings.value("analogy/generation_policy", "") or "") != analogy_policy_version:
+            # Old accepted cards may predate arithmetic and meme-safety gates.
+            # Start the new sequence once so the first buffered card exercises
+            # the current safe-meme contract instead of reviving stale output.
+            self.settings.setValue("analogy/generation_policy", analogy_policy_version)
+            self.settings.setValue("analogy/variation_counter", -1)
+            self.settings.remove("analogy/latest_card")
+            self.settings.remove("analogy/prefetched_card")
+            self.settings.remove("analogy/card_library")
+            self.settings.sync()
         self.provider_session_id = ""
         self._fact_index = 0
         self._tutorial_overlay: SpotlightTutorial | None = None
@@ -323,7 +445,40 @@ class MainWindow(QMainWindow):
             max_workers=1,
             thread_name_prefix="mentorflow-official-updates",
         )
+        self._analogy_executor = ThreadPoolExecutor(
+            max_workers=3,
+            thread_name_prefix="mentorflow-life-analogy",
+        )
         self._official_refresh_future: Future[list[OfficialUpdate]] | None = None
+        self._personalized_rank_future: Future[dict] | None = None
+        self._analogy_prefetch_future: Future[dict] | None = None
+        self._analogy_prefetch_futures: set[Future[dict]] = set()
+        self._analogy_prefetch_context = ""
+        self._analogy_prefetch_generation = 0
+        self._analogy_prefetch_retry_count = 0
+        self._analogy_click_pending = False
+        self._analogy_button_feedback = ""
+        self._analogy_button_feedback_token = 0
+        self._provider_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mentorflow-provider")
+        self._provider_connect_future: Future[dict] | None = None
+        self._news_ai_ranked = False
+        self._life_example: dict[str, str] = self._load_cached_life_example()
+        self._analogy_recent_cards = self._load_recent_analogy_cards()
+        self._analogy_card_library = self._load_analogy_card_library()
+        self._analogy_library_cursor = 0
+        loaded_prefetch = self._load_prefetched_life_examples()
+        self._analogy_prefetch_queue: list[dict[str, object]] = loaded_prefetch
+        self._analogy_prefetched = loaded_prefetch[0] if loaded_prefetch else {}
+        self._workspace_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mentorflow-workspaces")
+        self._workspace_refresh_future: Future[list[dict]] | None = None
+        self._workspace_refresh_token = 0
+        self._overview_workspace_future: Future[list[dict]] | None = None
+        self._overview_workspace_token = 0
+        self._workspace_cache: dict[bool, list[dict]] = {}
+        self._overview_plan_future: Future[dict] | None = None
+        self._overview_plan_token = 0
+        self._workspace_action_future: Future[dict] | None = None
+        self._workspace_action_context: dict[str, object] = {}
         self.setWindowTitle("MentorFlow")
         self.resize(1480, 940)
         self.setMinimumSize(1100, 720)
@@ -331,6 +486,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(shell)
         layout = QHBoxLayout(shell)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -350,7 +506,6 @@ class MainWindow(QMainWindow):
             ("资料管理", 3),
             ("原生课堂", 5),
             ("创建计划", 6),
-            ("学习远征", 7),
             ("模型连接", 8),
             (settings_label, 9),
             ("更多工具", 10),
@@ -407,11 +562,10 @@ class MainWindow(QMainWindow):
         if os.getenv("MENTORFLOW_DISABLE_PROVIDER_AUTORESTORE", "") != "1":
             QTimer.singleShot(0, self._restore_provider)
         QTimer.singleShot(250, self._maybe_start_tutorial)
-        QTimer.singleShot(0, self._load_cached_official_updates)
-        self._fact_timer = QTimer(self)
-        self._fact_timer.setInterval(60_000)
-        self._fact_timer.timeout.connect(self._next_fact)
-        self._fact_timer.start()
+        # Recommendations change only after an explicit user action.  There is
+        # intentionally no timer and no network request during normal launch.
+        self._official_updates = self._official_feed_service.load_cached()
+        self._render_fact()
 
     def _page(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -506,22 +660,772 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if self._tutorial_overlay is not None:
             self._tutorial_overlay.setGeometry(self.rect())
+        QTimer.singleShot(0, self._sync_overview_geometry)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._official_executor.shutdown(wait=False, cancel_futures=True)
+        self._analogy_executor.shutdown(wait=False, cancel_futures=True)
+        self._provider_executor.shutdown(wait=False, cancel_futures=True)
+        self._workspace_executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
 
     def _next_fact(self) -> None:
-        self._fact_index = (self._fact_index + 1) % len(PROGRAMMER_ANALOGIES)
+        keywords = str(
+            self.settings.value("analogy/keywords", "")
+            or self.settings.value("news/interests", "")
+            or ""
+        ).strip()
+        if not keywords:
+            self._open_news_preferences()
+            return
+        if not getattr(self, "provider_session_id", ""):
+            # Keep the action usable even before a provider is connected, but
+            # explain the next step in learner-facing language.
+            self._set_analogy_button_feedback("先连接模型", 900)
+            return
+        # The click path is deliberately local-only. A ready card swaps in
+        # immediately; otherwise remember the intent and let the hidden
+        # one-slot request serve it as soon as it completes.
+        if self._consume_analogy_prefetch():
+            self._set_analogy_button_feedback("已换一张", 650)
+            return
+        # A learner can click faster than any remote model can answer.  Cycle
+        # through already generated, context-matched cards immediately while
+        # the hidden refill continues; never make repeated clicks wait on the
+        # network after the first small library has been built.
+        if self._consume_analogy_library():
+            self._set_analogy_button_feedback("已换一张", 650)
+            if hasattr(self, "_analogy_executor"):
+                self._schedule_analogy_prefetch()
+            return
+        pending_futures = set(getattr(self, "_analogy_prefetch_futures", set()))
+        pending = any(not future.done() for future in pending_futures) or bool(
+            getattr(self, "_analogy_prefetch_future", None)
+            and not self._analogy_prefetch_future.done()
+        )
+        context = self._analogy_context_key()
+        if pending and str(getattr(self, "_analogy_prefetch_context", "")) == context:
+            self._analogy_click_pending = True
+            self._set_analogy_button_feedback("正在加载…", 900)
+            return
+        # Lightweight callers can be created without the runtime executor;
+        # request the hidden refill when the real window is available.
+        self._analogy_click_pending = True
+        self._set_analogy_button_feedback("正在加载…", 900)
+        if hasattr(self, "_analogy_executor"):
+            self._schedule_analogy_prefetch()
+
+    def _set_analogy_button_feedback(self, text: str, duration_ms: int = 800) -> None:
+        """Show brief, non-technical feedback without disabling the action."""
+
+        if not hasattr(self, "next_fact_button"):
+            return
+        self._analogy_button_feedback_token = int(
+            getattr(self, "_analogy_button_feedback_token", 0)
+        ) + 1
+        token = self._analogy_button_feedback_token
+        self._analogy_button_feedback = str(text or "")
+        self.next_fact_button.setText(self._analogy_button_feedback or "换一张")
+
+        def clear_feedback() -> None:
+            if token != int(getattr(self, "_analogy_button_feedback_token", 0)):
+                return
+            self._analogy_button_feedback = ""
+            self._update_analogy_button_state()
+
+        QTimer.singleShot(max(0, int(duration_ms)), clear_feedback)
+
+    def _load_recent_analogy_cards(self) -> list[dict[str, str]]:
+        """Load structured long-term memory used to prevent concept/template repetition."""
+
+        raw = str(self.settings.value("analogy/recent_cards", "") or "")
+        try:
+            values = json.loads(raw) if raw else []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            values = []
+        if not isinstance(values, list):
+            return []
+        records: list[dict[str, str]] = []
+        for value in values[-48:]:
+            if isinstance(value, dict):
+                record = {
+                    field: str(value.get(field) or "").strip()[:500]
+                    for field in (
+                        "summary",
+                        "concept_key",
+                        "concept_label",
+                        "mechanism",
+                        "format_key",
+                        "scene_family",
+                        "situation_key",
+                        "mechanism_tag",
+                        "style_mode",
+                        "meme_key",
+                        "scene_signature",
+                    )
+                }
+            else:
+                # Preserve old cards as avoidance evidence, but never display
+                # the obsolete cached card after the v3 contract upgrade.
+                record = {
+                    "summary": str(value or "").strip()[:500],
+                    "concept_key": "",
+                    "concept_label": "",
+                    "mechanism": "",
+                    "format_key": "",
+                    "scene_family": "",
+                    "situation_key": "",
+                    "mechanism_tag": "",
+                    "style_mode": "",
+                    "meme_key": "",
+                    "scene_signature": "",
+                }
+            if record["summary"]:
+                records.append(record)
+        return records[-48:]
+
+    def _load_cached_life_example(self) -> dict[str, str]:
+        """Restore the last good card so refresh never leaves a blank panel."""
+
+        raw = str(self.settings.value("analogy/latest_card", "") or "")
+        try:
+            value = json.loads(raw) if raw else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            value = {}
+        if not isinstance(value, dict):
+            return {}
+        if value.get("schema") != "mentorflow.life-analogy.v7":
+            return {}
+        card = {
+            field: str(value.get(field) or "").strip()
+            for field in ("title", "analogy", "takeaway")
+        }
+        return card if card["title"] and card["analogy"] else {}
+
+    def _remember_life_example(
+        self,
+        card: dict[str, object],
+        memory: dict[str, object] | None = None,
+    ) -> None:
+        cached_card = {
+            field: str(card.get(field) or "").strip()
+            for field in ("title", "analogy", "takeaway")
+        }
+        if cached_card["title"] and cached_card["analogy"]:
+            self.settings.setValue(
+                "analogy/latest_card",
+                json.dumps(
+                    {"schema": "mentorflow.life-analogy.v7", **cached_card},
+                    ensure_ascii=False,
+                ),
+            )
+        summary = "｜".join(
+            str(card.get(field) or "").strip()
+            for field in ("title", "analogy", "takeaway")
+            if str(card.get(field) or "").strip()
+        )[:260]
+        if not summary:
+            return
+        memory = memory or {}
+        record = {
+            "summary": summary,
+            "concept_key": str(memory.get("concept_key") or "").strip()[:80],
+            "concept_label": str(memory.get("concept_label") or "").strip()[:80],
+            "mechanism": str(memory.get("mechanism") or "").strip()[:240],
+            "format_key": str(memory.get("format_key") or "").strip()[:80],
+            "scene_family": str(memory.get("scene_family") or "").strip()[:80],
+            "situation_key": str(memory.get("situation_key") or "").strip()[:80],
+            "mechanism_tag": str(memory.get("mechanism_tag") or "").strip()[:80],
+            "style_mode": str(memory.get("style_mode") or "").strip()[:40],
+            "meme_key": str(memory.get("meme_key") or "").strip()[:80],
+            "scene_signature": str(memory.get("scene_signature") or "").strip()[:160],
+        }
+        recent_cards = list(getattr(self, "_analogy_recent_cards", []))
+        self._analogy_recent_cards = [
+            value
+            for value in recent_cards
+            if value.get("summary") != summary
+        ][-47:] + [record]
+        self.settings.setValue(
+            "analogy/recent_cards",
+            json.dumps(self._analogy_recent_cards, ensure_ascii=False),
+        )
+        self.settings.sync()
+
+    def _analogy_context_key(self) -> str:
+        payload = {
+            "keywords": str(
+                self.settings.value("analogy/keywords", "")
+                or self.settings.value("news/interests", "")
+                or ""
+            ).strip(),
+            "base_url": str(self.settings.value("provider/base_url", "") or "").strip(),
+            "model": str(self.settings.value("provider/model", "") or "").strip(),
+            "contract": "mentorflow.life-analogy.v11",
+        }
+        return hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    def _load_prefetched_life_examples(self) -> list[dict[str, object]]:
+        raw = str(self.settings.value("analogy/prefetched_card", "") or "")
+        try:
+            value = json.loads(raw) if raw else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        if not isinstance(value, dict):
+            return []
+        if value.get("schema") == "mentorflow.life-analogy.prefetch.v5":
+            candidates = value.get("items") if isinstance(value.get("items"), list) else []
+        elif value.get("schema") == "mentorflow.life-analogy.prefetch.v4":
+            candidates = [value]
+        else:
+            return []
+        context = self._analogy_context_key()
+        accepted: list[dict[str, object]] = []
+        for candidate in candidates[:3]:
+            if not isinstance(candidate, dict) or str(candidate.get("context") or "") != context:
+                continue
+            result = candidate.get("result")
+            card = result.get("card") if isinstance(result, dict) else None
+            if (
+                isinstance(card, dict)
+                and str(card.get("title") or "").strip()
+                and str(card.get("analogy") or "").strip()
+                and str(card.get("takeaway") or "").strip()
+            ):
+                accepted.append(candidate)
+        return accepted
+
+    def _load_analogy_card_library(self) -> list[dict[str, object]]:
+        """Load reusable provider cards for zero-wait repeated browsing."""
+
+        raw = str(self.settings.value("analogy/card_library", "") or "")
+        try:
+            value = json.loads(raw) if raw else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        if not isinstance(value, dict) or value.get("schema") != "mentorflow.life-analogy.library.v1":
+            return []
+        context = self._analogy_context_key()
+        accepted: list[dict[str, object]] = []
+        for candidate in value.get("items") or []:
+            if not isinstance(candidate, dict) or str(candidate.get("context") or "") != context:
+                continue
+            result = candidate.get("result")
+            card = result.get("card") if isinstance(result, dict) else None
+            if isinstance(card, dict) and all(
+                str(card.get(field) or "").strip()
+                for field in ("title", "analogy", "takeaway")
+            ):
+                accepted.append(candidate)
+        return accepted[-12:]
+
+    def _persist_analogy_card_library(self) -> None:
+        library = list(getattr(self, "_analogy_card_library", []))[-12:]
+        if not library:
+            self.settings.remove("analogy/card_library")
+            return
+        self.settings.setValue(
+            "analogy/card_library",
+            json.dumps(
+                {"schema": "mentorflow.life-analogy.library.v1", "items": library},
+                ensure_ascii=False,
+            ),
+        )
+
+    def _remember_analogy_library_item(self, item: dict[str, object]) -> None:
+        result = item.get("result") if isinstance(item, dict) else None
+        card = result.get("card") if isinstance(result, dict) else None
+        if not isinstance(card, dict):
+            return
+        memory = result.get("memory") if isinstance(result, dict) else None
+        concept_key = str((memory or {}).get("concept_key") or "").strip().casefold()
+        signature = "\u241f".join(
+            str(card.get(field) or "").strip() for field in ("title", "analogy", "takeaway")
+        )
+        library = list(getattr(self, "_analogy_card_library", []))
+        if concept_key and any(
+            str(
+                ((((candidate.get("result") or {}).get("memory") or {}).get("concept_key")) or "")
+            ).strip().casefold()
+            == concept_key
+            for candidate in library
+        ):
+            return
+        library = [
+            candidate
+            for candidate in library
+            if "\u241f".join(
+                str(((candidate.get("result") or {}).get("card") or {}).get(field) or "").strip()
+                for field in ("title", "analogy", "takeaway")
+            ) != signature
+        ]
+        library.append(item)
+        self._analogy_card_library = library[-12:]
+        self._persist_analogy_card_library()
+
+    def _consume_analogy_library(self) -> bool:
+        library = list(getattr(self, "_analogy_card_library", []))
+        if not library:
+            return False
+        current_signature = "\u241f".join(
+            str(self._life_example.get(field) or "").strip()
+            for field in ("title", "analogy", "takeaway")
+        )
+        start = int(getattr(self, "_analogy_library_cursor", 0)) % len(library)
+        for offset in range(len(library)):
+            index = (start + offset) % len(library)
+            candidate = library[index]
+            if str(candidate.get("context") or "") != self._analogy_context_key():
+                continue
+            result = candidate.get("result")
+            card = result.get("card") if isinstance(result, dict) else None
+            if not isinstance(card, dict):
+                continue
+            signature = "\u241f".join(
+                str(card.get(field) or "").strip()
+                for field in ("title", "analogy", "takeaway")
+            )
+            if not signature.strip("\u241f") or signature == current_signature:
+                continue
+            self._analogy_library_cursor = (index + 1) % len(library)
+            self._life_example = {
+                field: str(card.get(field) or "").strip()
+                for field in ("title", "analogy", "takeaway")
+            }
+            self._render_fact()
+            self._update_analogy_button_state()
+            return True
+        return False
+
+    def _load_prefetched_life_example(self) -> dict[str, object]:
+        """Compatibility accessor for focused callers that expect one buffered card."""
+
+        values = self._load_prefetched_life_examples()
+        return values[0] if values else {}
+
+    def _persist_analogy_prefetch_queue(self) -> None:
+        queue = list(getattr(self, "_analogy_prefetch_queue", []))[:3]
+        if queue:
+            self.settings.setValue(
+                "analogy/prefetched_card",
+                json.dumps(
+                    {"schema": "mentorflow.life-analogy.prefetch.v5", "items": queue},
+                    ensure_ascii=False,
+                ),
+            )
+        else:
+            self.settings.remove("analogy/prefetched_card")
+        self.settings.sync()
+
+    def _clear_analogy_prefetch(self) -> None:
+        self._analogy_prefetch_generation = int(getattr(self, "_analogy_prefetch_generation", 0)) + 1
+        futures = set(getattr(self, "_analogy_prefetch_futures", set()))
+        legacy_future = getattr(self, "_analogy_prefetch_future", None)
+        if legacy_future is not None:
+            futures.add(legacy_future)
+        for future in futures:
+            if not future.done():
+                future.cancel()
+        personalized_future = getattr(self, "_personalized_rank_future", None)
+        if personalized_future is not None and not personalized_future.done():
+            personalized_future.cancel()
+        self._analogy_prefetch_future = None
+        self._analogy_prefetch_futures = set()
+        self._personalized_rank_future = None
+        self._analogy_prefetch_context = ""
+        self._analogy_prefetch_retry_count = 0
+        self._analogy_click_pending = False
+        self._analogy_prefetched = {}
+        self._analogy_prefetch_queue = []
+        self._analogy_card_library = []
+        self._analogy_library_cursor = 0
+        self.settings.remove("analogy/prefetched_card")
+        self.settings.remove("analogy/card_library")
+        self.settings.sync()
+        self._update_analogy_button_state()
+
+    def _next_analogy_seed(self) -> int:
+        variation_seed = int(self.settings.value("analogy/variation_counter", 0) or 0) + 1
+        self.settings.setValue("analogy/variation_counter", variation_seed)
+        self.settings.sync()
+        return variation_seed
+
+    def _generate_life_analogy_resilient(
+        self,
+        provider_session_id: str,
+        keywords: str,
+        recent_cards: list[dict[str, str]],
+        variation_seed: int,
+    ) -> dict:
+        """Fill one buffer slot without turning one slow draft into a 90-second wait."""
+
+        last_error: Exception | None = None
+        for _attempt in range(1):
+            try:
+                result = self.api.generate_life_analogy(
+                    provider_session_id,
+                    keywords,
+                    recent_cards=recent_cards,
+                    # Retry the same requested card contract. Provider sampling
+                    # may vary the draft, but the requested meme and style must
+                    # not silently change after a rejected attempt.
+                    variation_seed=variation_seed,
+                )
+                card = result.get("card") if isinstance(result, dict) else None
+                if (
+                    not isinstance(card, dict)
+                    or not str(card.get("title") or "").strip()
+                    or not str(card.get("analogy") or "").strip()
+                    or not str(card.get("takeaway") or "").strip()
+                ):
+                    raise RuntimeError("life analogy response missing card")
+                return result
+            except Exception as exc:  # worker boundary; UI handles only final failure
+                last_error = exc
+        raise last_error or RuntimeError("life analogy generation failed")
+
+    def _schedule_analogy_prefetch(self) -> None:
+        keywords = str(
+            self.settings.value("analogy/keywords", "")
+            or self.settings.value("news/interests", "")
+            or ""
+        ).strip()
+        context = self._analogy_context_key()
+        if not keywords or not getattr(self, "provider_session_id", ""):
+            self._update_analogy_button_state()
+            return
+        if not hasattr(self, "_analogy_executor"):
+            # Lightweight callers/tests may construct the window without the
+            # runtime executor; leave the existing card untouched.
+            self._update_analogy_button_state()
+            return
+        queue = list(getattr(self, "_analogy_prefetch_queue", []))
+        queue = [item for item in queue if str(item.get("context") or "") == context][:3]
+        self._analogy_prefetch_queue = queue
+        self._analogy_prefetched = queue[0] if queue else {}
+        futures = {
+            future
+            for future in set(getattr(self, "_analogy_prefetch_futures", set()))
+            if not future.done()
+        }
+        self._analogy_prefetch_futures = futures
+        if str(getattr(self, "_analogy_prefetch_context", "") or context) != context:
+            for future in futures:
+                future.cancel()
+            futures = set()
+            self._analogy_prefetch_futures = futures
+            self._analogy_prefetch_generation = int(
+                getattr(self, "_analogy_prefetch_generation", 0)
+            ) + 1
+        generation = int(getattr(self, "_analogy_prefetch_generation", 0))
+        self._analogy_prefetch_context = context
+        # Keep three ready cards, with at most three Provider requests in
+        # flight.  Filling the whole buffer in one background wave prevents a
+        # learner from consuming the only ready card before the second request
+        # has even started.
+        # This is a buffer, not authored content: every card still comes from
+        # the verified Provider and the same generic quality contract.
+        while len(queue) + len(futures) < 3 and len(futures) < 3:
+            future = self._analogy_executor.submit(
+                self._generate_life_analogy_resilient,
+                self.provider_session_id,
+                keywords,
+                list(self._analogy_recent_cards),
+                self._next_analogy_seed(),
+            )
+            futures.add(future)
+            self._analogy_prefetch_futures = futures
+            self._analogy_prefetch_future = next(iter(futures), None)
+            QTimer.singleShot(
+                80,
+                lambda current=future: self._poll_analogy_prefetch(
+                    generation, context, current
+                ),
+            )
+        self._update_analogy_button_state()
+
+    def _poll_analogy_prefetch(
+        self,
+        generation: int,
+        context: str,
+        polled_future: Future[dict] | None = None,
+    ) -> None:
+        # A context switch can leave an already queued Qt callback behind.
+        # Reject that callback before it can inspect or clear the replacement
+        # future belonging to the new context.
+        if (
+            generation != int(getattr(self, "_analogy_prefetch_generation", 0))
+            or context != self._analogy_context_key()
+        ):
+            return
+        future = polled_future or getattr(self, "_analogy_prefetch_future", None)
+        if future is None:
+            return
+        tracked_futures = set(getattr(self, "_analogy_prefetch_futures", set()))
+        # A queued Qt callback may arrive after another callback already
+        # consumed this Future.  Treat it as stale so one Provider result can
+        # never be inserted twice or trigger an extra refill request.
+        if polled_future is not None and future not in tracked_futures:
+            return
+        if not future.done():
+            QTimer.singleShot(
+                80,
+                lambda: self._poll_analogy_prefetch(generation, context, future),
+            )
+            return
+        futures = tracked_futures
+        futures.discard(future)
+        self._analogy_prefetch_futures = futures
+        self._analogy_prefetch_future = next(iter(futures), None)
+        try:
+            result = future.result()
+            card = result.get("card") if isinstance(result, dict) else None
+            if (
+                not isinstance(card, dict)
+                or not str(card.get("title") or "").strip()
+                or not str(card.get("analogy") or "").strip()
+                or not str(card.get("takeaway") or "").strip()
+            ):
+                raise RuntimeError("life analogy response missing card")
+        except Exception:
+            # Keep the last good card (or the normal empty card) visible while
+            # retrying the hidden slot.  Never paint a technical error here.
+            self._render_fact()
+            self._update_analogy_button_state()
+            retries = int(getattr(self, "_analogy_prefetch_retry_count", 0)) + 1
+            self._analogy_prefetch_retry_count = retries
+            if hasattr(self, "_analogy_executor"):
+                # Provider output can occasionally miss the quality gate.
+                # Refill stays invisible and uses bounded backoff; after six
+                # consecutive failures it pauses for one minute instead of
+                # creating a tight paid-request loop.
+                delay_ms = 60_000 if retries >= 6 else min(15_000, 900 * (2 ** min(retries - 1, 4)))
+                if retries >= 6:
+                    self._analogy_prefetch_retry_count = 0
+                QTimer.singleShot(delay_ms, self._schedule_analogy_prefetch)
+            return
+        self._analogy_prefetch_retry_count = 0
+        prefetched: dict[str, object] = {
+            "schema": "mentorflow.life-analogy.prefetch.v4",
+            "context": context,
+            "result": result,
+        }
+        queue = list(getattr(self, "_analogy_prefetch_queue", []))
+        memory = result.get("memory") if isinstance(result, dict) else None
+        concept_key = str((memory or {}).get("concept_key") or "").strip().casefold()
+        reserved_keys = {
+            str(
+                (((candidate.get("result") or {}).get("memory") or {}).get("concept_key") or "")
+            ).strip().casefold()
+            for candidate in queue + list(getattr(self, "_analogy_card_library", []))
+            if isinstance(candidate, dict)
+        }
+        if concept_key and concept_key in reserved_keys:
+            # Parallel prefetch requests can independently choose the same
+            # concept.  Do not expose duplicate cards; refill that slot with a
+            # new seed in the background.
+            QTimer.singleShot(0, self._schedule_analogy_prefetch)
+            return
+        if len(queue) < 3:
+            queue.append(prefetched)
+        self._analogy_prefetch_queue = queue
+        self._analogy_prefetched = queue[0] if queue else {}
+        self._persist_analogy_prefetch_queue()
+        self._update_analogy_button_state()
+        if getattr(self, "_analogy_click_pending", False):
+            self._analogy_click_pending = False
+            # Consume on the next event turn so the worker callback remains
+            # short and the visible card swaps without a foreground wait.
+            QTimer.singleShot(0, self._consume_pending_analogy_prefetch)
+        else:
+            QTimer.singleShot(0, self._schedule_analogy_prefetch)
+
+    def _consume_pending_analogy_prefetch(self) -> None:
+        if self._consume_analogy_prefetch():
+            self._set_analogy_button_feedback("已换一张", 650)
+        else:
+            self._set_analogy_button_feedback("暂时保留这一张", 900)
+
+    def _consume_analogy_prefetch(self) -> bool:
+        queue = list(getattr(self, "_analogy_prefetch_queue", []))
+        prefetched = queue[0] if queue else getattr(self, "_analogy_prefetched", {})
+        if not prefetched or str(prefetched.get("context") or "") != self._analogy_context_key():
+            return False
+        result = prefetched.get("result")
+        card = result.get("card") if isinstance(result, dict) else None
+        memory = result.get("memory") if isinstance(result, dict) else None
+        if (
+            not isinstance(card, dict)
+            or not str(card.get("title") or "").strip()
+            or not str(card.get("analogy") or "").strip()
+            or not str(card.get("takeaway") or "").strip()
+        ):
+            return False
+        self._analogy_click_pending = False
+        if queue:
+            queue.pop(0)
+        self._analogy_prefetch_queue = queue
+        self._analogy_prefetched = queue[0] if queue else {}
+        self._analogy_prefetch_retry_count = 0
+        self._persist_analogy_prefetch_queue()
+        self._remember_analogy_library_item(prefetched)
+        self._remember_life_example(card, memory if isinstance(memory, dict) else {})
+        self._life_example = {
+            "title": str(card.get("title") or ""),
+            "analogy": str(card.get("analogy") or ""),
+            "takeaway": str(card.get("takeaway") or ""),
+        }
         self._render_fact()
+        self._update_analogy_button_state()
+        QTimer.singleShot(0, self._schedule_analogy_prefetch)
+        return True
+
+    def _has_valid_analogy_prefetch(self) -> bool:
+        queue = list(getattr(self, "_analogy_prefetch_queue", []))
+        prefetched = queue[0] if queue else getattr(self, "_analogy_prefetched", {})
+        if not isinstance(prefetched, dict) or str(prefetched.get("context") or "") != self._analogy_context_key():
+            return False
+        result = prefetched.get("result")
+        card = result.get("card") if isinstance(result, dict) else None
+        return bool(
+            isinstance(card, dict)
+            and str(card.get("title") or "").strip()
+            and str(card.get("analogy") or "").strip()
+            and str(card.get("takeaway") or "").strip()
+        )
+
+    def _update_analogy_button_state(self) -> None:
+        if hasattr(self, "next_fact_button"):
+            keywords = str(
+                self.settings.value("analogy/keywords", "")
+                or self.settings.value("news/interests", "")
+                or ""
+            ).strip()
+            # The action is always available: with no keywords it opens the
+            # preferences, with no provider it explains the next step, and
+            # with a pending hidden card it records the learner's intent.
+            self.next_fact_button.setEnabled(True)
+            if not str(getattr(self, "_analogy_button_feedback", "") or ""):
+                self.next_fact_button.setText("换一张")
+        if hasattr(self, "analogy_loading_status"):
+            # Prefetching is an implementation detail.  Keep the inline status
+            # permanently quiet so loading/retry/provider errors never leak
+            # into the visible life card.
+            self.analogy_loading_status.clear()
+            self.analogy_loading_status.setVisible(False)
+
+    def _set_analogy_busy(self, busy: bool, message: str = "") -> None:
+        """Compatibility shim; provider work never disables the next action."""
+        self._update_analogy_button_state()
+        if hasattr(self, "next_fact_button"):
+            self.next_fact_button.setEnabled(True)
+            if busy:
+                self._set_analogy_button_feedback("正在加载…", 900)
+        if hasattr(self, "analogy_loading_status"):
+            # Keep provider details out of the life card; button feedback is
+            # sufficient for this local interaction.
+            self.analogy_loading_status.clear()
+            self.analogy_loading_status.setVisible(False)
 
     def _render_fact(self) -> None:
         if not hasattr(self, "offline_fact_title"):
             return
-        title, body, attribution = PROGRAMMER_ANALOGIES[self._fact_index]
-        self.offline_fact_title.setText(title)
-        self.offline_fact_body.setText(body)
-        self.offline_fact_source.setText(attribution)
+        keywords = str(
+            self.settings.value("analogy/keywords", "")
+            or self.settings.value("news/interests", "")
+            or ""
+        ).strip()
+        if not keywords:
+            self.offline_fact_title.setText("把绕口的概念，换成好懂的生活画面")
+            self.offline_fact_body.setText("点“设置”写下你最近觉得有点绕的词；这里只展示轻松的小例子，不展示你填了什么。")
+            self.offline_fact_source.setText("")
+            self._current_fact_url = ""
+            self.fact_source_button.setVisible(False)
+            self._update_analogy_button_state()
+            return
+        if self._life_example:
+            self.offline_fact_title.setText(str(self._life_example.get("title") or "生活小剧场"))
+            self.offline_fact_body.setText(str(self._life_example.get("analogy") or ""))
+            takeaway = str(self._life_example.get("takeaway") or "").strip()
+            self.offline_fact_source.setText(takeaway)
+            self._current_fact_url = ""
+            self.fact_source_button.setVisible(False)
+            self._update_analogy_button_state()
+            return
+        self.offline_fact_title.setText("准备一张生活小卡片")
+        self.offline_fact_body.setText(
+            "连接模型后点“换一张”，我会把难懂的说法换成生活里的小场景。"
+            if not self.provider_session_id
+            else "准备好下一张后，点“换一张”即可更换。"
+        )
+        self.offline_fact_source.setText("")
+        self._current_fact_url = ""
+        self.fact_source_button.setVisible(False)
+        self._update_analogy_button_state()
+
+    def _preferred_updates(self) -> list[OfficialUpdate]:
+        interests = str(self.settings.value("news/interests", "") or "").strip().casefold()
+        blocked = str(self.settings.value("news/blocked", "") or "").strip().casefold()
+        blocked_terms = [value for value in re.split(r"[，,、\s]+", blocked) if value]
+        interest_terms = [value for value in re.split(r"[，,、\s]+", interests) if value]
+        allowed = [
+            item for item in self._official_updates
+            if not any(term in f"{item.title} {item.publisher}".casefold() for term in blocked_terms)
+        ]
+        matched = [
+            item for item in allowed
+            if any(term in f"{item.title} {item.publisher}".casefold() for term in interest_terms)
+        ]
+        return allowed if self._news_ai_ranked else matched
+
+    def _open_news_preferences(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("生活类比设置")
+        dialog.setMinimumWidth(520)
+        box = QVBoxLayout(dialog)
+        title = QLabel("最近哪些词让你觉得有点绕？")
+        title.setObjectName("sectionHeading")
+        box.addWidget(title)
+        hint = QLabel(
+            "写几个词或一句话就行。卡片会围绕这些主题换成一个生活化比喻，"
+            "但不会在概览里原样列出你的设置。"
+        )
+        hint.setWordWrap(True)
+        box.addWidget(hint)
+        interests = QLineEdit(str(
+            self.settings.value("analogy/keywords", "")
+            or self.settings.value("news/interests", "")
+            or ""
+        ))
+        interests.setPlaceholderText("例如：写下几个你想换种方式理解的词")
+        box.addWidget(interests)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("保存并生成")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("取消")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        box.addWidget(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        value = interests.text().strip()
+        if not value:
+            QMessageBox.information(self, "还差一步", "请至少填写一个你关注的方向。")
+            return
+        self.settings.setValue("analogy/keywords", value)
+        self.settings.sync()
+        self._clear_analogy_prefetch()
+        self._render_fact()
+        if self.provider_session_id:
+            self._rank_updates_with_provider()
+        else:
+            QMessageBox.information(self, "还没有连接模型", "设置已经保存。连接模型后，点“换一张”即可生成生活小卡片。")
+
+    def _open_current_fact_source(self) -> None:
+        url = str(getattr(self, "_current_fact_url", "") or "")
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
 
     def _load_cached_official_updates(self) -> None:
         self._official_updates = self._official_feed_service.load_cached()
@@ -570,21 +1474,85 @@ class MainWindow(QMainWindow):
         self._render_official_updates()
         self.system_page.set_official_update_busy(False, status)
 
-    def _render_official_updates(self) -> None:
-        if not hasattr(self, "official_updates_list"):
+    def _rank_updates_with_provider(self) -> None:
+        keywords = str(
+            self.settings.value("analogy/keywords", "")
+            or self.settings.value("news/interests", "")
+            or ""
+        ).strip()
+        if not keywords or not getattr(self, "provider_session_id", ""):
+            self._render_fact()
             return
-        self.official_updates_list.clear()
-        for item in self._official_updates[:12]:
-            self.official_updates_list.addItem(
-                f"{item.publisher} · {item.published}\n{item.title}\n{item.link}"
-            )
-        self.official_updates_status.setText(self._official_feed_service.last_status)
+        # Settings changes may request a new hidden buffer, but unlike the
+        # click path this is not a card transition and never touches the
+        # foreground labels.
+        self._schedule_analogy_prefetch()
+
+    def _poll_personalized_rank(
+        self,
+        generation: int | None = None,
+        context: str | None = None,
+    ) -> None:
+        """Poll the retired foreground request slot as a hidden prefetch.
+
+        Older callers/tests may still populate ``_personalized_rank_future``;
+        keep that slot safe by routing it through the same buffer validator
+        instead of ever replacing the visible card directly.
+        """
+        future = getattr(self, "_personalized_rank_future", None)
+        if future is None:
+            return
+        if generation is None:
+            generation = int(getattr(self, "_analogy_prefetch_generation", 0))
+        if context is None:
+            context = self._analogy_context_key()
+        if (
+            generation != int(getattr(self, "_analogy_prefetch_generation", 0))
+            or context != self._analogy_context_key()
+        ):
+            return
+        if not future.done():
+            QTimer.singleShot(80, lambda: self._poll_personalized_rank(generation, context))
+            return
+        self._personalized_rank_future = None
+        self._analogy_prefetch_future = future
+        self._analogy_prefetch_futures = set(
+            getattr(self, "_analogy_prefetch_futures", set())
+        ) | {future}
+        self._analogy_prefetch_context = context
+        self._poll_analogy_prefetch(generation, context, future)
+
+    def _render_official_updates(self) -> None:
+        self._fact_index = 0
+        self._render_fact()
 
     def _overview(self) -> QWidget:
-        page, layout = self._page(
-            "你好，" + self.user["display_name"],
-            "这里是你的学习总览：正在进行什么、已经完成多少，以及今天最适合先做哪一步。",
-        )
+        page = QWidget()
+        page_root = QVBoxLayout(page)
+        page_root.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        self.overview_scroll = scroll
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        self.overview_content = content
+        content.setMinimumWidth(0)
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout = QVBoxLayout(content)
+        self.overview_content_layout = layout
+        layout.setContentsMargins(38, 24, 38, 18)
+        layout.setSpacing(10)
+        heading = QLabel("你好，" + self.user["display_name"])
+        heading.setObjectName("pageHeading")
+        layout.addWidget(heading)
+        subtitle = QLabel("这里是你的学习总览：正在进行什么、已经完成多少，以及今天最适合先做哪一步。")
+        subtitle.setObjectName("pageSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+        layout.addSpacing(8)
+        scroll.setWidget(content)
+        page_root.addWidget(scroll)
         cards = QHBoxLayout()
         cards.setSpacing(12)
         cards_container = QFrame()
@@ -597,7 +1565,6 @@ class MainWindow(QMainWindow):
             ("space", account_card),
             ("active", ("进行中任务", "读取中")),
             ("progress", ("已完成学习项", "读取中")),
-            ("next", ("下一步", "打开我的计划")),
         ):
             card = QFrame()
             card.setObjectName("metricCard")
@@ -618,70 +1585,112 @@ class MainWindow(QMainWindow):
         current_layout.addWidget(self.overview_current_plan)
         layout.addWidget(current_card)
 
+        calendar_card = QFrame()
+        calendar_card.setObjectName("overviewTaskSection")
+        calendar_card.setMinimumWidth(0)
+        calendar_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        calendar_layout = QVBoxLayout(calendar_card)
+        calendar_title = QLabel("近期日历")
+        calendar_title.setObjectName("sectionHeading")
+        calendar_layout.addWidget(calendar_title)
+        self.overview_calendar = PlanCalendar()
+        self.overview_calendar.setObjectName("effortCalendar")
+        self.overview_calendar.setGridVisible(False)
+        self.overview_calendar.setVerticalHeaderFormat(PlanCalendar.VerticalHeaderFormat.NoVerticalHeader)
+        self.overview_calendar.setMinimumHeight(340)
+        self.overview_calendar.setMaximumHeight(360)
+        self.overview_calendar_summary = QLabel("正在读取日程…")
+        self.overview_calendar_summary.setObjectName("inlineStatus")
+        self.overview_calendar_summary.setWordWrap(True)
+        calendar_layout.addWidget(self.overview_calendar_summary)
+        calendar_layout.addWidget(self.overview_calendar)
+        self.overview_calendar.selectionChanged.connect(
+            lambda: self.overview_calendar_summary.setText(
+                self.overview_calendar.summary_for(self.overview_calendar.selectedDate())
+            )
+        )
+        layout.addWidget(calendar_card)
+
         fact_card = QFrame()
-        fact_card.setObjectName("overviewTaskSection")
+        fact_card.setObjectName("analogyCard")
+        fact_card.setMinimumWidth(0)
+        fact_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         fact_layout = QVBoxLayout(fact_card)
         fact_heading = QHBoxLayout()
-        fact_heading.addWidget(QLabel("程序员术语的生活类比"))
+        fact_label = QLabel("☕ 生活小剧场")
+        fact_label.setObjectName("analogyEyebrow")
+        fact_heading.addWidget(fact_label)
         fact_heading.addStretch()
-        next_fact = QPushButton("换一张")
-        next_fact.setObjectName("linkButton")
-        next_fact.clicked.connect(self._next_fact)
-        fact_heading.addWidget(next_fact)
+        self.analogy_loading_status = QLabel("")
+        self.analogy_loading_status.setObjectName("inlineStatus")
+        self.analogy_loading_status.setVisible(False)
+        fact_heading.addWidget(self.analogy_loading_status)
+        fact_settings = QPushButton("设置")
+        fact_settings.setObjectName("linkButton")
+        fact_settings.clicked.connect(lambda _checked=False: self._open_news_preferences())
+        fact_heading.addWidget(fact_settings)
+        self.next_fact_button = QPushButton("换一张")
+        self.next_fact_button.setObjectName("linkButton")
+        self.next_fact_button.clicked.connect(lambda _checked=False: self._next_fact())
+        fact_heading.addWidget(self.next_fact_button)
         fact_layout.addLayout(fact_heading)
         self.offline_fact_title = QLabel("")
         self.offline_fact_title.setObjectName("sectionHeading")
+        self.offline_fact_title.setMinimumWidth(0)
+        self.offline_fact_title.setWordWrap(True)
         fact_layout.addWidget(self.offline_fact_title)
         self.offline_fact_body = QLabel("")
+        self.offline_fact_body.setMinimumWidth(0)
         self.offline_fact_body.setWordWrap(True)
         fact_layout.addWidget(self.offline_fact_body)
         self.offline_fact_source = QLabel("")
         self.offline_fact_source.setObjectName("pageSubtitle")
+        self.offline_fact_source.setMinimumWidth(0)
+        self.offline_fact_source.setWordWrap(True)
         fact_layout.addWidget(self.offline_fact_source)
+        self.fact_source_button = QPushButton("查看来源")
+        self.fact_source_button.setObjectName("linkButton")
+        self.fact_source_button.clicked.connect(lambda _checked=False: self._open_current_fact_source())
+        fact_layout.addWidget(self.fact_source_button, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(fact_card)
         self._render_fact()
-
-        official_card = QFrame()
-        official_card.setObjectName("overviewTaskSection")
-        official_layout = QVBoxLayout(official_card)
-        official_heading = QHBoxLayout()
-        official_heading.addWidget(QLabel("官方动态（可选在线更新）"))
-        official_heading.addStretch()
-        reload_updates = QPushButton("重新加载")
-        reload_updates.setObjectName("linkButton")
-        reload_updates.clicked.connect(self._reload_official_updates)
-        official_heading.addWidget(reload_updates)
-        official_layout.addLayout(official_heading)
-        self.official_updates_status = QLabel("在线更新默认关闭。")
-        self.official_updates_status.setObjectName("inlineStatus")
-        self.official_updates_status.setWordWrap(True)
-        official_layout.addWidget(self.official_updates_status)
-        self.official_updates_list = QListWidget()
-        self.official_updates_list.setObjectName("officialUpdatesList")
-        self.official_updates_list.setMaximumHeight(190)
-        official_layout.addWidget(self.official_updates_list)
-        layout.addWidget(official_card)
-        self._render_official_updates()
 
         task_card = QFrame()
         task_card.setObjectName("overviewTaskSection")
         task_layout = QVBoxLayout(task_card)
-        section_title = QLabel("当前学习任务")
+        task_header = QHBoxLayout()
+        section_title = QLabel("最近计划")
         section_title.setObjectName("sectionHeading")
-        task_layout.addWidget(section_title)
+        task_header.addWidget(section_title)
+        task_header.addStretch()
+        open_tasks = QPushButton("查看全部计划")
+        open_tasks.setObjectName("secondaryButton")
+        open_tasks.clicked.connect(lambda: self.navigation.setCurrentRow(1))
+        task_header.addWidget(open_tasks)
+        task_layout.addLayout(task_header)
+        overview_status_row = QHBoxLayout()
+        self.overview_status_icon = QLabel("!")
+        self.overview_status_icon.setObjectName("overviewStatusIcon")
+        self.overview_status_icon.setFixedSize(20, 20)
+        self.overview_status_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.overview_status_icon.setVisible(False)
+        overview_status_row.addWidget(self.overview_status_icon)
         self.overview_status = QLabel("正在读取任务……")
         self.overview_status.setObjectName("inlineStatus")
-        task_layout.addWidget(self.overview_status)
-        self.overview_task_list = QListWidget()
+        overview_status_row.addWidget(self.overview_status)
+        overview_status_row.addStretch()
+        task_layout.addLayout(overview_status_row)
+        self.overview_task_list = ResponsiveCardList()
         self.overview_task_list.setObjectName("overviewTaskList")
-        self.overview_task_list.setMaximumHeight(290)
+        self.overview_task_list.setFixedHeight(130)
         self.overview_task_list.itemDoubleClicked.connect(self._open_task_from_list)
         task_layout.addWidget(self.overview_task_list)
-        open_tasks = QPushButton("查看全部计划")
-        open_tasks.clicked.connect(lambda: self.navigation.setCurrentRow(1))
-        task_layout.addWidget(open_tasks, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.addWidget(task_card)
+        # The most recent plan belongs above secondary calendar/discovery
+        # content.  The overview is scrollable, so cards never overlap when a
+        # smaller screen needs more vertical room.
+        layout.insertWidget(5, task_card)
         layout.addStretch()
+        QTimer.singleShot(0, self._sync_overview_geometry)
         return page
 
     def _tasks(self) -> QWidget:
@@ -697,15 +1706,31 @@ class MainWindow(QMainWindow):
         self.include_archived_plans = QCheckBox("显示已归档计划")
         self.include_archived_plans.toggled.connect(self._refresh_tasks)
         plan_actions.addWidget(self.include_archived_plans)
+        self.task_loading_status = QLabel("")
+        self.task_loading_status.setObjectName("inlineStatus")
+        plan_actions.addWidget(self.task_loading_status)
         plan_actions.addStretch()
         layout.addLayout(plan_actions)
-        self.task_list = QListWidget()
+        self.task_list = ResponsiveCardList()
         self.task_list.setObjectName("taskList")
         self.task_list.setWordWrap(True)
         self.task_list.setSpacing(8)
         self.task_list.itemDoubleClicked.connect(self._open_task_from_list)
         layout.addWidget(self.task_list, 1)
         return page
+
+    def _sync_overview_geometry(self) -> None:
+        """Adapt overview padding and embedded cards to the live viewport."""
+
+        if not hasattr(self, "overview_scroll") or not hasattr(self, "overview_content_layout"):
+            return
+        viewport_width = max(0, self.overview_scroll.viewport().width())
+        margin = 18 if viewport_width < 940 else 28 if viewport_width < 1160 else 38
+        self.overview_content_layout.setContentsMargins(margin, 24, margin, 18)
+        if hasattr(self, "overview_task_list"):
+            self.overview_task_list.fit_cards_to_viewport()
+        if hasattr(self, "task_list"):
+            self.task_list.fit_cards_to_viewport()
 
     def _open_task_from_list(self, item: QListWidgetItem) -> None:
         workspace_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
@@ -715,12 +1740,29 @@ class MainWindow(QMainWindow):
 
     def _open_workspace_detail(self, workspace_id: str) -> None:
         """Open plan as task detail; it intentionally has no separate sidebar slot."""
+        # Keep the sidebar selection truthful while opening the detail view.
+        # When the user opened a card from “我的计划”, the row is already
+        # selected, so relying on currentRowChanged alone would leave the
+        # detail page mounted and make the back button appear to do nothing.
+        self.navigation.blockSignals(True)
+        self.navigation.setCurrentRow(1)
+        self.navigation.blockSignals(False)
         self.pages.setCurrentIndex(4)
-        self.plans_page.refresh_workspaces()
+        # Carry the clicked id into the asynchronous list refresh. A deferred
+        # select against the old combo contents is otherwise overwritten when
+        # the refresh completes and restores its captured previous selection.
+        self.plans_page.refresh_workspaces(workspace_id)
         QTimer.singleShot(0, lambda: self.plans_page.select_workspace(workspace_id))
 
     def _open_tasks_page(self) -> None:
-        self.navigation.setCurrentRow(1)
+        # The detail page is not a sidebar page.  Always set the stacked page
+        # explicitly, even when row 1 is already selected (Qt then emits no
+        # currentRowChanged signal).
+        self.pages.setCurrentIndex(1)
+        if self.navigation.currentRow() != 1:
+            self.navigation.setCurrentRow(1)
+        else:
+            self._refresh_tasks()
 
     def _knowledge_map(self) -> QWidget:
         page, layout = self._page("学习计划里的知识地图", "地图属于学习计划的一部分：从计划选择任务后打开；单击节点查看材料证据。")
@@ -736,14 +1778,23 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("刷新")
         refresh.clicked.connect(self._refresh_map_workspaces)
         controls.addWidget(refresh)
-        generate = QPushButton("从资料生成")
-        generate.setObjectName("primaryButton")
-        generate.clicked.connect(self._start_map_job)
-        controls.addWidget(generate)
+        self.map_generate_button = QPushButton("从资料生成")
+        self.map_generate_button.setObjectName("primaryButton")
+        self.map_generate_button.clicked.connect(self._start_map_job)
+        controls.addWidget(self.map_generate_button)
         fit = QPushButton("适应窗口")
         fit.clicked.connect(self._fit_map)
         controls.addWidget(fit)
         layout.addLayout(controls)
+
+        self.map_progress = QProgressBar()
+        self.map_progress.setObjectName("knowledgeMapProgress")
+        self.map_progress.setRange(0, 100)
+        self.map_progress.setValue(0)
+        self.map_progress.setFormat("准备生成知识地图")
+        self.map_progress.setTextVisible(True)
+        self.map_progress.setVisible(False)
+        layout.addWidget(self.map_progress)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.map_view = KnowledgeMapView()
@@ -792,7 +1843,7 @@ class MainWindow(QMainWindow):
         profile = QWebEngineProfile("mentorflow_teacher_chat", self)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView()
-        web.setPage(QWebEnginePage(profile, web))
+        web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
         web.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         loaded = False
 
@@ -836,6 +1887,12 @@ class MainWindow(QMainWindow):
                 "casual",
                 "打开教师闲聊",
             ),
+            (
+                "学习远征",
+                "在独立空间探索、训练和记录成长，不会混入正式学习任务。",
+                "expedition",
+                "打开学习远征",
+            ),
         )
         for index, (title, detail, tool, action_text) in enumerate(tools):
             card = QFrame()
@@ -867,7 +1924,7 @@ class MainWindow(QMainWindow):
         web = QWebEngineView(dialog)
         profile = QWebEngineProfile(f"mentorflow_auxiliary_{tool}_{id(dialog)}", dialog)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
-        web.setPage(QWebEnginePage(profile, web))
+        web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
         web.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         token = self.api.session_token
         if token:
@@ -891,7 +1948,7 @@ class MainWindow(QMainWindow):
         profile = QWebEngineProfile("mentorflow_expedition", self)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView()
-        web.setPage(QWebEnginePage(profile, web))
+        web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
         web.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         loaded = False
 
@@ -955,10 +2012,12 @@ class MainWindow(QMainWindow):
         save_button = QPushButton("保存预设")
         save_button.setObjectName("secondaryButton")
         save_button.clicked.connect(self._save_provider_preset)
+        self.provider_save_button = save_button
         actions.addWidget(save_button)
         connect_button = QPushButton("保存并验证连接")
         connect_button.setObjectName("primaryButton")
         connect_button.clicked.connect(self._connect_provider)
+        self.provider_connect_button = connect_button
         actions.addWidget(connect_button)
         box.addLayout(actions)
         self.provider_status = QLabel("尚未连接。")
@@ -987,26 +2046,27 @@ class MainWindow(QMainWindow):
             self.classroom_page.refresh_workspaces()
 
     def _workspace_items(self, *, include_archived: bool = False) -> list[dict]:
-        merged: dict[str, dict] = {}
-        try:
-            for item in self.api.workspaces():
-                workspace_id = str(item.get("id") or item.get("workspace_id") or "")
-                if workspace_id:
-                    merged[workspace_id] = dict(item)
-        except ApiError:
-            pass
+        # The active-teaching index is the canonical product task list.  The
+        # legacy /api/workspaces table contains historical blank/UI-test rows
+        # and has no durable archive flag, so merging it after the canonical
+        # call silently resurrects plans the user already archived.  Keep it
+        # only as a fail-closed compatibility fallback when the canonical
+        # endpoint itself is unavailable.
         try:
             try:
                 payload = self.api.active_workspaces(include_archived=include_archived)
             except TypeError:
                 payload = self.api.active_workspaces()
-            for item in payload.get("items", []):
-                workspace_id = str(item.get("workspace_id") or item.get("id") or "")
-                if workspace_id:
-                    merged[workspace_id] = {**merged.get(workspace_id, {}), **item}
+            items = [dict(item) for item in payload.get("items", [])]
         except ApiError:
-            pass
-        items = list(merged.values())
+            items = [dict(item) for item in self.api.workspaces()]
+            if not include_archived:
+                items = [
+                    item
+                    for item in items
+                    if not bool(item.get("archived"))
+                    and str(item.get("status") or "").casefold() != "archived"
+                ]
         items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return items
 
@@ -1025,6 +2085,7 @@ class MainWindow(QMainWindow):
             "complete": "已完成",
             "paused": "已暂停",
             "archived": "已归档",
+            "needs_adjustment": "需调整",
         }.get(str(value or "active").casefold(), "学习中")
 
     def _task_theme_key(self, workspace_id: str) -> str:
@@ -1068,6 +2129,9 @@ class MainWindow(QMainWindow):
             theme_key = "sage"
         self.settings.setValue(f"task-colors/{workspace_id}", theme_key)
         self.settings.sync()
+        refresh_color = getattr(getattr(self, "plans_page", None), "_refresh_color_button", None)
+        if callable(refresh_color):
+            refresh_color(workspace_id)
         self._refresh_tasks()
         self._refresh_overview()
 
@@ -1113,11 +2177,48 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No,
         ) != QMessageBox.StandardButton.Yes:
             return
-        try:
-            self.api.archive_workspace(workspace_id, archived=not archived)
-        except ApiError as exc:
-            QMessageBox.warning(self, f"{action}失败", f"{exc.code}：{exc.message}")
+        if self._workspace_action_future is not None and not self._workspace_action_future.done():
+            self.task_loading_status.setText("上一项计划操作仍在进行，请稍候。")
             return
+        button = self.sender() if isinstance(self.sender(), QPushButton) else None
+        if button is not None:
+            button.setEnabled(False)
+            button.setText(f"正在{action}…")
+        self.task_loading_status.setText(f"正在{action}“{title}”…")
+        self._workspace_action_context = {
+            "action": action,
+            "button": button,
+            "archived": archived,
+        }
+        self._workspace_action_future = self._workspace_executor.submit(
+            self.api.archive_workspace,
+            workspace_id,
+            archived=not archived,
+        )
+        QTimer.singleShot(40, self._poll_workspace_action)
+
+    def _poll_workspace_action(self) -> None:
+        future = self._workspace_action_future
+        if future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, self._poll_workspace_action)
+            return
+        self._workspace_action_future = None
+        context = self._workspace_action_context
+        self._workspace_action_context = {}
+        action = str(context.get("action") or "更新")
+        try:
+            future.result()
+        except ApiError as exc:
+            self.task_loading_status.setText(f"{action}失败：{exc.code}：{exc.message}")
+            button = context.get("button")
+            if isinstance(button, QPushButton):
+                button.setEnabled(True)
+                button.setText("恢复计划" if context.get("archived") else "归档计划")
+            return
+        self._workspace_cache.clear()
+        self.task_loading_status.setText(f"{action}完成，正在更新列表…")
         self._refresh_all_views()
 
     def _refresh_all_views(self) -> None:
@@ -1131,13 +2232,45 @@ class MainWindow(QMainWindow):
     def _refresh_overview(self) -> None:
         if not hasattr(self, "overview_task_list"):
             return
-        items = self._workspace_items()
+        cached = self._workspace_cache.get(False)
+        if cached is not None:
+            self._render_overview_items(cached)
+        else:
+            self.overview_status_icon.setVisible(False)
+            self.overview_status.setVisible(True)
+            self.overview_status.setText("正在更新计划概览…")
+        self._overview_workspace_token += 1
+        token = self._overview_workspace_token
+        self._overview_workspace_future = self._workspace_executor.submit(
+            self._workspace_items,
+            include_archived=False,
+        )
+        QTimer.singleShot(40, lambda: self._poll_overview_items(token))
+
+    def _poll_overview_items(self, token: int) -> None:
+        future = self._overview_workspace_future
+        if token != self._overview_workspace_token or future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, lambda: self._poll_overview_items(token))
+            return
+        self._overview_workspace_future = None
+        try:
+            items = future.result()
+        except Exception as exc:
+            self.overview_status_icon.setVisible(False)
+            self.overview_status.setVisible(True)
+            self.overview_status.setText(f"计划概览更新失败：{exc}")
+            return
+        self._workspace_cache[False] = items
+        self._render_overview_items(items)
+
+    def _render_overview_items(self, items: list[dict]) -> None:
         active = [item for item in items if self._human_status(item.get("status")) != "已完成"]
         completed = sum(self._task_progress(item)[0] for item in items)
         total = sum(self._task_progress(item)[1] for item in items)
         self.overview_metric_values["active"].setText(str(len(active)))
         self.overview_metric_values["progress"].setText(f"{completed} / {total}" if total else "暂无任务")
-        self.overview_metric_values["next"].setText("开始第一个任务" if not active else "继续学习")
         if active:
             current = active[0]
             done, count = self._task_progress(current)
@@ -1145,10 +2278,21 @@ class MainWindow(QMainWindow):
             self.overview_current_plan.setText(
                 f"{title} · 已完成 {done}/{count} 项。下一步：打开计划详情，继续最早未完成的学习项。"
             )
+            self._load_overview_calendar(
+                [
+                    str(item.get("workspace_id") or item.get("id") or "")
+                    for item in active
+                    if str(item.get("workspace_id") or item.get("id") or "")
+                ]
+            )
         else:
             self.overview_current_plan.setText("还没有进行中的计划。点击“新建计划”，设定目标和日期后开始。")
+            self.overview_calendar.set_day_summaries({})
+            self.overview_calendar_summary.setText("创建计划后，这里会显示每天的任务与完成情况。")
         self.overview_task_list.clear()
         if not items:
+            self.overview_status_icon.setVisible(False)
+            self.overview_status.setVisible(True)
             self.overview_status.setText("还没有学习任务。先到“创建计划”设定目标和日期。")
             empty_item = QListWidgetItem("暂无任务。打开“创建计划”开始。")
             self.overview_task_list.addItem(empty_item)
@@ -1156,12 +2300,180 @@ class MainWindow(QMainWindow):
             create_plan.setObjectName("primaryButton")
             create_plan.clicked.connect(self._open_create_plan)
             self.overview_task_list.setItemWidget(empty_item, create_plan)
+            QTimer.singleShot(0, self.overview_task_list.fit_cards_to_viewport)
             return
-        self.overview_status.setText(f"共有 {len(items)} 个任务，其中 {len(active)} 个正在学习。")
-        for item in items[:5]:
-            overview_item, overview_widget = self._task_card(item, overview=True)
-            self.overview_task_list.addItem(overview_item)
-            self.overview_task_list.setItemWidget(overview_item, overview_widget)
+        has_other_plans = len(items) > 1
+        self.overview_status_icon.setVisible(has_other_plans)
+        self.overview_status.setVisible(has_other_plans)
+        self.overview_status.setText("其他计划可从右上角统一查看。" if has_other_plans else "")
+        latest = active[0] if active else items[0]
+        overview_item, overview_widget = self._task_card(latest, overview=True)
+        self.overview_task_list.addItem(overview_item)
+        self.overview_task_list.setItemWidget(overview_item, overview_widget)
+        QTimer.singleShot(0, self.overview_task_list.fit_cards_to_viewport)
+
+    def _load_overview_calendar(self, workspace_ids: str | list[str]) -> None:
+        selected_ids = (
+            [workspace_ids]
+            if isinstance(workspace_ids, str)
+            else [value for value in workspace_ids if value]
+        )
+        if not selected_ids:
+            return
+        self._overview_plan_token += 1
+        token = self._overview_plan_token
+        self.overview_calendar_summary.setText("正在更新日历…")
+        self._overview_plan_future = self._workspace_executor.submit(
+            self._current_plans_for_overview,
+            selected_ids,
+        )
+        QTimer.singleShot(40, lambda: self._poll_overview_calendar(token))
+
+    def _current_plan_for_overview(self, workspace_id: str) -> dict:
+        """Read the canonical plan, falling back to the preserved legacy plan."""
+
+        try:
+            return self.api.current_mastery_plan(workspace_id)
+        except ApiError as canonical_error:
+            try:
+                return self.api.current_legacy_plan(workspace_id)
+            except ApiError:
+                raise canonical_error
+
+    def _current_plans_for_overview(self, workspace_ids: list[str]) -> dict:
+        """Load every visible plan so older learning history remains visible."""
+
+        plans: list[dict] = []
+        for workspace_id in dict.fromkeys(workspace_ids):
+            try:
+                plans.append(self._current_plan_for_overview(workspace_id))
+            except ApiError:
+                continue
+        if not plans:
+            raise ApiError(404, "ACTIVE_PLAN_NOT_FOUND", "没有可显示的活动计划")
+        return {"plans": plans}
+
+    def _poll_overview_calendar(self, token: int) -> None:
+        future = self._overview_plan_future
+        if token != self._overview_plan_token or future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, lambda: self._poll_overview_calendar(token))
+            return
+        self._overview_plan_future = None
+        try:
+            plan = future.result()
+        except ApiError:
+            self.overview_calendar.set_day_summaries({})
+            self.overview_calendar_summary.setText("当前计划还没有可显示的日程。")
+            return
+        self._render_overview_calendar(plan)
+
+    def _render_overview_calendar(self, plan: dict) -> None:
+        self.overview_calendar.setDateTextFormat(QDate(), QTextCharFormat())
+        daily: dict[str, dict[str, float]] = {}
+        dates: list[QDate] = []
+        plans = [item for item in plan.get("plans", []) if isinstance(item, dict)] or [plan]
+        def bucket_for(value: str) -> dict[str, float]:
+            return daily.setdefault(
+                value,
+                {
+                    "tasks": 0,
+                    "scheduled": 0,
+                    "unscheduled": 0,
+                    "planned": 0,
+                    "actual": 0,
+                    "completed": 0,
+                    "completed_minutes": 0,
+                    "has_activity": 0,
+                },
+            )
+
+        for visible_plan in plans:
+            for task in flattened_tasks(visible_plan):
+                value = str(
+                    task.get("day_date")
+                    or task.get("scheduled_date")
+                    or task.get("original_day_date")
+                    or task.get("date")
+                    or ""
+                )
+                date = QDate.fromString(value, "yyyy-MM-dd")
+                if not date.isValid():
+                    continue
+                dates.append(date)
+                bucket = bucket_for(value)
+                bucket["tasks"] += 1
+                estimated = float(task.get("estimated_task_minutes") or task.get("planned_task_minutes") or 0)
+                status = str(task.get("status") or "").casefold()
+                if status == "unscheduled":
+                    bucket["unscheduled"] += 1
+                else:
+                    bucket["scheduled"] += 1
+                    bucket["planned"] += estimated
+                if status in {"complete", "completed", "done"}:
+                    completed_on = str(
+                        task.get("completed_on")
+                        or task.get("completed_at_local_date")
+                        or task.get("completed_at")
+                        or value
+                    )[:10]
+                    completed_date = QDate.fromString(completed_on, "yyyy-MM-dd")
+                    if not completed_date.isValid():
+                        completed_on, completed_date = value, date
+                    completed_bucket = bucket_for(completed_on)
+                    dates.append(completed_date)
+                    completed_bucket["completed"] += 1
+                    completed_bucket["completed_minutes"] += float(
+                        task.get("completed_task_minutes") or estimated
+                    )
+            for value, raw in (visible_plan.get("activity_by_day") or {}).items():
+                date = QDate.fromString(str(value), "yyyy-MM-dd")
+                if not date.isValid() or not isinstance(raw, dict):
+                    continue
+                dates.append(date)
+                bucket = bucket_for(str(value))
+                bucket["actual"] += float(raw.get("actual_elapsed_minutes") or 0)
+                bucket["has_activity"] = 1
+        peak_effort = max((bucket["completed_minutes"] for bucket in daily.values()), default=0.0)
+        metrics = {
+            value: {
+                **bucket,
+                "effort": bucket["completed_minutes"],
+                "ratio": (bucket["completed_minutes"] / peak_effort) if peak_effort else 0.0,
+            }
+            for value, bucket in daily.items()
+        }
+        self.overview_calendar.set_day_metrics(metrics)
+        summaries = {
+            value: (
+                f"{value}\n已安排 {int(bucket['scheduled'])} 项 · 已完成 {int(bucket['completed'])} 项"
+                + (f" · 待排期 {int(bucket['unscheduled'])} 项" if bucket["unscheduled"] else "")
+                + "\n"
+                f"计划 {int(bucket['planned'])} 分钟 · 完成任务时长 {int(bucket['completed_minutes'])} 分钟"
+                + (f" · 当天专注 {bucket['actual']:.1f} 分钟" if bucket["actual"] else "")
+                + ("\n有课堂活动记录，但旧数据没有可核对的分钟数。" if bucket["has_activity"] and not bucket["actual"] else "")
+            )
+            for value, bucket in daily.items()
+        }
+        self.overview_calendar.set_day_summaries(summaries)
+        if dates:
+            today = QDate.currentDate()
+            scheduled_on_or_after_today = [value for value in dates if value >= today]
+            first = (
+                min(scheduled_on_or_after_today, key=lambda value: value.toJulianDay())
+                if scheduled_on_or_after_today
+                else max(dates, key=lambda value: value.toJulianDay())
+            )
+            last = max(dates, key=lambda value: value.toJulianDay())
+            earliest = min(dates, key=lambda value: value.toJulianDay())
+            self.overview_calendar.setDateRange(earliest, last)
+            self.overview_calendar.setSelectedDate(first)
+            self.overview_calendar_summary.setText(self.overview_calendar.summary_for(first))
+            if hasattr(self, "overview_scroll"):
+                QTimer.singleShot(0, lambda: self.overview_scroll.verticalScrollBar().setValue(0))
+        else:
+            self.overview_calendar_summary.setText("当前计划还没有可显示的日程。")
 
     def _restore_provider(self) -> None:
         # The preset file is the durable source of truth in the local build.
@@ -1185,8 +2497,13 @@ class MainWindow(QMainWindow):
             if saved:
                 form = saved["form"]
                 self.provider_preset_name.setText(str(saved.get("name") or "默认模型预设"))
-                self.provider_base_url.setText(str(form.get("base_url") or self.DEEPSEEK_BASE_URL))
-                self.provider_model.setText(str(form.get("model") or self.DEEPSEEK_FLASH_MODEL))
+                saved_base_url = str(form.get("base_url") or self.DEEPSEEK_BASE_URL)
+                saved_model = self._normalized_provider_model(
+                    saved_base_url,
+                    str(form.get("model") or self.DEEPSEEK_FLASH_MODEL),
+                )
+                self.provider_base_url.setText(saved_base_url)
+                self.provider_model.setText(saved_model)
                 credential_ref = str(form.get("credential_ref") or "")
                 self.settings.setValue("provider/base_url", self.provider_base_url.text())
                 self.settings.setValue("provider/model", self.provider_model.text())
@@ -1253,10 +2570,29 @@ class MainWindow(QMainWindow):
             self.provider_secret.clear()
 
     def _connect_provider(self) -> None:
+        if self._provider_connect_future is not None and not self._provider_connect_future.done():
+            self.provider_status.setText("模型连接正在验证，请稍候。")
+            return
         try:
             form, credential_ref = self._provider_form_with_credential()
             if form is None:
                 return
+            preset_name = self._provider_preset_name()
+            # A provider/model switch invalidates any card request started
+            # under the previous context.  The worker may still finish, so
+            # advance the generation before replacing the session handle.
+            self._clear_analogy_prefetch()
+            self._remember_provider_form(credential_ref)
+        except CredentialStoreError as exc:
+            self.provider_status.setText(f"凭据库失败：{exc.code}：{exc.message}")
+            self.provider_secret.clear()
+            return
+        self.provider_secret.clear()
+        self.provider_connect_button.setEnabled(False)
+        self.provider_connect_button.setText("正在验证…")
+        self.provider_status.setText("已保存设置，正在后台验证模型连接…")
+
+        def work() -> dict:
             created = self.api.create_provider_session(
                 provider=form["provider"],
                 base_url=form["base_url"],
@@ -1264,26 +2600,74 @@ class MainWindow(QMainWindow):
                 credential_ref=credential_ref,
             )
             result = self.api.test_provider_session(str(created["provider_session_id"]))
+            self.api.save_provider_preset(preset_name, form)
+            return {"result": result, "form": form}
+
+        self._provider_connect_future = self._provider_executor.submit(work)
+        QTimer.singleShot(60, self._poll_provider_connection)
+
+    def _poll_provider_connection(self) -> None:
+        future = self._provider_connect_future
+        if future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(60, self._poll_provider_connection)
+            return
+        self._provider_connect_future = None
+        self.provider_connect_button.setEnabled(True)
+        self.provider_connect_button.setText("保存并验证连接")
+        try:
+            payload = future.result()
+            result = payload["result"]
+            form = payload["form"]
             self.provider_session_id = str(result["provider_session_id"])
-            self._remember_provider_form(credential_ref)
-            # A successful connection also updates the durable preset, so a
-            # user who chooses the one-click action never has to re-enter it.
-            self.api.save_provider_preset(self._provider_preset_name(), form)
             self.provider_status.setText(
                 "连接成功\n"
                 f"主机：{result.get('base_url_host') or '未知'}\n"
                 f"服务端模型：{result.get('model_reported') or result.get('model_requested') or form['model']}\n"
                 f"延迟：{result.get('latency_ms')} ms"
             )
-        except CredentialStoreError as exc:
-            self.provider_status.setText(f"凭据库失败：{exc.code}：{exc.message}")
+            # The overview analogy changes only after the learner explicitly
+            # saves its settings or presses “换一张”.
+            QTimer.singleShot(0, self._schedule_analogy_prefetch)
         except ApiError as exc:
             self.provider_status.setText(f"连接失败：{exc.code}：{exc.message}")
-        finally:
-            self.provider_secret.clear()
 
     def _refresh_tasks(self, _checked: bool = False) -> None:
-        items = self._workspace_items(include_archived=bool(getattr(self, "include_archived_plans", None) and self.include_archived_plans.isChecked()))
+        include_archived = bool(
+            getattr(self, "include_archived_plans", None)
+            and self.include_archived_plans.isChecked()
+        )
+        self._workspace_refresh_token += 1
+        token = self._workspace_refresh_token
+        cached = self._workspace_cache.get(include_archived)
+        if cached is not None:
+            self._show_task_items(cached)
+        self.task_loading_status.setText("正在更新…")
+        self._workspace_refresh_future = self._workspace_executor.submit(
+            self._workspace_items,
+            include_archived=include_archived,
+        )
+        QTimer.singleShot(40, lambda: self._poll_task_refresh(token, include_archived))
+
+    def _poll_task_refresh(self, token: int, include_archived: bool) -> None:
+        future = self._workspace_refresh_future
+        if token != self._workspace_refresh_token or future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, lambda: self._poll_task_refresh(token, include_archived))
+            return
+        self._workspace_refresh_future = None
+        try:
+            items = future.result()
+        except Exception as exc:  # API failures are already normalized in _workspace_items
+            self.task_loading_status.setText(f"更新失败：{exc}")
+            return
+        self._workspace_cache[include_archived] = items
+        self._show_task_items(items)
+        self.task_loading_status.setText("")
+
+    def _show_task_items(self, items: list[dict]) -> None:
         self.task_list.clear()
         if not items:
             self.task_list.addItem("暂无任务。先到“创建计划”设定目标和日期。")
@@ -1292,6 +2676,7 @@ class MainWindow(QMainWindow):
             item_widget, card = self._task_card(item)
             self.task_list.addItem(item_widget)
             self.task_list.setItemWidget(item_widget, card)
+        QTimer.singleShot(0, self.task_list.fit_cards_to_viewport)
 
     def _open_map_from_plan(self, workspace_id: str) -> None:
         self.pages.setCurrentIndex(2)
@@ -1334,6 +2719,11 @@ class MainWindow(QMainWindow):
             return
         nodes = graph.get("nodes") or graph.get("knowledge_points") or []
         edges = graph.get("edges") or []
+        self._map_node_names = {
+            str(item.get("id") or ""): str(item.get("name") or "未命名概念")
+            for item in nodes
+            if isinstance(item, dict) and item.get("id")
+        }
         self.map_view.set_graph(nodes, edges)
         revision = graph.get("revision_id") or graph.get("revision") or "未知"
         state = graph.get("state") or graph.get("status") or "未知"
@@ -1358,13 +2748,43 @@ class MainWindow(QMainWindow):
             job = self.api.create_knowledge_map_job(workspace_id, self.provider_session_id)
         except ApiError as exc:
             self.map_state.setText(f"无法创建地图任务：{exc.code}：{exc.message}")
+            self.map_generate_button.setEnabled(True)
             return
         self._map_job_id = str(job.get("id") or job.get("job_id") or "")
         if not self._map_job_id:
             self.map_state.setText("服务没有返回地图任务 ID。")
+            self.map_generate_button.setEnabled(True)
             return
-        self.map_state.setText(f"地图任务已创建：{self._map_job_id}\n状态：{job.get('status') or 'queued'}")
+        self.map_generate_button.setEnabled(False)
+        self.map_generate_button.setText("正在生成…")
+        self.map_progress.setVisible(True)
+        self._render_map_job_progress(job)
         self._map_job_timer.start()
+
+    def _render_map_job_progress(self, job: dict) -> None:
+        """Render only persisted work-unit progress reported by the backend."""
+
+        progress = job.get("progress") if isinstance(job, dict) else {}
+        if not isinstance(progress, dict):
+            progress = {}
+        completed = max(0, int(progress.get("completed_units") or 0))
+        total = max(1, int(progress.get("total_units") or 1))
+        percent = max(0, min(100, round(float(progress.get("percent") or 0))))
+        message = str(progress.get("message") or "正在生成知识地图").strip()
+        status = str(job.get("status") or progress.get("phase") or "queued")
+        phase_name = {
+            "queued": "等待开始",
+            "converting": "整理资料",
+            "extracting": "提取知识",
+            "validating": "检查知识关系",
+            "ready_with_review": "生成完成，存在待确认项",
+            "ready": "生成完成",
+            "failed": "生成失败",
+            "cancelled": "已取消",
+        }.get(status, "正在处理")
+        self.map_progress.setValue(percent)
+        self.map_progress.setFormat(f"{phase_name}  {percent}%  ·  {completed}/{total}")
+        self.map_state.setText(message)
 
     def _poll_map_job(self) -> None:
         if not self._map_job_id:
@@ -1375,18 +2795,27 @@ class MainWindow(QMainWindow):
         except ApiError as exc:
             self._map_job_timer.stop()
             self.map_state.setText(f"地图任务查询失败：{exc.code}：{exc.message}")
+            self.map_generate_button.setEnabled(True)
+            self.map_generate_button.setText("从资料生成")
             return
         status = str(job.get("status") or "未知")
         dispositions = job.get("dispositions") or []
-        self.map_state.setText(
-            f"地图任务：{self._map_job_id}\n状态：{status}\n材料处置：{len(dispositions)}"
-        )
+        self._render_map_job_progress(job)
         if status in {"ready", "ready_with_review"}:
             self._map_job_timer.stop()
+            self.map_progress.setValue(100)
+            self.map_generate_button.setEnabled(True)
+            self.map_generate_button.setText("重新生成")
             self._load_selected_map()
+            review_note = "，有待确认内容" if status == "ready_with_review" else ""
+            self.map_state.setText(
+                f"知识地图已生成{review_note}。已处理 {len(dispositions)} 份资料；可点击节点查看来源。"
+            )
         elif status in {"failed", "cancelled"}:
             self._map_job_timer.stop()
             error = job.get("error") or {}
+            self.map_generate_button.setEnabled(True)
+            self.map_generate_button.setText("重新生成")
             self.map_state.setText(
                 f"地图生成{status}：{error.get('code') or ''} {error.get('message') or error}"
             )
@@ -1424,12 +2853,20 @@ class MainWindow(QMainWindow):
             source_id = item.get("source_id") or item.get("material_id") or "未知来源"
             quote = str(item.get("quote") or item.get("excerpt") or "").strip()
             location = []
-            if item.get("page_number") is not None:
-                location.append(f"第 {item['page_number']} 页")
+            page_start = item.get("page_start", item.get("page_number"))
+            page_end = item.get("page_end", page_start)
+            if page_start is not None:
+                location.append(
+                    f"第 {page_start} 页"
+                    if page_end in {None, page_start}
+                    else f"第 {page_start}–{page_end} 页"
+                )
             if item.get("char_start") is not None or item.get("char_end") is not None:
                 location.append(f"字符 {item.get('char_start', '?')}–{item.get('char_end', '?')}")
-            if item.get("time_start_ms") is not None or item.get("time_end_ms") is not None:
-                location.append(f"音频 {item.get('time_start_ms', '?')}–{item.get('time_end_ms', '?')} ms")
+            audio_start = item.get("audio_start_ms", item.get("time_start_ms"))
+            audio_end = item.get("audio_end_ms", item.get("time_end_ms"))
+            if audio_start is not None or audio_end is not None:
+                location.append(f"音频 {audio_start if audio_start is not None else '?'}–{audio_end if audio_end is not None else '?'} ms")
             lines.extend(["", f"{index}. 来源：{source_id}"])
             if location:
                 lines.append("   位置：" + "；".join(location))
@@ -1454,14 +2891,29 @@ class MainWindow(QMainWindow):
                 continue
             payload = candidate.get("payload") or {}
             candidate_type = str(candidate.get("candidate_type") or "candidate")
-            label = (
-                payload.get("name")
-                or payload.get("label")
-                or payload.get("relation")
-                or candidate.get("candidate_key")
-                or candidate.get("id")
-            )
-            item = QListWidgetItem(f"{candidate_type} · {label}")
+            type_label = {
+                "node": "概念建议",
+                "edge": "关系建议",
+                "merge_suggestion": "合并建议",
+                "model_common": "模型常识",
+            }.get(candidate_type, "待确认建议")
+            relation = str(payload.get("relation") or "")
+            relation_label = {
+                "contains": "包含",
+                "prerequisite": "前置关系",
+                "related": "相关",
+                "contrast": "对比",
+            }.get(relation, relation)
+            node_names = getattr(self, "_map_node_names", {})
+            source_id = str(payload.get("source_id") or payload.get("prerequisite_id") or "")
+            target_id = str(payload.get("target_id") or payload.get("dependent_id") or "")
+            source_name = str(payload.get("source_name") or node_names.get(source_id) or "")
+            target_name = str(payload.get("target_name") or node_names.get(target_id) or "")
+            if source_name and target_name:
+                label = f"{source_name} → {target_name}" + (f"（{relation_label}）" if relation_label else "")
+            else:
+                label = str(payload.get("name") or payload.get("label") or relation_label or "请查看详情")
+            item = QListWidgetItem(f"{type_label} · {label}")
             item.setData(Qt.ItemDataRole.UserRole, candidate)
             self.map_candidates.addItem(item)
         if self.map_candidates.count() == 0:
@@ -1474,15 +2926,29 @@ class MainWindow(QMainWindow):
         if not isinstance(candidate, dict):
             return
         payload = candidate.get("payload") or {}
+        candidate_type = str(candidate.get("candidate_type") or "candidate")
         lines = [
-            f"候选类型：{candidate.get('candidate_type') or '未知'}",
-            f"候选键：{candidate.get('candidate_key') or ''}",
-            f"状态：{candidate.get('status') or 'pending'}",
+            {
+                "node": "概念建议",
+                "edge": "关系建议",
+                "merge_suggestion": "合并建议",
+                "model_common": "模型常识",
+            }.get(candidate_type, "待确认建议"),
             "",
-            "候选内容：",
         ]
-        for key, value in payload.items():
-            lines.append(f"{key}：{value}")
+        if payload.get("name") or payload.get("label"):
+            lines.append("内容：" + str(payload.get("name") or payload.get("label")))
+        relation = str(payload.get("relation") or "")
+        if relation:
+            lines.append("关系：" + {
+                "contains": "包含",
+                "prerequisite": "前置关系",
+                "related": "相关",
+                "contrast": "对比",
+            }.get(relation, relation))
+        explanation = str(payload.get("explanation") or payload.get("reason") or "").strip()
+        if explanation:
+            lines.extend(["", explanation])
         evidence = candidate.get("evidence") or []
         lines.extend(["", f"证据条数：{len(evidence)}"])
         for index, item in enumerate(evidence, 1):

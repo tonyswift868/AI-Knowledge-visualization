@@ -59,7 +59,7 @@ def test_in_process_migration_supports_backend_package_from_repository_root(
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0021_local_login_throttle",)
+        ).fetchone() == ("0025_planning_assistant_cache",)
 
 
 def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: Path):
@@ -88,6 +88,7 @@ def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: P
         "orm_plan_execution_tasks",
         "orm_plan_mastery_events",
         "orm_learning_resources",
+        "orm_planning_assistant_cache",
         "orm_local_users",
         "orm_local_sessions",
         "orm_workspace_ownership",
@@ -114,7 +115,7 @@ def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: P
         ).fetchone() == ("Preserve this row",)
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0021_local_login_throttle",)
+        ).fetchone() == ("0025_planning_assistant_cache",)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
     unique_constraints = {

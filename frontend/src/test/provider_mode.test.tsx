@@ -6,6 +6,7 @@ import {
   providerRequestContext,
   reconnectSavedProvider,
   request,
+  syncCurrentProviderSession,
 } from "../providerConnection";
 import {
   providerDiagnostic,
@@ -74,6 +75,59 @@ describe("reference-only provider runtime state", () => {
       verified: true,
     });
     expect(providerRequestContext()).toEqual({ provider_session_id: "ps_123" });
+  });
+
+  it("adopts the desktop shell's verified session without an API key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      provider_session_id: "ps_desktop_verified",
+      provider: "openai_compatible",
+      credential_ref: "mfcred_saved_reference",
+      base_url: "https://api.deepseek.com",
+      model_requested: "deepseek-v4-flash",
+      model_reported: "deepseek-v4-flash",
+      verified: true,
+      expires_at: null,
+      latency_ms: 19,
+      last_tested_at: "2026-08-17T00:00:00Z",
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncCurrentProviderSession();
+
+    expect(useMentorStore.getState()).toMatchObject({
+      providerSessionId: "ps_desktop_verified",
+      provider: "openai-compatible",
+      model: "deepseek-v4-flash",
+      credentialRef: "mfcred_saved_reference",
+      verified: true,
+    });
+    expect(providerRequestContext()).toEqual({ provider_session_id: "ps_desktop_verified" });
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("sk-");
+  });
+
+  it("does not replace explicit Fake mode with a desktop session", async () => {
+    useMentorStore.getState().setProvider("fake");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(syncCurrentProviderSession()).resolves.toBeNull();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useMentorStore.getState()).toMatchObject({
+      provider: "fake",
+      mode: "demo",
+      verified: false,
+      providerSessionId: null,
+    });
+  });
+
+  it("bounds a stalled desktop session lookup", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    await expect(syncCurrentProviderSession(10)).rejects.toMatchObject({
+      code: "PROVIDER_SESSION_SYNC_TIMEOUT",
+      status: 408,
+    });
   });
 
   it("keeps diagnostics reference-safe", () => {

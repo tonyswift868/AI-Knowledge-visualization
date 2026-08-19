@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
 import os
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,10 @@ from app.main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
     monkeypatch.setattr(db, "DATA_DIR", tmp_path)
+    # This module exercises the local desktop API contract.  Keep it isolated
+    # from collection-time imports that may configure remote authentication.
+    monkeypatch.setenv("MENTORFLOW_AUTH_REQUIRED", "0")
+    monkeypatch.setenv("MENTORFLOW_LOCAL_DATA_MODE", "1")
     with TestClient(app) as c:
         yield c
 
@@ -135,6 +141,638 @@ def test_conflict_endpoint_returns_both_evidence_metadata(client):
 def test_provider_key_not_persisted(client):
     result = client.post("/api/providers/test", json={"provider":"fake"})
     assert result.status_code == 200 and result.json()["ok"] is True
+
+
+def test_current_provider_session_exposes_verified_handle_without_key(client, monkeypatch):
+    from datetime import datetime, timezone
+    import app.main as main_module
+
+    now = datetime.now(timezone.utc)
+    session = SimpleNamespace(
+        id="ps_desktop_verified",
+        provider="openai_compatible",
+        credential_ref="mfcred_saved_reference",
+        base_url="https://api.deepseek.com",
+        model="deepseek-v4-flash",
+        model_reported="deepseek-v4-flash",
+        verified=True,
+        expires_at=None,
+        last_tested_at=now,
+        last_latency_ms=19,
+        last_error_code=None,
+        created_at=now,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "latest_verified_provider_session",
+        lambda **_kwargs: session,
+    )
+
+    response = client.get("/api/provider-sessions/current")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["provider_session_id"] == "ps_desktop_verified"
+    assert response.json()["verified"] is True
+    assert response.json()["base_url"] == "https://api.deepseek.com"
+    assert "api_key" not in response.text
+    assert "sk-" not in response.text
+
+
+def test_personalized_updates_require_real_verified_provider(client):
+    provider = client.post("/api/providers/test", json={"provider": "fake"})
+    assert provider.status_code == 200
+    response = client.post(
+        "/api/personalized-updates/rank",
+        json={
+            "provider_session_id": provider.json()["provider_session_id"],
+            "interests": "AI 工程",
+            "blocked": "",
+            "candidates": [
+                {
+                    "title": "Official update",
+                    "publisher": "example",
+                    "published": "2026-08-16",
+                    "link": "https://example.com/update",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 428
+    assert response.json()["error"]["code"] == "PROVIDER_SESSION_REAL_REQUIRED"
+
+
+def test_personalized_updates_discover_rank_and_hide_preferences(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_search(_query, *, max_results):
+        assert max_results == 8
+        return {
+            "results": [
+                {
+                    "title": "A useful public result",
+                    "url": "https://example.com/useful",
+                    "snippet": "A concise public summary.",
+                }
+            ]
+        }
+
+    async def fake_provider(_session, _messages):
+        return (
+            {
+                "ordered_links": ["https://example.com/useful"],
+                "life_example": {"title": "轻松想一想", "body": "一个不暴露偏好的生活化例子。"},
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(main_module, "search_web", fake_search)
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible"),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/rank",
+        json={
+            "provider_session_id": "verified-session",
+            "interests": "private preference",
+            "blocked": "",
+            "candidates": [],
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ranked_items"][0]["link"] == "https://example.com/useful"
+    assert payload["life_example"]["body"] == "一个不暴露偏好的生活化例子。"
+    assert "private preference" not in response.text
+
+
+def test_life_analogy_requires_real_verified_provider_and_never_searches(client, monkeypatch):
+    import app.main as main_module
+
+    async def forbidden_search(*_args, **_kwargs):
+        raise AssertionError("life analogy must not call search_web")
+
+    monkeypatch.setattr(main_module, "search_web", forbidden_search)
+    provider = client.post("/api/providers/test", json={"provider": "fake"})
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={
+            "provider_session_id": provider.json()["provider_session_id"],
+            "keywords": ["private hobby", "secret preference"],
+        },
+    )
+    assert response.status_code == 428
+    assert response.json()["error"]["code"] == "PROVIDER_SESSION_REAL_REQUIRED"
+    assert "private hobby" not in response.text
+
+
+def test_life_analogy_returns_semantically_connected_contract_without_settings_dump(client, monkeypatch):
+    import app.main as main_module
+
+    async def forbidden_search(*_args, **_kwargs):
+        raise AssertionError("life analogy must not call search_web")
+
+    async def fake_provider(_session, messages, **_kwargs):
+        if "registered real-life situation" in messages[0]["content"]:
+            return (
+                {
+                    "accepted": True,
+                    "mapping_score": 5,
+                    "relevance_score": 5,
+                    "situation_fidelity_score": 5,
+                    "logic_score": 5,
+                    "naturalness_score": 5,
+                    "sophistication_score": 5,
+                    "memorability_score": 5,
+                    "meme_fit_score": 5,
+                    "issue_code": "OK",
+                },
+                {"provider": "openai-compatible"},
+            )
+        payload = json.loads(messages[-1]["content"])
+        assert payload["private_directions"] == [{"index": 0, "direction": "private hobby"}]
+        assert payload["recent_history"][0]["summary"] == "旧标题｜旧结论"
+        assert payload["required_format"] == "连锁反应"
+        assert any(
+            value["scene_family"] == "home_chores" and value["situation_key"] == "laundry_sort"
+            for value in payload["allowed_familiar_situations"]
+        )
+        assert payload["required_humor_cue"]
+        assert isinstance(payload["forbidden_concepts"], list)
+        return (
+            {
+                "anchor_index": 0,
+                "concept_key": "stable_matching",
+                "concept_label": "稳定匹配",
+                "concept_mechanism": "多个条件依次缩小候选，全部条件满足后才形成有效配对",
+                "common_confusion": "只满足一个条件就误以为已经匹配成功",
+                "memory_target": "记住匹配是多条件逐层验证而不是一次猜中",
+                "format_key": "连锁反应",
+                "scene_family": "home_chores",
+                "situation_key": "laundry_sort",
+                "mechanism_tag": "classification",
+                "style_mode": "smooth_life",
+                "meme_key": "",
+                "meme_phrase": "",
+                "meme_evidence": "",
+                "scene_signature": "洗衣前按颜色和洗涤方式连续分堆",
+                "title": "洗衣前那几堆衣服",
+                "analogy": "你收拾衣服准备开洗衣机，先按深浅颜色分堆，再看哪些只能轻柔洗；只有颜色和洗法都合适的衣服才放进同一桶。那件会掉色的新外套，只满足一个条件也得单独等下一轮。",
+                "takeaway": "整理算法思路也一样：输入先按条件分类，动作再逐步缩小候选，最终用可观察结果检查配对是否成立。",
+                "mechanism_evidence": ["先按颜色分桌", "再检查尺码", "颜色和尺码都对得上的两只才能成对"],
+                "twist_evidence": "全场只有它没有搭档",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(main_module, "search_web", forbidden_search)
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={
+            "provider_session_id": "verified-session",
+            "keywords": ["private hobby"],
+            "recent_cards": ["旧标题｜旧结论"],
+            "variation_seed": 3,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "schema": "mentorflow.life-analogy.v1",
+        "state": "ready",
+        "card": {
+            "title": "洗衣前那几堆衣服",
+            "analogy": "你收拾衣服准备开洗衣机，先按深浅颜色分堆，再看哪些只能轻柔洗；只有颜色和洗法都合适的衣服才放进同一桶。那件会掉色的新外套，只满足一个条件也得单独等下一轮。",
+            "takeaway": "整理算法思路也一样：输入先按条件分类，动作再逐步缩小候选，最终用可观察结果检查配对是否成立。",
+        },
+        "memory": {
+            "concept_key": "stable_matching",
+            "concept_label": "稳定匹配",
+            "mechanism": "多个条件依次缩小候选，全部条件满足后才形成有效配对",
+            "format_key": "连锁反应",
+            "scene_family": "home_chores",
+            "situation_key": "laundry_sort",
+            "mechanism_tag": "classification",
+            "style_mode": "smooth_life",
+            "meme_key": "",
+            "scene_signature": "洗衣前按颜色和洗涤方式连续分堆",
+        },
+    }
+    assert "private hobby" not in response.text
+    assert "算法" in response.json()["card"]["takeaway"]
+
+
+def test_life_analogy_repairs_invalid_provider_json_and_keeps_familiar_scene(client, monkeypatch):
+    import app.main as main_module
+    from app.provider_service import ProviderError
+
+    calls = 0
+
+    async def flaky_provider(_session, messages, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if "registered real-life situation" in messages[0]["content"]:
+            return (
+                {
+                    "accepted": True,
+                    "mapping_score": 5,
+                    "relevance_score": 5,
+                    "situation_fidelity_score": 5,
+                    "logic_score": 5,
+                    "naturalness_score": 5,
+                    "sophistication_score": 5,
+                    "memorability_score": 5,
+                    "meme_fit_score": 5,
+                    "issue_code": "OK",
+                },
+                {"provider": "openai-compatible"},
+            )
+        if calls == 1:
+            raise ProviderError("INVALID_PROVIDER_JSON", "invalid json", 502)
+        assert "allowed_familiar_situations" in messages[0]["content"]
+        assert "valid compact JSON" in messages[-1]["content"]
+        return (
+            {
+                "anchor_index": 0,
+                "concept_key": "backtracking",
+                "concept_label": "回溯",
+                "concept_mechanism": "走不通时撤销当前选择并回到上一个分岔继续尝试",
+                "format_key": "熟人对话复盘",
+                "scene_family": "phone_messages",
+                "situation_key": "wrong_chat",
+                "mechanism_tag": "rollback",
+                "style_mode": "safe_meme",
+                "meme_key": "fly_eight_cents",
+                "meme_phrase": "哦对了，飞八分钱",
+                "meme_evidence": "哦对了，飞八分钱",
+                "scene_signature": "朋友在群聊撤回发错对象的消息后改发",
+                "title": "群聊里发错的那句话",
+                "analogy": "你在手机群聊里把吐槽发错了群，朋友只回了一句：哦对了，飞八分钱。先撤回，退回发送前，再从联系人里重新选对那个群。最危险的不是发错，而是尴尬到假装没看见。",
+                "takeaway": "回溯就是在当前选择走不通时撤销它，退回最近的分岔点，再尝试尚未走过的选择。",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", flaky_provider)
+
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={
+            "provider_session_id": "verified-session",
+            "keywords": ["算法"],
+            "variation_seed": 0,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert calls == 3
+    assert "手机群聊" in response.json()["card"]["analogy"]
+    assert response.json()["memory"]["scene_family"] == "phone_messages"
+    assert response.json()["memory"]["concept_label"] == "回溯"
+
+
+def test_life_analogy_timeout_returns_stable_error_without_private_input(client, monkeypatch):
+    import asyncio
+    import app.main as main_module
+
+    async def timed_out_provider(_session, _messages, **_kwargs):
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", timed_out_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={
+            "provider_session_id": "verified-session",
+            "keywords": ["private-timeout-sentinel"],
+        },
+    )
+
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_TIMEOUT"
+    assert "private-timeout-sentinel" not in response.text
+
+
+def test_life_analogy_rejects_private_settings_metadata(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "title": "设置清单",
+                "analogy": "你的关键词列表像一张贴在冰箱上的采购单。",
+                "takeaway": "先看清单，再决定下一步。",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "算法"},
+    )
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+    assert "算法" not in response.text
+
+
+def test_life_analogy_rejects_fluffy_card_without_structural_mapping(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "title": "快土豆与石头",
+                "analogy": "菜市场新来了个摊子卖今天就能上桌的土豆，价格便宜，拿回家发现是石头刷的漆。",
+                "takeaway": "速度买到的是通行证，不是免罚单；下次决定先上线再补时，记得先检查清单。",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "算法"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+
+
+def test_life_analogy_rejects_random_animal_even_when_it_mentions_scene_cue(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "anchor_index": 0,
+                "concept_key": "acknowledgement",
+                "concept_label": "确认应答",
+                "concept_mechanism": "接收方明确确认后发送方才能把消息视为可靠送达",
+                "format_key": "熟人对话复盘",
+                "scene_family": "phone_messages",
+                "situation_key": "wrong_chat",
+                "scene_signature": "小猫踩手机后替群聊消息做确认",
+                "title": "小猫踩手机",
+                "analogy": "小猫踩到手机，群聊里立刻多了一句收到；朋友看到后又回了一个收到，于是大家把这条消息当成已经可靠送达。",
+                "takeaway": "确认应答要求接收方明确返回确认，发送方才能把一次传递从等待状态切换为已完成。",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "算法", "variation_seed": 0},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+
+
+def test_life_analogy_rejects_waiting_scene_with_irrelevant_or_contradictory_reasoning(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "anchor_index": 0,
+                "concept_key": "rate_limit",
+                "concept_label": "限流冷却",
+                "concept_mechanism": "连续错误达到阈值后暂时拒绝后续尝试，冷却结束后才恢复",
+                "format_key": "熟人对话复盘",
+                "scene_family": "delivery_pickup",
+                "situation_key": "wrong_code",
+                "mechanism_tag": "rate_limit",
+                "style_mode": "safe_meme",
+                "meme_key": "not_bro",
+                "meme_phrase": "不是哥们",
+                "meme_evidence": "不是哥们",
+                "scene_signature": "快递柜输错取件码后倒计时",
+                "title": "快递柜的取件码惩罚",
+                "analogy": "我在快递柜前输错取件码，屏幕开始倒计时并提示锁定三十秒。不是哥们，我没走快递，回头看了一眼屏幕，它却让我等。等解锁后再输入才开门。",
+                "takeaway": "连续错误达到阈值后进入冷却期，冷却结束后才允许再次尝试。",
+                "mechanism_evidence": ["输错取件码", "锁定三十秒", "等解锁后再输入"],
+                "twist_evidence": "不是哥们",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "算法", "variation_seed": 0},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+
+
+def test_life_analogy_history_blocks_repeated_concept_and_rotates_format():
+    import app.main as main_module
+
+    history = main_module._life_analogy_recent_records(
+        [
+            "电梯按钮和幂等｜系统对重复请求要有幂等处理，确保同一操作只生效一次。",
+            {
+                "summary": "厨房短对话",
+                "concept_key": "circuit_breaker",
+                "concept_label": "熔断",
+                "mechanism": "错误达到阈值后暂时阻断请求，让下游恢复",
+                "format_key": "熟人对话复盘",
+                "scene_signature": "厨师和服务员争论传菜铃",
+            },
+        ]
+    )
+    repeated = main_module._LifeConceptSelection(
+        anchor_index=0,
+        concept_key="idempotency",
+        concept_label="幂等性",
+        mechanism="相同请求重复到达时只允许第一次产生副作用",
+        common_confusion="误以为重复点击就应该重复执行",
+        memory_target="记住重复请求与重复副作用必须分开",
+    )
+
+    assert main_module._concept_seen_recently(repeated, history) is True
+    assert main_module._choose_life_analogy_format(history, 0) != "熟人对话复盘"
+
+
+def test_life_analogy_rejects_inconsistent_visible_queue_arithmetic():
+    import app.main as main_module
+
+    assert main_module._life_analogy_number_sequence_is_consistent(
+        "屏幕从A028叫到A038，正好向前走了10个号。"
+    ) is True
+    assert main_module._life_analogy_number_sequence_is_consistent(
+        "屏幕显示A028，我说还有10个号；回来时才叫到A030。"
+    ) is False
+    assert main_module._life_analogy_number_sequence_is_consistent(
+        "我取到A028，前面还有10个人；回来时屏幕叫到A030。"
+    ) is False
+
+
+def test_life_analogy_registry_includes_requested_targetless_meme():
+    import app.main as main_module
+
+    style_mode, selected_meme = main_module._choose_life_analogy_style(0)
+
+    assert style_mode == "safe_meme"
+    assert selected_meme["key"] == "fly_eight_cents"
+    assert selected_meme["phrase"] == "哦对了，飞八分钱"
+    assert "无指向" in selected_meme["usage"]
+    assert selected_meme["placement"] == "embedded"
+    assert main_module._life_analogy_meme_is_integrated(
+        "群里有人突然回了句：哦对了，飞八分钱。大家停了两秒，又继续核对刚才那张清单。",
+        selected_meme,
+    )
+    assert not main_module._life_analogy_meme_is_integrated(
+        "他把清单检查完，最后补了一句：哦对了，飞八分钱。",
+        selected_meme,
+    )
+
+
+def test_life_analogy_rejects_exact_recent_card(client, monkeypatch):
+    import app.main as main_module
+
+    card = {
+        "anchor_index": 0,
+        "concept_key": "stable_matching",
+        "concept_label": "稳定匹配",
+        "concept_mechanism": "多个条件依次缩小候选，全部条件满足后才形成有效配对",
+        "common_confusion": "只满足一个条件就误以为已经匹配成功",
+        "memory_target": "记住匹配是多条件逐层验证而不是一次猜中",
+        "format_key": "熟人对话复盘",
+        "scene_family": "phone_messages",
+        "situation_key": "wrong_chat",
+        "scene_signature": "朋友在群聊撤回发错对象的消息后改发",
+        "title": "群聊里发错的那句话",
+        "analogy": "你在手机群聊里把吐槽发错了群，朋友只回了一句：先撤回，退回发送前，再从联系人里重新选对那个群。最危险的不是发错，而是尴尬到假装没看见。",
+        "takeaway": "整理思路也一样：输入先按条件分类，动作再逐步缩小候选，最终用可观察结果检查配对是否成立。",
+        "mechanism_evidence": ["先按颜色分桌", "再检查尺码", "两只才能成对"],
+        "twist_evidence": "全场只有它没有搭档",
+    }
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return card, {"provider": "openai-compatible"}
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={
+            "provider_session_id": "verified-session",
+            "keywords": "算法",
+            "recent_cards": [{
+                "summary": f"{card['title']}｜{card['analogy']}｜{card['takeaway']}",
+                "concept_key": card["concept_key"],
+                "concept_label": card["concept_label"],
+                "mechanism": card["concept_mechanism"],
+                "format_key": card["format_key"],
+                "scene_family": card["scene_family"],
+                "situation_key": card["situation_key"],
+                "scene_signature": card["scene_signature"],
+            }],
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+
+
+def test_life_analogy_rejects_job_or_news_provider_content(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "title": "求职排名速报",
+                "analogy": "今天的招聘新闻排在第一位。",
+                "takeaway": "看看百分之十的变化。",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "private hobby"},
+    )
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+    assert "private hobby" not in response.text
+
+
+def test_life_analogy_rejects_non_chinese_provider_content(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_provider(_session, _messages, **_kwargs):
+        return (
+            {
+                "title": "A kitchen mix-up",
+                "analogy": "Put the ingredients in order and check the oven before moving on.",
+                "takeaway": "Observe, check, act, and verify.",
+            },
+            {"provider": "openai-compatible"},
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "require_provider_session",
+        lambda *_args, **_kwargs: SimpleNamespace(provider="openai-compatible", verified=True),
+    )
+    monkeypatch.setattr(main_module, "call_bound_provider_json", fake_provider)
+    response = client.post(
+        "/api/personalized-updates/life-analogy",
+        json={"provider_session_id": "verified-session", "keywords": "private hobby"},
+    )
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "LIFE_ANALOGY_CONTENT_INVALID"
+    assert "private hobby" not in response.text
 
 
 def test_feasibility_system_allocates_daily_minutes_with_buffer(client):

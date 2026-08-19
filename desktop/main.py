@@ -19,6 +19,46 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _apply_next_launch_data_root_pointer(default_root: Path | None = None) -> None:
+    """Honor an explicitly imported local-data directory on the next launch.
+
+    The pointer is written only after a verified migration import.  Environment
+    variables remain authoritative, so managed or test launches are never
+    redirected behind the caller's back.
+    """
+
+    if (
+        os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
+        or os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
+        or os.getenv("MENTORFLOW_DB", "").strip()
+        or os.getenv("MENTORFLOW_ORM_DB", "").strip()
+    ):
+        return
+    if default_root is None:
+        default_root = (
+            Path("E:/MentorFlowData")
+            if Path("E:/").is_dir()
+            else Path(os.getenv("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+            / "MentorFlow"
+        )
+    pointer = default_root / ".mentorflow-next-data-root.json"
+    if not pointer.is_file():
+        return
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+        if payload.get("format") != "mentorflow-next-data-root-v1":
+            return
+        target = Path(str(payload.get("data_root") or "")).expanduser().resolve()
+        if not target.is_dir() or target.is_symlink():
+            return
+        data_dir = target / "data"
+        if not (data_dir / "app.db").is_file() or not (data_dir / "mentorflow_v2.db").is_file():
+            return
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return
+    os.environ["MENTORFLOW_USER_DATA_ROOT"] = str(target)
+
+
 def _ui_review_mode_enabled() -> bool:
     """Return whether this process is the explicitly isolated UI review build."""
     return os.getenv("MENTORFLOW_UI_REVIEW_MODE", "").strip().lower() in {
@@ -47,8 +87,16 @@ def _local_data_mode_enabled() -> bool:
 
 
 def _configure_frozen_user_storage() -> None:
-    """Keep distributable builds writable and isolate every Windows profile."""
-    if not getattr(sys, "frozen", False):
+    """Configure the explicitly selected local store before backend imports.
+
+    Frozen builds default to the E: application data root.  Source-mode runs
+    retain the repository database unless the caller explicitly supplies
+    ``MENTORFLOW_USER_DATA_ROOT``; when it is supplied, silently continuing to
+    use ``./data`` would show a different learning space from the one named by
+    the user.
+    """
+    explicit_data_root = os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
+    if not getattr(sys, "frozen", False) and not explicit_data_root:
         return
     if _ui_review_mode_enabled():
         # UI review is intentionally a local, auth-free copy.  Fail closed if
@@ -78,7 +126,7 @@ def _configure_frozen_user_storage() -> None:
         or (Path.home() / "AppData" / "Local")
     )
     legacy_root = local_app_data / "MentorFlow"
-    configured_root = os.getenv("MENTORFLOW_USER_DATA_ROOT")
+    configured_root = explicit_data_root
     app_root = (
         Path(configured_root).expanduser()
         if configured_root
@@ -275,11 +323,19 @@ def _load_cloud_endpoint_config() -> None:
 
 
 _load_cloud_endpoint_config()
+_apply_next_launch_data_root_pointer()
 _configure_frozen_user_storage()
 
 # This flag is set before FastAPI is imported so the local data mode never
 # opens an authentication window or returns 401 for the local desktop UI.
-if _ui_review_mode_enabled() or _local_data_mode_enabled():
+if (
+    _ui_review_mode_enabled()
+    or _local_data_mode_enabled()
+    or not os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
+):
+    # MentorFlow's shipped/default product is a local-file application.  Merely
+    # importing the desktop entry point (for example from a smoke test) must not
+    # silently switch the shared FastAPI app into account-required mode.
     os.environ.setdefault("MENTORFLOW_LOCAL_DATA_MODE", "1")
     os.environ["MENTORFLOW_AUTH_REQUIRED"] = "0"
 elif getattr(sys, "frozen", False):

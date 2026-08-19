@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, BookOpen, Check, MessageCircle, Send, Settings2, Sparkles, Volume2 } from "lucide-react"
+import { ArrowRight, BookOpen, Check, FileText, MessageCircle, Send, Settings2, Sparkles, Volume2 } from "lucide-react"
 import { activeRequest, activeTeacherPersonas, type ActiveTeacherPersona } from "../active-teaching/api"
-import { providerRequestContext, request } from "../../providerConnection"
+import { providerRequestContext, request, syncCurrentProviderSession } from "../../providerConnection"
+import { useMentorStore } from "../../stores/useMentorStore"
 import {
   speakLocalTeacherVoice,
   stopLocalTeacherVoice,
@@ -26,18 +27,87 @@ type CasualSession = {
 }
 
 export type PlannerResource = {
+  id?: string
+  candidate_id?: string
+  stable_id?: string
   url: string
+  canonical_url?: string
   title?: string
   snippet?: string
   reason?: string
+  rank_reason?: string
+  rank_reasons?: string[]
+  kind?: string
+  media_kind?: string
+  coverage_role?: string
+  source_kind?: string
+  source_type?: string
+  media_type?: string
+  collection?: string
+  collection_name?: string
+  authority?: string
+  authority_status?: string
+  authority_signal?: string
+  popularity?: string | number
+  popularity_status?: string
+  popularity_signal?: string
   authority_explanation?: string
   engine?: string
+  video_only_acknowledged?: boolean
+  direct_user_reference?: boolean
+  direct_identifier?: { kind?: string; value?: string; match?: string }
+  reference_resolution?: { status?: string; network_verified?: boolean; requires_user_confirmation?: boolean }
 }
 
 export type PlannerHandoff = {
   goal: string
-  resource: PlannerResource
+  resource?: PlannerResource
+  /** Selected public resources, kept alongside resource for old consumers. */
+  resources?: PlannerResource[]
+  /** A local file stays in memory until the final task editor uploads it. */
+  materialFile?: File
   created_at: string
+}
+
+export function plannerResourceKey(item: PlannerResource): string {
+  const stableId = String(item.stable_id || item.candidate_id || "").trim()
+  if (stableId) return `stable:${stableId}`
+  const canonical = String(item.canonical_url || item.url || "").trim().toLowerCase()
+  if (canonical) return `url:${canonical}`
+  const id = String(item.id || "").trim()
+  return id ? `id:${id}` : ""
+}
+
+export function isPlannerVideo(item: PlannerResource): boolean {
+  const kind = String(item.media_kind || item.kind || item.source_kind || item.source_type || item.media_type || "").toLowerCase()
+  if (kind.includes("video") || kind.includes("youtube") || kind.includes("bilibili")) return true
+  return /\.(mp4|webm|mov|m4v|avi|mkv)(?:$|[?#])/i.test(String(item.url || ""))
+}
+
+function plannerSignal(value: unknown, fallback = "未知") {
+  const text = String(value ?? "").trim()
+  return text || fallback
+}
+
+function plannerResourceLabel(item: PlannerResource) {
+  return plannerSignal(item.media_kind || item.kind || item.source_kind || item.source_type || item.media_type, "来源类型未知")
+}
+
+function plannerRankReason(item: PlannerResource) {
+  return item.rank_reasons?.filter(Boolean).join("；") || item.rank_reason || item.reason || "排序理由未知"
+}
+
+function mergePlannerResources(...groups: PlannerResource[][]): PlannerResource[] {
+  const result: PlannerResource[] = []
+  const seen = new Set<string>()
+  groups.flat().forEach((item) => {
+    if (!item?.url) return
+    const key = plannerResourceKey(item)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    result.push(item)
+  })
+  return result
 }
 
 const FALLBACK_TEACHERS: CasualTeacher[] = [
@@ -157,19 +227,57 @@ function LearningPlanner({
   const [goal, setGoal] = useState("")
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([])
   const [resources, setResources] = useState<PlannerResource[]>([])
-  const [selectedUrl, setSelectedUrl] = useState("")
+  const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([])
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [sourceChoice, setSourceChoice] = useState<"none" | "upload" | "search">("none")
+  const [lastSearch, setLastSearch] = useState("")
+  const [lastProviderCacheRef, setLastProviderCacheRef] = useState("")
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const [handoffDone, setHandoffDone] = useState(false)
+  const [videoOnlyConfirmation, setVideoOnlyConfirmation] = useState(false)
 
-  async function ask() {
-    const text = input.trim()
+  async function ask(messageOverride?: string) {
+    const text = (messageOverride ?? input).trim()
+    const isSearchRetry = Boolean(messageOverride && lastSearch && text === lastSearch)
     if (!text || busy) return
+    if (sourceChoice === "upload") {
+      setMessages(current => [...current, { role: "user", content: text }, { role: "assistant", content: selectedFile ? `已记下你的目标。确认“${selectedFile.name}”后，我会把它交给学习计划处理。` : "请先选择一个文件，我会在你确认后交给学习计划处理。" }])
+      setGoal(text)
+      setInput("")
+      if (!selectedFile) setNotice("请先上传一份资料，再确认继续。")
+      return
+    }
+    setSourceChoice("search")
+    setLastSearch(text)
     setBusy(true)
     setNotice("")
     setMessages(current => [...current, { role: "user", content: text }])
     setInput("")
     try {
+      let providerContext = providerRequestContext()
+      let providerSyncTransportError = false
+      if (!providerContext.provider_session_id) {
+        try {
+          await syncCurrentProviderSession()
+        } catch (error: any) {
+          // A standalone browser test or an unavailable loopback backend can
+          // reject before returning a Provider response. Let the normal
+          // planner request surface that transport failure; known Provider
+          // verification/time-out responses are handled below without making
+          // a request that would only produce a misleading 428.
+          providerSyncTransportError = error?.name === "TypeError"
+        }
+        providerContext = providerRequestContext()
+      }
+      if (!providerContext.provider_session_id && !providerSyncTransportError) {
+        const providerState = useMentorStore.getState()
+        throw new Error(
+          providerState.provider === "fake"
+            ? "规划助手需要已验证的真实 Provider；Fake 模式不会发起网络请求。"
+            : "模型连接仍在验证，请稍候重试。",
+        )
+      }
       const result = await activeRequest(
         `/workspaces/${encodeURIComponent(workspaceId || "general-learning")}/planning-assistant`,
         {
@@ -178,23 +286,35 @@ function LearningPlanner({
             message: text,
             goal,
             conversation: messages,
-            ...providerRequestContext(),
+            // Reaching this branch means the learner chose public discovery
+            // (the upload branch returned above).  Send explicit consent;
+            // don't make the backend infer it from wording or React state
+            // timing after setSourceChoice("search").
+            resource_search_authorized: true,
+            retained_candidates: resources,
+            selected_resources: resources.filter(item => selectedResourceKeys.includes(plannerResourceKey(item))),
+            ...(isSearchRetry && lastProviderCacheRef
+              ? { provider_cache_ref: lastProviderCacheRef }
+              : {}),
+            ...providerContext,
           }),
         },
-        60_000,
+        120_000,
       )
-      const seenUrls = new Set<string>()
-      const nextResources = (Array.isArray(result.resources) ? result.resources : [])
-        .filter((item: any) => {
-          const url = String(item?.url || "").trim()
-          if (!url || seenUrls.has(url)) return false
-          seenUrls.add(url)
-          return true
-        })
+      const bundledCandidates = Array.isArray(result?.resource_bundle?.candidates)
+        ? result.resource_bundle.candidates
+        : result.resources
+      const nextResources = (Array.isArray(bundledCandidates) ? bundledCandidates : [])
+        .map((item: any) => ({ ...item, url: String(item?.url || "").trim() }))
+        .filter((item: PlannerResource) => Boolean(item.url && plannerResourceKey(item)))
         .slice(0, 3) as PlannerResource[]
       setMessages(current => [...current, { role: "assistant", content: String(result.reply || "我已整理出下一步建议。") }])
-      setResources(nextResources)
-      setSelectedUrl("")
+      setSelectedResourceKeys(current => current.filter(key => nextResources.some(item => plannerResourceKey(item) === key) || resources.some(item => plannerResourceKey(item) === key)))
+      setResources(current => mergePlannerResources(
+        nextResources,
+        current.filter(item => selectedResourceKeys.includes(plannerResourceKey(item))),
+      ))
+      setLastProviderCacheRef(String(result?.cache?.provider_ref || ""))
       const nextGoal = String(result.goal_summary || text).trim()
       if (nextGoal) {
         setGoal(nextGoal)
@@ -209,19 +329,70 @@ function LearningPlanner({
     }
   }
 
-  function startPlan() {
-    const resource = resources.find(item => item.url === selectedUrl)
-    if (!resource) {
-      setNotice("请先从候选资料中选择一份，再开始整理。")
+  function toggleResource(item: PlannerResource) {
+    const key = plannerResourceKey(item)
+    if (!key) return
+    setSelectedResourceKeys(current => current.includes(key)
+      ? current.filter(value => value !== key)
+      : [...current, key])
+  }
+
+  function removeSelectedResource(item: PlannerResource) {
+    const key = plannerResourceKey(item)
+    setSelectedResourceKeys(current => current.filter(value => value !== key))
+  }
+
+  function handoffSelectedResources(videoOnlyAcknowledged = false) {
+    const selectedResources = resources
+      .filter(item => selectedResourceKeys.includes(plannerResourceKey(item)))
+      .map(item => videoOnlyAcknowledged && isPlannerVideo(item)
+        ? { ...item, video_only_acknowledged: true }
+        : item)
+    if (!selectedResources.length && !selectedFile) {
+      setNotice("请选择至少一份候选资料，或选择“使用我的资料”并上传文件后继续。")
       return
     }
+    const fallbackResource = selectedResources[0] || { url: "", title: selectedFile?.name || "我的学习资料", snippet: "来自你上传的资料" }
     const handoff: PlannerHandoff = {
       goal: goal.trim() || "根据已选资料建立可验证的学习计划",
-      resource,
+      resource: fallbackResource,
+      resources: selectedResources,
+      materialFile: selectedFile || undefined,
       created_at: new Date().toISOString(),
     }
     setHandoffDone(true)
     onStartPlan?.(handoff)
+  }
+
+  function startPlan() {
+    const selectedResources = resources.filter(item => selectedResourceKeys.includes(plannerResourceKey(item)))
+    if (selectedResources.length && selectedResources.every(isPlannerVideo) && !selectedFile && !videoOnlyConfirmation) {
+      setVideoOnlyConfirmation(true)
+      return
+    }
+    handoffSelectedResources()
+  }
+
+  function selectUpload() {
+    setSourceChoice("upload")
+    setNotice("")
+    setVideoOnlyConfirmation(false)
+  }
+
+  function selectSearch() {
+    setSourceChoice("search")
+    setSelectedFile(null)
+    setNotice("")
+  }
+
+  function handleFile(file?: File) {
+    if (!file) return
+    setSelectedFile(file)
+    setSourceChoice("upload")
+    setResources([])
+    setSelectedResourceKeys([])
+    setLastSearch("")
+    setNotice(`已选择“${file.name}”。确认后会在下一步上传并建立知识地图。`)
   }
 
   return (
@@ -230,7 +401,7 @@ function LearningPlanner({
         <div>
           <div className="eyebrow"><BookOpen size={14} /> LEARNING PLANNER</div>
           <h2>创建计划</h2>
-          <p>教师会把你的需求整理成目标，再从公开检索中挑出最多三份候选资料。你确认一份后，才会进入资料整理和计划生成。</p>
+          <p>教师会把你的需求整理成目标，再从公开检索中挑出最多三份候选资料。你可以一起确认视频、笔记或讲义，才会进入资料整理和计划生成。</p>
         </div>
         <div className="planning-companion__badge"><Sparkles size={15} /> 需求 → 资料 → 计划</div>
       </header>
@@ -238,7 +409,7 @@ function LearningPlanner({
         <aside className="planning-companion__teacher">
           <div className="planning-companion__portrait" data-testid="planner-teacher-portrait">
             <div className="planning-companion__portrait-glow" />
-            <img src="/assets/teachers/mentor-iris-explaining.png" alt="学习规划教师" />
+            <img src="/teacher2d/original-ai-teacher-blonde-fang/teacher-blonde-fang-v9-teaching-heart-key.png" alt="黄色长发的学习规划教师" />
           </div>
           <strong>规划教师</strong>
           <span>先确认目标，再让系统工作</span>
@@ -250,7 +421,7 @@ function LearningPlanner({
         </aside>
         <div className="planning-companion__main">
           <div className="planning-companion__messages" aria-live="polite">
-            {!messages.length && <div className="planning-companion__welcome"><b>可以这样说：</b><span>“我想在一个明确期限内学会一项能力，已有一份笔记，希望补齐权威资料和练习。”</span><small>不需要先准备文件，先把目标、范围和时间说出来就行。</small></div>}
+            {!messages.length && <div className="planning-companion__welcome"><b>先选择资料来源，再描述目标：</b><span>你可以上传自己的笔记，也可以让 AI 搜索候选资料；候选必须由你打开原文并确认。</span><small>不需要先准备文件，先把目标、范围和时间说出来就行。</small></div>}
             {messages.map((item, index) => (
               <div key={`${item.role}-${index}`} className={`planning-companion__message ${item.role}`}>
                 <b>{item.role === "user" ? "你" : "规划教师"}</b><span>{item.content}</span>
@@ -258,24 +429,54 @@ function LearningPlanner({
             ))}
             {busy && <div className="planning-companion__typing">正在整理需求并检索可核对资料…</div>}
           </div>
+          <div className="planning-companion__source-choice" aria-label="选择资料来源">
+            <span className="planning-companion__source-label">你准备使用哪类资料？</span>
+            <button type="button" className={sourceChoice === "upload" ? "is-selected" : ""} onClick={selectUpload} data-testid="planning-companion-use-own">
+              <BookOpen size={15} /> 使用我的资料
+            </button>
+            <button type="button" className={sourceChoice === "search" ? "is-selected" : ""} onClick={selectSearch} data-testid="planning-companion-search">
+              <Sparkles size={15} /> 帮我找资料
+            </button>
+            <label className="planning-companion__upload">
+              <input data-testid="planning-companion-upload" type="file" onChange={event => { handleFile(event.target.files?.[0]); event.target.value = "" }} />
+              <span>{selectedFile ? `已选：${selectedFile.name}` : "上传文件"}</span>
+            </label>
+          </div>
           <div className="planning-companion__composer">
-            <textarea data-testid="planning-companion-input" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder="告诉教师你的学习目标、面向的场景、已有资料和希望完成的时间…" />
+            <textarea data-testid="planning-companion-input" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder={sourceChoice === "upload" ? "告诉教师这份资料要解决什么目标、在何时完成…" : "告诉教师你的学习目标、面向的场景、已有资料和希望完成的时间…"} />
             <button type="button" data-testid="planning-companion-send" className="primary" onClick={() => void ask()} disabled={busy || !input.trim()}><Send size={16} /> {busy ? "整理中" : "开始规划"}</button>
           </div>
+          {sourceChoice === "upload" && !selectedFile && <div className="planning-companion__hint" role="status">请选择一个文件；你的资料只会在你确认后上传。</div>}
           {resources.length > 0 && (
             <section className="planning-companion__resources" aria-label="推荐资料">
-              <div className="planning-companion__resources-head"><div><b>推荐资料（最多三份）</b><span>候选来自实时检索；请打开核对发布机构、作者和内容范围。</span></div><span className="planning-companion__verified-note">待你确认</span></div>
-              <div className="planning-companion__resource-grid">
+              <div className="planning-companion__resources-head"><div><b>推荐资料（可多选）</b><span>候选来自实时检索；可保留已选资料，再补充一轮搜索。</span></div><span className="planning-companion__verified-note">待你确认</span></div>
+              <fieldset className="planning-companion__resource-grid" aria-label="候选资料">
+                <legend className="sr-only">候选资料，可选择多份</legend>
                 {resources.map((item, index) => (
-                  <label key={`${item.url}-${index}`} className={`planning-companion__resource ${selectedUrl === item.url ? "is-selected" : ""}`}>
-                    <input type="radio" name="planner-resource" checked={selectedUrl === item.url} onChange={() => setSelectedUrl(item.url)} />
+                  <label key={`${plannerResourceKey(item)}-${index}`} className={`planning-companion__resource ${selectedResourceKeys.includes(plannerResourceKey(item)) ? "is-selected" : ""}`}>
+                    <input type="checkbox" name="planner-resource" checked={selectedResourceKeys.includes(plannerResourceKey(item))} onChange={() => toggleResource(item)} aria-label={`选择 ${item.title || item.url}`} />
                     <span className="planning-companion__resource-index">0{index + 1}</span>
-                    <span className="planning-companion__resource-copy"><strong>{item.title || item.url}</strong><small>{item.reason || "与当前学习目标相关，仍需你确认范围。"}</small><em>{item.authority_explanation || "请核对发布机构、作者、更新时间和内容范围。"}</em><a href={item.url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>打开原文 <ArrowRight size={13} /></a></span>
+                    <span className="planning-companion__resource-copy"><strong title={item.title || item.url}>{item.title || item.url}</strong>{item.direct_user_reference && <small>精确引用 · 由你提供，尚未联网核验</small>}<small>{plannerResourceLabel(item)} · 角色：{plannerSignal(item.coverage_role || item.collection || item.collection_name)}</small><small>权威：{plannerSignal(item.authority_status || item.authority || item.authority_signal || (item.authority_explanation ? "已提供说明" : ""))} · 热度：{plannerSignal(item.popularity_status || item.popularity || item.popularity_signal)}</small><em>{plannerRankReason(item)}</em><a href={item.url} target="_blank" rel="noreferrer" aria-label={`打开“${item.title || item.url}”原文`} onClick={event => event.stopPropagation()}>打开原文 <ArrowRight size={13} /></a></span>
                   </label>
                 ))}
-              </div>
-              <button type="button" className="planning-companion__start" data-testid="planning-companion-start" onClick={startPlan} disabled={!selectedUrl || handoffDone}>{handoffDone ? <><Check size={16} /> 已交给学习计划</> : <>采用这份资料，开始整理 <ArrowRight size={16} /></>}</button>
+              </fieldset>
+              {selectedResourceKeys.length > 0 && <div className="planning-companion__bundle" aria-live="polite"><b>已选资料包 · {selectedResourceKeys.length} 份</b><div>{resources.filter(item => selectedResourceKeys.includes(plannerResourceKey(item))).map(item => <button type="button" key={plannerResourceKey(item)} onClick={() => removeSelectedResource(item)} aria-label={`移除 ${item.title || item.url}`}>{item.title || item.url} ×</button>)}</div></div>}
+              {videoOnlyConfirmation && <div className="planning-companion__video-confirmation" data-testid="planning-video-only-confirmation" role="alert"><b>当前资料包只有视频</b><span>视频转写可能遗漏公式、图表或上下文。建议先添加笔记或讲义。</span><div><button type="button" onClick={() => { setVideoOnlyConfirmation(false); selectSearch(); setNotice("请继续搜索或上传笔记，再回到资料包确认。") }}>添加笔记</button><button type="button" className="secondary" onClick={() => { setVideoOnlyConfirmation(false); handoffSelectedResources(true) }}>继续仅使用视频</button></div></div>}
+              <button type="button" className="planning-companion__start" data-testid="planning-companion-start" onClick={startPlan} disabled={!selectedResourceKeys.length || handoffDone}>{handoffDone ? <><Check size={16} /> 已交给学习计划</> : <>采用已选资料包，开始整理 <ArrowRight size={16} /></>}</button>
             </section>
+          )}
+          {selectedFile && <section className="planning-companion__resources planning-companion__local-resource" aria-label="我的资料">
+            <div className="planning-companion__resources-head"><div><b>我的资料</b><span>文件会在你确认后交给学习计划处理。</span></div><span className="planning-companion__verified-note">待你确认</span></div>
+            <div className="planning-companion__local-file"><FileText size={18} /><strong>{selectedFile.name}</strong><small>{Math.max(1, Math.round(selectedFile.size / 1024))} KB · {selectedFile.type || "文件"}</small></div>
+            <button type="button" className="planning-companion__start" data-testid="planning-companion-start" onClick={startPlan} disabled={handoffDone}>采用我的资料，开始整理 <ArrowRight size={16} /></button>
+          </section>}
+          {!resources.length && lastSearch && !busy && (
+            <div className="planning-companion__empty-actions" data-testid="planning-companion-empty-actions">
+              <span>没有可核对的候选也没关系，你可以换一种描述或改用自己的资料。</span>
+              <button type="button" onClick={() => { setInput(lastSearch); void ask(lastSearch) }} disabled={busy}>重试搜索</button>
+              <button type="button" onClick={() => { setInput(""); selectSearch() }}>换一种描述</button>
+              <button type="button" onClick={selectUpload}>上传我的资料</button>
+            </div>
           )}
           {notice && <div className="planning-companion__notice" role="status">{notice}</div>}
           <p className="planning-companion__footnote">资料确认后，系统会自动进入学习计划：你只需补充目标备注、开始日期和截止日期，知识地图与每日任务由系统计算。</p>

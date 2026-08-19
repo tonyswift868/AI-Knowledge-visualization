@@ -119,7 +119,9 @@ class DesktopApi:
         return payload if isinstance(payload, list) else payload.get("items", [])
 
     def active_workspaces(self, *, include_archived: bool = False) -> dict[str, Any]:
-        params = {"include_archived": "true"} if include_archived else None
+        params = {"compact": "true"}
+        if include_archived:
+            params["include_archived"] = "true"
         return self.request("GET", "/api/active-teaching/workspaces", params=params)
 
     def archive_workspace(self, workspace_id: str, *, archived: bool) -> dict[str, Any]:
@@ -176,6 +178,61 @@ class DesktopApi:
 
     def test_provider_session(self, session_id: str) -> dict[str, Any]:
         return self.request("POST", f"/api/provider-sessions/{session_id}/test")
+
+    def rank_personalized_updates(
+        self,
+        provider_session_id: str,
+        interests: str,
+        blocked: str,
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Ask the verified model to rank only the supplied official-source metadata."""
+        return self.request(
+            "POST",
+            "/api/personalized-updates/rank",
+            json={
+                "provider_session_id": provider_session_id,
+                "interests": interests,
+                "blocked": blocked,
+                "candidates": candidates,
+            },
+        )
+
+    def generate_life_analogy(
+        self,
+        provider_session_id: str,
+        keywords: str | list[str],
+        *,
+        recent_cards: list[dict[str, str]] | list[str] | None = None,
+        variation_seed: int = 0,
+    ) -> dict[str, Any]:
+        """Generate one varied card around a private, user-selected direction."""
+        return self.request(
+            "POST",
+            "/api/personalized-updates/life-analogy",
+            json={
+                "provider_session_id": provider_session_id,
+                "keywords": keywords,
+                "recent_cards": list(recent_cards or [])[-48:],
+                "variation_seed": max(0, int(variation_seed)),
+            },
+        )
+
+    # Keep the shorter name convenient for callers that treat this as a
+    # card-producing API rather than a generic generation operation.
+    def life_analogy(
+        self,
+        provider_session_id: str,
+        keywords: str | list[str],
+    ) -> dict[str, Any]:
+        return self.generate_life_analogy(provider_session_id, keywords)
+
+    def create_life_analogy(
+        self,
+        provider_session_id: str,
+        keywords: str | list[str],
+    ) -> dict[str, Any]:
+        return self.generate_life_analogy(provider_session_id, keywords)
 
     def list_provider_presets(self) -> dict[str, Any]:
         """Return locally stored provider presets without exposing secrets."""
@@ -287,6 +344,9 @@ class DesktopApi:
         force_complete: bool = False,
         verify_completion: bool = False,
         attachment_ids: list[str] | None = None,
+        actual_elapsed_minutes: float = 0.0,
+        activity_event_id: str = "",
+        activity_kind: str = "active_learning",
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "message": message,
@@ -294,6 +354,10 @@ class DesktopApi:
             "verify_completion": verify_completion,
             "attachment_ids": list(attachment_ids or []),
         }
+        if actual_elapsed_minutes > 0:
+            payload["actual_elapsed_minutes"] = round(float(actual_elapsed_minutes), 3)
+            payload["activity_event_id"] = activity_event_id
+            payload["activity_kind"] = activity_kind
         if provider_session_id:
             payload["provider_session_id"] = provider_session_id
         return self.request("POST", f"/api/active-teaching/sessions/{session_id}/advance", json=payload)

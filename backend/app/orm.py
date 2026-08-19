@@ -98,6 +98,7 @@ MIGRATION_OWNED_KNOWLEDGE_TABLES = frozenset({
     'orm_plan_execution_tasks',
     'orm_plan_mastery_events',
     'orm_learning_resources',
+    'orm_planning_assistant_cache',
 })
 class WorkspaceORM(Base):
     __tablename__='orm_workspaces'; id:Mapped[str]=mapped_column(String(64),primary_key=True); title:Mapped[str]=mapped_column(String(120)); description:Mapped[str]=mapped_column(Text,default=''); character_id:Mapped[str]=mapped_column(String(32),default='warm'); allow_external_knowledge:Mapped[bool]=mapped_column(Boolean,default=False); execution_mode:Mapped[str]=mapped_column(String(16),default='demo'); provider_name:Mapped[str]=mapped_column(String(64),default='fake'); provider_model:Mapped[str]=mapped_column(String(128),default=''); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); sources:Mapped[list['SourceORM']]=relationship(cascade='all,delete-orphan'); goals:Mapped[list['GoalORM']]=relationship(cascade='all,delete-orphan'); plans:Mapped[list['PlanORM']]=relationship(cascade='all,delete-orphan')
@@ -204,6 +205,10 @@ class KnowledgeMapJobORM(KnowledgeMapBase):
     request_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     failure_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Versioned, durable progress projection.  Keeping this separate from
+    # result/failure payloads lets clients poll truthful work-unit checkpoints
+    # while a staged revision is still being built.
+    progress_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -213,6 +218,22 @@ class KnowledgeMapJobORM(KnowledgeMapBase):
         Index('ix_orm_knowledge_map_job_workspace_status', 'workspace_id', 'status'),
         Index('ix_orm_knowledge_map_job_revision_status', 'map_revision_id', 'status'),
     )
+
+
+class PlanningAssistantCacheORM(KnowledgeMapBase):
+    """Durable local cache for cost-bearing planning-provider responses."""
+
+    __tablename__ = "orm_planning_assistant_cache"
+    cache_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    cache_kind: Mapped[str] = mapped_column(String(40), index=True)
+    provider_fingerprint: Mapped[str] = mapped_column(String(128), index=True)
+    request_hash: Mapped[str] = mapped_column(String(128), index=True)
+    value_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    schema_version: Mapped[str] = mapped_column(String(40), default="planning-assistant.v1")
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class MaterialDispositionORM(KnowledgeMapBase):
@@ -317,6 +338,7 @@ class PlanExecutionTaskORM(KnowledgeMapBase):
     concept_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     estimated_task_minutes: Mapped[int] = mapped_column(Integer)
     completed_task_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     actual_elapsed_minutes: Mapped[float] = mapped_column(Float, default=0)
     status: Mapped[str] = mapped_column(String(24), default='planned', index=True)
     task_type: Mapped[str] = mapped_column(String(32), default='initial_learning')

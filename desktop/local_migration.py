@@ -26,6 +26,30 @@ MIGRATION_FORMAT = "mentorflow-local-migration-v1"
 MANIFEST_NAME = "mentorflow-migration.json"
 MAX_MEMBERS = 20_000
 MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 100
+NEXT_LAUNCH_POINTER_NAME = ".mentorflow-next-data-root.json"
+
+# The app root contains a considerable amount of disposable test/build data.
+# A migration is a user-data operation, so keep the boundary explicit: the
+# live databases, active teaching/classroom payloads, and user presets are the
+# only roots that can be copied.  Everything else is reported as excluded.
+_PORTABLE_TOP_LEVEL_DIRS = {"data", "presets"}
+_PORTABLE_TOP_LEVEL_FILES = {"preset_settings.json"}
+_DISPOSABLE_DIR_NAMES = {
+    "backup",
+    "backups",
+    "cache",
+    "logs",
+    "log",
+    "temp",
+    "tmp",
+    "ui-review",
+    "runtime-cache",
+    "archive_previews",
+    "demo_materials",
+    "expedition_art_pack_previews",
+}
+_DISPOSABLE_FILE_SUFFIXES = (".log", ".tmp", ".temp", ".bak", ".part")
 
 
 class MigrationError(RuntimeError):
@@ -45,6 +69,44 @@ def _is_reparse_or_symlink(path: Path) -> bool:
     return path.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
+def _reparse_ancestor(path: Path) -> Path | None:
+    """Return a reparse/symlink component without following it first."""
+
+    candidate = path.expanduser()
+    while True:
+        if candidate.exists() and _is_reparse_or_symlink(candidate):
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            return None
+        candidate = parent
+
+
+def _portable_path(relative: str) -> tuple[bool, str]:
+    parts = [part for part in relative.replace("\\", "/").split("/") if part]
+    if not parts:
+        return False, "empty path"
+    lowered = [part.casefold() for part in parts]
+    name = lowered[-1]
+    if any(part in _DISPOSABLE_DIR_NAMES for part in lowered):
+        return False, "backup/temp/review/cache data is not portable"
+    if (
+        name.endswith(_DISPOSABLE_FILE_SUFFIXES)
+        or name.endswith(".zip")
+        or name.endswith(("-wal", "-shm"))
+    ):
+        return False, "backup/temp/archive output is not portable"
+    if lowered[0] not in _PORTABLE_TOP_LEVEL_DIRS and name not in _PORTABLE_TOP_LEVEL_FILES:
+        return False, "not an allowlisted live data/config path"
+    if name.endswith((".key", ".pem", ".p12", ".pfx")) or name in {
+        "secrets.json",
+        "credentials.json",
+        "credential.json",
+    }:
+        return False, "credential material is not portable"
+    return True, ""
+
+
 def _iter_files(root: Path, archive_destination: Path | None) -> tuple[list[Path], list[str]]:
     files: list[Path] = []
     excluded: list[str] = []
@@ -59,12 +121,9 @@ def _iter_files(root: Path, archive_destination: Path | None) -> tuple[list[Path
         if destination and path.resolve() == destination:
             excluded.append(f"{relative}: selected archive destination")
             continue
-        lower = path.name.casefold()
-        if lower.endswith((".key", ".pem", ".p12", ".pfx")) or lower in {
-            "secrets.json",
-            "credentials.json",
-        }:
-            excluded.append(f"{relative}: credential material is not portable")
+        allowed, reason = _portable_path(relative)
+        if not allowed:
+            excluded.append(f"{relative}: {reason}")
             continue
         files.append(path)
     return files, excluded
@@ -92,7 +151,10 @@ def _snapshot_file(source: Path, destination: Path) -> None:
 def export_migration_archive(data_root: Path, destination: Path) -> dict[str, Any]:
     """Create a portable ZIP at ``destination`` without overwriting it."""
 
-    root = data_root.expanduser().resolve()
+    requested_root = data_root.expanduser()
+    if _reparse_ancestor(requested_root):
+        raise MigrationError("本地数据目录不能经过符号链接或 reparse point。")
+    root = requested_root.resolve()
     if not root.is_dir():
         raise MigrationError(f"本地数据目录不存在：{root}")
     output = destination.expanduser().resolve()
@@ -155,12 +217,21 @@ def _safe_member_name(name: str) -> str:
 def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str, Any]:
     """Verify and extract a migration ZIP into a new or empty directory."""
 
-    source = archive_path.expanduser().resolve()
-    target = target_root.expanduser().resolve()
+    requested_source = archive_path.expanduser()
+    requested_target = target_root.expanduser()
+    if _reparse_ancestor(requested_source):
+        raise MigrationError("迁移包路径不能经过符号链接或 reparse point。")
+    if _reparse_ancestor(requested_target):
+        raise MigrationError("导入目标不能是符号链接或 reparse point。")
+    source = requested_source.resolve()
+    target = requested_target.resolve()
     if not source.is_file() or not zipfile.is_zipfile(source):
         raise MigrationError("所选文件不是有效的 MentorFlow 迁移压缩包。")
-    if target.exists() and any(target.iterdir()):
-        raise MigrationError(f"导入目标必须是新目录或空目录：{target}")
+    if target.exists():
+        if not target.is_dir():
+            raise MigrationError(f"导入目标必须是新目录或空目录：{target}")
+        if any(target.iterdir()):
+            raise MigrationError(f"导入目标必须是新目录或空目录：{target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     temp_root = Path(os.getenv("MENTORFLOW_TEMP_ROOT", r"E:\Codex\Temp"))
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -182,6 +253,8 @@ def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str,
                 mode = (info.external_attr >> 16) & 0xFFFF
                 if stat.S_ISLNK(mode):
                     raise MigrationError(f"迁移包包含符号链接：{name}")
+                if info.file_size > 0 and info.file_size > max(1, info.compress_size) * MAX_COMPRESSION_RATIO:
+                    raise MigrationError(f"迁移包压缩比例不安全：{name}")
                 names[name] = info
             if MANIFEST_NAME not in names:
                 raise MigrationError("迁移包缺少清单文件。")
@@ -201,6 +274,9 @@ def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str,
                 name = _safe_member_name(str(entry.get("path") or ""))
                 if name in expected or name == MANIFEST_NAME:
                     raise MigrationError(f"迁移包清单包含重复文件：{name}")
+                allowed, reason = _portable_path(name)
+                if not allowed:
+                    raise MigrationError(f"迁移包包含非便携路径：{name}（{reason}）")
                 expected[name] = entry
             if set(expected) != set(names) - {MANIFEST_NAME}:
                 raise MigrationError("迁移包内容与清单不一致。")
@@ -219,6 +295,8 @@ def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str,
                     shutil.copyfileobj(input_stream, output, length=1024 * 1024)
                 if _sha256(destination) != str(entry.get("sha256") or ""):
                     raise MigrationError(f"文件校验失败：{name}")
+                if destination.suffix.casefold() in {".db", ".sqlite", ".sqlite3"}:
+                    _verify_sqlite_integrity(destination)
         target.mkdir(parents=True, exist_ok=True)
         for item in staging.iterdir():
             destination = target / item.name
@@ -228,3 +306,44 @@ def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str,
         return {"target": target, "files": len(expected), "bytes": total}
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _verify_sqlite_integrity(path: Path) -> None:
+    """Fail closed before publishing an imported SQLite database."""
+
+    try:
+        connection = sqlite3.connect(path)
+        try:
+            result = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise MigrationError(f"导入数据库完整性检查失败：{path.name}") from exc
+    if result.casefold() != "ok":
+        raise MigrationError(f"导入数据库完整性检查失败：{path.name} ({result})")
+
+
+def write_next_launch_data_root_pointer(current_root: Path, target_root: Path) -> Path:
+    """Publish a discoverable handoff without changing the running data root."""
+
+    current = current_root.expanduser().resolve()
+    requested_target = target_root.expanduser()
+    if _reparse_ancestor(requested_target):
+        raise MigrationError("下一次启动的数据目录不能经过符号链接或 reparse point。")
+    target = requested_target.resolve()
+    if current == target:
+        raise MigrationError("下一次启动目录不能是当前正在使用的目录。")
+    current.mkdir(parents=True, exist_ok=True)
+    pointer = current / NEXT_LAUNCH_POINTER_NAME
+    payload = {
+        "format": "mentorflow-next-data-root-v1",
+        "data_root": str(target),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary = pointer.with_name(pointer.name + f".{uuid.uuid4().hex}.part")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(pointer)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return pointer

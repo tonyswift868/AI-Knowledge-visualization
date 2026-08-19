@@ -17,6 +17,8 @@ import {
   setActiveLearningTaskArchived,
   type ActiveLearningTaskSummary,
   type ActiveTeacherPersona,
+  ingestVideoMaterial,
+  searchVideoSupplementaryMaterials,
   uploadActiveMaterial,
   uploadActiveUrlMaterial,
   uploadActiveTeachingAttachment,
@@ -98,6 +100,44 @@ const stringValue = (...values: unknown[]) => {
   const value = values.find((item) => item !== undefined && item !== null && String(item).trim());
   return String(value ?? "").trim();
 };
+
+const plannerResourceKey = (item: any) => {
+  const stableId = String(item?.stable_id || item?.candidate_id || "").trim();
+  if (stableId) return `stable:${stableId}`;
+  const url = String(item?.canonical_url || item?.url || "").trim().toLowerCase();
+  if (url) return `url:${url}`;
+  const id = String(item?.id || "").trim();
+  return id ? `id:${id}` : "";
+};
+
+const isPlannerVideo = (item: any) => {
+  const kind = String(item?.media_kind || item?.kind || item?.source_kind || item?.source_type || item?.media_type || "").toLowerCase();
+  return kind.includes("video") || kind.includes("youtube") || kind.includes("bilibili")
+    || /\.(mp4|webm|mov|m4v|avi|mkv)(?:$|[?#])/i.test(String(item?.url || ""));
+};
+
+const mergePlannerResources = (...groups: any[][]) => {
+  const seen = new Set<string>();
+  const merged: any[] = [];
+  groups.flat().forEach((item) => {
+    const key = plannerResourceKey(item);
+    if (!key || seen.has(key) || !item?.url) return;
+    seen.add(key);
+    merged.push(item);
+  });
+  return merged;
+};
+
+const plannerSignal = (value: unknown, fallback = "未知") => {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+};
+const plannerRankReason = (item: any) => (
+  (Array.isArray(item?.rank_reasons) ? item.rank_reasons.filter(Boolean).join("；") : "")
+  || item?.rank_reason
+  || item?.reason
+  || "排序理由未知"
+);
 
 export const isKnowledgeJobTerminal = (status: unknown) => [
   "ready", "ready_with_review", "completed", "complete", "succeeded", "done", "failed", "error", "unsupported", "cancelled",
@@ -932,10 +972,15 @@ export function ActiveTeachingChainView({
   workspaceId,
   createRequest = 0,
   onCreateRequestConsumed,
+  compactPlannerFlow = false,
+  initialMaterialFile = null,
 }: {
   workspaceId: string;
   createRequest?: number;
   onCreateRequestConsumed?: () => void;
+  compactPlannerFlow?: boolean;
+  /** File selected in the planner handoff; kept in memory until this editor uploads it. */
+  initialMaterialFile?: File | null;
 }) {
   const providerSessionId = useMentorStore((state) => state.providerSessionId);
   const providerVerified = useMentorStore((state) => state.verified);
@@ -1007,10 +1052,18 @@ export function ActiveTeachingChainView({
   const [knowledgeMapJob, setKnowledgeMapJob] = useState<any>(null);
   const [knowledgeMapError, setKnowledgeMapError] = useState("");
   const [planningAssistantText, setPlanningAssistantText] = useState("");
+  const [planningAssistantLastQuery, setPlanningAssistantLastQuery] = useState("");
   const [planningAssistantMessages, setPlanningAssistantMessages] = useState<any[]>([]);
   const [planningAssistantResources, setPlanningAssistantResources] = useState<any[]>([]);
+  const [planningAssistantSelectedKeys, setPlanningAssistantSelectedKeys] = useState<string[]>([]);
+  const [planningAssistantSelectedUrl, setPlanningAssistantSelectedUrl] = useState("");
   const [planningAssistantBusy, setPlanningAssistantBusy] = useState(false);
+  const [planningVideoOnlyConfirmation, setPlanningVideoOnlyConfirmation] = useState(false);
   const [plannerResource, setPlannerResource] = useState<any>(null);
+  const [plannerResources, setPlannerResources] = useState<any[]>([]);
+  const [videoMaterialFlow, setVideoMaterialFlow] = useState<any>(null);
+  const [videoFileConsentPending, setVideoFileConsentPending] = useState<File | null>(null);
+  const [videoSupplementSelection, setVideoSupplementSelection] = useState<string[]>([]);
   const [planPreview, setPlanPreview] = useState<MasteryPlanPreviewV1 | null>(null);
   const [extensionConfirmed, setExtensionConfirmed] = useState(false);
   const [planActivationResult, setPlanActivationResult] = useState<any>(null);
@@ -1019,6 +1072,8 @@ export function ActiveTeachingChainView({
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const refreshSequence = useRef(0);
   const conversationHistoryRef = useRef<HTMLDivElement | null>(null);
+  const planningAssistantInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const materialFileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -1359,6 +1414,7 @@ export function ActiveTeachingChainView({
   ).size;
   const plan = snapshot?.plan;
   const displayPlan = plan || (planPreview ? normalizeMasteryPlanPreview(planPreview) : null);
+  const plannerSourceConfirmed = Boolean(plannerResources.length || plannerResource || file);
   const initialPhaseDays = (plan?.calendar || []).filter(
     (day: any) => ["initial_learning", "transition"].includes(day.study_phase),
   );
@@ -1613,11 +1669,15 @@ export function ActiveTeachingChainView({
   // This option belongs to task creation. Existing receipts without the field
   // retain the historical behaviour (resource discovery enabled), while an
   // explicit false is preserved without changing the current plan.
-  const resourceDiscoveryEnabled = plannerResource
+  const resourceDiscoveryEnabled = plannerResources.length || plannerResource
     ? false
     : isTaskCreationFlow
       ? discoverExternalResources
       : savedResourceDiscoveryOption;
+  const videoSupplementCandidates = asArray(videoMaterialFlow?.supplementary_search?.candidates);
+  const videoTranscript = videoMaterialFlow?.transcript || {};
+  const videoSubtitle = videoTranscript?.subtitle || {};
+  const videoSubtitleQuality = videoSubtitle?.quality || videoMaterialFlow?.subtitle_preview?.quality || {};
 
   const receiptPayload = (materialIds?: string[]) => ({
     learning_goal: goal,
@@ -2044,8 +2104,8 @@ export function ActiveTeachingChainView({
     return job;
   };
 
-  const askPlanningAssistant = async () => {
-    const text = planningAssistantText.trim();
+  const askPlanningAssistant = async (messageOverride?: string) => {
+    const text = (messageOverride ?? planningAssistantText).trim();
     if (!text) {
       setError("请先告诉 AI 资料助手你想学会什么，或希望找哪类资料。");
       return;
@@ -2058,6 +2118,7 @@ export function ActiveTeachingChainView({
     setError("");
     const nextMessages = [...planningAssistantMessages, { role: "user", content: text }];
     setPlanningAssistantMessages(nextMessages);
+    setPlanningAssistantLastQuery(text);
     setPlanningAssistantText("");
     try {
       const result = await activeRequest(
@@ -2068,16 +2129,35 @@ export function ActiveTeachingChainView({
             message: text,
             goal,
             conversation: planningAssistantMessages,
+            resource_search_authorized: true,
+            retained_candidates: planningAssistantResources,
+            selected_resources: planningAssistantResources.filter((item: any) => (
+              planningAssistantSelectedKeys.includes(plannerResourceKey(item))
+            )),
             ...providerRequestContext(),
           }),
         },
-        60_000,
+        120_000,
       );
       setPlanningAssistantMessages((current) => [
         ...current,
         { role: "assistant", content: result.reply || "我已整理出下一步建议。" },
       ]);
-      setPlanningAssistantResources(Array.isArray(result.resources) ? result.resources : []);
+      const bundledCandidates = Array.isArray(result?.resource_bundle?.candidates)
+        ? result.resource_bundle.candidates
+        : result.resources;
+      const nextResources = (Array.isArray(bundledCandidates) ? bundledCandidates : [])
+        .map((item: any) => ({ ...item, url: String(item?.url || "").trim() }))
+        .filter((item: any) => Boolean(item.url && plannerResourceKey(item)));
+      setPlanningAssistantResources((current) => mergePlannerResources(
+        nextResources,
+        current.filter((item) => planningAssistantSelectedKeys.includes(plannerResourceKey(item))),
+      ));
+      setPlanningAssistantSelectedKeys((current) => current.filter((key) => (
+        nextResources.some((item: any) => plannerResourceKey(item) === key)
+        || planningAssistantResources.some((item: any) => plannerResourceKey(item) === key)
+      )));
+      setPlanningAssistantSelectedUrl("");
       if (result.goal_summary) setGoal(String(result.goal_summary));
       if (Array.isArray(result.warnings) && result.warnings.length) {
         setError(result.warnings.join("；"));
@@ -2087,6 +2167,33 @@ export function ActiveTeachingChainView({
     } finally {
       setPlanningAssistantBusy(false);
     }
+  };
+
+  const acceptPlanningResources = (selected: any[], videoOnlyAcknowledged = false) => {
+    const accepted = selected.map((item: any) => videoOnlyAcknowledged && isPlannerVideo(item)
+      ? { ...item, video_only_acknowledged: true }
+      : item);
+    setPlannerResources(accepted);
+    setPlannerResource(accepted[0]);
+    setPlanningAssistantSelectedUrl(String(selected[0]?.url || ""));
+    setPlanningVideoOnlyConfirmation(false);
+    setPlanningAssistantMessages((current) => [
+      ...current,
+      { role: "assistant", content: `已记录你确认的 ${selected.length} 份资料。补充日期后点击“开始整理”，我才会抓取并生成计划。` },
+    ]);
+  };
+
+  const confirmPlanningAssistantResource = () => {
+    const selected = planningAssistantResources.filter((item: any) => planningAssistantSelectedKeys.includes(plannerResourceKey(item)));
+    if (!selected.length) {
+      setError("请先选择一份候选资料；打开原文核对后再确认。没有合适候选时，可以重试或上传自己的资料。");
+      return;
+    }
+    if (selected.every(isPlannerVideo)) {
+      setPlanningVideoOnlyConfirmation(true);
+      return;
+    }
+    acceptPlanningResources(selected);
   };
 
   const readKnowledgeMapJobV1 = async (jobId: string) => {
@@ -2099,10 +2206,8 @@ export function ActiveTeachingChainView({
   const waitForKnowledgeMapV1 = async (started: any): Promise<KnowledgeMapV1> => {
     const jobId = stringValue(started?.job_id, started?.id);
     if (!jobId) throw new Error("知识地图任务没有返回 job_id");
-    const deadlineAt = Date.now() + 210_000;
     let current = started;
     while (!isKnowledgeJobTerminal(current?.status)) {
-      if (Date.now() >= deadlineAt) throw new Error("知识地图生成超时；任务仍保留，可稍后刷新查看状态");
       await new Promise((resolve) => window.setTimeout(resolve, 500));
       current = await readKnowledgeMapJobV1(jobId);
       setKnowledgeMapJob(current);
@@ -2188,22 +2293,9 @@ export function ActiveTeachingChainView({
     return activated;
   };
 
-  const createOrCompleteTask = async () => {
-    const importedPlannerResource = plannerResource?.url
-      ? await uploadActiveUrlMaterial(activeWorkspaceId, {
-          url: String(plannerResource.url),
-          title: String(plannerResource.title || "网页资料"),
-        })
-      : null;
-    const uploaded = file
-      ? await uploadActiveMaterial(activeWorkspaceId, file)
-      : null;
-    const ids = Array.from(new Set([
-      ...materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
-      ...(importedPlannerResource ? [importedPlannerResource.id] : []),
-      ...(uploaded ? [uploaded.id] : []),
-    ]));
-    if (!ids.length) throw new Error("请先选择并上传一份学习资料");
+  const finishTaskCreation = async (materialIds: string[]) => {
+    const ids = Array.from(new Set(materialIds.filter(Boolean)));
+    if (!ids.length) throw new Error("没有可用于生成计划的已确认资料");
     await saveReceipt(ids);
     // Knowledge-map extraction and planning stay on the critical path.  Web
     // resources are optional enrichment and must be queued after the map is
@@ -2216,7 +2308,169 @@ export function ActiveTeachingChainView({
     await previewMasteryPlan(latestMap.revision);
     setFile(null);
     setPlannerResource(null);
+    setPlannerResources([]);
+    setVideoMaterialFlow(null);
+    setVideoFileConsentPending(null);
+    setVideoSupplementSelection([]);
     try { localStorage.removeItem("mentorflow_planner_handoff_v1"); } catch { /* optional persistence */ }
+  };
+
+  const createOrCompleteTask = async (videoConsentGiven = false) => {
+    const isVideoFile = Boolean(file && (/^video\//i.test(file.type) || /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(file.name)));
+    if (isVideoFile && !videoConsentGiven) {
+      setVideoFileConsentPending(file);
+      return;
+    }
+    const selectedPlannerResources = plannerResources.length
+      ? plannerResources
+      : (plannerResource?.url ? [plannerResource] : []);
+    const selectedVideos = selectedPlannerResources.filter(isPlannerVideo);
+    const selectedCompanions = selectedPlannerResources.filter((item: any) => !isPlannerVideo(item));
+    if (selectedVideos.length > 1) {
+      setError("一次请选择一个主视频或视频合集；讲义、笔记和文档可以同时多选。这样每个视频都能单独完成字幕确认，不会混淆来源。");
+      return;
+    }
+    if (selectedVideos.length === 1 && selectedCompanions.length) {
+      const video = selectedVideos[0];
+      setPlannerResource(video);
+      setVideoSupplementSelection(selectedCompanions.map((item: any) => String(item.url)));
+      const preview = await ingestVideoMaterial(activeWorkspaceId, {
+        url: String(video.url),
+        title: String(video.title || "视频资料"),
+        find_additional_materials: true,
+        selected_candidate_urls: selectedCompanions.map((item: any) => String(item.url)),
+        confirm_transcript: false,
+      });
+      setVideoMaterialFlow(preview);
+      return preview;
+    }
+    const importedPlannerResources: any[] = [];
+    for (const resource of selectedPlannerResources) {
+      const imported = await uploadActiveUrlMaterial(activeWorkspaceId, {
+        url: String(resource.url),
+        title: String(resource.title || (isPlannerVideo(resource) ? "视频资料" : "网页资料")),
+        ...(selectedPlannerResources.length === 1 && isPlannerVideo(resource) && resource.video_only_acknowledged
+          ? { find_additional_materials: false, confirm_transcript: false }
+          : {}),
+      });
+      if (imported?.status === "awaiting_supplementary_choice" && selectedPlannerResources.length === 1) {
+        setVideoMaterialFlow(imported);
+        setVideoSupplementSelection([]);
+        return imported;
+      }
+      if (imported?.status === "transcript_preview" || imported?.status === "needs_review") {
+        setVideoMaterialFlow(imported);
+        if (selectedPlannerResources.length === 1) return imported;
+      }
+      importedPlannerResources.push(imported);
+    }
+    const importedPlannerResource = importedPlannerResources[0] || null;
+    if (importedPlannerResource?.status === "awaiting_supplementary_choice") {
+      setVideoMaterialFlow(importedPlannerResource);
+      setVideoSupplementSelection([]);
+      return importedPlannerResource;
+    }
+    if (importedPlannerResource?.status === "transcript_preview" || importedPlannerResource?.status === "needs_review") {
+      setVideoMaterialFlow(importedPlannerResource);
+      return importedPlannerResource;
+    }
+    const uploaded = file
+      ? await uploadActiveMaterial(activeWorkspaceId, file)
+      : null;
+    const ids = Array.from(new Set([
+      ...materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
+      ...importedPlannerResources.flatMap((item: any) => item?.id ? [item.id] : []),
+      ...importedPlannerResources.flatMap((item: any) => asArray(item?.material_ids).map(String)),
+      ...(uploaded ? [uploaded.id] : []),
+    ]));
+    if (!ids.length) throw new Error("请先选择一份可读取的学习资料");
+    return finishTaskCreation(ids);
+  };
+
+  const continueWithVideoFile = async (findSupplementary: boolean) => {
+    if (!videoFileConsentPending) throw new Error("视频文件已失效，请重新选择");
+    setDiscoverExternalResources(findSupplementary);
+    setVideoFileConsentPending(null);
+    return createOrCompleteTask(true);
+  };
+
+  const chooseVideoSupplementarySearch = async (accepted: boolean) => {
+    if (!plannerResource?.url) throw new Error("视频资料链接已失效，请重新选择");
+    const common = {
+      url: String(plannerResource.url),
+      title: String(plannerResource.title || "视频资料"),
+    };
+    if (accepted) {
+      const searched = await searchVideoSupplementaryMaterials(activeWorkspaceId, common);
+      setVideoMaterialFlow(searched);
+      setVideoSupplementSelection([]);
+      return searched;
+    }
+    const preview = await ingestVideoMaterial(activeWorkspaceId, {
+      ...common,
+      find_additional_materials: false,
+      confirm_transcript: false,
+    });
+    setVideoMaterialFlow(preview);
+    setVideoSupplementSelection([]);
+    return preview;
+  };
+
+  const previewSelectedVideoMaterials = async () => {
+    if (!plannerResource?.url) throw new Error("视频资料链接已失效，请重新选择");
+    if (!videoSupplementSelection.length) throw new Error("请至少选择一份要加入学习计划的补充资料");
+    const previousSearch = videoMaterialFlow?.supplementary_search;
+    const preview = await ingestVideoMaterial(activeWorkspaceId, {
+      url: String(plannerResource.url),
+      title: String(plannerResource.title || "视频资料"),
+      find_additional_materials: true,
+      selected_candidate_urls: videoSupplementSelection,
+      confirm_transcript: false,
+    });
+    setVideoMaterialFlow({ ...preview, supplementary_search: previousSearch });
+    return preview;
+  };
+
+  const confirmVideoMaterialsAndCreatePlan = async () => {
+    if (!plannerResource?.url) throw new Error("视频资料链接已失效，请重新选择");
+    const acceptedSupplement = Boolean(videoMaterialFlow?.supplementary_search || videoSupplementSelection.length);
+    const ingested = await ingestVideoMaterial(activeWorkspaceId, {
+      url: String(plannerResource.url),
+      title: String(plannerResource.title || "视频资料"),
+      find_additional_materials: acceptedSupplement,
+      selected_candidate_urls: videoSupplementSelection,
+      confirm_transcript: true,
+    });
+    if (!ingested?.ingested || !asArray(ingested.material_ids).length) {
+      setVideoMaterialFlow(ingested);
+      throw new Error(ingested?.limited_coverage_warning || "视频资料尚未形成可用材料");
+    }
+    const ids = Array.from(new Set([
+      ...materials.filter((item: any) => item.status === "ready").map((item: any) => String(item.id)),
+      ...asArray(ingested.material_ids).map(String),
+    ]));
+    await finishTaskCreation(ids);
+    return ingested;
+  };
+
+  const confirmSupplementOnlyAndCreatePlan = async () => {
+    if (!plannerResource?.url || !videoSupplementSelection.length) {
+      throw new Error("没有可用于继续规划的已确认补充资料");
+    }
+    const ingested = await ingestVideoMaterial(activeWorkspaceId, {
+      url: String(plannerResource.url),
+      title: String(plannerResource.title || "视频资料"),
+      find_additional_materials: true,
+      selected_candidate_urls: videoSupplementSelection,
+      confirm_transcript: false,
+      confirm_supplement_only: true,
+    });
+    if (!ingested?.ingested || !asArray(ingested.material_ids).length) {
+      setVideoMaterialFlow(ingested);
+      throw new Error(ingested?.limited_coverage_warning || "补充资料尚未形成可用材料");
+    }
+    await finishTaskCreation(asArray(ingested.material_ids).map(String));
+    return ingested;
   };
 
   const startTeacherLedLesson = async () => {
@@ -2250,9 +2504,11 @@ export function ActiveTeachingChainView({
       const raw = localStorage.getItem("mentorflow_planner_handoff_v1");
       if (raw) handoff = JSON.parse(raw);
     } catch { handoff = null; }
-    const handoffResource = handoff?.resource && typeof handoff.resource === "object"
-      ? handoff.resource
-      : null;
+    const handoffResources = Array.isArray(handoff?.resources)
+      ? mergePlannerResources(handoff.resources)
+      : [];
+    const handoffResource = handoffResources[0]
+      || (handoff?.resource && typeof handoff.resource === "object" ? handoff.resource : null);
     const handoffDate = (...values: unknown[]) => {
       const value = values.find((item) => (
         typeof item === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.trim())
@@ -2260,7 +2516,13 @@ export function ActiveTeachingChainView({
       return typeof value === "string" ? value.trim() : "";
     };
     setPlannerResource(handoffResource);
-    setPlanningAssistantResources(handoffResource ? [handoffResource] : []);
+    setPlannerResources(handoffResources.length ? handoffResources : (handoffResource?.url ? [handoffResource] : []));
+    setVideoMaterialFlow(null);
+    setVideoFileConsentPending(null);
+    setVideoSupplementSelection([]);
+    setPlanningAssistantResources(handoffResources.length ? handoffResources : (handoffResource ? [handoffResource] : []));
+    setPlanningAssistantSelectedKeys((handoffResources.length ? handoffResources : (handoffResource ? [handoffResource] : [])).map(plannerResourceKey));
+    setPlanningAssistantSelectedUrl(String(handoffResource?.url || ""));
     setPlanningAssistantMessages(handoffResource
       ? [{ role: "assistant", content: "已收到你确认的资料。补充目标备注、开始日期和截止日期后，点击下方按钮，我会用这份资料生成知识地图和每日任务。" }]
       : []);
@@ -2280,6 +2542,10 @@ export function ActiveTeachingChainView({
     createNewTask();
     onCreateRequestConsumed?.();
   }, [createRequest]);
+
+  useEffect(() => {
+    if (initialMaterialFile) setFile(initialMaterialFile);
+  }, [initialMaterialFile]);
 
   const toggleTaskArchive = async (item: ActiveLearningTaskSummary) => {
     const archived = !item.archived;
@@ -2525,20 +2791,22 @@ export function ActiveTeachingChainView({
 
 
   return (
-    <section className="active-chain" data-testid="active-teaching-chain">
+    <section className={`active-chain ${compactPlannerFlow ? "is-planner-finalize" : ""}`} data-testid="active-teaching-chain">
       <header className="active-chain__hero">
         <div>
           <span className="active-chain__eyebrow">
-            {plan ? "学习任务" : "统一学习任务中心"}
+            {compactPlannerFlow ? "资料已确认 · 创建计划" : plan ? "学习任务" : "统一学习任务中心"}
           </span>
-          <h2>{plan ? "今天按计划学习，随时切换任务" : "建立一次任务，之后每天点开就学"}</h2>
+          <h2>{compactPlannerFlow ? "补充日期，生成你的学习计划" : plan ? "今天按计划学习，随时切换任务" : "建立一次任务，之后每天点开就学"}</h2>
           <p>
-            {plan
+            {compactPlannerFlow
+              ? "已选资料会直接用于知识地图和每日任务，不需要重新选择或上传。"
+              : plan
               ? "直接选择今天的一项开始；计划、教师记忆和学习进度都会自动保存。"
               : "每个任务独立保存计划、知识地图、教师记忆和本地 RAG；切换任务不会串资料。"}
           </p>
         </div>
-        <button data-testid="active-new-task" onClick={createNewTask}>＋ 新建学习任务</button>
+        {!compactPlannerFlow && <button data-testid="active-new-task" onClick={createNewTask}>＋ 新建学习任务</button>}
       </header>
 
       {error && <div className="active-chain__error" role="alert">{error}</div>}
@@ -2552,7 +2820,7 @@ export function ActiveTeachingChainView({
         </div>
       )}
 
-      <div className="active-task-hub" data-testid="active-task-hub">
+      {!compactPlannerFlow && <div className="active-task-hub" data-testid="active-task-hub">
         <aside className="active-task-hub__rail">
           <div className="active-task-hub__title">
             <div>
@@ -2622,7 +2890,7 @@ export function ActiveTeachingChainView({
           )}
           <code data-testid="active-workspace-id">{activeWorkspaceId}</code>
         </section>
-      </div>
+      </div>}
 
       {archiveCandidate && (
         <div
@@ -2964,7 +3232,7 @@ export function ActiveTeachingChainView({
       )}
 
       <div
-        className={`active-chain__grid ${plan && !showPlanDetails ? "active-chain__is-hidden" : ""}`}
+        className={`active-chain__grid ${!compactPlannerFlow && plan && !showPlanDetails ? "active-chain__is-hidden" : ""}`}
         data-testid="active-plan-details"
       >
         <article className="active-chain__card active-chain__creator-card">
@@ -2975,18 +3243,29 @@ export function ActiveTeachingChainView({
               : "你填写的内容会自动保存在当前浏览器"}
           </span>
           <h3>
-            {plannerResource
+            {plannerSourceConfirmed
               ? "补充规划条件，系统自动生成知识地图和每日任务"
               : plan
                 ? "任务资料与学习条件"
                 : "上传资料，系统自动完成知识地图和计划"}
           </h3>
           <p className="active-chain__muted">
-            {plannerResource
+            {plannerSourceConfirmed
               ? "只填写目标备注、开始日期和截止日期；系统会根据已选资料自动生成知识地图和每日任务。"
               : "只填写目标、基础和截止日期；每天投入、知识拆解与排程由系统计算。"}
           </p>
-          {!plannerResource && <section className="active-chain__assistant" data-testid="planning-assistant">
+          {isTaskCreationFlow && !plannerSourceConfirmed && readyMaterialIds.length === 0 && (
+            <section className="active-chain__source-choice" data-testid="active-source-choice" aria-label="选择资料来源">
+              <span className="active-chain__step">先选择资料来源</span>
+              <h4>没有已验证资料时，你可以：</h4>
+              <p className="active-chain__muted">使用自己的文件，或让 AI 搜索候选；候选只会在你打开原文并确认后进入计划。</p>
+              <div className="active-chain__source-choice-actions">
+                <button type="button" onClick={() => materialFileInputRef.current?.click()} data-testid="active-use-own-material">使用我的资料</button>
+                <button type="button" className="secondary" onClick={() => planningAssistantInputRef.current?.focus()} data-testid="active-find-material">帮我找资料</button>
+              </div>
+            </section>
+          )}
+          {!plannerSourceConfirmed && <section className="active-chain__assistant" data-testid="planning-assistant">
             <div>
               <span className="active-chain__step">AI 资料助手</span>
               <h4>先聊清楚，再决定用哪些资料</h4>
@@ -3003,6 +3282,7 @@ export function ActiveTeachingChainView({
               </div>
             )}
             <textarea
+              ref={planningAssistantInputRef}
               value={planningAssistantText}
               onChange={(event) => setPlanningAssistantText(event.target.value)}
               placeholder="例如：我想在明确期限内学会一项能力，已有一份笔记，希望补齐权威资料和练习。"
@@ -3020,43 +3300,168 @@ export function ActiveTeachingChainView({
             {!realProviderSessionId && <small>连接并验证真实模型后可使用。</small>}
             {planningAssistantResources.length > 0 && (
               <div className="active-chain__assistant-resources">
-                <b>{plannerResource ? "已确认的资料" : "待你核对的资料候选"}</b>
+                <b>{plannerResource ? `已确认的资料包 · ${plannerResources.length || 1} 份` : "待你核对的资料候选（可多选）"}</b>
                 {planningAssistantResources.map((item, index) => (
-                  <a href={item.url} target="_blank" rel="noreferrer" key={`${item.url}-${index}`}>
-                    <strong>{item.title || item.url}</strong>
-                    <span>{item.reason || item.authority_explanation || "请核对发布机构、作者、更新时间和内容范围。"}</span>
-                  </a>
+                  <label className={planningAssistantSelectedKeys.includes(plannerResourceKey(item)) ? "is-selected" : ""} key={`${plannerResourceKey(item)}-${index}`}>
+                    {!plannerResource && <input type="checkbox" name="active-planning-resource" checked={planningAssistantSelectedKeys.includes(plannerResourceKey(item))} onChange={() => { const key = plannerResourceKey(item); setPlanningAssistantSelectedKeys((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key]); setPlanningAssistantSelectedUrl(String(item.url || "")); }} aria-label={`选择 ${item.title || item.url}`} />}
+                    <span><strong title={item.title || item.url}>{item.title || item.url}</strong>{item.direct_user_reference && <span>精确引用 · 由你提供，尚未联网核验</span>}<span>{plannerSignal(item.media_kind || item.kind || item.source_kind || item.source_type || item.media_type, "来源类型未知")} · 角色：{plannerSignal(item.coverage_role || item.collection || item.collection_name)} · 权威：{plannerSignal(item.authority_status || item.authority || item.authority_signal || (item.authority_explanation ? "已提供说明" : ""))} · 热度：{plannerSignal(item.popularity_status || item.popularity || item.popularity_signal)}</span><span>{plannerRankReason(item)}</span><a href={item.url} target="_blank" rel="noreferrer" aria-label={`打开“${item.title || item.url}”原文`} onClick={(event) => event.stopPropagation()}>打开原文</a></span>
+                  </label>
                 ))}
+                {!plannerResource && <div className="active-chain__assistant-bundle" aria-live="polite">已选 {planningAssistantSelectedKeys.length} 份资料</div>}
+                {!plannerResource && <button type="button" onClick={confirmPlanningAssistantResource} disabled={!planningAssistantSelectedKeys.length} data-testid="planning-assistant-confirm">确认已选资料并继续</button>}
+                {planningVideoOnlyConfirmation && !plannerResource && (
+                  <div className="active-chain__video-review" data-testid="planning-assistant-video-only-confirmation" role="alert">
+                    <h4>当前资料包只有视频</h4>
+                    <p>视频转写可能遗漏公式、图表或上下文。建议再选一份讲义或笔记；如果仍只用视频，提取后还会让你核对字幕。</p>
+                    <div className="active-chain__video-actions">
+                      <button type="button" onClick={() => { setPlanningVideoOnlyConfirmation(false); planningAssistantInputRef.current?.focus(); }}>继续寻找讲义</button>
+                      <button type="button" className="secondary" onClick={() => acceptPlanningResources(planningAssistantResources.filter((item: any) => planningAssistantSelectedKeys.includes(plannerResourceKey(item))), true)}>仍只使用视频</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {!planningAssistantBusy && planningAssistantLastQuery && planningAssistantResources.length === 0 && (
+              <div className="active-chain__assistant-empty" data-testid="planning-assistant-empty-actions">
+                <span>暂时没有可核对候选。你可以重试、换一种描述，或改为上传自己的资料。</span>
+                <div>
+                  <button type="button" onClick={() => void askPlanningAssistant(planningAssistantLastQuery)}>重试搜索</button>
+                  <button type="button" onClick={() => { setPlanningAssistantText(""); planningAssistantInputRef.current?.focus() }}>换一种描述</button>
+                  <button type="button" onClick={() => materialFileInputRef.current?.click()}>上传我的资料</button>
+                </div>
               </div>
             )}
           </section>}
-          {plannerResource && (
+          {plannerResources.length > 0 && (
             <section className="active-chain__planner-handoff" data-testid="planner-resource-handoff">
               <span className="active-chain__step">规划助手已交接</span>
-              <b>{plannerResource.title || plannerResource.url}</b>
-              <small>这份资料会在你点击“开始整理”后安全抓取，并自动生成知识地图和每日任务。</small>
-              <a href={plannerResource.url} target="_blank" rel="noreferrer">打开原文核对</a>
+              <b>已选资料包 · {plannerResources.length} 份</b>
+              <small>{plannerResources.map((item: any) => item.title || item.url).join("、")}</small>
+              <div>{plannerResources.map((item: any) => <a href={item.url} target="_blank" rel="noreferrer" key={plannerResourceKey(item)}>打开 {item.title || item.url} 核对</a>)}</div>
+              <small>资料会在你点击“开始整理”后安全抓取，并自动生成知识地图和每日任务。</small>
             </section>
           )}
-          {!plannerResource && (
-            <input data-testid="active-material-file" type="file" accept={materialAccept} onChange={(event) => setFile(event.target.files?.[0] || null)} />
+          {videoMaterialFlow?.status === "awaiting_supplementary_choice" && (
+            <section className="active-chain__video-review" data-testid="video-supplementary-choice">
+              <span className="active-chain__step">视频资料 · 提取前确认</span>
+              <h4>要不要同时找一份讲义或配套文档？</h4>
+              <p>补充学习资料会和视频字幕一起使用，帮助补足公式、图表和板书；它是并行补充，不是用来修改或纠正字幕。</p>
+              <div className="active-chain__video-actions">
+                <button type="button" onClick={() => run("查找视频补充资料", () => chooseVideoSupplementarySearch(true))} disabled={Boolean(busy)}>
+                  {busy === "查找视频补充资料" ? "正在查找…" : "愿意，先帮我找资料"}
+                </button>
+                <button type="button" className="secondary" onClick={() => run("提取视频字幕", () => chooseVideoSupplementarySearch(false))} disabled={Boolean(busy)}>
+                  {busy === "提取视频字幕" ? "正在提取字幕…" : "不用，只使用视频字幕"}
+                </button>
+              </div>
+              <small>搜索结果只会作为候选；你没有勾选确认的资料不会进入知识地图或计划。</small>
+            </section>
+          )}
+          {videoFileConsentPending && !videoMaterialFlow && (
+            <section className="active-chain__video-review" data-testid="video-file-supplementary-choice">
+              <span className="active-chain__step">视频文件 · 提取前确认</span>
+              <h4>要不要在提取视频内容的同时寻找补充学习资料？</h4>
+              <p>补充学习资料会和视频转写一起用于知识地图和计划；它只补充学习范围，不会修改或纠正视频字幕。</p>
+              <div className="active-chain__video-actions">
+                <button type="button" disabled={Boolean(busy)} onClick={() => run("提取视频并寻找补充资料", () => continueWithVideoFile(true))}>
+                  {busy === "提取视频并寻找补充资料" ? "正在准备…" : "愿意，寻找补充资料"}
+                </button>
+                <button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => run("仅提取视频内容", () => continueWithVideoFile(false))}>
+                  {busy === "仅提取视频内容" ? "正在提取…" : "不用，只使用视频转写"}
+                </button>
+              </div>
+              <small>你可以在资料候选出现后逐份打开原文并确认，未确认的资料不会进入计划。</small>
+            </section>
+          )}
+          {videoMaterialFlow?.status === "supplementary_candidates" && (
+            <section className="active-chain__video-review" data-testid="video-supplementary-candidates">
+              <span className="active-chain__step">补充学习资料 · 等待选择</span>
+              <h4>选择要和视频一起学习的资料</h4>
+              <p>这些是公开检索候选。请先打开原文核对，再勾选真正适合的讲义、笔记或文档。</p>
+              <div className="active-chain__video-candidates">
+                {videoSupplementCandidates.map((item: any, index: number) => {
+                  const url = String(item.url || "");
+                  const selected = videoSupplementSelection.includes(url);
+                  return (
+                    <label key={`${url}-${index}`} className={selected ? "is-selected" : ""}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setVideoSupplementSelection((current) => (
+                          current.includes(url) ? current.filter((value) => value !== url) : [...current, url]
+                        ))}
+                      />
+                      <span><b>{item.title || url}</b><small>{item.snippet || "请核对来源和内容范围。"}</small></span>
+                      <a href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>打开原文</a>
+                    </label>
+                  );
+                })}
+              </div>
+              {!videoSupplementCandidates.length && <p role="status">暂时没有找到合适的公开补充资料，你仍可只使用视频字幕继续。</p>}
+              <div className="active-chain__video-actions">
+                <button type="button" disabled={!videoSupplementSelection.length || Boolean(busy)} onClick={() => run("提取视频字幕", previewSelectedVideoMaterials)}>
+                  {busy === "提取视频字幕" ? "正在提取字幕…" : `使用已选 ${videoSupplementSelection.length} 份资料并提取字幕`}
+                </button>
+                <button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => run("提取视频字幕", () => chooseVideoSupplementarySearch(false))}>不添加，只使用视频字幕</button>
+              </div>
+            </section>
+          )}
+          {["transcript_preview", "needs_review", "rejected"].includes(String(videoMaterialFlow?.status || "")) && (
+            <section className="active-chain__video-review" data-testid="video-transcript-review">
+              <span className="active-chain__step">视频字幕 · 等待确认</span>
+              <h4>{videoTranscript.title || plannerResource?.title || "视频字幕预览"}</h4>
+              <p>
+                语言：{videoSubtitle.language || "未识别"} · 分段：{videoSubtitleQuality.segment_count || asArray(videoSubtitle.segments).length || 0} ·
+                {videoSubtitle.automatic ? " 自动字幕，可能存在偏差" : " 发布者字幕"}
+              </p>
+              {videoMaterialFlow?.limited_coverage_warning && <div className="active-chain__video-warning" role="status">{videoMaterialFlow.limited_coverage_warning}</div>}
+              {asArray(videoSubtitle.segments).length > 0 && (
+                <details>
+                  <summary>查看字幕片段</summary>
+                  {asArray(videoSubtitle.segments).slice(0, 4).map((segment: any, index: number) => (
+                    <p key={`${segment.start_ms || 0}-${index}`}><b>{Math.floor(Number(segment.start_ms || 0) / 1000)} 秒</b> {String(segment.text || "")}</p>
+                  ))}
+                </details>
+              )}
+              {videoMaterialFlow?.requires_transcript_confirmation ? (
+                <div className="active-chain__video-actions">
+                  <button type="button" disabled={Boolean(busy)} onClick={() => run("确认视频资料并生成计划", confirmVideoMaterialsAndCreatePlan)}>
+                    {busy === "确认视频资料并生成计划" ? "正在保存资料并生成计划…" : "字幕可以使用，生成知识地图和计划"}
+                  </button>
+                  <button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => { setVideoMaterialFlow(null); setVideoSupplementSelection([]); }}>返回重新选择</button>
+                </div>
+              ) : (
+                <div className="active-chain__video-actions">
+                  {videoSupplementSelection.length > 0 && (
+                    <button type="button" disabled={Boolean(busy)} onClick={() => run("使用补充资料生成计划", confirmSupplementOnlyAndCreatePlan)}>
+                      {busy === "使用补充资料生成计划" ? "正在保存资料并生成计划…" : "排除无字幕视频，仅用已选资料继续"}
+                    </button>
+                  )}
+                  <button type="button" className="secondary" onClick={() => { setVideoMaterialFlow(null); setVideoSupplementSelection([]); }}>返回重新选择资料</button>
+                </div>
+              )}
+              <small>视频字幕和你勾选的补充资料会分别保存来源证据，不会合并成一份不透明文本。</small>
+            </section>
+          )}
+          {!plannerSourceConfirmed && (
+            <input ref={materialFileInputRef} data-testid="active-material-file" type="file" accept={materialAccept} onChange={(event) => setFile(event.target.files?.[0] || null)} />
           )}
           <label>
-            {plannerResource ? "目标备注" : "学习目标"}
+            {plannerSourceConfirmed ? "目标备注" : "学习目标"}
             <textarea
               data-testid="active-goal"
               value={goal}
               onChange={(event) => setGoal(event.target.value)}
-              placeholder={plannerResource ? "补充这份资料对应的学习目标或完成标准。" : undefined}
+              placeholder={plannerSourceConfirmed ? "补充这份资料对应的学习目标或完成标准。" : undefined}
             />
           </label>
           <div className="active-chain__row">
-            {!plannerResource && (
+            {!plannerSourceConfirmed && (
               <label>当前基础<select data-testid="active-foundation" value={level} onChange={(event) => setLevel(event.target.value)}><option value="zero_foundation">零基础</option><option value="beginner">初级</option><option value="intermediate">中级</option><option value="advanced">高级</option></select></label>
             )}
             <label>开始日期<input data-testid="active-start-date" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label>截止日期<input data-testid="active-deadline" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label>
-            {!plannerResource && (
+            {!plannerSourceConfirmed && (
               <label>
                 完整复习轮数
                 <select
@@ -3071,14 +3476,14 @@ export function ActiveTeachingChainView({
               </label>
             )}
           </div>
-          {plannerResource && (
+          {plannerSourceConfirmed && (
             <div className="active-chain__allocation" data-testid="planner-auto-plan-notice">
               <span>系统自动处理</span>
               <b>自动生成知识地图和每日任务</b>
               <small>提交后系统会读取已选资料，先建立知识地图，再按你的日期范围安排每日任务。</small>
             </div>
           )}
-          {!plannerResource && <div className="active-chain__allocation" data-testid="active-system-allocation">
+          {!plannerSourceConfirmed && <div className="active-chain__allocation" data-testid="active-system-allocation">
             <span>系统按总任务量平均分配</span>
             <b>
               {plan && snapshot?.receipt?.allocation?.recommended_minutes_per_day
@@ -3095,7 +3500,7 @@ export function ActiveTeachingChainView({
                 : " 系统按顺序排入每天，不再强制按日期比例切开。"}
             </small>
           </div>}
-          {!plannerResource && <label className="active-chain__resource-option">
+          {!plannerSourceConfirmed && <label className="active-chain__resource-option">
             <span>
               <input
                 data-testid="active-discover-external-resources"
@@ -3112,7 +3517,7 @@ export function ActiveTeachingChainView({
               {!isTaskCreationFlow && " 当前任务的创建选项已锁定；如需改变，请新建任务。"}
             </small>
           </label>}
-          {!plannerResource && <label>
+          {!plannerSourceConfirmed && <label>
             AI 教师角色
             <select
               data-testid="active-teacher-persona"
@@ -3134,7 +3539,7 @@ export function ActiveTeachingChainView({
               角色人设已统一放到左侧“AI教师角色库”管理；以前填写的人设会自动迁移并保留。
             </small>
           </label>}
-          {!plannerResource && <label>
+          {!plannerSourceConfirmed && <label>
             我的兴趣或熟悉场景
             <input
               data-testid="active-learner-interests"
@@ -3143,7 +3548,7 @@ export function ActiveTeachingChainView({
               placeholder="例如：游戏、做饭、购物、篮球；教师会优先从这些生活经验举例"
             />
           </label>}
-          {!plannerResource && <details className="active-chain__advanced">
+          {!plannerSourceConfirmed && <details className="active-chain__advanced">
             <summary>高级时间与学习偏好（可选）</summary>
             <fieldset>
               <legend>每周可学习日（未选日期为固定休息日）</legend>
@@ -3168,7 +3573,7 @@ export function ActiveTeachingChainView({
             <label>学习方式<input value={learningStyle} onChange={(event) => setLearningStyle(event.target.value)} /></label>
             <label>备注<textarea data-testid="active-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
           </details>}
-          {(!snapshot?.receipt || file) && (
+          {(!snapshot?.receipt || file) && !videoMaterialFlow && !videoFileConsentPending && (
             <button
               data-testid="active-upload"
               disabled={(!file && !plannerResource && !materials.some((item: any) => item.status === "ready")) || Boolean(busy)}
@@ -3187,7 +3592,7 @@ export function ActiveTeachingChainView({
           )}
           {busy === "创建学习任务" && realProviderSessionId && readyChunkCount > 24 && (
             <div className="active-chain__busy active-chain__busy--inline" data-testid="active-create-progress">
-              已保存你的填写内容。正在调用真实 AI 分批建立知识地图，完成后会自动生成计划；超过 3 分 30 秒会自动解除按钮，不会一直锁住。
+              已保存你的填写内容。真实 AI 正在分批读取资料并建立知识地图；大型资料可能需要几分钟，系统会持续显示真实进度，完成后自动进入计划预览。
             </div>
           )}
           {snapshot?.receipt && (

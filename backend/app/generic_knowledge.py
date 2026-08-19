@@ -21,6 +21,140 @@ def normalize_name(value: str) -> str:
     return re.sub(r"[\W_]+", "", value, flags=re.UNICODE).casefold()
 
 
+def _source_family_value(value: Any) -> str:
+    """Read a source-family marker from an evidence/material-like value.
+
+    Provenance is intentionally treated as opaque metadata.  We only use the
+    explicit family marker and never infer a relationship from a display name
+    (two independently authored resources may have the same title).
+    """
+
+    if isinstance(value, dict):
+        provenance = value.get("provenance")
+        if isinstance(provenance, dict):
+            return str(
+                provenance.get("source_family_id")
+                or provenance.get("source_family")
+                or ""
+            ).strip()
+        return str(value.get("source_family_id") or "").strip()
+    try:
+        provenance = value["provenance_json"]
+    except (KeyError, IndexError, TypeError):
+        provenance = ""
+    if provenance:
+        try:
+            decoded = json.loads(provenance) if isinstance(provenance, str) else provenance
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = {}
+        if isinstance(decoded, dict):
+            return str(decoded.get("source_family_id") or decoded.get("source_family") or "").strip()
+    try:
+        return str(value["source_family_id"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _source_lineage(value: Any) -> tuple[str, bool]:
+    """Return ``(relation, independent)`` for an evidence/material value."""
+
+    provenance: Any = value.get("provenance") if isinstance(value, dict) else None
+    if provenance is None and not isinstance(value, dict):
+        try:
+            provenance = value["provenance_json"]
+        except (KeyError, IndexError, TypeError):
+            provenance = None
+        if isinstance(provenance, str):
+            try:
+                provenance = json.loads(provenance)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                provenance = {}
+    provenance = provenance if isinstance(provenance, dict) else {}
+    lineage = provenance.get("lineage")
+    lineage = lineage if isinstance(lineage, dict) else {}
+    relation = str(
+        lineage.get("relation")
+        or provenance.get("lineage_relation")
+        or provenance.get("relationship")
+        or ""
+    ).strip().casefold()
+    independent_value = provenance.get("independent_evidence")
+    if independent_value is None:
+        independent_value = provenance.get("independence")
+    if isinstance(independent_value, str):
+        independent = independent_value.casefold() in {
+            "independent",
+            "independent_companion",
+            "true",
+            "yes",
+        }
+    elif independent_value is None:
+        independent = relation in {"independent", "independent_companion", "independent_source"}
+    else:
+        independent = bool(independent_value)
+    return relation, independent
+
+
+def dedupe_source_family_evidence(items: Iterable[Any]) -> list[Any]:
+    """Drop derived same-family evidence while retaining independent companions.
+
+    This is deliberately a small, metadata-driven gate used before semantic
+    extraction.  A transcript and a notes file from the same video family can
+    therefore not create a second set of concepts or minutes when the notes
+    explicitly declare themselves derived.  A companion marked independent is
+    retained for separate evidence/review.  Unknown lineage is retained and
+    remains auditable rather than being guessed away.
+    """
+
+    values = list(items)
+    primary_families: set[str] = set()
+    for item in values:
+        family = _source_family_value(item)
+        if not family:
+            continue
+        relation, independent = _source_lineage(item)
+        if isinstance(item, dict):
+            kind = str(item.get("source_kind") or "")
+        else:
+            try:
+                kind = str(item["source_kind"] or "")
+            except (KeyError, IndexError, TypeError):
+                kind = ""
+        if not independent and (
+            kind.casefold() in {"video_transcript", "primary", "source"}
+            or relation in {"primary", "transcript", "source"}
+        ):
+            primary_families.add(family)
+    output: list[Any] = []
+    seen_derived: set[tuple[str, str]] = set()
+    for item in values:
+        family = _source_family_value(item)
+        relation, independent = _source_lineage(item)
+        if isinstance(item, dict):
+            kind = str(item.get("source_kind") or "")
+        else:
+            try:
+                kind = str(item["source_kind"] or "")
+            except (KeyError, IndexError, TypeError):
+                kind = ""
+        derived = relation in {
+            "derived",
+            "derived_transcript",
+            "derived_same_family",
+            "transcript_derivative",
+            "summary",
+            "companion_derived",
+        } or (kind.casefold() in {"video_transcript_derivative", "derived_material"})
+        if family and family in primary_families and derived and not independent:
+            marker = (family, str(item.get("material_id") or item.get("id") or id(item))) if isinstance(item, dict) else (family, str(id(item)))
+            if marker in seen_derived:
+                continue
+            seen_derived.add(marker)
+            continue
+        output.append(item)
+    return output
+
+
 def merge_provider_batches(
     nodes: Iterable[dict[str, Any]],
     edges: Iterable[dict[str, Any]],
@@ -108,131 +242,103 @@ def mastery_time_estimate(
     schedule_constraints: dict[str, Any] | None = None,
     provider_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Estimate standard task minutes, never actual elapsed time.
+    """Return a deterministic v2 mastery estimate, never elapsed time.
 
-    The estimate is deterministic and inspectable. A real provider may propose
-    values, but callers must still bound and validate them.
+    Initial learning and one retrieval round are kept separate.  Provider
+    minutes are advisory and are always blended through the policy bounds.
     """
     policy = MASTERY_ESTIMATION_POLICY
-    # A structured provider proposal is advisory.  Validate comprehensive
-    # context and blend it through the bounded estimator before scheduling.
-    provider_estimate = (
-        explicit_minutes
-        if explicit_minutes_source not in {"source_provided_duration", "", None}
-        else None
-    )
-    if provider_estimate is not None and mode:
-        estimate = estimate_provider_task_minutes(
-            goal=goal or "material learning goal",
-            learner_level=current_level,
-            learning_style=learner_style or "unspecified",
-            concept_or_task_kind=task_kind,
-            evidence_size=max(0, int(evidence_size if evidence_size is not None else len(text))),
-            evidence_count=max(1, int(evidence_count)),
-            expected_output=expected_output or "observable learner evidence",
-            mode=mode,
-            hints=max(0, int(hints)),
-            review_rounds=max(0, int(review_rounds)),
-            schedule_constraints=schedule_constraints or {},
-            difficulty=difficulty,
-            provider_estimate_minutes=provider_estimate,
-            provider_metadata=provider_metadata or {},
-        )
-        total = estimate.estimated_minutes
-        phases = {
-            "understand_minutes": max(policy.phase_minimum_minutes["understand"], round(total * policy.phase_ratios["understand"])),
-            "recall_minutes": max(policy.phase_minimum_minutes["recall"], round(total * policy.phase_ratios["recall"])),
-            "guided_practice_minutes": max(policy.phase_minimum_minutes["guided_practice"], round(total * policy.phase_ratios["guided_practice"])),
-            "independent_application_minutes": max(policy.phase_minimum_minutes["independent_application"], round(total * policy.phase_ratios["independent_application"])),
-        }
-        phases["review_minutes"] = max(
-            policy.phase_minimum_minutes["review"],
-            total - sum(phases.values()),
-        )
-        total = sum(phases.values())
-        return {
-            **phases,
-            "total_mastery_task_minutes": total,
-            "basis": "provider_bounded:comprehensive_context",
-            "confidence": estimate.confidence,
-            "is_source_provided_duration": False,
-            "task_kind": estimate.task_kind,
-            "difficulty": estimate.difficulty,
-            "evidence": dict(estimate.evidence),
-            "provider_metadata": dict(estimate.provider_metadata),
-            "signals": {
-                "provider_estimate_minutes": provider_estimate,
-                "bounded_estimate_minutes": estimate.estimated_minutes,
-                "reasons": list(estimate.reasons),
-            },
-        }
-    difficulty_value = str(difficulty or "medium").casefold()
-    difficulty_factor = (
-        policy.difficulty_factors["hard"]
-        if any(item in difficulty_value for item in ("hard", "困难", "高级"))
-        else policy.difficulty_factors["easy"]
-        if any(item in difficulty_value for item in ("easy", "简单", "基础"))
-        else policy.difficulty_factors["medium"]
-    )
-    level_value = str(current_level or "beginner").casefold()
-    level_factor = (
-        policy.learner_level_factors["beginner"]
-        if any(item in level_value for item in ("zero", "beginner", "零基础", "初级"))
-        else policy.learner_level_factors["advanced"]
-        if any(item in level_value for item in ("advanced", "高级", "专家"))
-        else policy.learner_level_factors["intermediate"]
-    )
-    information_units = max(
-        policy.minimum_information_units,
-        min(
-            policy.maximum_information_units,
-            len(text.strip()) / float(policy.information_unit_characters),
-        ),
-    )
-    base = int(
-        explicit_minutes
-        or round(
-            (policy.base_minutes + information_units * policy.minutes_per_information_unit)
-            * difficulty_factor
-            * level_factor
-        )
-    )
-    base = max(policy.minimum_total_minutes, min(policy.maximum_total_minutes, base))
-    understand = max(policy.phase_minimum_minutes["understand"], round(base * policy.phase_ratios["understand"]))
-    recall = max(policy.phase_minimum_minutes["recall"], round(base * policy.phase_ratios["recall"]))
-    guided = max(policy.phase_minimum_minutes["guided_practice"], round(base * policy.phase_ratios["guided_practice"]))
-    independent = max(policy.phase_minimum_minutes["independent_application"], round(base * policy.phase_ratios["independent_application"]))
-    review = max(policy.phase_minimum_minutes["review"], base - understand - recall - guided - independent)
-    total_mastery = understand + recall + guided + independent + review
-    explicit_basis = str(explicit_minutes_source or "").strip()
-    if explicit_minutes is not None:
-        basis = explicit_basis or "provider_proposed_duration"
-        confidence = "high" if explicit_basis == "source_provided_duration" else "medium"
-    else:
-        basis = "system_estimate:content_volume+difficulty+learner_level"
-        confidence = "medium"
-    return {
-        "understand_minutes": understand,
-        "recall_minutes": recall,
-        "guided_practice_minutes": guided,
-        "independent_application_minutes": independent,
-        "review_minutes": review,
-        "total_mastery_task_minutes": total_mastery,
-        "basis": basis,
-        "confidence": confidence,
-        "is_source_provided_duration": explicit_basis == "source_provided_duration",
-        "task_kind": str(task_kind or "concept_understanding").strip().casefold(),
-        "difficulty": difficulty_value,
-        "evidence": {
-            "size": max(0, int(evidence_size if evidence_size is not None else len(text))),
-            "count": max(0, int(evidence_count)),
+    text_value = str(text or "")
+    chars = max(0, int(evidence_size if evidence_size is not None else len(text_value)))
+    chunks = max(0, int(evidence_count))
+    # Structural volume is deliberately generic: line/paragraph boundaries and
+    # evidence size are observable material shape, not a topic classifier.
+    material_volume = max(1.0, float(len([line for line in text_value.splitlines() if line.strip()])))
+    structural_volume = max(1.0, float(len(re.findall(r"\n\s*\n", text_value))) + material_volume / 4.0)
+    dependency_depth = max(0, int((provider_metadata or {}).get("dependency_depth") or 0))
+    normalized_task_kind = str(task_kind or mode or "concept_understanding").strip().casefold()
+    normalized_mode = str(mode or normalized_task_kind).strip().casefold()
+    normalized_complexity = str((provider_metadata or {}).get("complexity") or "medium")
+    normalized_novelty = str((provider_metadata or {}).get("novelty") or "unknown")
+    normalized_output = str((provider_metadata or {}).get("output_requirement") or ("artifact" if expected_output else "unknown"))
+    provider_estimate = int(explicit_minutes) if explicit_minutes is not None and int(explicit_minutes) > 0 else None
+    estimate = estimate_provider_task_minutes(
+        goal=goal or "material learning goal",
+        learner_level=current_level or "intermediate",
+        learning_style=learner_style or "unspecified",
+        concept_or_task_kind=normalized_task_kind,
+        evidence_size=chars,
+        evidence_count=chunks,
+        expected_output=expected_output or "observable learner evidence",
+        mode=normalized_mode,
+        hints=max(0, int(hints)),
+        review_rounds=max(0, int(review_rounds)),
+        schedule_constraints=schedule_constraints or {},
+        difficulty=difficulty,
+        material_volume=material_volume,
+        structural_volume=structural_volume,
+        dependency_depth=dependency_depth,
+        complexity=normalized_complexity,
+        novelty=normalized_novelty,
+        output_requirement=normalized_output,
+        provider_estimate_minutes=provider_estimate,
+        provider_metadata={
+            **dict(provider_metadata or {}),
+            "explicit_minutes_source": str(explicit_minutes_source or ""),
         },
-        "provider_metadata": dict(provider_metadata or {}),
+    )
+    initial_target = int(estimate.estimated_minutes)
+    phase_values = {
+        "understand_minutes": max(policy.phase_minimum_minutes["understand"], round(initial_target * policy.phase_ratios["understand"])),
+        "recall_minutes": max(policy.phase_minimum_minutes["recall"], round(initial_target * policy.phase_ratios["recall"])),
+        "guided_practice_minutes": max(policy.phase_minimum_minutes["guided_practice"], round(initial_target * policy.phase_ratios["guided_practice"])),
+        "independent_application_minutes": max(policy.phase_minimum_minutes["independent_application"], round(initial_target * policy.phase_ratios["independent_application"])),
+    }
+    initial_learning = sum(phase_values.values())
+    one_review = max(policy.phase_minimum_minutes["review"], round(initial_learning * policy.review_round_ratio))
+    review_round_count = max(0, int(review_rounds))
+    review_round_minutes = [
+        max(policy.phase_minimum_minutes["review"], round(one_review * (policy.subsequent_review_ratio ** round_index)))
+        for round_index in range(review_round_count)
+    ]
+    projected_review = sum(review_round_minutes)
+    # ``total_mastery_task_minutes`` remains the historical per-point shape
+    # (initial learning plus one review).  The v2 aggregate includes the
+    # requested number of retrieval rounds so previews cannot understate work.
+    total_mastery_task = initial_learning + one_review
+    total_mastery = initial_learning + projected_review
+    explicit_basis = str(explicit_minutes_source or "").strip()
+    basis = "provider_bounded:v2" if provider_estimate is not None else "system_estimate:v2:evidence+volume+complexity+retrieval"
+    return {
+        **phase_values,
+        "review_minutes": one_review,
+        "initial_learning_minutes": initial_learning,
+        "one_review_round_minutes": one_review,
+        "projected_review_minutes": projected_review,
+        "review_rounds": review_round_count,
+        "review_round_minutes": review_round_minutes,
+        "total_mastery_minutes": total_mastery,
+        "total_mastery_task_minutes": total_mastery_task,
+        "basis": basis,
+        "confidence": estimate.confidence,
+        "uncertainty": {
+            "ratio": estimate.uncertainty_ratio,
+            "lower_minutes": estimate.lower_minutes,
+            "estimate_minutes": estimate.estimated_minutes,
+            "upper_minutes": estimate.upper_minutes,
+        },
+        "input_snapshot": dict(estimate.input_snapshot),
+        "lower_minutes": estimate.lower_minutes,
+        "upper_minutes": estimate.upper_minutes,
+        "is_source_provided_duration": explicit_basis == "source_provided_duration",
+        "task_kind": estimate.task_kind,
+        "difficulty": estimate.difficulty,
+        "evidence": dict(estimate.evidence),
+        "provider_metadata": dict(estimate.provider_metadata),
         "signals": {
-            "content_units": round(information_units, 2),
-            "difficulty_factor": difficulty_factor,
-            "learner_level_factor": level_factor,
-            "explicit_minutes": explicit_minutes,
+            "provider_estimate_minutes": provider_estimate,
+            "bounded_estimate_minutes": estimate.estimated_minutes,
+            "reasons": list(estimate.reasons),
         },
     }
 
@@ -254,6 +360,33 @@ def validate_provider_map(
     validated = provider_payload_model(payload)
     normalized_payload = validated.model_dump()
     raw_nodes = normalized_payload.get("knowledge_points")
+    # The v1 provider contract intentionally ignores unknown fields.  Keep a
+    # read-only index of optional v2 estimator hints from the original payload
+    # so they can enrich the deterministic snapshot without widening the map
+    # persistence contract.
+    raw_estimator_by_id = {
+        str(item.get("id") or ""): item
+        for item in (payload.get("knowledge_points") or [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    dependency_predecessors: dict[str, set[str]] = {}
+    for dependency in normalized_payload.get("dependencies") or []:
+        if not isinstance(dependency, dict):
+            continue
+        source_id = str(dependency.get("prerequisite_id") or "").strip()
+        target_id = str(dependency.get("dependent_id") or "").strip()
+        if source_id and target_id and source_id != target_id:
+            dependency_predecessors.setdefault(target_id, set()).add(source_id)
+
+    def _dependency_depth(provider_id: str, visiting: set[str] | None = None) -> int:
+        visiting = set(visiting or ())
+        if provider_id in visiting:
+            return 0
+        predecessors = dependency_predecessors.get(provider_id, set())
+        if not predecessors:
+            return 0
+        visiting.add(provider_id)
+        return min(32, 1 + max(_dependency_depth(item, visiting) for item in predecessors))
     nodes: list[dict[str, Any]] = []
     provider_id_aliases: dict[str, str] = {}
     semantic_signatures: set[str] = set()
@@ -272,6 +405,7 @@ def validate_provider_map(
             warnings.append(f"拦截空名称知识点：{index}")
             continue
         provider_id = str(raw.get("id") or f"provider-node-{index + 1}")
+        raw_estimator = raw_estimator_by_id.get(provider_id, {})
         signature_payload = {
             "name": name.casefold(),
             "node_type": str(raw.get("node_type") or "concept").casefold(),
@@ -305,12 +439,40 @@ def validate_provider_map(
         except (TypeError, ValueError):
             explicit_minutes = None
         source_text = "\n".join(str(item.get("quote") or "") for item in evidence)
+        evidence_characters = sum(len(str(item.get("quote") or "")) for item in evidence)
+        evidence_chunks = len({str(item.get("chunk_id") or "") for item in evidence})
+        estimator_metadata = {
+            "dependency_depth": int(raw_estimator.get("dependency_depth") or _dependency_depth(provider_id)),
+            "complexity": str(raw_estimator.get("complexity") or raw.get("difficulty") or "medium"),
+            "novelty": str(raw_estimator.get("novelty") or "unknown"),
+            "output_requirement": str(raw_estimator.get("output_requirement") or ("artifact" if raw.get("acceptance_method") else "unknown")),
+            "provider_input_fields": sorted(
+                key for key in (
+                    "task_kind", "mode", "evidence_characters", "evidence_chunks",
+                    "material_volume", "structural_volume", "dependency_depth",
+                    "complexity", "novelty", "output_requirement", "review_rounds",
+                ) if key in raw_estimator
+            ),
+        }
         estimate = mastery_time_estimate(
             text=source_text,
             difficulty=str(raw.get("difficulty") or "medium"),
             current_level=current_level,
             explicit_minutes=explicit_minutes,
             explicit_minutes_source="provider_proposed_duration" if explicit_minutes else None,
+            task_kind=str(raw_estimator.get("task_kind") or raw.get("node_type") or "concept_understanding"),
+            goal=str(raw_estimator.get("goal") or "material learning goal"),
+            learner_style=str(raw_estimator.get("learner_style") or "unspecified"),
+            expected_output=str(raw_estimator.get("expected_output") or raw.get("acceptance_method") or "observable learner evidence"),
+            mode=str(raw_estimator.get("mode") or raw_estimator.get("task_kind") or "concept_understanding"),
+            evidence_size=max(evidence_characters, int(raw_estimator.get("evidence_characters") or 0)),
+            evidence_count=max(evidence_chunks, int(raw_estimator.get("evidence_chunks") or 0)),
+            review_rounds=max(0, int(raw_estimator.get("review_rounds") or 0)),
+            provider_metadata={
+                **estimator_metadata,
+                "material_volume": float(raw_estimator.get("material_volume") or len(evidence)),
+                "structural_volume": float(raw_estimator.get("structural_volume") or len(source_text.splitlines())),
+            },
         )
         nodes.append(
             {

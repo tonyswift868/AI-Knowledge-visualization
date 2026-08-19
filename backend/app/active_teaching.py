@@ -54,10 +54,10 @@ from .teacher_turn_v1 import (
     build_teacher_turn,
     explicit_preferences_from_orm,
     explicit_preferences_from_receipt,
-    manual_skip_transition,
     merge_provider_expression,
     persist_teacher_turn,
     record_actual_elapsed,
+    self_attested_completion_transition,
     transition_after_answer,
     turn_from_dict,
 )
@@ -82,6 +82,16 @@ from .classroom_media import (
     warm_classroom_asr,
 )
 from .url_fetcher_secure import fetch_safe
+from .video_transcript import (
+    VideoTranscriptError,
+    classify_video_url,
+    extract_video_transcript,
+    remember_candidates,
+    resolve_candidate,
+    search_supplementary_materials,
+    source_family_id,
+    source_lineage,
+)
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["active-teaching"])
@@ -141,6 +151,104 @@ LEGACY_DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-02-blonde-fang-v9"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def local_date_from_utc(value: Any) -> str | None:
+    """Project a stored UTC timestamp to the host's local calendar day.
+
+    Legacy timestamps may be SQLite's ``YYYY-MM-DD HH:MM:SS`` form or an ISO
+    value with a trailing ``Z``.  Naive values are treated as UTC because all
+    new writes use :func:`_now`; no fixed offset is assumed.
+    """
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone().date().isoformat()
+
+
+def task_completion_fields(value: Any) -> dict[str, str | None]:
+    """Return the stable public completion projection for a task row/value."""
+
+    completed_at = value
+    if isinstance(value, Mapping):
+        completed_at = value.get("completed_at")
+    elif hasattr(value, "keys") and "completed_at" in value.keys():
+        completed_at = value["completed_at"]
+    elif hasattr(value, "completed_at"):
+        completed_at = value.completed_at
+    if isinstance(completed_at, datetime):
+        completed_at = completed_at.isoformat()
+    completed_at = str(completed_at) if completed_at not in (None, "") else None
+    local_date = local_date_from_utc(completed_at)
+    return {
+        "completed_at": completed_at,
+        "completed_on": local_date,
+        "completed_at_local_date": local_date,
+    }
+
+
+def activity_by_day(connection: sqlite3.Connection, plan_id: str) -> dict[str, dict[str, float]]:
+    """Aggregate explicit elapsed-time events by their recorded local day.
+
+    Completion effort is intentionally not included here; callers can display
+    this map beside scheduled/planned minutes without conflating the two.
+    """
+
+    if not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_task_time_events'"
+    ).fetchone():
+        return {}
+    plan_tables = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('active_plan_tasks','orm_plan_execution_tasks')"
+        ).fetchall()
+    }
+    if not plan_tables:
+        return {}
+    task_queries: list[str] = []
+    params: list[Any] = []
+    if "active_plan_tasks" in plan_tables:
+        task_queries.append("SELECT id FROM active_plan_tasks WHERE plan_id=?")
+        params.append(plan_id)
+    if "orm_plan_execution_tasks" in plan_tables:
+        task_queries.append("SELECT id FROM orm_plan_execution_tasks WHERE plan_id=?")
+        params.append(plan_id)
+    task_ids = [str(row[0]) for row in connection.execute(" UNION ".join(task_queries), params).fetchall()]
+    if not task_ids:
+        return {}
+    placeholders = ",".join("?" for _ in task_ids)
+    rows = connection.execute(
+        f"SELECT recorded_at,elapsed_minutes FROM active_task_time_events WHERE task_id IN ({placeholders})",
+        task_ids,
+    ).fetchall()
+    result: dict[str, dict[str, float]] = {}
+    for row in rows:
+        day = local_date_from_utc(row["recorded_at"])
+        if not day:
+            continue
+        bucket = result.setdefault(
+            day,
+            {"actual_elapsed_minutes": 0.0, "activity_event_count": 0},
+        )
+        bucket["actual_elapsed_minutes"] = round(
+            float(bucket["actual_elapsed_minutes"]) + float(row["elapsed_minutes"] or 0),
+            3,
+        )
+        bucket["activity_event_count"] += 1
+    return result
 
 
 def _id(prefix: str) -> str:
@@ -517,6 +625,9 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             archived_at TEXT,
             archive_reason TEXT NOT NULL DEFAULT '',
             material_revision INTEGER NOT NULL DEFAULT 1,
+            source_url TEXT NOT NULL DEFAULT '',
+            source_kind TEXT NOT NULL DEFAULT 'uploaded_file',
+            provenance_json TEXT NOT NULL DEFAULT '{}',
             UNIQUE(workspace_id, sha256)
         );
         CREATE TABLE IF NOT EXISTS active_chunks (
@@ -641,6 +752,7 @@ def _init_schema(connection: sqlite3.Connection) -> None:
             acceptance_condition TEXT NOT NULL,
             estimated_task_minutes INTEGER NOT NULL,
             completed_task_minutes INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT,
             actual_elapsed_minutes REAL NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'planned',
             task_type TEXT NOT NULL DEFAULT 'initial_learning',
@@ -784,6 +896,9 @@ def _init_schema(connection: sqlite3.Connection) -> None:
         ("archived_at", "TEXT"),
         ("archive_reason", "TEXT NOT NULL DEFAULT ''"),
         ("material_revision", "INTEGER NOT NULL DEFAULT 1"),
+        ("source_url", "TEXT NOT NULL DEFAULT ''"),
+        ("source_kind", "TEXT NOT NULL DEFAULT 'uploaded_file'"),
+        ("provenance_json", "TEXT NOT NULL DEFAULT '{}'"),
     ):
         if column not in existing_material_columns:
             connection.execute(
@@ -1747,14 +1862,22 @@ def _evidence(row: sqlite3.Row) -> dict[str, Any]:
     material_id = str(row["material_id"])
     material_url = ""
     material_path = ""
+    material_kind = "uploaded_file"
+    material_provenance: dict[str, Any] = {}
     try:
         with _connect() as source_connection:
             material_row = source_connection.execute(
-                "SELECT stored_path FROM active_materials WHERE id=?",
+                "SELECT stored_path,source_url,source_kind,provenance_json FROM active_materials WHERE id=?",
                 (material_id,),
             ).fetchone()
             if material_row:
                 material_path = str(material_row["stored_path"] or "") if "stored_path" in material_row.keys() else ""
+                material_url = str(material_row["source_url"] or "") if "source_url" in material_row.keys() else ""
+                material_kind = str(material_row["source_kind"] or "uploaded_file") if "source_kind" in material_row.keys() else "uploaded_file"
+                try:
+                    material_provenance = json.loads(material_row["provenance_json"] or "{}") if "provenance_json" in material_row.keys() else {}
+                except (TypeError, json.JSONDecodeError):
+                    material_provenance = {}
     except sqlite3.Error:
         pass
     source_revision_id = ""
@@ -1799,6 +1922,8 @@ def _evidence(row: sqlite3.Row) -> dict[str, Any]:
         "chunk_id": row["id"],
         "source_file": row["original_filename"] if "original_filename" in keys else None,
         "original_url": material_url,
+        "source_kind": str(row["source_kind"] or material_kind) if "source_kind" in keys else material_kind,
+        "provenance": material_provenance,
         "stored_path": material_path,
         "heading": row["heading"] if "heading" in keys else "",
         "page_start": row["page_start"],
@@ -1831,7 +1956,105 @@ def _public_material(connection: sqlite3.Connection, material_id: str) -> dict[s
         ).fetchall()
     ]
     output["chunk_count"] = len(output["chunks"])
+    try:
+        output["provenance"] = json.loads(output.get("provenance_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        output["provenance"] = {}
     return output
+
+
+def _set_material_provenance(
+    workspace_id: str,
+    material_id: str,
+    *,
+    source_url: str,
+    source_kind: str,
+    provenance: Mapping[str, Any] | None = None,
+    preserve_existing: bool = False,
+) -> None:
+    """Attach source identity without overwriting an existing source record.
+
+    Content-hash deduplication may return a local upload or a URL imported
+    earlier.  In that case the new reference is appended as an alias instead
+    of replacing the original provenance, so evidence remains auditable.
+    """
+
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT source_url,source_kind,provenance_json FROM active_materials WHERE id=? AND workspace_id=?",
+            (material_id, workspace_id),
+        ).fetchone()
+        existing_url = str(row["source_url"] or "") if row else ""
+        existing_kind = str(row["source_kind"] or "uploaded_file") if row else "uploaded_file"
+        try:
+            existing_provenance = json.loads(row["provenance_json"] or "{}") if row else {}
+        except (TypeError, json.JSONDecodeError):
+            existing_provenance = {}
+        existing_provenance = existing_provenance if isinstance(existing_provenance, dict) else {}
+        incoming = dict(provenance or {})
+        aliases = [
+            dict(item)
+            for item in existing_provenance.get("source_aliases") or []
+            if isinstance(item, Mapping)
+        ]
+        if preserve_existing and (existing_url or existing_kind):
+            aliases.append(
+                {
+                    "source_url": existing_url or None,
+                    "source_kind": existing_kind,
+                    "provenance": {
+                        key: value
+                        for key, value in existing_provenance.items()
+                        if key not in {"source_aliases", "latest_reference"}
+                    },
+                }
+            )
+        aliases.append(
+            {
+                "source_url": str(source_url or "") or None,
+                "source_kind": str(source_kind or "uploaded_file"),
+                "provenance": incoming,
+            }
+        )
+        deduped_aliases: list[dict[str, Any]] = []
+        alias_keys: set[tuple[str, str]] = set()
+        for alias in aliases:
+            key = (str(alias.get("source_url") or ""), str(alias.get("source_kind") or ""))
+            if key in alias_keys:
+                continue
+            alias_keys.add(key)
+            deduped_aliases.append(alias)
+        if preserve_existing:
+            stored_url = existing_url
+            stored_kind = existing_kind
+            stored_provenance = {
+                **existing_provenance,
+                "source_aliases": deduped_aliases[-24:],
+                "latest_reference": {
+                    "source_url": str(source_url or "") or None,
+                    "source_kind": str(source_kind or "uploaded_file"),
+                },
+            }
+        else:
+            stored_url = str(source_url or "")
+            stored_kind = str(source_kind or "uploaded_file")
+            stored_provenance = {
+                **incoming,
+                "source_aliases": deduped_aliases[-24:],
+            }
+        connection.execute(
+            """UPDATE active_materials
+               SET source_url=?,source_kind=?,provenance_json=?
+               WHERE id=? AND workspace_id=?""",
+            (
+                stored_url[:2000],
+                stored_kind[:80],
+                json.dumps(stored_provenance, ensure_ascii=False)[:12000],
+                material_id,
+                workspace_id,
+            ),
+        )
+        connection.commit()
 
 
 @router.post("/workspaces/{workspace_id}/materials")
@@ -2240,6 +2463,8 @@ async def upload_url_material(
     url = str(body.get("url") or "").strip()
     if not url:
         _error("MATERIAL_URL_REQUIRED", "请先选择一份资料", 422)
+    if classify_video_url(url).get("recognized"):
+        return await _video_material_flow(workspace_id, body, url=url)
     try:
         fetched = await fetch_safe(url)
     except ValueError as exc:
@@ -2255,7 +2480,386 @@ async def upload_url_material(
     result = await upload_material(workspace_id, upload)
     result["source_url"] = str(fetched.get("final_url") or url)
     result["source_title"] = title
+    _set_material_provenance(
+        workspace_id,
+        str(result["id"]),
+        source_url=result["source_url"],
+        source_kind="web_article",
+        provenance={"source_url": result["source_url"], "title": title},
+        preserve_existing=bool(result.get("deduplicated")),
+    )
+    with _connect() as connection:
+        result = _public_material(connection, str(result["id"]))
+    result["requested_source_url"] = str(fetched.get("final_url") or url)
+    result["source_title"] = title
     return result
+
+
+def _video_selection_values(body: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    ids: list[str] = []
+    urls: list[str] = []
+    raw_values: list[Any] = []
+    for key in (
+        "selected_candidate_ids",
+        "selected_material_ids",
+        "supplementary_material_ids",
+        "selected_supplementary_materials",
+    ):
+        value = body.get(key)
+        if isinstance(value, list):
+            raw_values.extend(value)
+        elif value not in (None, ""):
+            raw_values.append(value)
+    for key in ("selected_candidate_urls", "selected_material_urls", "supplementary_material_urls"):
+        value = body.get(key)
+        if isinstance(value, list):
+            raw_values.extend(value)
+        elif value not in (None, ""):
+            raw_values.append(value)
+    for value in raw_values:
+        if isinstance(value, Mapping):
+            candidate = resolve_candidate(value.get("id") or value.get("candidate_id") or value.get("url"))
+            if candidate:
+                urls.append(candidate["url"])
+            continue
+        text = str(value or "").strip()
+        if text.startswith(("http://", "https://")):
+            urls.append(text)
+        elif text:
+            ids.append(text)
+            candidate = resolve_candidate(text)
+            if candidate:
+                urls.append(candidate["url"])
+    return list(dict.fromkeys(ids)), list(dict.fromkeys(urls))
+
+
+def _video_transcript_confirmed(body: Mapping[str, Any]) -> bool:
+    return bool(
+        body.get("confirm_transcript")
+        or body.get("transcript_confirmed")
+        or body.get("confirm")
+    )
+
+
+async def _ingest_text_material(
+    workspace_id: str,
+    *,
+    text: str,
+    filename: str,
+    source_url: str,
+    source_kind: str,
+    provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    upload = UploadFile(file=io.BytesIO(text.encode("utf-8")), filename=_safe_filename(filename)[:180] or "material.txt")
+    result = await upload_material(workspace_id, upload)
+    material_id = str(result["id"])
+    _set_material_provenance(
+        workspace_id,
+        material_id,
+        source_url=source_url,
+        source_kind=source_kind,
+        provenance=provenance,
+        preserve_existing=bool(result.get("deduplicated")),
+    )
+    with _connect() as connection:
+        output = _public_material(connection, material_id)
+    output["requested_source_url"] = source_url
+    if provenance.get("source_family_id"):
+        output["source_family_id"] = str(provenance["source_family_id"])
+    if provenance.get("lineage"):
+        output["lineage"] = dict(provenance["lineage"])
+    if "independent_evidence" in provenance:
+        output["independence"] = {
+            "independent_evidence": bool(provenance.get("independent_evidence")),
+            "classification": str(provenance.get("independence") or "unknown"),
+        }
+    return output
+
+
+async def _ingest_selected_supplementary_materials(
+    workspace_id: str,
+    *,
+    video_url: str,
+    selected_urls: list[str],
+    resolved_source_family_id: str = "",
+) -> list[dict[str, Any]]:
+    """Fetch and persist only the supplementary URLs the learner selected."""
+
+    supplementary_materials: list[dict[str, Any]] = []
+    family_id = str(resolved_source_family_id or source_family_id(video_url))
+    for selected_url in selected_urls:
+        try:
+            fetched = await fetch_safe(selected_url)
+        except ValueError as exc:
+            _error("SUPPLEMENTARY_FETCH_FAILED", f"补充资料无法安全读取：{exc}", 422, source_url=selected_url)
+        text = str(fetched.get("text") or "").strip()
+        if not text:
+            _error("SUPPLEMENTARY_EMPTY", "所选补充资料没有可索引的正文", 422, source_url=selected_url)
+        title = str(fetched.get("title") or "补充资料").strip()
+        final_url = str(fetched.get("final_url") or selected_url)
+        derived = source_family_id(final_url) == family_id
+        # A different URL is not proof that a note was independently authored.
+        # Keep its lineage unknown unless an adapter provides explicit metadata;
+        # unknown companions remain available as learning material but are not
+        # advertised as independent evidence.
+        relation = "derived_same_family" if derived else "unknown_companion"
+        lineage = source_lineage(
+            family_id,
+            role="companion_material",
+            relation=relation,
+            independent=False,
+            parent_url=video_url,
+        )
+        supplementary_materials.append(
+            await _ingest_text_material(
+                workspace_id,
+                text=text,
+                filename=f"{title}.txt",
+                source_url=final_url,
+                source_kind="supplementary_material",
+                provenance={
+                    "source_url": final_url,
+                    "selected_url": selected_url,
+                    "selected_explicitly": True,
+                    "video_source_url": video_url,
+                    "source_family_id": family_id,
+                    "lineage": lineage,
+                    "independent_evidence": False,
+                    "independence": relation,
+                },
+            )
+        )
+    return supplementary_materials
+
+
+async def _video_material_flow(
+    workspace_id: str,
+    body: Mapping[str, Any],
+    *,
+    url: str,
+) -> dict[str, Any]:
+    classification = classify_video_url(url)
+    choice = body.get("find_additional_materials")
+    if not isinstance(choice, bool):
+        return {
+            "schema": "mentorflow.video-material-flow.v1",
+            "status": "awaiting_supplementary_choice",
+            "source_url": url,
+            "capability": classification,
+            "supplementary_material_choice": {
+                "required": True,
+                "question": "在提取字幕前，是否搜索额外的讲义、笔记或文档？",
+                "options": [
+                    {"value": True, "label": "搜索补充资料"},
+                    {"value": False, "label": "只使用确认后的视频字幕"},
+                ],
+            },
+            "ingested": False,
+        }
+    ids, selected_urls = _video_selection_values(body)
+    confirmed = _video_transcript_confirmed(body)
+    if choice and not selected_urls and not confirmed:
+        query = str(body.get("query") or body.get("search_query") or body.get("title") or url).strip()
+        search = await search_supplementary_materials(query)
+        search["candidates"] = remember_candidates(list(search.get("candidates") or []))
+        family_id = source_family_id(url)
+        for candidate in search["candidates"]:
+            candidate["source_family_id"] = family_id
+            candidate["lineage"] = source_lineage(
+                family_id,
+                role="companion_material",
+                relation="unknown_companion",
+                independent=False,
+                parent_url=url,
+            )
+            candidate["independent_evidence"] = False
+            candidate["independence"] = "unknown"
+        return {
+            "schema": "mentorflow.video-material-flow.v1",
+            "status": "supplementary_candidates",
+            "source_url": url,
+            "capability": classification,
+            "supplementary_material_choice": {"accepted": True, "required": False},
+            "supplementary_search": search,
+            "selection_required": True,
+            "ingested": False,
+        }
+    try:
+        preview = await extract_video_transcript(url)
+    except VideoTranscriptError as exc:
+        _error(exc.code, str(exc), exc.status, **exc.details)
+    family_id = str(preview.get("source_family_id") or source_family_id(url))
+    preview.setdefault("source_family_id", family_id)
+    preview.setdefault(
+        "lineage",
+        source_lineage(
+            family_id,
+            role="video_transcript",
+            relation="primary_transcript",
+            independent=False,
+            parent_url=url,
+        ),
+    )
+    preview.setdefault(
+        "independence",
+        {"independent_evidence": False, "classification": "primary_source"},
+    )
+    disposition = preview.get("disposition") or {}
+    subtitle = preview.get("subtitle") or {}
+    base_response = {
+        "schema": "mentorflow.video-material-flow.v1",
+        "status": "transcript_preview",
+        "source_url": url,
+        "capability": classification,
+        "transcript": preview,
+        "subtitle_preview": {
+            "quality": subtitle.get("quality") or {},
+            "segments": subtitle.get("segments") or [],
+            "timestamped": bool((subtitle.get("quality") or {}).get("timestamped")),
+        },
+        "ingested": False,
+        "requires_transcript_confirmation": disposition.get("state") == "ready",
+    }
+    if disposition.get("state") != "ready":
+        base_response["status"] = str(disposition.get("state") or "needs_review")
+        base_response["limited_coverage_warning"] = "字幕缺失或质量不足，无法形成可验证的视频材料。"
+        base_response["can_continue_with_supplementary_materials"] = bool(choice and selected_urls)
+        if choice and selected_urls and body.get("confirm_supplement_only") is True:
+            supplementary_materials = await _ingest_selected_supplementary_materials(
+                workspace_id,
+                video_url=str(preview.get("source_url") or url),
+                selected_urls=selected_urls,
+                resolved_source_family_id=family_id,
+            )
+            return {
+                **base_response,
+                "status": "ingested_supplement_only",
+                "ingested": True,
+                "video_material": None,
+                "video_disposition": disposition,
+                "supplementary_materials": supplementary_materials,
+                "material_ids": [item["id"] for item in supplementary_materials],
+                "separate_evidence": True,
+                "limited_coverage_warning": "视频字幕不可用，已按你的确认排除视频，仅使用所选讲义或文档生成计划。",
+            }
+        return base_response
+    if choice and not selected_urls:
+        _error(
+            "SUPPLEMENTARY_SELECTION_REQUIRED",
+            "请明确选择要加入学习计划的补充资料；搜索结果不会自动纳入。",
+            422,
+            candidate_ids=ids,
+        )
+    if not confirmed:
+        if not choice:
+            base_response["limited_coverage_warning"] = "你选择不搜索补充资料；学习内容仅覆盖已确认的视频字幕。"
+        return base_response
+    transcript_text = str(subtitle.get("text") or "").strip()
+    family_id = str(preview.get("source_family_id") or source_family_id(url))
+    transcript_lineage = preview.get("lineage") if isinstance(preview.get("lineage"), Mapping) else source_lineage(
+        family_id,
+        role="video_transcript",
+        relation="primary_transcript",
+        independent=False,
+        parent_url=url,
+    )
+    transcript_material = await _ingest_text_material(
+        workspace_id,
+        text=transcript_text,
+        filename=f"{preview.get('title') or 'video'} transcript.txt",
+        source_url=url,
+        source_kind="video_transcript",
+        provenance={
+            "source_url": url,
+            "provider": preview.get("provider"),
+            "language": subtitle.get("language"),
+            "automatic": bool(subtitle.get("automatic")),
+            "quality": subtitle.get("quality") or {},
+            "timestamps": subtitle.get("segments") or [],
+            "source_family_id": family_id,
+            "lineage": dict(transcript_lineage),
+            "independent_evidence": False,
+            "independence": "primary_source",
+        },
+    )
+    supplementary_materials = await _ingest_selected_supplementary_materials(
+        workspace_id,
+        video_url=str(preview.get("source_url") or url),
+        selected_urls=selected_urls,
+        resolved_source_family_id=family_id,
+    )
+    return {
+        **base_response,
+        "status": "ingested",
+        "ingested": True,
+        "transcript_material": transcript_material,
+        "supplementary_materials": supplementary_materials,
+        "material_ids": [transcript_material["id"], *(item["id"] for item in supplementary_materials)],
+        "separate_evidence": True,
+        "limited_coverage_warning": (
+            "你选择不搜索补充资料；学习内容仅覆盖已确认的视频字幕。" if not choice else None
+        ),
+    }
+
+
+@router.post("/workspaces/{workspace_id}/materials/video/preview")
+async def preview_video_material(
+    workspace_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    url = str(body.get("url") or "").strip()
+    if not url:
+        _error("MATERIAL_URL_REQUIRED", "请先选择一份视频资料", 422)
+    if not classify_video_url(url).get("recognized"):
+        _error("VIDEO_URL_UNSUPPORTED", "该链接不是可识别的视频地址", 415)
+    return await _video_material_flow(workspace_id, body, url=url)
+
+
+@router.post("/workspaces/{workspace_id}/materials/video/search")
+async def search_video_supplementary_materials(
+    workspace_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    del workspace_id
+    url = str(body.get("url") or "").strip()
+    if not url or not classify_video_url(url).get("recognized"):
+        _error("VIDEO_URL_UNSUPPORTED", "该链接不是可识别的视频地址", 415)
+    if body.get("find_additional_materials") is not True:
+        _error("SUPPLEMENTARY_SEARCH_NOT_AUTHORIZED", "请先明确同意搜索额外讲义、笔记或文档", 403)
+    query = str(body.get("query") or body.get("search_query") or body.get("title") or url).strip()
+    try:
+        result = await search_supplementary_materials(query)
+    except VideoTranscriptError as exc:
+        _error(exc.code, str(exc), exc.status, **exc.details)
+    result["candidates"] = remember_candidates(list(result.get("candidates") or []))
+    family_id = source_family_id(url)
+    for candidate in result["candidates"]:
+        candidate["source_family_id"] = family_id
+        candidate["lineage"] = source_lineage(
+            family_id,
+            role="companion_material",
+            relation="unknown_companion",
+            independent=False,
+            parent_url=url,
+        )
+        candidate["independent_evidence"] = False
+        candidate["independence"] = "unknown"
+    return {"schema": "mentorflow.video-material-flow.v1", "status": "supplementary_candidates", "source_url": url, "supplementary_search": result, "selection_required": True, "ingested": False}
+
+
+@router.post("/workspaces/{workspace_id}/materials/video/ingest")
+async def ingest_video_material(
+    workspace_id: str,
+    body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    url = str(body.get("url") or "").strip()
+    if not url or not classify_video_url(url).get("recognized"):
+        _error("VIDEO_URL_UNSUPPORTED", "该链接不是可识别的视频地址", 415)
+    if "find_additional_materials" not in body:
+        _error("SUPPLEMENTARY_CHOICE_REQUIRED", "字幕提取前必须明确是否搜索补充资料", 422)
+    if not isinstance(body.get("find_additional_materials"), bool):
+        _error("SUPPLEMENTARY_CHOICE_REQUIRED", "find_additional_materials 必须是布尔值", 422)
+    return await _video_material_flow(workspace_id, body, url=url)
 
 
 def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3287,6 +3891,7 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
     ]
     for task in tasks:
         task["source_evidence"] = json.loads(task["source_evidence"])
+        task.update(task_completion_fields(task))
     days: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for task in tasks:
         days[task["day_date"]].append(task)
@@ -3340,6 +3945,7 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
             "初始计划不为未学知识创建复习任务。"
         ),
         "tasks": tasks,
+        "activity_by_day": activity_by_day(connection, plan_id),
         "days": [
             {
                 "date": day,
@@ -3442,9 +4048,17 @@ def _task_rows(connection: sqlite3.Connection, plan_id: str) -> list[sqlite3.Row
     if _uses_canonical_execution(connection, plan_id):
         return connection.execute(
             """SELECT * FROM orm_plan_execution_tasks
-               WHERE plan_id=? AND task_type='initial_learning'
-               ORDER BY point_sequence,day_index,task_order,id""",
-            (plan_id,),
+               WHERE plan_id=?
+                 AND (
+                   task_type='initial_learning'
+                   OR (
+                     task_type='review'
+                     AND COALESCE(NULLIF(not_before_date,''),day_date)<=?
+                   )
+                 )
+               ORDER BY CASE WHEN task_type='initial_learning' THEN 0 ELSE 1 END,
+                        point_sequence,day_index,task_order,id""",
+            (plan_id, date.today().isoformat()),
         ).fetchall()
     return connection.execute(
         """SELECT * FROM active_plan_tasks
@@ -3541,10 +4155,25 @@ def _complete_execution_task(
     task: Mapping[str, Any] | sqlite3.Row,
 ) -> None:
     table = "orm_plan_execution_tasks" if _is_canonical_task(task) else "active_plan_tasks"
+    columns = {
+        str(row[1])
+        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if "completed_at" not in columns:
+        # Minimal in-memory fixtures from older integrations may omit the
+        # additive audit column; migration-backed application databases always
+        # take the timestamp branch below.
+        connection.execute(
+            f"""UPDATE {table} SET status='completed',
+                completed_task_minutes=estimated_task_minutes WHERE id=?""",
+            (task["id"],),
+        )
+        return
     connection.execute(
         f"""UPDATE {table} SET status='completed',
-            completed_task_minutes=estimated_task_minutes WHERE id=?""",
-        (task["id"],),
+            completed_task_minutes=estimated_task_minutes,
+            completed_at=COALESCE(completed_at, ?) WHERE id=?""",
+        (_now(), task["id"]),
     )
 
 
@@ -3627,6 +4256,7 @@ def _task_snapshot(row: sqlite3.Row) -> dict[str, Any]:
         "estimated_task_minutes": row["estimated_task_minutes"],
         "completed_task_minutes": row["completed_task_minutes"],
         "actual_elapsed_minutes": row["actual_elapsed_minutes"],
+        **task_completion_fields(row),
     }
 
 
@@ -4307,6 +4937,125 @@ def _public_teaching_attachment(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def _current_point_projection(
+    connection: sqlite3.Connection,
+    session: sqlite3.Row,
+    state: dict[str, Any],
+    messages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return the bounded public view for the point currently in the lesson.
+
+    The durable session keeps its complete transcript for audit and resume.
+    Native clients render this projection instead, where progress counts
+    distinct knowledge points rather than execution tasks.
+    """
+
+    tasks = _task_rows(connection, str(session["plan_id"]))
+    point_ids: list[str] = []
+    for task in tasks:
+        point_id = str(task["knowledge_point_id"] or "")
+        if point_id and point_id not in point_ids:
+            point_ids.append(point_id)
+
+    current_point_id = str(state.get("current_knowledge_point_id") or "")
+    active_task_id = str(state.get("active_task_id") or "")
+    current_task = next(
+        (task for task in tasks if str(task["id"] or "") == active_task_id),
+        None,
+    )
+    if current_task is None and current_point_id:
+        current_task = next(
+            (task for task in tasks if str(task["knowledge_point_id"] or "") == current_point_id),
+            None,
+        )
+    if current_task is not None:
+        current_point_id = str(current_task["knowledge_point_id"] or current_point_id)
+
+    point: Mapping[str, Any] | sqlite3.Row | None = None
+    if current_task is not None:
+        try:
+            point = _point_for_task(connection, current_task)
+        except Exception:
+            # A stale session must remain readable after a plan is rebuilt.
+            point = None
+    if point is not None:
+        point_name = str(point["name"] or "").strip()
+    else:
+        point_name = ""
+    point_name = (
+        point_name
+        or str(current_task["title"] if current_task is not None else "").strip()
+        or str(state.get("current_knowledge_point_name") or "").strip()
+        or "当前知识点"
+    )
+    ordinal = point_ids.index(current_point_id) + 1 if current_point_id in point_ids else 0
+    total = len(point_ids)
+    progress_label = f"{ordinal}/{total}" if ordinal and total else ""
+
+    # Structured teacher turns identify their point. Learner replies inherit
+    # the most recent teacher point, preserving the point-scoped conversation
+    # without changing durable message rows.
+    current_messages: list[dict[str, Any]] = []
+    message_point_id = ""
+    for item in messages:
+        turn = item.get("teacher_turn")
+        concept = turn.get("concept") if isinstance(turn, dict) else None
+        concept_id = str(concept.get("id") or "") if isinstance(concept, dict) else ""
+        concept_name = str(concept.get("name") or "") if isinstance(concept, dict) else ""
+        if concept_id:
+            message_point_id = concept_id
+        elif concept_name and concept_name == point_name:
+            message_point_id = current_point_id
+        if message_point_id == current_point_id and current_point_id:
+            current_messages.append(item)
+
+    evidence: list[dict[str, Any]] = []
+    seen_evidence: set[str] = set()
+    raw_point_evidence: Any = []
+    if point is not None and "source_evidence" in point.keys():
+        raw_point_evidence = point["source_evidence"]
+    try:
+        point_evidence = (
+            json.loads(raw_point_evidence)
+            if isinstance(raw_point_evidence, str)
+            else raw_point_evidence
+        )
+    except (TypeError, json.JSONDecodeError):
+        point_evidence = []
+    for candidate in point_evidence if isinstance(point_evidence, list) else []:
+        if isinstance(candidate, dict):
+            marker = json.dumps(candidate, ensure_ascii=False, sort_keys=True)
+            if marker not in seen_evidence:
+                seen_evidence.add(marker)
+                evidence.append(dict(candidate))
+    for message in current_messages:
+        for candidate in message.get("citations") or []:
+            if isinstance(candidate, dict):
+                marker = json.dumps(candidate, ensure_ascii=False, sort_keys=True)
+                if marker not in seen_evidence:
+                    seen_evidence.add(marker)
+                    evidence.append(dict(candidate))
+
+    state["current_point_ordinal"] = ordinal
+    state["current_point_total"] = total
+    state["current_point_label"] = (
+        f"{progress_label} · {point_name}" if progress_label else point_name
+    )
+    return {
+        "id": current_point_id,
+        "knowledge_point_id": current_point_id,
+        "name": point_name,
+        "knowledge_point_name": point_name,
+        "ordinal": ordinal,
+        "total": total,
+        "progress_label": progress_label,
+        "messages": current_messages,
+        "message_projection": current_messages,
+        "evidence": evidence,
+        "evidence_projection": evidence,
+    }
+
+
 def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
     row = connection.execute(
         "SELECT * FROM active_teaching_sessions WHERE id=?", (session_id,)
@@ -4344,6 +5093,7 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         item["attachments"] = attachments
         messages.append(item)
     state = json.loads(row["state"])
+    current_point = _current_point_projection(connection, row, state, messages)
     state["practice_resources"] = _practice_resources_for_session(
         connection,
         row,
@@ -4353,7 +5103,8 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
     incomplete_rows = [
         task
         for task in _task_rows(connection, row["plan_id"])
-        if str(task["status"]) != "completed"
+        if str(task["task_type"] or "initial_learning") == "initial_learning"
+        and str(task["status"]) != "completed"
     ]
     incomplete_initial = len(incomplete_rows)
     incomplete_initial_points = len(
@@ -4376,6 +5127,20 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         "plan_id": row["plan_id"],
         "state": state,
         "messages": messages,
+        # Keep the full transcript for existing integrations and audit tools;
+        # native classroom clients render this bounded current-point view.
+        "current_point": current_point,
+        "current_point_projection": current_point,
+        "current_point_messages": current_point["messages"],
+        "current_point_evidence": current_point["evidence"],
+        "knowledge_point_progress": {
+            "ordinal": current_point["ordinal"],
+            "total": current_point["total"],
+            "label": current_point["progress_label"],
+            "current": current_point["ordinal"],
+            "current_ordinal": current_point["ordinal"],
+            "total_points": current_point["total"],
+        },
         "started_at": row["started_at"],
         "updated_at": row["updated_at"],
         "actual_elapsed_minutes": round(float(row["actual_elapsed_minutes"]), 3),
@@ -4825,6 +5590,8 @@ async def _v1_answer_evidence(
     point: sqlite3.Row,
     citations: list[dict[str, Any]],
     provider_session_id: str | None,
+    *,
+    external_completion_evidence: bool = False,
 ) -> tuple[bool, float, list[str], dict[str, Any]]:
     """Use observable answer content; a UI flag alone is not mastery evidence."""
     lower = str(message or "").casefold()
@@ -4838,6 +5605,7 @@ async def _v1_answer_evidence(
         point=point,
         citations=citations,
         provider_session_id=provider_session_id,
+        external_completion_evidence=external_completion_evidence,
     )
     if bool(body.get("understood")):
         evaluation = {**evaluation, "learner_claimed_understanding": True}
@@ -4890,6 +5658,39 @@ def _v1_successful_task(
                 _now(),
             ),
         )
+    elif str(task["task_type"] or "") == "review" and _is_canonical_task(task):
+        # Canonical projected reviews are durable execution rows.  Completing
+        # one records a distinct event so review evidence cannot be mistaken
+        # for initial-learning mastery or counted twice on retry.
+        event_key = f"review:{task_id}:{int(task['review_cycle'] or 0)}"
+        connection.execute(
+            """INSERT OR IGNORE INTO orm_plan_mastery_events
+               (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
+                evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
+               VALUES (?,?,?,?,?,?,?,'review_passed',?,1,?,?,?)""",
+            (
+                "plan_review_"
+                + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
+                task["workspace_id"],
+                task["plan_id"],
+                task_id,
+                task["map_revision_id"],
+                point["id"],
+                point["evidence_hash"],
+                max(0.0, min(1.0, float(score))),
+                json.dumps(
+                    {
+                        "schema": "mentorflow.plan-review-event.v1",
+                        "review_cycle": int(task["review_cycle"] or 0),
+                        "evaluation": dict(evaluation),
+                        "task_status": "completed",
+                    },
+                    ensure_ascii=False,
+                ),
+                event_key,
+                _now(),
+            ),
+        )
     elif independent:
         connection.execute(
             "UPDATE active_knowledge_points SET mastery=MAX(mastery,?) WHERE id=?",
@@ -4909,6 +5710,149 @@ def _v1_successful_task(
     ][-20:]
 
 
+def _v1_self_attested_completion(
+    connection: sqlite3.Connection,
+    *,
+    session: sqlite3.Row,
+    tasks: list[sqlite3.Row],
+    task: sqlite3.Row,
+    point: Mapping[str, Any] | sqlite3.Row,
+    state: dict[str, Any],
+    message: str,
+    citations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Complete one point from an explicit learner mastery assertion.
+
+    The learner owns this fast path: it advances immediately and counts as a
+    completed/mastered point.  The event origin remains auditable internally,
+    but it does not create a second user-facing completion class.
+    """
+
+    point_id = str(point["id"])
+    def task_type_of(row: Mapping[str, Any] | sqlite3.Row) -> str:
+        keys = row.keys() if hasattr(row, "keys") else ()
+        return str(row["task_type"] or "initial_learning") if "task_type" in keys else "initial_learning"
+
+    if task_type_of(task) == "review":
+        completion_tasks = [
+            task
+        ] if str(task["status"]) != "completed" else []
+    else:
+        completion_tasks = [
+            candidate
+            for candidate in tasks
+            if str(candidate["knowledge_point_id"]) == point_id
+            and task_type_of(candidate) == "initial_learning"
+            and str(candidate["status"]) != "completed"
+        ]
+    completed_ids: list[str] = []
+    completed_minutes = 0
+    for candidate in completion_tasks:
+        _complete_execution_task(connection, candidate)
+        candidate_id = str(candidate["id"])
+        completed_ids.append(candidate_id)
+        completed_minutes += int(candidate["estimated_task_minutes"] or 0)
+        if candidate_id not in state.setdefault("completed_tasks", []):
+            state["completed_tasks"].append(candidate_id)
+
+    state["completed_task_minutes"] = int(
+        state.get("completed_task_minutes") or 0
+    ) + completed_minutes
+    state["today_remaining_task_minutes"] = max(
+        0,
+        int(state.get("today_remaining_task_minutes") or 0) - completed_minutes,
+    )
+    state.update(
+        {
+            "self_attested_completion": True,
+            "completion_origin": "self_attested",
+            "provider_verified": False,
+            "mastery_changed": True,
+            "completed_as_mastered": True,
+        }
+    )
+    evidence_id = _id("mastery")
+    evidence_payload = {
+        "schema": "mentorflow.self-attested-completion.v1",
+        "completion_origin": "self_attested",
+        "provider_verified": False,
+        "completed": True,
+        "task_ids": completed_ids,
+        "learner_message": message,
+    }
+    # Canonical v1 plans intentionally do not materialize legacy
+    # ``active_knowledge_points`` rows, so their foreign-key-safe audit record
+    # is the ORM mastery event below.  Legacy plans retain the SQLite evidence
+    # row for compatibility with existing classroom reports.
+    if not _is_canonical_task(task):
+        connection.execute(
+            """INSERT INTO active_mastery_evidence
+               (id,session_id,knowledge_point_id,evidence_type,score,passed,evidence,citations,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                evidence_id,
+                session["id"],
+                point_id,
+                "self_attested_completion",
+                1.0,
+                1,
+                json.dumps(evidence_payload, ensure_ascii=False),
+                json.dumps(citations, ensure_ascii=False),
+                _now(),
+            ),
+        )
+    state["mastery_evidence"] = [
+        *list(state.get("mastery_evidence") or []),
+        {
+            "knowledge_point_id": point_id,
+            "task_id": str(task["id"]),
+            "task_ids": completed_ids,
+            "score": 1.0,
+            "passed": True,
+            "evidence_type": "self_attested_completion",
+            "completion_origin": "self_attested",
+            "provider_verified": False,
+            "mastery_changed": True,
+            "evidence": message,
+        },
+    ][-20:]
+    if _is_canonical_task(task):
+        event_key = f"self-attested:{session['id']}:{point_id}"
+        connection.execute(
+            """INSERT OR IGNORE INTO orm_plan_mastery_events
+               (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
+                evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
+               VALUES (?,?,?,?,?,?,?,'self_attested_completion',1,1,?,?,?)""",
+            (
+                "plan_self_attested_"
+                + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
+                task["workspace_id"],
+                task["plan_id"],
+                task["id"],
+                task["map_revision_id"],
+                point_id,
+                point["evidence_hash"],
+                json.dumps(
+                    {
+                        "schema": "mentorflow.self-attested-completion.v1",
+                        "completion_origin": "self_attested",
+                        "provider_verified": False,
+                        "completed": True,
+                        "task_ids": completed_ids,
+                    },
+                    ensure_ascii=False,
+                ),
+                event_key,
+                _now(),
+            ),
+        )
+    return {
+        "evidence_id": evidence_id,
+        "task_ids": completed_ids,
+        "completed_minutes": completed_minutes,
+    }
+
+
 async def _v1_process_answer(
     *,
     connection: sqlite3.Connection,
@@ -4925,60 +5869,23 @@ async def _v1_process_answer(
 ) -> dict[str, Any]:
     """Process a v1 answer and emit exactly one next teacher turn."""
     if bool(body.get("force_complete")):
-        next_state = manual_skip_transition(
+        tasks = _task_rows(connection, session["plan_id"])
+        completion = _v1_self_attested_completion(
+            connection,
+            session=session,
+            tasks=tasks,
+            task=task,
+            point=point,
+            state=state,
+            message=message,
+            citations=citations,
+        )
+        _capture_knowledge_progress(connection, session["workspace_id"])
+        next_state = self_attested_completion_transition(
             (state.get("teacher_turn_v1") or {}).get("state") or state
         )
-        next_state["manual_skip_task_id"] = str(task["id"])
-        turn, generation = await _v1_prepare_turn(
-            workspace_id=session["workspace_id"], point=point, task=task,
-            receipt=receipt, citations=citations, state=state, phase="blocked",
-        )
-        next_state["phase"] = "manual_skip"
-        next_state["status"] = "manual_skipped"
-        next_state["waiting_for_answer"] = False
-        turn = _v1_turn_with_state(
-            turn,
-            next_state,
-            f"已按你的选择暂时跳过“{point['name']}”。这不是掌握证明，任务和掌握度都保持不变；之后可以从这里恢复。",
-        )
-        _v1_record_turn(
-            connection, session_id=session["id"], workspace_id=session["workspace_id"],
-            state=state, turn=turn, action="manual_skip", citations=[], generation=generation,
-        )
-        if _is_canonical_task(task):
-            event_key = f"manual-skip:{task['id']}:{int(state.get('teacher_turn_number') or 0)}"
-            connection.execute(
-                """INSERT OR IGNORE INTO orm_plan_mastery_events
-                   (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
-                    evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
-                   VALUES (?,?,?,?,?,?,?,'manual_skip',0,0,?,?,?)""",
-                (
-                    "plan_skip_" + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
-                    task["workspace_id"],
-                    task["plan_id"],
-                    task["id"],
-                    task["map_revision_id"],
-                    point["id"],
-                    point["evidence_hash"],
-                    json.dumps(
-                        {
-                            "schema": "mentorflow.plan-mastery-event.v1",
-                            "mastery_changed": False,
-                            "reason": "learner_manual_skip",
-                        },
-                        ensure_ascii=False,
-                    ),
-                    event_key,
-                    _now(),
-                ),
-            )
-        state.update({
-            "manual_skip": True,
-            "completed_as_mastered": False,
-            "mastery_changed": False,
-            "next_action": "advance_without_mastery",
-        })
-        tasks = _task_rows(connection, session["plan_id"])
+        state.update(next_state)
+        state["self_attested_completion_evidence_id"] = completion["evidence_id"]
         current_index = next(
             (index for index, candidate in enumerate(tasks) if str(candidate["id"]) == str(task["id"])),
             int(state.get("route_index") or 0),
@@ -4992,21 +5899,10 @@ async def _v1_process_answer(
             ),
             len(tasks),
         )
-        state["manual_skip_history"] = [
-            *list(state.get("manual_skip_history") or []),
-            {
-                "knowledge_point_id": str(point["id"]),
-                "knowledge_point_name": str(point["name"]),
-                "task_id": str(task["id"]),
-                "reason": "learner_self_assessed_mastery",
-                "mastery_changed": False,
-                "skipped_at": _now(),
-            },
-        ][-100:]
+        state["route_index"] = next_index
         if next_index < len(tasks):
             next_task = tasks[next_index]
             next_point = _point_for_task(connection, next_task)
-            state["route_index"] = next_index
             state["active_task_id"] = str(next_task["id"])
             state["current_knowledge_point_id"] = str(next_point["id"])
             state["estimated_task_minutes"] = int(next_task["estimated_task_minutes"] or 0)
@@ -5031,8 +5927,8 @@ async def _v1_process_answer(
             )
             next_turn = _v1_turn_with_state(
                 next_turn,
-                next_turn.state,
-                f"已按你的自我判断略过“{point['name']}”；它不会计为教师验证掌握。\n\n"
+                dict(next_turn.state),
+                f"已完成“{point['name']}”的全部首学任务。\n\n"
                 f"下面进入“{next_point['name']}”。\n\n{next_turn.plain_text}",
             )
             _v1_record_turn(
@@ -5041,13 +5937,28 @@ async def _v1_process_answer(
                 workspace_id=session["workspace_id"],
                 state=state,
                 turn=next_turn,
-                action="teacher_turn_v1_self_assessed_next",
+                action="teacher_turn_v1_self_attested_next",
                 citations=next_citations,
                 generation=next_generation,
             )
         else:
             state["route_index"] = len(tasks)
-            state["next_action"] = "review_self_assessed_skips"
+            state["current_teaching_step"] = "completed"
+            state["next_action"] = "review"
+            turn, generation = await _v1_prepare_turn(
+                workspace_id=session["workspace_id"], point=point, task=task,
+                receipt=receipt, citations=citations, state=state, phase="blocked",
+            )
+            turn = _v1_turn_with_state(
+                turn,
+                self_attested_completion_transition(state),
+                f"已完成“{point['name']}”的全部首学任务，接下来进入复习。",
+            )
+            _v1_record_turn(
+                connection, session_id=session["id"], workspace_id=session["workspace_id"],
+                state=state, turn=turn, action="teacher_turn_v1_self_attested_completed",
+                citations=citations, generation=generation,
+            )
         connection.execute(
             """UPDATE active_teaching_sessions
                SET state=?,updated_at=?,actual_elapsed_minutes=actual_elapsed_minutes+?
@@ -5063,6 +5974,7 @@ async def _v1_process_answer(
         point,
         citations,
         provider_session_id,
+        external_completion_evidence=bool(body.get("verify_completion")),
     )
     current_turn_state = (state.get("teacher_turn_v1") or {}).get("state") or {}
     next_turn_state = transition_after_answer(current_turn_state, correct=correct, score=score)
@@ -5126,6 +6038,45 @@ async def _v1_process_answer(
         score=score,
         evaluation=evaluation,
     )
+    if bool(body.get("verify_completion")):
+        # External completion is still teacher/provider-evaluated, but the
+        # intent is to finish the whole current knowledge point rather than a
+        # single phase row.  The selected independent task above remains the
+        # mastery anchor; these additional rows only complete execution work.
+        current_tasks = _task_rows(connection, session["plan_id"])
+        additional_minutes = 0
+        for candidate in current_tasks:
+            if str(candidate["knowledge_point_id"]) != str(point["id"]):
+                continue
+            if str(candidate["task_type"] or "initial_learning") != "initial_learning":
+                continue
+            fresh = connection.execute(
+                f"SELECT * FROM {'orm_plan_execution_tasks' if _is_canonical_task(candidate) else 'active_plan_tasks'} WHERE id=?",
+                (candidate["id"],),
+            ).fetchone()
+            if fresh is None or str(fresh["status"]) == "completed":
+                continue
+            _complete_execution_task(connection, fresh)
+            candidate_id = str(fresh["id"])
+            if candidate_id not in state.setdefault("completed_tasks", []):
+                state["completed_tasks"].append(candidate_id)
+                state["completed_task_minutes"] = int(
+                    state.get("completed_task_minutes") or 0
+                ) + int(fresh["estimated_task_minutes"] or 0)
+                additional_minutes += int(fresh["estimated_task_minutes"] or 0)
+        if additional_minutes:
+            state["today_remaining_task_minutes"] = max(
+                0,
+                int(state.get("today_remaining_task_minutes") or 0)
+                - additional_minutes,
+            )
+        state.update(
+            {
+                "completion_origin": "provider_verified",
+                "provider_verified": True,
+                "self_attested_completion": False,
+            }
+        )
     # Keep the durable cross-plan progress projection in sync with the
     # canonical task statuses.  This is intentionally after the state
     # transition so a restarted session and a newly generated plan see the
@@ -5139,6 +6090,14 @@ async def _v1_process_answer(
     state["route_index"] = next_index
     state["remediation_attempt"] = 0
     state["blocked"] = False
+    if bool(body.get("verify_completion")):
+        next_state.update(
+            {
+                "completion_origin": "provider_verified",
+                "provider_verified": True,
+                "self_attested_completion": False,
+            }
+        )
     if next_index >= len(tasks):
         next_state.update({"phase": "completed", "status": "completed", "waiting_for_answer": False})
         turn, generation = await _v1_prepare_turn(
@@ -5170,6 +6129,15 @@ async def _v1_process_answer(
             receipt=receipt, citations=next_citations, state=state,
             phase="waiting_for_answer", provider_session_id=provider_session_id,
         )
+        if bool(body.get("verify_completion")):
+            turn = _v1_turn_with_state(
+                turn,
+                {
+                    **dict(turn.state),
+                    "completion_origin": "provider_verified",
+                    "provider_verified": True,
+                },
+            )
         citations = next_citations
         action = "teacher_turn_v1_next_point"
     _v1_record_turn(
@@ -5933,11 +6901,68 @@ async def start_session(
         if not plan_row:
             _error("ACTIVE_PLAN_REQUIRED", "请先生成主动教学计划", 409)
         existing = connection.execute(
-            """SELECT id FROM active_teaching_sessions
+            """SELECT * FROM active_teaching_sessions
                WHERE plan_id=? ORDER BY started_at DESC LIMIT 1""",
             (plan_row["id"],),
         ).fetchone()
         if existing:
+            state = json.loads(existing["state"])
+            current_point_id = str(state.get("current_knowledge_point_id") or "")
+            turn = state.get("teacher_turn_v1") or {}
+            turn_point_id = str((turn.get("concept") or {}).get("id") or "")
+            # Sessions created by older desktop builds often contain one large
+            # unscoped transcript and no turn for the current point.  Never
+            # replay an unrelated historical answer (for example binary search
+            # while the card says square root).  Re-entering the classroom
+            # materialises exactly one current-point turn and leaves the audit
+            # transcript intact in storage.
+            if not turn_point_id or turn_point_id != current_point_id:
+                tasks = _task_rows(connection, plan_row["id"])
+                if tasks:
+                    route_index = min(max(0, int(state.get("route_index") or 0)), len(tasks) - 1)
+                    active_task_id = str(state.get("active_task_id") or "")
+                    task = next(
+                        (candidate for candidate in tasks if str(candidate["id"]) == active_task_id),
+                        tasks[route_index],
+                    )
+                    point = _point_for_task(connection, task)
+                    receipt = json.loads(plan_row["receipt"])
+                    citations = _merge_citations(
+                        _search(
+                            connection,
+                            workspace_id,
+                            f"{point['name']} {point['explanation']} {point['acceptance_method']}",
+                            plan_id=plan_row["id"],
+                        ),
+                        json.loads(point["source_evidence"]),
+                    )
+                    provider_session_id = str(body.get("provider_session_id") or "").strip() or None
+                    generated_turn, generation = await _v1_prepare_turn(
+                        workspace_id=workspace_id,
+                        point=point,
+                        task=task,
+                        receipt=receipt,
+                        citations=citations,
+                        state=state,
+                        provider_session_id=provider_session_id,
+                    )
+                    if generation.get("mode") == "real":
+                        state["provider_session_id"] = generation.get("provider_session_id")
+                    _v1_record_turn(
+                        connection,
+                        session_id=existing["id"],
+                        workspace_id=workspace_id,
+                        state=state,
+                        turn=generated_turn,
+                        action="teacher_turn_v1_resume_current_point",
+                        citations=citations,
+                        generation=generation,
+                    )
+                    connection.execute(
+                        "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+                        (json.dumps(state, ensure_ascii=False), _now(), existing["id"]),
+                    )
+                    connection.commit()
             return _public_session(connection, existing["id"])
         tasks = _task_rows(connection, plan_row["id"])
         if not tasks:
@@ -6290,7 +7315,8 @@ def _search(
         material_clause = f" AND chunk.material_id IN ({','.join('?' for _ in material_ids)})"
         params.extend(material_ids)
     for row in connection.execute(
-        f"""SELECT chunk.*, material.original_filename
+        f"""SELECT chunk.*, material.original_filename,
+                  material.source_url, material.source_kind, material.provenance_json
            FROM active_chunks AS chunk
            JOIN active_materials AS material ON material.id=chunk.material_id
            WHERE chunk.workspace_id=? AND material.status='ready'{material_clause}""",
@@ -6815,6 +7841,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                 (index, candidate)
                 for index, candidate in enumerate(tasks)
                 if str(candidate["knowledge_point_id"]) == current_point_id
+                and str(candidate["task_type"] or "initial_learning") == "initial_learning"
                 and str(candidate["status"]) != "completed"
             ]
             independent_candidates = [
@@ -7452,13 +8479,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     (remediation_task_id,),
                 ).fetchone()
                 if remediation_task:
-                    connection.execute(
-                        """UPDATE active_plan_tasks
-                           SET status='completed',
-                               completed_task_minutes=estimated_task_minutes
-                           WHERE id=?""",
-                        (remediation_task_id,),
-                    )
+                    _complete_execution_task(connection, remediation_task)
                     if remediation_task_id not in state["completed_tasks"]:
                         state["completed_tasks"].append(remediation_task_id)
                         state["completed_task_minutes"] = int(
@@ -7549,7 +8570,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     session_id,
                     point["id"],
                     (
-                        "learner_self_attested_completion"
+                        "self_attested_completion"
                         if force_completion
                         else (
                             "provider_grounded_rubric"
@@ -7568,6 +8589,8 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                             "phase_part_count": phase_part_count,
                             "grading_checks": grading_checks,
                             "evaluation": evaluation,
+                            "completion_origin": "self_attested" if force_completion else "provider_verified",
+                            "provider_verified": bool(not force_completion and evaluation.get("mode") == "real"),
                         },
                         ensure_ascii=False,
                     ),
@@ -7585,14 +8608,54 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     "learning_phase": learning_phase,
                     "grading_checks": grading_checks,
                     "evaluation": evaluation,
+                    "completion_origin": "self_attested" if force_completion else "provider_verified",
+                    "provider_verified": bool(not force_completion and evaluation.get("mode") == "real"),
                 }
             )
+            if force_completion and _is_canonical_task(task):
+                event_key = f"self-attested:{session_id}:{point['id']}"
+                connection.execute(
+                    """INSERT OR IGNORE INTO orm_plan_mastery_events
+                       (id,workspace_id,plan_id,task_id,map_revision_id,knowledge_point_id,
+                        evidence_hash,event_type,score,passed,payload,idempotency_key,occurred_at)
+                       VALUES (?,?,?,?,?,?,?,'self_attested_completion',0,0,?,?,?)""",
+                    (
+                        "plan_self_attested_"
+                        + hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32],
+                        task["workspace_id"],
+                        task["plan_id"],
+                        task["id"],
+                        task["map_revision_id"],
+                        point["id"],
+                        point["evidence_hash"],
+                        json.dumps(
+                            {
+                                "schema": "mentorflow.self-attested-completion.v1",
+                                "completion_origin": "self_attested",
+                                "provider_verified": False,
+                                "completed": True,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        event_key,
+                        _now(),
+                    ),
+            )
             if passed:
+                state.update(
+                    {
+                        "completion_origin": "self_attested" if force_completion else "provider_verified",
+                        "provider_verified": bool(not force_completion and evaluation.get("mode") == "real"),
+                        "self_attested_completion": bool(force_completion),
+                        "mastery_changed": bool(completes_independent_phase and not force_completion),
+                    }
+                )
                 completion_tasks = (
                     [
                         candidate
                         for candidate in tasks
                         if str(candidate["knowledge_point_id"]) == str(point["id"])
+                        and str(candidate["task_type"] or "initial_learning") == "initial_learning"
                         and str(candidate["status"]) != "completed"
                     ]
                     if direct_completion
@@ -7605,17 +8668,18 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     int(candidate["estimated_task_minutes"])
                     for candidate in completion_tasks
                 )
-                if completes_independent_phase:
+                if completes_independent_phase and not force_completion:
                     connection.execute(
                         "UPDATE active_knowledge_points SET mastery=MAX(mastery,?) WHERE id=?",
                         (score, point["id"]),
                     )
                 for completed_task_id in newly_completed_task_ids:
-                    connection.execute(
-                        """UPDATE active_plan_tasks SET status='completed',
-                           completed_task_minutes=estimated_task_minutes WHERE id=?""",
+                    completed_row = connection.execute(
+                        "SELECT * FROM active_plan_tasks WHERE id=?",
                         (completed_task_id,),
-                    )
+                    ).fetchone()
+                    if completed_row is not None:
+                        _complete_execution_task(connection, completed_row)
                     if completed_task_id not in state["completed_tasks"]:
                         state["completed_tasks"].append(completed_task_id)
                 state["completed_task_minutes"] = int(
@@ -7625,7 +8689,7 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
                     0,
                     int(state["today_remaining_task_minutes"]) - newly_completed_minutes,
                 )
-                if completes_independent_phase:
+                if completes_independent_phase and not force_completion:
                     review_due = (date.today() + timedelta(days=1)).isoformat()
                     plan_receipt = connection.execute(
                         "SELECT receipt FROM active_plans WHERE id=?",
@@ -8525,6 +9589,11 @@ async def submit_review(
                 review_task_id,
             ),
         )
+        if passed:
+            connection.execute(
+                "UPDATE active_plan_tasks SET completed_at=COALESCE(completed_at,?) WHERE id=?",
+                (_now(), review_task_id),
+            )
         connection.execute(
             """UPDATE active_review_items
                SET due_date=?,interval_step=?,interval_days=?,status=?,attempt_count=?,
@@ -9438,6 +10507,7 @@ def list_learning_workspaces(
     request: Request,
     include_archived: bool = False,
     day: str = "",
+    compact: bool = False,
 ) -> dict[str, Any]:
     """Return the durable task index for the unified learning workspace."""
     selected_day = _review_as_of(day).isoformat() if day else date.today().isoformat()
@@ -9448,6 +10518,8 @@ def list_learning_workspaces(
                 """SELECT workspace_id FROM active_materials
                    UNION SELECT workspace_id FROM active_receipts
                    UNION SELECT workspace_id FROM active_plans
+                   UNION SELECT workspace_id FROM orm_knowledge_map_revisions
+                     WHERE is_current=1 AND status IN ('active','ready','ready_with_review')
                    ORDER BY workspace_id"""
             ).fetchall()
         ]
@@ -9457,7 +10529,13 @@ def list_learning_workspaces(
         # legacy UI-review owner row predates them.  Account mode keeps the
         # ownership filter below through the authenticated request context.
         auth_required = os.getenv("MENTORFLOW_AUTH_REQUIRED", "").strip() == "1"
-        if user and auth_required:
+        local_data_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if user and auth_required and not local_data_mode:
             from . import local_auth
 
             owned = set(local_auth.owned_workspace_ids(user["user_id"]))
@@ -9508,6 +10586,47 @@ def list_learning_workspaces(
                     "SELECT COUNT(*) FROM active_knowledge_points WHERE workspace_id=?",
                     (workspace_id,),
                 ).fetchone()[0]
+            )
+            canonical_map = connection.execute(
+                """SELECT id,revision,activated_at
+                   FROM orm_knowledge_map_revisions
+                   WHERE workspace_id=? AND is_current=1
+                     AND status IN ('active','ready','ready_with_review')
+                   ORDER BY revision DESC LIMIT 1""",
+                (workspace_id,),
+            ).fetchone()
+            if canonical_map:
+                canonical_concepts = int(
+                    connection.execute(
+                        """SELECT COUNT(*) FROM orm_knowledge_nodes
+                           WHERE map_revision_id=? AND kind='concept'""",
+                        (canonical_map["id"],),
+                    ).fetchone()[0]
+                )
+                point_count = max(point_count, canonical_concepts)
+            canonical_plan_state = (
+                connection.execute(
+                    """SELECT id,status,stale,scheduled_minutes,unscheduled_minutes,
+                              created_at
+                       FROM orm_plans WHERE id=? LIMIT 1""",
+                    (plan["id"],),
+                ).fetchone()
+                if plan
+                else None
+            )
+            pending_plan = connection.execute(
+                """SELECT id,status,scheduled_minutes,unscheduled_minutes,created_at
+                   FROM orm_plans
+                   WHERE workspace_id=? AND status IN ('draft','preview')
+                   ORDER BY created_at DESC LIMIT 1""",
+                (workspace_id,),
+            ).fetchone()
+            active_plan_stale = bool(
+                canonical_plan_state
+                and (
+                    canonical_plan_state["stale"]
+                    or str(canonical_plan_state["status"] or "").casefold() == "stale"
+                )
             )
             task_counts = {"total": 0, "completed": 0}
             next_task = None
@@ -9567,9 +10686,41 @@ def list_learning_workspaces(
                     receipt_row["updated_at"] if receipt_row else "",
                     plan["created_at"] if plan else "",
                     session["updated_at"] if session else "",
+                    canonical_map["activated_at"] if canonical_map else "",
+                    pending_plan["created_at"] if pending_plan else "",
                 )
                 if value
             ]
+            today_plan = (
+                _workspace_day_overview(
+                    connection,
+                    workspace_id=workspace_id,
+                    plan_id=plan["id"],
+                    day_date=selected_day,
+                )
+                if plan
+                else None
+            )
+            if compact and today_plan:
+                # The workspace index is rendered on every desktop navigation.
+                # Shipping hundreds of overdue task bodies (including evidence)
+                # made this small index tens of megabytes.  Keep the actionable
+                # summary and today's bounded task list; full debt detail remains
+                # available from the plan/detail APIs.
+                today_plan = {
+                    **today_plan,
+                    "overdue_days": [
+                        {
+                            "date": item.get("date"),
+                            "task_count": int(item.get("task_count") or 0),
+                            "remaining_task_minutes": int(
+                                item.get("remaining_task_minutes") or 0
+                            ),
+                        }
+                        for item in (today_plan.get("overdue_days") or [])
+                    ],
+                    "overdue_tasks": [],
+                }
             items.append(
                 {
                     "workspace_id": workspace_id,
@@ -9584,32 +10735,39 @@ def list_learning_workspaces(
                         )
                     ),
                     "status": (
+                        "needs_adjustment"
+                        if active_plan_stale
+                        else
                         "learning"
                         if session
                         else "planned"
                         if plan
                         else "setting_up"
                     ),
+                    **point_progress,
                     "material_count": int(counts["material_count"]),
                     "ready_material_count": int(counts["ready_material_count"]),
                     "knowledge_point_count": point_count,
-                    **point_progress,
+                    "active_map_revision_id": canonical_map["id"] if canonical_map else None,
+                    "active_plan_stale": active_plan_stale,
+                    "pending_plan_id": pending_plan["id"] if pending_plan else None,
+                    "pending_plan_estimated_minutes": (
+                        int(pending_plan["scheduled_minutes"] or 0)
+                        if pending_plan
+                        else None
+                    ),
+                    "pending_plan_unscheduled_minutes": (
+                        int(pending_plan["unscheduled_minutes"] or 0)
+                        if pending_plan
+                        else None
+                    ),
                     "plan_id": plan["id"] if plan else None,
                     "plan_feasible": bool(plan["feasible"]) if plan else None,
                     "session_id": session["id"] if session else None,
                     "task_count": task_counts["total"],
                     "completed_task_count": task_counts["completed"],
                     "next_task": next_task,
-                    "today_plan": (
-                        _workspace_day_overview(
-                            connection,
-                            workspace_id=workspace_id,
-                            plan_id=plan["id"],
-                            day_date=selected_day,
-                        )
-                        if plan
-                        else None
-                    ),
+                    "today_plan": today_plan,
                     "learning_order_policy": (
                         "prerequisite_then_difficulty_then_source"
                         if plan

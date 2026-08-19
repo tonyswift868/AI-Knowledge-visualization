@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import mimetypes
-import os
 import threading
-import time
+import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,13 +32,18 @@ DOCUMENT_SUFFIXES = {
 }
 CLASSROOM_ATTACHMENT_SUFFIXES = IMAGE_SUFFIXES | DOCUMENT_SUFFIXES
 CLASSROOM_AUDIO_SUFFIXES = {".webm", ".ogg", ".wav", ".mp3", ".m4a"}
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CLASSROOM_ASR_UPLOAD_ROOT = Path(
-    os.getenv(
-        "MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT",
-        str(asr_supervisor.upload_root()),
-    )
-).expanduser()
+
+
+def _asr_staging_root() -> Path:
+    """Return the root enforced by the reused SenseVoice worker.
+
+    The classroom upload directory is a user-data location and can differ
+    from the worker's allowlist in packaged installations.  Audio accepted by
+    this endpoint must therefore be staged directly under the supervisor's
+    current root instead of the configurable classroom upload directory.
+    """
+
+    return asr_supervisor.upload_root().resolve()
 
 
 def safe_attachment_name(value: str) -> str:
@@ -303,13 +307,22 @@ def transcribe_classroom_audio(
         raise ValueError("没有录到声音")
     if len(data) > MAX_CLASSROOM_AUDIO_BYTES:
         raise ValueError("单次录音不能超过 20 MB")
-    upload_root = CLASSROOM_ASR_UPLOAD_ROOT.resolve()
+    upload_root = _asr_staging_root()
     upload_root.mkdir(parents=True, exist_ok=True)
-    target = upload_root / (
-        f"mentorflow_{int(time.time() * 1000)}_{os.getpid()}{suffix}"
-    )
-    target.write_bytes(data)
+    target: Path | None = None
     try:
+        # NamedTemporaryFile creates the file exclusively under the allowlist,
+        # avoiding a predictable-name collision or symlink race.  Closing it
+        # before invoking the worker is required on Windows.
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix="mentorflow_",
+            suffix=suffix,
+            dir=upload_root,
+            delete=False,
+        ) as stream:
+            stream.write(data)
+            target = Path(stream.name).resolve()
         result = asr_supervisor.transcribe(target, str(language or "auto")[:16], timeout=45)
         text = str(result.get("text") or "").strip()
         if not result.get("ok") or not text:
@@ -334,7 +347,8 @@ def transcribe_classroom_audio(
             "temporary_audio_deleted": True,
         }
     finally:
-        try:
-            target.unlink()
-        except FileNotFoundError:
-            pass
+        if target is not None:
+            try:
+                target.unlink()
+            except FileNotFoundError:
+                pass

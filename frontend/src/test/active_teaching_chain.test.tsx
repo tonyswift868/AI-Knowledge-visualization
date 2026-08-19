@@ -1839,4 +1839,91 @@ describe("ActiveTeachingChainView", () => {
       "通过 4/4",
     );
   });
+
+  it("asks before extracting a selected video and only plans from explicitly confirmed materials", async () => {
+    localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify({
+      goal: "理解视频课程并完成练习",
+      resource: { title: "视频课程", url: "https://www.bilibili.com/video/BVTEST123" },
+      created_at: "2026-08-18T00:00:00Z",
+    }));
+    const emptySnapshot = {
+      ...snapshot,
+      materials: [],
+      receipt: null,
+      knowledge_graph: { knowledge_points: [], edges: [] },
+      plan: null,
+      session: null,
+    };
+    let videoIngestCalls = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const endpoint = String(url);
+      let payload: any = emptySnapshot;
+      if (endpoint.endsWith("/materials/url") && init?.method === "POST") {
+        payload = { status: "awaiting_supplementary_choice", ingested: false };
+      } else if (endpoint.endsWith("/materials/video/search") && init?.method === "POST") {
+        payload = {
+          status: "supplementary_candidates",
+          supplementary_search: {
+            candidates: [{ id: "notes-1", title: "配套讲义", url: "https://notes.example/course", snippet: "课程公式与例题" }],
+          },
+        };
+      } else if (endpoint.endsWith("/materials/video/ingest") && init?.method === "POST") {
+        videoIngestCalls += 1;
+        const body = JSON.parse(String(init.body || "{}"));
+        payload = body.confirm_transcript
+          ? { status: "ingested", ingested: true, material_ids: ["video-transcript-1", "notes-material-1"] }
+          : {
+              status: "transcript_preview",
+              requires_transcript_confirmation: true,
+              transcript: {
+                title: "视频课程",
+                subtitle: {
+                  language: "zh-Hans",
+                  automatic: true,
+                  segments: [{ start_ms: 0, end_ms: 5000, text: "字幕第一段" }],
+                  quality: { state: "ready", segment_count: 1 },
+                },
+              },
+            };
+      } else if (endpoint.endsWith("/knowledge-map/jobs") && init?.method === "POST") {
+        payload = { id: "km-job-video", status: "ready", revision_id: "kmr_test_1" };
+      } else if (endpoint.includes("/knowledge-map?revision=active")) {
+        payload = canonicalMap;
+      } else if (endpoint.includes("/knowledge-map/candidates?revision=active")) {
+        payload = { candidates: [] };
+      } else if (endpoint.endsWith("/mastery-plans/preview") && init?.method === "POST") {
+        payload = canonicalPlanPreview;
+      }
+      return Promise.resolve({ ok: true, json: async () => payload });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" createRequest={1} compactPlannerFlow />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "开始整理已选资料并生成计划" }));
+    expect(await screen.findByTestId("video-supplementary-choice")).toBeInTheDocument();
+    expect(videoIngestCalls).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "愿意，先帮我找资料" }));
+    const candidate = await screen.findByText("配套讲义");
+    fireEvent.click(candidate.closest("label")!);
+    fireEvent.click(screen.getByRole("button", { name: "使用已选 1 份资料并提取字幕" }));
+
+    expect(await screen.findByTestId("video-transcript-review")).toHaveTextContent("自动字幕，可能存在偏差");
+    fireEvent.click(screen.getByRole("button", { name: "字幕可以使用，生成知识地图和计划" }));
+
+    await waitFor(() => {
+      const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
+      expect(receiptCall).toBeTruthy();
+      expect(JSON.parse(String(receiptCall![1].body)).material_ids).toEqual(["video-transcript-1", "notes-material-1"]);
+    });
+    const ingestBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).endsWith("/materials/video/ingest"))
+      .map(([, init]) => JSON.parse(String(init.body || "{}")));
+    expect(ingestBodies[0].selected_candidate_urls).toEqual(["https://notes.example/course"]);
+    expect(ingestBodies[1]).toMatchObject({
+      find_additional_materials: true,
+      confirm_transcript: true,
+      selected_candidate_urls: ["https://notes.example/course"],
+    });
+  });
 });

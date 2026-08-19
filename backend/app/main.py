@@ -22,6 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import db
 from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
@@ -35,7 +36,7 @@ from .job_service import create_job, set_job
 from .url_fetcher_secure import fetch_safe
 from .core_errors import app_error_body, AppError
 from .security_redaction import redact
-from .provider_runtime import credential_owned_by, create_provider_session, create_verified_demo_session, delete_provider_credential, delete_provider_session, generation_meta, get_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
+from .provider_runtime import credential_owned_by, create_provider_session, create_verified_demo_session, delete_provider_credential, delete_provider_session, generation_meta, get_provider_session, latest_verified_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
@@ -72,7 +73,8 @@ from .qwen_base_clone_runtime import (
 )
 from .qwen_custom_private_runtime import shutdown_private_qwen_runtime
 from .conversion_adapters import ConversionRegistry, ConversionSource
-from .knowledge_policy import CONVERSION_POLICY
+from .knowledge_policy import CONVERSION_POLICY, PROVIDER_POLICY
+from .open_search import OpenSearchError, search_web
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = Path(
@@ -86,6 +88,86 @@ PRESET_SETTINGS_FILE = Path(
 )
 _TASK_PROFILE_LOCK = Lock()
 _LOGGER = logging.getLogger(__name__)
+
+
+class _LifeAnalogyCard(BaseModel):
+    """The only provider fields accepted by the private life-analogy flow."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=80)
+    analogy: str = Field(min_length=1, max_length=320)
+    takeaway: str = Field(min_length=1, max_length=240)
+
+
+class _LifeConceptSelection(BaseModel):
+    """A difficult, memorable concept selected before choosing a scene."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    anchor_index: int = Field(ge=0, le=15)
+    concept_key: str = Field(min_length=2, max_length=100)
+    concept_label: str = Field(min_length=2, max_length=40)
+    mechanism: str = Field(min_length=4, max_length=240)
+    common_confusion: str = Field(default="", max_length=240)
+    memory_target: str = Field(default="", max_length=240)
+
+
+class _LifeAnalogyDraft(BaseModel):
+    """Provider draft with machine-checkable coherence evidence."""
+
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+    concept_key: str = Field(min_length=2, max_length=100)
+    concept_label: str = Field(min_length=2, max_length=40)
+    concept_mechanism: str = Field(min_length=4, max_length=240)
+    common_confusion: str = Field(default="", max_length=240)
+    memory_target: str = Field(default="", max_length=240)
+    format_key: str = Field(min_length=2, max_length=40)
+    scene_family: str = Field(min_length=2, max_length=40)
+    situation_key: str = Field(min_length=2, max_length=40)
+    mechanism_tag: str = Field(default="", max_length=40)
+    style_mode: str = Field(default="", max_length=24)
+    meme_key: str = Field(default="", max_length=40)
+    meme_phrase: str = Field(default="", max_length=40)
+    meme_evidence: str = Field(default="", max_length=60)
+    scene_signature: str = Field(min_length=2, max_length=160)
+    title: str = Field(min_length=2, max_length=80)
+    analogy: str = Field(min_length=30, max_length=320)
+    takeaway: str = Field(min_length=12, max_length=240)
+    anchor_index: int = Field(ge=0, le=15)
+    mechanism_evidence: list[str] = Field(default_factory=list, max_length=5)
+    twist_evidence: str = Field(default="", max_length=120)
+
+
+class _LifeAnalogyEnvelope(BaseModel):
+    """Optional provider envelope matching the public response contract."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    schema_: str = Field(
+        alias="schema",
+        pattern=r"^mentorflow\.life-analogy\.v1$",
+    )
+    state: str = Field(pattern=r"^ready$")
+    card: _LifeAnalogyCard
+
+
+class _LifeAnalogyQualityReview(BaseModel):
+    """Private review against the selected registered situation."""
+
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+    accepted: bool
+    mapping_score: int = Field(ge=1, le=5)
+    relevance_score: int = Field(ge=1, le=5)
+    situation_fidelity_score: int = Field(ge=1, le=5)
+    logic_score: int = Field(ge=1, le=5)
+    naturalness_score: int = Field(ge=1, le=5)
+    sophistication_score: int = Field(ge=1, le=5)
+    memorability_score: int = Field(ge=1, le=5)
+    meme_fit_score: int = Field(ge=1, le=5)
+    issue_code: str = Field(default="", max_length=40)
 
 
 def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dict[str, Any]:
@@ -518,9 +600,24 @@ def attach_workspace_provider(workspace_id: str, session) -> None:
         pass
 
 
-async def call_bound_provider_json(session, messages: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+async def call_bound_provider_json(
+    session,
+    messages: list[dict[str, Any]],
+    *,
+    compact_max_tokens: int | None = None,
+    temperature: float = 0.2,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     started = time.perf_counter()
-    result = await provider_for_session(session).json(messages)
+    provider = provider_for_session(session)
+    result = (
+        await provider.compact_json(
+            messages,
+            max_tokens=compact_max_tokens,
+            temperature=temperature,
+        )
+        if compact_max_tokens is not None
+        else await provider.json(messages, temperature)
+    )
     return result, generation_meta(session, latency_ms=max(1, int((time.perf_counter() - started) * 1000)))
 
 
@@ -1416,6 +1513,16 @@ def create_provider_session_route(request: Request, body: ProviderSessionCreateI
         fail(exc.code, exc.message, exc.status, exc.details)
 
 
+@app.get("/api/provider-sessions/current")
+def current_provider_session_route(request: Request):
+    """Expose only the verified local handle needed by embedded web tools."""
+
+    session = latest_verified_provider_session(owner_user_id=request_user_id(request))
+    if not session:
+        fail("PROVIDER_SESSION_REQUIRED", "已保存的模型正在连接，请稍候", 428)
+    return public_session(session) | {"base_url": session.base_url}
+
+
 @app.get("/api/provider-sessions/{session_id}")
 def get_provider_session_route(request: Request, session_id: str):
     session = get_provider_session(session_id, owner_user_id=request_user_id(request))
@@ -1449,6 +1556,969 @@ def delete_provider_credential_route(request: Request, credential_ref: str):
         return {"deleted": delete_provider_credential(credential_ref)}
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
+
+
+@app.post("/api/personalized-updates/rank")
+async def rank_personalized_updates(request: Request, body: dict[str, Any]):
+    """Discover and rank public results only after an explicit learner request."""
+    interests = str(body.get("interests") or "").strip()
+    blocked = str(body.get("blocked") or "").strip()
+    raw_candidates = body.get("candidates") or []
+    if not interests:
+        fail("NEWS_PREFERENCES_REQUIRED", "请先填写至少一个资讯兴趣", 422)
+    if not isinstance(raw_candidates, list):
+        fail("NEWS_CANDIDATES_INVALID", "资讯候选格式无效", 422)
+    candidates: list[dict[str, str]] = []
+    for item in raw_candidates[:30]:
+        if not isinstance(item, dict):
+            continue
+        link = str(item.get("link") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if link.startswith("https://") and title:
+            candidates.append(
+                {
+                    "title": title[:300],
+                    "publisher": str(item.get("publisher") or "")[:120],
+                    "published": str(item.get("published") or "")[:40],
+                    "link": link[:1200],
+                }
+            )
+    if not candidates:
+        try:
+            discovered = await search_web(f"{interests} 最新 资讯", max_results=8)
+        except OpenSearchError as exc:
+            fail("NEWS_DISCOVERY_FAILED", str(exc), 502)
+        for item in discovered.get("results") or []:
+            link = str(item.get("url") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if not link.startswith("https://") or not title:
+                continue
+            candidates.append(
+                {
+                    "title": title[:300],
+                    "publisher": (urlparse(link).hostname or "公开网页")[:120],
+                    "published": "",
+                    "link": link[:1200],
+                    "summary": str(item.get("snippet") or "")[:500],
+                }
+            )
+    if not candidates:
+        fail("NEWS_CANDIDATES_INVALID", "没有找到可验证的公开资讯", 502)
+    try:
+        session = require_provider_session(
+            str(body.get("provider_session_id") or ""),
+            owner_user_id=request_user_id(request),
+        )
+        if session.provider == "fake":
+            fail("PROVIDER_SESSION_REAL_REQUIRED", "个性化资讯需要已验证的真实模型连接", 428)
+        result, meta = await call_bound_provider_json(
+            session,
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Rank only the supplied public-result metadata for the learner. "
+                        "Do not add sources or URLs. Also create one short, warm, interesting daily-life example "
+                        "that fits the learner's stated preference without quoting or exposing their preference words. "
+                        "The example must be domain-neutral, under 120 Chinese characters, and must not claim facts. "
+                        "Return JSON exactly as {\"ordered_links\":[\"https://...\"],"
+                        "\"life_example\":{\"title\":\"short title\",\"body\":\"short Chinese text\"}}."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"interests": interests, "blocked": blocked, "candidates": candidates},
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+        )
+    except ProviderError as exc:
+        fail(exc.code, exc.message, exc.status, exc.details)
+    allowed_links = {item["link"] for item in candidates}
+    ordered_links = []
+    for value in result.get("ordered_links") or []:
+        link = str(value or "")
+        if link in allowed_links and link not in ordered_links:
+            ordered_links.append(link)
+    if not ordered_links:
+        fail("NEWS_RANKING_INVALID", "模型没有返回可验证的资讯排序", 502)
+    by_link = {item["link"]: item for item in candidates}
+    ranked_items = [by_link[link] for link in ordered_links if link in by_link]
+    raw_example = result.get("life_example") if isinstance(result.get("life_example"), dict) else {}
+    example_title = str(raw_example.get("title") or "").strip()[:80]
+    example_body = str(raw_example.get("body") or "").strip()[:240]
+    return {
+        "ordered_links": ordered_links,
+        "ranked_items": ranked_items,
+        "life_example": (
+            {"title": example_title, "body": example_body}
+            if example_title and example_body
+            else None
+        ),
+        "generation_meta": meta,
+    }
+
+
+_LIFE_ANALOGY_FORBIDDEN = re.compile(
+    r"(?:"
+    r"https?://|www\.|(?:[a-z0-9-]+\.)+(?:com|org|net|cn)(?:/|\b)|"
+    r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b|\b\d{4}年\d{1,2}月(?:\d{1,2}日?)?|"
+    r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|"
+    r"\b(?:19|20)\d{2}\b|"
+    r"(?:百分之|\d+\s*%)|(?:排名|排行|榜单|前\s*\d+|"
+    r"top\s*\d*|rank(?:ing)?)|"
+    r"(?:招聘|招募|求职|简历|岗位|职位|就业|职场|薪资|新闻|资讯|时事|热点|"
+    r"\b(?:job|career|hiring|recruit(?:ment)?|news)\b)|"
+    r"[`*_#~]|(?:^|\n)\s*(?:[-+>]|\d+[.)])\s+|\[[^\]]+\]\([^)]*\)"
+    r")",
+    flags=re.IGNORECASE,
+)
+
+_LIFE_ANALOGY_LOGIC_FORBIDDEN = re.compile(
+    r"(?:"
+    r"我没走快递|回头看(?:了)?一眼屏幕|(?:柜子|系统|按钮|订单).{0,8}(?:记仇|报复|故意刁难)|"
+    r"明明(?:是)?我输错.{0,12}(?:却|反而).{0,8}(?:让我等|锁定)|"
+    r"(?:显示|提示).{0,6}(?:提交)?成功.{0,30}(?:其实没|却没|没有).{0,8}(?:提交|交上)|"
+    r"为了演示.{0,12}(?:故意|特意).{0,8}(?:输错|点错|发错)"
+    r")"
+)
+
+_FLY_EIGHT_CENTS_TARGET_FORBIDDEN = re.compile(
+    r"(?:张顺飞|真人|父亲|母亲|爸爸|妈妈|亲属|坟墓|坟|墓地|死亡|去世|攻击|辱骂)"
+)
+
+_LIFE_ANALOGY_LOW_VALUE = re.compile(
+    r"(?:"
+    r"任何.{0,10}变化.{0,12}结果.{0,8}不同|"
+    r"必须.{0,12}(?:逐位|仔细|认真).{0,8}(?:比对|核对|检查).{0,16}(?:发现|避免).{0,6}错误|"
+    r"(?:做事|学习|工作).{0,8}(?:要|应该).{0,6}(?:认真|仔细|耐心)|"
+    r"(?:总之|所以).{0,10}(?:仔细|认真).{0,8}(?:检查|核对).{0,8}(?:很重要|就好)"
+    r")"
+)
+
+
+def _life_analogy_number_sequence_is_consistent(value: str) -> bool:
+    """Reject visible queue arithmetic such as A028 -> A030 described as ten calls."""
+
+    ticket_codes = [
+        (prefix.casefold(), int(number))
+        for prefix, number in re.findall(
+            r"(?<![A-Za-z0-9])([A-Za-z])0*(\d{1,6})(?![A-Za-z0-9])",
+            value,
+        )
+    ]
+    claimed_gaps = [
+        int(next(part for part in match if part))
+        for match in re.findall(
+            r"(?:(?:还有|还差|差(?:了)?|隔(?:了)?|跳过(?:了)?)\s*(\d{1,4})\s*个号|"
+            r"(?:前面\s*)?(?:还有|排着|排了)\s*(\d{1,4})\s*(?:个)?人)",
+            value,
+        )
+    ]
+    if len(ticket_codes) < 2 or not claimed_gaps:
+        return True
+    first_prefix, first_number = ticket_codes[0]
+    second_prefix, second_number = next(
+        (prefix, number)
+        for prefix, number in ticket_codes[1:]
+        if prefix == first_prefix
+    ) if any(prefix == first_prefix for prefix, _ in ticket_codes[1:]) else ("", first_number)
+    if not second_prefix:
+        return True
+    return abs(second_number - first_number) == claimed_gaps[0]
+
+
+def _life_analogy_input_tokens(value: Any) -> tuple[str, str]:
+    """Return bounded private themes and normalized tokens for leak checks."""
+
+    if isinstance(value, list):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        parts = [str(value or "").strip()]
+    parts = [part[:120] for part in parts[:16] if part]
+    prompt_value = ", ".join(parts)[:500]
+    tokens: list[str] = []
+    for part in parts:
+        # Keep both ordinary words and contiguous Chinese phrases.  The
+        # latter is split into short n-grams so a provider cannot hide an
+        # echoed private keyword inside a longer sentence.
+        tokens.extend(re.findall(r"[A-Za-z0-9][A-Za-z0-9_+.-]{1,}|[\u4e00-\u9fff]{2,}", part))
+        for chinese in re.findall(r"[\u4e00-\u9fff]{2,}", part):
+            tokens.extend(chinese[index : index + 2] for index in range(len(chinese) - 1))
+    normalized = []
+    seen: set[str] = set()
+    for token in tokens:
+        cleaned = token.casefold().strip()
+        if len(cleaned) >= 2 and cleaned not in seen:
+            seen.add(cleaned)
+            normalized.append(cleaned)
+    return prompt_value, "\n".join(normalized)
+
+
+def _normalized_character_ngrams(value: str, size: int = 3) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", value.casefold())
+    if len(normalized) < size:
+        return {normalized} if normalized else set()
+    return {normalized[index : index + size] for index in range(len(normalized) - size + 1)}
+
+
+def _normalized_evidence_position(text: str, evidence: str) -> int:
+    """Locate evidence while tolerating harmless punctuation/spacing differences."""
+
+    normalized_text = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", text.casefold())
+    normalized_evidence = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", evidence.casefold())
+    if len(normalized_evidence) < 2:
+        return -1
+    return normalized_text.find(normalized_evidence)
+
+
+def _normalized_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", str(value or "").casefold())
+
+
+def _life_analogy_recent_records(value: Any) -> list[dict[str, str]]:
+    """Normalize both legacy string history and the structured v3 history."""
+
+    if not isinstance(value, list):
+        return []
+    records: list[dict[str, str]] = []
+    limit = PROVIDER_POLICY.life_analogy_history_limit
+    for item in value[-limit:]:
+        if isinstance(item, dict):
+            record = {
+                field: str(item.get(field) or "").strip()[:500]
+                for field in (
+                    "summary",
+                    "concept_key",
+                    "concept_label",
+                    "mechanism",
+                    "format_key",
+                    "scene_family",
+                    "situation_key",
+                    "mechanism_tag",
+                    "style_mode",
+                    "meme_key",
+                    "scene_signature",
+                )
+            }
+        else:
+            record = {
+                "summary": str(item or "").strip()[:500],
+                "concept_key": "",
+                "concept_label": "",
+                "mechanism": "",
+                "format_key": "",
+                "scene_family": "",
+                "situation_key": "",
+                "scene_signature": "",
+            }
+        if record["summary"] or record["concept_key"]:
+            records.append(record)
+    return records
+
+
+def _concept_seen_recently(selection: _LifeConceptSelection, recent_records: list[dict[str, str]]) -> bool:
+    key = _normalized_text(selection.concept_key)
+    label_ngrams = _normalized_character_ngrams(selection.concept_label, 2)
+    mechanism_ngrams = _normalized_character_ngrams(selection.mechanism, 3)
+    for record in recent_records:
+        if key and key == _normalized_text(record.get("concept_key", "")):
+            return True
+        recent_text = " ".join(
+            (record.get("concept_label", ""), record.get("mechanism", ""), record.get("summary", ""))
+        )
+        recent_label_ngrams = _normalized_character_ngrams(recent_text, 2)
+        if label_ngrams and len(label_ngrams & recent_label_ngrams) / len(label_ngrams) >= 0.5:
+            return True
+        recent_mechanism = _normalized_character_ngrams(record.get("mechanism", ""), 3)
+        union = mechanism_ngrams | recent_mechanism
+        if union and len(mechanism_ngrams & recent_mechanism) / len(union) >= 0.68:
+            return True
+    return False
+
+
+def _choose_life_analogy_format(recent_records: list[dict[str, str]], variation_seed: int) -> str:
+    formats = list(PROVIDER_POLICY.life_analogy_formats)
+    recently_used = {
+        record.get("format_key", "")
+        for record in recent_records[-min(len(formats) - 1, 8):]
+        if record.get("format_key")
+    }
+    start = variation_seed % len(formats)
+    ordered = formats[start:] + formats[:start]
+    return next((item for item in ordered if item not in recently_used), ordered[0])
+
+
+def _choose_life_analogy_humor_cue(variation_seed: int) -> str:
+    cues = list(PROVIDER_POLICY.life_analogy_humor_cues)
+    return cues[variation_seed % len(cues)]
+
+
+def _choose_life_analogy_style(variation_seed: int) -> tuple[str, dict[str, str]]:
+    """Alternate a safe meme card with a naturally flowing everyday card."""
+
+    if variation_seed % 2:
+        return "smooth_life", {}
+    cues = [dict(value) for value in PROVIDER_POLICY.life_analogy_meme_cues]
+    cue = cues[(variation_seed // 2) % len(cues)]
+    return "safe_meme", {
+        "key": str(cue.get("key") or ""),
+        "phrase": str(cue.get("phrase") or ""),
+        "placement": str(cue.get("placement") or ""),
+        "usage": str(cue.get("usage") or ""),
+    }
+
+
+def _life_analogy_meme_is_integrated(analogy: str, meme: dict[str, str]) -> bool:
+    """Enforce policy-declared placement without hard-coding any meme phrase."""
+
+    phrase = str(meme.get("phrase") or "").strip()
+    if not phrase or analogy.count(phrase) != 1:
+        return False
+    if str(meme.get("placement") or "").strip() != "embedded":
+        return True
+    before, after = analogy.split(phrase, 1)
+    # An embedded aside must belong to a real scene: there is setup before it
+    # and a visible response/consequence after it.  Punctuation and quote marks
+    # do not count as narrative context.
+    before_cjk = re.findall(r"[\u4e00-\u9fff]", before)
+    after_cjk = re.findall(r"[\u4e00-\u9fff]", after)
+    return len(before_cjk) >= 8 and len(after_cjk) >= 8
+
+
+def _allowed_life_analogy_situations(
+    recent_records: list[dict[str, str]], variation_seed: int
+) -> list[dict[str, Any]]:
+    families = [dict(value) for value in PROVIDER_POLICY.life_analogy_scene_families]
+    recently_used = {
+        record.get("scene_family", "")
+        for record in recent_records[-min(len(families) - 1, 6):]
+        if record.get("scene_family")
+    }
+    start = variation_seed % len(families)
+    ordered = families[start:] + families[:start]
+    ordered = [item for item in ordered if str(item.get("key") or "") not in recently_used] + [
+        item for item in ordered if str(item.get("key") or "") in recently_used
+    ]
+    choices: list[dict[str, Any]] = []
+    for family in ordered[:8]:
+        for situation in family.get("situations", []):
+            choices.append(
+                {
+                    "scene_family": str(family.get("key") or ""),
+                    "scene_label": str(family.get("label") or ""),
+                    "cues": [str(value) for value in family.get("cues", [])],
+                    "situation_key": str(situation.get("key") or ""),
+                    "situation": str(situation.get("prompt") or ""),
+                    "mechanism_tags": [str(value) for value in situation.get("mechanism_tags", [])],
+                    "required_groups": [
+                        [str(term) for term in group if str(term).strip()]
+                        for group in situation.get("required_groups", [])
+                    ],
+                }
+            )
+    if not choices:
+        raise ValueError("LIFE_ANALOGY_SCENE_POLICY_INVALID")
+    # Keep the provider's choice set compact: one rotated scene family (with
+    # its registered situations) is enough to preserve variation while
+    # leaving room in the bounded prompt for the exact trigger/response/
+    # consequence groups that the deterministic validator enforces.
+    first_family = choices[0].get("scene_family")
+    return [item for item in choices if item.get("scene_family") == first_family]
+
+
+def _validate_life_analogy(
+    result: Any,
+    preference_tokens: str,
+    *,
+    selected_format: str,
+    required_style_mode: str,
+    selected_meme: dict[str, str],
+    allowed_situations: list[dict[str, Any]],
+    direction_items: list[str],
+    recent_records: list[dict[str, str]],
+) -> tuple[_LifeAnalogyCard, dict[str, str]]:
+    """Reject fluent-looking cards that lack a coherent structural mapping."""
+
+    try:
+        candidate = dict(result) if isinstance(result, dict) else result
+        if isinstance(candidate, dict):
+            candidate.setdefault("concept_label", candidate.get("concept_key") or "")
+            candidate.setdefault("concept_key", candidate.get("concept_label") or "")
+            candidate.setdefault("concept_mechanism", candidate.get("takeaway") or "")
+            candidate.setdefault("common_confusion", "")
+            candidate.setdefault("memory_target", candidate.get("takeaway") or "")
+            candidate.setdefault("format_key", selected_format)
+            candidate.setdefault("scene_family", "")
+            candidate.setdefault("situation_key", "")
+            candidate.setdefault("mechanism_tag", "")
+            candidate.setdefault("style_mode", "")
+            candidate.setdefault("meme_key", "")
+            candidate.setdefault("meme_phrase", "")
+            candidate.setdefault("meme_evidence", "")
+            candidate.setdefault("scene_signature", candidate.get("title") or "")
+            candidate.setdefault("twist_evidence", "")
+            try:
+                candidate["anchor_index"] = max(0, min(int(candidate.get("anchor_index") or 0), 15))
+            except (TypeError, ValueError):
+                candidate["anchor_index"] = 0
+            candidate["mechanism_evidence"] = list(candidate.get("mechanism_evidence") or [])[:3]
+            limits = {
+                "concept_key": 100,
+                "concept_label": 40,
+                "concept_mechanism": 240,
+                "common_confusion": 240,
+                "memory_target": 240,
+                "format_key": 40,
+                "scene_family": 40,
+                "situation_key": 40,
+                "mechanism_tag": 40,
+                "style_mode": 24,
+                "meme_key": 40,
+                "meme_phrase": 40,
+                "meme_evidence": 60,
+                "scene_signature": 160,
+                "title": 80,
+                "analogy": 320,
+                "takeaway": 240,
+                "twist_evidence": 120,
+            }
+            for field, limit in limits.items():
+                candidate[field] = str(candidate.get(field) or "").strip()[:limit]
+        draft = _LifeAnalogyDraft.model_validate(candidate)
+    except Exception as exc:
+        raise ValueError("LIFE_ANALOGY_SCHEMA_INVALID") from exc
+
+    # This is private provenance metadata, not learner-visible truth. Models
+    # sometimes count a supplied list from one; clamp the bookkeeping index
+    # rather than rejecting an otherwise useful card.
+    effective_anchor_index = min(draft.anchor_index, max(0, len(direction_items) - 1))
+    selection = _LifeConceptSelection(
+        anchor_index=effective_anchor_index,
+        concept_key=draft.concept_key,
+        concept_label=draft.concept_label,
+        mechanism=draft.concept_mechanism,
+        common_confusion=draft.common_confusion,
+        memory_target=draft.memory_target,
+    )
+    if _concept_seen_recently(selection, recent_records):
+        raise ValueError("LIFE_ANALOGY_CONCEPT_REPEATED")
+    if any(
+        _normalized_text(selection.concept_label) == _normalized_text(direction)
+        for direction in direction_items
+    ):
+        raise ValueError("LIFE_ANALOGY_CONCEPT_TOO_BROAD")
+    if draft.format_key != selected_format:
+        raise ValueError("LIFE_ANALOGY_FORMAT_DRIFT")
+    if draft.style_mode != required_style_mode:
+        raise ValueError("LIFE_ANALOGY_STYLE_DRIFT")
+    if required_style_mode == "safe_meme":
+        expected_key = str(selected_meme.get("key") or "")
+        expected_phrase = str(selected_meme.get("phrase") or "")
+        if (
+            not expected_key
+            or not expected_phrase
+            or draft.meme_key != expected_key
+            or draft.meme_phrase != expected_phrase
+            or draft.meme_evidence != expected_phrase
+            or expected_phrase not in draft.analogy
+        ):
+            raise ValueError("LIFE_ANALOGY_MEME_MISSING")
+        if not _life_analogy_meme_is_integrated(draft.analogy, selected_meme):
+            raise ValueError("LIFE_ANALOGY_MEME_FORCED")
+    elif any((draft.meme_key, draft.meme_phrase, draft.meme_evidence)):
+        raise ValueError("LIFE_ANALOGY_MEME_UNREQUESTED")
+    selected_situation = next(
+        (
+            value
+            for value in allowed_situations
+            if draft.scene_family == str(value.get("scene_family") or "")
+            and draft.situation_key == str(value.get("situation_key") or "")
+        ),
+        None,
+    )
+    if selected_situation is None:
+        raise ValueError("LIFE_ANALOGY_SITUATION_NOT_ALLOWED")
+    allowed_mechanism_tags = {
+        _normalized_text(value)
+        for value in selected_situation.get("mechanism_tags", [])
+        if _normalized_text(value)
+    }
+    if not allowed_mechanism_tags or _normalized_text(draft.mechanism_tag) not in allowed_mechanism_tags:
+        raise ValueError("LIFE_ANALOGY_MECHANISM_NOT_ALLOWED")
+    combined = "\n".join((draft.title, draft.analogy, draft.takeaway))
+    if any(not re.search(r"[\u4e00-\u9fff]", value) for value in (draft.title, draft.analogy, draft.takeaway)):
+        raise ValueError("LIFE_ANALOGY_LANGUAGE_INVALID")
+    if _LIFE_ANALOGY_FORBIDDEN.search(combined):
+        raise ValueError("LIFE_ANALOGY_CONTENT_BLOCKED")
+    if _LIFE_ANALOGY_LOGIC_FORBIDDEN.search(draft.analogy):
+        raise ValueError("LIFE_ANALOGY_LOGIC_CONTRADICTION")
+    if not _life_analogy_number_sequence_is_consistent(draft.analogy):
+        raise ValueError("LIFE_ANALOGY_NUMBER_SEQUENCE_INVALID")
+    if (
+        draft.meme_key == "fly_eight_cents"
+        and _FLY_EIGHT_CENTS_TARGET_FORBIDDEN.search(draft.analogy)
+    ):
+        raise ValueError("LIFE_ANALOGY_MEME_TARGETED")
+    unfamiliar_terms = [
+        str(value).strip()
+        for value in PROVIDER_POLICY.life_analogy_unfamiliar_actor_terms
+        if str(value).strip()
+    ]
+    if any(term in draft.title or term in draft.analogy for term in unfamiliar_terms):
+        raise ValueError("LIFE_ANALOGY_SCENE_UNFAMILIAR")
+    forbidden_scene_terms = [
+        str(value).strip()
+        for value in PROVIDER_POLICY.life_analogy_scene_forbidden_terms
+        if str(value).strip()
+    ]
+    if any(term in draft.title or term in draft.analogy for term in forbidden_scene_terms):
+        raise ValueError("LIFE_ANALOGY_SCENE_TECHNICAL")
+    inanimate_terms = [
+        re.escape(str(value).strip())
+        for value in PROVIDER_POLICY.life_analogy_inanimate_actor_terms
+        if str(value).strip()
+    ]
+    speech_verbs = [
+        re.escape(str(value).strip())
+        for value in PROVIDER_POLICY.life_analogy_speech_verbs
+        if str(value).strip()
+    ]
+    if inanimate_terms and speech_verbs and re.search(
+        rf"(?:{'|'.join(inanimate_terms)})[^。！？]{{0,8}}(?:{'|'.join(speech_verbs)})",
+        draft.title + draft.analogy,
+    ):
+        raise ValueError("LIFE_ANALOGY_INANIMATE_ACTOR")
+    scene_cues = [
+        _normalized_text(value)
+        for value in selected_situation.get("cues", [])
+        if _normalized_text(value)
+    ]
+    normalized_scene = _normalized_text(draft.title + draft.analogy)
+    if not scene_cues or not any(cue in normalized_scene for cue in scene_cues):
+        raise ValueError("LIFE_ANALOGY_SCENE_UNGROUNDED")
+    required_groups = selected_situation.get("required_groups", [])
+    ordered_scene = _normalized_text(draft.analogy)
+    ordered_positions: list[int] = []
+    for group in required_groups:
+        positions = [
+            ordered_scene.find(_normalized_text(term))
+            for term in group
+            if _normalized_text(term) and ordered_scene.find(_normalized_text(term)) >= 0
+        ]
+        if not positions:
+            raise ValueError("LIFE_ANALOGY_SITUATION_FACTS_MISSING")
+        ordered_positions.append(min(positions))
+    if not ordered_positions or any(
+        later <= earlier for earlier, later in zip(ordered_positions, ordered_positions[1:])
+    ):
+        raise ValueError("LIFE_ANALOGY_SITUATION_FACTS_MISSING")
+    # A useful analogy must remain semantically connected to the user's
+    # themes.  Do not reject an ordinary word merely because it also appeared
+    # in the private input; privacy here means never returning the saved list
+    # or describing it as settings/keywords.  The desktop renders only the
+    # generated card, never ``preference_tokens`` itself.
+    if re.search(r"(?:你的|用户的).{0,8}(?:关键词|提示词|偏好设置)|(?:关键词|提示词)列表", combined):
+        raise ValueError("LIFE_ANALOGY_PRIVACY_INVALID")
+    visible_scene = _normalized_text(draft.title + draft.analogy)
+    concept_label = _normalized_text(selection.concept_label)
+    if concept_label and concept_label in visible_scene:
+        raise ValueError("LIFE_ANALOGY_SCENE_TOO_LITERAL")
+    concept_bigrams = _normalized_character_ngrams(selection.concept_label, 2)
+    scene_bigrams = _normalized_character_ngrams(draft.title + draft.analogy, 2)
+    if concept_bigrams and len(concept_bigrams & scene_bigrams) / len(concept_bigrams) >= 0.4:
+        raise ValueError("LIFE_ANALOGY_CONCEPT_IS_SCENE_LABEL")
+
+    evidence_positions: list[int] = []
+    for evidence in draft.mechanism_evidence:
+        cleaned = str(evidence or "").strip()
+        position = _normalized_evidence_position(draft.analogy, cleaned)
+        if len(cleaned) >= 2 and position >= 0:
+            evidence_positions.append(position)
+    # Evidence strings are diagnostic metadata. Harmless punctuation or
+    # paraphrase differences must not become a user-facing loading failure.
+
+    generic_takeaway = re.compile(
+        r"(?:先看对象.{0,8}再看条件|先确认对象.{0,8}再决定下一步|总之.{0,8}很重要)"
+    )
+    if generic_takeaway.search(draft.takeaway):
+        raise ValueError("LIFE_ANALOGY_INSIGHT_MISSING")
+    if _LIFE_ANALOGY_LOW_VALUE.search(draft.takeaway):
+        raise ValueError("LIFE_ANALOGY_TOO_ELEMENTARY")
+    # The public takeaway is already length-, language-, privacy- and generic-
+    # phrase checked. Requiring literal n-gram overlap with private diagnostic
+    # wording rejected sound paraphrases and caused unnecessary second calls.
+
+    candidate_ngrams = _normalized_character_ngrams(draft.title + draft.analogy)
+    normalized_title = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", draft.title.casefold())
+    normalized_analogy = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", draft.analogy.casefold())
+    for record in recent_records:
+        recent = record.get("summary", "")
+        if (
+            draft.scene_signature
+            and _normalized_text(draft.scene_signature)
+            == _normalized_text(record.get("scene_signature", ""))
+        ):
+            raise ValueError("LIFE_ANALOGY_NOVELTY_LOW")
+        normalized_recent = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", recent.casefold())
+        if (
+            normalized_title
+            and normalized_analogy
+            and normalized_title in normalized_recent
+            and normalized_analogy in normalized_recent
+        ):
+            raise ValueError("LIFE_ANALOGY_NOVELTY_LOW")
+        recent_ngrams = _normalized_character_ngrams(recent)
+        union = candidate_ngrams | recent_ngrams
+        if union and len(candidate_ngrams & recent_ngrams) / len(union) >= 0.72:
+            raise ValueError("LIFE_ANALOGY_NOVELTY_LOW")
+    return (
+        _LifeAnalogyCard(
+            title=draft.title,
+            analogy=draft.analogy,
+            takeaway=draft.takeaway,
+        ),
+        {
+            "concept_key": selection.concept_key,
+            "concept_label": selection.concept_label,
+            "mechanism": selection.mechanism,
+            "format_key": selected_format,
+            "scene_family": draft.scene_family,
+            "situation_key": draft.situation_key,
+            "mechanism_tag": draft.mechanism_tag,
+            "style_mode": draft.style_mode,
+            "meme_key": draft.meme_key,
+            "scene_signature": draft.scene_signature,
+        },
+    )
+
+
+@app.post("/api/personalized-updates/life-analogy")
+async def create_life_analogy(request: Request, body: dict[str, Any]):
+    """Create one private, provider-verified everyday analogy.
+
+    This flow is deliberately separate from public-update discovery.  It does
+    not call search, does not expose the input keywords, and accepts only a
+    strict card-shaped provider response.
+    """
+
+    raw_keywords = body.get("keywords")
+    if raw_keywords is None:
+        raw_keywords = body.get("preferences")
+    if raw_keywords is None:
+        raw_keywords = body.get("interest_keywords")
+    prompt_keywords, preference_tokens = _life_analogy_input_tokens(raw_keywords)
+    if not prompt_keywords:
+        fail("LIFE_ANALOGY_KEYWORDS_REQUIRED", "请先提供用于生成生活类比的关键词", 422)
+    direction_items = (
+        [str(value).strip()[:120] for value in raw_keywords if str(value).strip()][:16]
+        if isinstance(raw_keywords, list)
+        else [prompt_keywords]
+    )
+    recent_records = _life_analogy_recent_records(body.get("recent_cards"))
+    try:
+        variation_seed = max(0, min(int(body.get("variation_seed") or 0), 1_000_000))
+    except (TypeError, ValueError):
+        variation_seed = 0
+    selected_format = _choose_life_analogy_format(recent_records, variation_seed)
+    selected_humor_cue = _choose_life_analogy_humor_cue(variation_seed)
+    required_style_mode, selected_meme = _choose_life_analogy_style(variation_seed)
+    allowed_situations = _allowed_life_analogy_situations(recent_records, variation_seed)
+    try:
+        session = require_provider_session(
+            str(body.get("provider_session_id") or ""),
+            owner_user_id=request_user_id(request),
+        )
+        if not bool(getattr(session, "verified", True)):
+            fail("PROVIDER_SESSION_UNVERIFIED", "Provider 尚未验证，请先测试连接", 428)
+        if str(getattr(session, "provider", "")).strip().casefold().replace("-", "_") == "fake":
+            fail("PROVIDER_SESSION_REAL_REQUIRED", "生活类比需要已验证的真实模型连接", 428)
+        async def generate_validated_card() -> tuple[_LifeAnalogyCard, dict[str, str]]:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Choose one specific difficult concept or mechanism from the learner's broad private directions, "
+                        "then compare the allowed_familiar_situations and select the one whose cause, state transition, "
+                        "boundary and consequence genuinely match it. If no situation fits the first concept precisely, "
+                        "discard that concept and choose another; never force a superficial resemblance. Express the "
+                        "result as one compact Simplified-Chinese memory "
+                        "card using exactly the required_format. Explore the breadth of the directions; do not simply pick the most famous "
+                        "The audience is an adult technical learner. Reject schoolbook morals such as 'be careful', "
+                        "'check every digit', or 'do things in order'. The takeaway must expose a non-obvious failure "
+                        "mode, boundary, trade-off or state transition that the learner could reuse in real reasoning. "
+                        "concept. A field name is not a concept. Every concept, synonym and mechanism represented in "
+                        "recent_history is forbidden. The format is a real structural constraint, not a decorative label. Do not "
+                        "default to a person making a mistake and discovering the lesson; dialogue, comparison, layout, "
+                        "experiment, rule or observation must behave differently when requested. The title and analogy "
+                        "must be non-technical and must not name the concept, course, profession or private direction. "
+                        "Put the conceptual bridge only in takeaway. Build the story inside the selected registered situation: it "
+                        "must feel like a moment the learner or an ordinary friend has personally experienced. Use a "
+                        "normal human as the viewpoint, a familiar action, and an immediately recognizable annoyance, "
+                        "choice or consequence. Never use random animals, fantasy, sentient objects or a fairy-tale "
+                        "world as the foundation. Humor is optional garnish after recognition, never the premise. The "
+                        "scene must be physically and socially plausible today: never stitch together rules from two "
+                        "different places (for example, do not invent queue numbers for an ordinary elevator). Silently ask whether a friend could actually encounter "
+                        "the described action; rewrite it if not. "
+                        "Use the selected allowed situation as the factual backbone; keep its ordinary real-world rules intact and "
+                        "map the concept through details inside that situation rather than inventing a new service rule. "
+                        "The viewpoint person must behave naturally and try to solve their problem; never make them "
+                        "repeat an obvious mistake on purpose merely to demonstrate a mechanism. Silently draft two "
+                        "possible concept-to-scene mappings and return only the one with matching causes, state changes "
+                        "and consequences. Reject a mapping that shares only a label, shape or vague feeling. The title "
+                        "and analogy must contain only the everyday scene: no technical terms and no sentence that says "
+                        "what the computing concept is. Put every technical explanation in takeaway only. "
+                        "The scene may follow required_humor_cue only when it remains natural. The mechanism must still "
+                        "match the selected concept precisely. A meme-like phrase is welcome only when it fits; never "
+                        "explain why the joke is funny. Avoid the "
+                        "generic cast of 老板、顾客、管理员、服务员、厨师 unless the required format truly needs one. "
+                        "Prefer an oddly specific object, rule, price, movement or internet-comment-style line. When it "
+                        "fits naturally, include one short quotable detail; never insert absurdity merely to satisfy the "
+                        "style note. Do not end "
+                        "the analogy with a character explaining the technical lesson; the takeaway owns that job. "
+                        "Silently check causal consistency before returning: no character may both perform and omit "
+                        "the same action, and the consequence must follow from the stated action or missing condition. "
+                        "Every visible ticket number, order number, quantity, price and elapsed duration must be "
+                        "arithmetically consistent with the sentence that compares it. For example, A028 to A030 is "
+                        "a difference of two, never ten. Omit exact numbers when they are not needed. "
+                        "The three registered required_groups represent trigger, response and consequence in that exact "
+                        "order. The analogy must contain one phrase from every group in that order. A person must react "
+                        "as an ordinary person would: when the rule says to wait, they wait; when the result is uncertain, "
+                        "they check it; never invent an irrelevant action or treat an expected rule as a surprising motive. "
+                        "Echo required_style_mode exactly as style_mode. In safe_meme mode, use the exact selected_meme "
+                        "phrase once inside the analogy, naturally at the moment described by its usage; echo meme_key, "
+                        "meme_phrase and meme_evidence, with meme_evidence equal to that exact phrase. Do not explain the "
+                        "meme. In smooth_life mode, leave all three meme fields empty and make the scene memorable through "
+                        "rhythm, specificity and a clean cause-to-effect flow instead. "
+                        "Analogy must be 50-190 Chinese characters with a setup, an action, a consequence and a "
+                        "memorable twist. Takeaway must be 30-120 characters and explain the same causal structure. "
+                        "Provide 2-3 mechanism_evidence snippets and one twist_evidence; every item must be an exact "
+                        "substring of analogy and together they must show the mechanism rather than merely say it is "
+                        "similar. Avoid current events, claims, URLs, jobs, statistics, Markdown, victims, "
+                        "protected groups, self-harm and cruelty. JSON keys exactly: anchor_index, concept_key, "
+                        "concept_label, concept_mechanism, common_confusion, memory_target, format_key, scene_family, situation_key, mechanism_tag, style_mode, "
+                        "meme_key, meme_phrase, meme_evidence, scene_signature, title, analogy, takeaway, mechanism_evidence, twist_evidence. concept_key must be stable "
+                        "and concise. Echo required_format exactly as format_key, plus the chosen registered "
+                        "scene_family and situation_key exactly. Echo exactly one mechanism_tag from that situation's "
+                        "mechanism_tags and choose a concept whose mechanism truly has that tag; neighboring mechanisms "
+                        "are invalid even when the story sounds fluent. The title or analogy must "
+                        "naturally contain at least one supplied scene cue. "
+                        "scene_signature briefly names the "
+                        "unique cast/object/action/structure. "
+                        f"OPTIONAL STYLE NOTE FOR THIS CARD: {selected_humor_cue}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "private_directions": [
+                                {"index": index, "direction": value}
+                                for index, value in enumerate(direction_items)
+                            ],
+                            "required_format": selected_format,
+                            "required_style_mode": required_style_mode,
+                            "selected_meme": selected_meme,
+                            "allowed_familiar_situations": allowed_situations,
+                            "required_humor_cue": selected_humor_cue,
+                            "forbidden_concepts": [
+                                record.get("concept_label") or record.get("concept_key")
+                                for record in recent_records
+                                if record.get("concept_label") or record.get("concept_key")
+                            ],
+                            "recent_history": [
+                                {
+                                    "concept_key": record.get("concept_key", ""),
+                                    "concept_label": record.get("concept_label", ""),
+                                    "mechanism": record.get("mechanism", ""),
+                                    "format_key": record.get("format_key", ""),
+                                    "scene_family": record.get("scene_family", ""),
+                                    "situation_key": record.get("situation_key", ""),
+                                    "mechanism_tag": record.get("mechanism_tag", ""),
+                                    "style_mode": record.get("style_mode", ""),
+                                    "meme_key": record.get("meme_key", ""),
+                                    "scene_signature": record.get("scene_signature", ""),
+                                    "summary": record.get("summary", "")[:260],
+                                }
+                                for record in recent_records
+                            ],
+                            "variation_seed": variation_seed,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ]
+            last_error: ValueError | None = None
+            for attempt in range(3):
+                try:
+                    result, _meta = await call_bound_provider_json(
+                        session,
+                        messages,
+                        compact_max_tokens=PROVIDER_POLICY.life_analogy_max_tokens,
+                        temperature=0.65 if attempt == 0 else 0.45,
+                    )
+                except ProviderError as exc:
+                    if attempt == 0 and exc.code in {
+                        "INVALID_PROVIDER_JSON",
+                        "PROVIDER_OUTPUT_TRUNCATED",
+                        "PROVIDER_SCHEMA_INVALID",
+                    }:
+                        messages.append(
+                            {
+                                "role": "system",
+                                "content": (
+                                    "The previous response was not valid compact JSON. Retry once with exactly the "
+                                    "requested keys, no Markdown, no commentary, and a shorter analogy. Keep the same "
+                                    "required format and familiar scene family."
+                                ),
+                            }
+                        )
+                        continue
+                    raise
+                try:
+                    card, memory = _validate_life_analogy(
+                        result,
+                        preference_tokens,
+                        selected_format=selected_format,
+                        required_style_mode=required_style_mode,
+                        selected_meme=selected_meme,
+                        allowed_situations=allowed_situations,
+                        direction_items=direction_items,
+                        recent_records=recent_records,
+                    )
+                    registered_situation = next(
+                        value
+                        for value in allowed_situations
+                        if value.get("scene_family") == memory.get("scene_family")
+                        and value.get("situation_key") == memory.get("situation_key")
+                    )
+                    # The deterministic checks catch malformed or ungrounded
+                    # drafts.  A compact semantic review is still required for
+                    # the one thing string rules cannot prove: whether the
+                    # technical mechanism truly matches the everyday cause and
+                    # consequence (for example, a duplicate transfer is not
+                    # automatically an example of idempotency).
+                    review_result, _review_meta = await call_bound_provider_json(
+                        session,
+                        [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Judge the proposed Chinese analogy against its registered real-life situation. "
+                                    "Return compact JSON only with accepted, "
+                                    "mapping_score, relevance_score, situation_fidelity_score, logic_score, "
+                                    "naturalness_score, sophistication_score, memorability_score, meme_fit_score "
+                                    "(integers 1-5), issue_code. Reject wrong or neighboring technical mechanisms, "
+                                    "invented real-world rules, reversed cause/result, child-level morals, forced memes, "
+                                    "and generic advice. Accept only if every score is at least 4. issue_code: OK, "
+                                    "FICTIONAL_RULE, WRONG_CONCEPT, SURFACE_SIMILARITY, REVERSED_LOGIC, WRONG_RESULT, "
+                                    "UNNATURAL_ACTION, FORCED_MEME."
+                                ),
+                            },
+                            {
+                                "role": "user",
+                                "content": json.dumps(
+                                    {
+                                        "registered_situation": registered_situation,
+                                        "technical_concept": memory.get("concept_label", ""),
+                                        "technical_mechanism": memory.get("mechanism", ""),
+                                        "mechanism_tag": memory.get("mechanism_tag", ""),
+                                        "style_mode": required_style_mode,
+                                        "meme": selected_meme,
+                                        "card": card.model_dump(),
+                                    },
+                                    ensure_ascii=False,
+                                ),
+                            },
+                        ],
+                        compact_max_tokens=150,
+                        temperature=0.0,
+                    )
+                    quality_review = _LifeAnalogyQualityReview.model_validate(review_result)
+                    scores = (
+                        quality_review.mapping_score,
+                        quality_review.relevance_score,
+                        quality_review.situation_fidelity_score,
+                        quality_review.logic_score,
+                        quality_review.naturalness_score,
+                        quality_review.sophistication_score,
+                        quality_review.memorability_score,
+                        quality_review.meme_fit_score,
+                    )
+                    if not quality_review.accepted or min(scores) < 4:
+                        raise ValueError(
+                            f"LIFE_ANALOGY_REVIEW_{quality_review.issue_code or 'REJECTED'}"
+                        )
+                    return card, memory
+                except ValueError as exc:
+                    last_error = exc
+                    _LOGGER.warning(
+                        "life_analogy_candidate_rejected code=%s attempt=%s",
+                        str(exc)[:80],
+                        attempt + 1,
+                    )
+                    if attempt < 2:
+                        selected_retry_situation = next(
+                            (
+                                value
+                                for value in allowed_situations
+                                if isinstance(result, dict)
+                                and str(result.get("scene_family") or "")
+                                == str(value.get("scene_family") or "")
+                                and str(result.get("situation_key") or "")
+                                == str(value.get("situation_key") or "")
+                            ),
+                            None,
+                        )
+                        required_group_hint = ""
+                        if selected_retry_situation:
+                            groups = selected_retry_situation.get("required_groups") or []
+                            required_group_hint = (
+                                " For the registered situation, copy at least one exact phrase from each "
+                                "trigger, response, consequence group in this order: "
+                                + "；".join("、".join(str(term) for term in group) for group in groups)
+                                + ". Keep those phrases inside natural readable prose."
+                            )
+                        messages.append(
+                            {
+                                "role": "system",
+                                "content": (
+                                    "The previous draft failed the private quality gate with code "
+                                    f"{str(exc)[:80]}. The rejected concept label was "
+                                    f"{str(result.get('concept_label') if isinstance(result, dict) else '')[:40]!r}. "
+                                    "Choose a different concept not present in recent_history, produce a completely "
+                                    "new familiar human scene, and obey the required format and registered situation. Do not "
+                                    "quote the previous draft."
+                                    + required_group_hint
+                                ),
+                            }
+                        )
+            raise last_error or ValueError("LIFE_ANALOGY_CONTENT_INVALID")
+
+        card, memory = await asyncio.wait_for(
+            generate_validated_card(),
+            timeout=PROVIDER_POLICY.life_analogy_timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        fail(
+            "LIFE_ANALOGY_TIMEOUT",
+            "这张卡片生成得有点久，上一张已保留，请稍后再试",
+            504,
+        )
+    except ProviderError as exc:
+        fail(exc.code, exc.message, exc.status, exc.details)
+    except ValueError:
+        # Do not return Pydantic details: they can contain provider text or a
+        # private keyword.  Keep this code stable for desktop callers.
+        fail("LIFE_ANALOGY_CONTENT_INVALID", "模型没有返回可用的生活类比卡片", 502)
+    return {
+        "schema": "mentorflow.life-analogy.v1",
+        "state": "ready",
+        "card": card.model_dump(),
+        "memory": memory,
+    }
 
 
 @app.post("/api/providers/test")
