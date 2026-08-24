@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import BaseModel
 
 from app.provider_service import GeminiProvider, OpenAICompatibleProvider, ProviderError
 from app.providers.telemetry import (
@@ -54,6 +56,80 @@ def _completion_payload(*, usage: dict | None = None) -> dict:
     if usage is not None:
         payload["usage"] = usage
     return payload
+
+
+class _StructuredReply(BaseModel):
+    answer: str
+
+
+def _install_structured_sdk(
+    monkeypatch,
+    *,
+    response_payloads: list[dict],
+    result: _StructuredReply | Exception,
+    request_only_attempts: int = 0,
+):
+    class Client:
+        def __init__(self, *args, **kwargs):
+            self.event_hooks = kwargs.get("event_hooks") or {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class AsyncOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.http_client = kwargs["http_client"]
+
+    class Completions:
+        def __init__(self, http_client):
+            self.http_client = http_client
+
+        async def create(self, **kwargs):
+            for _index in range(request_only_attempts):
+                request = httpx.Request(
+                    "POST",
+                    "https://provider.test/v1/chat/completions",
+                )
+                for hook in self.http_client.event_hooks.get("request", []):
+                    await hook(request)
+            for payload in response_payloads:
+                request = httpx.Request(
+                    "POST",
+                    "https://provider.test/v1/chat/completions",
+                )
+                for hook in self.http_client.event_hooks.get("request", []):
+                    await hook(request)
+                response = httpx.Response(200, request=request, json=payload)
+                for hook in self.http_client.event_hooks.get("response", []):
+                    await hook(response)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    def from_openai(client, *, mode):
+        return SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=Completions(client.http_client),
+            )
+        )
+
+    monkeypatch.setattr("app.provider_service.httpx.AsyncClient", Client)
+    monkeypatch.setitem(
+        sys.modules,
+        "openai",
+        SimpleNamespace(AsyncOpenAI=AsyncOpenAI),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "instructor",
+        SimpleNamespace(
+            Mode=SimpleNamespace(JSON="json"),
+            from_openai=from_openai,
+        ),
+    )
 
 
 def test_deepseek_cache_ratio_preserves_reported_token_counts():
@@ -305,3 +381,124 @@ def test_gemini_malformed_grounding_records_schema_error(monkeypatch):
     assert receipt is not None
     assert receipt.success is False
     assert receipt.error_class == "PROVIDER_SEARCH_SCHEMA_ERROR"
+
+
+def test_structured_instructor_records_every_usage_attempt(monkeypatch):
+    _install_structured_sdk(
+        monkeypatch,
+        response_payloads=[
+            _completion_payload(
+                usage={
+                    "prompt_tokens": 1_000,
+                    "completion_tokens": 100,
+                    "total_tokens": 1_100,
+                    "prompt_cache_hit_tokens": 200,
+                    "prompt_cache_miss_tokens": 800,
+                }
+            ),
+            _completion_payload(
+                usage={
+                    "prompt_tokens": 1_000,
+                    "completion_tokens": 80,
+                    "total_tokens": 1_080,
+                    "prompt_cache_hit_tokens": 700,
+                    "prompt_cache_miss_tokens": 300,
+                }
+            ),
+        ],
+        result=_StructuredReply(answer="ok"),
+    )
+    provider = OpenAICompatibleProvider(
+        "https://provider.test",
+        "deepseek-chat",
+        "secret",
+    )
+
+    result = asyncio.run(
+        provider.structured(
+            [{"role": "user", "content": "structured"}],
+            _StructuredReply,
+        )
+    )
+    assert result.answer == "ok"
+    receipts = provider_telemetry_store.receipts()
+    assert len(receipts) == 2
+    assert receipts[0].success is False
+    assert receipts[0].error_class == "PROVIDER_STRUCTURED_RETRY"
+    assert receipts[0].cache_hit_ratio == pytest.approx(0.2)
+    assert receipts[1].success is True
+    assert receipts[1].error_class is None
+    assert receipts[1].cache_hit_ratio == pytest.approx(0.7)
+
+
+def test_structured_instructor_failure_keeps_usage_and_error(monkeypatch):
+    _install_structured_sdk(
+        monkeypatch,
+        response_payloads=[
+            _completion_payload(
+                usage={
+                    "prompt_tokens": 50,
+                    "completion_tokens": 5,
+                    "total_tokens": 55,
+                }
+            )
+        ],
+        result=ValueError("invalid structured result"),
+    )
+    provider = OpenAICompatibleProvider(
+        "https://provider.test",
+        "deepseek-chat",
+        "secret",
+    )
+
+    with pytest.raises(ProviderError) as caught:
+        asyncio.run(
+            provider.structured(
+                [{"role": "user", "content": "structured"}],
+                _StructuredReply,
+            )
+        )
+    assert caught.value.code == "PROVIDER_STRUCTURED_OUTPUT_INVALID"
+    receipts = provider_telemetry_store.receipts()
+    assert len(receipts) == 1
+    assert receipts[0].success is False
+    assert receipts[0].error_class == "PROVIDER_STRUCTURED_OUTPUT_INVALID"
+    assert receipts[0].total_tokens == 55
+    assert receipts[0].cache_hit_ratio is None
+
+
+def test_structured_transport_retry_records_each_started_request(monkeypatch):
+    _install_structured_sdk(
+        monkeypatch,
+        request_only_attempts=1,
+        response_payloads=[
+            _completion_payload(
+                usage={
+                    "prompt_tokens": 20,
+                    "completion_tokens": 2,
+                    "total_tokens": 22,
+                }
+            )
+        ],
+        result=_StructuredReply(answer="recovered"),
+    )
+    provider = OpenAICompatibleProvider(
+        "https://provider.test",
+        "deepseek-chat",
+        "secret",
+    )
+
+    result = asyncio.run(
+        provider.structured(
+            [{"role": "user", "content": "structured"}],
+            _StructuredReply,
+        )
+    )
+    assert result.answer == "recovered"
+    receipts = provider_telemetry_store.receipts()
+    assert len(receipts) == 2
+    assert receipts[0].success is False
+    assert receipts[0].error_class == "PROVIDER_STRUCTURED_TRANSPORT_RETRY"
+    assert receipts[0].total_tokens is None
+    assert receipts[1].success is True
+    assert receipts[1].total_tokens == 22

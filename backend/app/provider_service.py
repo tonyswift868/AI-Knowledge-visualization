@@ -426,7 +426,72 @@ class OpenAICompatibleProvider(HTTPProvider):
     ) -> StructuredModel:
         """Use Instructor retries/schema transport on the existing Provider config."""
 
-        telemetry = start_provider_request(provider=self.provider_name, model=self.model)
+        fallback_telemetry = start_provider_request(
+            provider=self.provider_name,
+            model=self.model,
+        )
+        structured_attempts: list[dict[str, Any]] = []
+
+        async def on_request(request: httpx.Request) -> None:
+            attempt = {
+                "telemetry": start_provider_request(
+                    provider=self.provider_name,
+                    model=self.model,
+                ),
+                "payload": None,
+                "status_code": None,
+            }
+            structured_attempts.append(attempt)
+            request.extensions[self._telemetry_extension] = attempt
+
+        async def on_response(response: httpx.Response) -> None:
+            attempt = response.request.extensions.pop(
+                self._telemetry_extension,
+                None,
+            )
+            if not isinstance(attempt, dict):
+                return
+            payload: object = None
+            try:
+                # httpx response hooks run before OpenAI consumes the body.
+                # ``aread`` caches it, so the SDK can still parse the same
+                # response after telemetry extracts usage.
+                await response.aread()
+                payload = response.json()
+            except Exception:
+                payload = None
+            attempt["payload"] = payload
+            attempt["status_code"] = int(response.status_code)
+
+        def finish_structured_attempts(
+            terminal_error: str | None = None,
+        ) -> bool:
+            if not structured_attempts:
+                return False
+            last_index = len(structured_attempts) - 1
+            for index, attempt in enumerate(structured_attempts):
+                telemetry = attempt["telemetry"]
+                payload = attempt.get("payload")
+                status_code = attempt.get("status_code")
+                if status_code is None:
+                    error_class = (
+                        terminal_error or "PROVIDER_STRUCTURED_TRANSPORT_RETRY"
+                    )
+                elif int(status_code) >= 300:
+                    error_class = provider_http_error_class(int(status_code))
+                elif terminal_error:
+                    error_class = terminal_error
+                elif index < last_index:
+                    error_class = "PROVIDER_STRUCTURED_RETRY"
+                else:
+                    error_class = None
+                telemetry.finish(
+                    payload=payload,
+                    success=error_class is None,
+                    error_class=error_class,
+                )
+            return True
+
         try:
             _validated_base_url(self.base_url)
             import instructor
@@ -438,6 +503,10 @@ class OpenAICompatibleProvider(HTTPProvider):
             async with httpx.AsyncClient(
                 timeout=PROVIDER_TIMEOUT,
                 follow_redirects=False,
+                event_hooks={
+                    "request": [on_request],
+                    "response": [on_response],
+                },
             ) as http_client:
                 client = instructor.from_openai(
                     AsyncOpenAI(
@@ -457,16 +526,23 @@ class OpenAICompatibleProvider(HTTPProvider):
                     max_retries=PROVIDER_POLICY.structured_max_retries,
                 )
             self.last_model = self.model
-            telemetry.finish(success=True)
+            if not finish_structured_attempts():
+                # Compatibility for SDK/test transports that do not run
+                # httpx event hooks. Usage is explicitly unavailable.
+                fallback_telemetry.finish(success=True)
             return result
         except ProviderError as exc:
-            telemetry.finish(success=False, error_class=exc.code)
+            if not finish_structured_attempts(exc.code):
+                fallback_telemetry.finish(success=False, error_class=exc.code)
             raise
         except Exception as exc:
-            telemetry.finish(
-                success=False,
-                error_class="PROVIDER_STRUCTURED_OUTPUT_INVALID",
-            )
+            if not finish_structured_attempts(
+                "PROVIDER_STRUCTURED_OUTPUT_INVALID"
+            ):
+                fallback_telemetry.finish(
+                    success=False,
+                    error_class="PROVIDER_STRUCTURED_OUTPUT_INVALID",
+                )
             raise ProviderError(
                 "PROVIDER_STRUCTURED_OUTPUT_INVALID",
                 "OpenAI-compatible Provider 未能返回可验证结构",
