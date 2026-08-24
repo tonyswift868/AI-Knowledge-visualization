@@ -20,7 +20,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import httpx
 
 from ...url_fetcher_secure import _bounded_content, validate_public_url
-from ...video_transcript import MAX_SUBTITLE_BYTES, MAX_SUBTITLE_SEGMENTS
+from ...video_transcript import MAX_SUBTITLE_BYTES
 from .bilibili_preflight import (
     BilibiliPreflightSnapshot,
     BilibiliSubtitleTrack,
@@ -35,7 +35,10 @@ TRANSCRIPT_PARSER_VERSION = "mentorflow.subtitle-timeline.v1"
 SUPPORTED_EVIDENCE_EXTENSIONS = frozenset({"bcc", "json", "json3", "srt", "vtt"})
 SUBTITLE_FETCH_TIMEOUT_SECONDS = 8.0
 MAX_SUBTITLE_REDIRECTS = 3
-MAX_SUBTITLE_DURATION_MS = 6 * 60 * 60 * 1000
+# A ten-hour subtitle at one cue per second contains 36,000 cues.  Keep
+# headroom for legitimate dense captions while the 8 MiB payload limit remains
+# the primary bound on parser input and memory use.
+MAX_SUBTITLE_SEGMENTS = 50_000
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _TIMESTAMP_RE = re.compile(
     r"^(?:(?P<hours>[0-9]+):)?(?P<minutes>[0-5][0-9]):(?P<seconds>[0-5][0-9])"
@@ -257,7 +260,10 @@ def _finish_parsed_timeline(
     invalid: int,
 ) -> ParsedSubtitleTimeline:
     if recognized > MAX_SUBTITLE_SEGMENTS:
-        raise TranscriptEvidenceError("SUBTITLE_PARSE_ERROR", "字幕段数超过 20,000 段限制")
+        raise TranscriptEvidenceError(
+            "SUBTITLE_PARSE_ERROR",
+            f"字幕段数超过 {MAX_SUBTITLE_SEGMENTS:,} 段安全限制",
+        )
     if not cues:
         if recognized > 0 and empty == recognized and invalid == 0:
             raise TranscriptEvidenceError("SUBTITLE_EMPTY", "字幕 cue 正文为空")
@@ -282,7 +288,10 @@ def _parse_srt_or_vtt(text: str) -> ParsedSubtitleTimeline:
             continue
         recognized += 1
         if recognized > MAX_SUBTITLE_SEGMENTS:
-            raise TranscriptEvidenceError("SUBTITLE_PARSE_ERROR", "字幕段数超过 20,000 段限制")
+            raise TranscriptEvidenceError(
+                "SUBTITLE_PARSE_ERROR",
+                f"字幕段数超过 {MAX_SUBTITLE_SEGMENTS:,} 段安全限制",
+            )
         match = _TIMELINE_RE.fullmatch(line)
         index += 1
         body: list[str] = []
@@ -298,8 +307,6 @@ def _parse_srt_or_vtt(text: str) -> ParsedSubtitleTimeline:
         end_ms = _timestamp_ms(match.group("end")) if match else None
         if start_ms is None or end_ms is None or end_ms <= start_ms:
             invalid += 1
-        elif end_ms > MAX_SUBTITLE_DURATION_MS:
-            raise TranscriptEvidenceError("SUBTITLE_PARSE_ERROR", "字幕时间轴超过 6 小时限制")
         else:
             cues.append(ParsedTranscriptCue(start_ms, end_ms, original_text))
         index += 1
@@ -327,7 +334,10 @@ def _parse_json_timeline(text: str) -> ParsedSubtitleTimeline:
     if not raw_cues:
         raise TranscriptEvidenceError("SUBTITLE_EMPTY", "字幕 cue 列表为空")
     if len(raw_cues) > MAX_SUBTITLE_SEGMENTS:
-        raise TranscriptEvidenceError("SUBTITLE_PARSE_ERROR", "字幕段数超过 20,000 段限制")
+        raise TranscriptEvidenceError(
+            "SUBTITLE_PARSE_ERROR",
+            f"字幕段数超过 {MAX_SUBTITLE_SEGMENTS:,} 段安全限制",
+        )
 
     cues: list[ParsedTranscriptCue] = []
     recognized = len(raw_cues)
@@ -356,8 +366,6 @@ def _parse_json_timeline(text: str) -> ParsedSubtitleTimeline:
         if start_ms is None or end_ms is None or end_ms <= start_ms:
             invalid += 1
             continue
-        if end_ms > MAX_SUBTITLE_DURATION_MS:
-            raise TranscriptEvidenceError("SUBTITLE_PARSE_ERROR", "字幕时间轴超过 6 小时限制")
         cues.append(ParsedTranscriptCue(start_ms, end_ms, original_text))
     return _finish_parsed_timeline(cues, recognized=recognized, empty=empty, invalid=invalid)
 

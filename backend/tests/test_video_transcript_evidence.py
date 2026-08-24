@@ -10,7 +10,6 @@ import pytest
 from app.sources.video.bilibili_preflight import BilibiliSubtitleTrack, SubtitleKind
 from app.sources.video.transcript_evidence import (
     MAX_SUBTITLE_BYTES,
-    MAX_SUBTITLE_DURATION_MS,
     MAX_SUBTITLE_SEGMENTS,
     TranscriptEvidenceError,
     fetch_bilibili_transcript_evidence,
@@ -459,19 +458,35 @@ def _clock(milliseconds: int, *, comma: bool = True) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}{separator}{millis:03d}"
 
 
-def test_three_hour_fixture_preserves_10800_linear_cues():
-    payload = "\n\n".join(
-        f"{index + 1}\n{_clock(index * 1000)} --> {_clock((index + 1) * 1000)}\n第{index + 1}段"
-        for index in range(10_800)
+def _srt_cues(count: int, *, prefix: str, step_ms: int) -> str:
+    return "\n\n".join(
+        f"{index + 1}\n{_clock(index * step_ms)} --> {_clock((index + 1) * step_ms)}\n{prefix}-{index + 1}"
+        for index in range(count)
     )
-    bundle = _run(ydl_factory=_factory(_single_info(_track(payload), title="3 小时课程")))
-
-    assert len(bundle.segments) == 10_800
-    assert bundle.segments[-1].end_ms == 10_800_000
-    assert len({segment.stable_segment_id for segment in bundle.segments}) == 10_800
 
 
-def test_parser_rejects_segment_count_and_six_hour_overflow():
+def test_ten_hour_fixture_preserves_36000_dense_cues_without_truncation():
+    payload = _srt_cues(36_000, prefix="10h", step_ms=1000)
+    info = {**_single_info(_track(payload), title="10 小时课程"), "duration": 36_000}
+    factory = _factory(info)
+
+    first = _run(ydl_factory=factory, fetched_at="2026-08-24T00:00:00+00:00")
+    second = _run(ydl_factory=factory, fetched_at="2026-08-25T00:00:00+00:00")
+
+    assert first.parts[0].duration_seconds == 36_000
+    assert len(first.segments) == len(first.parts[0].segment_ids) == 36_000
+    assert (first.segments[0].start_ms, first.segments[0].end_ms) == (0, 1000)
+    assert (first.segments[-1].start_ms, first.segments[-1].end_ms) == (35_999_000, 36_000_000)
+    assert first.segments[-1].original_text == "10h-36000"
+    assert len({segment.stable_segment_id for segment in first.segments}) == 36_000
+    assert first.bundle_hash == second.bundle_hash
+    assert first.raw_payload_hash == second.raw_payload_hash
+    assert [segment.stable_segment_id for segment in first.segments] == [
+        segment.stable_segment_id for segment in second.segments
+    ]
+
+
+def test_parser_enforces_segment_safety_limit_without_duration_rejection():
     too_many = json.dumps(
         {"body": [{"from": 0, "to": 1, "content": "x"}] * (MAX_SUBTITLE_SEGMENTS + 1)}
     )
@@ -479,22 +494,19 @@ def test_parser_rejects_segment_count_and_six_hour_overflow():
         parse_subtitle_timeline(too_many, "json")
     assert count_error.value.code == "SUBTITLE_PARSE_ERROR"
 
-    over_six_hours = json.dumps(
-        {"body": [{"from": 0, "to": MAX_SUBTITLE_DURATION_MS / 1000 + 0.001, "content": "x"}]}
-    )
-    with pytest.raises(TranscriptEvidenceError) as duration_error:
-        parse_subtitle_timeline(over_six_hours, "json")
-    assert duration_error.value.code == "SUBTITLE_PARSE_ERROR"
+    ten_hours = json.dumps({"body": [{"from": 35_999, "to": 36_000, "content": "10h"}]})
+    parsed = parse_subtitle_timeline(ten_hours, "json")
+    assert (parsed.cues[0].start_ms, parsed.cues[0].end_ms) == (35_999_000, 36_000_000)
 
 
-def test_1000_part_fixture_preserves_boundaries_hashes_and_unique_ids():
+def test_1000_part_100k_segment_fixture_preserves_full_evidence_contract():
     entries = [
         {
             "playlist_index": index,
             "part": f"P{index}",
             "cid": 10_000 + index,
-            "duration": 1,
-            **_track(_srt(f"P{index}", start="00:00:00,000", end="00:00:01,000")),
+            "duration": 600,
+            **_track(_srt_cues(100, prefix=f"P{index}", step_ms=6000)),
         }
         for index in range(1, 1001)
     ]
@@ -505,8 +517,21 @@ def test_1000_part_fixture_preserves_boundaries_hashes_and_unique_ids():
     )
 
     assert bundle.part_count == 1000
-    assert len(bundle.parts) == len(bundle.segments) == 1000
+    assert len(bundle.parts) == 1000
+    assert len(bundle.segments) == 100_000
     assert bundle.parts[-1].cid == "11000"
     assert bundle.segments[-1].part_index == 1000
-    assert len({segment.stable_segment_id for segment in bundle.segments}) == 1000
+    assert (bundle.segments[-1].start_ms, bundle.segments[-1].end_ms) == (594_000, 600_000)
+    assert bundle.segments[-1].original_text == "P1000-100"
+    assert all(len(part.segment_ids) == 100 for part in bundle.parts)
+    assert all(
+        bundle.segments[offset].part_index == part_index
+        and bundle.segments[offset].start_ms == 0
+        and bundle.segments[offset + 99].part_index == part_index
+        and bundle.segments[offset + 99].end_ms == 600_000
+        for part_index, offset in enumerate(range(0, 100_000, 100), start=1)
+    )
+    assert len({segment.stable_segment_id for segment in bundle.segments}) == 100_000
     assert all(part.raw_payload_hash and part.subtitle_identity for part in bundle.parts)
+    assert all(segment.segment_hash and segment.source_reference for segment in bundle.segments)
+    assert bundle.raw_payload_hash and bundle.normalized_timeline_hash and bundle.bundle_hash
