@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import sys
 from types import SimpleNamespace
@@ -11,10 +12,22 @@ from pydantic import BaseModel
 
 from app.provider_service import GeminiProvider, OpenAICompatibleProvider, ProviderError
 from app.providers.telemetry import (
+    ProviderRequestTimer,
+    ProviderUsageReceipt,
     normalize_provider_usage,
     provider_request_context,
     provider_telemetry_store,
 )
+
+
+def test_stable_prefix_hash_is_an_optional_trailing_telemetry_field() -> None:
+    receipt_parameters = list(inspect.signature(ProviderUsageReceipt).parameters.values())
+    timer_parameters = list(inspect.signature(ProviderRequestTimer).parameters.values())
+
+    assert receipt_parameters[-1].name == "stable_prefix_hash"
+    assert receipt_parameters[-1].default is None
+    assert timer_parameters[-1].name == "stable_prefix_hash"
+    assert timer_parameters[-1].default is None
 
 
 @pytest.fixture(autouse=True)
@@ -251,6 +264,7 @@ def test_request_context_and_deepseek_usage_are_recorded_and_persisted(monkeypat
         request_id="req_planning_1",
         prompt_version="planning-v3",
         local_result_cache_hit=False,
+        stable_prefix_hash="ab" * 32,
     ):
         assert asyncio.run(provider.text([{"role": "user", "content": "plan"}])) == "ok"
 
@@ -263,9 +277,26 @@ def test_request_context_and_deepseek_usage_are_recorded_and_persisted(monkeypat
     assert receipt.prompt_version == "planning-v3"
     assert receipt.schema_version == "provider_usage_v1"
     assert receipt.local_result_cache_hit is False
+    assert receipt.stable_prefix_hash == "ab" * 32
     assert receipt.cache_hit_ratio == pytest.approx(0.7)
     persisted = json.loads(path.read_text(encoding="utf-8").strip())
     assert persisted == receipt.to_dict()
+
+
+def test_invalid_prefix_fingerprint_is_not_persisted_as_raw_metadata(monkeypatch):
+    _install_response_client(monkeypatch, _completion_payload())
+    provider = OpenAICompatibleProvider(
+        "https://provider.test",
+        "deepseek-chat",
+        "secret",
+    )
+
+    with provider_request_context(stable_prefix_hash="raw prompt text is not a fingerprint"):
+        assert asyncio.run(provider.text([{"role": "user", "content": "safe"}])) == "ok"
+
+    receipt = provider_telemetry_store.latest()
+    assert receipt is not None
+    assert receipt.stable_prefix_hash is None
 
 
 def test_provider_http_error_records_latency_without_fabricated_usage(monkeypatch):

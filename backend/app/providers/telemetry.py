@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -18,6 +19,7 @@ PROVIDER_USAGE_SCHEMA_VERSION = "provider_usage_v1"
 DEFAULT_TASK_TYPE = "generic"
 DEFAULT_PROMPT_VERSION = "unversioned"
 MAX_IN_MEMORY_RECEIPTS = 2_048
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _optional_non_negative_int(value: object) -> int | None:
@@ -112,6 +114,7 @@ class ProviderUsageReceipt:
     error_class: str | None
     prompt_version: str
     schema_version: str = PROVIDER_USAGE_SCHEMA_VERSION
+    stable_prefix_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,6 +126,7 @@ class _RequestContext:
     request_id: str | None = None
     prompt_version: str = DEFAULT_PROMPT_VERSION
     local_result_cache_hit: bool | None = None
+    stable_prefix_hash: str | None = None
 
 
 _request_context: ContextVar[_RequestContext] = ContextVar(
@@ -138,6 +142,7 @@ def provider_request_context(
     request_id: str | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
     local_result_cache_hit: bool | None = None,
+    stable_prefix_hash: str | None = None,
 ) -> Iterator[None]:
     """Attach stable business metadata to nested Provider calls.
 
@@ -150,6 +155,9 @@ def provider_request_context(
     normalized_prompt_version = (
         str(prompt_version or DEFAULT_PROMPT_VERSION).strip() or DEFAULT_PROMPT_VERSION
     )
+    normalized_prefix_hash = str(stable_prefix_hash or "").strip().casefold()
+    if not _SHA256_PATTERN.fullmatch(normalized_prefix_hash):
+        normalized_prefix_hash = ""
     token = _request_context.set(
         _RequestContext(
             task_type=normalized_task_type,
@@ -160,6 +168,7 @@ def provider_request_context(
                 if isinstance(local_result_cache_hit, bool)
                 else None
             ),
+            stable_prefix_hash=normalized_prefix_hash or None,
         )
     )
     try:
@@ -232,6 +241,7 @@ class ProviderRequestTimer:
     local_result_cache_hit: bool | None
     started_at: str
     started_perf: float
+    stable_prefix_hash: str | None = None
 
     def finish(
         self,
@@ -255,6 +265,7 @@ class ProviderRequestTimer:
             prompt_cache_miss_tokens=usage.prompt_cache_miss_tokens,
             cache_hit_ratio=usage.cache_hit_ratio,
             local_result_cache_hit=self.local_result_cache_hit,
+            stable_prefix_hash=self.stable_prefix_hash,
             # AI-01 measures raw usage first. Cost stays explicitly
             # unavailable until a separately versioned pricing source exists.
             estimated_cost_usd=None,
@@ -276,6 +287,7 @@ def start_provider_request(*, provider: str, model: str) -> ProviderRequestTimer
         request_id=context.request_id or "req_telemetry_" + secrets.token_hex(10),
         prompt_version=context.prompt_version,
         local_result_cache_hit=context.local_result_cache_hit,
+        stable_prefix_hash=context.stable_prefix_hash,
         started_at=datetime.now(timezone.utc).isoformat(),
         started_perf=time.perf_counter(),
     )
