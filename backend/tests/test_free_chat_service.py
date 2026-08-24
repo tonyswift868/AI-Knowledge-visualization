@@ -387,6 +387,7 @@ def test_free_chat_contract_has_no_learning_state_authority() -> None:
             "created_at",
             "updated_at",
             "version",
+            "persona_context",
         }
         assert field_names.isdisjoint(
             {"mastery", "task_id", "knowledge_point", "assessment_state", "teaching_move"}

@@ -60,11 +60,26 @@ class FreeChatService:
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._session_locks_guard = asyncio.Lock()
 
-    def create_session(self, *, session_id: str | None = None) -> FreeChatSession:
-        return self._store.create(session_id=session_id, created_at=self._now())
+    def create_session(
+        self,
+        *,
+        session_id: str | None = None,
+        persona_context: str | None = None,
+    ) -> FreeChatSession:
+        return self._store.create(
+            session_id=session_id,
+            created_at=self._now(),
+            persona_context=persona_context,
+        )
 
     def get_session(self, session_id: str) -> FreeChatSession:
         return self._store.get(session_id)
+
+    def list_sessions(self) -> tuple[FreeChatSession, ...]:
+        return self._store.list_sessions()
+
+    def delete_session(self, session_id: str) -> bool:
+        return self._store.delete(session_id)
 
     async def send_message(
         self,
