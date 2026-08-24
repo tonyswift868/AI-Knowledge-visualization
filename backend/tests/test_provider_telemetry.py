@@ -20,14 +20,22 @@ from app.providers.telemetry import (
 )
 
 
-def test_stable_prefix_hash_is_an_optional_trailing_telemetry_field() -> None:
+def test_cache_telemetry_fields_are_optional_and_constructor_compatible() -> None:
     receipt_parameters = list(inspect.signature(ProviderUsageReceipt).parameters.values())
     timer_parameters = list(inspect.signature(ProviderRequestTimer).parameters.values())
 
-    assert receipt_parameters[-1].name == "stable_prefix_hash"
-    assert receipt_parameters[-1].default is None
-    assert timer_parameters[-1].name == "stable_prefix_hash"
-    assert timer_parameters[-1].default is None
+    receipt_defaults = {item.name: item.default for item in receipt_parameters}
+    timer_defaults = {item.name: item.default for item in timer_parameters}
+    assert receipt_defaults["stable_prefix_hash"] is None
+    assert timer_defaults["stable_prefix_hash"] is None
+    assert receipt_defaults["provider_called"] is True
+    for field in (
+        "local_cache_miss",
+        "local_cache_corrupt",
+        "cache_lookup_ms",
+    ):
+        assert receipt_defaults[field] is None
+        assert timer_defaults[field] is None
 
 
 @pytest.fixture(autouse=True)
@@ -265,6 +273,9 @@ def test_request_context_and_deepseek_usage_are_recorded_and_persisted(monkeypat
         prompt_version="planning-v3",
         local_result_cache_hit=False,
         stable_prefix_hash="ab" * 32,
+        local_cache_miss=True,
+        local_cache_corrupt=False,
+        cache_lookup_ms=7,
     ):
         assert asyncio.run(provider.text([{"role": "user", "content": "plan"}])) == "ok"
 
@@ -278,6 +289,10 @@ def test_request_context_and_deepseek_usage_are_recorded_and_persisted(monkeypat
     assert receipt.schema_version == "provider_usage_v1"
     assert receipt.local_result_cache_hit is False
     assert receipt.stable_prefix_hash == "ab" * 32
+    assert receipt.provider_called is True
+    assert receipt.local_cache_miss is True
+    assert receipt.local_cache_corrupt is False
+    assert receipt.cache_lookup_ms == 7
     assert receipt.cache_hit_ratio == pytest.approx(0.7)
     persisted = json.loads(path.read_text(encoding="utf-8").strip())
     assert persisted == receipt.to_dict()

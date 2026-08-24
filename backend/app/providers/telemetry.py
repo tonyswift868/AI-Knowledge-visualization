@@ -115,6 +115,10 @@ class ProviderUsageReceipt:
     prompt_version: str
     schema_version: str = PROVIDER_USAGE_SCHEMA_VERSION
     stable_prefix_hash: str | None = None
+    provider_called: bool = True
+    local_cache_miss: bool | None = None
+    local_cache_corrupt: bool | None = None
+    cache_lookup_ms: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -127,6 +131,9 @@ class _RequestContext:
     prompt_version: str = DEFAULT_PROMPT_VERSION
     local_result_cache_hit: bool | None = None
     stable_prefix_hash: str | None = None
+    local_cache_miss: bool | None = None
+    local_cache_corrupt: bool | None = None
+    cache_lookup_ms: int | None = None
 
 
 _request_context: ContextVar[_RequestContext] = ContextVar(
@@ -143,6 +150,9 @@ def provider_request_context(
     prompt_version: str = DEFAULT_PROMPT_VERSION,
     local_result_cache_hit: bool | None = None,
     stable_prefix_hash: str | None = None,
+    local_cache_miss: bool | None = None,
+    local_cache_corrupt: bool | None = None,
+    cache_lookup_ms: int | None = None,
 ) -> Iterator[None]:
     """Attach stable business metadata to nested Provider calls.
 
@@ -169,6 +179,15 @@ def provider_request_context(
                 else None
             ),
             stable_prefix_hash=normalized_prefix_hash or None,
+            local_cache_miss=(
+                local_cache_miss if isinstance(local_cache_miss, bool) else None
+            ),
+            local_cache_corrupt=(
+                local_cache_corrupt
+                if isinstance(local_cache_corrupt, bool)
+                else None
+            ),
+            cache_lookup_ms=_optional_non_negative_int(cache_lookup_ms),
         )
     )
     try:
@@ -242,6 +261,9 @@ class ProviderRequestTimer:
     started_at: str
     started_perf: float
     stable_prefix_hash: str | None = None
+    local_cache_miss: bool | None = None
+    local_cache_corrupt: bool | None = None
+    cache_lookup_ms: int | None = None
 
     def finish(
         self,
@@ -266,6 +288,10 @@ class ProviderRequestTimer:
             cache_hit_ratio=usage.cache_hit_ratio,
             local_result_cache_hit=self.local_result_cache_hit,
             stable_prefix_hash=self.stable_prefix_hash,
+            provider_called=True,
+            local_cache_miss=self.local_cache_miss,
+            local_cache_corrupt=self.local_cache_corrupt,
+            cache_lookup_ms=self.cache_lookup_ms,
             # AI-01 measures raw usage first. Cost stays explicitly
             # unavailable until a separately versioned pricing source exists.
             estimated_cost_usd=None,
@@ -288,9 +314,58 @@ def start_provider_request(*, provider: str, model: str) -> ProviderRequestTimer
         prompt_version=context.prompt_version,
         local_result_cache_hit=context.local_result_cache_hit,
         stable_prefix_hash=context.stable_prefix_hash,
+        local_cache_miss=context.local_cache_miss,
+        local_cache_corrupt=context.local_cache_corrupt,
+        cache_lookup_ms=context.cache_lookup_ms,
         started_at=datetime.now(timezone.utc).isoformat(),
         started_perf=time.perf_counter(),
     )
+
+
+def record_local_result_cache_hit(
+    *,
+    provider: str,
+    model: str,
+    task_type: str,
+    prompt_version: str,
+    stable_prefix_hash: str | None,
+    lookup_ms: int,
+    cache_corrupt: bool = False,
+) -> ProviderUsageReceipt:
+    """Record a cache-only success without fabricating a Provider response."""
+
+    normalized_prefix_hash = str(stable_prefix_hash or "").strip().casefold()
+    if not _SHA256_PATTERN.fullmatch(normalized_prefix_hash):
+        normalized_prefix_hash = ""
+    now = datetime.now(timezone.utc).isoformat()
+    receipt = ProviderUsageReceipt(
+        provider=str(provider or "unknown").strip() or "unknown",
+        model=str(model or "unknown").strip() or "unknown",
+        task_type=str(task_type or DEFAULT_TASK_TYPE).strip() or DEFAULT_TASK_TYPE,
+        request_id="req_local_cache_" + secrets.token_hex(10),
+        started_at=now,
+        latency_ms=max(0, int(lookup_ms)),
+        prompt_tokens=None,
+        completion_tokens=None,
+        total_tokens=None,
+        prompt_cache_hit_tokens=None,
+        prompt_cache_miss_tokens=None,
+        cache_hit_ratio=None,
+        local_result_cache_hit=True,
+        estimated_cost_usd=None,
+        pricing_version=None,
+        success=True,
+        error_class=None,
+        prompt_version=str(prompt_version or DEFAULT_PROMPT_VERSION).strip()
+        or DEFAULT_PROMPT_VERSION,
+        stable_prefix_hash=normalized_prefix_hash or None,
+        provider_called=False,
+        local_cache_miss=False,
+        local_cache_corrupt=bool(cache_corrupt),
+        cache_lookup_ms=max(0, int(lookup_ms)),
+    )
+    provider_telemetry_store.record(receipt)
+    return receipt
 
 
 def provider_http_error_class(status_code: int) -> str:
