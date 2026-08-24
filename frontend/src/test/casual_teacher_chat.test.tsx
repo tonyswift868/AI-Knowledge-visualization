@@ -88,6 +88,77 @@ describe("casual teacher chat", () => {
     expect(JSON.parse(String(sessionCall?.[1]?.body))).toMatchObject({ workspace_id: "ws_test", extra_setting: "更活泼一点" })
   })
 
+  it("waits for a resolved workspace before loading or creating a casual session", async () => {
+    const realWorkspaceSessions = deferred<unknown>()
+    const requestedScopes: string[] = []
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/active-teaching/teacher-personas")) return response({ items: [] })
+      if (url.includes("/casual-chat/sessions?workspace_id=")) {
+        const scope = new URL(url, "http://localhost").searchParams.get("workspace_id") || ""
+        requestedScopes.push(scope)
+        if (scope === "ws_real") return realWorkspaceSessions.promise.then(body => response(body))
+        return response({ items: [] })
+      }
+      if (url.endsWith("/casual-chat/sessions") && init?.method === "POST") return response({ id: "should-not-create" })
+      return response({})
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { rerender } = render(<CasualTeacherChat workspaceId="" />)
+    fireEvent.change(screen.getByTestId("casual-teacher-input"), { target: { value: "解析这个问题" } })
+    fireEvent.click(screen.getByTestId("casual-teacher-send"))
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("正在加载学习空间"))
+    expect(requestedScopes).toEqual([])
+    expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/casual-chat/sessions") && init?.method === "POST")).toBe(false)
+
+    rerender(<CasualTeacherChat workspaceId="ws_real" />)
+    await waitFor(() => expect(requestedScopes).toContain("ws_real"))
+    realWorkspaceSessions.resolve({ items: [{
+      id: "session-real",
+      workspace_id: "ws_real",
+      teacher_id: "warm",
+      teacher_name: "艾莉丝",
+      messages: [{ role: "teacher", content: "真实空间历史" }],
+    }] })
+    await waitFor(() => expect(screen.getByText("真实空间历史")).toBeInTheDocument())
+    expect(requestedScopes).not.toContain("general-learning")
+  })
+
+  it("ignores a late history response from a workspace that was left", async () => {
+    const oldSessions = deferred<unknown>()
+    const newSessions = deferred<unknown>()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith("/active-teaching/teacher-personas")) return response({ items: [] })
+      if (url.includes("workspace_id=ws_old")) return oldSessions.promise.then(body => response(body))
+      if (url.includes("workspace_id=ws_new")) return newSessions.promise.then(body => response(body))
+      return response({})
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { rerender } = render(<CasualTeacherChat workspaceId="ws_old" />)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("workspace_id=ws_old"))).toBe(true))
+    rerender(<CasualTeacherChat workspaceId="ws_new" />)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("workspace_id=ws_new"))).toBe(true))
+    oldSessions.resolve({ items: [{
+      id: "session-old",
+      workspace_id: "ws_old",
+      teacher_id: "warm",
+      teacher_name: "艾莉丝",
+      messages: [{ role: "teacher", content: "旧空间不应显示" }],
+    }] })
+    newSessions.resolve({ items: [{
+      id: "session-new",
+      workspace_id: "ws_new",
+      teacher_id: "warm",
+      teacher_name: "艾莉丝",
+      messages: [{ role: "teacher", content: "新空间历史" }],
+    }] })
+    await waitFor(() => expect(screen.getByText("新空间历史")).toBeInTheDocument())
+    expect(screen.queryByText("旧空间不应显示")).not.toBeInTheDocument()
+  })
+
   it("does not let a late session response overwrite a setting typed during loading", async () => {
     let resolveSessions!: (value: unknown) => void
     const sessions = new Promise(resolve => { resolveSessions = resolve })

@@ -14,7 +14,10 @@ from typing import Any, Iterable, Mapping
 from urllib.parse import parse_qs, urlparse
 
 
-_URL_RE = re.compile(r"https?://[^\s<>\"'\[\]{}]+", re.IGNORECASE)
+_URL_RE = re.compile(
+    r"https?://(?:\[[0-9A-Fa-f:.%]+\](?::\d+)?|[^\s<>\"'\[\]{}])+",
+    re.IGNORECASE,
+)
 _BVID_RE = re.compile(r"(?<![0-9A-Za-z])BV[0-9A-Za-z]{10}(?![0-9A-Za-z])")
 _BVID_LIKE_RE = re.compile(r"(?<![0-9A-Za-z])BV[0-9A-Za-z]{4,20}(?![0-9A-Za-z])")
 _AVID_RE = re.compile(r"(?<![0-9A-Za-z])av(?P<id>[0-9]{1,20})(?![0-9A-Za-z])", re.IGNORECASE)
@@ -77,6 +80,27 @@ def _url_candidate(raw_url: str) -> dict[str, Any] | None:
     path = parsed.path or "/"
 
     if host == "bilibili.com" or host.endswith(".bilibili.com"):
+        lower_path = path.casefold().rstrip("/")
+        query = parse_qs(parsed.query)
+        is_collection = bool(
+            (host == "space.bilibili.com" and re.fullmatch(r"/[0-9]+/lists/[0-9]+", lower_path))
+            or (
+                host == "space.bilibili.com"
+                and re.fullmatch(r"/[0-9]+/channel/(?:seriesdetail|collectiondetail)", lower_path)
+                and (query.get("sid") or query.get("season_id"))
+            )
+            or re.match(r"/(?:medialist/play|list)/", lower_path)
+            or re.match(r"/(?:bangumi|cheese)/play/(?:ss|md|ep)[0-9]+", lower_path)
+        )
+        if is_collection:
+            return _candidate(
+                url=url,
+                title="用户提供的 B站课程或合集",
+                kind="bilibili_collection_url",
+                value=url,
+                media_kind="video_collection",
+                coverage_role="full_collection",
+            )
         match = re.search(r"/video/(?P<id>BV[0-9A-Za-z]{10}|av[0-9]+)", path, re.IGNORECASE)
         if match:
             identifier = match.group("id")

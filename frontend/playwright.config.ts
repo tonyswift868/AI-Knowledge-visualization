@@ -16,12 +16,21 @@ const backendEnv = {
   MENTORFLOW_DB: path.join(isolatedRuntime, 'app.db'),
   MENTORFLOW_ORM_DB: path.join(isolatedRuntime, 'mentorflow_v2.db'),
   MENTORFLOW_ACTIVE_UPLOAD_ROOT: path.join(isolatedRuntime, 'active-teaching', 'uploads'),
+  MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT: path.join(isolatedRuntime, 'classroom', 'uploads'),
+  MENTORFLOW_TEMP_ROOT: path.join(isolatedRuntime, 'temp'),
+  MENTORFLOW_USER_DATA_ROOT: path.join(isolatedRuntime, 'user-data'),
 }
 
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   fullyParallel: false,
+  // The desktop product is intentionally local single-user and all browser
+  // specs exercise one shared isolated database. Running separate spec files
+  // in parallel invents a multi-client workload, races stateful expedition
+  // fixtures, and can starve ordinary API reads. Keep the acceptance contract
+  // serial; concurrency belongs in focused backend tests with explicit bounds.
+  workers: 1,
   reporter: [['list']],
   use: { baseURL: frontendUrl, trace: 'on-first-retry', ...devices['Desktop Chrome'], launchOptions: { executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' } },
   webServer: [

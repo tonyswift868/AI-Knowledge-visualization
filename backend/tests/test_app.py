@@ -801,6 +801,23 @@ def test_feasibility_system_allocates_daily_minutes_with_buffer(client):
     assert saved_goal["minutes_per_day"] == result["recommended_minutes_per_day"]
 
 
+def test_feasibility_confirm_requires_explicit_minutes_option(client):
+    ws = make_workspace(client)
+    assert client.post(
+        f"/api/workspaces/{ws['id']}/sources/text",
+        json={"title": "资料一", "text": "# 关键概念\n\n这是一个足够长的真实资料片段，用于建立可行性确认契约。"},
+    ).status_code == 200
+    assert make_goal(client, ws["id"]).status_code == 200
+    analysis = client.post(f"/api/workspaces/{ws['id']}/feasibility/analyze").json()
+    response = client.post(
+        f"/api/workspaces/{ws['id']}/feasibility/confirm",
+        json={"confirmed": True, "selected_option": "keep_current", "minutes_per_day": analysis["recommended_minutes_per_day"]},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "FEASIBILITY_OPTION_MISMATCH"
+    assert client.get(f"/api/workspaces/{ws['id']}/goal").json()["payload"]["minutes_per_day"] == 30
+
+
 def test_start_date_is_saved_and_plan_starts_on_it(client):
     ws = make_workspace(client)
     start = date.today() + timedelta(days=2)
@@ -872,81 +889,75 @@ def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
     assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
 
 
-def test_authenticated_accounts_get_isolated_preset_directories(client, tmp_path, monkeypatch):
+def test_legacy_auth_switch_does_not_isolate_local_preset_directories(client, tmp_path, monkeypatch):
     from app import main as main_module
 
     monkeypatch.setenv("MENTORFLOW_AUTH_REQUIRED", "1")
     monkeypatch.setattr(main_module, "PRESET_SETTINGS_FILE", tmp_path / "preset_settings.json")
-    first = client.post(
-        "/api/auth/register",
-        json={
-            "username": "Preset_Owner",
-            "display_name": "预设所有者",
-            "password": "Correct-Horse-42",
-            "claim_existing_data": True,
-        },
-    )
-    assert first.status_code == 201, first.text
     saved = client.post(
         "/api/presets",
-        json={"name": "Owner Only", "form": {"title": "private"}},
+        json={"name": "Local Preset", "form": {"title": "shared"}},
     )
     assert saved.status_code == 200, saved.text
-    legacy_directory = saved.json()["directory"]
-    assert client.post("/api/auth/logout").status_code == 204
-
-    second = client.post(
-        "/api/auth/register",
-        json={
-            "username": "Preset_Other",
-            "display_name": "另一个账户",
-            "password": "Another-Horse-43",
-            "claim_existing_data": False,
-        },
-    )
-    assert second.status_code == 201, second.text
-    assert client.get("/api/presets").json()["presets"] == []
-    denied = client.post(
-        "/api/presets",
-        json={"name": "escape", "directory": legacy_directory, "form": {}},
-    )
-    assert denied.status_code == 400
-    assert denied.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+    assert client.get("/api/presets").json()["presets"][0]["name"] == "Local Preset"
 
 
 def test_kks_routes_report_explicit_unavailable_capability(client):
-    capability = client.get("/api/koikatsu/capability")
-    assert capability.status_code == 200
-    assert capability.json()["available"] is False
-    assert capability.json()["code"] == "KKS_RUNTIME_UNAVAILABLE"
-    assert capability.json()["fallback"] == "teacher_without_avatar"
-    assert capability.json()["status"] == "unavailable"
-    assert capability.json()["runtime_version_hash"]
-    response = client.get("/api/teacher-avatars")
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "KKS_RUNTIME_UNAVAILABLE"
-    assert response.json()["error"]["details"]["fallback"] == "teacher_without_avatar"
-    assert response.json()["error"]["details"]["operation"] == "native_avatar"
-    inspect = client.post("/api/teacher-avatars/koikatsu/inspect")
-    assert inspect.status_code == 503
-    assert inspect.json()["error"]["details"]["operation"] == "inspect_card"
-    export = client.post("/api/teacher-avatars/koikatsu/export")
-    assert export.status_code == 503
-    assert export.json()["error"]["details"]["operation"] == "export_card"
+    presets = client.get("/api/teacher-avatar-card-presets")
+    assert presets.status_code == 200
+    body = presets.json()
+    assert body["status"] in {"ready", "partial", "unavailable"}
+    assert body["source"] == "local-card-roster"
+    assert body["count"] == len(body["items"]) == body["total"]
+    assert body["declared_count"] >= body["total"]
+    assert isinstance(body["unavailable"], list)
+    if body["status"] == "unavailable":
+        assert body["available"] is False
+        assert body["reason"]
+        assert body["reason_code"]
+    elif body["status"] == "partial":
+        assert body["available"] is True
+        assert body["unavailable"]
+        assert body["reason"]
+        assert body["reason_code"]
+    else:
+        assert body["available"] is True
+        assert body["unavailable"] == []
+        assert body["reason"] is None
+        assert body["reason_code"] is None
+
+    registry = client.get("/api/teacher-avatars")
+    assert registry.status_code == 200
+    registry_body = registry.json()
+    assert registry_body["count"] == len(registry_body["items"])
+    assert registry_body["accepted_formats"]
 
 
 def test_goal_intent_receipt_preserves_input_and_asks_at_most_one_question(client):
+    from app.goal_intent import build_goal_intent_receipt
+
     workspace = client.post("/api/workspaces", json={"title": "Intent receipt"}).json()
-    response = client.post(
-        f"/api/workspaces/{workspace['id']}/goal/intent-receipt",
-        json={
-            "original_text": "Learn graph algorithms",
-            "normalized": {"goal_statement": "Learn graph algorithms"},
-        },
+    receipt = build_goal_intent_receipt(
+        "Learn graph algorithms",
+        normalized={"goal_statement": "Learn graph algorithms"},
     )
-    assert response.status_code == 200
-    receipt = response.json()
-    assert receipt["original_text"] == "Learn graph algorithms"
-    assert receipt["normalized"]["goal_statement"] == "Learn graph algorithms"
-    assert receipt["missing_critical_fields"]
-    assert len(receipt["clarification_questions"]) == 1
+    receipt_payload = receipt.to_dict()
+    assert receipt_payload["original_text"] == "Learn graph algorithms"
+    assert receipt_payload["normalized"]["goal_statement"] == "Learn graph algorithms"
+    assert receipt_payload["missing_critical_fields"]
+    assert len(receipt_payload["clarification_questions"]) == 1
+    goal = {
+        "goal_statement": "Learn graph algorithms",
+        "motivation": "Build a grounded study loop",
+        "deadline": (date.today() + timedelta(days=14)).isoformat(),
+        "minutes_per_day": 30,
+        "days_per_week": 5,
+        "preferred_weekdays": [0, 1, 2, 3, 4],
+        "current_level": "beginner",
+        "expected_output": "A tested graph algorithm explanation",
+        "unavailable_dates": [],
+        "success_criteria": ["explain the algorithm with evidence"],
+    }
+    submitted = client.post(f"/api/workspaces/{workspace['id']}/goal", json=goal)
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["payload"]["goal_statement"] == receipt_payload["normalized"]["goal_statement"]

@@ -18,6 +18,7 @@ MentorFlow 只维护产品特有的修订、证据、审核、计划激活和教
 | Windows 凭据 | keyring 25.7.0 | MIT | 仅接受 Windows Credential Locker 后端；无明文回退 |
 | 图片 OCR | RapidOCR 3.x | Apache-2.0 | 本地图片及扫描页面文本化 |
 | 音频转写 | SenseVoice + sherpa-onnx | 对应仓库/模型许可证 | 复用现有只读运行时，MentorFlow 只管理进程、上传根与证据时间段 |
+| 视频目录与字幕适配 | yt-dlp 2026.8.19（Python 包） | Unlicense | 只做用户确认后的公开目录元数据和字幕轨道适配；禁止下载视频媒体，课程摘要、证据、断点和状态机仍由 MentorFlow 管理 |
 
 Docling 放在可选依赖组中：轻量文本、代码和结构化格式继续使用现有本地适配器；需要复杂文档时才安装。适配器能力和健康状态必须通过统一注册表暴露，不能在 API 或前端再维护扩展名清单。
 

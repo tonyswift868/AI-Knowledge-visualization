@@ -19,7 +19,7 @@ import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
-from xml.etree import ElementTree
+from xml.etree.ElementTree import ParseError
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,7 @@ from app.koikatsu_mod_assets import (  # noqa: E402
     sanitize_index_row_values,
     semantic_definition_signature,
 )
+from app.safe_xml import fromstring as safe_xml_fromstring  # noqa: E402
 
 
 MAX_LIST_CSV_BYTES = 16 * 1024 * 1024
@@ -222,7 +223,7 @@ def _manifest_guid(bundle: zipfile.ZipFile, entries: list[zipfile.ZipInfo]) -> s
     entry = min(candidates, key=lambda item: (item[0], item[1]))[2]
     if entry.file_size > MAX_MANIFEST_BYTES:
         raise ValueError(f"manifest.xml exceeds {MAX_MANIFEST_BYTES} bytes")
-    root = ElementTree.fromstring(bundle.read(entry))
+    root = safe_xml_fromstring(bundle.read(entry))
     for element in root.iter():
         local_name = str(element.tag).rsplit("}", 1)[-1].casefold()
         if local_name == "guid" and str(element.text or "").strip():
@@ -392,7 +393,7 @@ def build_index(
                 csv.Error,
                 sqlite3.Error,
                 zipfile.BadZipFile,
-                ElementTree.ParseError,
+                ParseError,
             ) as exc:
                 invalid_archives += 1
                 errors.append(f"{archive}: {exc}")

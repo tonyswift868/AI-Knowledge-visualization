@@ -1,14 +1,14 @@
 {
   "schema": "mentorflow.version.v1",
   "product": "MentorFlow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "channel": "stable",
   "update": {
     "provider": "github",
-    "enabled": false,
-    "owner": "",
-    "repo": "",
-    "asset_name_pattern": "MentorFlow-{version}-win-x64.zip",
+    "enabled": true,
+    "owner": "tonyswift868",
+    "repo": "AI-Knowledge-visualization",
+    "asset_name_pattern": "MentorFlow-{version}-win-x64-Setup.exe",
     "staging_root": "E:\\MentorFlowUpdates"
   }
 }

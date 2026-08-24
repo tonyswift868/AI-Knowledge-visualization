@@ -5,6 +5,8 @@ import json
 import struct
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL_PATH = ROOT / "tools" / "verify_kks_universal_transform_contract.py"
@@ -12,6 +14,21 @@ SPEC = importlib.util.spec_from_file_location("verify_kks_universal_transform_co
 assert SPEC and SPEC.loader
 VERIFY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VERIFY)
+
+
+def _require_external_kks_inputs(paths: dict[str, Path]) -> None:
+    """Skip a real-asset check only when one immutable input is unavailable."""
+
+    for label, path in paths.items():
+        try:
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            with path.open("rb") as stream:
+                stream.read(1)
+        except OSError as exc:
+            pytest.skip(
+                f"external KKS prerequisite unavailable: {label} ({path}; {exc.__class__.__name__})"
+            )
 
 
 def _matrix(x: float = 0.0) -> list[float]:
@@ -452,12 +469,20 @@ def test_real_hayasaka_inputs_never_claim_numerical_equivalence() -> None:
         ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "runtime-skins"
         / "_shared" / "e45d6a3f0ac9e782"
     )
+    inputs = {
+        "Hayasaka exact GLB": ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "web-models" / "01413f1d1ea31292" / "model.glb",
+        "neutral-head hierarchy": ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "shared-base" / "neutral-head" / "hierarchy.json",
+        "neutral-body hierarchy": ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "shared-base" / "neutral-body" / "hierarchy.json",
+        "Hayasaka head driver": runtime / "head-shape-driver.json",
+        "neutral body driver": ROOT / "legacy" / "koikatsu-3d" / "resources" / "web" / "kks-body-shape-driver.json",
+    }
+    _require_external_kks_inputs(inputs)
     report = VERIFY.verify_contract(
-        exact_glb=ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "web-models" / "01413f1d1ea31292" / "model.glb",
-        head_hierarchy=ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "shared-base" / "neutral-head" / "hierarchy.json",
-        body_hierarchy=ROOT / "legacy" / "koikatsu-3d" / "resources" / "runtime" / "shared-base" / "neutral-body" / "hierarchy.json",
-        head_driver=runtime / "head-shape-driver.json",
-        body_driver=ROOT / "legacy" / "koikatsu-3d" / "resources" / "web" / "kks-body-shape-driver.json",
+        exact_glb=inputs["Hayasaka exact GLB"],
+        head_hierarchy=inputs["neutral-head hierarchy"],
+        body_hierarchy=inputs["neutral-body hierarchy"],
+        head_driver=inputs["Hayasaka head driver"],
+        body_driver=inputs["neutral body driver"],
     )
 
     assert report["numerical_equivalence"]["status"] == "unknown"

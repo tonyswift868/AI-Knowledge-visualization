@@ -40,9 +40,17 @@ import { speakLocalTeacherVoice, stopLocalTeacherVoice } from "./features/voice/
 import { createLearningRun, requestLearningHint, sendLearningRunMessage, submitLearningRun, submitQuickQuiz } from "./features/learning-run/api";
 import { ExpeditionView } from "./features/expedition/ExpeditionView";
 import { ActiveTeachingChainView, materialAcceptFromCapabilities } from "./features/active-teaching/ActiveTeachingChainView";
+import { activeSnapshot } from "./features/active-teaching/api";
 import { CasualTeacherChat, type PlannerHandoff } from "./features/casual-chat/CasualTeacherChat";
 import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
+import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
+import {
+  TEACHER_STAGE_IDLE_REACTION_MS,
+  TEACHER_STAGE_STATES,
+  readTeacherStageState,
+  teacherStageIdleReaction,
+} from "./features/teachers/presentation/teacherStageState";
 
 const TeacherAvatarStudio = lazy(() => import("./features/teachers/TeacherAvatarStudio").then(module => ({ default: module.TeacherAvatarStudio })));
 const DRAFT_STORAGE_KEY = "mentorflow_create_draft_v2";
@@ -137,6 +145,8 @@ function CharacterPortrait({ character, className = "" }: { character: any; clas
 }
 
 export function App() {
+  const standaloneTool = new URLSearchParams(window.location.search).get("tool");
+  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources";
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
@@ -163,6 +173,7 @@ export function App() {
     }
   });
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
   const [ws, setWs] = useState<Workspace | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [today, setToday] = useState<any>(null);
@@ -232,14 +243,20 @@ export function App() {
   }, [draftLoaded, form]);
   useEffect(() => { try { localStorage.setItem(DAILY_SETTINGS_KEY, JSON.stringify(dailySettings)); } catch { /* local storage can be unavailable */ } }, [dailySettings]);
   useEffect(() => {
+    if (providerlessStandalone) {
+      setWorkspacesLoaded(true);
+      return;
+    }
     request<Workspace[]>("/workspaces")
       .then((items) => {
         setWorkspaces(items);
         if (items[0]) selectWs(items[0]);
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {})
+      .finally(() => setWorkspacesLoaded(true));
+  }, [providerlessStandalone]);
   useEffect(() => {
+    if (providerlessStandalone) return;
     let cancelled = false;
     let timer: number | undefined;
     let attempts = 0;
@@ -261,8 +278,9 @@ export function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, []);
+  }, [providerlessStandalone]);
   useEffect(() => {
+    if (providerlessStandalone) return;
     if (providerState.provider === "fake" || !providerState.credentialRef) return;
     const configKey = [
       providerState.provider,
@@ -302,6 +320,7 @@ export function App() {
     providerState.model,
     providerState.provider,
     providerState.verified,
+    providerlessStandalone,
   ]);
   useEffect(() => {
     if (toast) {
@@ -371,7 +390,6 @@ export function App() {
     try {
       const a = await request<any>(`/workspaces/${ws.id}/feasibility/analyze`, { method: "POST", body: JSON.stringify(providerRequestContext()) });
       setAssessment(a);
-      if (a.recommended_minutes_per_day) setField("minutes_per_day", a.recommended_minutes_per_day);
       setStep(4);
       setToast("可行性分析完成，请确认风险后生成计划");
     } catch (e: any) {
@@ -380,13 +398,20 @@ export function App() {
       setBusy(false);
     }
   }
-  async function generate() {
+  async function generate(selection: "keep_current" | "increase_daily_minutes" = "keep_current") {
     if (!ws) return;
     setBusy(true);
     try {
+      const suggestedMinutes = Number(assessment?.suggested_goal_patch?.minutes_per_day);
+      const acceptsSuggestion = selection === "increase_daily_minutes" && Number.isFinite(suggestedMinutes) && suggestedMinutes > 0;
       await request(`/workspaces/${ws.id}/feasibility/confirm`, {
         method: "POST",
-        body: JSON.stringify({ confirmed: true }),
+        body: JSON.stringify({
+          confirmed: true,
+          ...(acceptsSuggestion
+            ? { selected_option: "increase_daily_minutes", minutes_per_day: suggestedMinutes }
+            : {}),
+        }),
       });
       const p = await request<Plan>(`/workspaces/${ws.id}/plans/generate`, {
         method: "POST",
@@ -492,7 +517,6 @@ export function App() {
     [allDays],
   );
   const realVerified = providerState.mode === "real" && providerState.verified;
-  const standaloneTool = new URLSearchParams(window.location.search).get("tool");
   useEffect(() => {
     // The desktop shell embeds these tools at narrow widths. Keep the
     // document itself fluid while a standalone route is mounted; app.css
@@ -535,7 +559,7 @@ export function App() {
     );
   }
   if (standaloneTool === "casual") {
-    return <StandaloneCasualTool workspaceId={ws?.id || ""} />;
+    return <StandaloneCasualTool workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} />;
   }
   if (standaloneTool === "progress") {
     return (
@@ -725,7 +749,7 @@ export function App() {
           )}{" "}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
-          {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || "general-learning"} mode="casual" />}
+          {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} mode="casual" />}
           {tab === "active" && (
             <ActiveTeachingChainView
               workspaceId={ws?.id || "general-learning"}
@@ -854,6 +878,27 @@ function StandaloneExpeditionTool() {
 }
 
 function StandaloneTeacherStage({ workspaceId }: { workspaceId: string }) {
+  const [presentationState, setPresentationState] = useState<TeacherPresentationState>(() => readTeacherStageState(window.location.search));
+  const [classroomTheme, setClassroomTheme] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("theme") || "sakura";
+    return new Set(["sakura", "after_school", "rainy_window", "cyber"]).has(requested) ? requested : "sakura";
+  });
+  const [teacherIdentity, setTeacherIdentity] = useState<{ name: string; manifestUrl?: string }>({ name: "艾莉丝" });
+  useEffect(() => {
+    let cancelled = false;
+    void activeSnapshot(workspaceId).then(snapshot => {
+      if (cancelled) return;
+      const saved = snapshot.session?.state || snapshot.receipt || {};
+      const name = String(saved.teacher_persona_name || "艾莉丝").trim() || "艾莉丝";
+      const manifestUrl = String(saved.teacher_visual_manifest_url || "").trim() || undefined;
+      setTeacherIdentity({ name, manifestUrl });
+    }).catch(() => {
+      // A stage without a saved workspace remains usable with the public
+      // default. Never overwrite an explicitly saved local teacher merely
+      // because the standalone projection is temporarily unavailable.
+    });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
   useEffect(() => {
     const previousMargin = document.body.style.margin;
     const previousOverflow = document.body.style.overflow;
@@ -864,10 +909,48 @@ function StandaloneTeacherStage({ workspaceId }: { workspaceId: string }) {
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+  useEffect(() => {
+    const receiveTeacherState = (event: MessageEvent) => {
+      if (event.origin && event.origin !== window.location.origin) return;
+      const payload = event.data;
+      if (!payload) return;
+      if (payload.type === "mentorflow.teacher-theme") {
+        const nextTheme = String(payload.theme || "");
+        if (new Set(["sakura", "after_school", "rainy_window", "cyber"]).has(nextTheme)) {
+          setClassroomTheme(nextTheme);
+        }
+        return;
+      }
+      if (payload.type === "mentorflow.teacher-state") {
+        const next = String(payload.state || "") as TeacherPresentationState;
+        if (TEACHER_STAGE_STATES.has(next)) setPresentationState(next);
+      }
+    };
+    window.addEventListener("message", receiveTeacherState);
+    return () => window.removeEventListener("message", receiveTeacherState);
+  }, []);
+  useEffect(() => {
+    if (presentationState !== "questioning") return;
+    const timer = window.setTimeout(() => {
+      setPresentationState(current => teacherStageIdleReaction(current, TEACHER_STAGE_IDLE_REACTION_MS));
+    }, TEACHER_STAGE_IDLE_REACTION_MS);
+    return () => window.clearTimeout(timer);
+  }, [presentationState]);
   return (
-    <main className="teacher-stage-standalone" aria-label="课堂 2D 教师">
+    <main
+      className={`teacher-stage-standalone teacher-stage-theme-${classroomTheme}`}
+      data-classroom-theme={classroomTheme}
+      aria-label="课堂 2D 教师"
+    >
       <Suspense fallback={<div className="empty-state">正在加载 2D 教师…</div>}>
-        <TeacherAvatarStudio workspaceId={workspaceId} compact portrait presentationState="explaining" />
+        <TeacherAvatarStudio
+          workspaceId={workspaceId}
+          compact
+          portrait
+          presentationState={presentationState}
+          teacherName={teacherIdentity.name}
+          presentationManifestUrl={teacherIdentity.manifestUrl}
+        />
       </Suspense>
     </main>
   );
@@ -914,15 +997,12 @@ function StandaloneTeacherResources() {
         <section className="resource-download-card" aria-labelledby="teacher-resource-title">
           <div>
             <div className="eyebrow">2D TEACHER</div>
-            <h2 id="teacher-resource-title">下载椿 · 2D 教师骨骼</h2>
-            <p>这是本项目内置的 Live2D 教师资源包。下载后可以保存到任意位置，迁移时和本地数据包分开管理。</p>
+            <h2 id="teacher-resource-title">连接你已合法持有的 2D 教师</h2>
+            <p>MentorFlow 不提供或再分发第三方 Live2D 模型。请选择你已获得合法使用授权的本地模型目录；模型与个人预设不会进入迁移包或新电脑默认值。</p>
           </div>
-          <a className="primary" href="/api/teacher2d/tsubaki-live2d/download" download>
-            下载 2D 资源包
-          </a>
           <div className="resource-download-card__local" data-testid="teacher-2d-resource-picker">
-            <b>匹配本地 2D 资源</b>
-            <span>如果当前环境没有项目内置资源，可以选择本地目录或资源包；系统只根据文件名匹配。</span>
+            <b>检查本地 2D 资源</b>
+            <span>选择本地目录或资源包；当前步骤只在浏览器内检查文件名，不上传、不复制，也不替你判断模型授权。</span>
             <button className="secondary" type="button" onClick={() => local2DPickerRef.current?.click()}>
               选择本地 2D 目录或文件
             </button>
@@ -939,7 +1019,7 @@ function StandaloneTeacherResources() {
             />
             <small data-testid="teacher-2d-resource-state" role="status">
               {!local2DMatch
-                ? "未匹配本地 2D 资源；可选择目录或下载资源包。"
+                ? "尚未选择本地 2D 资源。"
                 : local2DMatch.matched
                   ? `已匹配本地 2D 资源：${local2DMatch.path}（${local2DMatch.fileCount} 个文件）`
                   : `未找到可识别的 2D 资源（已检查 ${local2DMatch.fileCount} 个文件）。`}
@@ -1105,6 +1185,13 @@ export function Create({
   const [presets, setPresets] = useState<any[]>([]);
   const [presetMessage, setPresetMessage] = useState("");
   const [presetDirectory, setPresetDirectory] = useState("");
+  const [feasibilityChoice, setFeasibilityChoice] = useState<"keep_current" | "increase_daily_minutes">("keep_current");
+  useEffect(() => {
+    // Every fresh assessment (including a rerun or workspace switch) starts
+    // from the learner's existing allocation. The system must not infer
+    // consent from the previous analysis result.
+    setFeasibilityChoice("keep_current");
+  }, [assessment]);
   useEffect(() => {
     let localSaved: any[] = [];
     try {
@@ -1407,7 +1494,33 @@ export function Create({
                 </div>
               ))}
             </div>
-            <div className="system-allocation-card"><span>系统已分配每日投入</span><b>{assessment?.recommended_minutes_per_day || form.minutes_per_day} 分钟 / 天</b><small>基于 {assessment?.available_study_days || "可用"} 个学习日、资料估算和 20% 计划损耗；该值已自动写入当前目标。</small></div>
+            <div className="system-allocation-card"><span>系统建议每日投入</span><b>{assessment?.recommended_minutes_per_day || form.minutes_per_day} 分钟 / 天</b><small>基于 {assessment?.available_study_days || "可用"} 个学习日、资料估算和 20% 计划损耗；只有你明确选择后才会写入当前目标。</small></div>
+            <fieldset className="feasibility-choice" aria-label="确认每日投入">
+              <legend>请选择确认方式</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="feasibility-choice"
+                  value="keep_current"
+                  checked={feasibilityChoice === "keep_current"}
+                  style={{ width: "auto", marginTop: 0 }}
+                  onChange={() => setFeasibilityChoice("keep_current")}
+                />
+                <span><b>保持当前投入</b><small>继续按 {form.minutes_per_day} 分钟 / 天生成计划，不修改已保存目标。</small></span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="feasibility-choice"
+                  value="increase_daily_minutes"
+                  checked={feasibilityChoice === "increase_daily_minutes"}
+                  disabled={!assessment?.suggested_goal_patch?.minutes_per_day}
+                  style={{ width: "auto", marginTop: 0 }}
+                  onChange={() => setFeasibilityChoice("increase_daily_minutes")}
+                />
+                <span><b>采用建议投入</b><small>{assessment?.suggested_goal_patch?.minutes_per_day ? `确认后改为 ${assessment.suggested_goal_patch.minutes_per_day} 分钟 / 天。` : "当前投入已符合建议，无需修改。"}</small></span>
+              </label>
+            </fieldset>
             <div className="notice">
               <ShieldCheck size={17} />
               <div>
@@ -1456,7 +1569,7 @@ export function Create({
               <button className="secondary" onClick={() => setStep(4)}>
                 返回
               </button>
-              <button className="primary" onClick={generate}>
+              <button className="primary" onClick={() => generate(feasibilityChoice)}>
                 生成计划 <Sparkles size={16} />
               </button>
             </div>

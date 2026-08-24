@@ -3,6 +3,7 @@ import type { Teacher2DManifest, Teacher2DRenderer, TeacherPresentationState } f
 import type { DragonBonesAdapterOptions } from "./DragonBonesTeacherAdapter"
 
 export const imageTeacherAnimations = ["idle", "wave", "think", "talk", "explain", "question", "cheer", "heart", "confused", "surprised"] as const
+const staticImageAnimations = ["idle"] as const
 const skins = ["teaching", "swimsuit"]
 
 function preloadImage(url: string): Promise<void> {
@@ -49,9 +50,11 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
       root.className = "image-teacher"
       root.dataset.state = "idle"
       root.dataset.skin = "teaching"
+      root.dataset.motionModel = "static-image-fallback"
+      root.dataset.semanticMotion = "unsupported"
       root.tabIndex = 0
       root.setAttribute("role", "button")
-      root.setAttribute("aria-label", "可互动 AI 教师，点击角色触发动作")
+      root.setAttribute("aria-label", "可互动 AI 教师（静态图片回退；点击角色显示文字反应）")
       root.innerHTML = `
         <div class="image-teacher-glow" aria-hidden="true"></div>
         <div class="image-teacher-body">
@@ -100,8 +103,11 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
   playAnimation(name: string, loop = false): void {
     if (!this.root || !imageTeacherAnimations.includes(name as typeof imageTeacherAnimations[number])) return
     if (this.actionTimer) window.clearTimeout(this.actionTimer)
-    this.currentAnimation = name
+    // The image fallback has no authored motion parameters. Keep the reported
+    // animation static while retaining the semantic label/reaction for callers.
+    this.currentAnimation = "idle"
     this.root.dataset.state = name
+    this.root.dataset.semanticState = name
     this.root.classList.remove("action-restart")
     void this.root.offsetWidth
     this.root.classList.add("action-restart")
@@ -109,8 +115,8 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
     if (!loop && name !== "idle") {
       this.actionTimer = window.setTimeout(() => {
         if (!this.root) return
-        this.currentAnimation = "idle"
         this.root.dataset.state = "idle"
+        this.root.dataset.semanticState = "idle"
         this.setReaction("")
         this.emit()
       }, 1450)
@@ -118,7 +124,7 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
     this.emit()
   }
 
-  listAnimations(): string[] { return [...imageTeacherAnimations] }
+  listAnimations(): string[] { return [...staticImageAnimations] }
   listSkins(): string[] { return [...skins] }
 
   setSkin(name: string): void {
@@ -214,7 +220,7 @@ export class ImageTeacherAdapter implements Teacher2DRenderer {
     const bounds = this.host.getBoundingClientRect()
     this.onSnapshot?.({
       currentAnimation: this.currentAnimation,
-      animations: [...imageTeacherAnimations],
+      animations: [...staticImageAnimations],
       skins: [...skins],
       loadedTextures: [...this.manifest.textures],
       canvasWidth: Math.round(bounds.width),

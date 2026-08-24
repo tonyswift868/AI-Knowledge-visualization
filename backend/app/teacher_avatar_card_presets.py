@@ -50,18 +50,43 @@ def _read_card(card_id: str) -> dict[str, Any]:
 
 
 def list_card_presets() -> dict[str, Any]:
+    """Return the usable built-in cards and an explicit availability status.
+
+    Card presets are an optional convenience layer on top of the teacher
+    roster.  A frozen package can therefore contain no card files (or cards
+    whose shared body template is not installed) without making the roster
+    request fail.  Keep the diagnostics in the response so the UI can explain
+    the missing optional resource instead of inventing a card count.
+    """
     items: list[dict[str, Any]] = []
-    for item in _load_manifest()["cards"]:
+    unavailable: list[dict[str, str]] = []
+    try:
+        manifest = _load_manifest()
+    except TeacherAvatarError as exc:
+        return {
+            "items": [],
+            "count": 0,
+            "total": 0,
+            "source": "local-card-roster",
+            "status": "unavailable",
+            "available": False,
+            "reason": exc.message,
+            "reason_code": exc.code,
+            "declared_count": 0,
+            "unavailable": [],
+        }
+
+    cards = manifest["cards"]
+    for item in cards:
+        if not isinstance(item, dict):
+            unavailable.append({"card_id": "", "code": "CARD_PRESET_ENTRY_INVALID", "message": "内置角色卡清单包含无效条目。"})
+            continue
+        card_id = str(item.get("card_id") or "")
         try:
-            result = _read_card(str(item.get("card_id") or ""))
+            result = _read_card(card_id)
         except TeacherAvatarError as exc:
-            # These legacy MentorFlow presets reference an old VRM body
-            # template.  The current teacher page is driven by the native KKS
-            # runtime roster; an unavailable optional preset must not turn the
-            # whole page's background request into a 409 error.
-            if exc.code == "BODY_TEMPLATE_MISSING":
-                continue
-            raise
+            unavailable.append({"card_id": card_id, "code": exc.code, "message": exc.message})
+            continue
         card = result["card"]
         items.append(
             {
@@ -78,7 +103,36 @@ def list_card_presets() -> dict[str, Any]:
                 "native_summary": card.get("native_summary"),
             }
         )
-    return {"items": items, "count": len(items), "total": len(items), "source": "local-card-roster"}
+    declared_count = len(cards)
+    if not items:
+        status = "unavailable"
+        reason = "没有可用的内置角色卡；请安装资源或在下方导入角色卡。"
+        reason_code = "CARD_PRESET_RESOURCES_UNAVAILABLE"
+        available = False
+    elif unavailable:
+        status = "partial"
+        reason = f"已加载 {len(items)} 张内置角色卡；另有 {len(unavailable)} 张因资源缺失或无效而不可用。"
+        reason_code = "CARD_PRESET_RESOURCES_PARTIAL"
+        available = True
+    else:
+        status = "ready"
+        reason = None
+        reason_code = None
+        available = True
+    return {
+        "items": items,
+        # Counts describe usable cards only; never report manifest entries as
+        # available when their resources failed validation.
+        "count": len(items),
+        "total": len(items),
+        "source": "local-card-roster",
+        "status": status,
+        "available": available,
+        "reason": reason,
+        "reason_code": reason_code,
+        "declared_count": declared_count,
+        "unavailable": unavailable,
+    }
 
 
 def get_card_preset(card_id: str) -> dict[str, Any]:

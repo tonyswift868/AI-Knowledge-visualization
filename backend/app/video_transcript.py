@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import ipaddress
 import json
 import re
 import time
@@ -22,8 +23,13 @@ from .open_search import OpenSearchError, search_web
 
 VIDEO_TRANSCRIPT_SCHEMA = "mentorflow.video-transcript-preview.v1"
 VIDEO_CAPABILITY_SCHEMA = "mentorflow.video-capability.v1"
+VIDEO_COLLECTION_MANIFEST_SCHEMA = "mentorflow.video-collection-manifest-page.v1"
+VIDEO_EPISODE_TRANSCRIPT_SCHEMA = "mentorflow.video-episode-transcript.v1"
 MAX_SUBTITLE_BYTES = 8 * 1024 * 1024
 MAX_SUBTITLE_SEGMENTS = 20_000
+MAX_COLLECTION_EPISODES = 1000
+MAX_COLLECTION_PAGE_SIZE = 100
+DEFAULT_COLLECTION_PAGE_SIZE = 50
 MAX_SEARCH_RESULTS = 8
 _CANDIDATE_CACHE: dict[str, tuple[float, dict[str, str]]] = {}
 
@@ -52,6 +58,35 @@ def _host(url: str) -> str:
         return ""
 
 
+def _is_public_video_network_url(url: str) -> bool:
+    """Reject obvious local or credential-bearing retrieval targets."""
+
+    try:
+        parsed = urlparse(str(url or "").strip())
+        host = (parsed.hostname or "").casefold().strip(".")
+    except (TypeError, ValueError):
+        return False
+    if parsed.scheme != "https" or not host or parsed.username is not None or parsed.password is not None:
+        return False
+    if host == "localhost" or host.endswith((".local", ".internal")):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    return not (
+        address
+        and (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_multicast
+            or address.is_unspecified
+        )
+    )
+
+
 def is_bilibili_url(url: str) -> bool:
     host = _host(url)
     return host == "bilibili.com" or host.endswith(".bilibili.com") or host in {
@@ -65,20 +100,45 @@ def is_youtube_url(url: str) -> bool:
     return host in {"youtube.com", "youtu.be"} or host.endswith(".youtube.com")
 
 
+def is_bilibili_collection_url(url: str) -> bool:
+    """Recognize explicit Bilibili series/course containers without fetching."""
+
+    if not is_bilibili_url(url):
+        return False
+    try:
+        parsed = urlparse(str(url or "").strip())
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").casefold().strip(".")
+    path = (parsed.path or "/").casefold().rstrip("/")
+    query = str(parsed.query or "").casefold()
+    if host == "space.bilibili.com":
+        if re.fullmatch(r"/[0-9]+/lists/[0-9]+", path):
+            return True
+        if re.fullmatch(r"/[0-9]+/channel/(?:seriesdetail|collectiondetail)", path):
+            return "sid=" in query or "season_id=" in query
+    return bool(
+        re.match(r"/(?:medialist/play|list)/", path)
+        or re.match(r"/(?:bangumi|cheese)/play/(?:ss|md|ep)[0-9]+", path)
+    )
+
+
 def classify_video_url(url: str) -> dict[str, Any]:
     """Classify a URL without fetching it or treating a video as HTML."""
 
     value = str(url or "").strip()
     parsed = urlparse(value)
-    valid = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+    valid = _is_public_video_network_url(value)
     host = _host(value)
     path = (parsed.path or "").casefold()
     query = str(parsed.query or "").casefold()
+    bilibili_collection = is_bilibili_collection_url(value)
     bilibili_video = bool(
         is_bilibili_url(value)
         and (
             host == "b23.tv"
             or re.search(r"/video/(?:bv[0-9a-z]{10}|av[0-9]+)", path)
+            or bilibili_collection
         )
     )
     youtube_video = bool(
@@ -94,7 +154,7 @@ def classify_video_url(url: str) -> dict[str, Any]:
     provider = "bilibili" if bilibili_video else ("youtube" if youtube_video else "")
     extension_video = bool(re.search(r"\.(?:mp4|m3u8|webm|mov|mkv)(?:$|\?)", path))
     recognised = bool(provider or extension_video)
-    kind = "video" if recognised else "webpage"
+    kind = "video_collection" if bilibili_collection else ("video" if recognised else "webpage")
     return {
         "schema": VIDEO_CAPABILITY_SCHEMA,
         "url": value,
@@ -102,6 +162,7 @@ def classify_video_url(url: str) -> dict[str, Any]:
         "kind": kind,
         "recognized": bool(valid and recognised),
         "provider": provider or None,
+        "is_collection": bool(bilibili_collection or (youtube_video and "list=" in query)),
         "capabilities": {
             "subtitle_extraction": bool(valid and recognised),
             "supplementary_material_search": bool(valid and recognised),
@@ -322,8 +383,10 @@ def _subtitle_entries(info: Mapping[str, Any]) -> list[tuple[str, bool, dict[str
                 # track named ``danmaku``.  It is audience chatter, not course
                 # narration, and must never become learning evidence.
                 track_name = str(language or "").casefold()
-                track_format = str(item.get("ext") or item.get("name") or "").casefold()
+                track_format = str(item.get("ext") or item.get("name") or "").casefold().lstrip(".").split("?", 1)[0]
                 if "danmaku" in track_name or track_format in {"xml", "danmaku"}:
+                    continue
+                if track_format and track_format not in {"vtt", "srt", "json3", "json"}:
                     continue
                 entries.append((str(language), automatic, dict(item)))
     entries.sort(key=lambda item: (item[1], 0 if item[0].casefold().startswith(("zh", "en")) else 1))
@@ -334,6 +397,8 @@ def _download_subtitle(ydl: Any, entry: Mapping[str, Any]) -> bytes:
     url = str(entry.get("url") or "").strip()
     if not url:
         return b""
+    if not _is_public_video_network_url(url):
+        raise VideoTranscriptError("SUBTITLE_URL_REJECTED", "字幕地址不符合安全网络边界", status=422)
     if hasattr(ydl, "urlopen"):
         response = ydl.urlopen(url)
         payload = response.read(MAX_SUBTITLE_BYTES + 1)
@@ -345,6 +410,249 @@ def _download_subtitle(ydl: Any, entry: Mapping[str, Any]) -> bytes:
     if len(payload) > MAX_SUBTITLE_BYTES:
         raise VideoTranscriptError("SUBTITLE_TOO_LARGE", "字幕文件超过安全大小限制", status=413)
     return payload
+
+
+def _bounded_collection_page(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        parsed = DEFAULT_COLLECTION_PAGE_SIZE
+    return max(1, min(MAX_COLLECTION_PAGE_SIZE, parsed))
+
+
+def _bounded_collection_offset(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        parsed = 0
+    if parsed < 0 or parsed > MAX_COLLECTION_EPISODES:
+        raise VideoTranscriptError(
+            "COLLECTION_CURSOR_INVALID",
+            "课程剧集游标超出允许范围",
+            status=409,
+        )
+    return parsed
+
+
+def _enumerate_collection_page_sync(
+    url: str,
+    *,
+    offset: int = 0,
+    page_size: int = DEFAULT_COLLECTION_PAGE_SIZE,
+    ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    """Enumerate one bounded metadata page without downloading video bytes."""
+
+    try:
+        import yt_dlp
+    except ImportError as exc:
+        raise VideoTranscriptError("VIDEO_EXTRACTOR_UNAVAILABLE", "视频元数据提取器未安装", status=503) from exc
+    start = _bounded_collection_offset(offset)
+    size = _bounded_collection_page(page_size)
+    if start >= MAX_COLLECTION_EPISODES:
+        raise VideoTranscriptError("COLLECTION_EPISODE_LIMIT", "长课程最多支持 1000 集", status=422)
+    # Ask for one look-ahead entry so a provider that does not report the
+    # playlist count cannot silently truncate at the policy boundary.
+    end = min(MAX_COLLECTION_EPISODES + 1, start + size + 1)
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": False,
+        "extract_flat": "in_playlist",
+        "lazy_playlist": True,
+        "playlist_items": f"{start + 1}:{end}",
+        "socket_timeout": 8,
+        "retries": 1,
+    }
+    factory = ydl_factory or yt_dlp.YoutubeDL
+    try:
+        with factory(options) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+    except VideoTranscriptError:
+        raise
+    except Exception as exc:
+        raise VideoTranscriptError("VIDEO_COLLECTION_ENUMERATION_FAILED", f"课程目录无法读取：{exc}", status=422) from exc
+    if not isinstance(info, Mapping):
+        raise VideoTranscriptError("VIDEO_COLLECTION_ENUMERATION_FAILED", "课程目录响应格式无效", status=422)
+    reported_raw = info.get("playlist_count", info.get("n_entries", info.get("entry_count")))
+    reported_count: int | None = None
+    if reported_raw not in {None, ""}:
+        try:
+            reported_count = int(reported_raw)
+        except (TypeError, ValueError, OverflowError):
+            reported_count = None
+    if reported_count is not None and reported_count > MAX_COLLECTION_EPISODES:
+        raise VideoTranscriptError("COLLECTION_EPISODE_LIMIT", "该课程超过 1000 集上限，请缩小选择范围", status=422)
+    raw_entries = [item for item in (info.get("entries") or []) if isinstance(item, Mapping)]
+    overflow = start + len(raw_entries) > MAX_COLLECTION_EPISODES
+    if overflow:
+        raise VideoTranscriptError("COLLECTION_EPISODE_LIMIT", "该课程超过 1000 集上限，请缩小选择范围", status=422)
+    has_lookahead = len(raw_entries) > size
+    page_entries = raw_entries[:size]
+    provider = "bilibili" if is_bilibili_url(url) else ("youtube" if is_youtube_url(url) else (_host(url) or "video"))
+    items: list[dict[str, Any]] = []
+    for index, entry in enumerate(page_entries):
+        source_url = str(entry.get("webpage_url") or entry.get("url") or "").strip()
+        if source_url and not source_url.startswith(("http://", "https://")):
+            extractor_key = str(entry.get("extractor_key") or entry.get("ie_key") or "").casefold()
+            episode_key = str(entry.get("id") or "").strip()
+            if "youtube" in extractor_key and episode_key:
+                source_url = f"https://www.youtube.com/watch?v={episode_key}"
+        try:
+            duration = float(entry.get("duration") or 0)
+        except (TypeError, ValueError, OverflowError):
+            duration = 0.0
+        items.append(
+            {
+                "provider": provider,
+                "provider_episode_id": str(entry.get("id") or "")[:240],
+                "canonical_url": source_url,
+                "title": str(entry.get("title") or f"第 {start + index + 1} 集")[:300],
+                "ordinal": start + index,
+                "duration_seconds": max(0.0, duration),
+                "selected": True,
+                "metadata": {
+                    "channel": str(entry.get("channel") or entry.get("uploader") or "")[:240],
+                    "availability": str(entry.get("availability") or "")[:80],
+                },
+            }
+        )
+    next_offset = start + len(items)
+    has_more = bool(has_lookahead or (reported_count is not None and next_offset < reported_count))
+    if not items:
+        has_more = False
+    return {
+        "schema": VIDEO_COLLECTION_MANIFEST_SCHEMA,
+        "source_url": str(info.get("webpage_url") or url),
+        "provider": provider,
+        "provider_collection_id": str(info.get("id") or "")[:240],
+        "title": str(info.get("title") or "视频长课程")[:300],
+        "reported_count": reported_count,
+        "offset": start,
+        "page_size": size,
+        "items": items,
+        "next_offset": next_offset if has_more else None,
+        "has_more": has_more,
+        "network_metadata_only": True,
+        "video_downloaded": False,
+    }
+
+
+async def enumerate_video_collection_page(
+    url: str,
+    *,
+    offset: int = 0,
+    page_size: int = DEFAULT_COLLECTION_PAGE_SIZE,
+    ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    classification = classify_video_url(url)
+    if not classification["recognized"]:
+        raise VideoTranscriptError("VIDEO_URL_UNSUPPORTED", "该链接不是可识别的视频或课程地址", status=415)
+    return await asyncio.to_thread(
+        _enumerate_collection_page_sync,
+        url,
+        offset=offset,
+        page_size=page_size,
+        ydl_factory=ydl_factory,
+    )
+
+
+def _extract_episode_subtitle_sync(
+    url: str,
+    *,
+    requested_languages: list[str] | None = None,
+    allow_automatic: bool = True,
+    ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    try:
+        import yt_dlp
+    except ImportError as exc:
+        raise VideoTranscriptError("VIDEO_EXTRACTOR_UNAVAILABLE", "视频字幕提取器未安装", status=503) from exc
+    languages = [str(item).strip() for item in (requested_languages or ["zh.*", "en.*"]) if str(item).strip()][:8]
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "socket_timeout": 8,
+        "retries": 1,
+        "writesubtitles": True,
+        "writeautomaticsub": bool(allow_automatic),
+        "subtitleslangs": languages,
+        "subtitlesformat": "vtt/srt/json3",
+    }
+    factory = ydl_factory or yt_dlp.YoutubeDL
+    try:
+        with factory(options) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+            if not isinstance(info, Mapping):
+                raise VideoTranscriptError("VIDEO_EXTRACTION_FAILED", "视频字幕响应格式无效", status=422)
+            chosen: tuple[str, bool, dict[str, Any], list[SubtitleSegment]] | None = None
+            for language, automatic, entry in _subtitle_entries(info):
+                if automatic and not allow_automatic:
+                    continue
+                payload = _download_subtitle(ydl, entry)
+                extension = str(entry.get("ext") or entry.get("name") or "").casefold()
+                segments = parse_subtitle_payload(payload, extension)
+                if segments:
+                    chosen = (language, automatic, entry, segments)
+                    break
+    except VideoTranscriptError:
+        raise
+    except Exception as exc:
+        raise VideoTranscriptError("VIDEO_EXTRACTION_FAILED", f"视频字幕无法读取：{exc}", status=422) from exc
+    if chosen is None:
+        quality = assess_subtitle([], language="", automatic=False)
+        return {
+            "schema": VIDEO_EPISODE_TRANSCRIPT_SCHEMA,
+            "source_url": str(url),
+            "title": str(info.get("title") or "视频")[:300],
+            "provider_episode_id": str(info.get("id") or "")[:240],
+            "segments": [],
+            "quality": quality,
+            "track": None,
+            "video_downloaded": False,
+        }
+    language, automatic, entry, segments = chosen
+    quality = assess_subtitle(segments, language=language, automatic=automatic)
+    return {
+        "schema": VIDEO_EPISODE_TRANSCRIPT_SCHEMA,
+        "source_url": str(info.get("webpage_url") or url),
+        "title": str(info.get("title") or "视频")[:300],
+        "provider_episode_id": str(info.get("id") or "")[:240],
+        "duration_seconds": float(info.get("duration") or 0),
+        "segments": [
+            {"ordinal": index, "start_ms": item.start_ms, "end_ms": item.end_ms, "text": item.text}
+            for index, item in enumerate(segments)
+        ],
+        "quality": quality,
+        "track": {
+            "language": language,
+            "automatic": automatic,
+            "format": str(entry.get("ext") or entry.get("name") or "").casefold(),
+        },
+        "video_downloaded": False,
+    }
+
+
+async def extract_video_episode_subtitle(
+    url: str,
+    *,
+    requested_languages: list[str] | None = None,
+    allow_automatic: bool = True,
+    ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    classification = classify_video_url(url)
+    if not classification["recognized"]:
+        raise VideoTranscriptError("VIDEO_URL_UNSUPPORTED", "该链接不是可识别的视频地址", status=415)
+    return await asyncio.to_thread(
+        _extract_episode_subtitle_sync,
+        url,
+        requested_languages=requested_languages,
+        allow_automatic=allow_automatic,
+        ydl_factory=ydl_factory,
+    )
 
 
 def _extract_sync(url: str, ydl_factory: Callable[[dict[str, Any]], Any] | None = None) -> dict[str, Any]:

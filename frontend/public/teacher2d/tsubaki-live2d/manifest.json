@@ -21,6 +21,8 @@
     "praising": "praising",
     "encouraging": "encouraging",
     "confused": "confused",
+    "shy": "shy",
+    "playful_annoyed": "playful_annoyed",
     "ending": "ending",
     "error": "error"
   },
@@ -52,6 +54,8 @@
       "praising": "heart-eyes",
       "encouraging": "blush",
       "confused": "no-highlights",
+      "shy": "blush",
+      "playful_annoyed": "no-highlights",
       "ending": "blush",
       "error": "dark-face"
     }

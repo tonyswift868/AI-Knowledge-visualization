@@ -1,10 +1,15 @@
 import type { Teacher2DManifest, TeacherPresentationState } from "./teacherPresentationTypes"
 
-export const DEFAULT_TEACHER_MANIFEST_URL = "/teacher2d/tsubaki-live2d/manifest.json"
+/** Fresh installations use the original, distributable teacher rather than a developer's private preset. */
+export const DEFAULT_TEACHER_MANIFEST_URL = "/teacher2d/original-ai-teacher-blonde-fang/manifest.json"
+/** Private local model used only when an existing persona explicitly selects it. */
+export const PRIVATE_LOCAL_TEACHER_MANIFEST_URL = "/teacher2d/tsubaki-live2d/manifest.json"
+/** Offline-safe layered teacher used when an explicitly selected dynamic model is unavailable. */
+export const FALLBACK_TEACHER_MANIFEST_URL = DEFAULT_TEACHER_MANIFEST_URL
 
 const states: readonly TeacherPresentationState[] = [
   "loading", "idle", "greeting", "thinking", "talking", "explaining", "questioning",
-  "praising", "encouraging", "confused", "ending", "error", "hidden",
+  "praising", "encouraging", "confused", "shy", "playful_annoyed", "ending", "error", "hidden",
 ]
 
 export function validateTeacher2DManifest(value: unknown): Teacher2DManifest {

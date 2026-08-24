@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { Check, ExternalLink, FileDown, RotateCcw, Trash2, Upload } from "lucide-react"
-import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarMorph } from "./api"
+import { teacherAvatarApi, type KksCharacterPack, type SpineTeacher, type TeacherAvatar, type TeacherAvatarCardPreset, type TeacherAvatarCardPresetList, type TeacherAvatarMorph } from "./api"
 import {
   activeLearningTasks,
   activeTeacherPersonas,
@@ -120,16 +120,29 @@ export function TeacherAvatarStudio({
   standalone = false,
   portrait = false,
   presentationState = "idle",
+  teacherName = "艾莉丝",
+  presentationManifestUrl,
   }: {
   workspaceId?: string
   compact?: boolean
   standalone?: boolean
   portrait?: boolean
   presentationState?: TeacherCompanionState
+  teacherName?: string
+  presentationManifestUrl?: string
 }) {
   const [items, setItems] = useState<TeacherAvatar[]>([])
   const [characterPacks, setCharacterPacks] = useState<KksCharacterPack[]>([])
   const [cardPresets, setCardPresets] = useState<TeacherAvatarCardPreset[]>([])
+  const [cardPresetStatus, setCardPresetStatus] = useState<TeacherAvatarCardPresetList>({
+    items: [],
+    count: 0,
+    total: 0,
+    source: "local-card-roster",
+    status: "unavailable",
+    available: false,
+    reason: "正在检查内置角色卡资源…",
+  })
   const [activeId, setActiveId] = useState("")
   const [notice, setNotice] = useState("")
   const [busy, setBusy] = useState(false)
@@ -178,10 +191,20 @@ export function TeacherAvatarStudio({
       try {
         const cards = await teacherAvatarApi.cardPresets()
         setCardPresets(cards.items)
-      } catch {
+        setCardPresetStatus(cards)
+      } catch (error) {
         // Card presets are an optional local roster; an older backend should
         // not prevent the normal VRM roster and preview from loading.
         setCardPresets([])
+        setCardPresetStatus({
+          items: [],
+          count: 0,
+          total: 0,
+          source: "local-card-roster",
+          status: "unavailable",
+          available: false,
+          reason: error instanceof Error ? error.message : "内置角色卡资源暂不可用。",
+        })
       }
       try {
         const packs = await teacherAvatarApi.characterPacks()
@@ -243,7 +266,8 @@ export function TeacherAvatarStudio({
     return (
       <section className="teacher-avatar-studio compact">
         <TeacherCompanionPortrait
-          teacherName={spineTeacher?.display_name || "艾莉丝"}
+          teacherName={teacherName || spineTeacher?.display_name || "艾莉丝"}
+          presentationManifestUrl={presentationManifestUrl}
           state={presentationState}
           portrait={portrait}
         />
@@ -522,7 +546,7 @@ export function TeacherAvatarStudio({
         <button type="button" className={reviewMode === "mother-blonde-fang-teaching" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-teaching"} onClick={() => setReviewMode("mother-blonde-fang-teaching")}>教师 02 · 小熊教学态</button>
         <button type="button" className={reviewMode === "mother-blonde-fang-swimsuit" ? "active" : ""} aria-pressed={reviewMode === "mother-blonde-fang-swimsuit"} onClick={() => setReviewMode("mother-blonde-fang-swimsuit")}>教师 02 · 泳装聊天态</button>
         <button type="button" className={reviewMode === "skeleton" ? "active" : ""} aria-pressed={reviewMode === "skeleton"} onClick={() => setReviewMode("skeleton")}>椿 · Live2D 动态</button>
-        <span>当前默认教师使用 Cubism 原生网格、物理与语义动作；母图仅保留作历史对照。</span>
+        <span>公开默认教师是项目自有的分层形象；只有你明确选择并在本机合法持有的 Live2D 模型才会启用 Cubism 动作，两者不会互相覆盖。</span>
       </div>
 
       {!compact && (reviewMode !== "skeleton"
@@ -573,7 +597,10 @@ export function TeacherAvatarStudio({
       <div className="teacher-avatar-controls">
       <div className="teacher-avatar-current">{active ? <><b>当前模型：{active.display_name}</b><span>{active.creator} · {active.license_name}</span></> : <span>尚未导入模型</span>}</div>
       <div className="teacher-avatar-roster" aria-label="本地模型轮换池">{items.map(item => <button key={item.model_id} className={item.model_id === active?.model_id ? "active" : ""} onClick={() => { setActiveId(item.model_id); setMorph(normalizeMorph(item.morph)) }}>{item.display_name}<small>{item.license_name}</small></button>)}</div>
-      {cardPresets.length > 0 && <div className="teacher-card-presets" aria-label="内置角色卡"><div><b>内置角色卡</b><small>仅保留 {cardPresets.length} 张起始卡；其它卡片请自行导入</small></div><div className="teacher-card-preset-list">{cardPresets.map(card => <button type="button" key={card.card_id} onClick={() => applyCardPreset(card)}><b>{card.display_name}</b><small>{card.source_format === "koikatsu_sunshine" ? "恋活 Sunshine 参数卡" : "MentorFlow 参数卡"}</small></button>)}</div></div>}
+      {cardPresetStatus.status !== "ready" && <div className="teacher-avatar-notice" role="status">
+        内置角色卡{cardPresetStatus.status === "partial" ? "部分可用" : "暂不可用"}：{cardPresetStatus.reason || "请安装匹配资源，或在下方导入角色卡。"}
+      </div>}
+      {cardPresets.length > 0 && <div className="teacher-card-presets" aria-label="内置角色卡"><div><b>内置角色卡</b><small>已加载 {cardPresets.length} 张起始卡；其它卡片请自行导入</small></div><div className="teacher-card-preset-list">{cardPresets.map(card => <button type="button" key={card.card_id} onClick={() => applyCardPreset(card)}><b>{card.display_name}</b><small>{card.source_format === "koikatsu_sunshine" ? "恋活 Sunshine 参数卡" : "MentorFlow 参数卡"}</small></button>)}</div></div>}
       {active && !koikatsuNativeCardActive && <div className="teacher-morph-grid" aria-label="身体比例与表情参数">
         <Morph label="身高比例" value={morph.height} min={.5} max={2} onChange={height => setMorph({ ...morph, height })} />
         <Morph label="头部比例" value={morph.head_scale} min={.1} max={10} onChange={head_scale => setMorph({ ...morph, head_scale })} />

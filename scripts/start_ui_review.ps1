@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 # This launcher is deliberately tied to the marked E: drive review copy.
-# It must never point the auth-free review mode at the canonical data root.
+# It must never point the isolated review mode at the canonical data root.
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $projectRoot 'release\distributable\MentorFlow\MentorFlow.exe'
 $dataRoot = 'E:\MentorFlowData\ui-review'
@@ -16,7 +16,6 @@ if (-not (Test-Path -LiteralPath $marker)) {
 
 $env:MENTORFLOW_USER_DATA_ROOT = $dataRoot
 $env:MENTORFLOW_LOCAL_DATA_MODE = '1'
-$env:MENTORFLOW_AUTH_REQUIRED = '0'
 $env:MENTORFLOW_UI_REVIEW_MODE = '1'
 # The review launcher must exercise the same restart path as the shipped app.
 # Smoke tests may opt out, but normal launches always restore the E: preset.

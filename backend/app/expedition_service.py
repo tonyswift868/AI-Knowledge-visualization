@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from .expedition_data import BOSSES, ENEMIES, EQUIPMENT, HEROES, PETS, STANCES
 from .expedition_engine import DIFFICULTY_VERSION, BattleEngine, stage_difficulty, stage_enemy_ids, stable_seed
@@ -29,6 +30,7 @@ PROFILE_ID = "expedition_profile_local"
 USER_KEY = "local"
 ASSET_ROOT = ROOT / "frontend" / "public" / "assets" / "expedition"
 _REWARD_LOCK = Lock()
+_SEED_LOCK = Lock()
 try:
     _REFRESH_ZONE = ZoneInfo("Asia/Shanghai")
 except Exception:  # Windows installations may not ship the IANA tzdata bundle.
@@ -99,12 +101,30 @@ def _ticket_state(profile: ExpeditionProfileORM) -> dict[str, Any]:
 def _profile(session) -> ExpeditionProfileORM:
     profile = session.query(ExpeditionProfileORM).filter_by(user_key=USER_KEY).first()
     if not profile:
-        profile = ExpeditionProfileORM(id=PROFILE_ID, user_key=USER_KEY, gacha_state={})
-        session.add(profile); session.flush()
+        # The initial query and a subsequent add/flush are not atomic: two
+        # first requests can both observe an empty table and race on the
+        # unique user_key constraint.  Let SQLite arbitrate the single local
+        # row, then re-read it from this session.  No exception is swallowed,
+        # so an unexpected constraint or database failure remains visible.
+        session.execute(
+            sqlite_insert(ExpeditionProfileORM)
+            .values(id=PROFILE_ID, user_key=USER_KEY, gacha_state={})
+            .on_conflict_do_nothing(index_elements=["user_key"])
+        )
+        profile = session.query(ExpeditionProfileORM).filter_by(user_key=USER_KEY).one()
     return profile
 
 
 def _seed(session) -> ExpeditionProfileORM:
+    # A process-local lock keeps the rest of the first-request seed graph
+    # (definitions, slots, starter ownership and lineup) from racing after
+    # the profile upsert.  The profile INSERT remains atomic for callers in
+    # separate processes, while all in-process request workers serialize here.
+    with _SEED_LOCK:
+        return _seed_locked(session)
+
+
+def _seed_locked(session) -> ExpeditionProfileORM:
     profile = _profile(session)
     for item in HEROES:
         if not session.get(HeroDefinitionORM, item["hero_id"]):
@@ -127,8 +147,8 @@ def _seed(session) -> ExpeditionProfileORM:
             own = HeroOwnershipORM(id=_id("hero"), profile_id=profile.id, hero_id=hero_id, stars=1, fragments=0, awakened=False); session.add(own); session.flush(); session.add(HeroStarProgressORM(id=_id("star"), ownership_id=own.id, current_stars=1, fragments=0)); session.add(HeroAwakeningORM(id=_id("awakening"), ownership_id=own.id, unlocked=False))
     if not session.query(LineupPresetORM).filter_by(profile_id=profile.id).first():
         lineup = LineupPresetORM(lineup_id=_id("lineup"), profile_id=profile.id, name="初始远征队", stance="balanced", active=True); session.add(lineup); session.flush()
-        for index, hero_id in enumerate(starter_heroes, 1):
-            session.add(LineupMemberORM(id=_id("member"), lineup_id=lineup.lineup_id, slot_id=f"slot_{index}", hero_id=hero_id))
+        for index, hero_id in enumerate(starter_heroes):
+            session.add(LineupMemberORM(id=_id("member"), lineup_id=lineup.lineup_id, slot_id=f"cell_{index}", hero_id=hero_id))
         profile.active_lineup_id = lineup.lineup_id
     else:
         active_lineup = session.get(LineupPresetORM, profile.active_lineup_id) if profile.active_lineup_id else None

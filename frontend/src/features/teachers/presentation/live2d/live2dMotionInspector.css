@@ -1,0 +1,65 @@
+.live2d-motion-inspector {
+  position: absolute;
+  z-index: 8;
+  left: 16px;
+  bottom: 58px;
+  width: min(430px, calc(100% - 116px));
+  max-height: 72%;
+  overflow: auto;
+  padding: 9px 11px;
+  border: 1px solid #70d9c666;
+  border-radius: 12px;
+  background: #071019f2;
+  color: #cfe9ec;
+  box-shadow: 0 16px 42px #0009;
+  font: 11px/1.45 ui-monospace, monospace;
+  backdrop-filter: blur(12px);
+}
+
+.live2d-motion-inspector > summary {
+  cursor: pointer;
+  color: #a8f0e2;
+  font-weight: 800;
+}
+
+.live2d-motion-inspector h4 {
+  margin: 10px 0 4px;
+  color: #79d8ca;
+}
+
+.live2d-motion-inspector p,
+.live2d-motion-inspector ul {
+  margin: 4px 0 8px;
+}
+
+.live2d-motion-inspector [role="group"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.live2d-motion-inspector [role="list"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.live2d-motion-inspector button {
+  min-height: 30px;
+  border: 1px solid #70d9c655;
+  border-radius: 7px;
+  background: #11262c;
+  color: #c7fff4;
+  cursor: pointer;
+  font: inherit;
+}
+
+@media (max-width: 560px) {
+  .live2d-motion-inspector {
+    right: 12px;
+    left: 12px;
+    bottom: 118px;
+    width: auto;
+    max-height: 52%;
+  }
+}

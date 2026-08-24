@@ -6,12 +6,57 @@ import os
 import re
 import socket
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
+from .knowledge_policy import CONVERSION_POLICY
+
 MAX_BYTES = 2_000_000
+# Keep ordinary HTML/text snapshots small, while allowing the same bounded
+# input budget as the conversion registry for binary paper formats.
+MAX_DOCUMENT_BYTES = int(CONVERSION_POLICY.maximum_input_bytes)
+
+# Public planning imports accept the non-audio/video formats represented by the
+# conversion registry.  The registry remains authoritative for final parsing;
+# this transport gate only rejects media that must never enter planning.
+ALLOWED_DOCUMENT_CONTENT_TYPES = frozenset(
+    {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/epub+zip",
+        "application/zip",
+        "application/json",
+        "application/yaml",
+        "application/x-yaml",
+        "application/x-python",
+        "application/xml",
+        "text/xml",
+        "text/csv",
+        "text/tab-separated-values",
+        "text/markdown",
+        "text/x-python",
+        "text/x-script",
+        "text/plain",
+        "text/html",
+        "application/xhtml+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+    }
+)
+
+
+class UnsupportedDocumentType(ValueError):
+    """The public URL is readable but not a planning document format."""
+
+    code = "MATERIAL_URL_MEDIA_UNSUPPORTED"
 
 _LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa")
 _PROXY_FAKE_IPV4 = ipaddress.ip_network("198.18.0.0/15")
@@ -82,19 +127,20 @@ def validate_public_url(url: str):
         raise ValueError("private, loopback, or reserved address is not allowed")
     return parsed
 
-async def _bounded_content(response: httpx.Response) -> bytes:
+async def _bounded_content(response: httpx.Response, *, limit_bytes: int = MAX_BYTES) -> bytes:
     declared = int(response.headers.get("content-length", "0") or 0)
-    if declared > MAX_BYTES:
+    limit_bytes = int(limit_bytes)
+    if declared > limit_bytes:
         raise ValueError("response exceeds size limit")
     if hasattr(response, "aiter_bytes"):
         data = bytearray()
         async for part in response.aiter_bytes():
             data.extend(part)
-            if len(data) > MAX_BYTES:
+            if len(data) > limit_bytes:
                 raise ValueError("response exceeds size limit")
         return bytes(data)
     content = response.content
-    if len(content) > MAX_BYTES:
+    if len(content) > limit_bytes:
         raise ValueError("response exceeds size limit")
     return content
 
@@ -113,9 +159,13 @@ async def fetch_safe(url: str):
                         current = urljoin(current, location)
                         continue
                     if status >= 400: raise ValueError(f"page returned HTTP {status}")
-                    content_type = headers.get("content-type", "").lower()
-                    if "text/html" not in content_type and "text/plain" not in content_type: raise ValueError("content type is not text")
-                    content = await _bounded_content(response)
+                    content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                    if content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:
+                        raise UnsupportedDocumentType("content type is not a supported planning document")
+                    content = await _bounded_content(
+                        response,
+                        limit_bytes=(MAX_BYTES if content_type in {"text/html", "application/xhtml+xml", "text/plain", "text/markdown"} else MAX_DOCUMENT_BYTES),
+                    )
             else:
                 response = await client.get(current)
                 status = response.status_code; headers = response.headers
@@ -125,12 +175,43 @@ async def fetch_safe(url: str):
                     current = urljoin(current, location)
                     continue
                 if status >= 400: raise ValueError(f"page returned HTTP {status}")
-                content_type = headers.get("content-type", "").lower()
-                if "text/html" not in content_type and "text/plain" not in content_type: raise ValueError("content type is not text")
-                content = await _bounded_content(response)
-            soup = BeautifulSoup(content, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe"]): tag.decompose()
-            text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if line.strip())
-            if len(re.sub(r"\s+", "", text)) < 40: raise ValueError("正文为空或过短")
-            return {"text": text, "title": soup.title.get_text(strip=True) if soup.title else current, "final_url": current, "fetched_at": datetime.now(timezone.utc).isoformat(), "content_type": content_type, "snapshot_hash": hashlib.sha256(text.encode()).hexdigest()}
+                content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:
+                    raise UnsupportedDocumentType("content type is not a supported planning document")
+                content = await _bounded_content(
+                    response,
+                    limit_bytes=(MAX_BYTES if content_type in {"text/html", "application/xhtml+xml", "text/plain", "text/markdown"} else MAX_DOCUMENT_BYTES),
+                )
+            is_html = content_type in {"text/html", "application/xhtml+xml"}
+            is_text = is_html or content_type in {"text/plain", "text/markdown"}
+            if is_text:
+                if is_html:
+                    soup = BeautifulSoup(content, "html.parser")
+                    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe"]): tag.decompose()
+                    text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if line.strip())
+                    title = soup.title.get_text(strip=True) if soup.title else current
+                else:
+                    text = content.decode("utf-8", errors="replace")
+                    title = PurePosixPath(urlparse(current).path).name or current
+                if len(re.sub(r"\s+", "", text)) < 40:
+                    raise ValueError("正文为空或过短")
+                return {
+                    "text": text,
+                    "content": content,
+                    "title": title,
+                    "final_url": current,
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "content_type": content_type,
+                    "snapshot_hash": hashlib.sha256(text.encode()).hexdigest(),
+                }
+            # Binary paper formats are handed to the existing bounded upload /
+            # conversion registry.  Do not attempt to parse or unzip them here.
+            return {
+                "content": content,
+                "title": PurePosixPath(urlparse(current).path).name or current,
+                "final_url": current,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "content_type": content_type,
+                "snapshot_hash": hashlib.sha256(content).hexdigest(),
+            }
     raise ValueError("too many redirects")

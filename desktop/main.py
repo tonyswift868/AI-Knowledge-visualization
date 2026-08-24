@@ -4,19 +4,49 @@ import os
 import json
 import shutil
 import sqlite3
+import stat
 import sys
+import uuid
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox, QSplashScreen
+from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QSplashScreen
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtGui import QIcon
 
+from .local_migration import (
+    MigrationError,
+    _assert_within,
+    _copy_file_no_follow,
+    _ensure_directory,
+    _file_identity,
+    _hold_directory_chain,
+    _is_reparse_info,
+    _lexical_path,
+    _open_verified_file,
+    _same_file_identity,
+    _snapshot_file,
+    _validate_safe_settings,
+    _write_new_text_no_follow,
+    _validate_existing_entry,
+    _validate_parent_chain,
+    MAX_CONFIG_JSON_BYTES,
+    MAX_NEXT_LAUNCH_POINTER_BYTES,
+    SAFE_SETTINGS_MEMBER,
+    import_migration_archive,
+)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+PROJECT_ROOT = _lexical_path(Path(__file__)).parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+_NEXT_LAUNCH_TARGET: tuple[Path, tuple[int, int]] | None = None
+_FIRST_START_IMPORTED_TARGET: Path | None = None
+_FIRST_START_CHOICE_MADE = False
 
 
 def _apply_next_launch_data_root_pointer(default_root: Path | None = None) -> None:
@@ -27,9 +57,10 @@ def _apply_next_launch_data_root_pointer(default_root: Path | None = None) -> No
     redirected behind the caller's back.
     """
 
+    global _NEXT_LAUNCH_TARGET
+    _NEXT_LAUNCH_TARGET = None
     if (
-        os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
-        or os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
+        os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
         or os.getenv("MENTORFLOW_DB", "").strip()
         or os.getenv("MENTORFLOW_ORM_DB", "").strip()
     ):
@@ -41,21 +72,62 @@ def _apply_next_launch_data_root_pointer(default_root: Path | None = None) -> No
             else Path(os.getenv("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
             / "MentorFlow"
         )
-    pointer = default_root / ".mentorflow-next-data-root.json"
-    if not pointer.is_file():
-        return
     try:
-        payload = json.loads(pointer.read_text(encoding="utf-8"))
+        default_root = _lexical_path(default_root)
+        _validate_parent_chain(default_root.parent, role="当前数据目录")
+        root_info = _validate_existing_entry(default_root, role="当前数据目录", allow_missing=True)
+        if root_info is None or not stat.S_ISDIR(root_info.st_mode):
+            return
+        pointer = default_root / ".mentorflow-next-data-root.json"
+        with _hold_directory_chain(
+            default_root,
+            role="当前数据目录",
+            expected_info=root_info,
+        ):
+            pointer_info = _validate_existing_entry(pointer, role="下一次启动指针", allow_missing=True)
+            if pointer_info is None or not stat.S_ISREG(pointer_info.st_mode):
+                return
+            # Read the selected pointer from the identity-checked handle.  A
+            # normal ``read_text`` would reopen the pathname after lstat and
+            # allow a concurrent replacement to select a different root.
+            with _open_verified_file(
+                pointer,
+                role="下一次启动指针",
+                expected_info=pointer_info,
+            ) as pointer_stream:
+                raw_pointer = pointer_stream.read(MAX_NEXT_LAUNCH_POINTER_BYTES + 1)
+                if len(raw_pointer) > MAX_NEXT_LAUNCH_POINTER_BYTES:
+                    return
+                payload = json.loads(raw_pointer.decode("utf-8"))
         if payload.get("format") != "mentorflow-next-data-root-v1":
             return
-        target = Path(str(payload.get("data_root") or "")).expanduser().resolve()
-        if not target.is_dir() or target.is_symlink():
+        requested_target = _lexical_path(Path(str(payload.get("data_root") or "")).expanduser())
+        _validate_parent_chain(requested_target.parent, role="下一次启动数据目录")
+        target_info = _validate_existing_entry(requested_target, role="下一次启动数据目录")
+        if target_info is None or not stat.S_ISDIR(target_info.st_mode):
             return
-        data_dir = target / "data"
-        if not (data_dir / "app.db").is_file() or not (data_dir / "mentorflow_v2.db").is_file():
-            return
-    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        target = requested_target
+        with _hold_directory_chain(
+            target,
+            role="下一次启动数据目录",
+            expected_info=target_info,
+        ):
+            data_dir = target / "data"
+            data_info = _validate_existing_entry(data_dir, role="下一次启动数据目录")
+            if data_info is None or not stat.S_ISDIR(data_info.st_mode):
+                return
+            with _hold_directory_chain(
+                data_dir,
+                role="下一次启动数据目录",
+                expected_info=data_info,
+            ):
+                for database in (data_dir / "app.db", data_dir / "mentorflow_v2.db"):
+                    database_info = _validate_existing_entry(database, role="下一次启动数据库")
+                    if database_info is None or not stat.S_ISREG(database_info.st_mode):
+                        return
+    except (MigrationError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return
+    _NEXT_LAUNCH_TARGET = (target, _file_identity(target_info))
     os.environ["MENTORFLOW_USER_DATA_ROOT"] = str(target)
 
 
@@ -69,21 +141,176 @@ def _ui_review_mode_enabled() -> bool:
 
 
 def _local_data_mode_enabled() -> bool:
-    """Return whether the desktop should use the local data directory directly.
+    """Return whether the desktop uses the local data directory (always)."""
+    return True
 
-    A packaged build is local-first unless a remote API is explicitly
-    configured.  The explicit environment switch is useful for the isolated
-    UI-review copy and for smoke tests; ``0`` remains an opt-out for a
-    deliberately authenticated/remote deployment.
+
+class StartupCancelled(RuntimeError):
+    """Raised when a first-start choice is deliberately cancelled."""
+
+
+def _is_fresh_local_root(path: Path) -> bool:
+    """Return whether ``path`` is still safe to treat as a first start.
+
+    A missing root and an empty root are fresh.  The one interrupted-start
+    shape we can safely recognize is an empty ``data`` directory; any other
+    existing entry makes the root an existing user space and suppresses the
+    prompt so startup never guesses or mutates it.
     """
-    value = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower()
-    if value in {"1", "true", "yes"}:
+
+    lexical = _lexical_path(path)
+    _validate_parent_chain(lexical.parent, role="首次启动数据目录")
+    info = _validate_existing_entry(lexical, role="首次启动数据目录", allow_missing=True)
+    if info is None:
         return True
-    if value in {"0", "false", "no"}:
+    if not stat.S_ISDIR(info.st_mode):
         return False
-    return bool(getattr(sys, "frozen", False)) and not os.getenv(
-        "MENTORFLOW_REMOTE_API_URL", ""
-    ).strip()
+    try:
+        entries = list(lexical.iterdir())
+    except OSError as exc:
+        raise RuntimeError(f"无法检查首次启动数据目录：{lexical}（{exc}）") from exc
+    if not entries:
+        return True
+    if len(entries) == 1 and entries[0].name.casefold() == "data":
+        data_info = _validate_existing_entry(entries[0], role="首次启动数据目录")
+        return bool(data_info and stat.S_ISDIR(data_info.st_mode) and not any(entries[0].iterdir()))
+    return False
+
+
+def _first_start_dialog() -> str:
+    """Ask for a first-start policy and return ``defaults``, ``import`` or ``cancel``.
+
+    The environment override is intentionally test-only plumbing for isolated
+    smoke tests; a normal packaged launch always presents the two explicit
+    choices and a safe cancel button.
+    """
+
+    override = os.getenv("MENTORFLOW_FIRST_START_ACTION", "").strip().casefold()
+    if os.getenv("MENTORFLOW_DESKTOP_SMOKE_SECONDS", "").strip():
+        # Package smoke is a noninteractive health check and must remain
+        # deterministic on a fresh isolated root.
+        return "defaults"
+    if override in {"defaults", "default", "new"}:
+        return "defaults"
+    if override in {"import", "restore"}:
+        return "import"
+    if override in {"cancel", "quit"}:
+        return "cancel"
+    dialog = QMessageBox()
+    dialog.setWindowTitle("开始使用 MentorFlow")
+    dialog.setText("这是一个新的本地学习空间。请选择如何开始：")
+    dialog.setInformativeText(
+        "可以使用默认空白空间，也可以导入已有 MentorFlow 数据包。导入只会写入新目录，不会合并或覆盖已有数据。"
+    )
+    defaults = dialog.addButton("开始新的学习空间", QMessageBox.ButtonRole.AcceptRole)
+    imported = dialog.addButton("导入已有 MentorFlow 数据包", QMessageBox.ButtonRole.ActionRole)
+    dialog.addButton("取消并退出", QMessageBox.ButtonRole.RejectRole)
+    dialog.exec()
+    clicked = dialog.clickedButton()
+    if clicked is defaults:
+        return "defaults"
+    if clicked is imported:
+        return "import"
+    return "cancel"
+
+
+def _first_start_import_paths() -> tuple[Path, Path] | None:
+    """Select a ZIP and a new/empty target, returning ``None`` on cancel."""
+
+    configured_archive = os.getenv("MENTORFLOW_FIRST_START_ARCHIVE", "").strip()
+    configured_target = os.getenv("MENTORFLOW_FIRST_START_TARGET", "").strip()
+    if configured_archive or configured_target:
+        if not configured_archive or not configured_target:
+            raise MigrationError("首次启动导入需要同时指定迁移包和新的数据目录。")
+        return Path(configured_archive).expanduser(), Path(configured_target).expanduser()
+    archive_name, _ = QFileDialog.getOpenFileName(
+        None,
+        "选择 MentorFlow 迁移压缩包",
+        str(Path.home()),
+        "MentorFlow 迁移包 (*.zip)",
+    )
+    if not archive_name:
+        return None
+    target_name = QFileDialog.getExistingDirectory(
+        None,
+        "选择导入后的新本地数据目录（必须为空）",
+        str(Path.home()),
+    )
+    if not target_name:
+        return None
+    return Path(archive_name), Path(target_name)
+
+
+def _prepare_first_start_root(app_root: Path) -> tuple[Path, bool]:
+    """Run the frozen-build first-start choice before any default writes."""
+
+    global _FIRST_START_CHOICE_MADE, _FIRST_START_IMPORTED_TARGET
+    if not getattr(sys, "frozen", False) or not _is_fresh_local_root(app_root):
+        return app_root, False
+    action = _first_start_dialog()
+    if action == "cancel":
+        raise StartupCancelled("首次启动已取消；没有创建或切换本地数据目录。")
+    if action == "defaults":
+        _FIRST_START_CHOICE_MADE = True
+        return app_root, False
+    selected = _first_start_import_paths()
+    if selected is None:
+        raise StartupCancelled("首次启动导入已取消；没有创建或切换本地数据目录。")
+    archive_path, target_path = selected
+    target_lexical = _lexical_path(target_path.expanduser())
+    app_lexical = _lexical_path(app_root)
+    if target_lexical == app_lexical:
+        raise MigrationError("首次启动导入必须选择不同于当前默认目录的新目录。")
+    result = import_migration_archive(archive_path, target_lexical)
+    imported_root = _lexical_path(Path(result["target"]))
+    os.environ["MENTORFLOW_USER_DATA_ROOT"] = str(imported_root)
+    _FIRST_START_CHOICE_MADE = True
+    _FIRST_START_IMPORTED_TARGET = imported_root
+    return imported_root, True
+
+
+def _restore_safe_qsettings(app_root: Path) -> None:
+    """Apply the verified nonsecret settings snapshot after an import."""
+
+    path = _lexical_path(app_root / SAFE_SETTINGS_MEMBER)
+    info = _validate_existing_entry(path, role="安全设置", allow_missing=True)
+    if info is None:
+        return
+    try:
+        with _open_verified_file(path, role="安全设置", expected_info=info) as stream:
+            raw_settings = stream.read(MAX_CONFIG_JSON_BYTES + 1)
+            if len(raw_settings) > MAX_CONFIG_JSON_BYTES:
+                raise MigrationError("导入的安全设置超过安全上限。")
+            payload = json.loads(raw_settings.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, MigrationError) as exc:
+        raise MigrationError("导入的安全设置无法读取。") from exc
+    if not isinstance(payload, dict):
+        raise MigrationError("导入的安全设置必须是对象。")
+    settings = _validate_safe_settings(payload)
+    target = QSettings("MentorFlow", "MentorFlow")
+    # A machine may have a previous profile's Qt reference.  It is not part
+    # of the imported package and must not silently attach to this new space.
+    for sensitive_key in (
+        "provider/credential_ref",
+        "provider/session",
+        "provider/provider_session_id",
+    ):
+        target.remove(sensitive_key)
+    for key, value in settings.items():
+        target.setValue(key, value)
+    target.sync()
+
+
+def _prepare_desktop_storage() -> None:
+    """Resolve an imported handoff and configure local storage for this run."""
+
+    _apply_next_launch_data_root_pointer()
+    _configure_frozen_user_storage()
+    imported = _FIRST_START_IMPORTED_TARGET
+    if imported is not None:
+        _restore_safe_qsettings(imported)
+    elif _NEXT_LAUNCH_TARGET is not None:
+        _restore_safe_qsettings(Path(os.environ["MENTORFLOW_USER_DATA_ROOT"]))
 
 
 def _configure_frozen_user_storage() -> None:
@@ -99,23 +326,33 @@ def _configure_frozen_user_storage() -> None:
     if not getattr(sys, "frozen", False) and not explicit_data_root:
         return
     if _ui_review_mode_enabled():
-        # UI review is intentionally a local, auth-free copy.  Fail closed if
+        # UI review is intentionally an isolated local copy.  Fail closed if
         # the caller did not point it at a marked copy instead of risking the
         # canonical E:\\MentorFlowData database.
         configured_root = os.getenv("MENTORFLOW_USER_DATA_ROOT", "").strip()
         if not configured_root:
             raise RuntimeError("UI 评审模式必须指定 MENTORFLOW_USER_DATA_ROOT。")
-        review_root = Path(configured_root).expanduser().resolve()
-        canonical_root = Path("E:/MentorFlowData").resolve()
+        review_requested = _lexical_path(Path(configured_root).expanduser())
+        _validate_parent_chain(review_requested.parent, role="UI 评审目标")
+        review_info = _validate_existing_entry(
+            review_requested,
+            role="UI 评审目标",
+            allow_missing=True,
+        )
+        if review_info is None or not stat.S_ISDIR(review_info.st_mode):
+            raise RuntimeError("UI 评审目标必须是目录。")
+        review_root = review_requested
+        canonical_root = _lexical_path(Path("E:/MentorFlowData"))
         marker = review_root / "ui-review-manifest.json"
-        if review_root == canonical_root or not marker.is_file():
+        marker_info = _validate_existing_entry(marker, role="UI 评审标记", allow_missing=True)
+        if (
+            review_root == canonical_root
+            or marker_info is None
+            or not stat.S_ISREG(marker_info.st_mode)
+        ):
             raise RuntimeError(
                 "UI 评审模式只能使用带 ui-review-manifest.json 的隔离数据目录。"
             )
-    # A cloud-configured client must not initialize or write a local primary
-    # database.  The cloud API is the source of truth in this mode.
-    if os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip():
-        return
     storage_was_overridden = bool(
         os.getenv("MENTORFLOW_USER_DATA_ROOT")
         or os.getenv("MENTORFLOW_DB")
@@ -134,13 +371,58 @@ def _configure_frozen_user_storage() -> None:
         if Path("E:/").is_dir()
         else legacy_root
     )
+    app_root = _lexical_path(app_root)
+    legacy_root = _lexical_path(legacy_root)
+    _validate_parent_chain(app_root.parent, role="目标")
+    app_info = _validate_existing_entry(app_root, role="目标", allow_missing=True)
+    if app_info is not None and not stat.S_ISDIR(app_info.st_mode):
+        raise RuntimeError(f"本地数据目录必须是目录：{app_root}")
+    # A frozen first boot must make the defaults/import decision before this
+    # function creates ``data`` or lets the backend initialize a database.
+    if _NEXT_LAUNCH_TARGET is None:
+        app_root, imported = _prepare_first_start_root(app_root)
+        if _FIRST_START_CHOICE_MADE:
+            # A deliberate first-start choice is authoritative.  In
+            # particular, choosing a blank space must not trigger the legacy
+            # C: profile migration as a hidden third option.
+            storage_was_overridden = True
+        if imported:
+            configured_root = str(app_root)
+            explicit_data_root = configured_root
+            storage_was_overridden = True
+            _validate_parent_chain(app_root.parent, role="目标")
+            app_info = _validate_existing_entry(app_root, role="目标")
+            if app_info is None or not stat.S_ISDIR(app_info.st_mode):
+                raise RuntimeError(f"导入后的本地数据目录必须是目录：{app_root}")
+    if _NEXT_LAUNCH_TARGET is not None:
+        expected_root, expected_identity = _NEXT_LAUNCH_TARGET
+        if app_root != expected_root or app_info is None or _file_identity(app_info) != expected_identity:
+            raise RuntimeError("下一次启动数据目录在启动前发生变化。")
+    _validate_parent_chain(legacy_root.parent, role="源")
+    legacy_info = _validate_existing_entry(legacy_root, role="源", allow_missing=True)
+    if legacy_info is not None and not stat.S_ISDIR(legacy_info.st_mode):
+        raise RuntimeError(f"历史数据目录必须是目录：{legacy_root}")
     # Only migrate the historical C: tree when the user did not explicitly
     # choose a data root.  An explicitly empty root is a deliberate request
     # for a fresh local space and must never be populated from another profile.
-    if not configured_root and app_root.resolve() != legacy_root.resolve() and legacy_root.is_dir():
+    if (
+        not configured_root
+        and app_root != legacy_root
+        and legacy_info is not None
+    ):
         _migrate_legacy_user_storage(legacy_root, app_root)
+    initial_app_info = app_info
     data_root = app_root / "data"
-    data_root.mkdir(parents=True, exist_ok=True)
+    initial_data_info = _validate_existing_entry(data_root, role="目标", allow_missing=True)
+    data_root = _ensure_directory(data_root, role="目标")
+    current_app_info = _validate_existing_entry(app_root, role="目标")
+    assert current_app_info is not None
+    if initial_app_info is not None and not _same_file_identity(current_app_info, initial_app_info):
+        raise RuntimeError("本地数据目录在启动前发生变化。")
+    current_data_info = _validate_existing_entry(data_root, role="目标")
+    assert current_data_info is not None
+    if initial_data_info is not None and not _same_file_identity(current_data_info, initial_data_info):
+        raise RuntimeError("本地数据目录在启动前发生变化。")
     defaults = {
         "MENTORFLOW_DB": data_root / "app.db",
         "MENTORFLOW_ORM_DB": data_root / "mentorflow_v2.db",
@@ -161,42 +443,236 @@ def _configure_frozen_user_storage() -> None:
 
 def _copy_sqlite_if_missing(source: Path, destination: Path) -> None:
     """Copy a SQLite database transactionally and verify it before publishing."""
-    if not source.is_file() or destination.exists():
+    source = _lexical_path(source)
+    destination = _lexical_path(destination)
+    _validate_parent_chain(source.parent, role="源")
+    _validate_parent_chain(destination.parent, role="目标")
+    source_info = _validate_existing_entry(source, role="源", allow_missing=True)
+    if source_info is None:
         return
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".migrating")
-    temporary.unlink(missing_ok=True)
-    source_connection = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
-    target_connection = sqlite3.connect(temporary)
+    destination_info = _validate_existing_entry(destination, role="目标", allow_missing=True)
+    if destination_info is not None:
+        return
+    if not stat.S_ISREG(source_info.st_mode):
+        raise RuntimeError(f"迁移数据库不是普通文件：{source}")
+    temporary = destination.with_name(destination.name + f".{uuid.uuid4().hex}.migrating")
+    _ensure_directory(destination.parent, role="目标")
+    _validate_parent_chain(destination.parent, role="目标")
+    destination_parent_info = _validate_existing_entry(destination.parent, role="目标")
+    assert destination_parent_info is not None
     try:
-        source_connection.backup(target_connection)
-        if target_connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            raise RuntimeError(f"迁移数据库完整性检查失败：{source.name}")
+        with _hold_directory_chain(
+            destination.parent,
+            role="目标",
+            expected_info=destination_parent_info,
+        ):
+            _snapshot_file(source, temporary, expected_source_info=source_info)
+            _validate_existing_entry(temporary, role="目标暂存文件")
+            if _validate_existing_entry(destination, role="目标", allow_missing=True) is not None:
+                raise RuntimeError(f"迁移目标在过程中发生变化：{destination}")
+            try:
+                os.replace(temporary, destination)
+            except OSError as exc:
+                raise RuntimeError(f"迁移目标在发布过程中发生变化：{destination}（{exc}）") from exc
+        _validate_existing_entry(destination, role="目标")
+    except MigrationError as exc:
+        raise RuntimeError(str(exc)) from exc
     finally:
-        target_connection.close()
-        source_connection.close()
-    temporary.replace(destination)
+        try:
+            _validate_existing_entry(temporary, role="目标暂存文件", allow_missing=True)
+            temporary.unlink(missing_ok=True)
+        except (MigrationError, OSError):
+            pass
 
 
-def _copy_missing_tree(source: Path, destination: Path) -> None:
-    """Copy app-owned files without overwriting an already migrated target."""
-    if not source.exists():
+def _is_reparse_point(info: os.stat_result) -> bool:
+    """Return whether a stat result represents a link or Windows reparse point."""
+    return _is_reparse_info(info)
+
+
+def _preflight_copy_tree(source: Path, source_root: Path) -> None:
+    """Validate an entire legacy source tree before creating any target entry."""
+
+    source = _lexical_path(source)
+    _assert_within(source, source_root, role="源")
+    info = _validate_existing_entry(source, role="源", allow_missing=True)
+    if info is None or not stat.S_ISDIR(info.st_mode):
         return
-    if source.is_dir():
-        destination.mkdir(parents=True, exist_ok=True)
-        for child in source.iterdir():
-            _copy_missing_tree(child, destination / child.name)
-        return
-    if not destination.exists():
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+    try:
+        children = sorted(source.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        raise RuntimeError(f"无法读取迁移源目录：{source}（{exc}）") from exc
+    for child in children:
+        _preflight_copy_tree(child, source_root)
+
+
+def _copy_missing_tree(
+    source: Path,
+    destination: Path,
+    *,
+    _source_root: Path | None = None,
+    _destination_root: Path | None = None,
+    _created_paths: list[tuple[Path, tuple[int, int]]] | None = None,
+    _expected_source_info: os.stat_result | None = None,
+) -> None:
+    """Copy plain app-owned files without following links or overwriting targets.
+
+    Every source file is read from an identity-checked no-follow handle and
+    every new target is opened with ``CREATE_NEW``.  Directory handles are held
+    while enumerating/copying so a concurrent junction replacement fails closed
+    instead of redirecting a read or write outside the selected roots.
+    """
+    source = _lexical_path(source)
+    destination = _lexical_path(destination)
+    top_level = _created_paths is None
+    if _created_paths is None:
+        _created_paths = []
+    if _source_root is None:
+        source_probe = _validate_existing_entry(source, role="源", allow_missing=True)
+        _source_root = source if source_probe is None or stat.S_ISDIR(source_probe.st_mode) else source.parent
+    if _destination_root is None:
+        destination_probe = _validate_existing_entry(destination, role="目标", allow_missing=True)
+        _destination_root = (
+            destination
+            if destination_probe is None or stat.S_ISDIR(destination_probe.st_mode)
+            else destination.parent
+        )
+    try:
+        _validate_parent_chain(source.parent, role="源")
+        _validate_parent_chain(destination.parent, role="目标")
+        _assert_within(source, _source_root, role="源")
+        _assert_within(destination, _destination_root, role="目标")
+
+        # A missing source is the normal case for optional legacy directories.
+        source_info = _expected_source_info or _validate_existing_entry(
+            source,
+            role="源",
+            allow_missing=True,
+        )
+        if source_info is None:
+            return
+        current_source_entry = _validate_existing_entry(source, role="源", allow_missing=True)
+        if current_source_entry is None or not _same_file_identity(current_source_entry, source_info):
+            raise RuntimeError(f"迁移源在打开前发生变化：{source}")
+        destination_info = _validate_existing_entry(destination, role="目标", allow_missing=True)
+
+        if stat.S_ISDIR(source_info.st_mode):
+            with _hold_directory_chain(source, role="源"):
+                current_source_info = _validate_existing_entry(source, role="源")
+                if not _same_file_identity(current_source_info, source_info):
+                    raise RuntimeError(f"迁移源在过程中发生变化：{source}")
+                if destination_info is None:
+                    _ensure_directory(destination.parent, role="目标")
+                    destination_parent_info = _validate_existing_entry(
+                        destination.parent,
+                        role="目标",
+                    )
+                    assert destination_parent_info is not None
+                    try:
+                        with _hold_directory_chain(
+                            destination.parent,
+                            role="目标",
+                            expected_info=destination_parent_info,
+                        ):
+                            destination.mkdir(exist_ok=False)
+                    except FileExistsError:
+                        destination_info = _validate_existing_entry(destination, role="目标", allow_missing=True)
+                    except OSError as exc:
+                        raise RuntimeError(f"无法创建迁移目标目录：{destination}（{exc}）") from exc
+                    if destination_info is None:
+                        created_info = _validate_existing_entry(destination, role="目标")
+                        assert created_info is not None
+                        _created_paths.append((destination, _file_identity(created_info)))
+                        destination_info = created_info
+                if destination_info is None or not stat.S_ISDIR(destination_info.st_mode):
+                    raise RuntimeError(f"迁移目标类型冲突：{destination}")
+                with _hold_directory_chain(destination, role="目标"):
+                    current_destination_info = _validate_existing_entry(destination, role="目标")
+                    if not _same_file_identity(current_destination_info, destination_info):
+                        raise RuntimeError(f"迁移目标在过程中发生变化：{destination}")
+                    try:
+                        children = sorted(source.iterdir(), key=lambda path: path.name)
+                    except OSError as exc:
+                        raise RuntimeError(f"无法读取迁移源目录：{source}（{exc}）") from exc
+                    for child in children:
+                        child_info = _validate_existing_entry(child, role="源")
+                        _copy_missing_tree(
+                            child,
+                            destination / child.name,
+                            _source_root=_source_root,
+                            _destination_root=_destination_root,
+                            _created_paths=_created_paths,
+                            _expected_source_info=child_info,
+                        )
+            return
+        if destination_info is None:
+            _ensure_directory(destination.parent, role="目标")
+            _validate_parent_chain(destination.parent, role="目标")
+            try:
+                _copy_file_no_follow(
+                    source,
+                    destination,
+                    expected_source_info=source_info,
+                    role="源文件",
+                )
+            except MigrationError as exc:
+                raise RuntimeError(str(exc)) from exc
+            copied_info = _validate_existing_entry(destination, role="目标")
+            assert copied_info is not None
+            _created_paths.append((destination, _file_identity(copied_info)))
+    except Exception:
+        if top_level:
+            for path, identity in reversed(_created_paths):
+                try:
+                    info = _validate_existing_entry(path, role="目标回滚", allow_missing=True)
+                    if info is None or _file_identity(info) != identity:
+                        continue
+                    if stat.S_ISDIR(info.st_mode):
+                        path.rmdir()
+                    else:
+                        path.unlink(missing_ok=True)
+                except (MigrationError, OSError):
+                    pass
+        raise
 
 
 def _migrate_legacy_user_storage(legacy_root: Path, app_root: Path) -> None:
     """Move the previous C: user-data tree to the E: data root, safely."""
-    app_root.mkdir(parents=True, exist_ok=True)
+    legacy_root = _lexical_path(legacy_root)
+    app_root = _lexical_path(app_root)
+    _validate_parent_chain(legacy_root.parent, role="源")
+    legacy_info = _validate_existing_entry(legacy_root, role="源", allow_missing=True)
+    if legacy_info is None or not stat.S_ISDIR(legacy_info.st_mode):
+        raise RuntimeError(f"迁移源目录不存在：{legacy_root}")
     legacy_data = legacy_root / "data"
     target_data = app_root / "data"
+    source_tree_roots = [legacy_data / relative for relative in ("active_teaching", "classroom", "runtime-cache")]
+    source_file_candidates = [
+        source
+        for relative in ("backups", "presets", "sms_gateway.json", "preset_settings.json")
+        for source in (legacy_root / relative, legacy_data / relative)
+    ]
+    source_file_candidates.append(legacy_root / "development-data-import.json")
+    for source in (*source_tree_roots, *source_file_candidates):
+        source_info = _validate_existing_entry(source, role="源", allow_missing=True)
+        if source_info is not None and stat.S_ISDIR(source_info.st_mode):
+            _preflight_copy_tree(source, source)
+    destination_candidates = [
+        target_data / database_name for database_name in ("app.db", "mentorflow_v2.db")
+    ] + [
+        app_root / relative
+        for relative in (
+            "backups",
+            "presets",
+            "sms_gateway.json",
+            "preset_settings.json",
+            "development-data-import.json",
+            "storage-migration-from-localappdata.json",
+        )
+    ] + [target_data / relative for relative in ("active_teaching", "classroom", "runtime-cache")]
+    for destination in destination_candidates:
+        _validate_existing_entry(destination, role="目标", allow_missing=True)
+    app_root = _ensure_directory(app_root, role="目标")
     for database_name in ("app.db", "mentorflow_v2.db"):
         _copy_sqlite_if_missing(
             legacy_data / database_name,
@@ -208,28 +684,54 @@ def _migrate_legacy_user_storage(legacy_root: Path, app_root: Path) -> None:
     # app-level location and the earlier data/ location during migration.
     for relative in ("backups", "presets", "sms_gateway.json", "preset_settings.json"):
         for source in (legacy_root / relative, legacy_data / relative):
-            if source.exists():
+            if _validate_existing_entry(source, role="源", allow_missing=True) is not None:
                 _copy_missing_tree(source, app_root / relative)
     _copy_missing_tree(
         legacy_root / "development-data-import.json",
         app_root / "development-data-import.json",
     )
     marker = app_root / "storage-migration-from-localappdata.json"
-    if not marker.exists():
-        marker.write_text(
-            json.dumps(
-                {
-                    "source": str(legacy_root),
-                    "destination": str(app_root),
-                    "migrated_at": datetime.now(timezone.utc).isoformat(),
-                    "databases": ["app.db", "mentorflow_v2.db"],
-                    "source_retained": True,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+    if _validate_existing_entry(marker, role="目标标记", allow_missing=True) is None:
+        _validate_parent_chain(marker.parent, role="目标标记")
+        try:
+            _write_new_text_no_follow(
+                marker,
+                json.dumps(
+                    {
+                        "source": str(legacy_root),
+                        "destination": str(app_root),
+                        "migrated_at": datetime.now(timezone.utc).isoformat(),
+                        "databases": ["app.db", "mentorflow_v2.db"],
+                        "source_retained": True,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                role="目标标记",
+            )
+        except MigrationError as exc:
+            raise RuntimeError(str(exc)) from exc
+        _validate_existing_entry(marker, role="目标标记")
+
+
+def _is_source_project_candidate(parent: Path) -> bool:
+    """Inspect a checkout candidate without following any link component."""
+
+    git_info = _validate_existing_entry(parent / ".git", role="源", allow_missing=True)
+    app_db = _validate_existing_entry(parent / "data" / "app.db", role="源", allow_missing=True)
+    orm_db = _validate_existing_entry(
+        parent / "data" / "mentorflow_v2.db",
+        role="源",
+        allow_missing=True,
+    )
+    return (
+        git_info is not None
+        and stat.S_ISDIR(git_info.st_mode)
+        and app_db is not None
+        and stat.S_ISREG(app_db.st_mode)
+        and orm_db is not None
+        and stat.S_ISREG(orm_db.st_mode)
+    )
 
 
 def _import_development_data_once(app_root: Path, data_root: Path) -> None:
@@ -240,137 +742,207 @@ def _import_development_data_once(app_root: Path, data_root: Path) -> None:
     # convenience import; frozen builds always initialize empty storage.
     if getattr(sys, "frozen", False):
         return
+    app_root = _lexical_path(app_root)
+    data_root = _lexical_path(data_root)
+    _validate_parent_chain(app_root.parent, role="目标")
+    app_info = _validate_existing_entry(app_root, role="目标", allow_missing=True)
+    if app_info is not None and not stat.S_ISDIR(app_info.st_mode):
+        raise RuntimeError(f"迁移目标不是目录：{app_root}")
+    _validate_parent_chain(data_root.parent, role="目标")
+    data_info = _validate_existing_entry(data_root, role="目标", allow_missing=True)
+    if data_info is not None and not stat.S_ISDIR(data_info.st_mode):
+        raise RuntimeError(f"迁移目标不是目录：{data_root}")
     destinations = (data_root / "app.db", data_root / "mentorflow_v2.db")
-    if any(path.exists() for path in destinations):
-        return
-    executable = Path(sys.executable).resolve()
+    for path in destinations:
+        if _validate_existing_entry(path, role="目标", allow_missing=True) is not None:
+            return
+    executable = _lexical_path(Path(sys.executable))
+    _validate_parent_chain(executable.parent, role="源")
+    _validate_existing_entry(executable, role="源可执行文件")
     project_root = next(
         (
             parent
             for parent in executable.parents
-            if (parent / ".git").is_dir()
-            and (parent / "data" / "app.db").is_file()
-            and (parent / "data" / "mentorflow_v2.db").is_file()
+            if _is_source_project_candidate(parent)
         ),
         None,
     )
     if project_root is None:
         return
-    data_root.mkdir(parents=True, exist_ok=True)
+    source_uploads = project_root / "data" / "active_teaching"
+    source_upload_info = _validate_existing_entry(source_uploads, role="源", allow_missing=True)
+    if source_upload_info is not None:
+        if not stat.S_ISDIR(source_upload_info.st_mode):
+            raise RuntimeError(f"迁移源不是目录：{source_uploads}")
+        # Validate all legacy uploads before publishing either database or a
+        # marker, so a nested junction/hardlink cannot leave a partial target.
+        _preflight_copy_tree(source_uploads, source_uploads)
+    app_root = _ensure_directory(app_root, role="目标")
+    data_root = _ensure_directory(data_root, role="目标")
+    app_root_info = _validate_existing_entry(app_root, role="目标")
+    data_root_info = _validate_existing_entry(data_root, role="目标")
+    assert app_root_info is not None and data_root_info is not None
     sources = (
         project_root / "data" / "app.db",
         project_root / "data" / "mentorflow_v2.db",
     )
-    temporary = tuple(path.with_suffix(path.suffix + ".importing") for path in destinations)
+    temporary = tuple(
+        path.with_name(path.name + f".{uuid.uuid4().hex}.importing") for path in destinations
+    )
+    published_databases: list[tuple[Path, tuple[int, int]]] = []
     try:
         for source, target in zip(sources, temporary):
-            target.unlink(missing_ok=True)
-            source_connection = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
-            target_connection = sqlite3.connect(target)
+            source = _lexical_path(source)
+            target = _lexical_path(target)
+            _validate_parent_chain(source.parent, role="源")
+            source_info = _validate_existing_entry(source, role="源", allow_missing=False)
+            if source_info is None or not stat.S_ISREG(source_info.st_mode):
+                raise RuntimeError(f"迁移数据库不是普通文件：{source}")
+            _validate_parent_chain(target.parent, role="目标")
             try:
-                source_connection.backup(target_connection)
-                if target_connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-                    raise RuntimeError(f"导入数据库完整性检查失败：{source.name}")
-            finally:
-                target_connection.close()
-                source_connection.close()
+                with _hold_directory_chain(
+                    data_root,
+                    role="目标",
+                    expected_info=data_root_info,
+                ):
+                    _snapshot_file(source, target, expected_source_info=source_info)
+            except MigrationError as exc:
+                raise RuntimeError(str(exc)) from exc
+            _validate_existing_entry(target, role="目标暂存文件")
         for staged, destination in zip(temporary, destinations):
-            staged.replace(destination)
+            with _hold_directory_chain(
+                destination.parent,
+                role="目标",
+                expected_info=data_root_info,
+            ):
+                _validate_parent_chain(destination.parent, role="目标")
+                if _validate_existing_entry(destination, role="目标", allow_missing=True) is not None:
+                    raise RuntimeError(f"迁移目标在过程中发生变化：{destination}")
+                try:
+                    os.replace(staged, destination)
+                except OSError as exc:
+                    raise RuntimeError(f"迁移目标在发布过程中发生变化：{destination}（{exc}）") from exc
+            destination_info = _validate_existing_entry(destination, role="目标")
+            assert destination_info is not None
+            published_databases.append((destination, _file_identity(destination_info)))
     except Exception:
         for staged in temporary:
-            staged.unlink(missing_ok=True)
-        for destination in destinations:
-            destination.unlink(missing_ok=True)
+            try:
+                _validate_existing_entry(staged, role="目标暂存文件", allow_missing=True)
+                staged.unlink(missing_ok=True)
+            except RuntimeError:
+                pass
+        for destination, identity in published_databases:
+            try:
+                _validate_existing_entry(destination, role="目标", allow_missing=True)
+                current_info = _validate_existing_entry(destination, role="目标", allow_missing=True)
+                if current_info is not None and _file_identity(current_info) == identity:
+                    destination.unlink(missing_ok=True)
+            except RuntimeError:
+                pass
         raise
-    source_uploads = project_root / "data" / "active_teaching"
-    target_uploads = data_root / "active_teaching"
-    if source_uploads.is_dir() and not target_uploads.exists():
-        shutil.copytree(source_uploads, target_uploads)
-    (app_root / "development-data-import.json").write_text(
-        json.dumps(
-            {
-                "source": str(project_root),
-                "imported_at": datetime.now(timezone.utc).isoformat(),
-                "databases": [path.name for path in destinations],
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-
-def _load_cloud_endpoint_config() -> None:
-    """Load a non-secret cloud API URL from the E: user-data root."""
-    if (
-        _ui_review_mode_enabled()
-        or os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower()
-        in {"1", "true", "yes"}
-        or os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
-    ):
-        return
-    configured = Path("E:/MentorFlowData/cloud_endpoint.json")
-    if not configured.is_file():
-        return
     try:
-        payload = json.loads(configured.read_text(encoding="utf-8"))
-        origin = str(payload.get("api_base_url") or "").strip().rstrip("/")
-    except (OSError, ValueError, TypeError) as exc:
-        raise RuntimeError("云端配置文件无法读取：E:\\MentorFlowData\\cloud_endpoint.json") from exc
-    if not origin:
-        raise RuntimeError("云端配置文件缺少 api_base_url：E:\\MentorFlowData\\cloud_endpoint.json")
-    os.environ["MENTORFLOW_REMOTE_API_URL"] = origin
-
-
-_load_cloud_endpoint_config()
-_apply_next_launch_data_root_pointer()
-_configure_frozen_user_storage()
-
-# This flag is set before FastAPI is imported so the local data mode never
-# opens an authentication window or returns 401 for the local desktop UI.
-if (
-    _ui_review_mode_enabled()
-    or _local_data_mode_enabled()
-    or not os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
-):
-    # MentorFlow's shipped/default product is a local-file application.  Merely
-    # importing the desktop entry point (for example from a smoke test) must not
-    # silently switch the shared FastAPI app into account-required mode.
-    os.environ.setdefault("MENTORFLOW_LOCAL_DATA_MODE", "1")
-    os.environ["MENTORFLOW_AUTH_REQUIRED"] = "0"
-elif getattr(sys, "frozen", False):
-    # A packaged build with a remote endpoint is intentionally authenticated.
-    os.environ["MENTORFLOW_AUTH_REQUIRED"] = "1"
-else:
-    os.environ.setdefault("MENTORFLOW_AUTH_REQUIRED", "1")
-os.environ.setdefault("PYTHONUTF8", "1")
-
-from .api import DesktopApi
-from .auth_window import AuthWindow
-from .main_window import MainWindow
-from .runtime import LocalService, RemoteService
-from .style import STYLE
+        target_uploads = data_root / "active_teaching"
+        target_upload_info = _validate_existing_entry(target_uploads, role="目标", allow_missing=True)
+        if source_upload_info is not None:
+            if not stat.S_ISDIR(source_upload_info.st_mode):
+                raise RuntimeError(f"迁移源不是目录：{source_uploads}")
+            if target_upload_info is None:
+                with _hold_directory_chain(
+                    data_root,
+                    role="目标",
+                    expected_info=data_root_info,
+                ):
+                    _copy_missing_tree(source_uploads, target_uploads)
+        marker = app_root / "development-data-import.json"
+        if _validate_existing_entry(marker, role="目标标记", allow_missing=True) is not None:
+            return
+        _validate_parent_chain(marker.parent, role="目标标记")
+        try:
+            with _hold_directory_chain(
+                app_root,
+                role="目标标记",
+                expected_info=app_root_info,
+            ):
+                _write_new_text_no_follow(
+                    marker,
+                    json.dumps(
+                        {
+                            "source": str(project_root),
+                            "imported_at": datetime.now(timezone.utc).isoformat(),
+                            "databases": [path.name for path in destinations],
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    role="目标标记",
+                )
+        except MigrationError as exc:
+            raise RuntimeError(str(exc)) from exc
+        _validate_existing_entry(marker, role="目标标记")
+    except Exception:
+        for destination, identity in reversed(published_databases):
+            try:
+                with _hold_directory_chain(destination.parent, role="目标回滚"):
+                    current_info = _validate_existing_entry(
+                        destination,
+                        role="目标回滚",
+                        allow_missing=True,
+                    )
+                    if current_info is not None and _file_identity(current_info) == identity:
+                        destination.unlink(missing_ok=True)
+            except (MigrationError, OSError):
+                pass
+        raise
 
 
 class MentorFlowApplication:
     def __init__(self) -> None:
-        self.app = QApplication(sys.argv)
+        self.app = QApplication.instance() or QApplication(sys.argv)
+        self._startup_cancelled = False
+        self._startup_failed = False
+        try:
+            _prepare_desktop_storage()
+        except StartupCancelled:
+            self._startup_cancelled = True
+            return
+        except (MigrationError, OSError, RuntimeError, ValueError) as exc:
+            self._startup_failed = True
+            QMessageBox.critical(None, "MentorFlow 无法启动", str(exc))
+            return
+        # The desktop always starts the local single-user runtime.  Legacy
+        # mode variables are intentionally ignored so they cannot resurrect
+        # account auth.
+        os.environ["MENTORFLOW_LOCAL_DATA_MODE"] = "1"
+        os.environ.setdefault("PYTHONUTF8", "1")
+        # Backend/UI modules are imported only after the data-root decision;
+        # this is what keeps first-start import from racing default DB setup.
+        global DesktopApi, MainWindow, LocalService, STYLE
+        from .api import DesktopApi as _DesktopApi
+        from .main_window import MainWindow as _MainWindow
+        from .runtime import LocalService as _LocalService
+        from .style import STYLE as _STYLE
+
+        DesktopApi, MainWindow, LocalService, STYLE = (
+            _DesktopApi,
+            _MainWindow,
+            _LocalService,
+            _STYLE,
+        )
         self.app.setApplicationName("MentorFlow")
         self.app.setOrganizationName("MentorFlow")
         self.app.setWindowIcon(
             QIcon(str(PROJECT_ROOT / "frontend" / "public" / "teacher2d" / "tsubaki-live2d" / "icon.png"))
         )
         self.app.setStyleSheet(STYLE)
-        remote_origin = os.getenv("MENTORFLOW_REMOTE_API_URL", "").strip()
-        self.service = RemoteService(remote_origin) if remote_origin else LocalService()
+        self.service = LocalService()
         self.api: DesktopApi | None = None
-        self.auth: AuthWindow | None = None
         self.main: MainWindow | None = None
         pixmap = QPixmap(520, 270)
         pixmap.fill(QColor("#244c40"))
         self.splash = QSplashScreen(pixmap)
         self.splash.showMessage(
-            "MentorFlow\n正在连接云端学习服务…" if remote_origin else "MentorFlow\n正在准备本地数据库与学习服务…",
+            "MentorFlow\n正在准备本地数据库与学习服务…",
             Qt.AlignmentFlag.AlignCenter,
             QColor("white"),
         )
@@ -382,6 +954,10 @@ class MentorFlowApplication:
             QTimer.singleShot(max(1, int(smoke_seconds * 1000)), self.app.quit)
 
     def run(self) -> int:
+        if self._startup_cancelled:
+            return 0
+        if self._startup_failed:
+            return 1
         self.splash.show()
         self.service.start()
         return self.app.exec()
@@ -389,44 +965,13 @@ class MentorFlowApplication:
     def _service_ready(self, origin: str) -> None:
         self.api = DesktopApi(origin)
         try:
-            if _ui_review_mode_enabled():
-                self._show_main(
-                    {
-                        "id": "ui-review",
-                        "username": "ui-review",
-                        # The review launcher is an internal data-root choice,
-                        # not a user-facing identity.  Keep the same calm
-                        # local-space wording as normal standalone mode.
-                        "display_name": "本地学习空间",
-                    }
-                )
-                return
-            if _local_data_mode_enabled():
-                # The local data directory is the identity in standalone mode:
-                # existing data is loaded as-is, while a missing directory is
-                # initialized by the local service.  Account/password/SMS
-                # flows remain available only in the explicit remote mode.
-                self._show_main(
-                    {
-                        "id": "local-data",
-                        "username": "local-data",
-                        "display_name": "本地学习空间",
-                    }
-                )
-                return
-            status = self.api.auth_status()
-            if not status["registration_required"]:
-                try:
-                    user = self.api.me()["user"]
-                except Exception:
-                    user = None
-                if user:
-                    self._show_main(user)
-                    return
-            self.auth = AuthWindow(self.api, bool(status["registration_required"]))
-            self.auth.authenticated.connect(self._show_main)
-            self.auth.show()
-            self.splash.finish(self.auth)
+            self._show_main(
+                {
+                    "id": "local-data",
+                    "username": "local-data",
+                    "display_name": "本地学习空间",
+                }
+            )
         except Exception as exc:
             self._service_failed(str(exc))
 
@@ -438,9 +983,6 @@ class MentorFlowApplication:
         # release focus and z-order when the user clicks another application.
         self.main.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
         self.main.show()
-        if self.auth:
-            self.auth.close()
-            self.auth = None
         self.splash.finish(self.main)
 
     def _service_failed(self, message: str) -> None:
@@ -449,9 +991,10 @@ class MentorFlowApplication:
         self.app.quit()
 
     def _shutdown(self) -> None:
-        if self.api:
+        if getattr(self, "api", None):
             self.api.close()
-        self.service.stop()
+        if getattr(self, "service", None):
+            self.service.stop()
 
 
 def main() -> int:

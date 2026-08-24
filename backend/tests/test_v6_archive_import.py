@@ -52,6 +52,8 @@ def test_normal_preview_and_import(client):
     ws = workspace(client)
     response = preview(client, ws, {"notes/java/jvm.md": "# JVM\n\nEvidence", "ignored.exe": "MZ"})
     assert response.status_code == 200
+    assert "storage_path" not in response.text
+    assert str(Path(db.DATA_DIR).resolve()) not in response.text
     body = response.json()
     assert body["supported_count"] == 1 and body["rejected_count"] == 1
     item = next(x for x in body["tree"] if x["status"] == "supported")

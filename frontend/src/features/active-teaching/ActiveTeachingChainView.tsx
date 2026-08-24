@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import dagre from "@dagrejs/dagre";
 import {
   Background,
   Controls,
   MiniMap,
   ReactFlow,
+  type ReactFlowInstance,
   type Edge as FlowEdge,
   type Node as FlowNode,
 } from "@xyflow/react";
@@ -14,6 +14,8 @@ import {
   activeRequest,
   activeSnapshot,
   activeTeacherPersonas,
+  isSupportedDocumentFile,
+  materialAcceptFromCapabilities as apiMaterialAcceptFromCapabilities,
   setActiveLearningTaskArchived,
   type ActiveLearningTaskSummary,
   type ActiveTeacherPersona,
@@ -32,6 +34,12 @@ import {
   type TeacherCompanionState,
 } from "../teachers/TeacherCompanionStage";
 import {
+  TEACHER_STAGE_IDLE_REACTION_MS,
+  TEACHER_STAGE_STATES,
+  teacherStageIdleReaction,
+} from "../teachers/presentation/teacherStageState";
+import type { TeacherPresentationState } from "../teachers/presentation/teacherPresentationTypes";
+import {
   speakLocalTeacherVoice,
   stopLocalTeacherVoice,
 } from "../voice/localTeacherVoice";
@@ -39,8 +47,25 @@ import { VoicePlaybackRateControl } from "../voice/VoicePlaybackRateControl";
 import "../teachers/teacher-avatar.css";
 import "../teachers/teacher-avatar-warm.css";
 import "./active-teaching.css";
+import PlanningCandidatePool, { boundedCandidateSummaries, candidatePageFillTarget, isCandidateBlocked, looksLikeDisallowedMediaCandidate, readCandidatePage, type CandidatePage } from "../planning/PlanningCandidatePool";
+import { buildPlanningSearchAnchor, candidateServerId, clientRequestId, enqueuePlanningPoolRequest, isPlanningPoolStaleError, monotonicPlanningPoolRevision, planningDiscoveryMode, planningPoolSessionQueueKey, readPlanningPoolState, selectionKeys, writePlanningPoolState } from "../planning/planningCandidatePoolClient";
 import { FocusMonitorPanel } from "./FocusMonitorPanel";
+import { VideoCollectionView } from "./VideoCollectionView";
 import "@xyflow/react/dist/style.css";
+import {
+  buildKnowledgeMapSearchContext,
+  buildKnowledgeLearningPath,
+  knowledgeMapGraphSignature,
+  KnowledgeMapLayoutCache,
+  layoutKnowledgeMapGraph,
+  searchKnowledgeMapNodes,
+} from "./knowledgeMapGraph";
+
+type PlanningPoolRequestScope = {
+  workspaceId: string
+  sessionId: string
+  generation: number
+};
 
 const isoAfterDays = (days: number) => {
   const value = new Date(Date.now() + days * 86400000);
@@ -110,20 +135,53 @@ const plannerResourceKey = (item: any) => {
   return id ? `id:${id}` : "";
 };
 
-const isPlannerVideo = (item: any) => {
-  const kind = String(item?.media_kind || item?.kind || item?.source_kind || item?.source_type || item?.media_type || "").toLowerCase();
-  return kind.includes("video") || kind.includes("youtube") || kind.includes("bilibili")
-    || /\.(mp4|webm|mov|m4v|avi|mkv)(?:$|[?#])/i.test(String(item?.url || ""));
+export const isActivePlannerVideo = (item: any) => {
+  const url = String(item?.url || "");
+  if (/\.(mp4|webm|mov|m4v|avi|mkv|m3u8)(?:$|[?#])/i.test(url)
+    || /(?:youtube\.com\/(?:watch|playlist)|youtu\.be\/|bilibili\.com\/video\/|b23\.tv\/|vimeo\.com\/)/i.test(url)
+    || /(?:space\.bilibili\.com\/\d+\/lists\/|youtube\.com\/playlist)/i.test(url)) return true;
+  const mediaKind = String(item?.media_kind || "").trim().toLowerCase();
+  return mediaKind === "video" || mediaKind === "video_collection";
+};
+
+// A stale discovery payload must never turn a searched video into a primary
+// material. Exact learner-provided references remain eligible for the video
+// flow; discovered notes/documents continue as supporting resources.
+export const isActivePlannerHandoffSafe = (item: any) => (
+  !isCandidateBlocked(item)
+  && !isActivePlannerVideo(item)
+  && !looksLikeDisallowedMediaCandidate(item)
+  && (!String(item?.url || item?.canonical_url || "").trim() || /^https:\/\//i.test(String(item?.url || item?.canonical_url || "").trim()))
+);
+
+export const isActivePlannerVideoCollection = (item: any) => {
+  const mediaKind = String(item?.media_kind || "").trim().toLowerCase();
+  if (mediaKind) return mediaKind === "video_collection";
+  const url = String(item?.canonical_url || item?.url || "").trim();
+  return /(?:space\.bilibili\.com\/\d+\/(?:lists\/\d+|channel\/(?:seriesdetail|collectiondetail))|bilibili\.com\/(?:medialist\/play|list|(?:bangumi|cheese)\/play)\/)/i.test(url)
+    || /(?:youtube\.com\/(?:playlist|watch)[^\s]*[?&]list=)/i.test(url);
 };
 
 const mergePlannerResources = (...groups: any[][]) => {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const merged: any[] = [];
+  const genericTitle = (value: unknown) => /^(?:b站|bilibili)?\s*视频\s*(?:bv|av)[\w.-]*$/i.test(String(value || "").trim());
   groups.flat().forEach((item) => {
     const key = plannerResourceKey(item);
-    if (!key || seen.has(key) || !item?.url) return;
-    seen.add(key);
-    merged.push(item);
+    if (!key || !item?.url) return;
+    const existingIndex = seen.get(key);
+    if (existingIndex === undefined) {
+      seen.set(key, merged.length);
+      merged.push(item);
+      return;
+    }
+    const existing = merged[existingIndex];
+    const next = { ...existing, ...item };
+    for (const [field, value] of Object.entries(existing)) {
+      if (next[field] === undefined || next[field] === null || next[field] === "") next[field] = value;
+    }
+    if (genericTitle(item.title) && !genericTitle(existing.title)) next.title = existing.title;
+    merged[existingIndex] = next;
   });
   return merged;
 };
@@ -152,27 +210,16 @@ const knowledgeJobProcessingStatuses = [
 
 /** Build the browser file filter from the canonical conversion registry. */
 export const materialAcceptFromCapabilities = (payload: any): string | undefined => {
-  const capabilities = asArray(payload?.registry?.capabilities || payload?.capabilities);
-  const accepted = new Set<string>();
-  capabilities.forEach((capability: any) => {
-    if (capability?.available === false || capability?.rejected === true) return;
-    asArray(capability?.suffixes).forEach((suffix) => {
-      const normalized = String(suffix || "").trim().toLowerCase();
-      if (normalized) accepted.add(normalized.startsWith(".") ? normalized : `.${normalized}`);
-    });
-    asArray(capability?.mime_types).forEach((mimeType) => {
-      const normalized = String(mimeType || "").trim().toLowerCase();
-      if (normalized) accepted.add(normalized);
-    });
-  });
-  return accepted.size ? Array.from(accepted).join(",") : undefined;
+  return apiMaterialAcceptFromCapabilities(payload);
 };
 
 const reviewStatusFor = (...values: unknown[]) => {
   const status = stringValue(...values).toLowerCase();
   if (["pending", "review", "needs-review", "needs_review"].includes(status)) return "needs_review";
   if (["confirmed", "accepted", "accept", "approved"].includes(status)) return "approved";
-  return status || "approved";
+  // Do not infer approval from an absent/legacy value. Unknown review state
+  // must remain out of the canonical learning path until explicitly reviewed.
+  return status || "needs_review";
 };
 
 const evidenceFor = (value: any): KnowledgeMapEvidence[] => {
@@ -243,6 +290,7 @@ export function normalizeKnowledgeMapV1(payload: any): KnowledgeMapV1 {
     raw: root,
   };
 }
+const isPlannerVideo = isActivePlannerVideo
 
 export type MasteryPlanPreviewV1 = {
   preview_id: string;
@@ -253,6 +301,83 @@ export type MasteryPlanPreviewV1 = {
   activation_blockers: any[];
   extension_draft: any;
   [key: string]: any;
+};
+
+type KnowledgeMapStagedRevision = {
+  revisionId: string;
+  revision?: number | string | null;
+  currentRevisionId?: string;
+  scope?: any;
+  diff?: any;
+  blockers: any[];
+  map?: KnowledgeMapV1 | null;
+};
+
+const knowledgeMapCandidateStatus = (candidate: any): string =>
+  stringValue(candidate?.status, candidate?.review_status, candidate?.decision).toLowerCase() || "pending";
+
+const knowledgeMapCandidateType = (candidate: any): string =>
+  stringValue(candidate?.candidate_type, candidate?.candidateType, candidate?.type).toLowerCase();
+
+const knowledgeMapCandidateReason = (candidate: any): string => {
+  const payload = candidate?.payload && typeof candidate.payload === "object" ? candidate.payload : {};
+  return stringValue(payload?.reason, payload?.detail, payload?.message, candidate?.reason, candidate?.decision_reason);
+};
+
+/** Keep review copy truthful to the scope/contradiction contract. */
+const knowledgeMapCandidateReviewCopy = (candidate: any) => {
+  const type = knowledgeMapCandidateType(candidate);
+  if (type === "scope_conflict") {
+    return {
+      title: "资料范围冲突",
+      description: "辅助资料中的新概念不纳入当前纲领计划，请确认保持当前纲领范围。",
+      confirm: "确认保持纲领范围",
+      reject: "驳回范围候选",
+    };
+  }
+  if (type === "contradiction") {
+    return {
+      title: "证据冲突待审核",
+      description: "不同资料对同一内容存在冲突，请审核后决定如何处理。",
+      confirm: "确认已处理冲突",
+      reject: "驳回冲突候选",
+    };
+  }
+  if (type === "material_disposition") {
+    return {
+      title: "资料纳入决策",
+      description: "请确认这份资料是否纳入新版知识地图。",
+      confirm: "确认资料决策",
+      reject: "驳回资料候选",
+    };
+  }
+  return {
+    title: stringValue(candidate?.label, candidate?.name, candidate?.title) || "知识地图候选",
+    description: "请核对证据后决定是否处理该候选。",
+    confirm: "确认候选",
+    reject: "驳回候选",
+  };
+};
+
+const uniqueKnowledgeMapBlockers = (...groups: any[][]): any[] => {
+  const all = groups.flatMap((group) => asArray(group));
+  return all.filter((blocker, index) => {
+    const type = knowledgeMapCandidateType(blocker);
+    const payload = blocker?.payload && typeof blocker.payload === "object" ? blocker.payload : {};
+    const key = type === "material_disposition"
+      ? `material_disposition:${stringValue(blocker?.material_id, payload?.material_id, blocker?.id)}`
+      : stringValue(blocker?.id, blocker?.candidate_id, blocker?.material_id)
+      || `${knowledgeMapCandidateType(blocker)}:${knowledgeMapCandidateReason(blocker)}`;
+    return all.findIndex((item) => {
+      const itemType = knowledgeMapCandidateType(item);
+      const itemPayload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+      const itemKey = itemType === "material_disposition"
+        ? `material_disposition:${stringValue(item?.material_id, itemPayload?.material_id, item?.id)}`
+        : stringValue(item?.id, item?.candidate_id, item?.material_id)
+        || `${knowledgeMapCandidateType(item)}:${knowledgeMapCandidateReason(item)}`;
+      return itemKey === key;
+    }) === index;
+  });
 };
 
 export const planPreviewBlockerText = (blocker: any): string => {
@@ -299,10 +424,11 @@ export const normalizeMasteryPlanPreview = (preview: any): any => {
   };
 };
 
-async function readActiveKnowledgeMapV1(workspaceId: string): Promise<KnowledgeMapV1> {
+async function readActiveKnowledgeMapV1(workspaceId: string, revision: string | number = "active"): Promise<KnowledgeMapV1> {
   const workspacePath = `/workspaces/${encodeURIComponent(workspaceId)}`;
-  const mapPayload = await activeRequest(`${workspacePath}/knowledge-map?revision=active`);
-  const candidatePayload = await activeRequest(`${workspacePath}/knowledge-map/candidates?revision=active`).catch(() => null);
+  const revisionQuery = encodeURIComponent(String(revision || "active"));
+  const mapPayload = await activeRequest(`${workspacePath}/knowledge-map?revision=${revisionQuery}`);
+  const candidatePayload = await activeRequest(`${workspacePath}/knowledge-map/candidates?revision=${revisionQuery}`).catch(() => null);
   const normalized = normalizeKnowledgeMapV1(mapPayload);
   const candidates = candidatePayload ? asArray(candidatePayload.candidates) : normalized.candidates;
   return {
@@ -315,18 +441,14 @@ export function layoutKnowledgeMapV1(
   nodes: KnowledgeMapV1Node[],
   edges: KnowledgeMapV1Edge[],
 ): FlowNode[] {
-  const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100, marginx: 24, marginy: 24 });
   const width = 220;
   const height = 104;
-  nodes.forEach((node) => graph.setNode(node.id, { width, height }));
-  edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
-  dagre.layout(graph);
+  const positions = layoutKnowledgeMapGraph(nodes, edges);
   return nodes.map((node) => {
-    const positioned = graph.node(node.id) || { x: width / 2, y: height / 2 };
+    const positioned = positions[node.id] || { x: 0, y: 0 };
     return {
       id: node.id,
-      position: { x: positioned.x - width / 2, y: positioned.y - height / 2 },
+      position: { x: positioned.x, y: positioned.y },
       data: { label: node.kind === "theme" ? `主题 · ${node.label}` : node.label, node },
       type: "default",
       width,
@@ -455,11 +577,16 @@ type KnowledgeMapV1Props = {
   job?: any;
   error?: string;
   busy?: boolean;
+  currentKnowledgePointId?: string | null;
+  isFallbackSnapshot?: boolean;
+  snapshotRevision?: number | string | null;
+  readOnly?: boolean;
   onGenerate: () => void;
+  onRetryRead?: () => void;
   onDecision: (candidate: any, decision: "confirm" | "reject") => void;
 };
 
-export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGenerate, onDecision }: KnowledgeMapV1Props) {
+export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, currentKnowledgePointId, isFallbackSnapshot, snapshotRevision, readOnly, onGenerate, onRetryRead, onDecision }: KnowledgeMapV1Props) {
   const [showModelCommon, setShowModelCommon] = useState(false);
   const [relationFilter, setRelationFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
@@ -467,6 +594,15 @@ export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGen
   const [masteryFilter, setMasteryFilter] = useState("all");
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [focusedNodeId, setFocusedNodeId] = useState("");
+  const [layoutPositions, setLayoutPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [layoutStatus, setLayoutStatus] = useState<"idle" | "computing" | "ready" | "fallback">("idle");
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const layoutGenerationRef = useRef(0);
+  const layoutCacheRef = useRef(new KnowledgeMapLayoutCache(6));
+  const layoutWorkerRef = useRef<Worker | null>(null);
+  const autoFocusedCurrentRef = useRef("");
 
   const visibleNodes = useMemo(() => {
     if (!map) return [];
@@ -487,7 +623,137 @@ export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGen
     && (relationFilter === "all" || edge.relation === relationFilter)
     && (reviewFilter === "all" || edge.reviewStatus === reviewFilter)
   )), [map?.edges, relationFilter, reviewFilter, visibleNodeIds]);
-  const flowNodes = useMemo(() => layoutKnowledgeMapV1(visibleNodes, visibleEdges), [visibleEdges, visibleNodes]);
+  const graphSignature = useMemo(
+    () => map ? knowledgeMapGraphSignature(map.nodes, map.edges, map.revision ?? snapshotRevision) : "empty",
+    [map, snapshotRevision],
+  );
+  useEffect(() => {
+    const generation = ++layoutGenerationRef.current;
+    layoutWorkerRef.current?.terminate();
+    layoutWorkerRef.current = null;
+    if (!map || !map.nodes.length) {
+      setLayoutPositions({});
+      setLayoutStatus("idle");
+      return undefined;
+    }
+    const cached = layoutCacheRef.current.get(graphSignature);
+    if (cached) {
+      setLayoutPositions(cached);
+      setLayoutStatus("ready");
+      return undefined;
+    }
+    const largeGraph = map.nodes.length >= 250;
+    if (largeGraph && typeof Worker !== "undefined") {
+      setLayoutPositions({});
+      setLayoutStatus("computing");
+      let worker: Worker | null = null;
+      try {
+        const activeWorker = new Worker(new URL("./knowledgeMapLayout.worker.ts", import.meta.url), { type: "module" });
+        worker = activeWorker;
+        layoutWorkerRef.current = activeWorker;
+        activeWorker.onmessage = (event: MessageEvent<{ generation: number; positions: Record<string, { x: number; y: number }> }>) => {
+          if (generation !== layoutGenerationRef.current || event.data?.generation !== generation) return;
+          const positions = event.data?.positions || {};
+          layoutCacheRef.current.set(graphSignature, positions);
+          setLayoutPositions(positions);
+          setLayoutStatus("ready");
+          activeWorker.terminate();
+          layoutWorkerRef.current = null;
+        };
+        activeWorker.onerror = () => {
+          if (generation !== layoutGenerationRef.current) return;
+          const positions = layoutKnowledgeMapGraph(map.nodes, map.edges);
+          layoutCacheRef.current.set(graphSignature, positions);
+          setLayoutPositions(positions);
+          setLayoutStatus("fallback");
+          activeWorker.terminate();
+          layoutWorkerRef.current = null;
+        };
+        activeWorker.postMessage({ generation, nodes: map.nodes, edges: map.edges });
+      } catch {
+        const positions = layoutKnowledgeMapGraph(map.nodes, map.edges);
+        layoutCacheRef.current.set(graphSignature, positions);
+        setLayoutPositions(positions);
+        setLayoutStatus("fallback");
+      }
+      return () => {
+        worker?.terminate();
+        if (layoutWorkerRef.current === worker) layoutWorkerRef.current = null;
+      };
+    }
+    const positions = layoutKnowledgeMapGraph(map.nodes, map.edges);
+    layoutCacheRef.current.set(graphSignature, positions);
+    setLayoutPositions(positions);
+    setLayoutStatus("ready");
+    return undefined;
+  }, [graphSignature]);
+  useEffect(() => () => layoutWorkerRef.current?.terminate(), []);
+  const searchContext = useMemo(
+    () => buildKnowledgeMapSearchContext(map?.nodes || [], map?.edges || []),
+    [map?.edges, map?.nodes],
+  );
+  const searchResults = useMemo(
+    () => searchKnowledgeMapNodes(map?.nodes || [], searchQuery, searchContext).slice(0, 30),
+    [map?.nodes, searchContext, searchQuery],
+  );
+  const learningPath = useMemo(
+    () => buildKnowledgeLearningPath(
+      map?.nodes || [],
+      map?.edges || [],
+      focusedNodeId || selectedNodeId || currentKnowledgePointId,
+    ),
+    [currentKnowledgePointId, focusedNodeId, map?.edges, map?.nodes, selectedNodeId],
+  );
+  const focusNode = (nodeId: string) => {
+    setFocusedNodeId(nodeId);
+    setSelectedNodeId(nodeId);
+    setSelectedEdgeId("");
+    const node = map?.nodes.find((item) => item.id === nodeId);
+    if (node?.layer === "model_common" && !showModelCommon) setShowModelCommon(true);
+    const position = node ? layoutPositions[node.id] : undefined;
+    if (position && flowInstanceRef.current) {
+      void flowInstanceRef.current.setCenter(position.x + 110, position.y + 52, { zoom: 1.25, duration: 320 });
+    }
+  };
+  useEffect(() => {
+    if (!currentKnowledgePointId || !map?.nodes.some((node) => node.id === currentKnowledgePointId)) return;
+    if (autoFocusedCurrentRef.current === currentKnowledgePointId) return;
+    autoFocusedCurrentRef.current = currentKnowledgePointId;
+    setFocusedNodeId(currentKnowledgePointId);
+    const position = layoutPositions[currentKnowledgePointId];
+    if (position && flowInstanceRef.current) {
+      void flowInstanceRef.current.setCenter(position.x + 110, position.y + 52, { zoom: 1.15, duration: 260 });
+    }
+  }, [currentKnowledgePointId, layoutPositions, map?.nodes]);
+  const layoutReady = Boolean(map?.nodes.length && map.nodes.every((node) => layoutPositions[node.id]));
+  useEffect(() => {
+    if (!layoutReady || !["ready", "fallback"].includes(layoutStatus) || !flowInstanceRef.current) return;
+    const instance = flowInstanceRef.current;
+    // ReactFlow's fitView prop only applies during initialization. Layout can
+    // finish after the first render, so fit explicitly once positions are
+    // ready, then restore the selected/current focus if one exists.
+    void instance.fitView({ padding: 0.18, duration: 0 });
+    const targetId = focusedNodeId || selectedNodeId || currentKnowledgePointId || "";
+    const position = targetId ? layoutPositions[targetId] : undefined;
+    if (position) {
+      void instance.setCenter(position.x + 110, position.y + 52, { zoom: 1.15, duration: 0 });
+    }
+  }, [currentKnowledgePointId, focusedNodeId, layoutPositions, layoutReady, layoutStatus, selectedNodeId]);
+  const flowNodes = useMemo(() => (layoutReady ? visibleNodes : []).map((node) => {
+    const position = layoutPositions[node.id] || { x: 0, y: 0 };
+    const isFocused = focusedNodeId === node.id || selectedNodeId === node.id || node.id === currentKnowledgePointId;
+    const isDimmed = Boolean(focusedNodeId) && !isFocused;
+    return {
+      id: node.id,
+      position,
+      data: { label: node.kind === "theme" ? `主题 · ${node.label}` : node.label, node },
+      type: "default",
+      width: 220,
+      height: 104,
+      className: `${isFocused ? "active-chain__map-node--focused" : ""} ${isDimmed ? "active-chain__map-node--dimmed" : ""}`.trim(),
+      ariaLabel: `${node.kind === "theme" ? "主题" : "概念"}，${node.label}，${node.reviewStatus}，${node.planStatus}`,
+    } as FlowNode;
+  }), [currentKnowledgePointId, focusedNodeId, layoutPositions, layoutReady, selectedNodeId, visibleNodes]);
   const flowEdges = useMemo<FlowEdge[]>(() => visibleEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
@@ -511,11 +777,19 @@ export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGen
   const capabilityWarnings = asArray(capabilities?.materials).filter((item: any) => item?.supported === false || item?.status === "unsupported" || item?.failure_reason).map((item: any) => `${item.original_filename || item.material_id || "资料"}：${item.failure_reason || item.reason || "当前能力不支持"}`);
 
   return (
-    <section className="active-chain__map-v1" data-testid="active-knowledge-map-v1" aria-label="v1 交互知识地图">
+    <section className="active-chain__map-v1" data-testid="active-knowledge-map-v1" aria-label="v1 交互知识地图" onKeyDown={(event) => { if (event.key === "Escape") { setSearchQuery(""); setFocusedNodeId(""); } }}>
       <div className="active-chain__map-v1-head">
         <div><span className="active-chain__step">KNOWLEDGE MAP V1</span><h3>可审核的知识地图</h3><p>资料节点、模型通识和教学计划分层显示；点击节点或关系查看证据。</p></div>
         <button type="button" data-testid="active-knowledge-map-generate-v1" disabled={Boolean(busy) || knowledgeJobProcessingStatuses.includes(mapStatus)} onClick={onGenerate}>{knowledgeJobProcessingStatuses.includes(mapStatus) ? "正在生成…" : "生成/刷新地图"}</button>
       </div>
+      {isFallbackSnapshot && <div className="active-chain__map-v1-stale" data-testid="knowledge-map-fallback-state" role="status" aria-label="知识地图回退快照状态">
+        <strong className="active-chain__map-v1-stale-title">FALLBACK SNAPSHOT · 只读</strong>
+        <div className="active-chain__map-v1-stale-copy">
+          <span className="active-chain__map-v1-stale-message" data-testid="knowledge-map-fallback-message">当前 v1 地图读取失败；下面是旧版快照，不能当作当前教学依据。</span>
+          <span className="active-chain__map-v1-stale-meta" data-testid="knowledge-map-fallback-meta">revision {snapshotRevision ?? map?.revision ?? "未知"}{error ? ` · ${error}` : ""}</span>
+        </div>
+        {onRetryRead && <button className="active-chain__map-v1-stale-retry" type="button" data-testid="knowledge-map-fallback-retry" onClick={onRetryRead} disabled={Boolean(busy)}>重试读取</button>}
+      </div>}
       {error && <div className="active-chain__error" role="alert">知识地图读取失败：{error}</div>}
       {job && <div className="active-chain__map-status" role="status">任务 {job.status || "queued"}{job.progress !== undefined ? ` · ${job.progress}%` : ""}{job.message ? ` · ${job.message}` : ""}</div>}
       {mapStatus === "unsupported" && <div className="active-chain__warning" role="note">当前能力不支持知识地图：{unsupportedReason || "后端未提供可用的抽取能力"}</div>}
@@ -527,24 +801,26 @@ export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGen
       {map && map.nodes.length > 0 && (
         <>
           <div className="active-chain__map-v1-filters" aria-label="知识地图筛选">
+            <label className="active-chain__map-search">搜索节点<input data-testid="knowledge-map-search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setSearchQuery(""); setFocusedNodeId(""); } }} placeholder="标签、摘要、主题或层" /><small>{searchQuery ? `${searchResults.length} 个结果` : "输入关键词"}</small></label>
             <label>关系<select value={relationFilter} onChange={(event) => setRelationFilter(event.target.value)}><option value="all">全部关系</option>{relationOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
             <label>审核<select value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}><option value="all">全部审核状态</option><option value="approved">已确认</option><option value="needs_review">需要审核</option><option value="rejected">已驳回</option></select></label>
             <label>计划<select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}><option value="all">全部计划状态</option><option value="planned">已排入计划</option><option value="unplanned">未排入计划</option></select></label>
             <label>掌握<select value={masteryFilter} onChange={(event) => setMasteryFilter(event.target.value)}><option value="all">全部掌握度</option><option value="low">0–33%</option><option value="medium">34–66%</option><option value="high">67–100%</option></select></label>
             <label className="active-chain__map-toggle"><input type="checkbox" checked={showModelCommon} onChange={(event) => setShowModelCommon(event.target.checked)} />显示 model_common</label>
           </div>
+          {searchQuery && <section className="active-chain__map-v1-search-results" data-testid="knowledge-map-search-results" aria-label="知识地图搜索结果"><div><b>搜索结果</b><button type="button" className="active-today__secondary" onClick={() => { setSearchQuery(""); setFocusedNodeId(""); }}>清除</button></div>{searchResults.length ? <ul>{searchResults.map((node) => <li key={node.id}><button type="button" onClick={() => focusNode(node.id)} className={focusedNodeId === node.id ? "is-selected" : ""}>{node.label}<small>{node.summary || "暂无摘要"} · {node.layer || node.kind || "节点"}</small></button></li>)}</ul> : <p>没有匹配的节点。</p>}</section>}
           <div className="active-chain__map-v1-layout">
             <div className="active-chain__map-v1-flow" data-testid="active-knowledge-map-flow">
-              {typeof ResizeObserver === "undefined" ? <p className="active-chain__muted">当前浏览器未提供图形布局观察器，已启用键盘列表后备。</p> : <ReactFlow
+              {!layoutReady ? <p className="active-chain__map-v1-layout-status" role="status">正在准备节点布局…键盘列表仍可用。</p> : typeof ResizeObserver === "undefined" ? <p className="active-chain__muted">当前浏览器未提供图形布局观察器，已启用键盘列表后备。</p> : <ReactFlow
                 nodes={flowNodes}
                 edges={flowEdges}
-                fitView
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable
                 nodesFocusable
                 edgesFocusable
-                onNodeClick={(_event, node) => { setSelectedNodeId(node.id); setSelectedEdgeId(""); }}
+                onInit={(instance) => { flowInstanceRef.current = instance; }}
+                onNodeClick={(_event, node) => { focusNode(node.id); }}
                 onEdgeClick={(_event, edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}
                 aria-label="知识地图图形"
               >
@@ -552,18 +828,96 @@ export function KnowledgeMapV1Panel({ map, capabilities, job, error, busy, onGen
                 <Controls showInteractive={false} />
                 <MiniMap pannable zoomable nodeColor={(node) => (node.data as any)?.node?.layer === "model_common" ? "#a9b3bd" : "#5b9274"} />
               </ReactFlow>}
+              {layoutStatus === "computing" && <div className="active-chain__map-v1-layout-status" role="status">正在后台布局大型地图…搜索和列表仍可用。</div>}
+              {layoutStatus === "fallback" && <div className="active-chain__map-v1-layout-status is-fallback" role="status">后台布局不可用，已使用同步后备布局。</div>}
             </div>
             <div className="active-chain__map-v1-list" role="region" aria-label="知识地图键盘列表">
               <h4>键盘可访问列表</h4>
-              {visibleNodes.length === 0 ? <p>当前筛选没有节点。</p> : <ul>{visibleNodes.map((node) => <li key={node.id}><button type="button" className={selectedNodeId === node.id ? "is-selected" : ""} onClick={() => { setSelectedNodeId(node.id); setSelectedEdgeId(""); }}>{node.label}<small>{node.kind === "theme" ? "主题" : "概念"} · {node.reviewStatus} · {node.planStatus}</small></button></li>)}</ul>}
+              {visibleNodes.length === 0 ? <p>当前筛选没有节点。</p> : <ul>{visibleNodes.map((node) => <li key={node.id}><button type="button" className={selectedNodeId === node.id ? "is-selected" : ""} onClick={() => focusNode(node.id)}>{node.label}{node.id === currentKnowledgePointId && <strong> · 当前学习点</strong>}<small>{node.kind === "theme" ? "主题" : "概念"} · {node.reviewStatus} · {node.planStatus}</small></button></li>)}</ul>}
               {visibleEdges.length > 0 && <><h4>关系列表</h4><ul>{visibleEdges.map((edge) => <li key={edge.id}><button type="button" className={selectedEdgeId === edge.id ? "is-selected" : ""} onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}>{edge.relation}<small>{edge.source} → {edge.target}</small></button></li>)}</ul></>}
             </div>
           </div>
+          {learningPath.current && <section className="active-chain__map-v1-path" data-testid="knowledge-map-learning-path" aria-label="前置学习路径"><div><h4>为什么现在学这个？</h4><p>按已确认的 prerequisite 关系说明学习顺序；待审核关系不会进入路径。</p></div><div className="active-chain__map-v1-path-columns"><div><b>上游前置</b>{learningPath.upstream.length ? <ul>{learningPath.upstream.map((node) => <li key={node.id}><button type="button" onClick={() => focusNode(node.id)}>{node.label}</button></li>)}</ul> : <small>没有已确认的上游前置。</small>}</div><div className="is-current"><b>当前学习点</b><button type="button" onClick={() => focusNode(learningPath.current!.id)}>{learningPath.current.label}</button></div><div><b>下游依赖</b>{learningPath.downstream.length ? <ul>{learningPath.downstream.map((node) => <li key={node.id}><button type="button" onClick={() => focusNode(node.id)}>{node.label}</button></li>)}</ul> : <small>没有已确认的下游依赖。</small>}</div></div></section>}
           {(selectedNode || selectedEdge) && <aside className="active-chain__map-v1-evidence" data-testid="active-knowledge-map-evidence"><h4>{selectedNode ? selectedNode.label : `${selectedEdge?.relation || "关系"}关系`}</h4>{selectedNode?.summary && <p>{selectedNode.summary}</p>}<b>证据 {selectedEvidence.length} 条</b>{selectedEvidence.length ? <ul>{selectedEvidence.map((item, index) => <li key={`${item.source_id || "source"}-${item.chunk_id || index}`}><span>{item.heading || item.source_id || "资料来源"}</span><blockquote>{item.quote || teacherValueText(item)}</blockquote></li>)}</ul> : <p role="note">该对象暂无可显示证据。</p>}</aside>}
-          {map.candidates.length > 0 && <section className="active-chain__map-v1-candidates" aria-label="知识地图候选审核"><h4>候选审核</h4>{map.candidates.map((candidate: any, index) => { const candidateId = stringValue(candidate.id, candidate.candidate_id, `candidate-${index + 1}`); const status = stringValue(candidate.status, candidate.review_status) || "needs_review"; const candidateLabel = stringValue(candidate.label, candidate.name, candidate.title) || `${stringValue(candidate.source_id, candidate.prerequisite_id)} —${stringValue(candidate.relation, "prerequisite")}→ ${stringValue(candidate.target_id, candidate.dependent_id)}`; return <article key={candidateId}><div><b>{candidateLabel || candidateId}</b><span>{status}</span></div>{candidate.reason && <p>{candidate.reason}</p>}<div><button type="button" disabled={status === "confirmed" || status === "approved"} onClick={() => onDecision(candidate, "confirm")}>确认候选</button><button type="button" className="active-today__secondary" disabled={status === "rejected"} onClick={() => onDecision(candidate, "reject")}>驳回候选</button></div></article>; })}</section>}
+          {map.candidates.length > 0 && <section className="active-chain__map-v1-candidates" aria-label="知识地图候选审核"><h4>候选审核</h4>{(isFallbackSnapshot || readOnly) && <p className="active-chain__muted" role="note">当前是只读快照，候选审核动作已禁用。</p>}{map.candidates.map((candidate: any, index) => { const candidateId = stringValue(candidate.id, candidate.candidate_id, `candidate-${index + 1}`); const status = stringValue(candidate.status, candidate.review_status) || "needs_review"; const candidateLabel = stringValue(candidate.label, candidate.name, candidate.title) || `${stringValue(candidate.source_id, candidate.prerequisite_id)} —${stringValue(candidate.relation, "prerequisite")}→ ${stringValue(candidate.target_id, candidate.dependent_id)}`; return <article key={candidateId}><div><b>{candidateLabel || candidateId}</b><span>{status}</span></div>{candidate.reason && <p>{candidate.reason}</p>}<div><button type="button" disabled={Boolean(readOnly || isFallbackSnapshot) || status === "confirmed" || status === "approved"} onClick={() => onDecision(candidate, "confirm")}>确认候选</button><button type="button" className="active-today__secondary" disabled={Boolean(readOnly || isFallbackSnapshot) || status === "rejected"} onClick={() => onDecision(candidate, "reject")}>驳回候选</button></div></article>; })}</section>}
         </>
       )}
       {map?.warnings.map((warning) => <p className="active-chain__warning" key={warning}>{warning}</p>)}
+    </section>
+  );
+}
+
+type KnowledgeMapStagedReviewProps = {
+  staged: KnowledgeMapStagedRevision;
+  busy?: boolean;
+  onDecision: (candidate: any, decision: "confirm" | "reject") => void;
+  onActivate: () => void;
+  onDismiss: () => void;
+};
+
+export function KnowledgeMapStagedReviewPanel({ staged, busy, onDecision, onActivate, onDismiss }: KnowledgeMapStagedReviewProps) {
+  const map = staged.map;
+  const candidates = asArray(map?.candidates);
+  const pendingCandidates = candidates.filter((candidate) => knowledgeMapCandidateStatus(candidate) === "pending");
+  const mapBlockers = asArray(staged.blockers);
+  const status = stringValue(map?.status, map?.raw?.state, "staged");
+  return (
+    <section className="active-chain__staged-map" data-testid="active-staged-map" aria-live="polite">
+      <div className="active-chain__staged-map-head">
+        <div>
+          <b>新版知识地图已生成，等待审核与激活</b>
+          <span>staged revision {staged.revisionId}</span>
+        </div>
+        <span>{status} · {map?.revision ?? staged.revision ?? "未知"}</span>
+      </div>
+      <p>当前地图和旧计划保持不变。请先核对新版摘要、差异和待处理候选，再决定是否激活；取消只会清除本页预览。</p>
+      {map ? (
+        <div className="active-chain__staged-map-summary" data-testid="active-staged-summary" aria-label="新版知识地图摘要">
+          <span><b>{map.nodes.length}</b> 个节点</span>
+          <span><b>{map.edges.length}</b> 条关系</span>
+          <span><b>{pendingCandidates.length}</b> 个待审核候选</span>
+        </div>
+      ) : (
+        <p className="active-chain__muted" role="status" data-testid="active-staged-loading">正在读取新版地图…</p>
+      )}
+      {staged.scope && <details className="active-chain__staged-map-details"><summary>查看资料范围</summary><pre data-testid="active-staged-scope">{JSON.stringify(staged.scope, null, 2)}</pre></details>}
+      {staged.diff && <details className="active-chain__staged-map-details" open><summary>查看地图差异</summary><pre data-testid="active-staged-diff">{JSON.stringify(staged.diff, null, 2)}</pre></details>}
+      {mapBlockers.length > 0 && (
+        <div className="active-chain__error" role="alert" data-testid="active-staged-blockers">
+          <b>激活被阻塞（{mapBlockers.length}）</b>
+          <ul>{mapBlockers.map((blocker, index) => {
+            const copy = knowledgeMapCandidateReviewCopy(blocker);
+            const blockerType = knowledgeMapCandidateType(blocker);
+            return <li key={`staged-blocker-${blocker?.id || blockerType || index}`}><strong>{copy.title}</strong>：{copy.description}{knowledgeMapCandidateReason(blocker) ? `（${knowledgeMapCandidateReason(blocker)}）` : ""}</li>;
+          })}</ul>
+        </div>
+      )}
+      {pendingCandidates.length > 0 && (
+        <section className="active-chain__staged-map-candidates" data-testid="active-staged-candidates" aria-label="新版知识地图候选审核">
+          <h4>新版候选审核</h4>
+          {pendingCandidates.map((candidate, index) => {
+            const candidateId = stringValue(candidate?.id, candidate?.candidate_id, `candidate-${index + 1}`);
+            const copy = knowledgeMapCandidateReviewCopy(candidate);
+            const label = stringValue(candidate?.label, candidate?.name, candidate?.title, candidate?.payload?.label, candidate?.payload?.name, candidate?.candidate_type) || copy.title;
+            const reason = knowledgeMapCandidateReason(candidate);
+            return (
+              <article key={candidateId} data-testid={`active-staged-candidate-${candidateId}`}>
+                <div><b>{label}</b><span>{copy.title}</span></div>
+                <p>{copy.description}{reason ? `（${reason}）` : ""}</p>
+                <div>
+                  <button type="button" disabled={Boolean(busy)} onClick={() => onDecision(candidate, "confirm")}>{copy.confirm}</button>
+                  <button type="button" className="active-today__secondary" disabled={Boolean(busy)} onClick={() => onDecision(candidate, "reject")}>{copy.reject}</button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+      {map && !pendingCandidates.length && !mapBlockers.length && <p className="active-chain__success" data-testid="active-staged-clear">所有激活阻塞已由服务器清除，可以显式激活新版地图。</p>}
+      <div className="active-chain__staged-map-actions">
+        <button type="button" data-testid="active-staged-activate" disabled={Boolean(busy) || !map || mapBlockers.length > 0} onClick={onActivate}>激活新版知识地图</button>
+        <button type="button" className="secondary" data-testid="active-staged-dismiss" disabled={Boolean(busy)} onClick={onDismiss}>取消，继续使用当前地图</button>
+      </div>
     </section>
   );
 }
@@ -591,6 +945,13 @@ export function resolveActiveTeacherPresentationState(
   contentValue: unknown = "",
 ): TeacherCompanionState {
   if (busy) return "thinking";
+  const explicitState = String(
+    sessionState?.latest_free_chat_turn_v1?.presentation_state
+    || sessionState?.teacher_turn_v1?.presentation_state
+    || sessionState?.teacher_presentation_state
+    || "",
+  ).trim().toLowerCase() as TeacherPresentationState;
+  if (TEACHER_STAGE_STATES.has(explicitState)) return explicitState;
   const action = String(actionValue || "").trim().toLowerCase();
   const teachingStep = String(sessionState?.current_teaching_step || "").trim().toLowerCase();
   const content = String(contentValue || "").trim().toLowerCase();
@@ -748,6 +1109,7 @@ type PendingUserMessage = {
   content: string;
   status: "processing" | "error";
   understood: boolean;
+  interactionMode: "learning_evidence" | "free_chat";
   attachments: TeachingAttachment[];
   error?: string;
 };
@@ -1023,6 +1385,7 @@ export function ActiveTeachingChainView({
   const [teacherPersonas, setTeacherPersonas] = useState<ActiveTeacherPersona[]>([]);
   const [learnerInterests, setLearnerInterests] = useState("");
   const [message, setMessage] = useState("");
+  const [interactionMode, setInteractionMode] = useState<"learning_evidence" | "free_chat">("learning_evidence");
   const [pendingUserMessages, setPendingUserMessages] = useState<PendingUserMessage[]>([]);
   const [teachingAttachments, setTeachingAttachments] = useState<TeachingAttachment[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -1048,16 +1411,28 @@ export function ActiveTeachingChainView({
   const [busy, setBusy] = useState("");
   const [resourceDiscoveryStatus, setResourceDiscoveryStatus] = useState<any>(null);
   const [knowledgeMapV1, setKnowledgeMapV1] = useState<KnowledgeMapV1 | null>(null);
+  const [knowledgeMapReadState, setKnowledgeMapReadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [knowledgeMapCapabilities, setKnowledgeMapCapabilities] = useState<any>(null);
   const [knowledgeMapJob, setKnowledgeMapJob] = useState<any>(null);
+  const [knowledgeMapStaged, setKnowledgeMapStaged] = useState<KnowledgeMapStagedRevision | null>(null);
   const [knowledgeMapError, setKnowledgeMapError] = useState("");
+  const [materialAnchorId, setMaterialAnchorId] = useState("");
+  const [materialSupportingIds, setMaterialSupportingIds] = useState<string[]>([]);
+  const [materialRoleNotice, setMaterialRoleNotice] = useState("");
   const [planningAssistantText, setPlanningAssistantText] = useState("");
   const [planningAssistantLastQuery, setPlanningAssistantLastQuery] = useState("");
   const [planningAssistantMessages, setPlanningAssistantMessages] = useState<any[]>([]);
   const [planningAssistantResources, setPlanningAssistantResources] = useState<any[]>([]);
   const [planningAssistantSelectedKeys, setPlanningAssistantSelectedKeys] = useState<string[]>([]);
+  const [planningAssistantAnchorKey, setPlanningAssistantAnchorKey] = useState("");
+  const [planningAssistantCandidatePage, setPlanningAssistantCandidatePage] = useState<CandidatePage>({ page: 0, pageSize: 3, hasMore: false, mode: "replace" });
+  const [planningAssistantSessionId, setPlanningAssistantSessionId] = useState("");
+  const [planningAssistantRevision, setPlanningAssistantRevision] = useState<number | undefined>(undefined);
+  const [planningAssistantRejectedKeys, setPlanningAssistantRejectedKeys] = useState<string[]>([]);
+  const [planningAssistantDiscoveryAuthorized, setPlanningAssistantDiscoveryAuthorized] = useState(false);
   const [planningAssistantSelectedUrl, setPlanningAssistantSelectedUrl] = useState("");
   const [planningAssistantBusy, setPlanningAssistantBusy] = useState(false);
+  const [planningPoolSyncing, setPlanningPoolSyncing] = useState(false);
   const [planningVideoOnlyConfirmation, setPlanningVideoOnlyConfirmation] = useState(false);
   const [plannerResource, setPlannerResource] = useState<any>(null);
   const [plannerResources, setPlannerResources] = useState<any[]>([]);
@@ -1073,6 +1448,341 @@ export function ActiveTeachingChainView({
   const refreshSequence = useRef(0);
   const conversationHistoryRef = useRef<HTMLDivElement | null>(null);
   const planningAssistantInputRef = useRef<HTMLTextAreaElement | null>(null);
+  // All requests for one durable planning session share a settled queue in the
+  // durable pool client. A failed request must not leave later work blocked.
+  const planningPoolPendingRef = useRef(0);
+  const planningPoolSessionRef = useRef("");
+  const planningPoolRevisionRef = useRef<number | undefined>(undefined);
+  const planningPoolPageRef = useRef<CandidatePage>({ page: 0, pageSize: 3, hasMore: false, mode: "replace" });
+  const planningCandidateSearchRoundRef = useRef(0);
+  const planningSelectedKeysRef = useRef<string[]>([]);
+  const planningRejectedKeysRef = useRef<string[]>([]);
+  const planningResourcesRef = useRef<any[]>([]);
+  const planningAnchorKeyRef = useRef("");
+  // Preserve checkbox intent across delayed durable responses. The backend
+  // projection is advisory until the corresponding intent is acknowledged.
+  const planningPendingSelectionRef = useRef<Map<string, boolean>>(new Map());
+  // Keep an explicit role decision optimistic until its durable response is
+  // observed; stale refresh/retry payloads may still expose the old anchor.
+  const planningPendingAnchorRef = useRef<string | undefined>(undefined);
+  const suppressDefaultAnchorActionRef = useRef("");
+  const planningPoolGenerationRef = useRef(0);
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId);
+  activeWorkspaceIdRef.current = activeWorkspaceId;
+  const stagedRevisionRef = useRef<KnowledgeMapStagedRevision | null>(null);
+  useEffect(() => { planningSelectedKeysRef.current = planningAssistantSelectedKeys }, [planningAssistantSelectedKeys]);
+  useEffect(() => { planningRejectedKeysRef.current = planningAssistantRejectedKeys }, [planningAssistantRejectedKeys]);
+  useEffect(() => { planningPoolSessionRef.current = planningAssistantSessionId }, [planningAssistantSessionId]);
+  useEffect(() => { planningPoolRevisionRef.current = planningAssistantRevision }, [planningAssistantRevision]);
+  useEffect(() => { planningPoolPageRef.current = planningAssistantCandidatePage }, [planningAssistantCandidatePage]);
+  useEffect(() => { planningResourcesRef.current = planningAssistantResources }, [planningAssistantResources]);
+  useEffect(() => { planningAnchorKeyRef.current = planningAssistantAnchorKey }, [planningAssistantAnchorKey]);
+
+  const runPlanningPoolSerialized = <T,>(task: () => Promise<T>): Promise<T> => (
+    enqueuePlanningPoolRequest(
+      planningPoolSessionQueueKey(activeWorkspaceId, planningPoolSessionRef.current),
+      task,
+    )
+  );
+  const isPlanningPoolStale = (reason: unknown) => isPlanningPoolStaleError(reason);
+  const capturePlanningPoolScope = (sessionId = planningPoolSessionRef.current): PlanningPoolRequestScope => ({
+    workspaceId: activeWorkspaceId,
+    sessionId,
+    generation: planningPoolGenerationRef.current,
+  });
+  const isCurrentPlanningPoolScope = (scope: PlanningPoolRequestScope) => (
+    scope.generation === planningPoolGenerationRef.current
+    && scope.workspaceId === activeWorkspaceIdRef.current
+    && scope.workspaceId === activeWorkspaceId
+    && (!scope.sessionId || scope.sessionId === planningPoolSessionRef.current)
+  );
+
+  const applyPlanningPoolPayload = (
+    payload: any,
+    incomingCandidates?: any[],
+    options: { preservePage?: boolean; replaceUnselected?: boolean; settledSelection?: { key: string; selected: boolean }; scope?: PlanningPoolRequestScope } = {},
+  ) => {
+    const parsed = readCandidatePage(payload, [], 3);
+    if (options.scope && !isCurrentPlanningPoolScope(options.scope)) {
+      return { parsed, merged: planningResourcesRef.current, ignoredScope: true, ignoredStaleResponse: true };
+    }
+    const nextCandidates = parsed.candidates as any[];
+    const durableSession = String(parsed.page.planningSessionId || payload?.planning_session_id || "").trim();
+    const incomingRevision = parsed.page.revision;
+    const currentRevision = planningPoolRevisionRef.current;
+    const sameSession = !durableSession || !planningPoolSessionRef.current || durableSession === planningPoolSessionRef.current;
+    if (
+      sameSession
+      && Number.isFinite(incomingRevision)
+      && Number.isFinite(currentRevision)
+      && Number(incomingRevision) < Number(currentRevision)
+    ) {
+      return { parsed, merged: planningResourcesRef.current, ignoredStaleResponse: true };
+    }
+    const currentByKey = new Map(planningResourcesRef.current.map(item => [plannerResourceKey(item), item]));
+    const protectedKeys = new Set(planningSelectedKeysRef.current.filter(key => {
+      const item = currentByKey.get(key);
+      return Boolean(item && !planningRejectedKeysRef.current.includes(key) && !isCandidateBlocked(item));
+    }));
+    const base = options.replaceUnselected
+      ? planningResourcesRef.current.filter(item => (
+        protectedKeys.has(plannerResourceKey(item))
+        || Boolean(item?.direct_user_reference || item?.retained || item?.selected)
+      ))
+      : durableSession || parsed.page.mode === "append"
+        ? planningResourcesRef.current
+        : planningResourcesRef.current.filter(item => protectedKeys.has(plannerResourceKey(item)));
+    const merged = mergePlannerResources(base, incomingCandidates || [], nextCandidates);
+    planningResourcesRef.current = merged;
+    setPlanningAssistantResources(merged);
+    const acceptedRevision = sameSession
+      ? monotonicPlanningPoolRevision(currentRevision, incomingRevision)
+      : monotonicPlanningPoolRevision(undefined, incomingRevision);
+    const nextPage = {
+      ...(options.preservePage ? planningPoolPageRef.current : {}),
+      ...parsed.page,
+      ...(options.preservePage ? {
+        page: planningPoolPageRef.current.page,
+        pageIndex: planningPoolPageRef.current.pageIndex ?? planningPoolPageRef.current.page,
+        page_index: planningPoolPageRef.current.page_index ?? planningPoolPageRef.current.page,
+        pageSize: planningPoolPageRef.current.pageSize,
+        page_size: planningPoolPageRef.current.page_size ?? planningPoolPageRef.current.pageSize,
+        mode: planningPoolPageRef.current.mode,
+        serverPaged: planningPoolPageRef.current.serverPaged,
+        server_paged: planningPoolPageRef.current.server_paged,
+        currentItemIdentities: planningPoolPageRef.current.currentItemIdentities,
+        current_item_identities: planningPoolPageRef.current.current_item_identities,
+        nextCursor: planningPoolPageRef.current.nextCursor,
+        next_cursor: planningPoolPageRef.current.next_cursor,
+        previousCursor: planningPoolPageRef.current.previousCursor,
+        previous_cursor: planningPoolPageRef.current.previous_cursor,
+        currentCursor: planningPoolPageRef.current.currentCursor,
+        current_cursor: planningPoolPageRef.current.current_cursor,
+      } : {}),
+      ...(Number.isFinite(acceptedRevision) ? { revision: acceptedRevision } : {}),
+      mode: options.preservePage ? planningPoolPageRef.current.mode : (parsed.page.mode || "append"),
+    };
+    planningPoolPageRef.current = nextPage;
+    setPlanningAssistantCandidatePage(nextPage);
+    const session = durableSession;
+    if (session) {
+      planningPoolSessionRef.current = session;
+      setPlanningAssistantSessionId(session);
+      writePlanningPoolState(activeWorkspaceId, {
+        planning_session_id: session,
+        ...(Number.isFinite(acceptedRevision) ? { revision: acceptedRevision } : {}),
+      });
+    }
+    if (Number.isFinite(acceptedRevision)) {
+      planningPoolRevisionRef.current = acceptedRevision;
+      setPlanningAssistantRevision(acceptedRevision);
+    }
+    const selection = parsed.selection || parsed.session?.selection || payload?.selection;
+    const rawRejected = selection?.rejected_keys || selection?.rejectedKeys || selection?.rejected;
+    const rejectedFromPayload = Array.isArray(rawRejected) ? selectionKeys(rawRejected, merged) : [];
+    const rejectedSet = new Set([...planningRejectedKeysRef.current, ...rejectedFromPayload]);
+    const rawSelected = selection?.selected_keys || selection?.selectedKeys || selection?.selected_candidates || selection?.selected;
+    if (Array.isArray(rawSelected)) {
+      const mergedByKey = new Map(merged.map(item => [plannerResourceKey(item), item]));
+      const isVisibleKey = (key: string) => {
+        const item = mergedByKey.get(key);
+        return Boolean(item && !rejectedSet.has(key) && !isCandidateBlocked(item));
+      };
+      const optimistic = new Set(selectionKeys(rawSelected, merged).filter(isVisibleKey));
+      for (const key of planningSelectedKeysRef.current) {
+        if ((!options.replaceUnselected || protectedKeys.has(key)) && isVisibleKey(key)) optimistic.add(key);
+      }
+      for (const [key, selected] of planningPendingSelectionRef.current) {
+        if (selected && isVisibleKey(key)) optimistic.add(key);
+        else optimistic.delete(key);
+      }
+      const keys = [...optimistic];
+      planningSelectedKeysRef.current = keys;
+      setPlanningAssistantSelectedKeys(keys);
+      const settled = options.settledSelection;
+      if (settled && planningPendingSelectionRef.current.get(settled.key) === settled.selected) {
+        if (optimistic.has(settled.key) === settled.selected) planningPendingSelectionRef.current.delete(settled.key);
+      }
+    } else {
+      const mergedByKey = new Map(merged.map(item => [plannerResourceKey(item), item]));
+      const safeKeys = planningSelectedKeysRef.current.filter(key => {
+        const item = mergedByKey.get(key);
+        return Boolean(item && !rejectedSet.has(key) && !isCandidateBlocked(item));
+      });
+      planningSelectedKeysRef.current = safeKeys;
+      setPlanningAssistantSelectedKeys(safeKeys);
+    }
+    if (Array.isArray(rawRejected)) {
+      const keys = rejectedFromPayload;
+      planningRejectedKeysRef.current = keys;
+      setPlanningAssistantRejectedKeys(keys);
+    }
+    const rawAnchor = String(selection?.anchor_key || selection?.anchorKey || selection?.anchor || payload?.anchor_candidate_id || "");
+    const backendAnchorKeyRaw = rawAnchor
+      ? (selectionKeys([rawAnchor], merged)[0] || rawAnchor)
+      : "";
+    const backendAnchorItem = merged.find(item => plannerResourceKey(item) === backendAnchorKeyRaw);
+    const backendAnchorKey = backendAnchorItem && !isCandidateBlocked(backendAnchorItem) ? backendAnchorKeyRaw : "";
+    const pendingAnchor = planningPendingAnchorRef.current;
+    const pendingAnchorItem = pendingAnchor ? merged.find(item => plannerResourceKey(item) === pendingAnchor) : undefined;
+    const safePendingAnchor = pendingAnchor === "" || (pendingAnchorItem && !isCandidateBlocked(pendingAnchorItem))
+      ? pendingAnchor
+      : undefined;
+    const resolvedAnchor = safePendingAnchor !== undefined
+      ? safePendingAnchor
+      : backendAnchorKey || (options.preservePage ? planningAnchorKeyRef.current : "");
+    if (pendingAnchor !== undefined && backendAnchorKey === pendingAnchor) planningPendingAnchorRef.current = undefined;
+    planningAnchorKeyRef.current = resolvedAnchor;
+    setPlanningAssistantAnchorKey(resolvedAnchor);
+    return { parsed, merged };
+  };
+
+  const refreshPlanningPoolSnapshot = async (workspaceId: string, sessionId: string, requestPrefix: string, scope = capturePlanningPoolScope(sessionId)) => {
+    if (!isCurrentPlanningPoolScope(scope)) return null;
+    const result = await activeRequest(
+      `/workspaces/${encodeURIComponent(workspaceId)}/planning-assistant`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: "",
+          pool_action: "refresh",
+          planning_session_id: sessionId,
+          page_size: planningPoolPageRef.current.pageSize,
+          client_request_id: clientRequestId(requestPrefix),
+        }),
+      },
+      30_000,
+    );
+    if (!isCurrentPlanningPoolScope(scope)) return null;
+    applyPlanningPoolPayload(result, undefined, { scope });
+    return result;
+  };
+
+  const enqueuePlanningPoolAction = (action: "select" | "deselect" | "reject" | "undo" | "set_anchor" | "clear_anchor", key: string) => {
+    const sessionAtEnqueue = planningPoolSessionRef.current;
+    const workspaceAtEnqueue = activeWorkspaceId;
+    const scopeAtEnqueue = capturePlanningPoolScope(sessionAtEnqueue);
+    if (!sessionAtEnqueue || !key) return;
+    if (action === "select" || action === "set_anchor") planningPendingSelectionRef.current.set(key, true);
+    if (action === "deselect" || action === "reject") planningPendingSelectionRef.current.set(key, false);
+    if (action === "set_anchor") planningPendingAnchorRef.current = key;
+    if ((action === "deselect" || action === "reject") && planningAnchorKeyRef.current === key) planningPendingAnchorRef.current = "";
+    planningPoolPendingRef.current += 1;
+    setPlanningPoolSyncing(true);
+    const queued = runPlanningPoolSerialized(async () => {
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      const item = planningResourcesRef.current.find(candidate => plannerResourceKey(candidate) === key);
+      const id = candidateServerId(item, key);
+      const requestId = clientRequestId(`active-${action}`);
+      const send = () => {
+        const revision = planningPoolRevisionRef.current;
+        const body: Record<string, unknown> = {
+          message: "",
+          pool_action: action,
+          planning_session_id: sessionAtEnqueue,
+          candidate_ids: id ? [id] : [],
+          client_request_id: requestId,
+          ...(revision !== undefined ? { revision, expected_revision: revision } : {}),
+        };
+        if (action === "set_anchor" || action === "clear_anchor") body.anchor_candidate_id = id;
+        return activeRequest(`/workspaces/${encodeURIComponent(workspaceAtEnqueue)}/planning-assistant`, { method: "POST", body: JSON.stringify(body) }, 30_000);
+      };
+      let result;
+      try {
+        result = await send();
+      } catch (reason) {
+        if (!isPlanningPoolStale(reason)) throw reason;
+        await refreshPlanningPoolSnapshot(workspaceAtEnqueue, sessionAtEnqueue, "active-action-refresh", scopeAtEnqueue);
+        if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+        result = await send();
+      }
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      applyPlanningPoolPayload(result, undefined, {
+        preservePage: true,
+        scope: scopeAtEnqueue,
+        settledSelection: ["select", "set_anchor"].includes(action)
+          ? { key, selected: true }
+          : ["deselect", "reject"].includes(action)
+            ? { key, selected: false }
+            : undefined,
+      });
+    }).catch(async (reason: any) => {
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      if (planningPendingAnchorRef.current === key || (planningPendingAnchorRef.current === "" && planningAnchorKeyRef.current === key)) {
+        planningPendingAnchorRef.current = undefined;
+      }
+      planningPendingSelectionRef.current.delete(key);
+      try {
+        await refreshPlanningPoolSnapshot(workspaceAtEnqueue, sessionAtEnqueue, "active-action-failed-refresh", scopeAtEnqueue);
+      } catch {
+        // Preserve the original actionable error when even recovery fails.
+      }
+      if (isCurrentPlanningPoolScope(scopeAtEnqueue)) setError(reason?.message || "候选池操作失败，请刷新后重试。");
+    });
+    void queued.finally(() => {
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      planningPoolPendingRef.current = Math.max(0, planningPoolPendingRef.current - 1);
+      if (planningPoolPendingRef.current === 0) setPlanningPoolSyncing(false);
+    });
+  };
+
+  useEffect(() => {
+    const generation = ++planningPoolGenerationRef.current;
+    activeWorkspaceIdRef.current = activeWorkspaceId;
+    const saved = readPlanningPoolState(activeWorkspaceId);
+    planningResourcesRef.current = [];
+    setPlanningAssistantResources([]);
+    setPlanningAssistantSelectedKeys([]);
+    planningSelectedKeysRef.current = [];
+    setPlanningAssistantRejectedKeys([]);
+    planningRejectedKeysRef.current = [];
+    setPlanningAssistantAnchorKey("");
+    planningAnchorKeyRef.current = "";
+    planningPendingSelectionRef.current.clear();
+    planningPendingAnchorRef.current = undefined;
+    const emptyPage: CandidatePage = { page: 0, pageSize: 3, hasMore: false, mode: "replace" };
+    planningPoolPageRef.current = emptyPage;
+    setPlanningAssistantCandidatePage(emptyPage);
+    planningPoolRevisionRef.current = undefined;
+    setPlanningAssistantRevision(undefined);
+    planningPoolPendingRef.current = 0;
+    setPlanningPoolSyncing(false);
+    setPlanningAssistantBusy(false);
+    if (!saved?.planning_session_id) {
+      planningPoolSessionRef.current = "";
+      setPlanningAssistantSessionId("");
+      return;
+    }
+    planningPoolSessionRef.current = saved.planning_session_id;
+    setPlanningAssistantSessionId(saved.planning_session_id);
+    if (saved.revision !== undefined) {
+      planningPoolRevisionRef.current = saved.revision;
+      setPlanningAssistantRevision(saved.revision);
+    }
+    const scope = { workspaceId: activeWorkspaceId, sessionId: saved.planning_session_id, generation };
+    let cancelled = false;
+    void runPlanningPoolSerialized(async () => {
+      try {
+        const result = await activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/planning-assistant`, {
+          method: "POST",
+          body: JSON.stringify({
+            pool_action: "refresh",
+            planning_session_id: saved.planning_session_id,
+            ...(saved.revision !== undefined ? { revision: saved.revision, expected_revision: saved.revision } : {}),
+            client_request_id: clientRequestId("active-refresh"),
+          }),
+        }, 30_000);
+        if (!cancelled && isCurrentPlanningPoolScope(scope)) applyPlanningPoolPayload(result, undefined, { scope });
+      } catch (reason) {
+        if (!isPlanningPoolStale(reason)) throw reason;
+        await refreshPlanningPoolSnapshot(activeWorkspaceId, saved.planning_session_id, "active-refresh-recovery", scope);
+      }
+    }).catch((reason: any) => {
+      if (!cancelled && isCurrentPlanningPoolScope(scope)) setError(reason?.message || "无法恢复候选池；可以新建任务后重新搜索。");
+    });
+    return () => { cancelled = true };
+  }, [activeWorkspaceId]);
+
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -1117,6 +1827,38 @@ export function ActiveTeachingChainView({
       return;
     }
     setSnapshot(next);
+    const receiptAnchor = String(
+      next.receipt?.anchor_material_id
+      || next.receipt?.anchorMaterialId
+      || "",
+    ).trim();
+    const receiptSupporting = asArray(
+      next.receipt?.supporting_material_ids
+      || next.receipt?.supportingMaterialIds,
+    ).map(String).filter(Boolean);
+    const readyNextIds = asArray(next.materials)
+      .filter((item: any) => item?.status === "ready")
+      .map((item: any) => String(item.id || "").trim())
+      .filter(Boolean);
+    const anchorFromMaterial = readyNextIds.find((id) => {
+      const item = asArray(next.materials).find((candidate: any) => String(candidate?.id || "") === id);
+      return [item?.scope_role, item?.material_role, item?.role, item?.coverage_role]
+        .map((value) => String(value || "").toLowerCase())
+        .some((value) => value === "anchor" || value === "primary" || value === "纲领");
+    }) || "";
+    if (!materialAnchorId && readyNextIds.length) {
+      const nextAnchor = (receiptAnchor && readyNextIds.includes(receiptAnchor))
+        ? receiptAnchor
+        : anchorFromMaterial || readyNextIds[0];
+      setMaterialAnchorId(nextAnchor);
+      setMaterialSupportingIds(readyNextIds.filter((id) => id !== nextAnchor));
+    } else if (receiptAnchor && readyNextIds.includes(receiptAnchor) && materialAnchorId === "") {
+      setMaterialAnchorId(receiptAnchor);
+      setMaterialSupportingIds(readyNextIds.filter((id) => id !== receiptAnchor));
+    } else if (!materialSupportingIds.length && (receiptSupporting.length || readyNextIds.length > 1)) {
+      const anchor = materialAnchorId || receiptAnchor || readyNextIds[0] || "";
+      setMaterialSupportingIds(readyNextIds.filter((id) => id !== anchor));
+    }
     setResourceDiscoveryStatus((next.knowledge_graph as any)?.resource_discovery || null);
     if (next.receipt || (next.materials || []).length) setCreatingNewTask(false);
     setProblems(problemItems);
@@ -1162,8 +1904,15 @@ export function ActiveTeachingChainView({
     let cancelled = false;
     const sequence = ++knowledgeMapRequestSequence.current;
     setKnowledgeMapError("");
+    setKnowledgeMapReadState("loading");
+    setKnowledgeMapV1(null);
     setKnowledgeMapCapabilities(null);
     setKnowledgeMapJob(null);
+    setKnowledgeMapStaged(null);
+    stagedRevisionRef.current = null;
+    setMaterialAnchorId("");
+    setMaterialSupportingIds([]);
+    setMaterialRoleNotice("");
     setPlanPreview(null);
     setExtensionConfirmed(false);
     setPlanActivationResult(null);
@@ -1178,8 +1927,10 @@ export function ActiveTeachingChainView({
       else setKnowledgeMapCapabilities(null);
       if (mapResult.status === "fulfilled") {
         setKnowledgeMapV1(mapResult.value);
+        setKnowledgeMapReadState("ready");
       } else {
         setKnowledgeMapV1(null);
+        setKnowledgeMapReadState("error");
         setKnowledgeMapError(mapResult.reason?.message || "暂时无法读取 v1 地图");
       }
     };
@@ -1202,8 +1953,20 @@ export function ActiveTeachingChainView({
         const nextStatus = String(nextJob.status || nextJob.job?.status || "").toLowerCase();
         if (isKnowledgeJobTerminal(nextStatus)) {
           if (isKnowledgeJobReady(nextStatus)) {
-            const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
-            if (!cancelled) setKnowledgeMapV1(latest);
+            const completedJob = nextJob.job || nextJob;
+            const staged = await stagedRevisionFromJob(completedJob);
+            if (!cancelled) {
+              if (staged) {
+                stagedRevisionRef.current = staged;
+                setKnowledgeMapStaged(staged);
+              } else {
+                stagedRevisionRef.current = null;
+                setKnowledgeMapStaged(null);
+                const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+                setKnowledgeMapV1(latest);
+                setKnowledgeMapReadState("ready");
+              }
+            }
           } else if (!cancelled) {
             setKnowledgeMapV1((current) => current ? { ...current, status: nextStatus, failureReason: nextJob.error?.message || nextJob.reason || "生成失败" } : current);
           }
@@ -1389,12 +2152,31 @@ export function ActiveTeachingChainView({
   };
 
   const materials = snapshot?.materials || [];
+  const readyMaterials = materials.filter((item: any) => item?.status === "ready");
+  const readyMaterialIdList = readyMaterials
+    .map((item: any) => String(item?.id || "").trim())
+    .filter(Boolean);
+  const resolvedMaterialAnchorId = (
+    materialAnchorId && readyMaterialIdList.includes(materialAnchorId)
+      ? materialAnchorId
+      : readyMaterialIdList[0] || ""
+  );
+  const resolvedMaterialSupportingIds = readyMaterialIdList.filter((id: string) => id !== resolvedMaterialAnchorId);
+  const chooseMaterialAnchor = (nextId: string) => {
+    const id = String(nextId || "").trim();
+    if (!id || !readyMaterialIdList.includes(id) || id === resolvedMaterialAnchorId) return;
+    setMaterialAnchorId(id);
+    setMaterialSupportingIds(readyMaterialIdList.filter((candidate: string) => candidate !== id));
+    setMaterialRoleNotice("已切换纲领资料；这会重建知识地图。旧地图和旧计划会继续使用，直到你明确激活新版。" );
+  };
   const readyChunkCount = materials
     .filter((item: any) => item.status === "ready")
     .reduce((total: number, item: any) => total + Number(item.chunk_count || 0), 0);
   const localKnowledgeBase = snapshot?.local_knowledge_base;
   const graph: any = snapshot?.knowledge_graph || { knowledge_points: [], edges: [] };
-  const mapForV1 = knowledgeMapV1 || normalizeKnowledgeMapV1(graph);
+  const legacyMapForV1 = useMemo(() => normalizeKnowledgeMapV1(graph), [graph]);
+  const mapForV1 = knowledgeMapV1 || legacyMapForV1;
+  const isKnowledgeMapFallback = knowledgeMapReadState === "error" && legacyMapForV1.nodes.length > 0;
   const resourceDiscovery = resourceDiscoveryStatus
     || graph.resource_discovery
     || { status: "not_run", resource_count: 0, warnings: [] };
@@ -1501,7 +2283,7 @@ export function ActiveTeachingChainView({
       total: Math.max(graphIds.length, ids.length, 1),
     };
   }, [graph.knowledge_points, plan?.tasks, session?.state?.current_knowledge_point_id]);
-  const teacherPresentationState = useMemo<TeacherCompanionState>(() => {
+  const resolvedTeacherPresentationState = useMemo<TeacherCompanionState>(() => {
     return resolveActiveTeacherPresentationState(
       Boolean(busy),
       latestTeacher?.action,
@@ -1509,6 +2291,27 @@ export function ActiveTeachingChainView({
       teacherMessageText(latestTeacher),
     );
   }, [busy, latestTeacher, session?.state]);
+  const teacherPresentationSourceKey = `${session?.session_id || ""}:${latestTeacher?.id || ""}:${resolvedTeacherPresentationState}`;
+  const [idleReactionSourceKey, setIdleReactionSourceKey] = useState("");
+  const teacherPresentationState: TeacherCompanionState = (
+    resolvedTeacherPresentationState === "questioning"
+    && idleReactionSourceKey === teacherPresentationSourceKey
+  )
+    ? "playful_annoyed"
+    : resolvedTeacherPresentationState;
+  useEffect(() => {
+    setIdleReactionSourceKey("");
+    if (resolvedTeacherPresentationState !== "questioning") return undefined;
+    const timer = window.setTimeout(() => {
+      if (teacherStageIdleReaction(
+        resolvedTeacherPresentationState,
+        TEACHER_STAGE_IDLE_REACTION_MS,
+      ) === "playful_annoyed") {
+        setIdleReactionSourceKey(teacherPresentationSourceKey);
+      }
+    }, TEACHER_STAGE_IDLE_REACTION_MS);
+    return () => window.clearTimeout(timer);
+  }, [resolvedTeacherPresentationState, teacherPresentationSourceKey]);
   useEffect(() => {
     teacherVoiceScopeRef.current += 1;
     stopLocalTeacherVoice();
@@ -1678,8 +2481,36 @@ export function ActiveTeachingChainView({
   const videoTranscript = videoMaterialFlow?.transcript || {};
   const videoSubtitle = videoTranscript?.subtitle || {};
   const videoSubtitleQuality = videoSubtitle?.quality || videoMaterialFlow?.subtitle_preview?.quality || {};
+  const plannerCollectionResource = useMemo(
+    () => [plannerResource, ...plannerResources].find((item) => item?.url && isActivePlannerVideoCollection(item)) || null,
+    [plannerResource, plannerResources],
+  );
 
-  const receiptPayload = (materialIds?: string[]) => ({
+  const receiptPayload = (
+    materialIds?: string[],
+    roleOverrides?: { anchorMaterialId?: string; supportingMaterialIds?: string[] },
+  ) => {
+    const orderedIds = Array.from(new Set(
+      (materialIds || readyMaterialIdList).map(String).map((id: string) => id.trim()).filter(Boolean),
+    ));
+    const requestedAnchorId = String(
+      roleOverrides?.anchorMaterialId
+      || materialAnchorId
+      || orderedIds[0]
+      || "",
+    ).trim();
+    const anchorId = orderedIds.includes(requestedAnchorId) ? requestedAnchorId : (orderedIds[0] || "");
+    const supportingIds = Array.from(new Set(
+      [
+        ...(roleOverrides?.supportingMaterialIds || materialSupportingIds || []),
+        ...orderedIds.filter((id) => id !== anchorId),
+      ]
+        .map(String)
+        .map((id) => id.trim())
+        .filter((id) => id && id !== anchorId && orderedIds.includes(id)),
+    ));
+    const scopedOrderedIds = [anchorId, ...supportingIds].filter((id, index, values) => id && values.indexOf(id) === index);
+    return {
     learning_goal: goal,
     current_level: level,
     current_foundation: level,
@@ -1702,12 +2533,13 @@ export function ActiveTeachingChainView({
     discover_external_resources: isTaskCreationFlow || hasSavedResourceDiscoveryOption
       ? resourceDiscoveryEnabled
       : undefined,
-    material_ids: materialIds || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
-  });
-  const readyMaterialIds = materials
-    .filter((item: any) => item.status === "ready")
-    .map((item: any) => item.id)
-    .sort();
+    material_ids: scopedOrderedIds,
+    anchor_material_id: anchorId,
+    supporting_material_ids: supportingIds,
+    scope_policy: { mode: "single_anchor", additive: true },
+  };
+  };
+  const readyMaterialIds = readyMaterialIdList;
   const currentConditions = receiptPayload(readyMaterialIds);
   const comparableReceipt = (value: any) => JSON.stringify({
     learning_goal: value?.learning_goal || "",
@@ -1723,24 +2555,38 @@ export function ActiveTeachingChainView({
     teacher_persona_id: value?.teacher_persona_id || "",
     learner_interests: value?.learner_interests || "",
     notes: value?.notes || "",
-    material_ids: [...(value?.material_ids || readyMaterialIds)].sort(),
+    material_ids: [...(value?.material_ids || readyMaterialIds)],
+    anchor_material_id: value?.anchor_material_id || value?.anchorMaterialId || (value?.material_ids || readyMaterialIds)[0] || "",
+    supporting_material_ids: [...(value?.supporting_material_ids || value?.supportingMaterialIds || (value?.material_ids || readyMaterialIds).filter((id: string) => id !== (value?.anchor_material_id || value?.anchorMaterialId || (value?.material_ids || readyMaterialIds)[0])))],
+    scope_policy: {
+      mode: value?.scope_policy?.mode || value?.scopePolicy?.mode || "single_anchor",
+      additive: value?.scope_policy?.additive === false || value?.scopePolicy?.additive === false ? false : true,
+    },
   });
+  useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId; }, [activeWorkspaceId]);
   const taskConditionsChanged = Boolean(savedReceipt)
     && comparableReceipt(currentConditions) !== comparableReceipt(savedReceipt);
   const knowledgeInputsChanged = Boolean(file)
     || Boolean(savedReceipt && (
       JSON.stringify(readyMaterialIds)
-        !== JSON.stringify([...(savedReceipt.material_ids || readyMaterialIds)].sort())
+        !== JSON.stringify([...(savedReceipt.material_ids || readyMaterialIds)])
+      || String(currentConditions.anchor_material_id || "")
+        !== String(savedReceipt.anchor_material_id || savedReceipt.anchorMaterialId || (savedReceipt.material_ids || readyMaterialIds)[0] || "")
+      || JSON.stringify(currentConditions.supporting_material_ids || [])
+        !== JSON.stringify(savedReceipt.supporting_material_ids || savedReceipt.supportingMaterialIds || (savedReceipt.material_ids || readyMaterialIds).filter((id: string) => id !== (savedReceipt.anchor_material_id || savedReceipt.anchorMaterialId || (savedReceipt.material_ids || readyMaterialIds)[0])))
     ));
   const planNeedsRestoration = Boolean(savedReceipt)
     && graph.knowledge_points.length > 0
     && !plan;
   const taskNeedsRecalculation = taskConditionsChanged || planNeedsRestoration;
 
-  const saveReceipt = (materialIds?: string[]) =>
+  const saveReceipt = (
+    materialIds?: string[],
+    roleOverrides?: { anchorMaterialId?: string; supportingMaterialIds?: string[] },
+  ) =>
     activeRequest(`/workspaces/${encodeURIComponent(activeWorkspaceId)}/receipt`, {
       method: "PUT",
-      body: JSON.stringify(receiptPayload(materialIds)),
+      body: JSON.stringify(receiptPayload(materialIds, roleOverrides)),
     });
 
   const clearVoiceResources = () => {
@@ -1978,8 +2824,10 @@ export function ActiveTeachingChainView({
     understood = false,
     selectedAttachments = teachingAttachments,
     forceComplete = false,
+    requestedInteractionMode: "learning_evidence" | "free_chat" = interactionMode,
   ) => {
     if (!session?.session_id) throw new Error("请先启动 AI 教师");
+    const mode = forceComplete ? "learning_evidence" : requestedInteractionMode;
     const content = String(text || "").trim();
     if (!content && !selectedAttachments.length && !forceComplete) {
       throw new Error("请先输入内容或添加文件");
@@ -1987,10 +2835,13 @@ export function ActiveTeachingChainView({
     const visibleContent = forceComplete
       ? "我确认自己已经掌握，直接完成这个知识点。"
       : content || (
-        selectedAttachments.length > 0
-        && selectedAttachments.every(isImageAttachment)
-          ? "请分析我上传的练习结果截图。"
-          : "请阅读我上传的附件，并结合当前知识点继续指导。"
+        mode === "free_chat"
+          ? selectedAttachments.length > 0 && selectedAttachments.every(isImageAttachment)
+            ? "请看看我添加的图片，并自然回应当前话题。"
+            : "请阅读我添加的附件，并自然回应当前话题。"
+          : selectedAttachments.length > 0 && selectedAttachments.every(isImageAttachment)
+            ? "请分析我上传的练习结果截图。"
+            : "请阅读我上传的附件，并结合当前知识点继续指导。"
       );
     const pendingId =
       globalThis.crypto?.randomUUID?.()
@@ -2002,6 +2853,7 @@ export function ActiveTeachingChainView({
         content: visibleContent,
         status: "processing",
         understood,
+        interactionMode: mode,
         attachments: selectedAttachments,
       },
     ]);
@@ -2014,10 +2866,12 @@ export function ActiveTeachingChainView({
             method: "POST",
             body: JSON.stringify({
               message: content,
-              understood,
-              force_complete: forceComplete,
+              interaction_mode: mode,
               provider_session_id: providerSession,
               attachment_ids: selectedAttachments.map((item) => item.id),
+              ...(mode === "learning_evidence"
+                ? { understood, force_complete: forceComplete }
+                : {}),
             }),
           },
         );
@@ -2048,6 +2902,9 @@ export function ActiveTeachingChainView({
       );
       return updatedSession;
     } catch (reason) {
+      // Keep a failed draft editable; if the learner started typing a new
+      // draft while the request was in flight, leave that newer content alone.
+      setMessage((current) => current.trim() ? current : content);
       setPendingUserMessages((current) =>
         current.map((item) =>
           item.id === pendingId
@@ -2069,7 +2926,10 @@ export function ActiveTeachingChainView({
       `/sessions/${encodeURIComponent(session.session_id)}/advance`,
       {
         method: "POST",
-        body: JSON.stringify({ force_complete: true }),
+        body: JSON.stringify({
+          interaction_mode: "learning_evidence",
+          force_complete: true,
+        }),
       },
     );
     setSnapshot((current: any) =>
@@ -2082,19 +2942,28 @@ export function ActiveTeachingChainView({
     setPendingUserMessages((current) =>
       current.filter((candidate) => candidate.id !== item.id),
     );
-    return advance(item.content, item.understood, item.attachments);
+    return advance(item.content, item.understood, item.attachments, false, item.interactionMode);
   };
 
-  const startKnowledgeMapV1 = async (materialIds?: string[]) => {
+  const startKnowledgeMapV1 = async (
+    materialIds?: string[],
+    roleOverrides?: { anchorMaterialId?: string; supportingMaterialIds?: string[] },
+  ) => {
     setKnowledgeMapError("");
+    const ids: string[] = Array.from(new Set(
+      (materialIds || readyMaterialIdList).map(String).map((id: string) => id.trim()).filter(Boolean),
+    ));
+    const payload = receiptPayload(ids, roleOverrides);
     const started = await activeRequest(
       `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/jobs`,
       {
         method: "POST",
         body: JSON.stringify({
           provider_session_id: realProviderSessionId,
-          material_ids: materialIds
-            || materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
+          material_ids: payload.material_ids,
+          anchor_material_id: payload.anchor_material_id,
+          supporting_material_ids: payload.supporting_material_ids,
+          scope_policy: payload.scope_policy,
         }),
       },
       15_000,
@@ -2104,78 +2973,341 @@ export function ActiveTeachingChainView({
     return job;
   };
 
-  const askPlanningAssistant = async (messageOverride?: string) => {
+  const retryKnowledgeMapRead = async () => {
+    const sequence = ++knowledgeMapRequestSequence.current;
+    setKnowledgeMapReadState("loading");
+    setKnowledgeMapError("");
+    try {
+      const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+      if (sequence !== knowledgeMapRequestSequence.current) return;
+      setKnowledgeMapV1(latest);
+      setKnowledgeMapReadState("ready");
+    } catch (reason: any) {
+      if (sequence !== knowledgeMapRequestSequence.current) return;
+      setKnowledgeMapV1(null);
+      setKnowledgeMapReadState("error");
+      setKnowledgeMapError(reason?.message || "暂时无法读取 v1 地图");
+    }
+  };
+
+  type ExplicitCandidatePoolAction = {
+    mode: "fill_page" | "add_page";
+    target: number;
+    selectedMaterialCount: number;
+    searchRound: number;
+    /** A complete fill is a provider-free read-only pool projection. */
+    readOnly: boolean;
+  };
+
+  const askPlanningAssistant = async (messageOverride?: string, pageRequest?: number, pageDirection: "next" | "previous" = "next", alreadySerialized = false, requestScope?: PlanningPoolRequestScope, forceDiscovery = false, explicitAction?: ExplicitCandidatePoolAction): Promise<void> => {
+    const scope = requestScope || capturePlanningPoolScope();
+    if (!isCurrentPlanningPoolScope(scope)) return;
     const text = (messageOverride ?? planningAssistantText).trim();
-    if (!text) {
+    const isPoolPage = pageRequest !== undefined && Boolean(planningPoolSessionRef.current);
+    if (!text && !isPoolPage) {
       setError("请先告诉 AI 资料助手你想学会什么，或希望找哪类资料。");
       return;
     }
-    if (!realProviderSessionId) {
+    // Serialize even the first discovery turn. The session id is created by
+    // that response, but the workspace queue key keeps a double-submit from
+    // racing before the id is known.
+    if (!alreadySerialized) {
+      return runPlanningPoolSerialized(() => askPlanningAssistant(messageOverride, pageRequest, pageDirection, true, scope, forceDiscovery, explicitAction));
+    }
+    const workspaceAtRequest = activeWorkspaceId;
+    const readOnlyFill = explicitAction?.mode === "fill_page" && explicitAction.readOnly;
+    if (!isPoolPage && !readOnlyFill && !realProviderSessionId) {
       setError("资料助手需要已验证的真实模型连接，请先在“模型连接”中保存并验证 Provider。");
       return;
+    }
+    if (!isPoolPage && !planningAssistantDiscoveryAuthorized && !forceDiscovery) {
+      setError("请先明确选择“帮我找资料”，授权本轮公开资料检索。")
+      return
     }
     setPlanningAssistantBusy(true);
     setError("");
     const nextMessages = [...planningAssistantMessages, { role: "user", content: text }];
-    setPlanningAssistantMessages(nextMessages);
-    setPlanningAssistantLastQuery(text);
-    setPlanningAssistantText("");
+    if (!isPoolPage) {
+      setPlanningAssistantMessages(nextMessages);
+      setPlanningAssistantLastQuery(text);
+      setPlanningAssistantText("");
+    }
     try {
-      const result = await activeRequest(
-        `/workspaces/${encodeURIComponent(activeWorkspaceId)}/planning-assistant`,
-        {
-          method: "POST",
-          body: JSON.stringify({
+      const latestResources = planningResourcesRef.current;
+      const latestSelectedKeys = planningSelectedKeysRef.current;
+      const selectedForRefinement = latestResources.filter((item: any) => (
+        latestSelectedKeys.includes(plannerResourceKey(item))
+        && !planningRejectedKeysRef.current.includes(plannerResourceKey(item))
+        && !isCandidateBlocked(item)
+      ));
+      const retainedForRefinement = mergePlannerResources(
+        selectedForRefinement,
+        latestResources.filter((item: any) => (
+          !planningRejectedKeysRef.current.includes(plannerResourceKey(item))
+          && !isCandidateBlocked(item)
+          && Boolean(item?.direct_user_reference || item?.retained || item?.selected)
+        )),
+      );
+      const pageSnapshot = planningPoolPageRef.current;
+      const pageCursor = pageDirection === "previous"
+        ? pageSnapshot.previousCursor
+        : pageSnapshot.nextCursor;
+      const requestBody: Record<string, unknown> = isPoolPage
+        ? {
+            message: "",
+            pool_action: "page",
+            planning_session_id: planningPoolSessionRef.current,
+            page: pageRequest,
+            page_index: pageRequest,
+            cursor: pageCursor,
+            ...(pageDirection === "previous" ? { previous_cursor: pageCursor } : { next_cursor: pageCursor }),
+            page_size: pageSnapshot.pageSize,
+            revision: planningPoolRevisionRef.current,
+            expected_revision: planningPoolRevisionRef.current,
+            client_request_id: clientRequestId(`active-page-${pageDirection}`),
+          }
+        : {
             message: text,
             goal,
             conversation: planningAssistantMessages,
-            resource_search_authorized: true,
-            retained_candidates: planningAssistantResources,
-            selected_resources: planningAssistantResources.filter((item: any) => (
-              planningAssistantSelectedKeys.includes(plannerResourceKey(item))
-            )),
-            ...providerRequestContext(),
-          }),
-        },
-        120_000,
-      );
-      setPlanningAssistantMessages((current) => [
+            resource_search_authorized: forceDiscovery || planningAssistantDiscoveryAuthorized,
+            auto_companion_resources: true,
+            retained_candidates: retainedForRefinement.length
+              ? retainedForRefinement
+              : latestResources.filter((item: any) => !planningRejectedKeysRef.current.includes(plannerResourceKey(item)) && !isCandidateBlocked(item)),
+            selected_resources: selectedForRefinement,
+            search_anchor: buildPlanningSearchAnchor({
+              message: text,
+              objective: goal || text,
+              selectedResources: selectedForRefinement,
+              uploadedMaterial: (() => {
+                const localMaterials = asArray(snapshot?.materials);
+                return localMaterials.find((item: any) => String(item?.id || "") === materialAnchorId)
+                  || localMaterials.find((item: any) => item?.status === "ready")
+                  || null;
+              })(),
+            }),
+            planning_session_id: planningPoolSessionRef.current || undefined,
+            revision: planningPoolRevisionRef.current,
+            expected_revision: planningPoolRevisionRef.current,
+            pool_mode: explicitAction?.mode === "add_page" || explicitAction?.mode === "fill_page"
+              ? "append"
+              : planningDiscoveryMode(
+                text,
+                selectedForRefinement.length > 0 || latestResources.some(item => Boolean(item.direct_user_reference || item.retained)),
+                Boolean(planningPoolSessionRef.current),
+              ),
+            client_request_id: clientRequestId("active-discovery"),
+            ...(explicitAction ? {
+              candidate_discovery_mode: explicitAction.mode,
+              candidate_target_count: explicitAction.target,
+              selected_material_count: explicitAction.selectedMaterialCount,
+              candidate_search_round: explicitAction.searchRound,
+              existing_candidate_summaries: boundedCandidateSummaries(latestResources, latestSelectedKeys),
+            } : {}),
+            ...(readOnlyFill ? {} : providerRequestContext()),
+          };
+      let result;
+      try {
+        result = await activeRequest(
+          `/workspaces/${encodeURIComponent(workspaceAtRequest)}/planning-assistant`,
+          {
+            method: "POST",
+            body: JSON.stringify(requestBody),
+          },
+          120_000,
+        );
+      } catch (reason) {
+        if (!isPlanningPoolStale(reason)) throw reason;
+        if (!isPoolPage) {
+          if (!planningPoolSessionRef.current) throw reason;
+          await refreshPlanningPoolSnapshot(workspaceAtRequest, planningPoolSessionRef.current, "active-discovery-refresh", scope);
+          if (!isCurrentPlanningPoolScope(scope)) return;
+          result = await activeRequest(
+            `/workspaces/${encodeURIComponent(workspaceAtRequest)}/planning-assistant`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                ...requestBody,
+                revision: planningPoolRevisionRef.current,
+                expected_revision: planningPoolRevisionRef.current,
+              }),
+            },
+            120_000,
+          );
+        } else {
+          result = await refreshPlanningPoolSnapshot(
+            workspaceAtRequest,
+            planningPoolSessionRef.current,
+            "active-page-refresh",
+            scope,
+          );
+          if (!result || !isCurrentPlanningPoolScope(scope)) return;
+          const targetPage = Math.max(0, Math.min(100, Number(pageRequest) || 0));
+          // Refresh invalidates every cursor. Replay the original page intent
+          // once with the fresh cursor (or no cursor for the first page), then
+          // walk forward only when the target is more than one page away.
+          const refreshedPage = planningPoolPageRef.current;
+          const retryCursor = pageDirection === "previous"
+            ? refreshedPage.previousCursor
+            : refreshedPage.nextCursor;
+          const retryBody: Record<string, unknown> = {
+            ...requestBody,
+            page: targetPage,
+            page_index: targetPage,
+            cursor: retryCursor,
+            revision: planningPoolRevisionRef.current,
+            expected_revision: planningPoolRevisionRef.current,
+          };
+          if (pageDirection === "previous") {
+            delete retryBody.next_cursor;
+            retryBody.previous_cursor = retryCursor;
+          } else {
+            delete retryBody.previous_cursor;
+            retryBody.next_cursor = retryCursor;
+          }
+          result = await activeRequest(
+            `/workspaces/${encodeURIComponent(workspaceAtRequest)}/planning-assistant`,
+            { method: "POST", body: JSON.stringify(retryBody) },
+            30_000,
+          );
+          if (!isCurrentPlanningPoolScope(scope)) return;
+          applyPlanningPoolPayload(result, undefined, { scope });
+          while (planningPoolPageRef.current.page < targetPage) {
+            if (!isCurrentPlanningPoolScope(scope)) return;
+            const refreshedPage = planningPoolPageRef.current;
+            if (!refreshedPage.nextCursor) break;
+            result = await activeRequest(
+              `/workspaces/${encodeURIComponent(workspaceAtRequest)}/planning-assistant`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  message: "",
+                  pool_action: "page",
+                  planning_session_id: planningPoolSessionRef.current,
+                  page: refreshedPage.page + 1,
+                  page_index: refreshedPage.page + 1,
+                  cursor: refreshedPage.nextCursor,
+                  next_cursor: refreshedPage.nextCursor,
+                  page_size: refreshedPage.pageSize,
+                  revision: planningPoolRevisionRef.current,
+                  expected_revision: planningPoolRevisionRef.current,
+                  client_request_id: clientRequestId("active-page-retry"),
+                }),
+              },
+              30_000,
+            );
+            if (!isCurrentPlanningPoolScope(scope)) return;
+            applyPlanningPoolPayload(result, undefined, { scope });
+          }
+        }
+      }
+      if (!isCurrentPlanningPoolScope(scope)) return;
+      const parsedPage = readCandidatePage(result, [], 3);
+      const nextResources = parsedPage.candidates;
+      const applied = applyPlanningPoolPayload(result, nextResources, {
+        replaceUnselected: !isPoolPage && requestBody.pool_mode === "replace_unselected",
+        scope,
+      });
+      if (applied.ignoredStaleResponse || applied.ignoredScope) return;
+      if (!isPoolPage) setPlanningAssistantMessages((current) => [
         ...current,
         { role: "assistant", content: result.reply || "我已整理出下一步建议。" },
       ]);
-      const bundledCandidates = Array.isArray(result?.resource_bundle?.candidates)
-        ? result.resource_bundle.candidates
-        : result.resources;
-      const nextResources = (Array.isArray(bundledCandidates) ? bundledCandidates : [])
-        .map((item: any) => ({ ...item, url: String(item?.url || "").trim() }))
-        .filter((item: any) => Boolean(item.url && plannerResourceKey(item)));
-      setPlanningAssistantResources((current) => mergePlannerResources(
-        nextResources,
-        current.filter((item) => planningAssistantSelectedKeys.includes(plannerResourceKey(item))),
-      ));
-      setPlanningAssistantSelectedKeys((current) => current.filter((key) => (
-        nextResources.some((item: any) => plannerResourceKey(item) === key)
-        || planningAssistantResources.some((item: any) => plannerResourceKey(item) === key)
-      )));
+      // applyPlanningPoolPayload is the sole state projection.  Filtering a
+      // second time with the render's old candidate closure could erase the
+      // selection that the just-completed server response had confirmed.
       setPlanningAssistantSelectedUrl("");
       if (result.goal_summary) setGoal(String(result.goal_summary));
       if (Array.isArray(result.warnings) && result.warnings.length) {
         setError(result.warnings.join("；"));
       }
     } catch (reason: any) {
-      setError(reason?.message || "资料助手暂时无法回答，请稍后重试。");
+      if (isCurrentPlanningPoolScope(scope)) setError(reason?.message || "资料助手暂时无法回答，请稍后重试。");
     } finally {
-      setPlanningAssistantBusy(false);
+      if (isCurrentPlanningPoolScope(scope)) setPlanningAssistantBusy(false);
     }
   };
 
+  const enqueuePlanningPoolPage = (page: number, direction: "next" | "previous") => {
+    const sessionAtEnqueue = planningPoolSessionRef.current;
+    const scopeAtEnqueue = capturePlanningPoolScope(sessionAtEnqueue);
+    if (!sessionAtEnqueue || planningAssistantBusy || planningPoolPendingRef.current > 0) return;
+    planningPoolPendingRef.current += 1;
+    setPlanningPoolSyncing(true);
+    const queued = runPlanningPoolSerialized(async () => {
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      await askPlanningAssistant("", page, direction, true, scopeAtEnqueue);
+    }).catch((reason: any) => {
+      if (isCurrentPlanningPoolScope(scopeAtEnqueue)) setError(reason?.message || "候选池翻页失败，请重试。");
+    });
+    void queued.finally(() => {
+      if (!isCurrentPlanningPoolScope(scopeAtEnqueue)) return;
+      planningPoolPendingRef.current = Math.max(0, planningPoolPendingRef.current - 1);
+      if (planningPoolPendingRef.current === 0) setPlanningPoolSyncing(false);
+    });
+  };
+
+  const requestPlanningCandidatePoolAction = (mode: "fill_page" | "add_page") => {
+    if (planningAssistantBusy || planningPoolSyncing) return;
+    const size = Math.max(1, Number(planningPoolPageRef.current.pageSize || 3));
+    const currentCount = Math.max(0, Number.isFinite(Number(planningPoolPageRef.current.total))
+      ? Number(planningPoolPageRef.current.total)
+      : planningResourcesRef.current.length);
+    const selectedMaterialCount = planningSelectedKeysRef.current.length + (file ? 1 : 0);
+    if (mode === "add_page" && selectedMaterialCount < size) {
+      setError(`请先至少选择 ${size} 份材料，再尝试扩充候选`);
+      return;
+    }
+    const target = mode === "fill_page"
+      ? candidatePageFillTarget(planningPoolPageRef.current, currentCount, size)
+      : Math.ceil((selectedMaterialCount + size) / size) * size;
+    const qualifiedCount = Number(planningPoolPageRef.current.qualifiedCount);
+    const heldIncompleteCount = Number(planningPoolPageRef.current.heldIncompleteCount);
+    const publishedTotal = Number(planningPoolPageRef.current.total);
+    const eligibleCount = Math.max(
+      Number.isFinite(publishedTotal) && publishedTotal >= 0 ? publishedTotal : currentCount,
+      Number.isFinite(qualifiedCount) && qualifiedCount >= 0 ? qualifiedCount : 0,
+      (Number.isFinite(publishedTotal) && publishedTotal >= 0 ? publishedTotal : currentCount)
+        + (Number.isFinite(heldIncompleteCount) && heldIncompleteCount >= 0 ? heldIncompleteCount : 0),
+    );
+    const searchRound = ++planningCandidateSearchRoundRef.current;
+    const directResource = planningResourcesRef.current.find((item: any) => Boolean(item?.direct_user_reference));
+    const query = String(
+      planningAssistantLastQuery
+      || goal
+      || snapshot?.receipt?.learning_goal
+      || directResource?.title
+      || "继续补齐当前资料候选",
+    ).trim();
+    setPlanningAssistantDiscoveryAuthorized(true);
+    void askPlanningAssistant(query, undefined, "next", false, undefined, true, {
+      mode,
+      target,
+      selectedMaterialCount,
+      searchRound,
+      readOnly: mode === "fill_page" && eligibleCount >= target,
+    });
+  };
+
   const acceptPlanningResources = (selected: any[], videoOnlyAcknowledged = false) => {
-    const accepted = selected.map((item: any) => videoOnlyAcknowledged && isPlannerVideo(item)
+    const accepted = selected.filter((item: any) => isActivePlannerHandoffSafe(item)).map((item: any) => videoOnlyAcknowledged && isPlannerVideo(item)
       ? { ...item, video_only_acknowledged: true }
       : item);
+    if (!accepted.length) {
+      setError("所选候选包含不安全、低相关或不支持的公开视频；搜索结果只可作为匹配笔记/文档，请上传自己的资料或重新核对候选。")
+      return;
+    }
+    const explicitAnchorKey = planningAssistantAnchorKey && accepted.some((item: any) => plannerResourceKey(item) === planningAssistantAnchorKey)
+      ? planningAssistantAnchorKey
+      : "";
+    const defaultAnchor = accepted.find(isPlannerVideo) || accepted[0];
+    const resolvedAnchorKey = explicitAnchorKey || plannerResourceKey(defaultAnchor);
+    const anchorResource = accepted.find((item: any) => plannerResourceKey(item) === resolvedAnchorKey) || accepted[0];
     setPlannerResources(accepted);
-    setPlannerResource(accepted[0]);
-    setPlanningAssistantSelectedUrl(String(selected[0]?.url || ""));
+    setPlannerResource(anchorResource);
+    setPlanningAssistantAnchorKey(resolvedAnchorKey);
+    setPlanningAssistantSelectedUrl(String(accepted[0]?.url || ""));
     setPlanningVideoOnlyConfirmation(false);
     setPlanningAssistantMessages((current) => [
       ...current,
@@ -2184,9 +3316,13 @@ export function ActiveTeachingChainView({
   };
 
   const confirmPlanningAssistantResource = () => {
-    const selected = planningAssistantResources.filter((item: any) => planningAssistantSelectedKeys.includes(plannerResourceKey(item)));
+    const selected = planningAssistantResources.filter((item: any) => planningAssistantSelectedKeys.includes(plannerResourceKey(item)) && !isCandidateBlocked(item));
     if (!selected.length) {
       setError("请先选择一份候选资料；打开原文核对后再确认。没有合适候选时，可以重试或上传自己的资料。");
+      return;
+    }
+    if (selected.length > 1 && !planningAssistantAnchorKey) {
+      setError("请选择一份明确的纲领资料；系统不会在你清除纲领后静默重选。其余资料会作为辅助资料保留。");
       return;
     }
     if (selected.every(isPlannerVideo)) {
@@ -2203,6 +3339,105 @@ export function ActiveTeachingChainView({
     return payload.job || payload;
   };
 
+  const stagedRevisionFromJob = async (job: any): Promise<KnowledgeMapStagedRevision | null> => {
+    const result = job?.result && typeof job.result === "object" ? job.result : {};
+    const activationSignal = job?.activation_required
+      ?? job?.activationRequired
+      ?? result?.activation_required
+      ?? result?.activationRequired;
+    const activationRequired = activationSignal === true
+      || ["true", "1", "yes"].includes(String(activationSignal || "").toLowerCase());
+    if (!activationRequired) return null;
+    const revisionId = stringValue(
+      job?.staged_revision_id,
+      job?.stagedRevisionId,
+      result?.staged_revision_id,
+      result?.stagedRevisionId,
+      job?.staged_revision?.id,
+      job?.staged_revision?.revision_id,
+      job?.revision_id,
+    );
+    if (!revisionId) return null;
+    const currentRevisionId = stringValue(
+      job?.current_revision_id,
+      job?.currentRevisionId,
+      job?.active_revision_id,
+      job?.activeRevisionId,
+      result?.current_revision_id,
+      result?.currentRevisionId,
+    );
+    let stagedMap: KnowledgeMapV1 | null = null;
+    try {
+      stagedMap = await readActiveKnowledgeMapV1(activeWorkspaceId, revisionId);
+    } catch {
+      // The job payload can still render an honest diff while the staged GET
+      // becomes available a moment later.
+    }
+    const rawDiff = job?.diff
+      || job?.revision_diff
+      || job?.staged_diff
+      || job?.staged_revision?.diff
+      || result?.diff
+      || result?.revision_diff;
+    const diff = rawDiff || (stagedMap && knowledgeMapV1
+      ? {
+          nodes_added: stagedMap.nodes.filter((node) => !knowledgeMapV1.nodes.some((current) => current.id === node.id)).map((node) => node.id),
+          nodes_removed: knowledgeMapV1.nodes.filter((node) => !stagedMap?.nodes.some((next) => next.id === node.id)).map((node) => node.id),
+          edges_added: stagedMap.edges.filter((edge) => !knowledgeMapV1.edges.some((current) => current.id === edge.id)).map((edge) => edge.id),
+          edges_removed: knowledgeMapV1.edges.filter((edge) => !stagedMap?.edges.some((next) => next.id === edge.id)).map((edge) => edge.id),
+        }
+      : null);
+    const blockers = uniqueKnowledgeMapBlockers(
+      job?.activation_blockers || job?.activationBlockers || job?.blockers,
+      result?.activation_blockers || result?.activationBlockers || result?.blockers,
+      stagedMap?.raw?.activation_blockers,
+    );
+    return {
+      revisionId,
+      revision: job?.staged_revision?.revision ?? job?.staged_revision ?? job?.revision,
+      currentRevisionId,
+      scope: job?.scope || job?.staged_scope || job?.staged_revision?.scope || result?.scope || result?.staged_scope,
+      diff,
+      blockers,
+      map: stagedMap,
+    };
+  };
+
+  const readStagedKnowledgeMapRevision = async (
+    revisionId: string,
+    previous: KnowledgeMapStagedRevision | null = stagedRevisionRef.current || knowledgeMapStaged,
+  ): Promise<KnowledgeMapStagedRevision> => {
+    const normalizedRevisionId = String(revisionId || "").trim();
+    if (!normalizedRevisionId) throw new Error("服务器没有返回新的 staged revision id");
+    const map = await readActiveKnowledgeMapV1(activeWorkspaceId, normalizedRevisionId);
+    const raw = map.raw || {};
+    return {
+      revisionId: normalizedRevisionId,
+      revision: map.revision ?? raw.revision ?? previous?.revision ?? null,
+      currentRevisionId: stringValue(raw.current_revision_id, raw.currentRevisionId, previous?.currentRevisionId),
+      scope: raw.scope || previous?.scope,
+      diff: previous?.diff || null,
+      blockers: uniqueKnowledgeMapBlockers(
+        Object.prototype.hasOwnProperty.call(raw, "activation_blockers") ? raw.activation_blockers : previous?.blockers,
+      ),
+      map,
+    };
+  };
+
+  const handleKnowledgeMapJobCompletion = async (job: any) => {
+    const staged = await stagedRevisionFromJob(job);
+    if (staged) {
+      stagedRevisionRef.current = staged;
+      setKnowledgeMapStaged(staged);
+      return;
+    }
+    stagedRevisionRef.current = null;
+    setKnowledgeMapStaged(null);
+    const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+    setKnowledgeMapV1(latest);
+    setKnowledgeMapReadState("ready");
+  };
+
   const waitForKnowledgeMapV1 = async (started: any): Promise<KnowledgeMapV1> => {
     const jobId = stringValue(started?.job_id, started?.id);
     if (!jobId) throw new Error("知识地图任务没有返回 job_id");
@@ -2215,12 +3450,56 @@ export function ActiveTeachingChainView({
     if (!isKnowledgeJobReady(current?.status)) {
       throw new Error(current?.error?.message || current?.reason || `知识地图生成失败：${current?.status || "unknown"}`);
     }
+    const staged = await stagedRevisionFromJob(current);
+    if (staged) {
+      stagedRevisionRef.current = staged;
+      setKnowledgeMapStaged(staged);
+    } else {
+      stagedRevisionRef.current = null;
+      setKnowledgeMapStaged(null);
+    }
     const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
     setKnowledgeMapV1(latest);
+    setKnowledgeMapReadState("ready");
     return latest;
   };
 
+  const activateStagedKnowledgeMap = async () => {
+    const staged = stagedRevisionRef.current || knowledgeMapStaged;
+    if (!staged?.revisionId) throw new Error("当前没有等待激活的新版知识地图");
+    const expectedCurrent = String(staged.currentRevisionId || mapForV1.revision || "active");
+    const body = {
+      expected_current_revision: expectedCurrent,
+      expected_current_revision_id: expectedCurrent,
+      expected_revision: expectedCurrent,
+    };
+    const route = `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/revisions/${encodeURIComponent(staged.revisionId)}/activate`;
+    let activated: any;
+    try {
+      activated = await activeRequest(route, { method: "POST", body: JSON.stringify(body) });
+    } catch (reason: any) {
+      // Keep one additive alias for the rollout where activation is exposed as
+      // a workspace-level action instead of a revision subresource.
+      if (reason?.status !== 404) throw reason;
+      activated = await activeRequest(
+        `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/activate`,
+        { method: "POST", body: JSON.stringify({ ...body, revision_id: staged.revisionId, staged_revision_id: staged.revisionId }) },
+      );
+    }
+    stagedRevisionRef.current = null;
+    setKnowledgeMapStaged(null);
+    const latest = await readActiveKnowledgeMapV1(activeWorkspaceId);
+    setKnowledgeMapV1(latest);
+    setKnowledgeMapReadState("ready");
+    const revision = latest.revision ?? activated?.revision ?? staged.revision;
+    await previewMasteryPlan(revision);
+    return activated;
+  };
+
   const decideKnowledgeMapCandidate = async (candidate: any, decision: "confirm" | "reject") => {
+    if (!knowledgeMapV1 || knowledgeMapReadState !== "ready") {
+      throw new Error("当前知识地图为只读快照，无法审核候选");
+    }
     const candidateId = stringValue(candidate.id, candidate.candidate_id);
     if (!candidateId) return;
     await activeRequest(
@@ -2236,6 +3515,40 @@ export function ActiveTeachingChainView({
     setKnowledgeMapV1(await readActiveKnowledgeMapV1(activeWorkspaceId));
     setPlanPreview(null);
     setExtensionConfirmed(false);
+  };
+
+  const decideStagedKnowledgeMapCandidate = async (candidate: any, decision: "confirm" | "reject") => {
+    const staged = stagedRevisionRef.current || knowledgeMapStaged;
+    if (!staged?.revisionId || !staged.map) {
+      throw new Error("新版知识地图尚未读取完成，暂时无法审核候选");
+    }
+    const candidateId = stringValue(candidate?.id, candidate?.candidate_id);
+    if (!candidateId) throw new Error("候选项缺少稳定 id，无法提交审核");
+    const expectedRevision = staged.map.revision ?? staged.revision;
+    const response = await activeRequest(
+      `/workspaces/${encodeURIComponent(activeWorkspaceId)}/knowledge-map/candidates/${encodeURIComponent(candidateId)}/decision`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          expected_revision_id: staged.revisionId,
+          ...(expectedRevision !== undefined && expectedRevision !== null && String(expectedRevision).trim()
+            ? { expected_revision: expectedRevision }
+            : {}),
+        }),
+      },
+    );
+    const nextRevisionId = stringValue(
+      response?.revision_id,
+      response?.revisionId,
+      response?.staged_revision_id,
+      response?.stagedRevisionId,
+    );
+    if (!nextRevisionId) throw new Error("候选审核成功，但服务器没有返回新的 staged revision id");
+    const next = await readStagedKnowledgeMapRevision(nextRevisionId, staged);
+    stagedRevisionRef.current = next;
+    setKnowledgeMapStaged(next);
+    return response;
   };
 
   const startResourceDiscovery = async () => {
@@ -2293,15 +3606,34 @@ export function ActiveTeachingChainView({
     return activated;
   };
 
-  const finishTaskCreation = async (materialIds: string[]) => {
+  const finishTaskCreation = async (
+    materialIds: string[],
+    roleOverrides?: { anchorMaterialId?: string; supportingMaterialIds?: string[] },
+  ) => {
     const ids = Array.from(new Set(materialIds.filter(Boolean)));
     if (!ids.length) throw new Error("没有可用于生成计划的已确认资料");
-    await saveReceipt(ids);
+    const roles = receiptPayload(ids, roleOverrides);
+    const rolePayload = {
+      anchorMaterialId: String(roles.anchor_material_id || ""),
+      supportingMaterialIds: asArray(roles.supporting_material_ids).map(String),
+    };
+    if (rolePayload.anchorMaterialId && rolePayload.anchorMaterialId !== materialAnchorId) setMaterialAnchorId(rolePayload.anchorMaterialId);
+    setMaterialSupportingIds(rolePayload.supportingMaterialIds);
+    await saveReceipt(ids, rolePayload);
     // Knowledge-map extraction and planning stay on the critical path.  Web
     // resources are optional enrichment and must be queued after the map is
     // ready, otherwise a slow/unsupported search can lock task creation.
-    const job = await startKnowledgeMapV1(ids);
+    const job = await startKnowledgeMapV1(ids, rolePayload);
     const latestMap = await waitForKnowledgeMapV1(job);
+    if (stagedRevisionRef.current) {
+      setFile(null);
+      setPlannerResource(null);
+      setPlannerResources([]);
+      setVideoMaterialFlow(null);
+      setVideoFileConsentPending(null);
+      setVideoSupplementSelection([]);
+      return { staged_revision_id: stagedRevisionRef.current.revisionId, active_map: latestMap };
+    }
     if (resourceDiscoveryEnabled && realProviderSessionId) {
       await startResourceDiscovery();
     }
@@ -2315,17 +3647,57 @@ export function ActiveTeachingChainView({
     try { localStorage.removeItem("mentorflow_planner_handoff_v1"); } catch { /* optional persistence */ }
   };
 
-  const createOrCompleteTask = async (videoConsentGiven = false) => {
-    const isVideoFile = Boolean(file && (/^video\//i.test(file.type) || /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(file.name)));
-    if (isVideoFile && !videoConsentGiven) {
-      setVideoFileConsentPending(file);
-      return;
+  const createOrCompleteTask = async (_videoConsentGiven = false) => {
+    if (file && !isSupportedDocumentFile(file, knowledgeMapCapabilities)) {
+      throw new Error("当前文件没有可用的非视频转换能力；视频、字幕和音频不能作为规划资料。");
     }
-    const selectedPlannerResources = plannerResources.length
+    const rawPlannerResources = plannerResources.length
       ? plannerResources
       : (plannerResource?.url ? [plannerResource] : []);
+    const selectedPlannerResources = rawPlannerResources.filter(isActivePlannerHandoffSafe);
+    if (rawPlannerResources.length && !selectedPlannerResources.length && !file) {
+      throw new Error("已过滤视频或不安全链接；当前交接没有可用的非视频资料。请返回规划入口选择后端能力支持的资料。");
+    }
+    // If a stale handoff pointed at an ineligible discovered video, keep the
+    // remaining notes/documents usable and make the first safe item the local
+    // role projection instead of handing the stale video to ingestion.
+    if (selectedPlannerResources.length && (!plannerResource || !isActivePlannerHandoffSafe(plannerResource))) {
+      setPlannerResource(selectedPlannerResources[0]);
+    }
     const selectedVideos = selectedPlannerResources.filter(isPlannerVideo);
     const selectedCompanions = selectedPlannerResources.filter((item: any) => !isPlannerVideo(item));
+    const selectedCollections = selectedPlannerResources.filter(isActivePlannerVideoCollection);
+    const localFileAnchor = Boolean(
+      file
+      && plannerResource
+      && !String(plannerResource.url || "").trim()
+      && String(plannerResource.source_kind || plannerResource.kind || "") === "uploaded_file",
+    );
+    if (selectedCollections.length > 1) {
+      setError("一次只能处理一个长课程或合集；其他笔记、讲义仍可一起保留为辅助资料。");
+      return;
+    }
+    if (selectedCollections.length === 1) {
+      const collection = selectedCollections[0];
+      setPlannerResource(collection);
+      setPlannerResources(selectedPlannerResources);
+      setError("");
+      setMaterialRoleNotice(
+        `已把“${String(collection.title || "B站长课程")}”交给长课程处理器。请确认读取目录和字幕；不会再走单视频前 50 集路径。${selectedCompanions.length ? ` 已保留 ${selectedCompanions.length} 份辅助资料，课程摘要激活后继续组合。` : ""}`,
+      );
+      window.setTimeout(() => {
+        const longCourse = document.querySelector('[data-testid="active-long-course"]');
+        if (longCourse && typeof (longCourse as HTMLElement).scrollIntoView === "function") {
+          (longCourse as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 0);
+      return {
+        schema: "mentorflow.video-collection-handoff.v1",
+        status: "awaiting_retrieval_confirmation",
+        source_url: String(collection.url || ""),
+        supporting_resources: selectedCompanions,
+      };
+    }
     if (selectedVideos.length > 1) {
       setError("一次请选择一个主视频或视频合集；讲义、笔记和文档可以同时多选。这样每个视频都能单独完成字幕确认，不会混淆来源。");
       return;
@@ -2345,6 +3717,16 @@ export function ActiveTeachingChainView({
       return preview;
     }
     const importedPlannerResources: any[] = [];
+    const importedAnchorIds: string[] = [];
+    const importedSupportingIds: string[] = [];
+    const selectedAnchorKey = localFileAnchor
+      ? ""
+      : (
+        planningAssistantAnchorKey
+        && selectedPlannerResources.some((resource: any) => plannerResourceKey(resource) === planningAssistantAnchorKey)
+          ? planningAssistantAnchorKey
+          : plannerResourceKey(selectedPlannerResources[0])
+      );
     for (const resource of selectedPlannerResources) {
       const imported = await uploadActiveUrlMaterial(activeWorkspaceId, {
         url: String(resource.url),
@@ -2363,6 +3745,17 @@ export function ActiveTeachingChainView({
         if (selectedPlannerResources.length === 1) return imported;
       }
       importedPlannerResources.push(imported);
+      const importedIds = Array.from(new Set([
+        ...(imported?.id ? [String(imported.id)] : []),
+        ...asArray(imported?.material_ids).map(String),
+      ].filter(Boolean)));
+      const isAnchorResource = plannerResourceKey(resource) === selectedAnchorKey;
+      if (isAnchorResource) {
+        if (importedIds[0]) importedAnchorIds.push(importedIds[0]);
+        importedSupportingIds.push(...importedIds.slice(1));
+      } else {
+        importedSupportingIds.push(...importedIds);
+      }
     }
     const importedPlannerResource = importedPlannerResources[0] || null;
     if (importedPlannerResource?.status === "awaiting_supplementary_choice") {
@@ -2377,6 +3770,10 @@ export function ActiveTeachingChainView({
     const uploaded = file
       ? await uploadActiveMaterial(activeWorkspaceId, file)
       : null;
+    // URL imports are ordinary document materials in this flow. Refresh the
+    // snapshot before creating the receipt so the visible material count and
+    // ready-state projection include every imported document.
+    await refresh(activeWorkspaceId).catch(() => undefined);
     const ids = Array.from(new Set([
       ...materials.filter((item: any) => item.status === "ready").map((item: any) => item.id),
       ...importedPlannerResources.flatMap((item: any) => item?.id ? [item.id] : []),
@@ -2384,7 +3781,26 @@ export function ActiveTeachingChainView({
       ...(uploaded ? [uploaded.id] : []),
     ]));
     if (!ids.length) throw new Error("请先选择一份可读取的学习资料");
-    return finishTaskCreation(ids);
+    const hasExistingAnchor = Boolean(importedAnchorIds[0] || resolvedMaterialAnchorId || readyMaterialIdList[0]);
+    const preferUploadedAnchor = Boolean(uploaded?.id && file && !hasExistingAnchor);
+    const roleOverrides = preferUploadedAnchor
+      ? {
+          anchorMaterialId: String(uploaded.id),
+          supportingMaterialIds: ids.filter((id) => String(id) !== String(uploaded.id)),
+        }
+      : importedAnchorIds[0]
+      ? {
+          anchorMaterialId: importedAnchorIds[0],
+          supportingMaterialIds: Array.from(new Set([
+            ...readyMaterialIdList.filter((id: string) => id !== importedAnchorIds[0]),
+            ...importedSupportingIds,
+            ...(uploaded?.id ? [String(uploaded.id)] : []),
+          ])).filter((id: string) => id !== importedAnchorIds[0] && ids.includes(id)),
+        }
+      : uploaded?.id && !readyMaterialIdList.length
+        ? { anchorMaterialId: String(uploaded.id), supportingMaterialIds: [] }
+        : undefined;
+    return finishTaskCreation(ids, roleOverrides);
   };
 
   const continueWithVideoFile = async (findSupplementary: boolean) => {
@@ -2449,7 +3865,13 @@ export function ActiveTeachingChainView({
       ...materials.filter((item: any) => item.status === "ready").map((item: any) => String(item.id)),
       ...asArray(ingested.material_ids).map(String),
     ]));
-    await finishTaskCreation(ids);
+    const ingestedIds = asArray(ingested.material_ids).map(String).filter(Boolean);
+    await finishTaskCreation(ids, ingestedIds[0]
+      ? {
+          anchorMaterialId: ingestedIds[0],
+          supportingMaterialIds: ids.filter((id) => id !== ingestedIds[0]),
+        }
+      : undefined);
     return ingested;
   };
 
@@ -2469,7 +3891,10 @@ export function ActiveTeachingChainView({
       setVideoMaterialFlow(ingested);
       throw new Error(ingested?.limited_coverage_warning || "补充资料尚未形成可用材料");
     }
-    await finishTaskCreation(asArray(ingested.material_ids).map(String));
+    const ids = asArray(ingested.material_ids).map(String).filter(Boolean);
+    await finishTaskCreation(ids, ids[0]
+      ? { anchorMaterialId: ids[0], supportingMaterialIds: ids.slice(1) }
+      : undefined);
     return ingested;
   };
 
@@ -2504,11 +3929,19 @@ export function ActiveTeachingChainView({
       const raw = localStorage.getItem("mentorflow_planner_handoff_v1");
       if (raw) handoff = JSON.parse(raw);
     } catch { handoff = null; }
-    const handoffResources = Array.isArray(handoff?.resources)
-      ? mergePlannerResources(handoff.resources)
-      : [];
-    const handoffResource = handoffResources[0]
-      || (handoff?.resource && typeof handoff.resource === "object" ? handoff.resource : null);
+    const rawHandoffResources = [
+      ...(Array.isArray(handoff?.resources) ? handoff.resources : []),
+      ...(Array.isArray(handoff?.supporting_resources) ? handoff.supporting_resources : []),
+      ...(handoff?.resource && typeof handoff.resource === "object" ? [handoff.resource] : []),
+      ...(handoff?.anchor_resource && typeof handoff.anchor_resource === "object" ? [handoff.anchor_resource] : []),
+    ];
+    const handoffHadVideo = rawHandoffResources.some(isActivePlannerVideo);
+    const handoffResources = mergePlannerResources(rawHandoffResources).filter(isActivePlannerHandoffSafe);
+    const handoffAnchor = handoff?.anchor_resource && typeof handoff.anchor_resource === "object" && isActivePlannerHandoffSafe(handoff.anchor_resource)
+      ? handoff.anchor_resource
+      : null;
+    const handoffResource = handoffAnchor || handoffResources[0]
+      || (handoff?.resource && typeof handoff.resource === "object" && isActivePlannerHandoffSafe(handoff.resource) ? handoff.resource : null);
     const handoffDate = (...values: unknown[]) => {
       const value = values.find((item) => (
         typeof item === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.trim())
@@ -2522,10 +3955,16 @@ export function ActiveTeachingChainView({
     setVideoSupplementSelection([]);
     setPlanningAssistantResources(handoffResources.length ? handoffResources : (handoffResource ? [handoffResource] : []));
     setPlanningAssistantSelectedKeys((handoffResources.length ? handoffResources : (handoffResource ? [handoffResource] : [])).map(plannerResourceKey));
+    setPlanningAssistantAnchorKey(plannerResourceKey(handoffResource));
+    setPlanningAssistantCandidatePage({ page: 0, pageSize: 3, hasMore: false, mode: "replace" });
+    setPlanningAssistantRejectedKeys([]);
     setPlanningAssistantSelectedUrl(String(handoffResource?.url || ""));
     setPlanningAssistantMessages(handoffResource
       ? [{ role: "assistant", content: "已收到你确认的资料。补充目标备注、开始日期和截止日期后，点击下方按钮，我会用这份资料生成知识地图和每日任务。" }]
       : []);
+    if (!handoffResource && handoffHadVideo) {
+      setError("已过滤视频资料；当前交接没有可用的非视频资料。请返回规划入口选择后端能力支持的资料（视频、字幕和音频不可用）。")
+    }
     setGoal(String(handoff?.goal || "完全掌握上传资料，并能用可验证的方式独立应用"));
     if (handoffResource) {
       setStartDate(handoffDate(handoff?.start_date, handoff?.startDate) || isoAfterDays(0));
@@ -2544,8 +3983,14 @@ export function ActiveTeachingChainView({
   }, [createRequest]);
 
   useEffect(() => {
-    if (initialMaterialFile) setFile(initialMaterialFile);
-  }, [initialMaterialFile]);
+    if (!initialMaterialFile) return;
+    if (isSupportedDocumentFile(initialMaterialFile, knowledgeMapCapabilities)) {
+      setFile(initialMaterialFile);
+      return;
+    }
+    setFile(null);
+    setError("已拒绝交接中的视频、字幕或音频文件；请返回规划入口选择后端能力支持的非视频资料。");
+  }, [initialMaterialFile, knowledgeMapCapabilities]);
 
   const toggleTaskArchive = async (item: ActiveLearningTaskSummary) => {
     const archived = !item.archived;
@@ -3258,12 +4703,94 @@ export function ActiveTeachingChainView({
             <section className="active-chain__source-choice" data-testid="active-source-choice" aria-label="选择资料来源">
               <span className="active-chain__step">先选择资料来源</span>
               <h4>没有已验证资料时，你可以：</h4>
-              <p className="active-chain__muted">使用自己的文件，或让 AI 搜索候选；候选只会在你打开原文并确认后进入计划。</p>
+              <p className="active-chain__muted">使用自己的文件作为纲领，或让 AI 搜索匹配的笔记/文档作为辅助；候选只会在你打开原文并确认后进入计划。</p>
               <div className="active-chain__source-choice-actions">
-                <button type="button" onClick={() => materialFileInputRef.current?.click()} data-testid="active-use-own-material">使用我的资料</button>
-                <button type="button" className="secondary" onClick={() => planningAssistantInputRef.current?.focus()} data-testid="active-find-material">帮我找资料</button>
+                 <button type="button" onClick={() => materialFileInputRef.current?.click()} data-testid="active-use-own-material">使用我的资料（推荐）</button>
+                <button type="button" className="secondary" onClick={() => { setPlanningAssistantDiscoveryAuthorized(true); planningAssistantInputRef.current?.focus() }} data-testid="active-find-material">帮我找资料</button>
               </div>
             </section>
+          )}
+          {!compactPlannerFlow && !videoMaterialFlow && !videoFileConsentPending && (
+            <details
+              key={plannerCollectionResource?.url ? `planner-collection:${plannerCollectionResource.url}` : "manual-long-course"}
+              className="active-chain__long-course"
+              data-testid="active-long-course"
+              open={plannerCollectionResource ? true : undefined}
+            >
+              <summary>使用长课程或播放列表（最多 1000 集）</summary>
+              <p className="active-chain__muted">
+                适合 B 站课程、系列与合集。系统分页读取目录、逐集处理字幕、再生成分层摘要，不会一次加载全部内容。
+              </p>
+              <VideoCollectionView
+                workspaceId={activeWorkspaceId}
+                providerSessionId={realProviderSessionId}
+                initialSourceUrl={String(plannerCollectionResource?.url || "")}
+                activationMode={plannerCollectionResource ? "plan_handoff" : "library"}
+                supportActivationDisabled={Boolean(
+                  plannerCollectionResource
+                  && !resolvedMaterialAnchorId
+                  && plannerResourceKey(plannerResource) === plannerResourceKey(plannerCollectionResource)
+                )}
+                supportActivationHint="请先在已选资料包里把一份笔记设为纲领，再把长课程作为辅助资料。"
+                onMaterialActivated={async (result, role) => {
+                  const materialId = String(result?.material?.id || "").trim();
+                  if (!materialId) return;
+                  if (plannerCollectionResource) {
+                    const collectionKey = plannerResourceKey(plannerCollectionResource);
+                    const selectedResources = plannerResources.length
+                      ? plannerResources
+                      : [plannerCollectionResource];
+                    const companionResources = selectedResources.filter(
+                      (item: any) => plannerResourceKey(item) !== collectionKey && item?.url,
+                    );
+                    const importedByKey = new Map<string, string>();
+                    const importedCompanionIds: string[] = [];
+                    for (const resource of companionResources) {
+                      const imported = await uploadActiveUrlMaterial(activeWorkspaceId, {
+                        url: String(resource.url),
+                        title: String(resource.title || "配套资料"),
+                      });
+                      const ids = Array.from(new Set([
+                        ...(imported?.id ? [String(imported.id)] : []),
+                        ...asArray(imported?.material_ids).map(String),
+                      ].filter(Boolean)));
+                      if (!ids.length) throw new Error(`配套资料“${String(resource.title || resource.url)}”尚未完成导入，请核对后重试。`);
+                      importedByKey.set(plannerResourceKey(resource), ids[0]);
+                      importedCompanionIds.push(...ids);
+                    }
+                    const selectedCompanionAnchorId = importedByKey.get(plannerResourceKey(plannerResource)) || "";
+                    const anchorMaterialId = role === "anchor"
+                      ? materialId
+                      : selectedCompanionAnchorId || resolvedMaterialAnchorId;
+                    if (!anchorMaterialId) {
+                      throw new Error("将长课程作为辅助资料前，请先选择一份笔记或已有资料作为纲领。");
+                    }
+                    const materialIds = Array.from(new Set([
+                      ...readyMaterialIdList,
+                      materialId,
+                      ...importedCompanionIds,
+                    ].filter(Boolean)));
+                    const supportingMaterialIds = materialIds.filter((id) => id !== anchorMaterialId);
+                    setMaterialRoleNotice(
+                      role === "anchor"
+                        ? `长课程摘要已作为纲领，并与 ${importedCompanionIds.length} 份配套资料一起进入新版知识地图。旧地图和旧计划会继续使用，直到你明确激活新版。`
+                        : `长课程摘要已作为辅助资料，并与所选纲领一起进入新版知识地图。旧地图和旧计划会继续使用，直到你明确激活新版。`,
+                    );
+                    await finishTaskCreation(materialIds, { anchorMaterialId, supportingMaterialIds });
+                    return;
+                  }
+                  await refresh(activeWorkspaceId);
+                  if (role === "anchor") {
+                    setMaterialAnchorId(materialId);
+                    setMaterialSupportingIds(readyMaterialIdList.filter((id: string) => id !== materialId));
+                    setMaterialRoleNotice("长课程摘要已作为新纲领加入；需要重新生成知识地图，旧地图和旧计划会继续使用，直到你明确激活新版。");
+                  } else {
+                    setMaterialSupportingIds((current) => Array.from(new Set([...current, materialId])).filter((id) => id !== resolvedMaterialAnchorId));
+                    setMaterialRoleNotice("长课程摘要已作为辅助资料加入；不会自动替换当前纲领或激活新版计划。");
+                  }
+                }}
+              />
+            </details>
           )}
           {!plannerSourceConfirmed && <section className="active-chain__assistant" data-testid="planning-assistant">
             <div>
@@ -3284,32 +4811,96 @@ export function ActiveTeachingChainView({
             <textarea
               ref={planningAssistantInputRef}
               value={planningAssistantText}
-              onChange={(event) => setPlanningAssistantText(event.target.value)}
+              onChange={(event) => { setPlanningAssistantDiscoveryAuthorized(true); setPlanningAssistantText(event.target.value) }}
+              disabled={planningAssistantBusy || planningPoolSyncing}
               placeholder="例如：我想在明确期限内学会一项能力，已有一份笔记，希望补齐权威资料和练习。"
               rows={3}
               data-testid="planning-assistant-input"
             />
             <button
               type="button"
-              disabled={planningAssistantBusy || !realProviderSessionId}
+              disabled={planningAssistantBusy || planningPoolSyncing || !realProviderSessionId}
               onClick={() => void askPlanningAssistant()}
               data-testid="planning-assistant-send"
             >
-              {planningAssistantBusy ? "正在整理资料候选…" : "询问资料助手"}
+              {planningAssistantBusy ? (planningAssistantSelectedKeys.length ? "正在保留已选资料并补充检索…" : "正在整理资料候选…") : "询问资料助手"}
             </button>
             {!realProviderSessionId && <small>连接并验证真实模型后可使用。</small>}
             {planningAssistantResources.length > 0 && (
               <div className="active-chain__assistant-resources">
-                <b>{plannerResource ? `已确认的资料包 · ${plannerResources.length || 1} 份` : "待你核对的资料候选（可多选）"}</b>
-                {planningAssistantResources.map((item, index) => (
-                  <label className={planningAssistantSelectedKeys.includes(plannerResourceKey(item)) ? "is-selected" : ""} key={`${plannerResourceKey(item)}-${index}`}>
-                    {!plannerResource && <input type="checkbox" name="active-planning-resource" checked={planningAssistantSelectedKeys.includes(plannerResourceKey(item))} onChange={() => { const key = plannerResourceKey(item); setPlanningAssistantSelectedKeys((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key]); setPlanningAssistantSelectedUrl(String(item.url || "")); }} aria-label={`选择 ${item.title || item.url}`} />}
-                    <span><strong title={item.title || item.url}>{item.title || item.url}</strong>{item.direct_user_reference && <span>精确引用 · 由你提供，尚未联网核验</span>}<span>{plannerSignal(item.media_kind || item.kind || item.source_kind || item.source_type || item.media_type, "来源类型未知")} · 角色：{plannerSignal(item.coverage_role || item.collection || item.collection_name)} · 权威：{plannerSignal(item.authority_status || item.authority || item.authority_signal || (item.authority_explanation ? "已提供说明" : ""))} · 热度：{plannerSignal(item.popularity_status || item.popularity || item.popularity_signal)}</span><span>{plannerRankReason(item)}</span><a href={item.url} target="_blank" rel="noreferrer" aria-label={`打开“${item.title || item.url}”原文`} onClick={(event) => event.stopPropagation()}>打开原文</a></span>
-                  </label>
-                ))}
+                <b>{plannerResource ? `已确认的资料包 · ${plannerResources.length || 1} 份` : "待你核对的匹配笔记/文档候选（可多选）"}</b>
+                {!plannerResource && <PlanningCandidatePool
+                  candidates={planningAssistantResources}
+                  selectedKeys={planningAssistantSelectedKeys}
+                  onSelectionChange={(keys) => {
+                    const previous = planningSelectedKeysRef.current;
+                    setPlanningAssistantSelectedKeys(keys)
+                    planningSelectedKeysRef.current = keys;
+                    for (const key of keys.filter(item => !previous.includes(item))) {
+                      // The first checkbox selection is also the default
+                      // anchor. Persist it atomically so one click cannot
+                      // produce select + set_anchor races.
+                      const isDefaultAnchor = !previous.length && !planningAnchorKeyRef.current && keys.length === 1 && key === keys[0]
+                      if (isDefaultAnchor) {
+                        suppressDefaultAnchorActionRef.current = key
+                        enqueuePlanningPoolAction("set_anchor", key)
+                      } else enqueuePlanningPoolAction("select", key)
+                    }
+                    for (const key of previous.filter(item => !keys.includes(item))) enqueuePlanningPoolAction("deselect", key)
+                    setPlanningAssistantSelectedUrl(String(planningAssistantResources.find((item: any) => plannerResourceKey(item) === keys[0])?.url || ""))
+                    if (!planningAnchorKeyRef.current && keys[0]) {
+                      planningAnchorKeyRef.current = keys[0]
+                      setPlanningAssistantAnchorKey(keys[0])
+                    }
+                    if (planningAnchorKeyRef.current && !keys.includes(planningAnchorKeyRef.current)) {
+                      planningAnchorKeyRef.current = ""
+                      setPlanningAssistantAnchorKey("")
+                    }
+                  }}
+                  anchorKey={planningAssistantAnchorKey}
+                  onAnchorChange={(key) => {
+                    const isDefaultAnchor = key && suppressDefaultAnchorActionRef.current === key
+                    if (isDefaultAnchor) suppressDefaultAnchorActionRef.current = ""
+                    planningAnchorKeyRef.current = key
+                    setPlanningAssistantAnchorKey(key)
+                    // Deselecting an anchor clears it as part of the server
+                    // deselect transition. A second clear would reuse a
+                    // stale revision and can make the queue lose later work.
+                    if (key && !isDefaultAnchor) enqueuePlanningPoolAction("set_anchor", key)
+                  }}
+                  onAnchorChangeRequest={(next, current) => {
+                    if (!current || next === current) return true
+                    setError("已切换纲领资料；会重建知识地图，旧地图和旧计划继续使用直到你明确确认激活。其余已选资料仍作为辅助资料保留。")
+                    return true
+                  }}
+                  rejectedKeys={planningAssistantRejectedKeys}
+                  onRejectedKeysChange={(keys) => {
+                    const previous = planningRejectedKeysRef.current
+                    setPlanningAssistantRejectedKeys(keys)
+                    planningRejectedKeysRef.current = keys
+                    for (const key of keys.filter(item => !previous.includes(item))) enqueuePlanningPoolAction("reject", key)
+                    for (const key of previous.filter(item => !keys.includes(item))) enqueuePlanningPoolAction("undo", key)
+                  }}
+                  candidatePage={planningAssistantCandidatePage}
+                  onRequestPage={(page, direction) => {
+                    if (planningPoolSessionRef.current && !planningAssistantBusy) enqueuePlanningPoolPage(page, direction)
+                    else if (direction === "next" && planningAssistantCandidatePage.nextCursor && planningAssistantLastQuery && !planningAssistantBusy) void askPlanningAssistant(planningAssistantLastQuery, page, direction)
+                  }}
+                  onRequestReplenish={() => requestPlanningCandidatePoolAction("fill_page")}
+                  onRequestAddPage={() => requestPlanningCandidatePoolAction("add_page")}
+                  selectedMaterialCount={planningAssistantSelectedKeys.length + (file ? 1 : 0)}
+                  onAddPageBlocked={(_selectedCount, size) => setError(`请先至少选择 ${size} 份材料，再尝试扩充候选`)}
+                  busy={planningAssistantBusy || planningPoolSyncing}
+                  pendingLabel={planningAssistantBusy
+                    ? (planningAssistantSelectedKeys.length ? "正在保留已选资料并补充检索…" : "正在整理候选资料…")
+                    : "正在保存候选池变更，翻页和卡片操作已暂时锁定…"}
+                  disabled={planningAssistantBusy || planningPoolSyncing}
+                  updateMode={planningAssistantCandidatePage.mode}
+                  testId="planning-assistant-candidate-pool"
+                />}
                 {!plannerResource && <div className="active-chain__assistant-bundle" aria-live="polite">已选 {planningAssistantSelectedKeys.length} 份资料</div>}
                 {!plannerResource && <button type="button" onClick={confirmPlanningAssistantResource} disabled={!planningAssistantSelectedKeys.length} data-testid="planning-assistant-confirm">确认已选资料并继续</button>}
-                {planningVideoOnlyConfirmation && !plannerResource && (
+                {!compactPlannerFlow && planningVideoOnlyConfirmation && !plannerResource && (
                   <div className="active-chain__video-review" data-testid="planning-assistant-video-only-confirmation" role="alert">
                     <h4>当前资料包只有视频</h4>
                     <p>视频转写可能遗漏公式、图表或上下文。建议再选一份讲义或笔记；如果仍只用视频，提取后还会让你核对字幕。</p>
@@ -3336,12 +4927,38 @@ export function ActiveTeachingChainView({
             <section className="active-chain__planner-handoff" data-testid="planner-resource-handoff">
               <span className="active-chain__step">规划助手已交接</span>
               <b>已选资料包 · {plannerResources.length} 份</b>
+              <small>纲领：{plannerResource?.title || plannerResource?.url || "未指定"} · 辅助：{plannerResources.filter((item: any) => plannerResourceKey(item) !== plannerResourceKey(plannerResource)).map((item: any) => item.title || item.url).join("、") || "无"}</small>
+              <div className="active-chain__planner-role-list" aria-label="规划资料角色">
+                {plannerResources.map((item: any) => {
+                  const key = plannerResourceKey(item);
+                  const isAnchor = key === plannerResourceKey(plannerResource);
+                  return (
+                    <div key={key} className={isAnchor ? "is-anchor" : "is-support"}>
+                      <span>{isAnchor ? "纲领" : "辅助"} · {item.title || item.url}</span>
+                      <button
+                        type="button"
+                        disabled={Boolean(busy) || isAnchor}
+                        data-testid={`planner-set-anchor-${key.replace(/[^a-z0-9_-]/gi, "-")}`}
+                        onClick={() => {
+                          if (isAnchor) return;
+                          setPlannerResource(item);
+                          setPlanningAssistantAnchorKey(key);
+                          setMaterialRoleNotice("已切换纲领资料；抓取后会重建知识地图。旧地图和旧计划会继续使用，直到你明确激活新版。" );
+                        }}
+                      >
+                        {isAnchor ? "当前纲领" : "设为纲领"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {materialRoleNotice && <small className="active-chain__warning" role="status">{materialRoleNotice}</small>}
               <small>{plannerResources.map((item: any) => item.title || item.url).join("、")}</small>
               <div>{plannerResources.map((item: any) => <a href={item.url} target="_blank" rel="noreferrer" key={plannerResourceKey(item)}>打开 {item.title || item.url} 核对</a>)}</div>
               <small>资料会在你点击“开始整理”后安全抓取，并自动生成知识地图和每日任务。</small>
             </section>
           )}
-          {videoMaterialFlow?.status === "awaiting_supplementary_choice" && (
+          {!compactPlannerFlow && videoMaterialFlow?.status === "awaiting_supplementary_choice" && (
             <section className="active-chain__video-review" data-testid="video-supplementary-choice">
               <span className="active-chain__step">视频资料 · 提取前确认</span>
               <h4>要不要同时找一份讲义或配套文档？</h4>
@@ -3357,7 +4974,7 @@ export function ActiveTeachingChainView({
               <small>搜索结果只会作为候选；你没有勾选确认的资料不会进入知识地图或计划。</small>
             </section>
           )}
-          {videoFileConsentPending && !videoMaterialFlow && (
+          {!compactPlannerFlow && videoFileConsentPending && !videoMaterialFlow && (
             <section className="active-chain__video-review" data-testid="video-file-supplementary-choice">
               <span className="active-chain__step">视频文件 · 提取前确认</span>
               <h4>要不要在提取视频内容的同时寻找补充学习资料？</h4>
@@ -3373,7 +4990,7 @@ export function ActiveTeachingChainView({
               <small>你可以在资料候选出现后逐份打开原文并确认，未确认的资料不会进入计划。</small>
             </section>
           )}
-          {videoMaterialFlow?.status === "supplementary_candidates" && (
+          {!compactPlannerFlow && videoMaterialFlow?.status === "supplementary_candidates" && (
             <section className="active-chain__video-review" data-testid="video-supplementary-candidates">
               <span className="active-chain__step">补充学习资料 · 等待选择</span>
               <h4>选择要和视频一起学习的资料</h4>
@@ -3406,7 +5023,7 @@ export function ActiveTeachingChainView({
               </div>
             </section>
           )}
-          {["transcript_preview", "needs_review", "rejected"].includes(String(videoMaterialFlow?.status || "")) && (
+          {!compactPlannerFlow && ["transcript_preview", "needs_review", "rejected"].includes(String(videoMaterialFlow?.status || "")) && (
             <section className="active-chain__video-review" data-testid="video-transcript-review">
               <span className="active-chain__step">视频字幕 · 等待确认</span>
               <h4>{videoTranscript.title || plannerResource?.title || "视频字幕预览"}</h4>
@@ -3444,7 +5061,24 @@ export function ActiveTeachingChainView({
             </section>
           )}
           {!plannerSourceConfirmed && (
-            <input ref={materialFileInputRef} data-testid="active-material-file" type="file" accept={materialAccept} onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <input
+              ref={materialFileInputRef}
+              data-testid="active-material-file"
+              type="file"
+              accept={materialAccept}
+              onChange={(event) => {
+                const picked = event.target.files?.[0] || null;
+                event.target.value = "";
+                if (!picked) return;
+                if (!isSupportedDocumentFile(picked, knowledgeMapCapabilities)) {
+                  setFile(null);
+                  setError("当前文件格式没有可用的非视频转换能力；请按后端能力列表选择可读取的文档、表格、代码、图片或压缩包。视频、字幕和音频不可用于规划资料。");
+                  return;
+                }
+                setError("");
+                setFile(picked);
+              }}
+            />
           )}
           <label>
             {plannerSourceConfirmed ? "目标备注" : "学习目标"}
@@ -3606,8 +5240,12 @@ export function ActiveTeachingChainView({
                   const materialIds = materials
                     .filter((item: any) => item.status === "ready")
                     .map((item: any) => item.id);
-                  const job = await startKnowledgeMapV1(materialIds);
+                  const job = await startKnowledgeMapV1(materialIds, {
+                    anchorMaterialId: resolvedMaterialAnchorId,
+                    supportingMaterialIds: resolvedMaterialSupportingIds,
+                  });
                   const latestMap = await waitForKnowledgeMapV1(job);
+                  if (stagedRevisionRef.current) return;
                   revision = latestMap.revision;
                   if (resourceDiscoveryEnabled && realProviderSessionId) {
                     await startResourceDiscovery();
@@ -3653,8 +5291,22 @@ export function ActiveTeachingChainView({
           </div>
           {materials.map((item: any) => (
             <div className="active-chain__receipt" key={item.id}>
-              <b>{item.original_filename}</b>
+              <b>{item.original_filename} · {String(item.id) === resolvedMaterialAnchorId ? "纲领" : "辅助"}</b>
               <span>{item.chunk_count} chunks · SHA-256 {item.sha256.slice(0, 12)}…</span>
+              {item.status === "ready" && (
+                <div className="active-chain__material-role" aria-label={`${item.original_filename}资料角色`}>
+                  <button
+                    type="button"
+                    data-testid={`active-material-anchor-${item.id}`}
+                    className={String(item.id) === resolvedMaterialAnchorId ? "is-active" : ""}
+                    disabled={Boolean(busy) || String(item.id) === resolvedMaterialAnchorId}
+                    onClick={() => chooseMaterialAnchor(String(item.id))}
+                  >
+                    {String(item.id) === resolvedMaterialAnchorId ? "纲领（当前）" : "设为纲领"}
+                  </button>
+                  <span>{String(item.id) === resolvedMaterialAnchorId ? "会重建知识地图，旧计划继续使用直到确认" : "辅助资料"}</span>
+                </div>
+              )}
               {item.original_filename.toLowerCase().endsWith(".json") && graph.knowledge_points.length > 0 && (
                 <button disabled={Boolean(busy)} onClick={() => run("导入资料内的可执行题目规格", () => importProblemSpecs(item.id))}>
                   导入经来源验证的题目与测试
@@ -3667,18 +5319,40 @@ export function ActiveTeachingChainView({
         <article className="active-chain__card">
           <span className="active-chain__step">02 · 计划知识地图</span>
           <h3>先看清要学什么，再进入日历</h3>
+          <div className="active-chain__map-scope" data-testid="active-map-scope">
+            <b>当前纲领：{readyMaterials.find((item: any) => String(item.id) === resolvedMaterialAnchorId)?.original_filename || resolvedMaterialAnchorId || "尚未选择"}</b>
+            <span>辅助资料 {resolvedMaterialSupportingIds.length} 份 · scope policy：single_anchor（增量） · 当前 revision {mapForV1.revision ?? "—"}</span>
+            {materialRoleNotice && plannerResources.length === 0 && <small role="status">{materialRoleNotice}</small>}
+          </div>
           <KnowledgeMapV1Panel
             map={mapForV1}
             capabilities={knowledgeMapCapabilities}
             job={knowledgeMapJob}
             error={knowledgeMapError}
+            currentKnowledgePointId={session?.state?.current_knowledge_point_id || null}
+            isFallbackSnapshot={isKnowledgeMapFallback}
+            snapshotRevision={isKnowledgeMapFallback ? (graph.revision ?? null) : null}
+            readOnly={!knowledgeMapV1 || isKnowledgeMapFallback}
             busy={Boolean(busy)}
             onGenerate={() => run("生成 v1 知识地图", startKnowledgeMapV1)}
+            onRetryRead={() => { void retryKnowledgeMapRead(); }}
             onDecision={(candidate, decision) => run(
               decision === "confirm" ? "确认知识地图候选" : "驳回知识地图候选",
               () => decideKnowledgeMapCandidate(candidate, decision),
             )}
           />
+          {knowledgeMapStaged && (
+            <KnowledgeMapStagedReviewPanel
+              staged={knowledgeMapStaged}
+              busy={Boolean(busy)}
+              onDecision={(candidate, decision) => run(
+                decision === "confirm" ? "确认新版知识地图候选" : "驳回新版知识地图候选",
+                () => decideStagedKnowledgeMapCandidate(candidate, decision),
+              )}
+              onActivate={() => run("激活新版知识地图", activateStagedKnowledgeMap)}
+              onDismiss={() => { stagedRevisionRef.current = null; setKnowledgeMapStaged(null); }}
+            />
+          )}
           <button
             data-testid="active-generate-graph"
             disabled={!snapshot?.receipt || Boolean(busy) || mapForV1.nodes.length > 0}
@@ -3844,11 +5518,13 @@ export function ActiveTeachingChainView({
           <h3>点击任意首学任务，直接进入对应课程</h3>
           <button
             data-testid="active-generate-plan"
-            disabled={(!graph.knowledge_points.length && !mapForV1.nodes.length) || Boolean(busy) || Boolean(plan) || Boolean(planPreview)}
+            disabled={(!graph.knowledge_points.length && !mapForV1.nodes.length) || Boolean(busy) || Boolean(plan) || Boolean(planPreview) || Boolean(knowledgeMapStaged)}
             onClick={() => run("预览完全掌握计划", () => previewMasteryPlan())}
           >
             {plan
               ? "完整掌握计划已生成（修改条件请在上方重新排程）"
+              : knowledgeMapStaged
+                ? "请先激活新版知识地图，再预览计划"
               : planPreview
                 ? "计划已预览，等待激活"
                 : "预览并生成完整掌握计划"}
@@ -4252,8 +5928,10 @@ export function ActiveTeachingChainView({
                       >
                         <span>
                           {item.role === "user"
-                            ? "你"
-                            : teacherActionLabels[item.action] || "艾莉丝"}
+                            ? item.action === "free_chat" ? "你 · 自由聊天" : "你"
+                            : item.action === "free_chat_response"
+                              ? "艾莉丝 · 自由聊天"
+                              : teacherActionLabels[item.action] || "艾莉丝"}
                         </span>
                         {item.role === "teacher" && (
                           <button
@@ -4382,7 +6060,9 @@ export function ActiveTeachingChainView({
                       data-testid="active-pending-user-message"
                       key={item.id}
                     >
-                      <span>你 · {item.status === "processing" ? "教师正在思考…" : "发送失败，请重试"}</span>
+                      <span>
+                        你 · {item.interactionMode === "free_chat" ? "自由聊天" : "学习回答"} · {item.status === "processing" ? "教师正在思考…" : "发送失败，请重试"}
+                      </span>
                       <p>{item.content}</p>
                       {item.attachments.length > 0 && (
                         <div className="active-classroom__message-attachments">
@@ -4415,6 +6095,41 @@ export function ActiveTeachingChainView({
                 <div
                   className="active-chain__composer active-classroom__composer"
                 >
+                  <fieldset
+                    className="active-classroom__interaction-mode"
+                    data-testid="active-interaction-mode"
+                    disabled={Boolean(busy) || attachmentBusy || voiceState !== "idle"}
+                  >
+                    <legend>本条消息用途</legend>
+                    <label>
+                      <input
+                        checked={interactionMode === "learning_evidence"}
+                        name="active-interaction-mode"
+                        onChange={() => setInteractionMode("learning_evidence")}
+                        type="radio"
+                        value="learning_evidence"
+                      />
+                      <span>学习回答</span>
+                    </label>
+                    <label>
+                      <input
+                        checked={interactionMode === "free_chat"}
+                        name="active-interaction-mode"
+                        onChange={() => setInteractionMode("free_chat")}
+                        type="radio"
+                        value="free_chat"
+                      />
+                      <span>自由聊聊</span>
+                    </label>
+                  </fieldset>
+                  {interactionMode === "free_chat" && (
+                    <small
+                      className="active-classroom__free-chat-notice"
+                      data-testid="active-free-chat-notice"
+                    >
+                      自由聊聊不会计入掌握判定，也不会推进学习计划；当前知识点和学习状态会保持不变。
+                    </small>
+                  )}
                   {teachingAttachments.length > 0 && (
                     <div
                       className="active-classroom__attachment-tray"
@@ -4517,7 +6232,10 @@ export function ActiveTeachingChainView({
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
                         if ((message.trim() || teachingAttachments.length) && !busy) {
-                          void run("推进教学", () => advance());
+                          void run(
+                            interactionMode === "free_chat" ? "发送自由聊天" : "推进教学",
+                            () => advance(),
+                          );
                         }
                       }
                     }}
@@ -4540,9 +6258,12 @@ export function ActiveTeachingChainView({
                         || attachmentBusy
                         || voiceState !== "idle"
                       }
-                      onClick={() => run("推进教学", () => advance())}
+                      onClick={() => run(
+                        interactionMode === "free_chat" ? "发送自由聊天" : "推进教学",
+                        () => advance(),
+                      )}
                     >
-                      发送
+                      {interactionMode === "free_chat" ? "发送自由消息" : "发送"}
                     </button>
                     <button
                       data-testid="active-understood"
@@ -4551,8 +6272,9 @@ export function ActiveTeachingChainView({
                         || Boolean(busy)
                         || attachmentBusy
                         || voiceState !== "idle"
+                        || interactionMode !== "learning_evidence"
                       }
-                      onClick={() => run("提交理解证据", () => advance(message, true))}
+                      onClick={() => run("提交理解证据", () => advance(message, true, teachingAttachments, false, "learning_evidence"))}
                     >
                       提交回答并让教师判断
                     </button>

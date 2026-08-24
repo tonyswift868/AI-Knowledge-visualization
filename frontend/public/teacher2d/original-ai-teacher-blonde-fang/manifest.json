@@ -25,6 +25,8 @@
     "praising": "cheer",
     "encouraging": "heart",
     "confused": "confused",
+    "shy": "heart",
+    "playful_annoyed": "confused",
     "ending": "wave"
   },
   "initialScale": 1,

@@ -2,7 +2,7 @@ MentorFlow Windows 桌面版
 
 版本来源是安装目录内的 `mentorflow-version.json`；请不要手工修改 EXE 的版本号。
 
-1. 这是纯本地文件版：没有账号、登录、手机号或短信找回流程。请保留整个 `MentorFlow` 目录，不要只复制 `MentorFlow.exe`。
+1. 这是纯本地文件版：数据只保存在当前本地目录，不需要额外的身份配置。请保留整个 `MentorFlow` 目录，不要只复制 `MentorFlow.exe`。
 2. 双击 `MentorFlow.exe`；软件会自行启动和关闭本地后端，无需安装 Python。已有数据会自动识别，没有数据会初始化全新的学习空间。
 3. 软件安装包和用户数据包必须分开。安装包可以发给别人或安装到任意位置；用户数据默认保存在 `E:\MentorFlowData`（数据库、上传资料、缓存、备份和配置），不放进安装目录。
 4. 换设备时：在旧设备“数据与备份”点击“导出迁移压缩包”并选择保存位置；在新设备安装软件；首次打开后选择压缩包和一个空目录导入。压缩包包含当前任务、资料、知识地图、计划和进度，不覆盖正在使用的数据，也不会把别人的内容混入当前目录。
@@ -26,6 +26,6 @@ MentorFlow Windows 桌面版
 用户数据或静默安装。检查 `update-staging.json` 中的 release 页面后，关闭软件并按发布页
 说明手工安装；若 API 不可用，请直接打开 release 页面手工下载并核对 SHA-256。
 
-评审副本：发布目录内的“启动UI评审.cmd”只使用 `E:\MentorFlowData\ui-review` 标记副本并跳过登录，供本地功能和界面评审使用；它不会访问或修改正式的 `E:\MentorFlowData` 数据。
+评审副本：发布目录内的“启动UI评审.cmd”只使用 `E:\MentorFlowData\ui-review` 标记副本，供本地功能和界面评审使用；它不会访问或修改正式的 `E:\MentorFlowData` 数据。
 
 完整第三方组件与许可证说明位于 _internal\docs。

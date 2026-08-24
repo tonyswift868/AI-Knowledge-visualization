@@ -64,6 +64,34 @@ def test_pretty_json_keeps_path_and_sentinel_evidence():
     assert "ORCHID-742" in "\n".join(item.text for item in result.parts)
 
 
+def test_xml_adapter_rejects_dtd_after_signature_probe_without_expansion() -> None:
+    payload = (
+        b" " * 4096
+        + b"<!DOCTYPE root [<!ENTITY boom 'expanded'>]><root>&boom;</root>"
+    )
+
+    result = ConversionRegistry().convert_safe(
+        ConversionSource(name="hostile.xml", mime_type="application/xml", data=payload)
+    )
+
+    assert result.status == "failed"
+    assert result.failure is not None
+    assert result.failure.code == "STRUCTURED_DATA_INVALID"
+
+
+def test_xml_adapter_accepts_normal_xml() -> None:
+    result = ConversionRegistry().convert_safe(
+        ConversionSource(
+            name="normal.xml",
+            mime_type="application/xml",
+            data=b"<root><item>normal</item></root>",
+        )
+    )
+
+    assert result.status == "ready"
+    assert any("normal" in item.text for item in result.parts)
+
+
 def test_utf16_and_gb18030_are_accepted_without_loss():
     registry = ConversionRegistry()
     expected = "\u8de8\u9886\u57df\u54e8\u5175"

@@ -23,6 +23,81 @@ class WorkspacePatch(BaseModel):
     persona_prompt: str | None = Field(default=None, max_length=2000)
 
 
+class WorkspaceOut(BaseModel):
+    """Persisted workspace response.
+
+    The API has historically returned the database row verbatim.  Keep every
+    declared field optional so old rows (or rows produced by an older runtime)
+    remain valid, and allow unknown fields so the response model cannot trim
+    forward-compatible data.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = None
+    title: str | None = None
+    description: str | None = None
+    status: str | None = None
+    character_id: str | None = None
+    allow_external_knowledge: int | bool | None = None
+    persona_prompt: str | None = None
+    execution_mode: str | None = None
+    provider_name: str | None = None
+    provider_model: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class SourceSummaryOut(BaseModel):
+    """Source metadata returned by workspace startup routes (without text)."""
+
+    # Source rows contain storage-only fields (notably ``local_path``) that
+    # must never cross the HTTP boundary.  Ignore unknown columns so a legacy
+    # row cannot accidentally add a new internal field to this public shape.
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    workspace_id: str | None = None
+    title: str | None = None
+    source_type: str | None = None
+    original_filename: str | None = None
+    original_url: str | None = None
+    trust_level: str | None = None
+    content_hash: str | None = None
+    status: str | None = None
+    parse_error: str | None = None
+    page_count: int | None = None
+    archive_preview_id: str | None = None
+    archive_relative_path: str | None = None
+    parent_archive_name: str | None = None
+    language: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    chunk_count: int | None = None
+
+
+class GoalOut(BaseModel):
+    """Persisted goal envelope returned by the legacy workspace API."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = None
+    workspace_id: str | None = None
+    payload: dict[str, Any] | None = None
+    confirmed: int | bool | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class WorkspaceDetailOut(WorkspaceOut):
+    """Workspace row plus the startup summary collections."""
+
+    sources: list[SourceSummaryOut] | None = None
+    goal: GoalOut | None = None
+    feasibility: Any = None
+    plans: list[Any] | None = None
+
+
 class GoalProfile(BaseModel):
     goal_statement: str = Field(min_length=5, max_length=500)
     motivation: str = Field(default="", max_length=500)

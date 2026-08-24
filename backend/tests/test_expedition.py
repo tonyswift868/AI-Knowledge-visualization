@@ -118,6 +118,30 @@ def test_concurrent_reward_publication_has_one_ledger_row(expedition_client):
     assert len(expedition_service.get_ledger()["items"]) == 1
 
 
+def test_first_profile_and_lineups_seed_canonical_grid_idempotently(expedition_client):
+    first_profile = expedition_service.get_profile()
+    first_lineups = expedition_service.lineups()
+
+    assert first_lineups["formation"] == {
+        "type": "grid_3x3",
+        "cells": [f"cell_{index}" for index in range(9)],
+        "rules": "从九宫格九个位置中自由选择五个角色；行列决定站位与行动顺序",
+    }
+    assert len(first_lineups["items"]) == 1
+    active = first_lineups["items"][0]
+    assert active["active"] is True
+    assert active["formation_type"] == "grid_3x3"
+    assert active["lineup_id"] == first_profile["active_lineup_id"]
+    assert len(active["members"]) == 5
+    member_cells = [member["slot_id"] for member in active["members"]]
+    assert len(set(member_cells)) == 5
+    assert all(cell in first_lineups["formation"]["cells"] for cell in member_cells)
+    assert all(member["hero_id"] for member in active["members"])
+
+    second_lineups = expedition_service.lineups()
+    assert second_lineups == first_lineups
+
+
 def test_lineup_rejects_duplicate_heroes_and_persists_five_positions(expedition_client):
     expedition_service.get_profile()
     hero_ids = _add_owned_heroes()

@@ -383,6 +383,328 @@ def test_real_provider_may_answer_stable_general_question_without_fake_citations
             "model_general_knowledge"
         )
 
+
+def test_v1_question_interrupt_uses_one_flexible_turn_and_preserves_check_state(
+    tmp_path, monkeypatch
+):
+    """An explicit learner question must not consume an answer attempt."""
+
+    from app import active_teaching
+
+    configure_orm(tmp_path / "active-v1-question-interrupt.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "question-answer-test",
+            "credential_ref": credential_store.store_secret("test-only-key"),
+        }
+    )
+    provider_session = get_provider_session(public["provider_session_id"])
+    assert provider_session is not None
+    provider_session.verified = True
+    captured: dict = {}
+
+    class QuestionAnswerProvider:
+        async def json(self, messages):
+            prompt = json.loads(messages[-1]["content"])
+            captured.update(prompt)
+            return {"content": "自然回答：哈希表可以把已经访问过的值映射到索引。"}
+
+    monkeypatch.setattr(active_teaching, "provider_for_session", lambda _session: QuestionAnswerProvider())
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        before = client.get(f"/api/active-teaching/sessions/{session_id}").json()
+        before_evidence = list(before["state"].get("mastery_evidence") or [])
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": "我想确认为什么能使用哈希吗，复杂度会不会受影响，请你解惑",
+                "provider_session_id": provider_session.id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        turn = payload["state"]["teacher_turn_v1"]
+        assert payload["messages"][-1]["action"] == "teacher_turn_v1_question_answer"
+        assert [block["type"] for block in turn["blocks"]] == ["question_answer"]
+        assert turn["state"]["waiting_for_answer"] is True
+        assert turn["state"]["remediation_attempt"] == before["state"]["teacher_turn_v1"]["state"][
+            "remediation_attempt"
+        ]
+        assert payload["state"].get("mastery_evidence") == before_evidence
+        assert captured["latest_learner_message"] == (
+            "我想确认为什么能使用哈希吗，复杂度会不会受影响，请你解惑"
+        )
+        assert captured["knowledge_scope"] == "model_general_knowledge"
+        assert payload["state"]["teacher_generation"]["knowledge_scope"] == (
+            "model_general_knowledge"
+        )
+
+
+def test_v1_question_classifier_keeps_interrupts_out_of_answer_evaluation():
+    from app.active_teaching import _v1_is_question_or_pedagogical_request
+
+    question = "我想确认为什么能使用哈希吗，复杂度会不会受影响，请你解惑"
+    assert _v1_is_question_or_pedagogical_request(question) is True
+    for declarative in (
+        "能用哈希表保存已经访问过的值到索引。",
+        "能使用二分查找，因为数组已经有序。",
+        "可以用自己的话说明一次遍历足够。",
+        "可以使用这个方法完成任务。",
+    ):
+        assert _v1_is_question_or_pedagogical_request(declarative) is False
+    for genuine_question in (
+        "能不能用哈希表解决这个问题？",
+        "能否使用二分查找？",
+        "可不可以用自己的话回答？",
+        "为什么能使用哈希表？",
+        "能用什么数据结构？",
+        "可以使用这个方法吗？",
+    ):
+        assert _v1_is_question_or_pedagogical_request(genuine_question) is True
+    assert _v1_is_question_or_pedagogical_request("请解释一下哈希表") is True
+    assert _v1_is_question_or_pedagogical_request(
+        "我理解为什么一次遍历足够，并给出例子"
+    ) is False
+    assert _v1_is_question_or_pedagogical_request(
+        question, remediation_active=True
+    ) is True
+    assert _v1_is_question_or_pedagogical_request(question, understood=True) is False
+    assert _v1_is_question_or_pedagogical_request(question, direct_completion=True) is False
+
+
+def test_v1_question_without_provider_reports_insufficient_evidence_scope(tmp_path):
+    configure_orm(tmp_path / "active-v1-question-insufficient-evidence.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "月球为什么会绕着地球运行？"},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        teacher_message = payload["messages"][-1]
+        assert teacher_message["action"] == "teacher_turn_v1_question_answer"
+        assert teacher_message["citations"] == []
+        assert "不能可靠补充通识答案" in teacher_message["content"]
+        assert payload["state"]["teacher_generation"]["knowledge_scope"] == (
+            "insufficient_evidence"
+        )
+        assert payload["state"]["teacher_generation"]["knowledge_scope"] != (
+            "model_general_knowledge"
+        )
+
+
+def test_free_chat_keeps_learning_turn_and_mastery_state_isolated(tmp_path):
+    configure_orm(tmp_path / "active-free-chat-isolated.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        before = client.get(f"/api/active-teaching/sessions/{session_id}").json()
+        before_state = before["state"]
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "今天吃什么？", "interaction_mode": "free_chat"},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        after_state = payload["state"]
+        assert payload["messages"][-1]["action"] == "free_chat_response"
+        assert payload["messages"][-1]["teacher_turn"]["blocks"][0]["type"] == (
+            "free_chat_response"
+        )
+        assert after_state["teacher_turn_v1"] == before_state["teacher_turn_v1"]
+        for key in (
+            "route_index",
+            "active_task_id",
+            "current_knowledge_point_id",
+            "mastery_evidence",
+            "pending_reviews",
+            "actual_elapsed_minutes",
+        ):
+            assert after_state.get(key) == before_state.get(key)
+        assert after_state["free_chat_generation"]["knowledge_scope"] == (
+            "insufficient_evidence"
+        )
+        assert after_state["free_chat_history"][-2]["role"] == "user"
+        assert after_state["free_chat_history"][-2]["content"] == "今天吃什么？"
+        assert "健康话题" not in payload["messages"][-1]["content"]
+        assert "适合陪你讨论课程" not in payload["messages"][-1]["content"]
+
+        answer = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": "我理解的是先记录已经访问过的值，再检查目标差值。",
+                "interaction_mode": "learning_evidence",
+            },
+        )
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["state"]["teacher_turn_v1"] != before_state["teacher_turn_v1"]
+
+
+def test_free_chat_invalid_mode_and_learning_fields_return_stable_422(tmp_path):
+    configure_orm(tmp_path / "active-free-chat-validation.db")
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        invalid = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"message": "hello", "interaction_mode": "chat"},
+        )
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["code"] == "INVALID_INTERACTION_MODE"
+        conflict = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": "hello",
+                "interaction_mode": "free_chat",
+                "force_complete": True,
+            },
+        )
+        assert conflict.status_code == 422
+        assert conflict.json()["error"]["code"] == "FREE_CHAT_CONFLICTING_FIELDS"
+        timed = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": "hello",
+                "interaction_mode": "free_chat",
+                "actual_elapsed_minutes": 1,
+            },
+        )
+        assert timed.status_code == 422
+        assert timed.json()["error"]["code"] == "FREE_CHAT_CONFLICTING_FIELDS"
+
+
+def test_free_chat_provider_gets_latest_text_and_bounded_history(tmp_path, monkeypatch):
+    from app import active_teaching
+
+    configure_orm(tmp_path / "active-free-chat-provider.db")
+    reset_provider_sessions()
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "free-chat-test",
+            "credential_ref": credential_store.store_secret("test-only-key"),
+        }
+    )
+    provider_session = get_provider_session(public["provider_session_id"])
+    assert provider_session is not None
+    provider_session.verified = True
+    captured: list[dict] = []
+    captured_system: list[str] = []
+
+    class FreeChatProvider:
+        async def json(self, messages):
+            captured_system.append(str(messages[0]["content"]))
+            prompt = json.loads(messages[-1]["content"])
+            captured.append(prompt)
+            return {
+                "content": "当然可以，今天想吃点清爽的还是热乎的？",
+                "presentation_state": "shy",
+            }
+
+    monkeypatch.setattr(active_teaching, "provider_for_session", lambda _session: FreeChatProvider())
+    with TestClient(app) as client:
+        _, session_id = _bootstrap(client)
+        for index in range(12):
+            response = client.post(
+                f"/api/active-teaching/sessions/{session_id}/advance",
+                json={
+                    "message": f"闲聊第 {index} 句",
+                    "interaction_mode": "free_chat",
+                    "provider_session_id": provider_session.id,
+                },
+            )
+            assert response.status_code == 200, response.text
+        latest = "我想吃面条，今天有什么建议？"
+        custom_prompt = "像老朋友一样自然聊天，直接回应用户。"
+        response = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={
+                "message": latest,
+                "interaction_mode": "free_chat",
+                "provider_session_id": provider_session.id,
+                "free_chat_prompt": custom_prompt,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert captured[-1]["latest_user_message"] == latest
+        assert captured[-1]["learner_message"] == latest
+        assert captured_system[-1].startswith(custom_prompt)
+        assert "只返回 JSON 对象" in captured_system[-1]
+        assert len(captured[-1]["free_chat_history"]) <= 20
+        prompt_text = json.dumps(captured[-1], ensure_ascii=False)
+        for restrictive_phrase in (
+            "健康话题",
+            "适合陪你讨论课程",
+            "课程相关的话题",
+            "只能聊课程",
+            "不要强行拉回课程",
+            "不限定话题",
+            "不设置课程范围",
+            "不要把话题拉回课程",
+            "不要评价话题是否适合、健康或有意义",
+            "当前知识点",
+            "课堂中的自由聊天回应层",
+            "掌握推进",
+        ):
+            assert restrictive_phrase not in prompt_text
+        payload = response.json()
+        assert len(payload["state"]["free_chat_history"]) <= 20
+        assert payload["state"]["teacher_turn_v1"] == payload["messages"][0]["teacher_turn"]
+        assert payload["state"]["latest_free_chat_turn_v1"]["presentation_state"] == "shy"
+        assert payload["state"]["free_chat_generation"]["presentation_state"] == "shy"
+
+
+def test_session_reopen_restores_latest_non_first_point_after_service_restart(tmp_path):
+    """The persisted session, rather than a plan projection, is the resume cursor."""
+
+    configure_orm(tmp_path / "active-session-restart.db")
+    with TestClient(app) as client:
+        plan_id, session_id = _bootstrap(client)
+        opening = client.get(f"/api/active-teaching/sessions/{session_id}").json()
+        first_point_id = opening["state"]["current_knowledge_point_id"]
+        advanced = client.post(
+            f"/api/active-teaching/sessions/{session_id}/advance",
+            json={"force_complete": True},
+        )
+        assert advanced.status_code == 200, advanced.text
+        persisted = advanced.json()
+        assert persisted["plan_id"] == plan_id
+        assert persisted["state"]["current_knowledge_point_id"] != first_point_id
+        expected = {
+            key: persisted["state"].get(key)
+            for key in (
+                "plan_id",
+                "active_task_id",
+                "current_knowledge_point_id",
+                "route_index",
+                "current_teaching_step",
+                "next_action",
+                "autonomy",
+                "teacher_turn_v1",
+            )
+        }
+
+    # Provider sessions are process-local; a new client must still recover the
+    # durable route and waiting state without a first-point reset.
+    reset_provider_sessions()
+    with TestClient(app) as restarted:
+        resumed = restarted.post(
+            "/api/active-teaching/workspaces/state/sessions/start",
+            json={},
+        )
+        assert resumed.status_code == 200, resumed.text
+        payload = resumed.json()
+        assert payload["session_id"] == session_id
+        assert payload["plan_id"] == plan_id
+        for key, value in expected.items():
+            if key == "plan_id":
+                continue
+            assert payload["state"].get(key) == value
+
+
 def test_zero_coding_foundation_gets_a_no_code_first_step(tmp_path):
     configure_orm(tmp_path / "active-no-code-first.db")
     with TestClient(app) as client:

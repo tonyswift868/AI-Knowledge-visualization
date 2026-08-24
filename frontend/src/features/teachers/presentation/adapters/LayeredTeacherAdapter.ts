@@ -299,7 +299,8 @@ export function resolveLayeredBonePose(
   } else if (animation === "cheer") {
     pose.leftArmRotation -= .21 * envelope
     pose.rightArmRotation += .24 * envelope
-    pose.jumpY = -Math.sin(Math.PI * clamp(actionTime / .72, 0, 1)) * 16
+    // Keep fallback semantics on authored joints; a pelvis jump would move the
+    // entire cutout and masquerade as whole-model motion.
   } else if (animation === "think") {
     pose.headRotation += .06 + Math.sin(time * .7) * .016
     pose.chestRotation -= .018
@@ -457,6 +458,7 @@ export class LayeredTeacherAdapter implements Teacher2DRenderer {
       wrapper.setAttribute("aria-label", "可互动分层 AI 教师；移动鼠标观察视线与身体联动，点击不同部位触发动作")
       wrapper.dataset.rigKind = "pixi-hierarchical-v3"
       wrapper.dataset.motionModel = "skin-anchors-critical-damping-render-layers"
+      wrapper.dataset.semanticMotion = "authored-layered-bones"
       wrapper.dataset.activeBones = "pelvis,chest,head,eyes,left-arm,right-arm,legs,hair-follow"
       wrapper.dataset.state = "idle"
       wrapper.dataset.skin = "teaching"

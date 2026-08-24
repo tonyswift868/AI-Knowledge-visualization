@@ -41,8 +41,54 @@ describe("knowledge map v1", () => {
     expect(screen.queryByText("通识节点")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /可审核节点/ }));
     expect(screen.getByTestId("active-knowledge-map-evidence")).toHaveTextContent("可核对的原文");
+    fireEvent.change(screen.getByTestId("knowledge-map-search"), { target: { value: "通识" } });
+    fireEvent.click(screen.getByRole("button", { name: /通识节点/ }));
+    expect(screen.getByRole("region", { name: "知识地图键盘列表" })).toHaveTextContent("通识节点");
     fireEvent.click(screen.getByRole("button", { name: "确认候选" }));
     expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({ id: "candidate-1" }), "confirm");
+  });
+
+  it("searches a theme name through its contains concepts and keeps theme ordering", () => {
+    const map = normalizeKnowledgeMapV1({
+      nodes: [
+        { id: "theme-1", label: "函数主题", node_type: "theme", layer: "material" },
+        { id: "concept-1", label: "参数", node_type: "concept", layer: "material" },
+        { id: "common-1", label: "模型通识", node_type: "concept", layer: "model_common" },
+      ],
+      edges: [{ id: "contains-1", source: "theme-1", target: "concept-1", relation: "contains" }],
+    });
+    render(<KnowledgeMapV1Panel map={map} onGenerate={vi.fn()} onDecision={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("knowledge-map-search"), { target: { value: "函数主题" } });
+    const resultButtons = Array.from(screen.getByTestId("knowledge-map-search-results").querySelectorAll("li button"));
+    expect(resultButtons.map((button) => button.textContent?.split("暂无摘要")[0])).toEqual(["函数主题", "参数"]);
+    fireEvent.click(resultButtons[1]);
+    expect(screen.getByRole("region", { name: "知识地图键盘列表" })).toHaveTextContent("参数");
+  });
+
+  it("keeps fallback status copy, revision/error metadata, and retry action semantic", () => {
+    const onRetryRead = vi.fn();
+    const map = normalizeKnowledgeMapV1({
+      revision: 41,
+      nodes: [{ id: "fallback-node", label: "回退节点", layer: "material" }],
+      edges: [],
+    });
+    render(
+      <KnowledgeMapV1Panel
+        map={map}
+        isFallbackSnapshot
+        snapshotRevision={41}
+        error="读取超时"
+        onGenerate={vi.fn()}
+        onRetryRead={onRetryRead}
+        onDecision={vi.fn()}
+      />,
+    );
+    const fallback = screen.getByTestId("knowledge-map-fallback-state");
+    expect(fallback).toHaveAttribute("aria-label", "知识地图回退快照状态");
+    expect(screen.getByTestId("knowledge-map-fallback-message")).toHaveTextContent("不能当作当前教学依据");
+    expect(screen.getByTestId("knowledge-map-fallback-meta")).toHaveTextContent("revision 41 · 读取超时");
+    fireEvent.click(screen.getByTestId("knowledge-map-fallback-retry"));
+    expect(onRetryRead).toHaveBeenCalledTimes(1);
   });
 
   it("uses canonical job terminal states and derives upload filters from healthy capabilities", () => {

@@ -15,6 +15,11 @@ from typing import Any
 
 EXPECTED_ENGINE = "sherpa-onnx-sensevoice-int8"
 DEFAULT_PORT = 9882
+# The SenseVoice worker returns a compact JSON object.  Bound the response
+# before decoding it so a misbehaving or compromised localhost worker cannot
+# make the supervisor allocate unbounded memory.
+MAX_RESPONSE_BYTES = 256 * 1024
+_RESPONSE_READ_CHUNK_BYTES = 8192
 _LOCK = threading.Lock()
 _PROCESS: subprocess.Popen[Any] | None = None
 _SHARED_MODULE: Any | None = None
@@ -105,6 +110,55 @@ def assets_ready() -> bool:
         return False
 
 
+def _content_length(stream: Any) -> int | None:
+    """Return a non-negative Content-Length, if one is available."""
+
+    headers = getattr(stream, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("Content-Length")
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
+def _read_limited(stream: Any, limit: int = MAX_RESPONSE_BYTES) -> bytes | None:
+    """Read at most ``limit + 1`` bytes, returning ``None`` when oversized.
+
+    A declared oversized body is rejected before reading.  For chunked or
+    otherwise lengthless responses, read in bounded chunks and stop as soon
+    as one byte beyond the limit is observed.
+    """
+
+    declared = _content_length(stream)
+    if declared is not None and declared > limit:
+        return None
+
+    chunks: list[bytes] = []
+    total = 0
+    while total <= limit:
+        remaining = limit - total + 1
+        chunk = stream.read(min(_RESPONSE_READ_CHUNK_BYTES, remaining))
+        if not chunk:
+            break
+        if not isinstance(chunk, bytes):
+            chunk = bytes(chunk)
+        if len(chunk) > remaining:
+            return None
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > limit:
+            return None
+    return b"".join(chunks)
+
+
 def _request(
     path: str,
     payload: dict[str, Any] | None = None,
@@ -120,11 +174,17 @@ def _request(
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            value = json.loads(response.read().decode("utf-8"))
+            raw = _read_limited(response)
+            if raw is None:
+                return {"ok": False, "error": "worker_response_too_large"}
+            value = json.loads(raw.decode("utf-8"))
             return value if isinstance(value, dict) else {"ok": False, "error": "invalid_worker_response"}
     except urllib.error.HTTPError as exc:
         try:
-            value = json.loads(exc.read().decode("utf-8"))
+            raw = _read_limited(exc)
+            if raw is None:
+                return {"ok": False, "error": f"worker_http_{exc.code}"}
+            value = json.loads(raw.decode("utf-8"))
             return value if isinstance(value, dict) else {"ok": False, "error": f"worker_http_{exc.code}"}
         except Exception:
             return {"ok": False, "error": f"worker_http_{exc.code}"}

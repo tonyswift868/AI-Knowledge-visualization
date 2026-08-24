@@ -34,6 +34,7 @@ from .orm import (
     KnowledgeEdgeORM,
     KnowledgeMapRevisionORM,
     KnowledgeNodeORM,
+    PlanActivationRecordORM,
     SessionLocal,
     SourceRevisionORM,
 )
@@ -45,6 +46,8 @@ from .knowledge_policy import (
     TEACHING_POLICY,
     TEXT_LIMITS_POLICY,
 )
+from .knowledge_map_scope import ScopeValidationError, normalize_scope
+from .safe_xml import XMLSecurityError, fromstring as safe_xml_fromstring
 from .teacher_turn_v1 import (
     MAX_REMEDIATION_ATTEMPTS,
     TeacherEvaluationV1,
@@ -81,7 +84,12 @@ from .classroom_media import (
     validate_attachment_bytes,
     warm_classroom_asr,
 )
-from .url_fetcher_secure import fetch_safe
+from .url_fetcher_secure import UnsupportedDocumentType, fetch_safe
+from .upload_limits import UploadLimitExceeded, read_upload_limited
+from .teacher_visual_assets import (
+    PRIVATE_TEACHER_MANIFEST_URL,
+    private_teacher_asset_available,
+)
 from .video_transcript import (
     VideoTranscriptError,
     classify_video_url,
@@ -95,6 +103,41 @@ from .video_transcript import (
 
 
 router = APIRouter(prefix="/api/active-teaching", tags=["active-teaching"])
+TEACHER_PRESENTATION_STATES = frozenset({
+    "idle", "greeting", "talking", "explaining", "questioning",
+    "praising", "encouraging", "confused", "shy",
+    "playful_annoyed", "ending",
+})
+
+
+def _teacher_presentation_state(value: Any, fallback: str = "talking") -> str:
+    """Validate an untrusted, visual-only Provider pose selection."""
+
+    candidate = str(value or "").strip().lower()
+    if candidate in TEACHER_PRESENTATION_STATES:
+        return candidate
+    return fallback if fallback in TEACHER_PRESENTATION_STATES else "talking"
+
+
+def _default_teacher_presentation_state(action: Any) -> str:
+    """Derive a subject-agnostic visual fallback from application workflow semantics."""
+
+    value = str(action or "").strip().lower()
+    if any(marker in value for marker in ("complete", "ending", "lesson_end")):
+        return "ending"
+    if any(marker in value for marker in ("praise", "mastered", "advance_route", "pass")):
+        return "praising"
+    if any(marker in value for marker in ("question", "check", "practice", "invite")):
+        return "questioning"
+    if any(marker in value for marker in ("remediation", "encourag", "coach")):
+        return "encouraging"
+    if any(marker in value for marker in ("conflict", "insufficient", "confus")):
+        return "confused"
+    if any(marker in value for marker in ("explain", "example", "briefing")):
+        return "explaining"
+    return "talking"
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 UPLOAD_ROOT = Path(
     os.getenv(
@@ -119,6 +162,18 @@ QUESTION_FUNCTION_TERMS = {
     "么会",
 }
 MAX_MATERIAL_BYTES = CONVERSION_POLICY.maximum_input_bytes
+# Planning materials are deliberately document-only.  The legacy video
+# transcript endpoints remain available under ``materials/video/*`` but must
+# never enter the ordinary planning material registry.
+VIDEO_MATERIAL_SUFFIXES = frozenset({
+    ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".m3u8", ".mpeg", ".mpg",
+})
+SUBTITLE_MATERIAL_SUFFIXES = frozenset({".srt", ".vtt", ".ass", ".ssa", ".ttml", ".sub"})
+AUDIO_MATERIAL_SUFFIXES = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"})
+DOCUMENT_MATERIAL_SUFFIXES = frozenset({
+    ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".epub", ".md", ".markdown",
+    ".txt", ".html", ".htm",
+})
 MAX_ARCHIVE_ENTRIES = CONVERSION_POLICY.maximum_archive_entries
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = CONVERSION_POLICY.maximum_expanded_bytes
 MAX_TEACHING_IMAGE_BYTES = 8 * 1024 * 1024
@@ -145,8 +200,36 @@ TEACHER_VISUAL_PROFILES: dict[str, dict[str, Any]] = {
         "interactive": True,
     },
 }
-DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-live2d-tsubaki-local"
-LEGACY_DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-02-blonde-fang-v9"
+# A fresh installation must start from the distributable, original teacher.
+# The private local Live2D profile remains selectable and existing databases
+# keep it when the learner chose it, but it is never inferred as somebody
+# else's default on a new computer.
+DEFAULT_TEACHER_VISUAL_PROFILE_ID = "teacher-02-blonde-fang-v9"
+
+
+def _teacher_visual_profile_available(profile: Mapping[str, Any]) -> bool:
+    """Return whether a bundled visual profile can actually be selected.
+
+    Public builds intentionally omit private, non-redistributable teacher
+    assets.  Source/private builds may still expose them when the manifest is
+    present.  This keeps a fresh computer from inheriting a developer's local
+    model while preserving an explicit local choice on the machine that owns
+    those files.
+    """
+
+    manifest_url = str(profile.get("manifest_url") or "").strip()
+    if not manifest_url.startswith("/teacher2d/"):
+        return False
+    if (
+        manifest_url == PRIVATE_TEACHER_MANIFEST_URL
+        and private_teacher_asset_available()
+    ):
+        return True
+    relative = Path(manifest_url.removeprefix("/"))
+    return any(
+        (PROJECT_ROOT / frontend_root / relative).is_file()
+        for frontend_root in (Path("frontend/dist"), Path("frontend/public"))
+    )
 
 
 def _now() -> str:
@@ -1113,13 +1196,12 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
         """UPDATE active_teacher_personas
            SET visual_profile_id=?,visual_profile_name=?,visual_manifest_url=?,updated_at=?
            WHERE id='teacher_persona_iris_default'
-             AND visual_profile_id IN ('',?)""",
+             AND visual_profile_id=''""",
         (
             DEFAULT_TEACHER_VISUAL_PROFILE_ID,
             TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["name"],
             TEACHER_VISUAL_PROFILES[DEFAULT_TEACHER_VISUAL_PROFILE_ID]["manifest_url"],
             now,
-            LEGACY_DEFAULT_TEACHER_VISUAL_PROFILE_ID,
         ),
     )
     default_persona = connection.execute(
@@ -1131,8 +1213,9 @@ def _sync_teacher_persona_library(connection: sqlite3.Connection) -> None:
         == DEFAULT_TEACHER_VISUAL_PROFILE_ID
     ):
         # Existing plans and open teaching sessions keep their identity and
-        # progress; only references to the former built-in default artwork are
-        # repointed to the new Live2D model.
+        # progress.  Propagate only when this persona already uses the fresh
+        # distributable default; a learner-selected private profile is not
+        # overwritten during startup.
         _propagate_persona_to_references(
             connection,
             source_persona_id="teacher_persona_iris_default",
@@ -1220,7 +1303,13 @@ def list_teacher_personas() -> dict[str, Any]:
 
 @router.get("/teacher-visual-profiles")
 def list_teacher_visual_profiles() -> dict[str, Any]:
-    return {"items": list(TEACHER_VISUAL_PROFILES.values())}
+    return {
+        "items": [
+            profile
+            for profile in TEACHER_VISUAL_PROFILES.values()
+            if _teacher_visual_profile_available(profile)
+        ]
+    }
 
 
 def _resolved_visual_profile(profile_id: Any) -> dict[str, Any]:
@@ -1230,6 +1319,12 @@ def _resolved_visual_profile(profile_id: Any) -> dict[str, Any]:
     profile = TEACHER_VISUAL_PROFILES.get(value)
     if not profile:
         _error("TEACHER_VISUAL_PROFILE_NOT_FOUND", "所选教师外观不存在", 422)
+    if not _teacher_visual_profile_available(profile):
+        _error(
+            "TEACHER_VISUAL_PROFILE_UNAVAILABLE",
+            "所选教师外观仅存在于原设备的本地资源中，请在当前设备重新选择或导入",
+            409,
+        )
     return profile
 
 
@@ -1484,6 +1579,43 @@ def apply_teacher_persona_to_workspace(
             updated_session_count += 1
 
         connection.commit()
+        # The ORM activation record is the canonical snapshot consulted when
+        # a first classroom session starts.  Keep its persona and embedded
+        # receipt in lockstep with the legacy projections above; otherwise an
+        # older snapshot can overwrite a freshly selected persona at startup.
+        updated_activation_record_count = 0
+        persona_snapshot = {
+            "teacher_persona_id": str(persona["id"]),
+            "teacher_persona_name": str(persona["name"]),
+            "teacher_persona": str(persona["prompt"]),
+            "teacher_visual_profile_id": str(persona["visual_profile_id"] or ""),
+            "teacher_visual_profile_name": str(persona["visual_profile_name"] or ""),
+            "teacher_visual_manifest_url": str(persona["visual_manifest_url"] or ""),
+        }
+        try:
+            with SessionLocal() as orm_session:
+                activation_records = orm_session.scalars(
+                    select(PlanActivationRecordORM).where(
+                        PlanActivationRecordORM.workspace_id == workspace_id,
+                    )
+                ).all()
+                for record in activation_records:
+                    snapshot = dict(record.plan_snapshot or {})
+                    snapshot["persona_snapshot"] = {
+                        **dict(snapshot.get("persona_snapshot") or {}),
+                        **persona_snapshot,
+                    }
+                    snapshot_receipt = dict(snapshot.get("receipt") or {})
+                    _apply_persona_to_payload(snapshot_receipt, persona)
+                    snapshot["receipt"] = snapshot_receipt
+                    record.plan_snapshot = snapshot
+                    updated_activation_record_count += 1
+                orm_session.commit()
+        except Exception:
+            # Legacy-only installations may not have the ORM activation table
+            # yet.  Receipt/plan/session projections above remain compatible.
+            updated_activation_record_count = 0
+
         return {
             "workspace_id": workspace_id,
             "persona": _teacher_persona_item(
@@ -1492,6 +1624,7 @@ def apply_teacher_persona_to_workspace(
             ),
             "updated_plan_count": updated_plan_count,
             "updated_session_count": updated_session_count,
+            "updated_activation_record_count": updated_activation_record_count,
         }
 
 
@@ -1657,8 +1790,8 @@ def _validate_structured_text(text: str, suffix: str) -> None:
         from xml.etree import ElementTree
 
         try:
-            ElementTree.fromstring(text)
-        except ElementTree.ParseError as exc:
+            safe_xml_fromstring(text)
+        except (ElementTree.ParseError, XMLSecurityError) as exc:
             raise ValueError(f"XML 语法错误：{exc}") from exc
     elif suffix == ".csv":
         try:
@@ -1673,7 +1806,6 @@ def _validate_structured_text(text: str, suffix: str) -> None:
 
 def _parse_zip_xml_text(path: Path, kind: str) -> tuple[list[dict[str, Any]], int, str]:
     import zipfile
-    from xml.etree import ElementTree
 
     with zipfile.ZipFile(path) as archive:
         infos = archive.infolist()
@@ -1717,7 +1849,7 @@ def _parse_zip_xml_text(path: Path, kind: str) -> tuple[list[dict[str, Any]], in
                     if item.get_text(" ", strip=True)
                 ]
             else:
-                root = ElementTree.fromstring(raw)
+                root = safe_xml_fromstring(raw)
                 values = [
                     str(node.text).strip()
                     for node in root.iter()
@@ -1791,6 +1923,116 @@ def _parse_file(
         )
         char_cursor += len(text) + 2
     return parts, int(result.metadata.page_count or 0), result.metadata.adapter, result
+
+
+def _video_upload_hint(filename: str, media_type: str, payload: bytes = b"") -> bool:
+    """Recognise video uploads before touching the material database.
+
+    MIME and suffix are the ordinary signals.  The small MP4/ISO-BMFF
+    signature fallback covers clients that send ``application/octet-stream``
+    for a file named without an extension; the conversion registry remains the
+    final fail-closed guard for other video containers.
+    """
+
+    suffix = Path(str(filename or "")).suffix.casefold()
+    mime = str(media_type or "").split(";", 1)[0].strip().casefold()
+    if mime.startswith("video/") or suffix in VIDEO_MATERIAL_SUFFIXES:
+        return True
+    return len(payload) >= 12 and payload[4:8] == b"ftyp"
+
+
+def _audio_or_subtitle_upload_hint(filename: str, media_type: str) -> str:
+    suffix = Path(str(filename or "")).suffix.casefold()
+    mime = str(media_type or "").split(";", 1)[0].strip().casefold()
+    if mime.startswith("audio/") or suffix in AUDIO_MATERIAL_SUFFIXES:
+        return "audio"
+    if mime in {"text/vtt", "application/x-subrip", "application/ttml+xml"} or suffix in SUBTITLE_MATERIAL_SUFFIXES:
+        return "subtitle"
+    return ""
+
+
+def _video_url_hint(url: str) -> bool:
+    """Detect obvious video URLs even when the provider classifier cannot DNS-validate them."""
+
+    value = str(url or "").strip()
+    if classify_video_url(value).get("recognized"):
+        return True
+    try:
+        parsed = urlparse(value)
+        path = (parsed.path or "").casefold()
+        query = (parsed.query or "").casefold()
+    except ValueError:
+        return False
+    return bool(
+        Path(path).suffix.casefold() in VIDEO_MATERIAL_SUFFIXES
+        or re.search(r"/(?:video|watch|playlist|playlists|series|collection)(?:/|$)", path)
+        or re.search(r"(?:^|&)(?:v|list|playlist|series|collection)=", query)
+    )
+
+
+def _audio_or_subtitle_url_hint(url: str) -> str:
+    try:
+        suffix = Path(urlparse(str(url or "")).path or "").suffix.casefold()
+    except ValueError:
+        return ""
+    if suffix in AUDIO_MATERIAL_SUFFIXES:
+        return "audio"
+    if suffix in SUBTITLE_MATERIAL_SUFFIXES:
+        return "subtitle"
+    return ""
+
+
+def _document_url_filename(final_url: str, content_type: str, title: str = "") -> str:
+    """Choose a registry-compatible filename for an imported document URL."""
+
+    path_name = Path(urlparse(final_url).path or "").name
+    path_suffix = Path(path_name).suffix.casefold()
+    if path_suffix in DOCUMENT_MATERIAL_SUFFIXES:
+        return _safe_filename(path_name)[:180] or "document" + path_suffix
+    mime_suffix = {
+        "application/pdf": ".pdf",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/epub+zip": ".epub",
+        "application/zip": ".zip",
+        "application/json": ".json",
+        "application/yaml": ".yaml",
+        "application/x-yaml": ".yaml",
+        "application/x-python": ".py",
+        "application/xml": ".xml",
+        "text/xml": ".xml",
+        "text/csv": ".csv",
+        "text/tab-separated-values": ".tsv",
+        "text/markdown": ".md",
+        "text/x-python": ".py",
+        "text/x-script": ".sh",
+        "text/plain": ".txt",
+        "text/html": ".html",
+        "application/xhtml+xml": ".html",
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+    }.get(str(content_type or "").split(";", 1)[0].strip().casefold(), ".txt")
+    stem = _safe_filename(title or Path(path_name).stem or "document")[:150] or "document"
+    return f"{stem}{mime_suffix}"
+
+
+def _planning_material_is_blocked(row: Mapping[str, Any] | sqlite3.Row) -> bool:
+    """Return whether a ready material is not eligible for planning scope."""
+
+    material = dict(row)
+    source_kind = str(material.get("source_kind") or "").strip().casefold()
+    media_type = str(material.get("media_type") or "").split(";", 1)[0].strip().casefold()
+    filename = str(material.get("original_filename") or "")
+    if source_kind.startswith("video") or source_kind in {"audio", "audio_transcript", "subtitle", "caption"}:
+        return True
+    return bool(
+        _video_upload_hint(filename, media_type)
+        or _audio_or_subtitle_upload_hint(filename, media_type)
+    )
 
 
 def _persist_source_conversion(
@@ -1924,7 +2166,6 @@ def _evidence(row: sqlite3.Row) -> dict[str, Any]:
         "original_url": material_url,
         "source_kind": str(row["source_kind"] or material_kind) if "source_kind" in keys else material_kind,
         "provenance": material_provenance,
-        "stored_path": material_path,
         "heading": row["heading"] if "heading" in keys else "",
         "page_start": row["page_start"],
         "page_end": row["page_end"],
@@ -1946,6 +2187,10 @@ def _public_material(connection: sqlite3.Connection, material_id: str) -> dict[s
     if not row:
         _error("MATERIAL_NOT_FOUND", "学习资料不存在", 404)
     output = dict(row)
+    # ``stored_path`` is an internal filesystem locator. Keep it in the
+    # database for parsing/cleanup, but never expose the absolute path through
+    # public material routes.
+    output.pop("stored_path", None)
     # Keep the database representation numeric for compatibility while making
     # disposition explicit to desktop clients.
     output["archived"] = bool(output.get("archived", 0))
@@ -2060,17 +2305,35 @@ def _set_material_provenance(
 @router.post("/workspaces/{workspace_id}/materials")
 async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
     filename = _safe_filename(file.filename or "material")
-    payload = await file.read()
-    if len(payload) > MAX_MATERIAL_BYTES:
+    try:
+        payload = await read_upload_limited(file, MAX_MATERIAL_BYTES)
+    except UploadLimitExceeded as exc:
         _error(
             "MATERIAL_TOO_LARGE",
             f"资料超过单文件安全上限 {MAX_MATERIAL_BYTES // (1024 * 1024)} MiB",
             413,
-            size_bytes=len(payload),
-            max_size_bytes=MAX_MATERIAL_BYTES,
+            size_bytes=exc.received_bytes,
+            max_size_bytes=exc.limit_bytes,
         )
     sha256 = _hash_bytes(payload)
     media_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    # Reject obvious video files before creating an on-disk artifact or a
+    # failed ``active_materials`` row.  Planning upload callers need a stable
+    # unsupported response with no mutation; the dedicated legacy video
+    # endpoints are the only route that may ingest a transcript.
+    if _video_upload_hint(filename, media_type, payload):
+        _error(
+            "VIDEO_MATERIAL_DISABLED",
+            "规划资料仅支持 PDF、文档和文字资料；视频文件不能进入学习计划",
+            415,
+        )
+    rejected_media = _audio_or_subtitle_upload_hint(filename, media_type)
+    if rejected_media:
+        _error(
+            "AUDIO_MATERIAL_DISABLED" if rejected_media == "audio" else "SUBTITLE_MATERIAL_DISABLED",
+            "规划资料不接收音频或字幕文件，请提供可转换的文档正文",
+            415,
+        )
     with _connect() as connection:
         duplicate = connection.execute(
             "SELECT id FROM active_materials WHERE workspace_id=? AND sha256=?",
@@ -2100,6 +2363,19 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
                 raise ValueError("文件中没有可解析的正文")
         except Exception as exc:
             registry_code = exc.code if isinstance(exc, ConversionError) else "MATERIAL_CONVERSION_FAILED"
+            if registry_code == "VIDEO_UNSUPPORTED_IN_V1":
+                # A signature-detected video may not have had an obvious
+                # suffix/MIME.  Preserve the no-mutation contract just as for
+                # the early hint above.
+                try:
+                    target.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                _error(
+                    "VIDEO_MATERIAL_DISABLED",
+                    "规划资料仅支持 PDF、文档和文字资料；视频文件不能进入学习计划",
+                    415,
+                )
             code = (
                 "UNSUPPORTED_FILE_TYPE"
                 if registry_code == "UNSUPPORTED_FORMAT"
@@ -2463,20 +2739,47 @@ async def upload_url_material(
     url = str(body.get("url") or "").strip()
     if not url:
         _error("MATERIAL_URL_REQUIRED", "请先选择一份资料", 422)
-    if classify_video_url(url).get("recognized"):
-        return await _video_material_flow(workspace_id, body, url=url)
+    if _video_url_hint(url):
+        _error(
+            "VIDEO_MATERIAL_DISABLED",
+            "规划资料仅支持可转换的文档；视频、合集和字幕不能进入学习计划",
+            415,
+        )
+    rejected_url_media = _audio_or_subtitle_url_hint(url)
+    if rejected_url_media:
+        _error(
+            "AUDIO_MATERIAL_DISABLED" if rejected_url_media == "audio" else "SUBTITLE_MATERIAL_DISABLED",
+            "规划资料不接收音频或字幕链接，请提供可转换的文档正文",
+            415,
+        )
     try:
         fetched = await fetch_safe(url)
+    except UnsupportedDocumentType as exc:
+        _error("MATERIAL_URL_MEDIA_UNSUPPORTED", f"资料链接类型不受支持：{exc}", 415)
     except ValueError as exc:
         _error("MATERIAL_URL_FETCH_FAILED", f"资料网页无法安全读取：{exc}", 422)
-    text = str(fetched.get("text") or "").strip()
-    if not text:
-        _error("MATERIAL_URL_EMPTY", "资料网页没有可索引的正文", 422)
     title = str(body.get("title") or fetched.get("title") or "网页资料").strip()
-    safe_title = _safe_filename(title)[:120] or "网页资料"
-    # UploadFile is used only as an adapter here so URL imports and local files
-    # share exactly the same conversion, evidence, hashing, and deduplication path.
-    upload = UploadFile(file=io.BytesIO(text.encode("utf-8")), filename=f"{safe_title}.txt")
+    fetched_content = fetched.get("content")
+    content_type = str(fetched.get("content_type") or "").split(";", 1)[0].strip().casefold()
+    if isinstance(fetched_content, (bytes, bytearray, memoryview)):
+        payload = bytes(fetched_content)
+        if not payload:
+            _error("MATERIAL_URL_EMPTY", "资料链接没有可索引的正文", 422)
+        filename = _document_url_filename(
+            str(fetched.get("final_url") or url),
+            content_type,
+            title,
+        )
+        upload = UploadFile(file=io.BytesIO(payload), filename=filename)
+    else:
+        text = str(fetched.get("text") or "").strip()
+        if not text:
+            _error("MATERIAL_URL_EMPTY", "资料网页没有可索引的正文", 422)
+        safe_title = _safe_filename(title)[:120] or "网页资料"
+        # UploadFile is used only as an adapter here so URL imports and local
+        # files share exactly the same conversion, evidence, hashing, and
+        # deduplication path.
+        upload = UploadFile(file=io.BytesIO(text.encode("utf-8")), filename=f"{safe_title}.txt")
     result = await upload_material(workspace_id, upload)
     result["source_url"] = str(fetched.get("final_url") or url)
     result["source_title"] = title
@@ -2484,7 +2787,7 @@ async def upload_url_material(
         workspace_id,
         str(result["id"]),
         source_url=result["source_url"],
-        source_kind="web_article",
+        source_kind="web_document" if isinstance(fetched_content, (bytes, bytearray, memoryview)) else "web_article",
         provenance={"source_url": result["source_url"], "title": title},
         preserve_existing=bool(result.get("deduplicated")),
     )
@@ -2869,11 +3172,14 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "deadline",
         "study_weekdays",
         "preferred_learning_style",
-        "material_ids",
     )
     missing = [field for field in required if payload.get(field) in (None, "", [])]
     if missing:
         _error("RECEIPT_FIELDS_REQUIRED", "学习回执缺少必填字段", 422, missing=missing)
+    try:
+        scope = normalize_scope(payload)
+    except ScopeValidationError as exc:
+        _error(exc.code, exc.message, 422, **exc.details)
     try:
         deadline = date.fromisoformat(str(payload["deadline"]))
     except ValueError:
@@ -2977,6 +3283,12 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         "review_rounds": review_rounds,
         "current_foundation": str(payload.get("current_foundation") or payload["current_level"]),
         "target_level": str(payload.get("target_level") or "complete_mastery"),
+        "learning_goal": str(payload.get("learning_goal") or "")[: TEXT_LIMITS_POLICY.long_text_characters],
+        "mastery_criteria": str(
+            payload.get("mastery_criteria")
+            or payload.get("acceptance_criteria")
+            or ""
+        )[: TEXT_LIMITS_POLICY.medium_text_characters],
         "notes": str(payload.get("notes") or ""),
         "teacher_persona_id": str(payload.get("teacher_persona_id") or "")[: TEXT_LIMITS_POLICY.preference_key_characters],
         "teacher_persona_name": str(payload.get("teacher_persona_name") or "")[: TEXT_LIMITS_POLICY.brief_characters],
@@ -2997,7 +3309,16 @@ def _validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
         # generic knowledge-map endpoint treats a missing value as enabled;
         # clients should always send a boolean for new tasks.
         "discover_external_resources": discover_external_resources,
-        "material_ids": list(dict.fromkeys(str(item) for item in payload["material_ids"])),
+        # ``material_ids`` remains a flat compatibility projection, while the
+        # role fields below are the canonical source of truth.
+        "material_ids": list(scope["material_ids"]),
+        "scope_schema": scope["scope_schema"],
+        "anchor_material_id": scope["anchor_material_id"],
+        "supporting_material_ids": list(scope["supporting_material_ids"]),
+        "scope_policy": dict(scope["scope_policy"]),
+        "role_provenance": dict(scope["role_provenance"]),
+        "source_fingerprints": dict(scope.get("source_fingerprints") or {}),
+        "source_revisions": list(scope.get("source_revisions") or []),
         "updated_at": _now(),
     }
 
@@ -3074,15 +3395,77 @@ def save_receipt(workspace_id: str, body: dict[str, Any]) -> dict[str, Any]:
             ).fetchone()
         if persona_row:
             _apply_persona_to_payload(receipt, persona_row)
-        known = {
-            row["id"]
-            for row in connection.execute(
-                "SELECT id FROM active_materials WHERE workspace_id=? AND status='ready'", (workspace_id,)
-            ).fetchall()
+        ready_rows = connection.execute(
+            "SELECT id,original_filename,media_type,source_kind FROM active_materials WHERE workspace_id=? AND status='ready'",
+            (workspace_id,),
+        ).fetchall()
+        blocked_ready = {
+            str(row["id"])
+            for row in ready_rows
+            if _planning_material_is_blocked(row)
         }
+        known = {str(row["id"]) for row in ready_rows if str(row["id"]) not in blocked_ready}
         missing = sorted(set(receipt["material_ids"]) - known)
+        blocked_ids = sorted(set(receipt["material_ids"]) & blocked_ready)
         if missing:
             _error("RECEIPT_MATERIAL_NOT_FOUND", "回执引用了不存在或解析失败的资料", 422, material_ids=missing)
+        if blocked_ids:
+            _error(
+                "VIDEO_MATERIAL_DISABLED",
+                "规划资料只允许可转换文档；视频、音频和字幕不能写入学习回执",
+                415,
+                material_ids=blocked_ids,
+            )
+        # Record the immutable source revision/hash at selection time.  This
+        # makes an upload/legacy default auditable and lets queued jobs reject
+        # a changed source instead of silently widening the scope.
+        try:
+            with SessionLocal() as scope_session:
+                role_provenance = dict(receipt.get("role_provenance") or {})
+                source_fingerprints = dict(receipt.get("source_fingerprints") or {})
+                source_revisions = list(receipt.get("source_revisions") or [])
+                anchor_id = str(receipt.get("anchor_material_id") or "")
+                support_ids = {str(item) for item in receipt.get("supporting_material_ids") or []}
+                for material_id in receipt["material_ids"]:
+                    source_revision = scope_session.scalar(
+                        select(SourceRevisionORM)
+                        .where(
+                            SourceRevisionORM.workspace_id == workspace_id,
+                            SourceRevisionORM.source_id == material_id,
+                        )
+                        .order_by(desc(SourceRevisionORM.revision))
+                    )
+                    role = "anchor" if material_id == anchor_id else "support" if material_id in support_ids else "material"
+                    provenance = {
+                        **dict(role_provenance.get(material_id) or {}),
+                        "role": role,
+                        "selected_by": str((role_provenance.get(material_id) or {}).get("selected_by") or "legacy_default"),
+                        "selected_at": str((role_provenance.get(material_id) or {}).get("selected_at") or receipt.get("updated_at") or _now()),
+                    }
+                    if source_revision is not None:
+                        provenance.update(
+                            {
+                                "source_revision_id": str(source_revision.id),
+                                "source_hash": str(source_revision.source_hash),
+                            }
+                        )
+                        source_fingerprints[material_id] = {
+                            **dict(source_fingerprints.get(material_id) or {}),
+                            "source_revision_id": str(source_revision.id),
+                            "revision": int(source_revision.revision),
+                            "source_hash": str(source_revision.source_hash),
+                        }
+                        if source_revision.id not in source_revisions:
+                            source_revisions.append(source_revision.id)
+                    role_provenance[material_id] = provenance
+                receipt["role_provenance"] = role_provenance
+                receipt["source_fingerprints"] = source_fingerprints
+                receipt["source_revisions"] = source_revisions
+        except Exception:
+            # Legacy isolated databases may not yet have ORM source revisions;
+            # the receipt remains valid and the job fingerprint still binds
+            # every extracted chunk hash.
+            pass
         if receipt["allocation_mode"] == "system":
             study_dates = []
             cursor = date.fromisoformat(receipt["start_date"])
@@ -3212,7 +3595,14 @@ def get_receipt(workspace_id: str) -> dict[str, Any]:
         ).fetchone()
         if not row:
             _error("RECEIPT_NOT_FOUND", "学习回执尚未填写", 404)
-        return json.loads(row["payload"])
+        payload = json.loads(row["payload"])
+        try:
+            payload.update(normalize_scope(payload))
+        except ScopeValidationError:
+            # Keep malformed historical receipts readable; saving the receipt
+            # again will return the precise 422 scope contract error.
+            pass
+        return payload
 
 
 @router.get("/workspaces/{workspace_id}/learner-preference-profile")
@@ -4007,10 +4397,18 @@ def _plan(connection: sqlite3.Connection, plan_id: str) -> dict[str, Any]:
 @router.get("/workspaces/{workspace_id}/plans/current")
 def current_plan(workspace_id: str) -> dict[str, Any]:
     with _connect() as connection:
-        row = connection.execute(
-            "SELECT id FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1",
-            (workspace_id,),
-        ).fetchone()
+        session = _latest_authoritative_session(connection, workspace_id)
+        row = (
+            connection.execute(
+                "SELECT id FROM active_plans WHERE id=? AND workspace_id=?",
+                (session["plan_id"], workspace_id),
+            ).fetchone()
+            if session
+            else connection.execute(
+                "SELECT id FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
+                (workspace_id,),
+            ).fetchone()
+        )
         if not row:
             _error("ACTIVE_PLAN_NOT_FOUND", "主动教学计划尚未生成", 404)
         return _plan(connection, row["id"])
@@ -5093,6 +5491,17 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         item["attachments"] = attachments
         messages.append(item)
     state = json.loads(row["state"])
+    session_scope = dict(state.get("scope") or {})
+    if not session_scope:
+        session_scope = {
+            "scope_schema": "mentorflow.knowledge-map-scope.v1",
+            "anchor_material_id": str(state.get("anchor_material_id") or ""),
+            "supporting_material_ids": list(state.get("supporting_material_ids") or []),
+            "material_ids": list((state.get("teacher_memory") or {}).get("material_ids") or []),
+            "scope_policy": dict(state.get("scope_policy") or {}),
+            "role_provenance": dict(state.get("role_provenance") or {}),
+            "source_fingerprints": dict(state.get("source_fingerprints") or {}),
+        }
     current_point = _current_point_projection(connection, row, state, messages)
     state["practice_resources"] = _practice_resources_for_session(
         connection,
@@ -5125,6 +5534,12 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         "session_id": row["id"],
         "workspace_id": row["workspace_id"],
         "plan_id": row["plan_id"],
+        "map_revision_id": str(state.get("map_revision_id") or ""),
+        "map_revision": int(state.get("map_revision") or 0),
+        "map_fingerprint": str(state.get("map_fingerprint") or ""),
+        "scope": session_scope,
+        "scope_schema": str(session_scope.get("scope_schema") or "mentorflow.knowledge-map-scope.v1"),
+        "persona_snapshot": dict(state.get("persona_snapshot") or {}),
         "state": state,
         "messages": messages,
         # Keep the full transcript for existing integrations and audit tools;
@@ -5145,6 +5560,56 @@ def _public_session(connection: sqlite3.Connection, session_id: str) -> dict[str
         "updated_at": row["updated_at"],
         "actual_elapsed_minutes": round(float(row["actual_elapsed_minutes"]), 3),
     }
+
+
+def _latest_authoritative_session(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    *,
+    plan_id: str | None = None,
+) -> sqlite3.Row | None:
+    """Resolve the durable classroom position by its last persisted write.
+
+    ``started_at`` identifies when a classroom was first opened, not where the
+    learner most recently left it. Reopening after a close/restart therefore
+    orders sessions by ``updated_at`` and uses the id as a deterministic tie
+    breaker. A plan filter is used when deciding whether a newly-created plan
+    already has a session; workspace projections omit it so the active
+    classroom remains authoritative over stale plan/list rows.
+    """
+
+    clauses = ["workspace_id=?"]
+    params: list[Any] = [workspace_id]
+    if plan_id:
+        clauses.append("plan_id=?")
+        params.append(plan_id)
+    return connection.execute(
+        f"""SELECT * FROM active_teaching_sessions
+            WHERE {' AND '.join(clauses)}
+            ORDER BY updated_at DESC, started_at DESC, id DESC
+            LIMIT 1""",
+        params,
+    ).fetchone()
+
+
+def _receipt_identity(value: Any) -> tuple[Any, ...]:
+    """Return stable plan inputs for distinguishing a new plan from stale projection."""
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            value = {}
+    if not isinstance(value, Mapping):
+        return ()
+    material_ids = tuple(sorted(str(item) for item in (value.get("material_ids") or [])))
+    return (
+        material_ids,
+        str(value.get("learning_goal") or ""),
+        str(value.get("knowledge_map_revision_id") or value.get("map_revision_id") or ""),
+        str(value.get("knowledge_map_fingerprint") or value.get("map_fingerprint") or ""),
+        str(value.get("activation_source") or ""),
+    )
 
 
 def _record_message(
@@ -5211,6 +5676,7 @@ async def _render_teacher_content(
     knowledge_scope: str = "source_grounded",
 ) -> tuple[str, dict[str, Any]]:
     """Render one teacher turn while preserving an explicit knowledge boundary."""
+    fallback_presentation = _default_teacher_presentation_state(action)
     if not provider_session_id:
         return _ensure_teacher_focus_markup(draft, state), {
             "mode": "system_guided",
@@ -5222,6 +5688,7 @@ async def _render_teacher_content(
                 else knowledge_scope
             ),
             "knowledge_scope": knowledge_scope,
+            "presentation_state": fallback_presentation,
         }
     try:
         provider_session = require_provider_session(provider_session_id)
@@ -5339,7 +5806,12 @@ async def _render_teacher_content(
             "If navigation_context shows a jump, explicitly acknowledge where the learner came from and whether the previous point was unfinished or the destination was scheduled for later; do not shame or block curiosity.",
             "Use learner_mastery_model and knowledge_progress to connect the current lesson to already passed phases, prior mistakes, and unresolved points; never claim the learner forgot completed work.",
             "Keep uncertainty statements exactly uncertain; never fabricate missing evidence.",
-            "Return JSON only with one string field named content.",
+            (
+                "Choose one cute, natural visual presentation_state from: talking, explaining, "
+                "questioning, praising, encouraging, confused, shy, playful_annoyed, ending. "
+                "This controls expression and gesture only; it must never change grading, routing or mastery."
+            ),
+            "Return JSON only with string fields content and presentation_state.",
         ],
     }
     try:
@@ -5388,6 +5860,10 @@ async def _render_teacher_content(
     ):
         rendered = f"模型通识补充（非资料引用）：\n\n{rendered}"
     rendered = _ensure_teacher_focus_markup(rendered, state)
+    presentation_state = _teacher_presentation_state(
+        payload.get("presentation_state") if isinstance(payload, Mapping) else None,
+        fallback_presentation,
+    )
     return rendered, generation_meta(provider_session) | {
         "scope": (
             "expression_only"
@@ -5396,8 +5872,266 @@ async def _render_teacher_content(
         ),
         "knowledge_scope": knowledge_scope,
         "fixed_action": action,
+        "presentation_state": presentation_state,
         "response_format_fallback": fallback_used,
     }
+
+
+def _free_chat_turn(
+    *,
+    content: str,
+    point: Mapping[str, Any] | None,
+    knowledge_scope: str,
+    presentation_state: str = "talking",
+) -> TeacherTurnV1:
+    """Build an isolated teacher turn for the explicit free-chat mode.
+
+    This deliberately does not use ``_v1_record_turn``.  A free-chat turn is
+    a display/audit record only; the learning turn and its reducer-owned state
+    remain untouched until the learner sends a later ``learning_evidence``
+    request.
+    """
+
+    if isinstance(point, Mapping):
+        point_id = str(point.get("id") or "")
+        point_name = str(point.get("name") or "")
+    elif point is not None and hasattr(point, "keys"):
+        point_id = str(point["id"] or "")
+        point_name = str(point["name"] or "")
+    else:
+        point_id = ""
+        point_name = ""
+    payload = {
+        "schema_version": "teacher-turn.v1",
+        "state": {
+            "schema_version": "teacher-turn.v1",
+            "phase": "free_chat",
+            "status": "free_chat_response",
+            "waiting_for_answer": False,
+            "provider_controls_state": False,
+            "mastery_changed": False,
+            "knowledge_scope": knowledge_scope,
+            "interaction_mode": "free_chat",
+        },
+        "concept": {
+            "id": point_id,
+            "name": point_name,
+            "objective": "自由聊天；不改变当前学习任务或掌握状态。",
+        },
+        "evidence": [],
+        "blocks": [
+            {
+                "type": "free_chat_response",
+                "title": "自由聊天",
+                "content": str(content or "").strip(),
+            }
+        ],
+        "check": {"prompt": "", "response_type": "free_text"},
+        "expected_learner_action": (
+            "可以继续聊天。"
+        ),
+        "plain_text": str(content or "").strip(),
+        "presentation_state": _teacher_presentation_state(
+            presentation_state,
+            "talking",
+        ),
+    }
+    return turn_from_dict(payload)
+
+
+async def _render_free_chat_content(
+    *,
+    message: str,
+    history: list[dict[str, Any]],
+    point: Mapping[str, Any] | None,
+    attachment_analysis: str,
+    provider_session_id: str | None,
+    free_chat_prompt: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """Answer one explicitly requested free-chat turn.
+
+    The prompt makes the boundary an application contract: the model may
+    answer the learner's topic naturally, but it must not pull the learner
+    back to class or claim learning progress from conversation alone.
+    """
+
+    if not provider_session_id:
+        fallback = (
+            f"你刚才说的是：“{message}”。\n\n"
+            "当前没有连接可用模型；连接模型后即可继续这段自由聊天。"
+        )
+        return fallback, {
+            "mode": "system_guided",
+            "provider": None,
+            "fallback_used": True,
+            "scope": "free_chat_response",
+            "knowledge_scope": "insufficient_evidence",
+            "interaction_mode": "free_chat",
+            "presentation_state": "talking",
+        }
+
+    try:
+        provider_session = require_provider_session(provider_session_id)
+    except ProviderError as exc:
+        _error(exc.code, exc.message, exc.status, **exc.details)
+    if provider_session.provider == "fake":
+        _error(
+            "REAL_PROVIDER_REQUIRED",
+            "自由聊天表达需要已验证的真实 Provider；Fake Provider 不能冒充 AI 教师。",
+            428,
+        )
+    prompt = {
+        "interaction_mode": "free_chat",
+        # Keep the latest message exact.  History is bounded separately below.
+        "latest_user_message": message,
+        "learner_message": message,
+        "free_chat_history": history[-20:],
+        "attachment_context": str(attachment_analysis or "")[:4_000],
+    }
+    system_prompt = str(free_chat_prompt or "").strip()
+    format_contract = (
+        "只返回 JSON 对象 {\"content\":\"...\",\"presentation_state\":\"talking\"}；"
+        "presentation_state 可选 talking、praising、encouraging、confused、shy、playful_annoyed。"
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": f"{system_prompt}\n\n{format_contract}" if system_prompt else format_contract,
+        },
+        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+    ]
+    try:
+        expression_provider = provider_for_session(provider_session)
+        if hasattr(expression_provider, "text"):
+            raw = await expression_provider.text(messages)
+            payload, fallback_used = parse_conversational_payload(raw, text_field="content")
+        else:
+            payload = await expression_provider.json(messages)
+            fallback_used = False
+    except ProviderError as exc:
+        _error(exc.code, exc.message, exc.status, **exc.details)
+    rendered = str(payload.get("content") or "").strip() if isinstance(payload, Mapping) else ""
+    if not rendered:
+        _error(
+            "PROVIDER_FREE_CHAT_RESPONSE_INVALID",
+            "Provider 未返回有效的自由聊天内容。",
+            502,
+        )
+    return rendered, generation_meta(provider_session) | {
+        "scope": "free_chat_response",
+        "knowledge_scope": "free_chat",
+        "interaction_mode": "free_chat",
+        "presentation_state": _teacher_presentation_state(
+            payload.get("presentation_state") if isinstance(payload, Mapping) else None,
+            "talking",
+        ),
+        "response_format_fallback": fallback_used,
+    }
+
+
+async def _advance_free_chat(
+    *,
+    connection: sqlite3.Connection,
+    session: sqlite3.Row,
+    state: dict[str, Any],
+    message: str,
+    raw_attachment_ids: list[Any],
+    provider_session_id: str | None,
+    body: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist one bounded free-chat exchange without touching learning state."""
+
+    tasks = _task_rows(connection, session["plan_id"])
+    if not tasks:
+        _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
+    route_index = min(max(0, int(state.get("route_index") or 0)), len(tasks) - 1)
+    task = tasks[route_index]
+    point = _point_for_task(connection, task)
+    attachment_rows = _session_attachment_rows(
+        connection,
+        str(session["id"]),
+        raw_attachment_ids,
+    )
+    attachment_analysis = ""
+    attachment_analysis_mode = "not_requested"
+    if attachment_rows:
+        attachment_analysis, attachment_analysis_mode = await _analyse_teaching_attachments(
+            connection=connection,
+            attachment_rows=attachment_rows,
+            provider_session_id=provider_session_id,
+            learner_message=message,
+            point=point,
+        )
+    if not message:
+        message = (
+            "请分析我上传的练习结果截图。"
+            if attachment_rows
+            and all(
+                attachment_kind(
+                    str(row["original_filename"]),
+                    str(row["media_type"]),
+                )
+                == "image"
+                for row in attachment_rows
+            )
+            else "请阅读我上传的附件，并自然回应其中与当前话题相关的内容。"
+        )
+
+    history = [
+        item
+        for item in list(state.get("free_chat_history") or [])
+        if isinstance(item, Mapping)
+    ][-20:]
+    content, generation = await _render_free_chat_content(
+        message=message,
+        history=history,
+        point=point,
+        attachment_analysis=attachment_analysis,
+        provider_session_id=provider_session_id,
+        free_chat_prompt=str(body.get("free_chat_prompt") or "")[:6000],
+    )
+    knowledge_scope = str(generation.get("knowledge_scope") or "free_chat")
+    turn = _free_chat_turn(
+        content=content,
+        point=point,
+        knowledge_scope=knowledge_scope,
+        presentation_state=str(generation.get("presentation_state") or "talking"),
+    )
+    turn_payload = turn.to_dict()
+    # Keep only a small session-local transcript.  It is deliberately separate
+    # from teacher_memory/current_knowledge_memory and is never fed to a
+    # mastery evaluator.
+    state["free_chat_history"] = [
+        *history,
+        {"role": "user", "content": message[:600]},
+        {"role": "teacher", "content": turn.plain_text[:600]},
+    ][-20:]
+    state["latest_free_chat_turn_v1"] = turn_payload
+    state["free_chat_generation"] = generation
+    _record_message(
+        connection,
+        str(session["id"]),
+        "user",
+        "free_chat",
+        message,
+        [],
+        [str(row["id"]) for row in attachment_rows],
+    )
+    _record_message(
+        connection,
+        str(session["id"]),
+        "teacher",
+        "free_chat_response",
+        turn.plain_text,
+        [],
+        teacher_turn=turn_payload,
+    )
+    connection.execute(
+        "UPDATE active_teaching_sessions SET state=?,updated_at=? WHERE id=?",
+        (json.dumps(state, ensure_ascii=False), _now(), str(session["id"])),
+    )
+    connection.commit()
+    return _public_session(connection, str(session["id"]))
 
 
 def _v1_preferences(workspace_id: str, receipt: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -5421,15 +6155,74 @@ def _v1_preferences(workspace_id: str, receipt: Mapping[str, Any]) -> list[dict[
     return [item.model_dump(mode="json") for item in profile.preferences]
 
 
-def _v1_concept(point: sqlite3.Row, task: sqlite3.Row | None = None) -> dict[str, Any]:
+def _receipt_learning_goal(receipt: Mapping[str, Any] | None) -> str:
+    """Return the explicit goal carried by a receipt or planning handoff."""
+
+    receipt = receipt or {}
+    for key in ("learning_goal", "goal_summary", "handoff_goal", "goal"):
+        value = receipt.get(key)
+        if isinstance(value, Mapping):
+            value = value.get("text") or value.get("content") or value.get("value")
+        text = str(value or "").strip()
+        if text:
+            return text[:1200]
+    return ""
+
+
+def _receipt_mastery_criteria(receipt: Mapping[str, Any] | None) -> str:
+    """Read explicit mastery criteria, including criteria embedded in a goal."""
+
+    receipt = receipt or {}
+    for key in (
+        "mastery_criteria",
+        "masteryCriteria",
+        "acceptance_criteria",
+        "acceptanceCriteria",
+    ):
+        value = receipt.get(key)
+        if isinstance(value, Mapping):
+            value = value.get("text") or value.get("content") or value.get("value")
+        text = str(value or "").strip()
+        if text:
+            return text[:900]
+    # Planning handoffs historically embedded the criterion in the goal text.
+    goal = " ".join(
+        str(receipt.get(key) or "")
+        for key in ("handoff_goal", "goal_summary", "learning_goal")
+    )
+    match = re.search(
+        r"(?:掌握标准|验收标准|完成标准|mastery\s*criteria|acceptance\s*criteria)\s*[:：]\s*(.+)",
+        goal,
+        flags=re.IGNORECASE,
+    )
+    return str(match.group(1)).strip()[:900] if match else ""
+
+
+def _v1_concept(
+    point: sqlite3.Row,
+    task: sqlite3.Row | None = None,
+    *,
+    receipt: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     acceptance = (
         task["acceptance_condition"] if task is not None else point["acceptance_method"]
     ) or point["acceptance_method"] or ""
+    learning_goal = _receipt_learning_goal(receipt)
+    mastery_criteria = _receipt_mastery_criteria(receipt)
+    objective = f"能用自己的话说明“{point['name']}”的核心结构"
+    if learning_goal:
+        objective = f"总体学习目标：{learning_goal}\n当前知识点：{objective}"
+    if mastery_criteria:
+        acceptance = f"{acceptance}\n总体掌握标准：{mastery_criteria}"
     return {
         "id": str(point["id"]),
         "name": str(point["name"] or ""),
         "explanation": str(point["explanation"] or ""),
         "acceptance_method": str(acceptance),
+        "objective": objective,
+        "learning_goal": learning_goal,
+        "mastery_criteria": mastery_criteria,
+        "preferred_learning_style": str((receipt or {}).get("preferred_learning_style") or ""),
     }
 
 
@@ -5447,7 +6240,7 @@ async def _v1_prepare_turn(
     provider_session_id: str | None = None,
 ) -> tuple[TeacherTurnV1, dict[str, Any]]:
     turn = build_teacher_turn(
-        concept=_v1_concept(point, task),
+        concept=_v1_concept(point, task, receipt=receipt),
         evidence=citations,
         explicit_preferences=_v1_preferences(workspace_id, receipt),
         phase=phase,
@@ -5468,7 +6261,15 @@ async def _v1_prepare_turn(
             prompt = {
                 "prompt_version": PROMPT_POLICY.version,
                 "phase": phase,
-                "concept": _v1_concept(point, task),
+                "concept": _v1_concept(point, task, receipt=receipt),
+                "learner_context": {
+                    "learning_goal": _receipt_learning_goal(receipt),
+                    "mastery_criteria": _receipt_mastery_criteria(receipt),
+                    "preferred_learning_style": str(
+                        receipt.get("preferred_learning_style") or ""
+                    ),
+                    "learner_interests": str(receipt.get("learner_interests") or ""),
+                },
                 "evidence": [
                     {
                         "chunk_id": item.get("chunk_id"),
@@ -5489,6 +6290,14 @@ async def _v1_prepare_turn(
                     {},
                 ),
                 "check": turn.check,
+                "visual_expression_contract": {
+                    "allowed_states": sorted(TEACHER_PRESENTATION_STATES - {"idle"}),
+                    "instruction": (
+                        "Choose one cute, natural presentation_state that matches this turn, "
+                        "the saved persona and the learner's latest message. It controls only "
+                        "the renderer expression and gesture."
+                    ),
+                },
                 "rules": list(PROMPT_POLICY.teacher_expression_rules),
             }
             messages = [
@@ -5518,6 +6327,60 @@ async def _v1_prepare_turn(
             "knowledge_scope": "source_grounded",
             "prompt_version": PROMPT_POLICY.version,
         }
+    # Deterministic teaching must visibly honour the selected style even when
+    # no Provider is connected.  Goal/criteria are already present in the
+    # concept objective/check; this bounded style cue changes the route wording
+    # without changing the reducer or mastery threshold.
+    style = str(receipt.get("preferred_learning_style") or "").strip()
+    if style and not provider_session_id:
+        if "示例" in style and ("追问" in style or "问题" in style):
+            style_guidance = "学习方式：我会先给一个最小示例，再停下来邀请你追问或复述。"
+        elif "原理" in style and ("练习" in style or "实践" in style):
+            style_guidance = "学习方式：我会先讲清原理，再安排一个短练习检查理解。"
+        elif "图" in style or "可视" in style:
+            style_guidance = "学习方式：我会先用结构化图景说明关系，再逐步补充术语。"
+        else:
+            style_guidance = f"学习方式：按你的偏好“{style[:120]}”，我会调整示例、讲解和提问顺序。"
+        if style and style not in style_guidance:
+            style_guidance = f"学习方式（偏好“{style[:120]}”）：{style_guidance.removeprefix('学习方式：')}"
+        blocks = [dict(item) for item in turn.blocks]
+        for block in blocks:
+            if str(block.get("type") or "") == "worked_example":
+                block["content"] = f"{style_guidance}\n\n{block.get('content') or ''}".strip()
+                break
+        check = dict(turn.check)
+        check["prompt"] = f"{style_guidance}\n\n{check.get('prompt') or ''}".strip()
+        turn = TeacherTurnV1(
+            state=dict(turn.state),
+            concept={
+                **dict(turn.concept),
+                "learning_goal": _receipt_learning_goal(receipt),
+                "mastery_criteria": _receipt_mastery_criteria(receipt),
+                "preferred_learning_style": style,
+            },
+            evidence=[dict(item) for item in turn.evidence],
+            blocks=blocks,
+            check=check,
+            expected_learner_action=turn.expected_learner_action,
+            plain_text=f"{turn.plain_text}\n\n{style_guidance}".strip(),
+            schema_version=turn.schema_version,
+        )
+    elif receipt:
+        turn = TeacherTurnV1(
+            state=dict(turn.state),
+            concept={
+                **dict(turn.concept),
+                "learning_goal": _receipt_learning_goal(receipt),
+                "mastery_criteria": _receipt_mastery_criteria(receipt),
+                "preferred_learning_style": style,
+            },
+            evidence=[dict(item) for item in turn.evidence],
+            blocks=[dict(item) for item in turn.blocks],
+            check=dict(turn.check),
+            expected_learner_action=turn.expected_learner_action,
+            plain_text=turn.plain_text,
+            schema_version=turn.schema_version,
+        )
     return turn, generation
 
 
@@ -5536,6 +6399,310 @@ def _v1_turn_with_state(
         plain_text=plain_text or turn.plain_text,
         schema_version=turn.schema_version,
     )
+
+
+def _v1_is_question_or_pedagogical_request(
+    message: str,
+    *,
+    direct_completion: bool = False,
+    understood: bool = False,
+    remediation_active: bool = False,
+) -> bool:
+    """Identify an interruption without reclassifying ordinary answer text.
+
+    V1 answer evaluation deliberately treats a short answer as evidence to
+    inspect.  Only an explicit interrogative/request is allowed to bypass that
+    evaluator.  In particular, a question word in the middle of a declarative
+    answer (``我理解为什么...``) is not enough on its own.
+    """
+
+    # A genuine learner interruption remains an interruption even while a
+    # remediation turn is pending.  It must not consume another remediation
+    # attempt; ``remediation_active`` is retained as a compatibility keyword
+    # for callers that already pass it.
+    del remediation_active
+    if direct_completion or understood:
+        return False
+    value = re.sub(r"\s+", "", str(message or "")).strip()
+    if not value:
+        return False
+    # Requests that are unambiguously pedagogical even without a question mark.
+    if re.search(
+        r"^(?:请解释|解释一下|给我讲|教我|带着我|一步一步|慢慢学|怎么开始|从哪里开始|"
+        r"换一种(?:说法|讲法)|举个?例子|给个?例子|我想了解|我想问|想知道|我没明白|"
+        r"我不明白|请你解惑|帮我解释|帮我讲)",
+        value,
+    ):
+        return True
+    # ``能用/能使用/可以用/可以使用`` also occur at the start of ordinary
+    # declarative answers (for example, ``能用哈希表保存访问过的值``).  They
+    # are intentionally not interrogative signals on their own.  Keep a
+    # separate guard so that a genuine signal later in the sentence (``什么``
+    # / ``为什么`` / ``吗`` / punctuation, etc.) still makes it a question.
+    affirmative_prefix = re.match(
+        r"^(?:能(?:使用|用)|可以(?:使用|用))",
+        value,
+    )
+    interrogative = re.search(
+        r"(?:为什么|怎么|如何|能不能|能否|是否|请问|哪一步|哪里|什么|"
+        r"可不可以|吗|呢)",
+        value,
+    )
+    # Chinese questions commonly end in ``吗/呢``; punctuation also covers
+    # English-style or mixed-language prompts.  A leading interrogative is
+    # accepted as an explicit question even when the learner omits punctuation.
+    # A learner may put a declarative preface after the question (for example
+    # ``为什么能使用哈希吗，...请你解惑``), so do not require it to be the
+    # final sentence.  ASCII/Chinese question punctuation anywhere is equally
+    # explicit; ``吗/呢`` followed by punctuation covers common Chinese prose.
+    suffix_question = bool(
+        re.search(r"(?:吗|呢)(?=[，,。！？!?]|$)", value)
+        or "?" in value
+        or "？" in value
+    )
+    if affirmative_prefix:
+        remainder = value[affirmative_prefix.end() :]
+        return bool(
+            suffix_question
+            or re.search(
+                r"(?:为什么|怎么|如何|能不能|能否|是否|请问|哪一步|哪里|什么|"
+                r"可不可以|吗|呢)",
+                remainder,
+            )
+        )
+    if not interrogative:
+        return False
+    leading_question = bool(
+        re.match(
+            r"^(?:你)?(?:为什么|怎么|如何|能不能|能否|是否|请问|哪一步|哪里|什么|"
+            r"可不可以)",
+            value,
+        )
+    )
+    return suffix_question or leading_question
+
+
+def _v1_question_citations(
+    connection: sqlite3.Connection,
+    *,
+    session: sqlite3.Row,
+    point: sqlite3.Row | Mapping[str, Any],
+    message: str,
+) -> list[dict[str, Any]]:
+    """Retrieve only evidence that is plausibly about the learner's question."""
+
+    hits = _search(
+        connection,
+        session["workspace_id"],
+        message,
+        plan_id=session["plan_id"],
+    )
+    if not hits:
+        return []
+    query_topic_terms = _retrieval_terms(message) - QUESTION_FUNCTION_TERMS
+    current_topic_terms = _retrieval_terms(
+        " ".join(
+            (
+                str(point.get("name") if isinstance(point, Mapping) else point["name"]),
+                str(point.get("explanation") if isinstance(point, Mapping) else point["explanation"]),
+                str(
+                    point.get("acceptance_method")
+                    if isinstance(point, Mapping)
+                    else point["acceptance_method"]
+                ),
+            )
+        )
+    )
+    refers_to_current_context = any(
+        marker in str(message or "").casefold()
+        for marker in ("这里", "这个", "这样", "这一步", "刚才", "当前", "它", "该题", "本题")
+    )
+    if (
+        query_topic_terms
+        and not (query_topic_terms & current_topic_terms)
+        and not refers_to_current_context
+    ):
+        return []
+    return hits
+
+
+def _v1_question_turn(
+    *,
+    current_turn: Mapping[str, Any],
+    concept: Mapping[str, Any],
+    citations: list[dict[str, Any]],
+    content: str,
+    presentation_state: str = "talking",
+) -> TeacherTurnV1:
+    """Wrap a conversational answer in one flexible V1 block.
+
+    The persisted V1 state is copied verbatim; this function only changes the
+    expression payload.  Thus a learner interruption cannot reset attempts,
+    waiting state, or mastery flags.
+    """
+
+    turn_state = dict(current_turn.get("state") or {})
+    turn_concept = dict(current_turn.get("concept") or {})
+    if not turn_concept:
+        turn_concept = {
+            "id": str(concept.get("id") or ""),
+            "name": str(concept.get("name") or ""),
+            "objective": f"能用自己的话说明“{concept.get('name') or '当前知识点'}”的核心结构",
+        }
+    return TeacherTurnV1(
+        state=turn_state,
+        concept=turn_concept,
+        evidence=[dict(item) for item in citations],
+        blocks=[
+            {
+                "type": "question_answer",
+                "title": "回答你的问题",
+                "content": str(content or "").strip(),
+            }
+        ],
+        check={"prompt": "", "response_type": "free_text"},
+        expected_learner_action="可以继续追问；准备好后，再回答当前知识点的理解检查。",
+        plain_text=str(content or "").strip(),
+        schema_version=str(current_turn.get("schema_version") or "teacher-turn.v1"),
+        presentation_state=_teacher_presentation_state(
+            presentation_state,
+            "talking",
+        ),
+    )
+
+
+async def _v1_process_question(
+    *,
+    connection: sqlite3.Connection,
+    session: sqlite3.Row,
+    state: dict[str, Any],
+    task: sqlite3.Row,
+    point: sqlite3.Row | Mapping[str, Any],
+    receipt: Mapping[str, Any] | None,
+    message: str,
+    citations: list[dict[str, Any]],
+    provider_session_id: str | None,
+    elapsed: float,
+) -> dict[str, Any]:
+    """Answer a learner interruption while leaving the V1 reducer untouched."""
+
+    question_hits = _v1_question_citations(
+        connection,
+        session=session,
+        point=point,
+        message=message,
+    )
+    grounded = bool(question_hits)
+    # A verified conversational provider may combine retrieved evidence with
+    # stable general knowledge. Keep citations attached as source evidence,
+    # but label generation model-general so a partial lexical hit cannot
+    # constrain the answer to a short quote.
+    knowledge_scope = (
+        "model_general_knowledge"
+        if provider_session_id
+        else ("source_grounded" if grounded else "insufficient_evidence")
+    )
+    if grounded and not provider_session_id:
+        source_quote = str(question_hits[0].get("quote") or "")[:360]
+        draft = (
+            f"你问的是：“{message[:400]}”。\n\n"
+            f"先回答当前问题：资料中可确认的相关内容是：{source_quote}\n\n"
+            "这次先只回答你的问题，不推进理解检查；你可以继续追问，准备好后再回答当前检查。"
+        )
+    elif provider_session_id:
+        source_hint = (
+            "先说明资料中相关的证据，再补充稳定通识知识；明确区分两者，不要把通识伪装成资料引用。"
+            if grounded
+            else "当前上传资料没有直接覆盖这个问题，请明确标成模型通识补充，不要伪造资料引用。"
+        )
+        draft = (
+            f"你问的是：“{message[:400]}”。\n\n"
+            f"{source_hint}请使用稳定的模型通识知识回答；如果涉及最新信息、价格、政策或实时状态，"
+            "请说明需要另行联网核验。回答后保持当前理解检查等待。"
+        )
+    else:
+        draft = (
+            f"你问的是：“{message[:400]}”。\n\n"
+            "当前上传资料没有直接覆盖这个问题，而且没有连接已验证的真实 Provider，"
+            "所以我暂时不能可靠补充通识答案；我不会猜测或伪造引用。"
+            "你可以继续追问资料覆盖的部分，或连接 Provider 后再回答。"
+        )
+
+    teacher_memory = dict(state.get("teacher_memory") or {})
+    # ``advance_session`` normally stores this already.  Set it here as well
+    # so direct/unit invocations still pass the exact learner text to the
+    # conversational rendering prompt.
+    teacher_memory["last_learner_message"] = str(message)
+    questions = list(teacher_memory.get("learner_questions") or [])
+    questions.append(str(message)[:400])
+    teacher_memory["learner_questions"] = questions[-20:]
+    state["teacher_memory"] = teacher_memory
+    state["last_retrieval"] = {
+        "mode": "local_hybrid_v1",
+        "query_scope": "learner_question",
+        "citation_count": len(question_hits),
+    }
+    content, generation = await _render_teacher_content(
+        draft=draft,
+        action="teacher_turn_v1_question_answer",
+        citations=question_hits,
+        provider_session_id=provider_session_id,
+        state=state,
+        knowledge_scope=knowledge_scope,
+    )
+    generation = {
+        **generation,
+        "question_answer": True,
+        "knowledge_scope": knowledge_scope,
+    }
+    current_turn = state.get("teacher_turn_v1") or {}
+    turn = _v1_question_turn(
+        current_turn=current_turn,
+        concept=_v1_concept(point, task, receipt=receipt),
+        citations=question_hits,
+        content=content,
+        presentation_state=str(generation.get("presentation_state") or "talking"),
+    )
+    teacher_memory["last_interaction"] = "teacher_turn_v1_question_answer"
+    teacher_memory["recent_turns"] = (
+        list(teacher_memory.get("recent_turns") or [])
+        + [{"role": "teacher", "action": "teacher_turn_v1_question_answer", "content": content[:600]}]
+    )[-12:]
+    state["teacher_memory"] = teacher_memory
+    if not _is_canonical_task(task):
+        _write_knowledge_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            point=point,
+            state=state,
+            role="teacher",
+            message=content,
+            teacher_action="teacher_turn_v1_question_answer",
+        )
+        _sync_two_tier_memory(
+            connection,
+            workspace_id=session["workspace_id"],
+            state=state,
+            navigation_event="learner_question_answered",
+        )
+    _v1_record_turn(
+        connection,
+        session_id=session["id"],
+        workspace_id=session["workspace_id"],
+        state=state,
+        turn=turn,
+        action="teacher_turn_v1_question_answer",
+        citations=question_hits,
+        generation=generation,
+    )
+    connection.execute(
+        """UPDATE active_teaching_sessions
+           SET state=?,updated_at=?,actual_elapsed_minutes=actual_elapsed_minutes+?
+           WHERE id=?""",
+        (json.dumps(state, ensure_ascii=False), _now(), elapsed, session["id"]),
+    )
+    connection.commit()
+    return _public_session(connection, session["id"])
 
 
 def _v1_record_turn(
@@ -5591,6 +6758,7 @@ async def _v1_answer_evidence(
     citations: list[dict[str, Any]],
     provider_session_id: str | None,
     *,
+    receipt: Mapping[str, Any] | None = None,
     external_completion_evidence: bool = False,
 ) -> tuple[bool, float, list[str], dict[str, Any]]:
     """Use observable answer content; a UI flag alone is not mastery evidence."""
@@ -5605,6 +6773,7 @@ async def _v1_answer_evidence(
         point=point,
         citations=citations,
         provider_session_id=provider_session_id,
+        receipt=receipt,
         external_completion_evidence=external_completion_evidence,
     )
     if bool(body.get("understood")):
@@ -5968,12 +7137,42 @@ async def _v1_process_answer(
         connection.commit()
         return _public_session(connection, session["id"])
 
+    # Learners may interrupt the prepared check with a genuine question or a
+    # pedagogical request.  Answer it through the conversational expression
+    # layer and preserve the current V1 state; direct completion and normal
+    # substantive answers continue through the reducer/evaluator below.
+    if _v1_is_question_or_pedagogical_request(
+        message,
+        direct_completion=bool(body.get("verify_completion")),
+        understood=bool(body.get("understood"))
+        or any(marker in str(message or "").casefold() for marker in UNDERSTOOD_MARKERS),
+        remediation_active=bool(state.get("remediation_stack"))
+        or str(((state.get("teacher_turn_v1") or {}).get("state") or {}).get("phase") or "")
+        in {
+            "targeted_correction",
+            "alternate_example_or_prerequisite",
+        },
+    ):
+        return await _v1_process_question(
+            connection=connection,
+            session=session,
+            state=state,
+            task=task,
+            point=point,
+            receipt=receipt,
+            message=message,
+            citations=citations,
+            provider_session_id=provider_session_id,
+            elapsed=elapsed,
+        )
+
     correct, score, answer_checks, evaluation = await _v1_answer_evidence(
         message,
         body,
         point,
         citations,
         provider_session_id,
+        receipt=receipt,
         external_completion_evidence=bool(body.get("verify_completion")),
     )
     current_turn_state = (state.get("teacher_turn_v1") or {}).get("state") or {}
@@ -6800,6 +7999,7 @@ async def _evaluate_understanding(
     point: sqlite3.Row,
     citations: list[dict[str, Any]],
     provider_session_id: str | None,
+    receipt: Mapping[str, Any] | None = None,
     external_completion_evidence: bool = False,
 ) -> tuple[float, bool, list[str], dict[str, Any]]:
     precheck_score, precheck_checks = _grade_understanding(message, point)
@@ -6824,6 +8024,13 @@ async def _evaluate_understanding(
             "name": point["name"],
             "explanation": point["explanation"],
             "acceptance_method": rubric,
+        },
+        "learner_context": {
+            "learning_goal": _receipt_learning_goal(receipt),
+            "mastery_criteria": _receipt_mastery_criteria(receipt),
+            "preferred_learning_style": str(
+                (receipt or {}).get("preferred_learning_style") or ""
+            ),
         },
         "learner_answer": message,
         "source_evidence": [
@@ -6894,17 +8101,58 @@ async def start_session(
     body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
     with _connect() as connection:
-        plan_row = connection.execute(
-            "SELECT id,receipt FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1",
+        latest_plan = connection.execute(
+            "SELECT id,receipt FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
             (workspace_id,),
         ).fetchone()
+        latest_workspace_session = _latest_authoritative_session(
+            connection,
+            workspace_id,
+        )
+        requested_plan_id = str(body.get("plan_id") or "").strip()
+        plan_row = latest_plan
+        if requested_plan_id:
+            requested_plan = connection.execute(
+                "SELECT id,receipt FROM active_plans WHERE id=? AND workspace_id=?",
+                (requested_plan_id, workspace_id),
+            ).fetchone()
+            if not requested_plan:
+                _error("ACTIVE_PLAN_NOT_FOUND", "主动教学计划不存在", 404)
+            plan_row = requested_plan
+        if not plan_row and latest_workspace_session:
+            plan_row = connection.execute(
+                "SELECT id,receipt FROM active_plans WHERE id=? AND workspace_id=?",
+                (latest_workspace_session["plan_id"], workspace_id),
+            ).fetchone()
         if not plan_row:
             _error("ACTIVE_PLAN_REQUIRED", "请先生成主动教学计划", 409)
-        existing = connection.execute(
-            """SELECT * FROM active_teaching_sessions
-               WHERE plan_id=? ORDER BY started_at DESC LIMIT 1""",
-            (plan_row["id"],),
-        ).fetchone()
+
+        existing = _latest_authoritative_session(
+            connection,
+            workspace_id,
+            plan_id=plan_row["id"],
+        )
+        # A plan/list projection can be regenerated without changing the
+        # learner's active classroom. If the newest plan carries the same
+        # authoritative inputs, continue the newest persisted session instead
+        # of opening a competing first-point session. A materially different
+        # receipt (for example a newly selected source) intentionally starts a
+        # fresh session, preserving the existing multi-plan workflow.
+        if (
+            not requested_plan_id
+            and latest_workspace_session
+            and latest_workspace_session["plan_id"] != plan_row["id"]
+        ):
+            session_plan = connection.execute(
+                "SELECT receipt FROM active_plans WHERE id=?",
+                (latest_workspace_session["plan_id"],),
+            ).fetchone()
+            if session_plan and _receipt_identity(session_plan["receipt"]) == _receipt_identity(plan_row["receipt"]):
+                existing = latest_workspace_session
+                plan_row = connection.execute(
+                    "SELECT id,receipt FROM active_plans WHERE id=?",
+                    (latest_workspace_session["plan_id"],),
+                ).fetchone()
         if existing:
             state = json.loads(existing["state"])
             current_point_id = str(state.get("current_knowledge_point_id") or "")
@@ -6968,9 +8216,55 @@ async def start_session(
         if not tasks:
             _error("ACTIVE_PLAN_EMPTY", "计划没有可执行任务", 409)
         receipt = json.loads(plan_row["receipt"])
+        try:
+            session_scope = normalize_scope(receipt)
+        except ScopeValidationError:
+            session_scope = {
+                "scope_schema": "mentorflow.knowledge-map-scope.v1",
+                "anchor_material_id": "",
+                "supporting_material_ids": [],
+                "material_ids": list(receipt.get("material_ids") or []),
+                "scope_policy": {},
+                "role_provenance": {},
+                "source_fingerprints": {},
+            }
+        map_revision_id = str(receipt.get("knowledge_map_revision_id") or "")
+        map_revision = int(receipt.get("knowledge_map_revision") or 0)
+        map_fingerprint = str(receipt.get("knowledge_map_fingerprint") or "")
+        persona_snapshot = {
+            "teacher_persona_id": receipt.get("teacher_persona_id") or "",
+            "teacher_persona_name": receipt.get("teacher_persona_name") or "",
+            "teacher_visual_profile_id": receipt.get("teacher_visual_profile_id") or "",
+            "teacher_visual_profile_name": receipt.get("teacher_visual_profile_name") or "",
+        }
+        try:
+            with SessionLocal() as plan_session:
+                plan_record = plan_session.scalar(
+                    select(PlanActivationRecordORM).where(
+                        PlanActivationRecordORM.workspace_id == workspace_id,
+                        PlanActivationRecordORM.plan_id == str(plan_row["id"]),
+                    )
+                )
+                plan_snapshot = dict(plan_record.plan_snapshot or {}) if plan_record else {}
+                map_revision_id = str(plan_snapshot.get("revision_id") or map_revision_id)
+                map_revision = int(plan_snapshot.get("revision") or map_revision)
+                map_fingerprint = str(plan_snapshot.get("map_fingerprint") or plan_snapshot.get("source_fingerprint") or map_fingerprint)
+                if isinstance(plan_snapshot.get("scope"), Mapping):
+                    session_scope = dict(plan_snapshot["scope"])
+                # Receipt values are the current user selection.  Keep them
+                # authoritative if an older activation snapshot is present;
+                # apply_teacher_persona_to_workspace also refreshes the ORM
+                # snapshot for future starts.
+                persona_snapshot = {
+                    **dict(plan_snapshot.get("persona_snapshot") or {}),
+                    **persona_snapshot,
+                }
+        except Exception:
+            pass
         first = tasks[0]
         state = {
             "current_learning_goal": receipt["learning_goal"],
+            "current_mastery_criteria": _receipt_mastery_criteria(receipt),
             "current_knowledge_point_id": first["knowledge_point_id"],
             "current_teaching_step": "daily_briefing",
             "today_remaining_task_minutes": receipt["daily_task_minutes"],
@@ -6992,14 +8286,28 @@ async def start_session(
             "teacher_visual_profile_id": receipt.get("teacher_visual_profile_id") or "",
             "teacher_visual_profile_name": receipt.get("teacher_visual_profile_name") or "",
             "teacher_visual_manifest_url": receipt.get("teacher_visual_manifest_url") or "",
+            "map_revision_id": map_revision_id,
+            "map_revision": map_revision,
+            "map_fingerprint": map_fingerprint,
+            "scope": session_scope,
+            "scope_schema": session_scope.get("scope_schema", "mentorflow.knowledge-map-scope.v1"),
+            "anchor_material_id": session_scope.get("anchor_material_id", ""),
+            "supporting_material_ids": list(session_scope.get("supporting_material_ids") or []),
+            "scope_policy": dict(session_scope.get("scope_policy") or {}),
+            "role_provenance": dict(session_scope.get("role_provenance") or {}),
+            "source_fingerprints": dict(session_scope.get("source_fingerprints") or {}),
+            "persona_snapshot": persona_snapshot,
             "learner_context": {
                 "foundation": receipt.get("current_foundation") or receipt.get("current_level"),
                 "interests": receipt.get("learner_interests") or "",
                 "preferred_learning_style": receipt.get("preferred_learning_style") or "",
+                "learning_goal": _receipt_learning_goal(receipt),
+                "mastery_criteria": _receipt_mastery_criteria(receipt),
             },
             "teacher_memory": {
                 "plan_id": plan_row["id"],
                 "material_ids": list(receipt.get("material_ids") or []),
+                "scope": session_scope,
                 "learner_questions": [],
                 "unresolved_points": [],
                 "explanations_that_helped": [],
@@ -7800,6 +9108,49 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
     verify_completion = bool(body.get("verify_completion"))
     force_completion = bool(body.get("force_complete"))
     direct_completion = verify_completion or force_completion
+    raw_interaction_mode = body.get("interaction_mode", "learning_evidence")
+    interaction_mode = (
+        raw_interaction_mode.strip()
+        if isinstance(raw_interaction_mode, str)
+        else str(raw_interaction_mode or "")
+    )
+    if interaction_mode not in {"learning_evidence", "free_chat"}:
+        _error(
+            "INVALID_INTERACTION_MODE",
+            "interaction_mode 必须是 learning_evidence 或 free_chat",
+            422,
+        )
+    if interaction_mode == "free_chat" and (verify_completion or force_completion):
+        _error(
+            "FREE_CHAT_CONFLICTING_FIELDS",
+            "free_chat 不能同时提交 verify_completion 或 force_complete",
+            422,
+            conflicting_fields=[
+                key
+                for key, enabled in (
+                    ("verify_completion", verify_completion),
+                    ("force_complete", force_completion),
+                )
+                if enabled
+            ],
+        )
+    if interaction_mode == "free_chat":
+        try:
+            requested_elapsed = float(body.get("actual_elapsed_minutes") or 0)
+        except (TypeError, ValueError):
+            _error(
+                "FREE_CHAT_CONFLICTING_FIELDS",
+                "free_chat 不能提交无效的 actual_elapsed_minutes",
+                422,
+                conflicting_fields=["actual_elapsed_minutes"],
+            )
+        if requested_elapsed > 0:
+            _error(
+                "FREE_CHAT_CONFLICTING_FIELDS",
+                "free_chat 不能记录 actual_elapsed_minutes",
+                422,
+                conflicting_fields=["actual_elapsed_minutes"],
+            )
     raw_attachment_ids = body.get("attachment_ids") or []
     if not isinstance(raw_attachment_ids, list):
         _error(
@@ -7816,6 +9167,24 @@ async def advance_session(session_id: str, body: dict[str, Any]) -> dict[str, An
         if not session:
             _error("ACTIVE_SESSION_NOT_FOUND", "主动教学会话不存在", 404)
         state = json.loads(session["state"])
+        if interaction_mode == "free_chat":
+            # Resolve Provider handles against a copy.  Binding/reconnection
+            # metadata belongs to learning state and must not be changed by a
+            # free-chat exchange.
+            provider_state = dict(state)
+            free_chat_provider_session_id = _bind_provider_session(
+                provider_state,
+                str(body.get("provider_session_id") or "").strip() or None,
+            )
+            return await _advance_free_chat(
+                connection=connection,
+                session=session,
+                state=state,
+                message=visible_message,
+                raw_attachment_ids=raw_attachment_ids,
+                provider_session_id=free_chat_provider_session_id,
+                body=body,
+            )
         # Sessions created by the previous flow paused at `explain`. Treat that
         # durable state as the new feedback checkpoint so an in-progress lesson
         # continues coherently after this upgrade.
@@ -10304,17 +11673,17 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
         receipt_row = connection.execute(
             "SELECT payload FROM active_receipts WHERE workspace_id=?", (workspace_id,)
         ).fetchone()
-        plan_row = connection.execute(
-            "SELECT id FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1",
-            (workspace_id,),
-        ).fetchone()
-        session_row = (
+        session_row = _latest_authoritative_session(connection, workspace_id)
+        plan_row = (
             connection.execute(
-                "SELECT id FROM active_teaching_sessions WHERE plan_id=? ORDER BY started_at DESC LIMIT 1",
-                (plan_row["id"],),
+                "SELECT id FROM active_plans WHERE id=? AND workspace_id=?",
+                (session_row["plan_id"], workspace_id),
             ).fetchone()
-            if plan_row
-            else None
+            if session_row
+            else connection.execute(
+                "SELECT id FROM active_plans WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
+                (workspace_id,),
+            ).fetchone()
         )
         knowledge_graph = _graph(connection, workspace_id)
         if connection.execute(
@@ -10328,6 +11697,12 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
             if plan_row
             else []
         )
+        snapshot_receipt = json.loads(receipt_row["payload"]) if receipt_row else None
+        if isinstance(snapshot_receipt, dict):
+            try:
+                snapshot_receipt.update(normalize_scope(snapshot_receipt))
+            except ScopeValidationError:
+                pass
         return {
             "workspace_id": workspace_id,
             "local_knowledge_base": {
@@ -10339,8 +11714,12 @@ def workspace_snapshot(workspace_id: str) -> dict[str, Any]:
                 "material_ids": plan_material_ids,
             },
             "materials": materials,
-            "receipt": json.loads(receipt_row["payload"]) if receipt_row else None,
+            "receipt": snapshot_receipt,
             "knowledge_graph": knowledge_graph,
+            "map_revision_id": str(knowledge_graph.get("revision_id") or "") if isinstance(knowledge_graph, dict) else "",
+            "map_fingerprint": str(knowledge_graph.get("source_fingerprint") or "") if isinstance(knowledge_graph, dict) else "",
+            "scope": dict((knowledge_graph or {}).get("scope") or {}) if isinstance(knowledge_graph, dict) else {},
+            "activation_required": bool((knowledge_graph or {}).get("activation_required")) if isinstance(knowledge_graph, dict) else False,
             "plan": _plan(connection, plan_row["id"]) if plan_row else None,
             "session": _public_session(connection, session_row["id"]) if session_row else None,
             "completion_report": (
@@ -10523,23 +11902,6 @@ def list_learning_workspaces(
                    ORDER BY workspace_id"""
             ).fetchall()
         ]
-        user = getattr(request.state, "local_user", None)
-        # Pure local mode is a single data directory, not an account-scoped
-        # service.  Do not hide newly imported workspaces simply because a
-        # legacy UI-review owner row predates them.  Account mode keeps the
-        # ownership filter below through the authenticated request context.
-        auth_required = os.getenv("MENTORFLOW_AUTH_REQUIRED", "").strip() == "1"
-        local_data_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-        if user and auth_required and not local_data_mode:
-            from . import local_auth
-
-            owned = set(local_auth.owned_workspace_ids(user["user_id"]))
-            workspace_ids = [item for item in workspace_ids if item in owned]
         items: list[dict[str, Any]] = []
         for workspace_id in workspace_ids:
             settings_row = connection.execute(
@@ -10555,20 +11917,24 @@ def list_learning_workspaces(
                 (workspace_id,),
             ).fetchone()
             receipt = json.loads(receipt_row["payload"]) if receipt_row else {}
-            plan = connection.execute(
-                """SELECT * FROM active_plans
-                   WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1""",
-                (workspace_id,),
-            ).fetchone()
-            session = (
-                connection.execute(
-                    """SELECT id,updated_at FROM active_teaching_sessions
-                       WHERE plan_id=? ORDER BY updated_at DESC LIMIT 1""",
-                    (plan["id"],),
-                ).fetchone()
-                if plan
-                else None
+            authoritative_session = _latest_authoritative_session(
+                connection,
+                workspace_id,
             )
+            plan = (
+                connection.execute(
+                    """SELECT * FROM active_plans
+                       WHERE id=? AND workspace_id=?""",
+                    (authoritative_session["plan_id"], workspace_id),
+                ).fetchone()
+                if authoritative_session
+                else connection.execute(
+                    """SELECT * FROM active_plans
+                       WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1""",
+                    (workspace_id,),
+                ).fetchone()
+            )
+            session = authoritative_session
             counts = connection.execute(
                 """SELECT COUNT(*) AS material_count,
                           COALESCE(SUM(CASE WHEN status='ready' THEN 1 ELSE 0 END),0)
@@ -10599,7 +11965,8 @@ def list_learning_workspaces(
                 canonical_concepts = int(
                     connection.execute(
                         """SELECT COUNT(*) FROM orm_knowledge_nodes
-                           WHERE map_revision_id=? AND kind='concept'""",
+                           WHERE map_revision_id=? AND kind='concept'
+                             AND COALESCE(json_extract(history, '$.layer'), 'material')='material'""",
                         (canonical_map["id"],),
                     ).fetchone()[0]
                 )

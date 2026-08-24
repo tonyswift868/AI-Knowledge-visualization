@@ -100,6 +100,155 @@ export type FocusMonitoringSession = {
   privacy: FocusMonitoringPrivacy;
 };
 
+/**
+ * Conservative fallback matching the current conversion registry. At runtime
+ * the server capability report is preferred; this keeps the first render
+ * usable while that report loads without admitting media formats.
+ */
+const FALLBACK_MATERIAL_EXTENSIONS = new Set([
+  ".txt", ".rtf", ".log", ".ini", ".cfg", ".json", ".jsonl", ".yaml", ".yml", ".xml", ".csv", ".tsv",
+  ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".c", ".h", ".cpp", ".hpp", ".cs", ".rb", ".php", ".swift", ".kt", ".kts", ".sql", ".sh", ".ps1", ".bat", ".css", ".toml",
+  ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".pptx", ".xlsx", ".epub",
+  ".png", ".jpg", ".jpeg", ".webp", ".zip",
+]);
+const FALLBACK_MATERIAL_MIMES = new Set([
+  "text/plain", "text/markdown", "text/html", "application/pdf", "application/rtf", "application/json",
+  "application/xml", "text/xml", "text/csv", "text/tab-separated-values", "application/yaml", "application/x-yaml", "text/x-python", "text/x-script", "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/epub+zip", "application/zip",
+  "image/png", "image/jpeg", "image/webp",
+]);
+const EXCLUDED_MEDIA_RE = /(?:video|audio|subtitle|transcript|caption|sensevoice|asr)/i;
+
+export const DOCUMENT_MATERIAL_ACCEPT = [
+  ...Array.from(FALLBACK_MATERIAL_EXTENSIONS),
+  ...Array.from(FALLBACK_MATERIAL_MIMES),
+].join(",");
+
+function capabilityEntries(payload: any): any[] {
+  const entries = payload?.registry?.capabilities || payload?.capabilities;
+  return Array.isArray(entries) ? entries : [];
+}
+
+function capabilityAllowsMaterial(capability: any): boolean {
+  return capability?.available !== false
+    && capability?.rejected !== true
+    && !EXCLUDED_MEDIA_RE.test(String(capability?.adapter || ""))
+    && !EXCLUDED_MEDIA_RE.test(String(capability?.reason || ""))
+    && ![...(Array.isArray(capability?.suffixes) ? capability.suffixes : []), ...(Array.isArray(capability?.mime_types) ? capability.mime_types : [])]
+      .some((value: any) => EXCLUDED_MEDIA_RE.test(String(value || "")));
+}
+
+/** Build a browser accept string from the same non-media capability contract. */
+export function materialAcceptFromCapabilities(payload: any): string | undefined {
+  const entries = capabilityEntries(payload);
+  if (!entries.length) return DOCUMENT_MATERIAL_ACCEPT;
+  const accepted = new Set<string>();
+  entries.filter(capabilityAllowsMaterial).forEach((capability: any) => {
+    for (const suffix of Array.isArray(capability?.suffixes) ? capability.suffixes : []) {
+      const value = String(suffix || "").trim().toLowerCase();
+      if (value && !EXCLUDED_MEDIA_RE.test(value)) accepted.add(value.startsWith(".") ? value : `.${value}`);
+    }
+    for (const mime of Array.isArray(capability?.mime_types) ? capability.mime_types : []) {
+      const value = String(mime || "").trim().toLowerCase();
+      if (value && !EXCLUDED_MEDIA_RE.test(value)) accepted.add(value);
+    }
+  });
+  return accepted.size ? Array.from(accepted).join(",") : undefined;
+}
+
+/** Runtime counterpart to the browser's non-media capability filter. */
+export function isSupportedDocumentFile(
+  file: Pick<File, "name" | "type"> | null | undefined,
+  capabilitiesPayload?: any,
+): boolean {
+  if (!file) return false;
+  const name = String(file.name || "").trim().toLowerCase();
+  const mime = String(file.type || "").trim().toLowerCase();
+  const extension = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
+  if (/^(?:video|audio)\//i.test(mime) || EXCLUDED_MEDIA_RE.test(extension) || EXCLUDED_MEDIA_RE.test(mime)) return false;
+  const capabilities = capabilityEntries(capabilitiesPayload).filter(capabilityAllowsMaterial);
+  if (capabilityEntries(capabilitiesPayload).length) {
+    if (!capabilities.length) return false;
+    return capabilities.some((capability: any) => {
+      const suffixes = (Array.isArray(capability?.suffixes) ? capability.suffixes : []).map((value: any) => String(value || "").trim().toLowerCase());
+      const mimeTypes = (Array.isArray(capability?.mime_types) ? capability.mime_types : []).map((value: any) => String(value || "").trim().toLowerCase());
+      return (extension && suffixes.includes(extension)) || (mime && mimeTypes.includes(mime));
+    });
+  }
+  return FALLBACK_MATERIAL_EXTENSIONS.has(extension) || FALLBACK_MATERIAL_MIMES.has(mime);
+}
+
+export type VideoCollectionCoverage = {
+  denominator: number;
+  ready: number;
+  needs_review: number;
+  failed: number;
+  skipped: number;
+  processing: number;
+  unprocessed: number;
+  coverage_ratio: number;
+  complete: boolean;
+  warning?: string;
+};
+
+export type VideoCollection = {
+  id: string;
+  collection_id: string;
+  title: string;
+  canonical_url: string;
+  provider: string;
+  status: string;
+  reported_count: number | null;
+  enumerated_count: number;
+  selected_count: number;
+  manifest_revision: number;
+};
+
+export type VideoCollectionEpisode = {
+  id: string;
+  episode_id: string;
+  title: string;
+  ordinal: number;
+  duration_seconds: number;
+  selected: boolean;
+  status: string;
+  failure?: { code?: string; retryable?: boolean };
+  checkpoint?: Record<string, unknown>;
+};
+
+export type VideoCollectionJob = {
+  id: string;
+  job_id: string;
+  collection_id: string;
+  job_type: "enumerate" | "transcribe" | "summarize" | string;
+  status: string;
+  progress: Record<string, any>;
+  result: Record<string, any>;
+  failure: { code?: string; retryable?: boolean };
+};
+
+export type VideoManifestPage = {
+  collection_id: string;
+  manifest_revision: number;
+  page_size: number;
+  page_index: number;
+  page: number;
+  previous_cursor: string | null;
+  next_cursor: string | null;
+  has_more: boolean;
+  total_count: number;
+  items: VideoCollectionEpisode[];
+};
+
+export type VideoCollectionDetail = {
+  schema: string;
+  collection: VideoCollection;
+  coverage: VideoCollectionCoverage;
+  jobs: VideoCollectionJob[];
+};
+
 async function parseResponse(response: Response) {
   const data = await response.json();
   if (!response.ok) {
@@ -334,6 +483,128 @@ export async function ingestVideoMaterial(
     method: "POST",
     body: JSON.stringify(resource),
   }, 90_000);
+}
+
+export async function createVideoCollection(
+  workspaceId: string,
+  input: {
+    source_url: string;
+    user_confirmed_retrieval: true;
+    max_episodes?: number;
+    page_size?: number;
+    requested_languages?: string[];
+    allow_automatic?: boolean;
+    idempotency_key?: string;
+  },
+): Promise<{ schema: string; collection: VideoCollection; job: VideoCollectionJob }> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function readVideoCollection(
+  workspaceId: string,
+  collectionId: string,
+): Promise<VideoCollectionDetail> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}`);
+}
+
+export async function readVideoCollectionManifest(
+  workspaceId: string,
+  collectionId: string,
+  cursor?: string | null,
+  limit = 50,
+): Promise<VideoManifestPage> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/manifest?${query.toString()}`);
+}
+
+export async function readVideoCollectionEpisode(
+  workspaceId: string,
+  collectionId: string,
+  episodeId: string,
+  segmentOffset = 0,
+  segmentLimit = 8,
+) {
+  const query = new URLSearchParams({ segment_offset: String(segmentOffset), segment_limit: String(segmentLimit) });
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/episodes/${encodeURIComponent(episodeId)}?${query.toString()}`);
+}
+
+export async function startVideoCollectionTranscript(
+  workspaceId: string,
+  collectionId: string,
+  input: {
+    user_confirmed_retrieval: true;
+    requested_languages?: string[];
+    allow_automatic?: boolean;
+    max_parallel?: 1 | 2;
+    idempotency_key?: string;
+  },
+): Promise<{ collection_id: string; job: VideoCollectionJob }> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/jobs/transcribe`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function startVideoCollectionSummary(
+  workspaceId: string,
+  collectionId: string,
+  input: {
+    user_confirmed_summary: true;
+    provider_session_id: string;
+    batch_size?: number;
+    idempotency_key?: string;
+  },
+): Promise<{ collection_id: string; job: VideoCollectionJob }> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/jobs/summarize`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function readVideoCollectionJob(
+  workspaceId: string,
+  collectionId: string,
+  jobId: string,
+): Promise<VideoCollectionJob> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function controlVideoCollectionJob(
+  workspaceId: string,
+  collectionId: string,
+  jobId: string,
+  action: "pause" | "cancel" | "resume" | "retry",
+  providerSessionId = "",
+): Promise<VideoCollectionJob> {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/jobs/${encodeURIComponent(jobId)}/${action}`, {
+    method: "POST",
+    ...(action === "resume" || action === "retry"
+      ? { body: JSON.stringify({ provider_session_id: providerSessionId }) }
+      : {}),
+  });
+}
+
+export async function readVideoCollectionSummaries(
+  workspaceId: string,
+  collectionId: string,
+  scopeType: "episode" | "batch" | "collection" = "collection",
+) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/summaries?scope_type=${scopeType}&limit=50`);
+}
+
+export async function activateVideoCollectionMaterial(
+  workspaceId: string,
+  collectionId: string,
+  role: "anchor" | "support",
+) {
+  return activeRequest(`/workspaces/${encodeURIComponent(workspaceId)}/video-collections/${encodeURIComponent(collectionId)}/activate-material`, {
+    method: "POST",
+    body: JSON.stringify({ user_confirmed_activation: true, role }),
+  });
 }
 
 export async function uploadActiveTeachingAttachment(

@@ -67,6 +67,8 @@ export function TeacherCompanionPortrait({
     praising: "表扬",
     encouraging: "鼓励",
     confused: "困惑",
+    shy: "害羞",
+    playful_annoyed: "等你回答",
     ending: "收尾",
     error: "错误",
     hidden: "收起",

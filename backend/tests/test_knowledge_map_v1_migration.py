@@ -59,7 +59,7 @@ def test_in_process_migration_supports_backend_package_from_repository_root(
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0025_planning_assistant_cache",)
+        ).fetchone() == ("0028_video_collection_v1",)
 
 
 def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: Path):
@@ -115,7 +115,7 @@ def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: P
         ).fetchone() == ("Preserve this row",)
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0025_planning_assistant_cache",)
+        ).fetchone() == ("0028_video_collection_v1",)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
     unique_constraints = {

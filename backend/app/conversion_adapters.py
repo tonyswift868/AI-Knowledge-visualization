@@ -19,6 +19,7 @@ from typing import Any, Protocol, Sequence
 from xml.etree import ElementTree
 
 from .knowledge_policy import CONVERSION_POLICY
+from .safe_xml import XMLSecurityError, fromstring as safe_xml_fromstring
 
 
 def document_runtime_cache_root() -> Path:
@@ -521,11 +522,13 @@ class _BoundedArchive:
 
 
 def _xml(raw: bytes, *, code: str) -> ElementTree.Element:
-    upper = raw[: CONVERSION_POLICY.signature_probe_bytes].upper()
-    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
-        raise ConversionError("XML_DTD_FORBIDDEN", "Document XML declarations and entities are unsupported")
     try:
-        return ElementTree.fromstring(raw)
+        return safe_xml_fromstring(raw)
+    except XMLSecurityError as exc:
+        raise ConversionError(
+            "XML_DTD_FORBIDDEN",
+            "Document XML declarations and entities are unsupported",
+        ) from exc
     except ElementTree.ParseError as exc:
         raise ConversionError(code, f"Document XML could not be parsed: {exc}") from exc
 

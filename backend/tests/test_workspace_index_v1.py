@@ -37,9 +37,11 @@ def _insert_workspace_with_map(
     connection.execute(
         """INSERT INTO orm_knowledge_map_revisions(
                id,map_id,workspace_id,revision,is_current,status,generation_mode,
-               provider_used,source_revisions,quality,fingerprint,warnings,
+               provider_used,source_revisions,anchor_material_id,
+               supporting_material_ids,scope_policy,role_provenance,source_fingerprints,
+               quality,fingerprint,warnings,
                staging_token,staged_at,activation_id,activated_at,failure_json,created_at
-           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             f"revision-{workspace_id}",
             f"map-{workspace_id}",
@@ -50,6 +52,11 @@ def _insert_workspace_with_map(
             "provider_grounded",
             1,
             json.dumps(["source-revision-1"]),
+            None,
+            "[]",
+            "{}",
+            "{}",
+            "{}",
             json.dumps({"status": "passed"}),
             f"fingerprint-{workspace_id}",
             "[]",

@@ -21,13 +21,13 @@ class DesktopApi:
     def __init__(self, origin: str):
         self.origin = origin.rstrip("/")
         self.client = httpx.Client(base_url=self.origin, timeout=60, follow_redirects=True)
+        # Embedded legacy pages still probe this attribute while they are
+        # migrated to the local single-user contract.  Keep it inert: no
+        # cookie is read, written, or sent by the API client.
+        self.session_token = ""
 
     def close(self) -> None:
         self.client.close()
-
-    @property
-    def session_token(self) -> str:
-        return str(self.client.cookies.get("mentorflow_session", ""))
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
         response = self.client.request(method, path, **kwargs)
@@ -44,75 +44,6 @@ class DesktopApi:
         if response.status_code == 204:
             return None
         return response.json()
-
-    def auth_status(self) -> dict[str, Any]:
-        return self.request("GET", "/api/auth/status")
-
-    def register(
-        self,
-        username: str,
-        display_name: str,
-        password: str,
-        *,
-        claim_existing_data: bool = False,
-    ) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/register",
-            json={
-                "username": username,
-                "display_name": display_name,
-                "password": password,
-                "claim_existing_data": claim_existing_data,
-            },
-        )
-
-    def login(self, username: str, password: str) -> dict[str, Any]:
-        return self.request("POST", "/api/auth/login", json={"username": username, "password": password})
-
-    def request_password_reset(self, username: str) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/password-reset/request",
-            json={"username": username},
-        )
-
-    def reset_password(self, username: str, code: str, new_password: str) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/password-reset/confirm",
-            json={"username": username, "code": code, "new_password": new_password},
-        )
-
-    def change_password(self, current_password: str, new_password: str) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/password/change",
-            json={"current_password": current_password, "new_password": new_password},
-        )
-
-    def phone_status(self) -> dict[str, Any]:
-        return self.request("GET", "/api/auth/phone")
-
-    def request_phone_binding(self, phone_e164: str, current_password: str) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/phone/bind/request",
-            json={"phone_e164": phone_e164, "current_password": current_password},
-        )
-
-    def confirm_phone_binding(self, challenge_id: str, code: str) -> dict[str, Any]:
-        return self.request(
-            "POST",
-            "/api/auth/phone/bind/confirm",
-            json={"challenge_id": challenge_id, "code": code},
-        )
-
-    def logout(self) -> None:
-        self.request("POST", "/api/auth/logout")
-
-    def me(self) -> dict[str, Any]:
-        return self.request("GET", "/api/auth/me")
 
     def workspaces(self) -> list[dict[str, Any]]:
         payload = self.request("GET", "/api/workspaces")
@@ -341,6 +272,8 @@ class DesktopApi:
         *,
         message: str,
         provider_session_id: str = "",
+        interaction_mode: str = "learning_evidence",
+        free_chat_prompt: str = "",
         force_complete: bool = False,
         verify_completion: bool = False,
         attachment_ids: list[str] | None = None,
@@ -348,13 +281,18 @@ class DesktopApi:
         activity_event_id: str = "",
         activity_kind: str = "active_learning",
     ) -> dict[str, Any]:
+        mode = str(interaction_mode or "learning_evidence").strip() or "learning_evidence"
         payload: dict[str, Any] = {
             "message": message,
-            "force_complete": force_complete,
-            "verify_completion": verify_completion,
+            "interaction_mode": mode,
             "attachment_ids": list(attachment_ids or []),
         }
-        if actual_elapsed_minutes > 0:
+        if mode == "learning_evidence":
+            payload["force_complete"] = force_complete
+            payload["verify_completion"] = verify_completion
+        elif free_chat_prompt:
+            payload["free_chat_prompt"] = str(free_chat_prompt)[:6000]
+        if mode == "learning_evidence" and actual_elapsed_minutes > 0:
             payload["actual_elapsed_minutes"] = round(float(actual_elapsed_minutes), 3)
             payload["activity_event_id"] = activity_event_id
             payload["activity_kind"] = activity_kind
@@ -381,6 +319,35 @@ class DesktopApi:
             "POST",
             f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/candidates/{candidate_id}/decision",
             json={"decision": decision, "reason": reason},
+        )
+
+    def decide_knowledge_map_candidates(
+        self,
+        workspace_id: str,
+        candidate_ids: list[str],
+        *,
+        decision: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Apply one atomic decision to a set of knowledge-map candidates.
+
+        The server validates the candidate revision and either decides every
+        supplied id or leaves the revision untouched.  Keep this separate from
+        the legacy single-candidate method so older native callers remain
+        compatible while the desktop review UI can avoid stale-id loops.
+        """
+
+        ids: list[str] = []
+        seen: set[str] = set()
+        for candidate_id in candidate_ids:
+            value = str(candidate_id or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                ids.append(value)
+        return self.request(
+            "POST",
+            f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/candidates/decisions",
+            json={"candidate_ids": ids, "decision": decision, "reason": reason},
         )
 
     def upload_teaching_attachment(self, session_id: str, path: str | Path) -> dict[str, Any]:

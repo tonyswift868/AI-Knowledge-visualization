@@ -83,6 +83,8 @@ def test_ingestion_graph_plan_and_retrieval_are_traceable(tmp_path):
             files={"file": ("leetcode-hot-150.md", SAMPLE.encode("utf-8"), "text/markdown")},
         )
         assert upload.status_code == 200, upload.text
+        assert "stored_path" not in upload.text
+        assert str(active_teaching.UPLOAD_ROOT.resolve()) not in upload.text
         material = upload.json()
         assert material["status"] == "ready"
         assert material["size_bytes"] == len(SAMPLE.encode("utf-8"))
@@ -140,6 +142,8 @@ def test_ingestion_graph_plan_and_retrieval_are_traceable(tmp_path):
             json={"query": "双指针归并"},
         )
         assert grounded.status_code == 200
+        assert "stored_path" not in grounded.text
+        assert str(active_teaching.UPLOAD_ROOT.resolve()) not in grounded.text
         assert grounded.json()["status"] == "grounded"
         assert grounded.json()["citations"][0]["char_end"] > grounded.json()["citations"][0]["char_start"]
         assert grounded.json()["citations"][0]["retrieval_mode"] == "local_hybrid_v1"
@@ -770,7 +774,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         migrated = next(item for item in items if item["prompt"] == old_prompt)
         default_persona = next(item for item in items if item["is_default"])
         assert migrated["name"].startswith("已保存教师人设")
-        assert default_persona["visual_profile_id"] == "teacher-live2d-tsubaki-local"
+        assert default_persona["visual_profile_id"] == "teacher-02-blonde-fang-v9"
         assert default_persona["visual_manifest_url"].endswith("/manifest.json")
         migrated_snapshot = client.get(
             "/api/active-teaching/workspaces/persona-migration/snapshot"
@@ -836,7 +840,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         )
         assert (
             applied_snapshot["receipt"]["teacher_visual_profile_id"]
-            == "teacher-live2d-tsubaki-local"
+            == "teacher-02-blonde-fang-v9"
         )
         applied_session = client.get(
             f"/api/active-teaching/sessions/{session.json()['session_id']}"
@@ -847,7 +851,7 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
         )
         assert (
             applied_session["state"]["teacher_visual_profile_id"]
-            == "teacher-live2d-tsubaki-local"
+            == "teacher-02-blonde-fang-v9"
         )
 
         rebound = client.patch(
@@ -871,6 +875,110 @@ def test_teacher_persona_library_preserves_task_persona_and_receipt_uses_selecte
             f"/api/active-teaching/teacher-personas/{default_persona['id']}"
         )
         assert cannot_delete_default.status_code == 409
+
+
+def test_fresh_teacher_uses_distributable_profile_without_overwriting_private_choice(tmp_path):
+    configure_orm(tmp_path / "teacher-persona-fresh-default.db")
+    with TestClient(app) as client:
+        first = client.get("/api/active-teaching/teacher-personas")
+        assert first.status_code == 200, first.text
+        default_persona = next(item for item in first.json()["items"] if item["is_default"])
+        assert default_persona["visual_profile_id"] == "teacher-02-blonde-fang-v9"
+
+        selected = client.patch(
+            f"/api/active-teaching/teacher-personas/{default_persona['id']}",
+            json={
+                "name": default_persona["name"],
+                "prompt": default_persona["prompt"],
+                "teaching_style": default_persona["teaching_style"],
+                "visual_profile_id": "teacher-live2d-tsubaki-local",
+            },
+        )
+        assert selected.status_code == 200, selected.text
+        assert selected.json()["visual_profile_id"] == "teacher-live2d-tsubaki-local"
+
+        # Listing runs the startup synchronizer again.  A private profile that
+        # this learner explicitly selected must remain theirs; only a genuinely
+        # fresh database receives the distributable default.
+        second = client.get("/api/active-teaching/teacher-personas")
+        assert second.status_code == 200, second.text
+        selected_default = next(item for item in second.json()["items"] if item["is_default"])
+        assert selected_default["visual_profile_id"] == "teacher-live2d-tsubaki-local"
+
+
+def test_private_teacher_profile_is_hidden_when_asset_is_not_bundled(tmp_path, monkeypatch):
+    configure_orm(tmp_path / "teacher-private-profile-unavailable.db")
+    package_root = tmp_path / "public-package"
+    public_manifest = (
+        package_root
+        / "frontend"
+        / "dist"
+        / "teacher2d"
+        / "original-ai-teacher-blonde-fang"
+        / "manifest.json"
+    )
+    public_manifest.parent.mkdir(parents=True)
+    public_manifest.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(active_teaching, "PROJECT_ROOT", package_root)
+
+    with TestClient(app) as client:
+        profiles = client.get("/api/active-teaching/teacher-visual-profiles")
+        assert profiles.status_code == 200, profiles.text
+        profile_ids = {item["id"] for item in profiles.json()["items"]}
+        assert profile_ids == {"teacher-02-blonde-fang-v9"}
+
+        personas = client.get("/api/active-teaching/teacher-personas")
+        assert personas.status_code == 200, personas.text
+        default_persona = next(
+            item for item in personas.json()["items"] if item["is_default"]
+        )
+        unavailable = client.patch(
+            f"/api/active-teaching/teacher-personas/{default_persona['id']}",
+            json={
+                "name": default_persona["name"],
+                "prompt": default_persona["prompt"],
+                "teaching_style": default_persona["teaching_style"],
+                "visual_profile_id": "teacher-live2d-tsubaki-local",
+            },
+        )
+        assert unavailable.status_code == 409, unavailable.text
+        response_error = unavailable.json().get("error") or unavailable.json()["detail"]["error"]
+        assert response_error["code"] == "TEACHER_VISUAL_PROFILE_UNAVAILABLE"
+
+
+def test_private_teacher_profile_is_available_from_durable_user_data(tmp_path, monkeypatch):
+    configure_orm(tmp_path / "teacher-private-profile-local-data.db")
+    package_root = tmp_path / "public-package"
+    public_manifest = (
+        package_root
+        / "frontend"
+        / "dist"
+        / "teacher2d"
+        / "original-ai-teacher-blonde-fang"
+        / "manifest.json"
+    )
+    public_manifest.parent.mkdir(parents=True)
+    public_manifest.write_text("{}", encoding="utf-8")
+    local_manifest = (
+        tmp_path
+        / "learner-data"
+        / "teacher-assets"
+        / "tsubaki-live2d"
+        / "manifest.json"
+    )
+    local_manifest.parent.mkdir(parents=True)
+    local_manifest.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(active_teaching, "PROJECT_ROOT", package_root)
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path / "learner-data"))
+
+    with TestClient(app) as client:
+        profiles = client.get("/api/active-teaching/teacher-visual-profiles")
+        assert profiles.status_code == 200, profiles.text
+        profile_ids = {item["id"] for item in profiles.json()["items"]}
+        assert profile_ids == {
+            "teacher-live2d-tsubaki-local",
+            "teacher-02-blonde-fang-v9",
+        }
 
 
 def test_teacher_memory_survives_switching_to_another_knowledge_point(tmp_path):

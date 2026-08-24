@@ -89,18 +89,20 @@ def test_system_preview_recomputes_capacity_from_current_map_before_extension():
 
     preview = generic_api._v1_preview_plan_orm(workspace_id, {})
 
-    assert preview["receipt"]["daily_task_minutes"] == 290
-    assert preview["allocation"]["estimated_total_minutes"] == 6375
+    assert preview["receipt"]["daily_task_minutes"] == 335
+    assert preview["allocation"]["estimated_total_minutes"] == 7331
     assert preview["allocation"]["available_study_days"] == 22
-    assert preview["allocation"]["recommended_minutes_per_day"] == 290
-    assert preview["total_mastery_minutes"] == 6375
+    assert preview["allocation"]["recommended_minutes_per_day"] == 335
+    assert preview["foundation_adjustment"]["foundation"] == "beginner"
+    assert preview["foundation_adjustment"]["multiplier"] == 1.15
+    assert preview["total_mastery_minutes"] == 7331
     assert preview["extension_draft"]["required"] is False
     assert preview["unscheduled_task_minutes"] == 0
     assert sum(
         int(day.get("planned_task_minutes") or 0)
         + int(day.get("projected_review_task_minutes") or 0)
         for day in preview["days"]
-    ) == 6375
+    ) == 7331
 
     # Preview capacity is draft-only; the stale active receipt remains intact.
     with active_teaching._connect() as connection:

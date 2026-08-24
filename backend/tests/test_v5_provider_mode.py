@@ -210,51 +210,36 @@ def test_provider_session_get_is_safe(client, monkeypatch):
     assert fetched.status_code == 200 and "api_key" not in fetched.text and "v5-secret" not in fetched.text
 
 
-def test_authenticated_accounts_cannot_reuse_each_others_provider_session(client, monkeypatch):
-    """A guessed process-local session id must not cross the account boundary."""
+def test_single_user_provider_handle_preserves_credential_boundary(client, monkeypatch):
+    """The local process handle remains usable without account identity."""
 
     monkeypatch.setenv("MENTORFLOW_AUTH_REQUIRED", "1")
     install_mock_provider(monkeypatch)
-    credential_store.store_secret("owner-secret", "mfcred_owner_test")
-
-    first = client.post(
-        "/api/auth/register",
-        json={
-            "username": "OwnerAlpha",
-            "display_name": "Owner Alpha",
-            "password": "Correct-Horse-42",
-            "claim_existing_data": True,
-        },
-    )
-    assert first.status_code == 201, first.text
+    credential_store.store_secret("local-secret", "mfcred_local_test")
     created = client.post(
         "/api/provider-sessions",
         json={
             "provider": "openai-compatible",
             "base_url": "https://mock.deepseek.test/v1",
             "model": "deepseek-chat",
-            "credential_ref": "mfcred_owner_test",
+            "credential_ref": "mfcred_local_test",
         },
     )
     assert created.status_code == 200, created.text
     session_id = created.json()["provider_session_id"]
+    assert created.json().get("owner_user_id") is None
 
-    client.post("/api/auth/logout")
-    second = client.post(
-        "/api/auth/register",
-        json={
-            "username": "OwnerBeta",
-            "display_name": "Owner Beta",
-            "password": "Correct-Horse-43",
-            "claim_existing_data": False,
-        },
-    )
-    assert second.status_code == 201, second.text
+    fetched = client.get(f"/api/provider-sessions/{session_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["credential_ref"] == "mfcred_local_test"
+    assert "local-secret" not in fetched.text
 
-    assert client.get(f"/api/provider-sessions/{session_id}").status_code == 404
-    assert client.post(f"/api/provider-sessions/{session_id}/test").status_code == 404
-    assert client.delete(f"/api/provider-sessions/{session_id}").json() == {"deleted": False}
-    assert client.delete("/api/provider-credentials/mfcred_owner_test").status_code == 404
+    # The API only accepts a credential reference; deleting the reference does
+    # not expose or recreate the underlying secret through the session handle.
+    deleted = client.delete("/api/provider-credentials/mfcred_local_test")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True}
+    assert client.post(f"/api/provider-sessions/{session_id}/test").status_code in {404, 503}
 
 
 def test_evaluator_requires_and_reports_real_provider(client, monkeypatch):

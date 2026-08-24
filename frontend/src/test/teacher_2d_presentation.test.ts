@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { createElement } from "react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { PlaceholderTeacherAdapter } from "../features/teachers/presentation/adapters/PlaceholderTeacherAdapter"
 import { shouldStartTeacherAnimation } from "../features/teachers/presentation/adapters/DragonBonesTeacherAdapter"
@@ -13,7 +15,12 @@ import {
   type RigState,
 } from "../features/teachers/presentation/adapters/LayeredTeacherAdapter"
 import { resolveTeacherAnimation, validateTeacher2DManifest } from "../features/teachers/presentation/teacherPresentationManifest"
-import { normalizePresentationState } from "../features/teachers/presentation/Teacher2DStage"
+import { normalizePresentationState, Teacher2DStage } from "../features/teachers/presentation/Teacher2DStage"
+import { TeacherPresentationController } from "../features/teachers/presentation/TeacherPresentationController"
+import { TEACHER_STAGE_IDLE_REACTION_MS, readTeacherStageState, teacherStageIdleReaction } from "../features/teachers/presentation/teacherStageState"
+import * as rendererBoundary from "../features/teachers/presentation/Teacher2DRenderer"
+import type { Teacher2DRenderer } from "../features/teachers/presentation/teacherPresentationTypes"
+import type { TeacherPresentationControllerOptions } from "../features/teachers/presentation/TeacherPresentationController"
 
 const manifest = {
   id: "test", displayName: "Test", renderer: "dragonbones2d", skeleton: "/s.json", textures: ["/0.png"], armature: "shizuku", defaultAnimation: "idle_00",
@@ -49,7 +56,179 @@ const live2DManifest = {
   },
 } as const
 
+const controllerManifest = {
+  id: "controller-test", displayName: "Controller Test", renderer: "layered2d", skeleton: "/teacher/rig.json", textures: ["/teacher/texture.png"], armature: "teacher", defaultAnimation: "idle",
+} as const
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } })
+}
+
+function controllerRenderer(): Teacher2DRenderer {
+  return {
+    load: vi.fn(async () => undefined),
+    unload: vi.fn(),
+    playSemanticState: vi.fn(),
+    playAnimation: vi.fn(),
+    listAnimations: vi.fn(() => ["idle", "greeting", "praising"]),
+    listSkins: vi.fn(() => ["default"]),
+    setSkin: vi.fn(),
+    setScale: vi.fn(),
+    setOffset: vi.fn(),
+    setMirror: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    resize: vi.fn(),
+  }
+}
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
+
+function stageController(options: TeacherPresentationControllerOptions) {
+  const pause = vi.fn()
+  const resume = vi.fn()
+  const reset = vi.fn()
+  return {
+    mount: vi.fn(async () => options.onSnapshot({ status: "ready", renderer: "layered2d", semanticState: "idle", animations: ["idle"], skins: ["default"], canvasWidth: 420, canvasHeight: 680, webgl: false, loadedTextures: [] })),
+    dispose: vi.fn(),
+    setState: vi.fn(),
+    setScale: vi.fn(),
+    setOffset: vi.fn(),
+    setMirror: vi.fn(),
+    setSkin: vi.fn(),
+    pause,
+    resume,
+    reset,
+    playAnimation: vi.fn(),
+    getSnapshot: vi.fn(),
+    pauseCalls: pause,
+    resumeCalls: resume,
+    resetCalls: reset,
+  } as unknown as TeacherPresentationController & { pauseCalls: ReturnType<typeof vi.fn>; resumeCalls: ReturnType<typeof vi.fn>; resetCalls: ReturnType<typeof vi.fn> }
+}
+
 describe("replaceable Teacher2D presentation boundary", () => {
+  it("keeps reduced-motion paused across reset but clears a manual pause", async () => {
+    const reducedMedia = { matches: true, media: "(prefers-reduced-motion: reduce)", addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal("matchMedia", vi.fn(() => reducedMedia))
+    let reducedController: ReturnType<typeof stageController> | undefined
+    render(createElement(Teacher2DStage, { controllerFactory: (options: TeacherPresentationControllerOptions) => { reducedController = stageController(options); return reducedController } }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "继续教师动画" })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "恢复教师默认状态" }))
+    expect(screen.getByRole("button", { name: "继续教师动画" })).toBeInTheDocument()
+    expect(reducedController?.pauseCalls).toHaveBeenCalledWith("reduced-motion")
+
+    cleanup()
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ ...reducedMedia, matches: false })))
+    let manualController: ReturnType<typeof stageController> | undefined
+    render(createElement(Teacher2DStage, { controllerFactory: (options: TeacherPresentationControllerOptions) => { manualController = stageController(options); return manualController } }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "暂停教师动画" })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "暂停教师动画" }))
+    expect(screen.getByRole("button", { name: "继续教师动画" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "恢复教师默认状态" }))
+    expect(screen.getByRole("button", { name: "暂停教师动画" })).toBeInTheDocument()
+    expect(manualController?.resumeCalls).toHaveBeenCalled()
+  })
+
+  it("keeps semantic changes paused until an explicit resume", async () => {
+    const renderer = controllerRenderer()
+    vi.spyOn(rendererBoundary, "createTeacher2DRenderer").mockReturnValue(renderer)
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(controllerManifest)))
+    const controller = new TeacherPresentationController({ onSnapshot: vi.fn() })
+    await controller.mount(document.createElement("div"), "/controller.json")
+    const resume = renderer.resume as ReturnType<typeof vi.fn>
+    const pause = renderer.pause as ReturnType<typeof vi.fn>
+    resume.mockClear()
+
+    controller.pause()
+    const pauseCount = pause.mock.calls.length
+    controller.setState("explaining")
+    expect(resume).not.toHaveBeenCalled()
+    expect(pause).toHaveBeenCalledTimes(pauseCount + 1)
+
+    controller.resume()
+    expect(resume).toHaveBeenCalledTimes(1)
+    controller.dispose()
+  })
+
+  it("returns transient semantics to idle once and cancels stale timers", async () => {
+    vi.useFakeTimers()
+    const renderer = controllerRenderer()
+    vi.spyOn(rendererBoundary, "createTeacher2DRenderer").mockReturnValue(renderer)
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(controllerManifest)))
+    const controller = new TeacherPresentationController({ onSnapshot: vi.fn() })
+    await controller.mount(document.createElement("div"), "/controller.json")
+    const playSemanticState = renderer.playSemanticState as ReturnType<typeof vi.fn>
+    playSemanticState.mockClear()
+
+    controller.setState("greeting")
+    controller.setState("talking")
+    vi.advanceTimersByTime(2000)
+    expect(playSemanticState).not.toHaveBeenCalledWith("idle")
+
+    controller.setState("praising")
+    vi.advanceTimersByTime(1500)
+    expect(playSemanticState).toHaveBeenCalledWith("idle")
+    vi.advanceTimersByTime(3000)
+    expect(playSemanticState.mock.calls.filter(([state]) => state === "idle")).toHaveLength(1)
+    controller.dispose()
+  })
+
+  it("exposes shy and gently impatient states without subject-specific rules", async () => {
+    expect(readTeacherStageState("?state=shy")).toBe("shy")
+    expect(readTeacherStageState("?state=playful_annoyed")).toBe("playful_annoyed")
+    expect(readTeacherStageState("?state=unsupported")).toBe("idle")
+    expect(teacherStageIdleReaction("questioning", TEACHER_STAGE_IDLE_REACTION_MS - 1)).toBe("questioning")
+    expect(teacherStageIdleReaction("questioning", TEACHER_STAGE_IDLE_REACTION_MS)).toBe("playful_annoyed")
+    expect(teacherStageIdleReaction("talking", TEACHER_STAGE_IDLE_REACTION_MS * 2)).toBe("talking")
+
+    vi.useFakeTimers()
+    const renderer = controllerRenderer()
+    vi.spyOn(rendererBoundary, "createTeacher2DRenderer").mockReturnValue(renderer)
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(controllerManifest)))
+    const controller = new TeacherPresentationController({ onSnapshot: vi.fn() })
+    await controller.mount(document.createElement("div"), "/controller.json")
+    const playSemanticState = renderer.playSemanticState as ReturnType<typeof vi.fn>
+    playSemanticState.mockClear()
+    controller.setState("shy")
+    expect(playSemanticState).toHaveBeenCalledWith("shy")
+    vi.advanceTimersByTime(1500)
+    expect(playSemanticState).toHaveBeenCalledWith("idle")
+    controller.setState("playful_annoyed")
+    expect(playSemanticState).toHaveBeenCalledWith("playful_annoyed")
+    controller.dispose()
+  })
+
+  it("loads the packaged layered manifest when the preferred runtime fails", async () => {
+    const renderer = controllerRenderer()
+    vi.spyOn(rendererBoundary, "createTeacher2DRenderer").mockReturnValue(renderer)
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "primary unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse(controllerManifest))
+    vi.stubGlobal("fetch", fetchMock)
+    const controller = new TeacherPresentationController({ onSnapshot: vi.fn() })
+    await controller.mount(document.createElement("div"), "/primary-live2d.json")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(controller.getSnapshot()).toMatchObject({ status: "ready", degraded: true, fallback_used: true, fallbackUsed: true, originalError: expect.stringContaining("HTTP 503") })
+    controller.dispose()
+  })
+
+  it("reports both primary and fallback failures as an error", async () => {
+    const renderer = controllerRenderer()
+    vi.spyOn(rendererBoundary, "createTeacher2DRenderer").mockReturnValue(renderer)
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: "unavailable" }, 503))
+    vi.stubGlobal("fetch", fetchMock)
+    const controller = new TeacherPresentationController({ onSnapshot: vi.fn() })
+    await expect(controller.mount(document.createElement("div"), "/primary-live2d.json")).rejects.toThrow("本地回退也失败")
+    expect(controller.getSnapshot()).toMatchObject({ status: "error", degraded: true, fallback_used: false, originalError: expect.stringContaining("HTTP 503"), fallbackError: expect.stringContaining("HTTP 503") })
+    controller.dispose()
+  })
+
   it("validates a local DragonBones manifest and maps only real animation names", () => {
     expect(validateTeacher2DManifest(manifest).armature).toBe("shizuku")
     expect(resolveTeacherAnimation(manifest, "questioning", ["idle_00", "tap_body_00"])).toBe("tap_body_00")
@@ -113,6 +292,8 @@ describe("replaceable Teacher2D presentation boundary", () => {
     const questioning = resolveLive2DProceduralPose("questioning")
     const praising = resolveLive2DProceduralPose("praising")
     const encouraging = resolveLive2DProceduralPose("encouraging")
+    const shy = resolveLive2DProceduralPose("shy")
+    const playfulAnnoyed = resolveLive2DProceduralPose("playful_annoyed")
 
     expect(explaining.speaking).toBe(true)
     expect(explaining.rightHand).toBeGreaterThan(idle.rightHand)
@@ -131,6 +312,11 @@ describe("replaceable Teacher2D presentation boundary", () => {
     expect(resolveLive2DProceduralPose("confused").speaking).toBe(true)
     expect(resolveLive2DProceduralPose("ending").speaking).toBe(true)
     expect(resolveLive2DProceduralPose("thinking").speaking).toBe(false)
+    expect(shy.cheekPuff).toBeGreaterThan(encouraging.cheekPuff)
+    expect(shy.eyeOpen).toBeLessThan(idle.eyeOpen)
+    expect(playfulAnnoyed.cheekPuff).toBeGreaterThan(shy.cheekPuff)
+    expect(playfulAnnoyed.browY).toBeLessThan(idle.browY)
+    expect(playfulAnnoyed.speaking).toBe(false)
   })
 
   it("creates visible teaching lip-sync, eyebrow asymmetry, and natural blinks", () => {
@@ -191,7 +377,7 @@ describe("replaceable Teacher2D presentation boundary", () => {
     expect(Math.abs(wave.leftArmRotation - idle.leftArmRotation)).toBeLessThan(.001)
     expect(surprised.headOffsetY).toBe(idle.headOffsetY)
     expect(surprised.chestLift).toBeLessThan(idle.chestLift - 2)
-    expect(cheer.jumpY).toBeLessThan(-10)
+    expect(cheer.jumpY).toBe(0)
     expect(Math.abs(cheer.leftArmRotation - idle.leftArmRotation)).toBeGreaterThan(.1)
     expect(Math.abs(cheer.rightArmRotation - idle.rightArmRotation)).toBeGreaterThan(.1)
   })

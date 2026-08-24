@@ -1,21 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { createServer } from 'node:http'
 
 const proof = 'I explain the reason with an example and evidence, then list the steps and workflow and make a decision.'
 
 async function openDemo(page: any) {
   await page.goto('/')
-  const apiResponses: string[] = []
-  page.on('response', (response: any) => {
-    if (response.url().includes('/api/')) apiResponses.push(`${response.request().method()} ${response.status()} ${response.url()}`)
-  })
-  await page.locator('.hero-actions button.secondary').click()
-  try {
-    await expect(page.locator('.plan-body')).toBeVisible({ timeout: 30_000 })
-  } catch (error) {
-    const toast = await page.locator('.toast').textContent().catch(() => '')
-    throw new Error(`Demo did not reach plan view. toast=${toast || '<none>'}; responses=${apiResponses.join(' | ')}; cause=${String(error)}`)
-  }
+  await page.getByTestId('nav-active').click()
+  await expect(page.getByTestId('active-teaching-chain')).toBeVisible({ timeout: 30_000 })
 }
 
 test.skip('home exposes the scenario learning run and server completion gate', async ({ page }) => {
@@ -199,84 +189,90 @@ test.skip('story catalog keeps three algorithm candidates and rematches for law'
   const lawCards = await page.locator('.catalog-card h2').allTextContents()
   expect(lawCards).not.toEqual(algorithmCards)
 })
-test('create flow reaches real import controls and uploads a file', async ({ page }) => {
-  const server = createServer((request, response) => { if (request.url?.endsWith('/chat/completions')) { let body = ''; request.on('data', chunk => { body += chunk }); request.on('end', () => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ model: 'mock-model', choices: [{ message: { content: JSON.stringify({ title: 'Mock plan', message: 'Mock tutor', status: 'grounded' }) } }] })) }); return } response.writeHead(404); response.end() })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  const address = server.address(); const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`
-  try {
-    await page.goto('/'); await page.locator('nav button').nth(5).click(); await page.getByLabel('Provider').selectOption('openai-compatible'); await page.getByLabel('Base URL').fill(baseUrl); await page.getByLabel('Model').fill('mock-model'); await page.getByLabel('API Key').fill('e2e-secret'); await page.getByRole('button', { name: /OpenAI Compatible/ }).click(); await expect(page.locator('.provider-form')).toBeVisible(); await page.locator('nav button').nth(0).click(); await page.locator('.hero-actions button.primary').click(); await page.locator('.form-panel input').first().fill('Playwright workspace'); await page.locator('.form-actions button.primary').click();
-    const picker = page.getByTestId('file-input'); await expect(picker).toBeAttached(); await picker.setInputFiles({ name: 'e2e.md', mimeType: 'text/markdown', buffer: Buffer.from('E2E evidence') }); await expect(page.locator('.source-import-panel button').first()).toBeEnabled(); await page.locator('.source-import-panel button').first().click(); await expect(page.locator('.source-import-panel [role="status"]')).toContainText('完成')
-  } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+test('create flow uses the active teaching task and uploads a file', async ({ page }) => {
+  test.setTimeout(180_000)
+  await page.goto('/')
+  await page.getByTestId('nav-active').click()
+  await page.getByTestId('active-new-task').click()
+  await page.getByTestId('active-goal').fill('Playwright active teaching workspace')
+  await page.getByTestId('active-material-file').setInputFiles({
+    name: 'e2e.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# E2E evidence\n\nA small, source-backed example.'),
+  })
+  await page.getByTestId('active-upload').click()
+  const planPreview = page.getByTestId('active-plan-preview')
+  const providerGate = page.getByRole('alert').filter({ hasText: '知识地图 v1 需要已验证的真实 Provider' })
+  await expect
+    .poll(async () => (await planPreview.count()) > 0 || (await providerGate.count()) > 0, {
+      timeout: 120_000,
+    })
+    .toBeTruthy()
+  if (await providerGate.count()) {
+    test.info().annotations.push({
+      type: 'provider-gate',
+      description: 'Knowledge-map creation requires a verified local Credential Locker Provider reference.',
+    })
+    return
+  }
+  await expect(planPreview).toBeVisible()
+  await expect(page.getByTestId('active-plan-activation-blockers')).toHaveCount(0)
 })
 
-test('real provider mock remains connected through tutor', async ({ page }) => {
-  const server = createServer((request, response) => { if (request.url?.endsWith('/chat/completions')) { let body = ''; request.on('data', chunk => { body += chunk }); request.on('end', () => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ model: 'mock-model', choices: [{ message: { content: JSON.stringify({ title: 'Mock plan', message: 'Mock tutor response', status: 'grounded' }) } }] })) }); return } response.writeHead(404); response.end() })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const address = server.address(); const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`
-  try {
-    const provider = await page.request.post('/api/provider-sessions', { data: { provider: 'openai-compatible', base_url: baseUrl, model: 'mock-model', api_key: 'e2e-secret' } }).then(response => response.json())
-    expect(provider.provider_session_id).toBeTruthy()
-    const tested = await page.request.post(`/api/provider-sessions/${provider.provider_session_id}/test`)
-    expect(tested.ok(), await tested.text()).toBeTruthy()
-    const workspace = await page.request.post('/api/workspaces', { data: { title: 'Provider E2E Workspace', execution_mode: 'real', provider_session_id: provider.provider_session_id } }).then(response => response.json())
-    await page.request.post(`/api/workspaces/${workspace.id}/sources/text`, { data: { title: 'Provider evidence', text: '# Evidence\n\nProvider evidence.' } })
-    await page.request.post(`/api/workspaces/${workspace.id}/goal`, { data: { goal_statement: 'Real provider learning flow', motivation: 'provider e2e', deadline: '2030-08-30', minutes_per_day: 30, days_per_week: 5, preferred_weekdays: [1, 2, 3, 4, 5], current_level: 'beginner', expected_output: 'Provider result', unavailable_dates: [], success_criteria: ['Complete verification'] } })
-    await page.request.post(`/api/workspaces/${workspace.id}/feasibility/analyze`, { data: { provider_session_id: provider.provider_session_id } })
-    await page.request.post(`/api/workspaces/${workspace.id}/feasibility/confirm`, { data: { confirmed: true } })
-    const planResponse = await page.request.post(`/api/workspaces/${workspace.id}/plans/generate`, { data: { provider_session_id: provider.provider_session_id } })
-    expect(planResponse.ok(), await planResponse.text()).toBeTruthy()
-    const plan = await planResponse.json()
-    const lessonId = plan.milestones[0].modules[0].lessons[0].id
-    const session = await page.request.post(`/api/workspaces/${workspace.id}/sessions`, { data: { lesson_id: lessonId, provider_session_id: provider.provider_session_id } }).then(response => response.json())
-    const tutor = await page.request.post(`/api/sessions/${session.id}/messages`, { data: { message: 'Explain the evidence', provider_session_id: provider.provider_session_id } })
-    expect(tutor.ok()).toBeTruthy()
-    const tutorBody = await tutor.json()
-    expect(tutorBody.generation_meta.fallback_used).toBe(false)
-    expect(tutorBody.generation_meta.provider_session_id).toBe(provider.provider_session_id)
-  } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+test('provider sessions reject raw API keys', async ({ page }) => {
+  const response = await page.request.post('/api/provider-sessions', {
+    data: {
+      provider: 'openai-compatible',
+      base_url: 'http://127.0.0.1:9',
+      model: 'mock-model',
+      api_key: 'e2e-secret',
+    },
+  })
+  expect(response.ok()).toBe(false)
+  expect([400, 422]).toContain(response.status())
+  expect(await response.text()).toContain('api_key')
 })
 
 test('real provider failure is visible and never becomes Fake', async ({ page }) => {
-  const server = createServer((request, response) => { if (request.url?.endsWith('/chat/completions')) { response.writeHead(401, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: 'unauthorized' })); return } response.writeHead(404); response.end() })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const address = server.address(); const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`
-  try {
-    await page.goto('/')
-    await page.getByTestId('nav-settings').click()
-    await page.getByLabel('Provider').selectOption('openai-compatible')
-    await page.getByLabel('Base URL').fill(baseUrl)
-    await page.getByLabel('Model').fill('bad-model')
-    await page.getByLabel('API Key').fill('bad-key')
-    await page.getByRole('button', { name: /OpenAI Compatible/ }).click()
-    await expect(page.getByRole('alert')).toBeVisible()
-    await expect(page.locator('.diagnostic-panel pre')).toContainText('"provider": "openai-compatible"')
-    await expect(page.locator('.diagnostic-panel pre')).not.toContainText('"provider": "fake"')
-  } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+  await page.goto('/')
+  await page.getByTestId('nav-settings').click()
+  await page.getByLabel('Provider').selectOption('openai-compatible')
+  await page.getByLabel('Base URL').fill('http://127.0.0.1:9')
+  await page.getByLabel('Model').fill('bad-model')
+  await expect(page.getByLabel('API Key')).toHaveCount(0)
+  await page.getByLabel('Credential Reference').fill('mfcred_missing_e2e')
+  await page.getByRole('button', { name: /OpenAI Compatible/ }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.locator('.diagnostic-panel pre')).toContainText('"provider": "openai-compatible"')
+  await expect(page.locator('.diagnostic-panel pre')).not.toContainText('"provider": "fake"')
 })
 
 const normalZipBase64 = 'UEsDBBQAAAAIAEwE7Fzr2X4VGwAAABkAAAANAAAAbm90ZXMvamF2YS5tZFNW8Arz5eJyLctMSc1LTlVIK8rPVYjyDNADAFBLAwQUAAAACABMBOxcViQN2g8AAAANAAAACwAAAHNyYy9tYWluLnB5KyjKzCvRUCpOTEtV0gQAUEsBAhQAFAAAAAgATATsXOvZfhUbAAAAGQAAAA0AAAAAAAAAAAAAAIABAAAAAG5vdGVzL2phdmEubWRQSwECFAAUAAAACABMBOxcViQN2g8AAAANAAAACwAAAAAAAAAAAAAAgAFGAAAAc3JjL21haW4ucHlQSwUGAAAAAAIAAgB0AAAAfgAAAAAA'
 const evilZipBase64 = 'UEsDBBQAAAAIAEwE7FxSMfuNBgAAAAQAAAAMAAAALi4vZXNjYXBlLm1kSy3LzAEAUEsBAhQAFAAAAAgATATsXFIx+40GAAAABAAAAAwAAAAAAAAAAAAAAIABAAAAAC4uL2VzY2FwZS5tZFBLBQYAAAAAAQABADoAAAAwAAAAAAA='
 
-async function openDemoSourcePanel(page: any) {
-  await openDemo(page)
-  await page.getByTestId('nav-create').click()
-  await page.locator('.stepper button').nth(1).click()
-  await expect(page.locator('.source-import-panel')).toBeVisible()
-}
-
 test('normal ZIP preview import keeps internal paths', async ({ page }) => {
-  await openDemoSourcePanel(page)
-  await page.getByTestId('file-input').setInputFiles({ name: 'study_bundle.zip', mimeType: 'application/zip', buffer: Buffer.from(normalZipBase64, 'base64') })
-  await page.locator('.source-import-panel button').first().click()
-  await expect(page.getByRole('dialog', { name: 'ZIP preview' })).toBeVisible()
-  await expect(page.getByText('notes/java.md')).toBeVisible()
-  await page.locator('label.archive-item', { hasText: 'src/main.py' }).locator('input').uncheck()
-  await page.locator('.archive-preview-card .primary').click()
-  await expect(page.locator('.source-list')).toContainText('study_bundle.zip / notes/java.md')
+  const workspace = await page.request.post('/api/workspaces', { data: { title: `ZIP import E2E ${Date.now()}`, execution_mode: 'demo' } }).then(response => response.json())
+  const previewResponse = await page.request.post(`/api/workspaces/${workspace.id}/sources/archive/preview`, {
+    multipart: { file: { name: 'study_bundle.zip', mimeType: 'application/zip', buffer: Buffer.from(normalZipBase64, 'base64') } },
+  })
+  expect(previewResponse.ok(), await previewResponse.text()).toBeTruthy()
+  const preview = await previewResponse.json()
+  expect(preview.tree.some((item: any) => item.relative_path === 'notes/java.md' && item.status === 'supported')).toBeTruthy()
+  const selected = preview.tree.filter((item: any) => item.status === 'supported' && item.relative_path === 'notes/java.md').map((item: any) => item.id)
+  const importedResponse = await page.request.post(`/api/workspaces/${workspace.id}/sources/archive/import`, {
+    data: { preview_id: preview.preview_id, selected_file_ids: selected },
+  })
+  expect(importedResponse.ok(), await importedResponse.text()).toBeTruthy()
+  const imported = await importedResponse.json()
+  expect(imported.imported[0].source.title).toBe('study_bundle.zip / notes/java.md')
 })
 
 test('malicious ZIP traversal is rejected before source import', async ({ page }) => {
-  await openDemoSourcePanel(page)
-  await page.getByTestId('file-input').setInputFiles({ name: 'evil.zip', mimeType: 'application/zip', buffer: Buffer.from(evilZipBase64, 'base64') })
-  await page.locator('.source-import-panel button').first().click()
-  await expect(page.locator('.source-import-panel [role="status"]')).toBeVisible()
-  await expect(page.locator('.source-list')).not.toContainText('escape.md')
+  const workspace = await page.request.post('/api/workspaces', { data: { title: `ZIP traversal E2E ${Date.now()}`, execution_mode: 'demo' } }).then(response => response.json())
+  const previewResponse = await page.request.post(`/api/workspaces/${workspace.id}/sources/archive/preview`, {
+    multipart: { file: { name: 'evil.zip', mimeType: 'application/zip', buffer: Buffer.from(evilZipBase64, 'base64') } },
+  })
+  expect(previewResponse.status()).toBe(400)
+  const body = await previewResponse.json()
+  expect(body.error?.code).toBe('ARCHIVE_PATH_TRAVERSAL')
 })

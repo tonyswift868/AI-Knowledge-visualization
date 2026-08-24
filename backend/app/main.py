@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import io
+import inspect
 import json
 import logging
 import mimetypes
 import os
 import re
 import time
-import zipfile
 from threading import Lock
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -25,18 +24,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import db
-from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, TextSourceIn, UrlSourceIn, WorkspaceIn, WorkspacePatch
+from .schemas import ArchiveImportIn, FeasibilityConfirmIn, GoalPatch, GoalProfile, GoalOut, LocalSourceIn, ProviderSessionCreateIn, ProviderTestIn, SourceSummaryOut, TextSourceIn, UrlSourceIn, WorkspaceDetailOut, WorkspaceIn, WorkspaceOut, WorkspacePatch
 from .services import analyze, available_days, build_plan, create_source, inspect_local, parse_text, safe_path, scene_for_task, source_detail, tutor, uid, normalize
 from .orm import init_orm, upgrade_orm_schema
-from .ingestion_secure import create_preview, consume_preview, parse_file, chunks as secure_chunks
+from .ingestion_secure import cleanup_preview as cleanup_local_preview, create_preview, consume_preview, parse_file, chunks as secure_chunks
 from .provider_service import get_provider, parse_conversational_payload, ProviderError
 from .retrieval_service import RetrievalService
 from .grounding_service import critic as grounding_critic
 from .job_service import create_job, set_job
 from .url_fetcher_secure import fetch_safe
 from .core_errors import app_error_body, AppError
+from .core_security import FileIdentity
 from .security_redaction import redact
-from .provider_runtime import credential_owned_by, create_provider_session, create_verified_demo_session, delete_provider_credential, delete_provider_session, generation_meta, get_provider_session, latest_verified_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
+from .provider_runtime import create_provider_session, create_verified_demo_session, delete_provider_credential, delete_provider_session, generation_meta, get_provider_session, latest_verified_provider_session, provider_for_session, public_session, require_provider_session, test_provider_session
 from .archive_import import ArchiveError, cleanup_expired_previews, create_preview as create_archive_preview, discard_preview, import_preview as import_archive_preview
 from .story_pack import StoryPackError, list_story_packs, load_story_pack, public_character, public_scene, validate_story_pack
 from .narrative_runtime import NarrativeRuntimeError, available_actions as narrative_available_actions, campaign_history, campaign_message, choose_campaign, create_campaign, get_campaign, ingest_learning_event, list_campaigns, advance_campaign, publish_learning_event
@@ -45,28 +45,31 @@ from . import catalog_repository
 from .learning_run import LearningRunError, add_run_message, create_learning_run, get_learning_run, request_hint, submit_learning_run, submit_quick_quiz
 from .adaptive_narrative import AdaptiveNarrativeError, activate_blueprint, adaptive_context, analyze_task_profile, compile_adaptation, generate_dynamic_scene, generate_scene_contract, get_blueprint, get_current_contract, list_artifacts, list_contracts, list_story_objects
 from .expedition_service import ExpeditionError, activate_lineup, assets as expedition_asset, awaken as expedition_awaken, battle as expedition_battle, challenge_stage, claim_milestone, claim_stage, delete_lineup, equipment as expedition_equipment, equip_equipment, equip_pet, get_ledger as expedition_ledger, get_profile as expedition_profile, gacha_banners, gacha_history, gacha_pull, hero_detail, lineups as expedition_lineups, list_heroes, milestones as expedition_milestones, pets as expedition_pets, reset_equipment, reset_slot, save_lineup, star_up, stage_definition, stages as expedition_stages, training_slots, unequip_equipment, upgrade_equipment, upgrade_slot
-from .expedition_art_pack import ArtPackError, PACK_ROOT, activate_pack, active_pack, asset_file as resolve_expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
-from .teacher_avatar_registry import TeacherAvatarError, import_model as import_teacher_avatar, import_local_koikatsu_card as import_local_koikatsu_teacher_avatar, import_model_batch as import_teacher_avatar_batch, list_models as list_teacher_avatars, list_kks_character_packs, resolve_kks_character_pack, resolve_runtime_pack_asset, resolve_runtime_pack_manifest, resolve_model_file as resolve_teacher_avatar_file, today_model as todays_teacher_avatar, update_morph as update_teacher_avatar_morph
+from .expedition_art_pack import ArtPackError, MAX_PACK_BYTES, PACK_ROOT, activate_pack, active_pack, asset_file as resolve_expedition_art_asset_file, asset_public as expedition_art_asset_public, hero_assets as expedition_hero_assets, install_preview as install_expedition_art_preview, list_packs as list_expedition_art_packs, preview_bytes as preview_expedition_art_bytes, review_asset as review_expedition_art_asset, rollback_pack
+from .teacher_avatar_registry import MAX_BATCH_BYTES, MAX_BATCH_MODELS, MAX_KOIKATSU_EXPORT_BYTES, MAX_MODEL_BYTES, TeacherAvatarError, import_model as import_teacher_avatar, import_local_koikatsu_card as import_local_koikatsu_teacher_avatar, import_model_batch as import_teacher_avatar_batch, list_models as list_teacher_avatars, list_kks_character_packs, resolve_kks_character_pack, resolve_runtime_pack_asset, resolve_runtime_pack_manifest, resolve_model_file as resolve_teacher_avatar_file, today_model as todays_teacher_avatar, update_morph as update_teacher_avatar_morph
 from .teacher_avatar_cards import validate_card as validate_teacher_avatar_card
-from .koikatsu_card import KoikatsuCardError, inspect_koikatsu_sunshine_card, rewrite_koikatsu_sunshine_card
+from .koikatsu_card import MAX_KKS_CARD_BYTES, KoikatsuCardError, inspect_koikatsu_sunshine_card, rewrite_koikatsu_sunshine_card
 from .koikatsu_teacher_registry import KoikatsuTeacherError, default_card as default_koikatsu_card, list_teachers as list_koikatsu_teachers, local_cards as list_local_koikatsu_cards, local_card_resources, resolve_card as resolve_koikatsu_teacher_card, resolve_local_card as resolve_local_koikatsu_card, resolve_local_export_asset, resolve_runtime_asset, resolve_shared_base_asset, resolve_shared_runtime_asset, resolve_web_model_asset, runtime_card_manifest, save_teacher as save_koikatsu_teacher, shared_neutral_template_manifest, validate_runtime_pack_head_contract
 from .teacher_avatar_card_presets import list_card_presets as list_teacher_avatar_card_presets
 from .teacher_avatar_presets import activate_preset as activate_teacher_avatar_preset, list_presets as list_teacher_avatar_presets, resolve_preview as resolve_teacher_avatar_preset_preview
-from .spine_teacher_registry import SpineTeacherError, active_teacher as active_spine_teacher, import_package as import_spine_teacher_package, public_manifest as spine_teacher_manifest, resolve_asset as resolve_spine_teacher_asset
+from .spine_teacher_registry import MAX_ARCHIVE_BYTES as MAX_SPINE_ARCHIVE_BYTES, SpineTeacherError, active_teacher as active_spine_teacher, import_package as import_spine_teacher_package, public_manifest as spine_teacher_manifest, resolve_asset as resolve_spine_teacher_asset
 from .active_teaching import (
     initialize_active_teaching_storage,
     router as active_teaching_router,
 )
+from .upload_limits import UploadLimitExceeded, active_upload_root, read_upload_limited
 from .focus_monitoring import router as focus_monitoring_router
 from .generic_knowledge_api import (
     recover_interrupted_knowledge_map_jobs,
     router as generic_knowledge_router,
 )
+from .video_collection_api import (
+    recover_interrupted_video_collection_jobs,
+    router as video_collection_router,
+)
 from .code_practice import router as code_practice_router
 from .casual_chat import router as casual_chat_router
 from .teacher_voice_pack import router as teacher_voice_pack_router
-from .local_auth_api import router as local_auth_router
-from . import local_auth
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -75,6 +78,11 @@ from .qwen_custom_private_runtime import shutdown_private_qwen_runtime
 from .conversion_adapters import ConversionRegistry, ConversionSource
 from .knowledge_policy import CONVERSION_POLICY, PROVIDER_POLICY
 from .open_search import OpenSearchError, search_web
+from .teacher_visual_assets import (
+    PRIVATE_TEACHER_ROUTE,
+    private_teacher_asset_available,
+    private_teacher_asset_root,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = Path(
@@ -182,6 +190,7 @@ async def lifespan(_app):
     init_orm()
     initialize_active_teaching_storage()
     recover_interrupted_knowledge_map_jobs()
+    recover_interrupted_video_collection_jobs()
     cleanup_expired_previews()
     # Missing or invalid engine release material is recorded fail-closed. The
     # bootstrap accepts only the fixed registry -> root-signed policy -> leaf
@@ -250,10 +259,10 @@ app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
 app.include_router(active_teaching_router)
 app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)
+app.include_router(video_collection_router)
 app.include_router(code_practice_router)
 app.include_router(casual_chat_router)
 app.include_router(teacher_voice_pack_router)
-app.include_router(local_auth_router)
 _configured_origins = [
     item.strip().rstrip("/")
     for item in os.getenv(
@@ -271,136 +280,11 @@ app.add_middleware(
 )
 
 
-def _ui_review_mode_enabled() -> bool:
-    """Use the cloned first account as context only for the marked UI copy."""
-    return os.getenv("MENTORFLOW_UI_REVIEW_MODE", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
-def _local_data_mode_enabled() -> bool:
-    """Use the local database without an account session when explicitly set."""
-    return os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     import uuid
     request.state.request_id=uuid.uuid4().hex
-    auth_required = os.getenv("MENTORFLOW_AUTH_REQUIRED", "").strip() == "1"
-    local_data_mode = (_local_data_mode_enabled() or _ui_review_mode_enabled()) and not auth_required
-    if local_data_mode:
-        # In standalone mode the local data directory is the user's identity.
-        # If the migrated database already has an owner, use that owner so
-        # existing workspace scoping remains intact.  A fresh database has no
-        # account row yet, so it stays intentionally unscoped until data is
-        # created; no synthetic account is written to SQLite.
-        user_id = local_auth.first_user_id()
-        if user_id:
-            request.state.local_user = {
-                "user_id": user_id,
-                "username": "ui-review" if _ui_review_mode_enabled() else "local-data",
-                # UI-review is an internal launcher flag, not a user identity.
-                # The packaged local mode must present the same neutral space
-                # label in every API response, including /auth/me.
-                "display_name": "本地学习空间",
-                "expires_at": "2099-01-01T00:00:00+00:00",
-            }
-    if auth_required:
-        public_paths = {
-            "/api/health",
-            "/api/auth/status",
-            "/api/auth/register",
-            "/api/auth/login",
-            "/api/auth/password-reset/request",
-            "/api/auth/password-reset/confirm",
-        }
-        if request.url.path.startswith("/api/") and request.url.path not in public_paths:
-            authorization = request.headers.get("authorization", "")
-            bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
-            token = request.cookies.get("mentorflow_session", "") or bearer
-            user = local_auth.authenticate(token, touch=True)
-            if not user:
-                return JSONResponse(
-                    status_code=401,
-                    content=app_error_body(
-                        "AUTH_REQUIRED",
-                        "请先登录后再使用 MentorFlow。",
-                        {},
-                        request.state.request_id,
-                    ),
-                )
-            request.state.local_user = user
-            workspace_id = None
-            direct_match = re.match(
-                r"^/api/(?:active-teaching/)?workspaces/([^/]+)",
-                request.url.path,
-            )
-            if direct_match:
-                workspace_id = direct_match.group(1)
-            else:
-                workspace_id = local_auth.resolve_resource_workspace(request.url.path)
-            reservation_created = False
-            if workspace_id:
-                owner_id = local_auth.workspace_owner_id(workspace_id)
-                if owner_id and owner_id != user["user_id"]:
-                    return JSONResponse(
-                        status_code=403,
-                        content=app_error_body(
-                            "WORKSPACE_ACCESS_DENIED",
-                            "这个学习空间属于其他账户。",
-                            {},
-                            request.state.request_id,
-                        ),
-                    )
-                if not owner_id and local_auth.workspace_exists(workspace_id):
-                    return JSONResponse(
-                        status_code=403,
-                        content=app_error_body(
-                            "WORKSPACE_OWNERSHIP_REQUIRED",
-                            "现有学习空间尚未归属当前账户。",
-                            {},
-                            request.state.request_id,
-                        ),
-                    )
-                if (
-                    direct_match
-                    and not owner_id
-                    and request.method in {"POST", "PUT", "PATCH"}
-                ):
-                    try:
-                        reservation_created = local_auth.claim_workspace(
-                            user["user_id"],
-                            workspace_id,
-                            claim_source="request_reservation",
-                        )
-                    except local_auth.LocalAuthError:
-                        return JSONResponse(
-                            status_code=403,
-                            content=app_error_body(
-                                "WORKSPACE_ACCESS_DENIED",
-                                "这个学习空间属于其他账户。",
-                                {},
-                                request.state.request_id,
-                            ),
-                        )
-            request.state.workspace_id = workspace_id
-            request.state.workspace_reservation_created = reservation_created
     response=await call_next(request)
-    if (
-        getattr(request.state, "workspace_reservation_created", False)
-        and response.status_code >= 400
-    ):
-        local_auth.release_empty_workspace_claim(
-            request.state.local_user["user_id"],
-            request.state.workspace_id,
-        )
     response.headers['X-Request-ID']=request.state.request_id
     return response
 
@@ -449,31 +333,9 @@ def fail(code: str, message: str, status: int = 400, details: dict | None = None
 
 
 def _preset_scope(request: Request) -> tuple[Path, Path]:
-    """Return the approved root and settings file for the current account.
-
-    The first local account keeps the pre-authentication preset directory so
-    existing user data remains visible.  Every later account receives a new
-    directory.  When authentication is disabled (tests and legacy API use),
-    the old shared directory is retained for backwards compatibility.
-    """
-
+    """Return the one approved preset root for the local data store."""
     default_root = (PRESET_SETTINGS_FILE.parent / "presets").resolve()
-    user = getattr(request.state, "local_user", None)
-    if not user:
-        return default_root, PRESET_SETTINGS_FILE
-    user_id = str(user.get("user_id") or "").strip()
-    try:
-        first_user = local_auth.first_user_id()
-    except Exception:
-        first_user = None
-    if user_id and first_user and user_id == first_user:
-        return default_root, PRESET_SETTINGS_FILE
-    # IDs are generated by local_auth and do not contain path separators.  The
-    # defensive character check keeps a malformed request from becoming a
-    # filesystem path even if a future auth backend supplies another ID shape.
-    safe_user_id = re.sub(r"[^A-Za-z0-9_.-]", "_", user_id) or "unknown"
-    account_root = (default_root / "users" / safe_user_id).resolve()
-    return account_root, account_root / "preset_settings.json"
+    return default_root, PRESET_SETTINGS_FILE
 
 
 def preset_directory(request: Request, requested: str | None = None) -> Path:
@@ -558,12 +420,6 @@ def session_id_from(request: Request | None, body: dict[str, Any] | None) -> str
     return (body or {}).get("provider_session_id") or (request.headers.get("X-Provider-Session-ID") if request else None)
 
 
-def request_user_id(request: Request | None) -> str | None:
-    user = getattr(request.state, "local_user", None) if request is not None else None
-    user_id = str((user or {}).get("user_id") or "").strip()
-    return user_id or None
-
-
 def provider_for_workspace(workspace_id: str, request: Request | None = None, body: dict[str, Any] | None = None):
     ws = require_workspace(workspace_id)
     if ws.get("execution_mode", "demo") == "demo":
@@ -571,7 +427,6 @@ def provider_for_workspace(workspace_id: str, request: Request | None = None, bo
     try:
         session = require_provider_session(
             session_id_from(request, body),
-            owner_user_id=request_user_id(request),
         )
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
@@ -659,17 +514,13 @@ def health():
     return {"status": "ok", "service": "MentorFlow", "demo_mode": True, "catalog": catalog_repository.health()}
 
 
-@app.get("/api/workspaces")
-def list_workspaces(request: Request):
+@app.get("/api/workspaces", response_model=list[WorkspaceOut], response_model_exclude_unset=True)
+def list_workspaces():
     items = [dict(x) for x in db.rows("workspaces", "status", "active")]
-    user = getattr(request.state, "local_user", None)
-    if user:
-        owned = set(local_auth.owned_workspace_ids(user["user_id"]))
-        items = [item for item in items if str(item.get("id")) in owned]
     return sorted(items, key=lambda item: str(item.get("created_at") or ""), reverse=True)
 
 
-@app.post("/api/workspaces")
+@app.post("/api/workspaces", response_model=WorkspaceOut, response_model_exclude_unset=True)
 def create_workspace(body: WorkspaceIn, request: Request):
     provider_name, provider_model = ("fake", "fake") if body.execution_mode == "demo" else ("", "")
     if body.provider_session_id:
@@ -684,17 +535,9 @@ def create_workspace(body: WorkspaceIn, request: Request):
                 fail("PROVIDER_SESSION_REAL_REQUIRED", "真实 Workspace 不能使用 Fake Provider")
             provider_name, provider_model = provider_session.provider, provider_session.model
     item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "persona_prompt": body.persona_prompt.strip(), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": db.now(), "updated_at": db.now()}
-    user = getattr(request.state, "local_user", None)
-    claimed = False
-    if user:
-        claimed = local_auth.claim_workspace(
-            user["user_id"], item["id"], claim_source="workspace_create"
-        )
     try:
         with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,persona_prompt,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:persona_prompt,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
     except Exception:
-        if claimed and user:
-            local_auth.release_empty_workspace_claim(user["user_id"], item["id"])
         raise
     try:
         from .orm import SessionLocal, WorkspaceORM
@@ -704,10 +547,18 @@ def create_workspace(body: WorkspaceIn, request: Request):
     return item
 
 
-@app.get("/api/workspaces/{workspace_id}")
+@app.get("/api/workspaces/{workspace_id}", response_model=WorkspaceDetailOut, response_model_exclude_unset=True)
 def get_workspace(workspace_id: str):
     ws = require_workspace(workspace_id)
-    ws["sources"] = [{**{k:v for k,v in dict(x).items() if k != "text"}, "chunk_count":len(db.rows("chunks","source_id",x["id"]))} for x in db.rows("sources", "workspace_id", workspace_id)]
+    ws["sources"] = [
+        _public_source(
+            {
+                **{k: v for k, v in dict(x).items() if k != "text"},
+                "chunk_count": len(db.rows("chunks", "source_id", x["id"])),
+            }
+        )
+        for x in db.rows("sources", "workspace_id", workspace_id)
+    ]
     goal = db.row("goals", "workspace_id", workspace_id); ws["goal"] = payload(goal)
     assessment = db.rows("assessments", "workspace_id", workspace_id); ws["feasibility"] = payload(assessment[-1]) if assessment else None
     plans = db.rows("plans", "workspace_id", workspace_id); ws["plans"] = [payload(x) for x in plans]
@@ -766,16 +617,231 @@ def delete_workspace(workspace_id: str):
 
 @app.post("/api/local-sources/preview")
 def local_preview(body: LocalSourceIn):
-    try: return create_preview(body.path, body.allowed_root)
-    except (ValueError, OSError) as exc: fail("LOCAL_PATH_REJECTED", str(exc))
+    try:
+        return _public_local_preview(create_preview(body.path, body.allowed_root))
+    except (ValueError, OSError) as exc:
+        # Validation normally uses stable messages, but keep this boundary
+        # safe if a filesystem implementation includes the requested path in
+        # an exception (for example a temporary directory named by a user).
+        # The full exception remains in internal logs for diagnosis; the HTTP
+        # contract only exposes stable, path-free messages.
+        _log_local_failure("local preview", exc)
+        fail(
+            "LOCAL_PATH_REJECTED",
+            _public_local_error(exc, operation="preview"),
+        )
 
 
-@app.get("/api/workspaces/{workspace_id}/sources")
+_PUBLIC_PARSE_ERROR_OCR = "当前版本未启用 OCR，不生成假内容"
+_PUBLIC_PARSE_ERROR_GENERIC = "本地文件解析失败"
+_PUBLIC_LOCAL_PREVIEW_ERROR = "本地路径无法读取"
+_PUBLIC_LOCAL_IMPORT_ERROR = "本地文件导入失败，请重新预览后重试"
+_STABLE_LOCAL_PREVIEW_ERRORS = frozenset(
+    {
+        "路径必须位于允许根目录内",
+        "允许的根目录不存在或不是目录",
+        "拒绝使用系统目录或依赖目录作为允许根目录",
+        "拒绝盘符根目录",
+        "拒绝整个用户主目录",
+        "拒绝系统、依赖或敏感目录",
+        "没有可导入的支持格式文件",
+    }
+)
+_STABLE_LOCAL_IMPORT_ERRORS = frozenset(
+    {
+        "必须选择至少一个文件",
+        "Preview 不存在或已过期",
+        "Preview 已过期",
+        "selected_file_ids 不属于当前 Preview",
+        "Preview 文件已移动或逃逸允许目录",
+        "Preview 文件已发生变化，请重新预览",
+    }
+)
+
+
+def _log_local_failure(operation: str, exc: BaseException) -> None:
+    """Retain filesystem diagnostics without making them a public response."""
+
+    _LOGGER.warning("%s failed: %s", operation, exc, exc_info=True)
+
+
+def _public_local_error(exc: BaseException, *, operation: str) -> str:
+    """Return a stable local-import message that cannot contain a path."""
+
+    if isinstance(exc, OSError):
+        return (
+            _PUBLIC_LOCAL_PREVIEW_ERROR
+            if operation == "preview"
+            else _PUBLIC_LOCAL_IMPORT_ERROR
+        )
+    message = str(exc)
+    stable = (
+        _STABLE_LOCAL_PREVIEW_ERRORS
+        if operation == "preview"
+        else _STABLE_LOCAL_IMPORT_ERRORS
+    )
+    return message if message in stable else (
+        _PUBLIC_LOCAL_PREVIEW_ERROR
+        if operation == "preview"
+        else _PUBLIC_LOCAL_IMPORT_ERROR
+    )
+
+
+def _public_filename(value: Any, *, fallback: str = "") -> str:
+    """Return only a safe display basename for a stored/uploaded filename."""
+
+    if value is None:
+        return fallback
+    raw = str(value).replace("\x00", "").strip()
+    if not raw:
+        return fallback
+    # Handle both Windows and POSIX separators regardless of the host running
+    # the API.  A drive prefix is storage syntax, not a useful display name.
+    basename = raw.rstrip("/\\").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if re.match(r"^[A-Za-z]:", basename):
+        basename = basename[2:].lstrip("/\\")
+    if basename in {"", ".", ".."}:
+        return fallback
+    return basename
+
+
+def _public_parse_error(value: Any) -> str:
+    """Keep only stable parse outcomes; never expose parser exception text."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw == _PUBLIC_PARSE_ERROR_OCR:
+        return _PUBLIC_PARSE_ERROR_OCR
+    if raw == _PUBLIC_PARSE_ERROR_GENERIC:
+        return _PUBLIC_PARSE_ERROR_GENERIC
+    return _PUBLIC_PARSE_ERROR_GENERIC
+
+
+def _public_source(source: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project a persisted source without exposing storage-only metadata."""
+
+    if source is None:
+        return None
+    output = dict(source)
+    output.pop("local_path", None)
+    if "original_filename" in output:
+        output["original_filename"] = _public_filename(output.get("original_filename"))
+    if "parse_error" in output:
+        output["parse_error"] = _public_parse_error(output.get("parse_error"))
+    # Legacy upload/local-file rows historically copied the storage path into
+    # ``title`` as well.  Preserve normal user titles, but make those two
+    # file-backed source types safe for old rows.
+    if output.get("source_type") in {"upload", "local_file"} and output.get("title"):
+        output["title"] = _public_filename(output.get("title"), fallback="未命名文件")
+    if output.get("source_type") in {"archive", "archive_file"}:
+        if "parent_archive_name" in output:
+            output["parent_archive_name"] = _public_filename(
+                output.get("parent_archive_name"), fallback="study_bundle.zip"
+            )
+        if "original_filename" in output:
+            output["original_filename"] = _public_filename(
+                output.get("original_filename"), fallback="未命名文件"
+            )
+        title = str(output.get("title") or "")
+        if output.get("source_type") == "archive_file" and " / " in title:
+            archive_name, relative = title.split(" / ", 1)
+            relative = "/".join(
+                part
+                for part in relative.replace("\\", "/").split("/")
+                if part not in {"", ".", ".."}
+            )
+            if not relative or Path(relative).is_absolute() or ":" in relative[:3]:
+                relative = _public_filename(relative, fallback="未命名文件")
+            output["title"] = f"{_public_filename(archive_name, fallback='study_bundle.zip')} / {relative}"
+        elif title:
+            output["title"] = _public_filename(title, fallback="study_bundle.zip")
+    return output
+
+
+def _public_local_preview(preview: dict[str, Any]) -> dict[str, Any]:
+    """Project a local preview with relative labels and opaque file IDs only.
+
+    ``create_preview`` intentionally retains absolute paths in its short-lived
+    database record so the confirmed import can revalidate and read the files.
+    That representation is internal; clients only need the stable file ID and
+    a display-safe path relative to the user-selected root.
+    """
+
+    root_value = str(preview.get("root") or "")
+    try:
+        root = Path(os.path.abspath(os.fspath(Path(root_value).expanduser())))
+    except (OSError, RuntimeError, TypeError, ValueError):
+        root = None
+
+    def project_item(item: Any) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            return {"id": str(item)}
+        output = {
+            key: value
+            for key, value in item.items()
+            if key not in {"path", "snapshot_path", "parse_path", "identity", "snapshot_identity"}
+        }
+        if "name" in output:
+            output["name"] = _public_filename(output.get("name"))
+        if "reason" in output:
+            # Preserve stable validation reasons while collapsing filesystem
+            # errors that may contain an absolute path.
+            output["reason"] = (
+                str(output["reason"])
+                if str(output["reason"]) in {
+                    "超过目录深度限制",
+                    "不支持的文件类型",
+                    "超过单文件大小限制",
+                    "超过导入数量或总大小限制",
+                    "超过数量或总大小限制",
+                    "敏感或隐藏文件/目录",
+                    "拒绝 symlink/junction",
+                    "拒绝硬链接或特殊文件",
+                    "拒绝特殊文件",
+                    "文件已发生变化，请重新预览",
+                }
+                else "文件无法读取"
+            )
+        raw_path = item.get("path")
+        relative = item.get("relative_path")
+        if root is not None and raw_path:
+            try:
+                raw_candidate = Path(os.path.abspath(os.fspath(Path(str(raw_path)).expanduser())))
+                relative = str(raw_candidate.relative_to(root))
+            except (OSError, RuntimeError, ValueError):
+                relative = None
+        if relative:
+            # Normalize for browser clients and ensure a malformed internal
+            # value cannot reintroduce an absolute path.
+            relative_path = str(relative).replace("\\", "/")
+            if (
+                Path(relative_path).is_absolute()
+                or ":" in relative_path[:3]
+                or any(part == ".." for part in relative_path.split("/"))
+            ):
+                relative_path = _public_filename(relative_path)
+            output["relative_path"] = relative_path
+        elif item.get("name"):
+            output["relative_path"] = _public_filename(item.get("name"))
+        return output
+
+    output = {
+        key: value
+        for key, value in preview.items()
+        if key not in {"root", "files", "rejected"}
+    }
+    output["files"] = [project_item(item) for item in preview.get("files", [])]
+    output["rejected"] = [project_item(item) for item in preview.get("rejected", [])]
+    return output
+
+
+@app.get("/api/workspaces/{workspace_id}/sources", response_model=list[SourceSummaryOut], response_model_exclude_unset=True)
 def list_sources(workspace_id: str):
     require_workspace(workspace_id)
     items=[]
     for row in db.rows("sources", "workspace_id", workspace_id):
-        item=dict(row); item.pop("text",None); item["chunk_count"]=len(db.rows("chunks","source_id",item["id"])); items.append(item)
+        item=dict(row); item.pop("text",None); item["chunk_count"]=len(db.rows("chunks","source_id",item["id"])); items.append(_public_source(item))
     return items
 
 
@@ -783,14 +849,14 @@ def list_sources(workspace_id: str):
 def get_source(source_id: str):
     source = source_detail(source_id)
     if not source: fail("SOURCE_NOT_FOUND", "资料不存在", 404)
-    return source
+    return _public_source(source)
 
 
 @app.post("/api/workspaces/{workspace_id}/sources/text")
 def add_text_source(workspace_id: str, body: TextSourceIn):
     require_workspace(workspace_id); jid=create_job(workspace_id,"source_import"); set_job(jid,status="running",stage="chunking",progress=50,message="Indexing text")
     try:
-        created=create_source(workspace_id, body.title, "text", body.text, trust_level=body.trust_level); result=source_detail(created["id"]); result["job_id"]=jid; set_job(jid,status="succeeded",stage="saving",progress=100,message="Source indexed"); return result
+        created=create_source(workspace_id, body.title, "text", body.text, trust_level=body.trust_level); result=_public_source(source_detail(created["id"])); result["job_id"]=jid; set_job(jid,status="succeeded",stage="saving",progress=100,message="Source indexed"); return result
     except ValueError as exc:
         set_job(jid,status="failed",progress=100,error=str(exc),message="Duplicate source"); fail("DUPLICATE_SOURCE",str(exc),409)
     except Exception as exc:
@@ -805,16 +871,35 @@ def add_local_source(workspace_id: str, body: LocalSourceIn):
         set_job(jid,status="failed",progress=100,error="preview and selected files required",message="Local import rejected")
         fail("LOCAL_PREVIEW_REQUIRED", "必须先预览并确认至少一个文件")
     try: selected = consume_preview(body.preview_id, body.selected_file_ids)
-    except (ValueError, OSError) as exc: fail("LOCAL_IMPORT_REJECTED", str(exc))
+    except (ValueError, OSError) as exc:
+        _log_local_failure("local import preview", exc)
+        message = _public_local_error(exc, operation="import")
+        set_job(jid,status="failed",progress=100,error=message,message="Local import rejected")
+        fail("LOCAL_IMPORT_REJECTED", message)
     imported = []
-    for item in selected:
-        try:
-            parts,status,pages=parse_file(Path(item["path"]))
-            text='\n\n'.join(x['text'] for x in parts)
-            if status=='needs_ocr': imported.append({"title":Path(item["path"]).name,"status":"needs_ocr","parse_error":"当前版本未启用 OCR，不生成假内容"}); continue
-            imported.append(source_detail(create_source(workspace_id, Path(item["path"]).name, "local_file", text, original_filename=Path(item["path"]).name, local_path=item["path"], page_count=pages, trust_level=body.trust_level, parts=parts)["id"]))
-        except Exception as exc:
-            imported.append({"title": Path(item["path"]).name, "status": "error", "parse_error": str(exc)})
+    try:
+        for item in selected:
+            display_name = _public_filename(item.get("path"), fallback="未命名文件")
+            parse_path = item.get("parse_path") or item.get("path")
+            try:
+                # consume_preview pins the user-owned path and supplies an
+                # exclusive private snapshot.  The parser therefore never
+                # reopens a path that can be swapped by the caller.
+                snapshot_identity = FileIdentity.from_dict(item.get("snapshot_identity"))
+                if snapshot_identity is not None and "expected_identity" in inspect.signature(parse_file).parameters:
+                    parts,status,pages=parse_file(Path(parse_path), expected_identity=snapshot_identity)
+                else:
+                    parts,status,pages=parse_file(Path(parse_path))
+                text='\n\n'.join(x['text'] for x in parts)
+                if status=='needs_ocr': imported.append({"title":display_name,"status":"needs_ocr","parse_error":_PUBLIC_PARSE_ERROR_OCR}); continue
+                imported.append(_public_source(source_detail(create_source(workspace_id, display_name, "local_file", text, original_filename=display_name, local_path=item["path"], page_count=pages, trust_level=body.trust_level, parts=parts)["id"])))
+            except Exception as exc:
+                # Parsing failures are intentionally generic; the selected file's
+                # internal absolute path is not part of the public error contract.
+                _log_local_failure("local file parse", exc)
+                imported.append({"title": display_name, "status": "error", "parse_error": _PUBLIC_PARSE_ERROR_GENERIC})
+    finally:
+        cleanup_local_preview(body.preview_id)
     set_job(jid,status="succeeded",stage="saving",progress=100,message="Local sources indexed")
     return {"preview_id":body.preview_id,"job_id":jid,"sources":imported}
 
@@ -823,11 +908,17 @@ def add_local_source(workspace_id: str, body: LocalSourceIn):
 async def upload_source(workspace_id: str, file: UploadFile = File(...)):
     require_workspace(workspace_id)
     jid=create_job(workspace_id,"source_import"); set_job(jid,status="running",stage="validating",progress=10,message="Validating upload")
-    filename = Path(file.filename or "material.bin").name
-    data = await file.read(CONVERSION_POLICY.maximum_input_bytes + 1)
-    if len(data) > CONVERSION_POLICY.maximum_input_bytes:
+    filename = _public_filename(file.filename, fallback="material.bin")
+    try:
+        data = await read_upload_limited(file, CONVERSION_POLICY.maximum_input_bytes)
+    except UploadLimitExceeded as exc:
         set_job(jid,status="failed",stage="validating",progress=100,error="INPUT_BUDGET_EXCEEDED",message="Upload rejected")
-        fail("INPUT_BUDGET_EXCEEDED", "文件超过能力注册表配置的单文件限制", 413)
+        fail(
+            "INPUT_BUDGET_EXCEEDED",
+            "文件超过能力注册表配置的单文件限制",
+            413,
+            exc.details,
+        )
     conversion = ConversionRegistry().convert_safe(
         ConversionSource(
             name=filename,
@@ -845,7 +936,7 @@ async def upload_source(workspace_id: str, file: UploadFile = File(...)):
         set_job(jid,status="failed",stage="parsing",progress=100,error=code,message="Parse failed")
         fail(code, message, status, failure.details if failure else {})
     suffix = Path(filename).suffix.lower()
-    dest = Path(__file__).resolve().parents[2] / "data" / "uploads" / f"{uuid4().hex}{suffix}"; dest.parent.mkdir(parents=True, exist_ok=True)
+    dest = active_upload_root() / "legacy-sources" / f"{uuid4().hex}{suffix}"; dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     parts = [
         {
@@ -859,11 +950,47 @@ async def upload_source(workspace_id: str, file: UploadFile = File(...)):
     pages = conversion.metadata.page_count
     text='\n\n'.join(part["text"] for part in parts)
     try:
-        result=source_detail(create_source(workspace_id, filename, "upload", text, original_filename=filename, local_path=str(dest), page_count=pages, parts=parts)["id"]); result["job_id"]=jid; result["conversion"]={"adapter":conversion.metadata.adapter,"adapter_version":conversion.metadata.adapter_version,"warnings":list(conversion.metadata.warnings)}; set_job(jid,status="succeeded",stage="saving",progress=100,message="Upload indexed"); return result
+        result=_public_source(source_detail(create_source(workspace_id, filename, "upload", text, original_filename=filename, local_path=str(dest), page_count=pages, parts=parts)["id"])); result["job_id"]=jid; result["conversion"]={"adapter":conversion.metadata.adapter,"adapter_version":conversion.metadata.adapter_version,"warnings":list(conversion.metadata.warnings)}; set_job(jid,status="succeeded",stage="saving",progress=100,message="Upload indexed"); return result
     except ValueError as exc:
         dest.unlink(missing_ok=True)
         set_job(jid,status="failed",progress=100,error=str(exc),message="Duplicate source")
         fail("DUPLICATE_SOURCE", str(exc), 409)
+
+
+_PUBLIC_ARCHIVE_PREVIEW_FIELDS = (
+    "id",
+    "preview_id",
+    "workspace_id",
+    "archive_name",
+    "archive_hash",
+    "archive_size_bytes",
+    "expanded_size_bytes",
+    "file_count",
+    "expires_at",
+    "created_at",
+    "tree",
+    "supported_count",
+    "ignored_count",
+    "rejected_count",
+    "warnings",
+)
+
+
+def _public_archive_preview(preview: dict[str, Any]) -> dict[str, Any]:
+    """Project archive preview metadata without exposing temp storage paths."""
+
+    output = {
+        key: preview[key]
+        for key in _PUBLIC_ARCHIVE_PREVIEW_FIELDS
+        if key in preview
+    }
+    # Upload clients can send a path-like filename. Keep only a display label
+    # so that even user-controlled names cannot echo an absolute local path.
+    if "archive_name" in output:
+        output["archive_name"] = _public_filename(
+            output["archive_name"], fallback="study_bundle.zip"
+        )
+    return output
 
 
 @app.post("/api/workspaces/{workspace_id}/sources/archive/preview")
@@ -881,7 +1008,9 @@ async def preview_archive_source(workspace_id: str, file: UploadFile = File(...)
         if len(data) > 100 * 1024 * 1024:
             fail("ARCHIVE_TOO_LARGE", "单 ZIP 上传不能超过 100 MB", 413)
     try:
-        return create_archive_preview(workspace_id, filename, bytes(data))
+        return _public_archive_preview(
+            create_archive_preview(workspace_id, filename, bytes(data))
+        )
     except ArchiveError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
 
@@ -910,7 +1039,7 @@ async def add_url_source(workspace_id: str, body: UrlSourceIn):
     jid=create_job(workspace_id,"url_fetch"); set_job(jid,status="running",stage="validating",progress=10,message="Validating URL")
     try:
         fetched=await fetch_safe(body.url)
-        result=source_detail(create_source(workspace_id, body.title or fetched['title'], 'url', fetched['text'], original_url=body.url, trust_level=body.trust_level, final_url=fetched['final_url'], fetched_at=fetched['fetched_at'], content_type=fetched['content_type'], snapshot_hash=fetched['snapshot_hash'])['id']); result['job_id']=jid; set_job(jid,status='succeeded',stage='saving',progress=100,message='URL indexed'); return result
+        result=_public_source(source_detail(create_source(workspace_id, body.title or fetched['title'], 'url', fetched['text'], original_url=body.url, trust_level=body.trust_level, final_url=fetched['final_url'], fetched_at=fetched['fetched_at'], content_type=fetched['content_type'], snapshot_hash=fetched['snapshot_hash'])['id'])); result['job_id']=jid; set_job(jid,status='succeeded',stage='saving',progress=100,message='URL indexed'); return result
     except ValueError as exc:
         set_job(jid,status='failed',stage='reading',progress=100,error=str(exc),message='URL fetch failed')
         fail('URL_FETCH_FAILED',str(exc))
@@ -929,7 +1058,12 @@ async def add_url_source(workspace_id: str, body: UrlSourceIn):
         text = BeautifulSoup(text, "html.parser").get_text("\n")
     except HTTPException: raise
     except Exception as exc: fail("URL_FETCH_FAILED", f"无法抓取网页：{exc}")
-    return source_detail(create_source(workspace_id, parsed.netloc, "url", text, original_url=body.url, trust_level=body.trust_level)["id"])
+    return _public_source(source_detail(create_source(workspace_id, parsed.netloc, "url", text, original_url=body.url, trust_level=body.trust_level)["id"]))
+
+def _historical_upload_root() -> Path:
+    """Return the one canonical upload root used before the user-data move."""
+
+    return (Path(__file__).resolve().parents[2] / "data" / "uploads").resolve()
 
 
 @app.delete("/api/sources/{source_id}")
@@ -938,12 +1072,32 @@ def delete_source(source_id: str):
     if not source: fail("SOURCE_NOT_FOUND", "资料不存在", 404)
     with db.connection() as conn: conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
     local_path=source.get("local_path") or ""
-    upload_root=(Path(__file__).resolve().parents[2]/"data"/"uploads").resolve()
     if local_path:
         try:
-            candidate=Path(local_path).resolve()
-            if candidate.is_file() and upload_root in candidate.parents: candidate.unlink()
-        except OSError: pass
+            raw_candidate = Path(local_path).expanduser()
+            # Resolve the historical root at the call site so this compatibility
+            # path remains the one canonical legacy location. A path may only be
+            # removed when both the active and historical roots contain the
+            # resolved file. Checking every component rejects symlink/reparse
+            # points even when their target happens to resolve back inside a
+            # trusted root.
+            allowed_roots = (
+                active_upload_root(),
+                _historical_upload_root(),
+            )
+            if any(part.is_symlink() for part in (raw_candidate, *raw_candidate.parents)):
+                raise OSError("upload path is a symlink")
+            candidate = raw_candidate.resolve(strict=True)
+            if not candidate.is_file():
+                raise OSError("upload path is not a file")
+            if not any(
+                candidate != root and root in candidate.parents
+                for root in allowed_roots
+            ):
+                raise OSError("upload path is outside the upload roots")
+            candidate.unlink()
+        except (OSError, RuntimeError):
+            pass
     try:
         from .orm import SessionLocal, SourceORM
         with SessionLocal() as session:
@@ -953,7 +1107,7 @@ def delete_source(source_id: str):
     return {"deleted": True}
 
 
-@app.post("/api/workspaces/{workspace_id}/goal")
+@app.post("/api/workspaces/{workspace_id}/goal", response_model=GoalOut, response_model_exclude_unset=True)
 def set_goal(workspace_id: str, body: GoalProfile):
     require_workspace(workspace_id); created = db.now(); data = body.model_dump(mode="json"); gid = uid("goal")
     with db.connection() as conn:
@@ -996,9 +1150,12 @@ async def feasibility_analyze(workspace_id: str, request: Request, body: dict[st
         result = analyze(workspace_id, goal["payload"])
         recommended_minutes = result.get("recommended_minutes_per_day")
         if recommended_minutes and goal["payload"].get("minutes_per_day") != recommended_minutes:
-            allocated_goal = {**goal["payload"], "minutes_per_day": recommended_minutes}
-            set_goal(workspace_id, GoalProfile.model_validate(allocated_goal))
-            result["minutes_per_day_applied"] = recommended_minutes
+            # Analysis is a read-only proposal.  Persisting the recommendation
+            # here silently changed a saved GoalProfile before the user had
+            # approved it.  Keep the original goal intact and expose an
+            # explicit patch for the confirmation route instead.
+            result["suggested_goal_patch"] = {"minutes_per_day": recommended_minutes}
+            result["minutes_per_day_applied"] = None
         if session.provider == "fake":
             result["generation_meta"] = generation_meta(session, latency_ms=0)
         else:
@@ -1027,6 +1184,17 @@ def confirm_feasibility(workspace_id: str, body: FeasibilityConfirmIn):
     require_workspace(workspace_id); items = db.rows("assessments", "workspace_id", workspace_id)
     if not items: fail("FEASIBILITY_REQUIRED", "请先运行可行性分析")
     item = items[-1]; data = json.loads(item["payload"]); data["user_confirmed"] = body.confirmed
+    data["selected_option"] = body.selected_option
+    if body.minutes_per_day is not None:
+        if body.selected_option != "increase_daily_minutes":
+            fail("FEASIBILITY_OPTION_MISMATCH", "只有选择增加每日投入时才能修改每日分钟数")
+        current_goal = get_goal(workspace_id)
+        if not current_goal:
+            fail("GOAL_REQUIRED", "请先填写目标")
+        updated_goal = {**current_goal["payload"], "minutes_per_day": body.minutes_per_day}
+        updated_goal.pop("id", None)
+        set_goal(workspace_id, GoalProfile.model_validate(updated_goal))
+        data["applied_goal_patch"] = {"minutes_per_day": body.minutes_per_day}
     with db.connection() as conn: conn.execute("UPDATE assessments SET payload=?, user_confirmed=? WHERE id=?", (json.dumps(data, ensure_ascii=False), int(body.confirmed), item["id"]))
     try:
         from .orm import SessionLocal, FeasibilityORM
@@ -1128,6 +1296,16 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     if body.get("new_deadline"): goal_data["deadline"]=body["new_deadline"]
     if body.get("new_minutes_per_day"): goal_data["minutes_per_day"]=body["new_minutes_per_day"]
     if body.get("new_preferred_weekdays") is not None: goal_data["preferred_weekdays"]=body["new_preferred_weekdays"]
+    absence_value = None
+    if "absence_date" in body and body.get("absence_date") is not None:
+        try:
+            absence_value = date.fromisoformat(str(body["absence_date"])).isoformat()
+        except (TypeError, ValueError):
+            fail("ABSENCE_DATE_INVALID", "absence_date 必须是 ISO 日期")
+        existing_unavailable = {
+            str(value) for value in (goal_data.get("unavailable_dates") or [])
+        }
+        goal_data["unavailable_dates"] = sorted(existing_unavailable | {absence_value})
     if goal_data != goal["payload"]:
         set_goal(item["workspace_id"], GoalProfile.model_validate(goal_data))
     try:
@@ -1143,15 +1321,51 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
         set_job(jid,status="failed",progress=100,error=exc.code,message="Provider 失败"); fail(exc.code,exc.message,exc.status,exc.details)
     new = build_plan(item["workspace_id"], goal_data, assessment["payload"])
     new["generation_meta"] = replan_meta
-    old_tasks={t.get("title"):t for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}; new_tasks={t.get("title"):t for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
-    old_dates={t.get("title"):d.get("date") for d in previous.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
-    new_dates={t.get("title"):d.get("date") for d in new.get("study_days",[]) for t in d.get("tasks",[]) if t.get("title")}
+    def keyed_tasks(plan: dict) -> dict[str, tuple[dict, str]]:
+        counts: dict[str, int] = {}
+        result: dict[str, tuple[dict, str]] = {}
+        for day in plan.get("study_days", []):
+            for task in day.get("tasks", []):
+                base = task.get("source_task_id") or task.get("stable_task_id") or task.get("title")
+                if not base:
+                    continue
+                ordinal = counts.get(str(base), 0)
+                counts[str(base)] = ordinal + 1
+                key = str(base) if ordinal == 0 else f"{base}#{ordinal}"
+                result[key] = (task, day.get("date"))
+        return result
+
+    old_index = keyed_tasks(previous)
+    new_index = keyed_tasks(new)
+    old_tasks = {key: value[0] for key, value in old_index.items()}
+    new_tasks = {key: value[0] for key, value in new_index.items()}
+    old_dates = {key: value[1] for key, value in old_index.items()}
+    new_dates = {key: value[1] for key, value in new_index.items()}
     for key,old_task in old_tasks.items():
         if key in new_tasks and old_task.get("status")=="completed":
-            new_tasks[key].update({"status":"completed","completed_at":old_task.get("completed_at"),"actual_minutes":old_task.get("actual_minutes",old_task.get("estimated_minutes",0)),"completion_evidence":old_task.get("completion_evidence","")})
+            preserved = {
+                "status": "completed",
+                "completed_at": old_task.get("completed_at"),
+                "actual_minutes": old_task.get("actual_minutes", old_task.get("estimated_minutes", 0)),
+                "completion_evidence": old_task.get("completion_evidence", ""),
+            }
+            for field in ("learning_run_passed", "scene_completed"):
+                if field in old_task:
+                    preserved[field] = old_task[field]
+            new_tasks[key].update(preserved)
+            # The legacy GET route overlays ORM task state onto the archived
+            # plan payload.  Keep that state in sync as well so activating the
+            # undo link cannot hide a completed task behind a stale ORM row.
+            sync_task_orm(old_task)
     for task in new_tasks.values():
         sync_task_orm(task)
-    diff={"reason":body.get("reason","manual"),"moved_tasks":[{"task":key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary")}
+    failed_task_id = str(body.get("failed_task_id") or "")
+    failed_task = next((task for task in new_tasks.values() if task.get("id") == failed_task_id or task.get("source_task_id") == failed_task_id or task.get("stable_task_id") == failed_task_id), None)
+    if failed_task:
+        failed_task["status"] = "retry_scheduled"
+        failed_task["last_failure_reason"] = str(body.get("failure_reason") or "learning_run_failed")[:500]
+        sync_task_orm(failed_task)
+    diff={"reason":body.get("reason") or ("temporary_leave" if absence_value else "failed_attempt" if failed_task_id else "manual"),"moved_tasks":[{"task":old_tasks[key].get("title") or key,"from":old_dates[key],"to":new_dates[key]} for key in old_dates.keys() & new_dates.keys() if old_dates[key]!=new_dates[key]],"added_tasks":[t for i,t in new_tasks.items() if i not in old_tasks],"removed_tasks":[t for i,t in old_tasks.items() if i not in new_tasks],"changed_deadline":previous.get("deadline")!=new.get("deadline"),"changed_capacity":body.get("new_minutes_per_day") is not None,"changed_risk":previous.get("risk_summary")!=new.get("risk_summary"),"absence_date":absence_value,"failed_task_id":failed_task_id or None}
     new["diff"]=diff
     with db.connection() as conn:
         conn.execute("UPDATE plans SET status='archived' WHERE id=?",(plan_id,))
@@ -1166,7 +1380,7 @@ async def replan(plan_id: str, request: Request, body: dict | None = None):
     except Exception: pass
     set_job(jid,status="succeeded",stage="saving",progress=100,message="Replan saved")
     new["job_id"]=jid
-    return {"plan":new,"changes":diff,"previous_version":previous.get("version")}
+    return {"plan":new,"changes":diff,"previous_plan_id":plan_id,"previous_version":previous.get("version"),"undo":{"method":"POST","path":f"/api/plans/{plan_id}/activate"}}
 
 
 @app.post("/api/plans/{plan_id}/export")
@@ -1462,7 +1676,7 @@ async def evaluate_lesson_v2(lesson_id: str, request: Request, body: dict[str, A
             workspace_id = progress_row.workspace_id if progress_row else ""
     except Exception:
         workspace_id = ""
-    bound_session = provider_for_workspace(workspace_id, request, body) if workspace_id else create_verified_demo_session(request_user_id(request))
+    bound_session = provider_for_workspace(workspace_id, request, body) if workspace_id else create_verified_demo_session()
     if workspace_id:
         attach_workspace_provider(workspace_id, bound_session)
     text=str(body.get("response","")); used_hint=bool(body.get("used_hint",False)); independent=bool(body.get("independent",True)); evidence=str(body.get("evidence", ""))
@@ -1508,7 +1722,7 @@ async def evaluate_lesson(lesson_id: str, request: Request, body: dict[str, Any]
 @app.post("/api/provider-sessions")
 def create_provider_session_route(request: Request, body: ProviderSessionCreateIn):
     try:
-        return create_provider_session(body.model_dump(), owner_user_id=request_user_id(request))
+        return create_provider_session(body.model_dump())
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
 
@@ -1517,7 +1731,7 @@ def create_provider_session_route(request: Request, body: ProviderSessionCreateI
 def current_provider_session_route(request: Request):
     """Expose only the verified local handle needed by embedded web tools."""
 
-    session = latest_verified_provider_session(owner_user_id=request_user_id(request))
+    session = latest_verified_provider_session()
     if not session:
         fail("PROVIDER_SESSION_REQUIRED", "已保存的模型正在连接，请稍候", 428)
     return public_session(session) | {"base_url": session.base_url}
@@ -1525,7 +1739,7 @@ def current_provider_session_route(request: Request):
 
 @app.get("/api/provider-sessions/{session_id}")
 def get_provider_session_route(request: Request, session_id: str):
-    session = get_provider_session(session_id, owner_user_id=request_user_id(request))
+    session = get_provider_session(session_id)
     if not session:
         fail("PROVIDER_SESSION_NOT_FOUND", "Provider 会话不存在", 404)
     return public_session(session)
@@ -1534,8 +1748,7 @@ def get_provider_session_route(request: Request, session_id: str):
 @app.post("/api/provider-sessions/{session_id}/test")
 async def test_provider_session_route(request: Request, session_id: str):
     try:
-        owner_user_id = request_user_id(request)
-        if not get_provider_session(session_id, owner_user_id=owner_user_id):
+        if not get_provider_session(session_id):
             fail("PROVIDER_SESSION_NOT_FOUND", "Provider 会话不存在", 404)
         return await test_provider_session(session_id)
     except ProviderError as exc:
@@ -1544,15 +1757,12 @@ async def test_provider_session_route(request: Request, session_id: str):
 
 @app.delete("/api/provider-sessions/{session_id}")
 def delete_provider_session_route(request: Request, session_id: str):
-    return {"deleted": delete_provider_session(session_id, owner_user_id=request_user_id(request))}
+    return {"deleted": delete_provider_session(session_id)}
 
 
 @app.delete("/api/provider-credentials/{credential_ref}")
 def delete_provider_credential_route(request: Request, credential_ref: str):
     try:
-        owner_user_id = request_user_id(request)
-        if owner_user_id is not None and not credential_owned_by(credential_ref, owner_user_id):
-            fail("PROVIDER_CREDENTIAL_NOT_FOUND", "Provider 凭据不存在", 404)
         return {"deleted": delete_provider_credential(credential_ref)}
     except ProviderError as exc:
         fail(exc.code, exc.message, exc.status, exc.details)
@@ -1607,7 +1817,6 @@ async def rank_personalized_updates(request: Request, body: dict[str, Any]):
     try:
         session = require_provider_session(
             str(body.get("provider_session_id") or ""),
-            owner_user_id=request_user_id(request),
         )
         if session.provider == "fake":
             fail("PROVIDER_SESSION_REAL_REQUIRED", "个性化资讯需要已验证的真实模型连接", 428)
@@ -2229,7 +2438,6 @@ async def create_life_analogy(request: Request, body: dict[str, Any]):
     try:
         session = require_provider_session(
             str(body.get("provider_session_id") or ""),
-            owner_user_id=request_user_id(request),
         )
         if not bool(getattr(session, "verified", True)):
             fail("PROVIDER_SESSION_UNVERIFIED", "Provider 尚未验证，请先测试连接", 428)
@@ -2524,7 +2732,7 @@ async def create_life_analogy(request: Request, body: dict[str, Any]):
 @app.post("/api/providers/test")
 async def test_provider(request: Request, body: ProviderTestIn):
     try:
-        session = create_provider_session(body.model_dump(), owner_user_id=request_user_id(request))
+        session = create_provider_session(body.model_dump())
         result = await test_provider_session(session["provider_session_id"])
         return {**result, "message": "Provider 真实连接已验证；服务仅使用 Windows Credential Locker 引用。"}
     except ProviderError as exc:
@@ -3086,7 +3294,10 @@ def expedition_battle_events(battle_id: str, request: Request):
 @app.post("/api/expedition/art-packs/preview")
 async def expedition_art_pack_preview(request: Request, file: UploadFile = File(...)):
     try:
-        return {"request_id": request.state.request_id, **preview_expedition_art_bytes(await file.read(), file.filename or "art-pack.zip")}
+        content = await read_upload_limited(file, MAX_PACK_BYTES)
+        return {"request_id": request.state.request_id, **preview_expedition_art_bytes(content, file.filename or "art-pack.zip")}
+    except UploadLimitExceeded as exc:
+        raise ArtPackError("ART_PACK_TOO_LARGE", "美术包超过 100 MB 限制", 413, exc.details) from exc
     except ArtPackError as exc: _art_pack_error(exc)
 
 
@@ -3162,12 +3373,29 @@ def expedition_milestone_claim(milestone_id: str, request: Request):
     except ExpeditionError as exc: _expedition_error(exc)
 
 
-def _teacher_avatar_error(exc: TeacherAvatarError) -> None:
-    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+def _teacher_avatar_error(
+    exc: TeacherAvatarError,
+    *,
+    details: dict[str, object] | None = None,
+) -> None:
+    # Route all avatar failures through the canonical application envelope.
+    # The generic HTTPException handler expects ``detail.error`` and would
+    # otherwise collapse these domain codes to HTTP_ERROR.
+    fail(exc.code, exc.message, exc.status_code, details or {})
 
 
 def _spine_teacher_error(exc: SpineTeacherError) -> None:
     raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+
+def _teacher_avatar_upload_limit(filename: str) -> int:
+    """Keep the route-level cap aligned with the registry's format limits."""
+
+    return (
+        MAX_KOIKATSU_EXPORT_BYTES
+        if Path(filename or "").suffix.casefold() == ".zip"
+        else MAX_MODEL_BYTES
+    )
 
 
 @app.get("/api/spine-teachers/active")
@@ -3189,9 +3417,10 @@ async def spine_teacher_import(
     adult_character_confirmed: bool = Form(False),
 ):
     try:
+        content = await read_upload_limited(file, MAX_SPINE_ARCHIVE_BYTES)
         item = import_spine_teacher_package(
             file.filename or "teacher.zip",
-            await file.read(),
+            content,
             display_name=display_name,
             creator=creator,
             spine_editor_license_confirmed=spine_editor_license_confirmed,
@@ -3199,6 +3428,14 @@ async def spine_teacher_import(
             adult_character_confirmed=adult_character_confirmed,
         )
         return {"request_id": request.state.request_id, "item": item}
+    except UploadLimitExceeded as exc:
+        _spine_teacher_error(
+            SpineTeacherError(
+                "SPINE_PACKAGE_SIZE_INVALID",
+                "Spine 教师 ZIP 为空或超过 100 MB。",
+                413,
+            )
+        )
     except SpineTeacherError as exc:
         _spine_teacher_error(exc)
 
@@ -3342,7 +3579,10 @@ async def koikatsu_card_inspect(file: UploadFile = File(...)):
     try:
         if not (file.filename or "").lower().endswith(".png"):
             raise HTTPException(status_code=415, detail={"code": "CARD_FORMAT_UNSUPPORTED", "message": "请选择恋活角色卡 PNG 文件。"})
-        return {"filename": file.filename or "character.png", "card": inspect_koikatsu_sunshine_card(await file.read())}
+        content = await read_upload_limited(file, MAX_KKS_CARD_BYTES)
+        return {"filename": file.filename or "character.png", "card": inspect_koikatsu_sunshine_card(content)}
+    except UploadLimitExceeded as exc:
+        raise HTTPException(status_code=413, detail={"code": "KOIKATSU_CARD_TOO_LARGE", "message": "恋活角色卡超过 96 MB 限制。", "details": exc.details}) from exc
     except KoikatsuCardError as exc:
         raise HTTPException(status_code=415, detail={"code": "KOIKATSU_CARD_INVALID", "message": f"无法读取恋活 Sunshine 角色卡：{exc}"}) from exc
 
@@ -3360,9 +3600,12 @@ async def koikatsu_card_export(
             raise ValueError("slider values must be objects")
         body = {str(key): float(value) for key, value in parsed_body.items()}
         face = {int(key): float(value) for key, value in parsed_face.items()}
-        result = rewrite_koikatsu_sunshine_card(await file.read(), body_values=body, face_values=face)
+        content = await read_upload_limited(file, MAX_KKS_CARD_BYTES)
+        result = rewrite_koikatsu_sunshine_card(content, body_values=body, face_values=face)
         output_name = f"{Path(file.filename or 'koikatsu-character').stem}-edited.png"
         return Response(content=result, media_type="image/png", headers={"Content-Disposition": f'attachment; filename="{output_name}"'})
+    except UploadLimitExceeded as exc:
+        raise HTTPException(status_code=413, detail={"code": "KOIKATSU_CARD_TOO_LARGE", "message": "恋活角色卡超过 96 MB 限制。", "details": exc.details}) from exc
     except (KoikatsuCardError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=415, detail={"code": "KOIKATSU_CARD_INVALID", "message": f"无法导出恋活角色卡：{exc}"}) from exc
 
@@ -3523,7 +3766,7 @@ async def teacher_avatar_import(
     adult_character_confirmed: bool = Form(False),
 ):
     try:
-        content = await file.read()
+        content = await read_upload_limited(file, _teacher_avatar_upload_limit(file.filename or "avatar.vrm"))
         item = import_teacher_avatar(
             file.filename or "avatar.vrm",
             content,
@@ -3536,6 +3779,10 @@ async def teacher_avatar_import(
             adult_character_confirmed=adult_character_confirmed,
         )
         return {"request_id": request.state.request_id, "item": item}
+    except UploadLimitExceeded as exc:
+        code = "RUNTIME_PACK_SIZE_INVALID" if Path(file.filename or "").suffix.casefold() == ".zip" else "MODEL_SIZE_INVALID"
+        message = "runtime pack is empty or too large" if code.startswith("RUNTIME") else "模型必须非空且不超过 100MB。"
+        _teacher_avatar_error(TeacherAvatarError(code, message, 413))
     except TeacherAvatarError as exc:
         _teacher_avatar_error(exc)
 
@@ -3580,7 +3827,47 @@ async def teacher_avatar_import_batch(
     adult_character_confirmed: bool = Form(False),
 ):
     try:
-        payload = [(file.filename or "avatar.vrm", await file.read()) for file in files]
+        if len(files) > MAX_BATCH_MODELS:
+            _teacher_avatar_error(
+                TeacherAvatarError(
+                    "BATCH_LIMIT",
+                    f"一次最多导入 {MAX_BATCH_MODELS} 个模型。",
+                    413,
+                )
+            )
+        payload: list[tuple[str, bytes]] = []
+        aggregate_used = 0
+        for file in files:
+            filename = file.filename or "avatar.vrm"
+            try:
+                content = await read_upload_limited(
+                    file,
+                    _teacher_avatar_upload_limit(filename),
+                    aggregate_limit=MAX_BATCH_BYTES,
+                    aggregate_used=aggregate_used,
+                )
+            except UploadLimitExceeded as exc:
+                if exc.aggregate:
+                    _teacher_avatar_error(
+                        TeacherAvatarError(
+                            "BATCH_SIZE_LIMIT",
+                            "本次导入的模型总大小超过 500MB。",
+                            413,
+                        ),
+                        details=exc.details,
+                    )
+                code = "RUNTIME_PACK_SIZE_INVALID" if Path(filename).suffix.casefold() == ".zip" else "MODEL_SIZE_INVALID"
+                message = (
+                    "runtime pack 必须非空且单文件不超过 500MB。"
+                    if code.startswith("RUNTIME")
+                    else "模型必须非空且不超过 100MB。"
+                )
+                _teacher_avatar_error(
+                    TeacherAvatarError(code, message, 413),
+                    details=exc.details,
+                )
+            payload.append((filename, content))
+            aggregate_used += len(content)
         result = import_teacher_avatar_batch(
             payload,
             creator=creator,
@@ -3629,36 +3916,19 @@ def teacher_avatar_morph(model_id: str, request: Request, body: dict[str, Any]):
         _teacher_avatar_error(exc)
 
 
-@app.get("/api/teacher2d/{teacher_id}/download")
-def teacher_2d_download(teacher_id: str):
-    """Package one bundled 2D teacher without mixing it with user data.
-
-    The downloadable visual resource is deliberately separate from the local
-    migration archive.  This lets a new installation fetch the teacher stage
-    on its own while keeping the user's tasks and materials private.
-    """
-    if teacher_id != "tsubaki-live2d":
-        raise HTTPException(status_code=404, detail={"code": "TEACHER_2D_NOT_FOUND", "message": "2D 教师资源不存在"})
-    root = STATIC / "teacher2d" / teacher_id
-    if not root.is_dir():
-        raise HTTPException(status_code=503, detail={"code": "TEACHER_2D_UNAVAILABLE", "message": "当前安装包未包含 2D 教师资源"})
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or path.is_symlink():
-                continue
-            relative = path.relative_to(root).as_posix()
-            archive.write(path, f"{teacher_id}/{relative}")
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{teacher_id}.zip"'},
-    )
-
-
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if STATIC.exists():
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
+    # Private teacher files live in durable user data instead of the public
+    # installer. Mount the exact local subtree first so program updates can
+    # replace application files without deleting or replacing the learner's
+    # explicitly selected model.
+    if private_teacher_asset_available():
+        app.mount(
+            PRIVATE_TEACHER_ROUTE,
+            StaticFiles(directory=private_teacher_asset_root()),
+            name="teacher2d-private-local",
+        )
     teacher2d_static = STATIC / "teacher2d"
     if teacher2d_static.exists():
         app.mount(

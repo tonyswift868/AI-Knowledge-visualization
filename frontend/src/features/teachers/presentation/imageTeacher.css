@@ -30,13 +30,13 @@
   position:absolute;
   inset:0;
   transform-origin:50% 88%;
+  /* Camera look, zoom, mirror, and stage offsets only; semantic states stay static. */
   translate:var(--teacher-offset-x) var(--teacher-offset-y);
   transform:
     translate3d(calc(var(--look-x) * 5px),calc(var(--look-y) * 2px),0)
     rotate(calc(var(--look-x) * .65deg))
     scale(var(--teacher-scale))
     scaleX(var(--teacher-mirror));
-  animation:image-teacher-breathe 5.2s ease-in-out infinite;
   transition:filter .28s ease;
 }
 .image-teacher-form{
@@ -133,15 +133,6 @@
 .image-teacher.is-transforming[data-previous-skin="teaching"] .form-teaching,
 .image-teacher.is-transforming[data-previous-skin="swimsuit"] .form-swimsuit{animation:image-teacher-form-out .72s ease both}
 
-.image-teacher[data-state="wave"] .image-teacher-body{animation:image-teacher-wave 1.4s ease-in-out}
-.image-teacher[data-state="think"] .image-teacher-body{animation:image-teacher-think 2.2s ease-in-out infinite}
-.image-teacher[data-state="talk"] .image-teacher-body{animation:image-teacher-talk 1.25s ease-in-out infinite}
-.image-teacher[data-state="explain"] .image-teacher-body{animation:image-teacher-explain 1.4s ease-in-out}
-.image-teacher[data-state="question"] .image-teacher-body{animation:image-teacher-question 1.4s ease-in-out}
-.image-teacher[data-state="cheer"] .image-teacher-body{animation:image-teacher-cheer 1.35s cubic-bezier(.2,.8,.25,1)}
-.image-teacher[data-state="heart"] .image-teacher-body{animation:image-teacher-heart 1.35s ease-in-out}
-.image-teacher[data-state="confused"] .image-teacher-body{animation:image-teacher-confused 1.4s ease-in-out}
-.image-teacher[data-state="surprised"] .image-teacher-body{animation:image-teacher-surprised 1.15s cubic-bezier(.2,.9,.25,1)}
 .image-teacher[data-state="heart"] .image-teacher-glow,
 .image-teacher[data-state="cheer"] .image-teacher-glow{background:radial-gradient(circle,#ff9fc43d 0,#74d9ca1c 46%,transparent 72%)}
 .image-teacher.is-paused *{animation-play-state:paused!important}
@@ -164,20 +155,7 @@
 .teacher-2d-skin-picker span{margin-top:2px;font-size:8px}
 .teacher-2d-skin-picker select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 
-@keyframes image-teacher-breathe{
-  0%,100%{transform:translate3d(calc(var(--look-x) * 5px),calc(var(--look-y) * 2px),0) rotate(calc(var(--look-x) * .65deg)) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}
-  50%{transform:translate3d(calc(var(--look-x) * 5px),calc(var(--look-y) * 2px - 4px),0) rotate(calc(var(--look-x) * .65deg)) scale(calc(var(--teacher-scale) * 1.006)) scaleX(var(--teacher-mirror))}
-}
 @keyframes image-teacher-glow{50%{opacity:.7;transform:translateX(-50%) scale(1.06)}}
-@keyframes image-teacher-wave{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}30%{transform:translate3d(-5px,-7px,0) rotate(-2deg) scale(calc(var(--teacher-scale) * 1.015)) scaleX(var(--teacher-mirror))}62%{transform:translate3d(5px,-3px,0) rotate(1.4deg) scale(calc(var(--teacher-scale) * 1.01)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-think{0%,100%{transform:translate3d(-2px,0,0) rotate(-.5deg) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}50%{transform:translate3d(4px,-4px,0) rotate(1deg) scale(calc(var(--teacher-scale) * 1.004)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-talk{0%,100%{transform:translateY(0) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}35%{transform:translateY(-3px) rotate(-.35deg) scale(calc(var(--teacher-scale) * 1.004)) scaleX(var(--teacher-mirror))}70%{transform:translateY(-1px) rotate(.35deg) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-explain{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}38%{transform:translate3d(-7px,-5px,0) rotate(-1.3deg) scale(calc(var(--teacher-scale) * 1.012)) scaleX(var(--teacher-mirror))}70%{transform:translate3d(3px,-2px,0) rotate(.5deg) scale(calc(var(--teacher-scale) * 1.006)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-question{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}45%{transform:translate3d(4px,-3px,0) rotate(1.5deg) scale(calc(var(--teacher-scale) * 1.008)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-cheer{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}35%{transform:translateY(-12px) scale(calc(var(--teacher-scale) * 1.02)) scaleX(var(--teacher-mirror))}58%{transform:translateY(2px) scale(calc(var(--teacher-scale) * .997)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-heart{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}42%{transform:translateY(-4px) scale(calc(var(--teacher-scale) * 1.025)) scaleX(var(--teacher-mirror))}66%{transform:scale(calc(var(--teacher-scale) * 1.008)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-confused{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}25%{transform:translateX(-5px) rotate(-1.2deg) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}55%{transform:translateX(5px) rotate(1.2deg) scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}}
-@keyframes image-teacher-surprised{0%,100%{transform:scale(var(--teacher-scale)) scaleX(var(--teacher-mirror))}32%{transform:translateY(-10px) scale(calc(var(--teacher-scale) * 1.026)) scaleX(var(--teacher-mirror))}60%{transform:translateY(2px) scale(calc(var(--teacher-scale) * .997)) scaleX(var(--teacher-mirror))}}
 @keyframes image-teacher-transition-layer{0%,100%{opacity:0}16%,78%{opacity:1}}
 @keyframes image-teacher-sweep{0%{transform:translateX(-430%) rotate(9deg)}100%{transform:translateX(430%) rotate(9deg)}}
 @keyframes image-teacher-ring{0%,100%{opacity:0;transform:scale(.45)}42%{opacity:1;transform:scale(1.12)}75%{opacity:.4;transform:scale(1.55)}}
@@ -190,7 +168,7 @@
   .teacher-2d-skin-picker{min-width:40px;min-height:42px}
 }
 @media(prefers-reduced-motion:reduce){
-  .image-teacher-body,.image-teacher-glow{animation:none!important}
+  .image-teacher-glow{animation:none!important}
   .image-teacher.is-transforming .image-teacher-transition{opacity:.6}
   .image-teacher-form{transition:opacity .15s ease}
 }

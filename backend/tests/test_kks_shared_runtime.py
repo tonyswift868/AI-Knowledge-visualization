@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 import json
-import shutil
 import zipfile
 
 import pytest
@@ -12,12 +11,25 @@ from app import koikatsu_card as card_parser
 from app import koikatsu_teacher_registry as registry
 
 
+def _read_external_kks_asset(path: Path, *, label: str) -> bytes:
+    """Read one immutable legacy fixture, skipping only when unavailable."""
+
+    try:
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        return path.read_bytes()
+    except OSError as exc:
+        pytest.skip(
+            f"external KKS prerequisite unavailable: {label} ({path}; {exc.__class__.__name__})"
+        )
+
+
 def test_runtime_pack_head_contract_rejects_incompatible_face_uv(tmp_path: Path) -> None:
     pack_root = tmp_path / "pack"
     face = pack_root / "assets" / "runtime-shared" / "face" / "093-cf_O_face.json"
     face.parent.mkdir(parents=True)
     source = registry.KKS_RUNTIME_ROOT / "shared-base" / "neutral-head" / "093-cf_O_face.json"
-    shutil.copyfile(source, face)
+    face.write_bytes(_read_external_kks_asset(source, label="neutral-head face JSON"))
     manifest = {
         "status": "ready",
         "items": [{
@@ -861,17 +873,53 @@ def test_real_ann_and_takagi_material_editor_contract_is_attached_offline(
     expected_properties: int,
 ) -> None:
     if not registry.LOCAL_CARD_ROOT.is_dir():
-        pytest.skip("local read-only KKS card fixtures are unavailable")
+        pytest.skip(
+            f"external KKS prerequisite unavailable: local card root ({registry.LOCAL_CARD_ROOT})"
+        )
+    try:
+        card_path = registry.resolve_local_card(card_id)
+    except registry.KoikatsuTeacherError as exc:
+        if exc.code in {
+            "LOCAL_CARD_NOT_FOUND",
+            "CARD_INDEX_MISSING",
+            "CARD_INDEX_UNAVAILABLE",
+            "CARD_INDEX_INVALID",
+            "CARD_INDEX_STALE",
+        }:
+            pytest.skip(
+                f"external KKS prerequisite unavailable: card fixture {card_id} ({exc.code})"
+            )
+        raise
+    _read_external_kks_asset(card_path, label=f"card fixture {card_id}")
+    _read_external_kks_asset(
+        registry.SHARED_NEUTRAL_ROOT / "manifest.json",
+        label="neutral-body manifest",
+    )
     try:
         resources = registry.local_card_resources(card_id)
         manifest = registry.runtime_card_manifest(card_id, allow_conversion=False)
-    except registry.KoikatsuTeacherError:
-        pytest.skip("local read-only KKS runtime cache fixture is unavailable")
+    except registry.KoikatsuTeacherError as exc:
+        if isinstance(exc.__cause__, OSError):
+            pytest.skip(
+                f"external KKS prerequisite unavailable: runtime cache for {card_id} ({exc.code})"
+            )
+        raise
+    neutral_failures = [
+        failure
+        for failure in manifest.get("conversion_failures", [])
+        if isinstance(failure, dict)
+        and failure.get("property") == "__neutral_body__"
+        and failure.get("reason") == "neutral-manifest-invalid"
+    ]
+    if neutral_failures:
+        pytest.skip(
+            "external KKS prerequisite unavailable: neutral-body manifest "
+            "(neutral-manifest-invalid)"
+        )
     runtime_items = [
         item for item in manifest["items"] if item.get("source_property")
     ]
-    if not runtime_items:
-        pytest.skip("local read-only KKS runtime cache fixture is unavailable")
+    assert runtime_items, "readable KKS runtime cache produced no card items"
 
     if card_id == "eb8136372690f12d":
         assert len(resources["material_editor_renderer_overrides"]) == 3

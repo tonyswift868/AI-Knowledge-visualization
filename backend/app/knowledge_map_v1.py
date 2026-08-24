@@ -55,6 +55,7 @@ class ProviderKnowledgePointV1(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str | None = None
+    semantic_key: str | None = Field(default=None, max_length=240)
     name: str = Field(
         min_length=1,
         max_length=TEXT_LIMITS_POLICY.concept_name_characters,

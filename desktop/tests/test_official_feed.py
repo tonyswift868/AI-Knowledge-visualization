@@ -68,7 +68,18 @@ def test_parser_strips_markup_and_rejects_future_dates() -> None:
 
 def test_parser_rejects_entity_expansion() -> None:
     hostile = b"<!DOCTYPE x [<!ENTITY x 'boom'>]><rss><item><title>&x;</title></item></rss>"
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="prohibited document type or entity"):
+        official_feed.parse_feed(hostile, publisher="test")
+
+
+@pytest.mark.parametrize("offset", [4096, 8192])
+def test_parser_rejects_offset_entity_expansion(offset: int) -> None:
+    hostile = (
+        b" " * offset
+        + b"<!DOCTYPE x [<!ENTITY x 'boom'>]><rss><item><title>&x;</title></item></rss>"
+    )
+
+    with pytest.raises(ValueError, match="prohibited document type or entity"):
         official_feed.parse_feed(hostile, publisher="test")
 
 

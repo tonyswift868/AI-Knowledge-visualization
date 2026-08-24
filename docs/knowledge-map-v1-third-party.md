@@ -15,5 +15,6 @@
 - Pillow 12.3.0，HPND。
 - sherpa-onnx，Apache-2.0，Copyright k2-fsa contributors。
 - SenseVoice 源码及所使用模型权重必须分别按其随包许可证与模型卡标注；安装脚本不得把源码许可证推定为模型权重许可证。
+- yt-dlp 2026.8.19，Unlicense。仅打包 Python 包以读取用户明确确认的公开课程目录与字幕轨道；MentorFlow 设置 `skip_download` 且不分发 yt-dlp 独立可执行文件。若未来改为分发官方独立二进制，必须重新按其 GPLv3+ 发布边界审核并更新本说明与 SBOM。
 
 参考的 CASE 1.1 是 1EdTech 标准映射方向。本版本没有通过 CASE 合规认证，不得在界面或发布材料中宣称认证。

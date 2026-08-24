@@ -9,7 +9,11 @@ import pytest
 from desktop.knowledge_map_view import layered_positions
 from desktop.materials_page import human_size
 from desktop.plans_page import flattened_tasks
-from desktop.classroom_page import session_transcript, teacher_turn_text
+from desktop.classroom_page import (
+    session_transcript,
+    teacher_presentation_state,
+    teacher_turn_text,
+)
 
 
 def test_layered_positions_follow_prerequisite_order_without_domain_rules() -> None:
@@ -71,6 +75,168 @@ def test_native_knowledge_map_keeps_title_and_summary_items_alive(monkeypatch) -
     assert any("资料证据提取" in value for value in texts)
 
 
+def test_native_map_candidate_checks_persist_and_batch_decision_reloads_once(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QListWidget, QPlainTextEdit, QPushButton
+
+    from desktop.api import ApiError
+    from desktop.main_window import MainWindow
+
+    class FakeApi:
+        def __init__(self) -> None:
+            self.batch_calls: list[tuple[str, list[str], str, str]] = []
+            self.single_calls: list[str] = []
+            self.candidates = [
+                {"id": "candidate-a", "candidate_type": "node", "payload": {"name": "概念 A"}},
+                {"id": "candidate-b", "candidate_type": "edge", "payload": {"name": "关系 B"}},
+            ]
+
+        def knowledge_map_candidates(self, _workspace_id: str) -> dict:
+            return {"candidates": list(self.candidates)}
+
+        def decide_knowledge_map_candidate(self, _workspace_id: str, candidate_id: str, **_kwargs) -> dict:
+            self.single_calls.append(candidate_id)
+            return {"revision": "legacy-revision"}
+
+        def decide_knowledge_map_candidates(
+            self,
+            workspace_id: str,
+            candidate_ids: list[str],
+            *,
+            decision: str,
+            reason: str,
+        ) -> dict:
+            self.batch_calls.append((workspace_id, list(candidate_ids), decision, reason))
+            return {
+                "revision": 2,
+                "revision_id": "revision-2",
+                "results": [{"id": candidate_id, "status": decision} for candidate_id in candidate_ids],
+                "decided_count": len(candidate_ids),
+                "remaining_pending_count": 5,
+            }
+
+    application = QApplication.instance() or QApplication([])
+    api = FakeApi()
+    window = MainWindow.__new__(MainWindow)
+    window.api = api
+    window.map_workspace = QComboBox()
+    window.map_workspace.addItem("任务", "workspace-1")
+    window.map_candidates = QListWidget()
+    window.map_state = QLabel()
+    window.evidence_text = QPlainTextEdit()
+    window.candidate_reason = QLineEdit()
+    window.map_select_all_button = QPushButton()
+    window._map_node_names = {}
+    window._map_checked_candidate_ids = set()
+    window._map_current_candidate_id = ""
+    window.map_candidates.currentItemChanged.connect(window._show_candidate)
+    window.map_candidates.itemChanged.connect(window._candidate_check_changed)
+    window._refresh_candidates("workspace-1")
+
+    assert window.map_candidates.count() == 2
+    window.map_candidates.setCurrentRow(1)
+    window._toggle_all_candidates()
+    assert window.map_select_all_button.text() == "取消全选"
+    assert all(
+        window.map_candidates.item(index).checkState() == Qt.CheckState.Checked
+        for index in range(window.map_candidates.count())
+    )
+
+    # Rebuilding the list keeps both the checked IDs and the current candidate ID.
+    window._refresh_candidates("workspace-1")
+    assert window._map_current_candidate_id == "candidate-b"
+    assert window._map_checked_candidate_ids == {"candidate-a", "candidate-b"}
+
+    reloads: list[bool] = []
+    def reload_map() -> None:
+        reloads.append(True)
+        window.map_state.setText("图谱已刷新")
+
+    window._load_selected_map = reload_map
+    window._decide_candidate("confirmed")
+    assert api.batch_calls == [("workspace-1", ["candidate-a", "candidate-b"], "confirmed", "")]
+    assert api.single_calls == []
+    assert reloads == [True]
+    assert "图谱已刷新" in window.map_state.text()
+    assert "已确认 2 项" in window.map_state.text()
+    assert "剩余待审核 5 项" in window.map_state.text()
+
+    for widget in (window.map_candidates, window.map_state, window.evidence_text, window.candidate_reason, window.map_select_all_button):
+        widget.deleteLater()
+    application.processEvents()
+
+
+def test_native_map_batch_atomic_error_preserves_checked_selection_and_status(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QListWidget, QPlainTextEdit, QPushButton
+
+    from desktop.api import ApiError
+    from desktop.main_window import MainWindow
+
+    class FakeApi:
+        def __init__(self) -> None:
+            self.batch_calls: list[list[str]] = []
+            self.single_calls: list[str] = []
+            self.candidates = [
+                {"id": "candidate-a", "candidate_type": "node", "payload": {"name": "概念 A"}},
+                {"id": "candidate-b", "candidate_type": "edge", "payload": {"name": "关系 B"}},
+            ]
+
+        def knowledge_map_candidates(self, _workspace_id: str) -> dict:
+            return {"candidates": list(self.candidates)}
+
+        def decide_knowledge_map_candidate(self, _workspace_id: str, candidate_id: str, **_kwargs) -> dict:
+            self.single_calls.append(candidate_id)
+            return {"revision": "legacy-revision"}
+
+        def decide_knowledge_map_candidates(self, _workspace_id: str, candidate_ids: list[str], **_kwargs) -> dict:
+            self.batch_calls.append(list(candidate_ids))
+            raise ApiError(409, "KNOWLEDGE_MAP_CANDIDATE_STALE", "候选项所属 revision 已变化，请刷新后再决定")
+
+    application = QApplication.instance() or QApplication([])
+    api = FakeApi()
+    window = MainWindow.__new__(MainWindow)
+    window.api = api
+    window.map_workspace = QComboBox()
+    window.map_workspace.addItem("任务", "workspace-1")
+    window.map_candidates = QListWidget()
+    window.map_state = QLabel("图谱当前状态")
+    window.evidence_text = QPlainTextEdit()
+    window.candidate_reason = QLineEdit()
+    window.map_select_all_button = QPushButton()
+    window._map_node_names = {}
+    window._map_checked_candidate_ids = set()
+    window._map_current_candidate_id = ""
+    window.map_candidates.currentItemChanged.connect(window._show_candidate)
+    window.map_candidates.itemChanged.connect(window._candidate_check_changed)
+    window._refresh_candidates("workspace-1")
+    window._toggle_all_candidates()
+    checked_before = [
+        window.map_candidates.item(index).checkState()
+        for index in range(window.map_candidates.count())
+    ]
+
+    reloads: list[bool] = []
+    window._load_selected_map = lambda: reloads.append(True)
+    window._decide_candidate("confirmed")
+
+    assert api.batch_calls == [["candidate-a", "candidate-b"]]
+    assert api.single_calls == []
+    assert reloads == []
+    assert "KNOWLEDGE_MAP_CANDIDATE_STALE" in window.map_state.text()
+    assert "已确认" not in window.map_state.text()
+    assert [
+        window.map_candidates.item(index).checkState()
+        for index in range(window.map_candidates.count())
+    ] == checked_before == [Qt.CheckState.Checked, Qt.CheckState.Checked]
+
+    for widget in (window.map_candidates, window.map_state, window.evidence_text, window.candidate_reason, window.map_select_all_button):
+        widget.deleteLater()
+    application.processEvents()
+
+
 def test_native_material_size_formatting_is_stable() -> None:
     assert human_size(0) == "0 B"
     assert human_size(1536) == "1.5 KiB"
@@ -88,6 +254,19 @@ def test_native_plan_flattens_preview_and_prefers_execution_state() -> None:
         ]
     }
     assert flattened_tasks(legacy)[0]["day_date"] == "2030-01-03"
+
+
+def test_overview_progress_prefers_knowledge_route_over_execution_task_rows() -> None:
+    from desktop.main_window import MainWindow
+
+    assert MainWindow._task_progress(
+        {
+            "knowledge_point_count": 150,
+            "completed_knowledge_point_count": 41,
+            "task_count": 648,
+            "completed_task_count": 167,
+        }
+    ) == (41, 150)
 
 
 def test_overview_calendar_uses_completed_duration_as_effort(tmp_path, monkeypatch) -> None:
@@ -397,7 +576,7 @@ def test_overview_life_analogy_prefetch_fills_bounded_buffer_and_persists(tmp_pa
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from concurrent.futures import ThreadPoolExecutor
     from PySide6.QtCore import QSettings
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QVBoxLayout
 
     from desktop.main_window import MainWindow
 
@@ -1007,11 +1186,86 @@ def test_native_classroom_voice_pipeline_writes_editable_text_without_microphone
     page.close()
 
 
+def test_native_classroom_blocks_actions_during_voice_and_keeps_voice_disabled_while_pending(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from concurrent.futures import Future
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from desktop.classroom_page import ClassroomPage
+
+    class FakeApi:
+        calls: list[dict] = []
+
+        def advance_teaching_session(self, session_id: str, **payload) -> dict:
+            self.calls.append({"session_id": session_id, **payload})
+            return {"session_id": session_id, "state": {}, "messages": []}
+
+    application = QApplication.instance() or QApplication([])
+    api = FakeApi()
+    page = ClassroomPage(api, lambda: "")
+    page.session_id = "session-voice-race"
+    page.answer.setPlainText("保留这段草稿")
+    try:
+        page._voice_recording = True
+        page.send_answer()
+        assert api.calls == []
+        assert page._action_future is None
+        assert page.answer.toPlainText() == "保留这段草稿"
+
+        page._voice_recording = False
+        page._voice_future = Future()
+        page.skip_to_next_point()
+        assert api.calls == []
+        assert page._action_future is None
+        assert page.answer.toPlainText() == "保留这段草稿"
+
+        page._voice_future = None
+        pending = Future()
+        page._action_future = pending
+        page._set_action_pending("send")
+        page._voice_base_text = page.answer.toPlainText()
+        page.answer.setPlainText("保留这段草稿\n语音补充")
+        page._finish_voice_transcription("语音补充")
+        assert page.voice_button is not None and not page.voice_button.isEnabled()
+        assert page.answer.toPlainText() == "保留这段草稿\n语音补充"
+
+        page._action_future = None
+        page._restore_action_controls()
+        assert page.voice_button is not None and page.voice_button.isEnabled()
+
+        page.answer.setPlainText("原始回答")
+        assert page._start_teaching_action(
+            kind="send",
+            session_id=page.session_id,
+            message="原始回答",
+            provider_session_id="",
+            attachment_ids=[],
+            force_complete=False,
+            actual_elapsed_minutes=0,
+            activity_event_id="desktop-test",
+            workspace_id="",
+        )
+        page.answer.setPlainText("新转写草稿")
+        deadline = time.perf_counter() + 2
+        while page._action_future is not None and time.perf_counter() < deadline:
+            application.processEvents()
+            QTest.qWait(20)
+        application.processEvents()
+        assert page.answer.toPlainText() == "新转写草稿"
+    finally:
+        page.close()
+
+
 def test_native_classroom_reports_bounded_active_time_with_idempotency_key(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 
     from desktop.classroom_page import ClassroomPage
@@ -1039,12 +1293,580 @@ def test_native_classroom_reports_bounded_active_time_with_idempotency_key(
     page._active_learning_seconds = 75
     page.answer.setPlainText("这是一次真实课堂交互。")
 
-    page.send_answer()
-    application.processEvents()
+    try:
+        page.send_answer()
+        deadline = time.perf_counter() + 2
+        while page._action_future is not None and time.perf_counter() < deadline:
+            application.processEvents()
+            QTest.qWait(20)
+        application.processEvents()
 
-    assert api.captured["actual_elapsed_minutes"] == 1.25
-    assert str(api.captured["activity_event_id"]).startswith("desktop-")
-    assert page._active_learning_seconds == 0
+        assert api.captured["actual_elapsed_minutes"] == 1.25
+        assert str(api.captured["activity_event_id"]).startswith("desktop-")
+        assert page._active_learning_seconds == 0
+    finally:
+        page.close()
+
+
+def test_native_classroom_free_chat_uses_isolated_payload_without_activity_minutes(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from desktop.classroom_page import ClassroomPage
+
+    class FakeApi:
+        captured: dict = {}
+
+        def advance_teaching_session(self, session_id: str, **payload) -> dict:
+            self.captured = {"session_id": session_id, **payload}
+            return {
+                "session_id": session_id,
+                "workspace_id": "workspace-free-chat",
+                "actual_elapsed_minutes": 0,
+                "state": {},
+                "messages": [],
+            }
+
+        def materials(self, _workspace_id: str) -> list[dict]:
+            return []
+
+    application = QApplication.instance() or QApplication([])
+    api = FakeApi()
+    page = ClassroomPage(api, lambda: "")
+    page.session_id = "session-free-chat"
+    page._active_learning_seconds = 75
+    page.free_chat_radio.click()
+    page.answer.setPlainText("课堂之外，我想问一个相关问题。")
+    try:
+        page.send_answer()
+        deadline = time.perf_counter() + 2
+        while page._action_future is not None and time.perf_counter() < deadline:
+            application.processEvents()
+            QTest.qWait(20)
+        application.processEvents()
+        assert api.captured["interaction_mode"] == "free_chat"
+        assert "force_complete" not in api.captured
+        assert "verify_completion" not in api.captured
+        assert "actual_elapsed_minutes" not in api.captured
+        assert "activity_event_id" not in api.captured
+        assert page._active_learning_seconds == 75
+        assert page.interaction_notice is not None
+        assert page.interaction_notice.text() == ""
+        assert not page.interaction_notice.isVisible()
+        assert "想聊什么都可以" in page.answer.placeholderText()
+    finally:
+        page.close()
+
+
+def test_native_classroom_immersive_round_trip_preserves_draft_controls_and_radio_state(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from desktop.classroom_page import ClassroomPage
+
+    class FakeApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+    application = QApplication.instance() or QApplication([])
+    page = ClassroomPage(FakeApi(), lambda: "")
+    page.show()
+    page._view_stack.setCurrentIndex(1)
+    page.answer.setPlainText("沉浸模式下也不能丢失的草稿")
+    page.free_chat_radio.click()
+    application.processEvents()
+    try:
+        assert page.interaction_mode == "free_chat"
+        assert page.free_chat_radio.isChecked()
+        assert not page.learning_evidence_radio.isChecked()
+        assert page.free_chat_radio.styleSheet() == ""
+        classroom_panel = page._view_stack.widget(1)
+        assert "QRadioButton::indicator:checked" in classroom_panel.styleSheet()
+        assert "#c95f8d" in classroom_panel.styleSheet()
+        assert classroom_panel.objectName() == "classroomSessionPanel"
+        assert classroom_panel.__class__.__name__ == "ClassroomAtmosphere"
+        assert all(widget.isVisible() for widget in page._immersive_top_widgets)
+
+        page.toggle_immersive_mode()
+        application.processEvents()
+        assert page.immersive_mode
+        assert page._immersive_toggle.text() == "退出沉浸模式"
+        assert all(not widget.isVisible() for widget in page._immersive_top_widgets)
+        assert page.transcript.isVisible()
+        assert page.answer.isVisible()
+        assert page.answer.toPlainText() == "沉浸模式下也不能丢失的草稿"
+        assert page.attach_button.isVisible()
+        assert page.voice_button.isVisible()
+        assert page.complete_button.isVisible()
+        assert page.send_button.isVisible()
+        assert page.free_chat_radio.isChecked()
+        # The stage is detached and lazy.  There is exactly one stable stage
+        # entry point (the upper-right header button), so immersive mode does
+        # not introduce a duplicate composer-side toggle.
+        assert page._teacher_stage_panel is None
+        assert len(page.findChildren(QPushButton, "teacherStageToggleButton")) == 1
+        assert not page._teacher_stage_button.isVisible()
+
+        page.toggle_immersive_mode()
+        application.processEvents()
+        assert not page.immersive_mode
+        assert all(widget.isVisible() for widget in page._immersive_top_widgets)
+        assert page._teacher_stage_button.isVisible()
+        assert page.answer.toPlainText() == "沉浸模式下也不能丢失的草稿"
+    finally:
+        page.close()
+
+
+def test_native_classroom_skin_switch_preserves_session_draft_and_updates_stage(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+
+    import desktop.classroom_page as classroom_module
+
+    settings = QSettings(str(tmp_path / "classroom-theme.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(classroom_module, "QSettings", lambda *_args, **_kwargs: settings)
+
+    class FakeApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+    application = QApplication.instance() or QApplication([])
+    page = classroom_module.ClassroomPage(FakeApi(), lambda: "")
+    page.answer.setPlainText("换皮肤也不能丢的草稿")
+    page.current_session = {"session_id": "session-theme", "state": {"status": "learning"}}
+    page.transcript.set_session({
+        "current_point": {
+            "messages": [{"role": "teacher", "content": "主题切换时这条消息不能被重建。"}]
+        }
+    })
+    application.processEvents()
+    original_body = page.transcript.findChild(classroom_module.QTextBrowser, "transcriptMessageBody")
+    original_bubble = page.transcript.findChild(classroom_module.QFrame, "teacherMessageBubble")
+    try:
+        assert page.classroom_theme_key == "sakura"
+        assert "#c95f8d" in page._classroom_panel.styleSheet()
+
+        page.apply_theme("rainy_window")
+        page._ensure_teacher_stage_window()
+        application.processEvents()
+        assert page.classroom_theme_key == "rainy_window"
+        assert settings.value("appearance/classroom_theme") == "rainy_window"
+        assert "#78b7d4" in page._classroom_panel.styleSheet()
+        assert "#78b7d4" in page._teacher_stage_panel.styleSheet()
+        assert page.transcript.findChild(classroom_module.QTextBrowser, "transcriptMessageBody") is original_body
+        assert page.transcript.findChild(classroom_module.QFrame, "teacherMessageBubble") is original_bubble
+        assert page.answer.toPlainText() == "换皮肤也不能丢的草稿"
+        assert page.current_session["session_id"] == "session-theme"
+
+        page._set_action_pending("send")
+        assert page._typing_timer.isActive()
+        page._advance_typing_indicator()
+        assert "教师正在思考" in page._conversation_status.text()
+        page._restore_action_controls()
+        assert not page._typing_timer.isActive()
+        assert page._conversation_status.text() == "●  教师在线"
+    finally:
+        page.close()
+
+
+def test_native_teacher_stage_state_follows_generic_classroom_semantics() -> None:
+    assert teacher_presentation_state({}) == "idle"
+    assert teacher_presentation_state({}, busy=True) == "thinking"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"action": "daily_briefing"}}}) == "greeting"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"action": "check_understanding"}}}) == "questioning"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"action": "remediation_example"}}}) == "encouraging"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"action": "advance_route"}}}) == "praising"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"action": "source_conflict"}}}) == "confused"
+    assert teacher_presentation_state({"state": {"latest_free_chat_turn_v1": {"action": "free_chat_response"}}}) == "talking"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"presentation_state": "shy"}}}) == "shy"
+    assert teacher_presentation_state({"state": {"teacher_presentation_state": "playful_annoyed"}}) == "playful_annoyed"
+    assert teacher_presentation_state({"state": {"teacher_turn_v1": {"state": {"status": "completed"}}}}) == "ending"
+
+
+def test_native_teacher_stage_is_visible_before_web_runtime_mounts(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import desktop.classroom_page as classroom_module
+
+    class FakeApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+    class FakeStageWindow:
+        def __init__(self) -> None:
+            self.visible = False
+            self.events: list[str] = []
+
+        def isVisible(self) -> bool:
+            return self.visible
+
+        def attach_to(self, _host) -> None:
+            self.events.append("attach")
+
+        def sync_to_host(self) -> None:
+            self.events.append("sync")
+
+        def show(self) -> None:
+            self.visible = True
+            self.events.append("show")
+
+        def raise_(self) -> None:
+            self.events.append("raise")
+
+    QApplication.instance() or QApplication([])
+    page = classroom_module.ClassroomPage(FakeApi(), lambda: "", origin="http://127.0.0.1:1")
+    stage = FakeStageWindow()
+    page._teacher_stage_window = stage
+    try:
+        page._ensure_teacher_stage_web = lambda: stage.events.append(
+            "mount-visible" if stage.visible else "mount-hidden"
+        )
+        page.open_teacher_stage()
+        assert stage.events == ["attach", "sync", "show", "raise", "mount-visible"]
+    finally:
+        page.close()
+
+
+def test_native_teacher_action_reviews_persist_only_in_local_development_settings(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QVBoxLayout
+
+    import desktop.classroom_page as classroom_module
+
+    stored: dict[str, object] = {}
+
+    class FakeSettings:
+        def __init__(self, *_args) -> None:
+            return None
+
+        def value(self, key: str, default=None):
+            return stored.get(key, default)
+
+        def setValue(self, key: str, value: object) -> None:
+            stored[key] = value
+
+        def sync(self) -> None:
+            return None
+
+    class FakeApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+    monkeypatch.setattr(classroom_module, "QSettings", FakeSettings)
+    QApplication.instance() or QApplication([])
+    page = classroom_module.ClassroomPage(FakeApi(), lambda: "")
+    try:
+        page._teacher_action_debug_actions = [
+            {"id": "BLINK", "label": "眨眼"},
+            {"id": "motion:Cry:0", "label": "哭泣"},
+        ]
+        page._review_teacher_action("BLINK", "excellent")
+        page._review_teacher_action("motion:Cry:0", "weak")
+        assert [item["id"] for item in page._teacher_action_debug_actions] == ["BLINK"]
+        restored = page._load_teacher_action_reviews()
+        assert restored == {"BLINK": "excellent", "motion:Cry:0": "weak"}
+        assert all("session" not in key and "learning" not in key for key in stored)
+        page._review_teacher_action("BLINK", "excellent")
+        assert page._load_teacher_action_reviews() == {"motion:Cry:0": "weak"}
+
+        # A later model capability refresh cannot re-add locally rejected
+        # actions to the tester.
+        page._teacher_action_debug_rows = QVBoxLayout()
+        page._teacher_action_debug_rows.addStretch(1)
+        page._render_teacher_action_debug_rows(
+            {
+                "ready": True,
+                "actions": [
+                    {"id": "BLINK", "label": "眨眼"},
+                    {"id": "motion:Cry:0", "label": "哭泣"},
+                ],
+            }
+        )
+        assert all(
+            item["id"] != "motion:Cry:0"
+            for item in page._teacher_action_debug_actions
+        )
+    finally:
+        page.close()
+
+
+def test_teacher_stage_window_clamps_to_active_screen_when_host_touches_edge(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    from desktop.classroom_page import TeacherStageWindow
+
+    class Owner:
+        def _on_teacher_stage_hidden(self) -> None:
+            return None
+
+    application = QApplication.instance() or QApplication([])
+    host = QMainWindow()
+    host.setGeometry(0, 0, 780, 700)
+    host.show()
+    application.processEvents()
+    stage = TeacherStageWindow(Owner())
+    stage.attach_to(host)
+    stage.sync_to_host()
+    try:
+        available = host.screen().availableGeometry()
+        assert available.contains(stage.frameGeometry().topLeft())
+        assert available.contains(stage.frameGeometry().bottomRight())
+        assert stage.width() <= 500
+        assert stage.height() == min(host.frameGeometry().height(), available.height())
+    finally:
+        stage.hide()
+        host.close()
+
+
+def test_native_classroom_submit_and_mastery_are_nonblocking_and_fetch_materials_off_thread(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QTextBrowser
+
+    from desktop.classroom_page import ClassroomPage
+
+    class SlowApi:
+        calls: list[dict] = []
+        material_calls = 0
+
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+        def advance_teaching_session(self, session_id: str, **payload) -> dict:
+            time.sleep(0.2)
+            self.calls.append({"session_id": session_id, **payload})
+            return {
+                "session_id": session_id,
+                "workspace_id": "workspace-slow",
+                "state": {},
+                "messages": [],
+            }
+
+        def materials(self, workspace_id: str) -> list[dict]:
+            assert workspace_id == "workspace-slow"
+            type(self).material_calls += 1
+            time.sleep(0.2)
+            return [{"id": "material-1", "original_url": "https://example.test/material"}]
+
+    def wait_for_action(page, application) -> None:
+        deadline = time.perf_counter() + 3
+        while page._action_future is not None and time.perf_counter() < deadline:
+            application.processEvents()
+            QTest.qWait(20)
+        application.processEvents()
+        assert page._action_future is None
+
+    application = QApplication.instance() or QApplication([])
+    api = SlowApi()
+    page = ClassroomPage(api, lambda: "provider-test")
+    page.session_id = "session-slow"
+    page.current_session = {"workspace_id": "workspace-slow"}
+    page.answer.setPlainText("回答不会阻塞界面")
+    try:
+        started = time.perf_counter()
+        page.send_answer()
+        assert time.perf_counter() - started < 0.1
+        assert page.send_button is not None and not page.send_button.isEnabled()
+        assert page.send_button.text() == "正在提交…"
+        assert page.answer.isReadOnly()
+        assert any(
+            "回答不会阻塞界面" in body.toPlainText()
+            for body in page.transcript.findChildren(QTextBrowser)
+        )
+        wait_for_action(page, application)
+        assert page.send_button is not None and page.send_button.isEnabled()
+        assert page.answer.toPlainText() == ""
+        assert SlowApi.material_calls == 1
+
+        started = time.perf_counter()
+        page.skip_to_next_point()
+        assert time.perf_counter() - started < 0.1
+        assert page.complete_button is not None and not page.complete_button.isEnabled()
+        assert page.complete_button.text() == "正在进入下一知识点…"
+        wait_for_action(page, application)
+        assert page.complete_button is not None and page.complete_button.isEnabled()
+        assert any(call.get("force_complete") is True for call in api.calls)
+        assert SlowApi.material_calls == 2
+    finally:
+        page.close()
+
+
+def test_native_classroom_failed_submit_preserves_input_and_restores_controls(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from desktop.api import ApiError
+    from desktop.classroom_page import ClassroomPage
+
+    class FailingApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+        def advance_teaching_session(self, _session_id: str, **_payload) -> dict:
+            time.sleep(0.15)
+            raise ApiError(503, "TEACHER_UNAVAILABLE", "教师服务暂时不可用")
+
+    application = QApplication.instance() or QApplication([])
+    page = ClassroomPage(FailingApi(), lambda: "")
+    page.session_id = "session-failure"
+    page.answer.setPlainText("失败时仍要保留这段回答")
+    try:
+        page.send_answer()
+        assert page.send_button is not None and not page.send_button.isEnabled()
+        deadline = time.perf_counter() + 2
+        while page._action_future is not None and time.perf_counter() < deadline:
+            application.processEvents()
+            QTest.qWait(20)
+        application.processEvents()
+        assert page.answer.toPlainText() == "失败时仍要保留这段回答"
+        assert not page.answer.isReadOnly()
+        assert page.send_button is not None and page.send_button.isEnabled()
+        assert "TEACHER_UNAVAILABLE" in page.state.text()
+    finally:
+        page.close()
+
+
+def test_native_classroom_ignores_stale_result_after_exit(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    from threading import Event
+
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QTextBrowser
+
+    from desktop.classroom_page import ClassroomPage
+
+    started = Event()
+    release = Event()
+
+    class BlockingApi:
+        def active_workspaces(self, *, include_archived: bool = False) -> dict:
+            return {"items": []}
+
+        def advance_teaching_session(self, session_id: str, **_payload) -> dict:
+            started.set()
+            release.wait(2)
+            return {"session_id": session_id, "workspace_id": "workspace-stale", "state": {}, "messages": []}
+
+        def materials(self, _workspace_id: str) -> list[dict]:
+            return []
+
+    application = QApplication.instance() or QApplication([])
+    page = ClassroomPage(BlockingApi(), lambda: "")
+    page.session_id = "session-stale"
+    page.answer.setPlainText("这条结果不能覆盖退出状态")
+    try:
+        page.send_answer()
+        assert started.wait(1)
+        page.exit_classroom()
+        assert page.session_id == ""
+        transcript_bodies = page.transcript.findChildren(QTextBrowser)
+        assert any("已退出本次课堂" in body.toPlainText() for body in transcript_bodies)
+        release.set()
+        QTest.qWait(250)
+        application.processEvents()
+        assert page.session_id == ""
+        transcript_bodies = page.transcript.findChildren(QTextBrowser)
+        assert any("已退出本次课堂" in body.toPlainText() for body in transcript_bodies)
+    finally:
+        release.set()
+        page.close()
+
+
+def test_native_classroom_message_copy_buttons_copy_plain_teacher_and_learner_text(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from desktop.classroom_page import ClassroomTranscriptView
+
+    application = QApplication.instance() or QApplication([])
+    view = ClassroomTranscriptView()
+    view.set_session(
+        {
+            "current_point": {
+                "messages": [
+                    {
+                        "role": "teacher",
+                        "teacher_turn": {
+                            "concept": {"name": "复制概念"},
+                            "blocks": [{"type": "explanation", "content": "教师纯文本"}],
+                        },
+                    },
+                    {"role": "user", "content": "学习者纯文本"},
+                ]
+            }
+        }
+    )
+    application.processEvents()
+    buttons = view.findChildren(QPushButton, "messageCopyButton")
+    assert len(buttons) == 2
+    buttons[0].click()
+    assert QApplication.clipboard().text() == "当前概念：复制概念\n\n【核心讲解】\n教师纯文本"
+    buttons[1].click()
+    assert QApplication.clipboard().text() == "学习者纯文本"
+    view.close()
+
+
+def test_native_classroom_message_copy_hides_internal_focus_markers(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from desktop.classroom_page import ClassroomTranscriptView
+
+    application = QApplication.instance() or QApplication([])
+    view = ClassroomTranscriptView()
+    view.set_session(
+        {
+            "current_point": {
+                "messages": [
+                    {
+                        "role": "teacher",
+                        "teacher_turn": {
+                            "blocks": [
+                                {
+                                    "type": "explanation",
+                                    "content": "先记住[[重点:循环不变量]]，再检查[[难点：边界条件]]。",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        }
+    )
+    application.processEvents()
+    button = view.findChild(QPushButton, "messageCopyButton")
+    assert button is not None
+    button.click()
+    copied = QApplication.clipboard().text()
+    assert "重点：循环不变量" in copied
+    assert "难点：边界条件" in copied
+    assert "[[" not in copied and "]]" not in copied
+    view.close()
 
 
 def test_slow_native_actions_return_immediately_and_finish_in_background(

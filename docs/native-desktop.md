@@ -24,7 +24,8 @@ MentorFlow 的桌面入口使用 PySide6（Qt 6）构建。Qt 创建真正的 Wi
 迁移包包含文件 SHA-256 清单，并使用 SQLite 在线备份快照数据库。Windows Credential
 Locker 中的 Provider API Key 不会进入压缩包，换设备后需要重新输入并保存模型预设。
 
-源码中保留的认证接口只用于未来单独的远程部署，不属于当前本地产品流程。
+当前源码不提供账号认证入口。历史数据库可能仍保留认证相关表用于兼容旧数据，
+但它们不是当前运行时身份边界，也不代表未来必须恢复远程账号功能。
 
 “模型连接”页把新输入的 Provider Key 直接写入 Windows Credential Locker，随后
 清空输入框。Qt 的 `QSettings` 只保存 Base URL、模型名和 `mfcred_...` 不透明引用；

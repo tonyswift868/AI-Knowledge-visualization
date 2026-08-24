@@ -500,6 +500,11 @@ def validate_provider_map(
                         ),
                     ),
                 ),
+                # Canonical identity is independent of display wording and
+                # evidence location. The scope layer uses it only to merge
+                # matching anchor/support concepts; contradictions still
+                # remain explicit review candidates.
+                "semantic_key": str(raw.get("semantic_key") or "").strip()[:240],
                 "semantic_signature": semantic_signature,
                 "layer": layer,
                 "status": "pending" if layer == "model_common" else "confirmed",

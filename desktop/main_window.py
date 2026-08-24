@@ -553,6 +553,7 @@ class MainWindow(QMainWindow):
             self._set_online_updates,
             self._reload_official_updates,
             str(self.settings.value("official_updates/enabled", "0") or "0") == "1",
+            self.classroom_page.apply_theme,
         )
         self.pages.addWidget(self.system_page)
         self.pages.addWidget(self._more_tools())
@@ -587,16 +588,16 @@ class MainWindow(QMainWindow):
 
     def _open_settings_section(self, section: str) -> None:
         if section == "provider":
-            self.navigation.setCurrentRow(6)
+            self.navigation.setCurrentRow(5)
         elif section == "resources":
-            self.navigation.setCurrentRow(8)
+            self.navigation.setCurrentRow(2)
         elif section == "data":
             # Data and backup controls live on the settings page itself; keep
             # this explicit so the action never falls through to an unrelated
             # destination as navigation entries evolve.
-            self.navigation.setCurrentRow(7)
+            self.navigation.setCurrentRow(6)
         else:
-            self.navigation.setCurrentRow(7)
+            self.navigation.setCurrentRow(6)
 
     def _maybe_start_tutorial(self) -> None:
         if str(self.settings.value("tutorial/completed", "") or "") == "1":
@@ -1813,8 +1814,17 @@ class MainWindow(QMainWindow):
         evidence_layout.addWidget(QLabel("待审核候选"))
         self.map_candidates = QListWidget()
         self.map_candidates.setMaximumHeight(180)
+        self.map_candidates.setAccessibleName("待审核知识地图候选")
         self.map_candidates.currentItemChanged.connect(self._show_candidate)
+        self.map_candidates.itemChanged.connect(self._candidate_check_changed)
         evidence_layout.addWidget(self.map_candidates)
+        self._map_checked_candidate_ids: set[str] = set()
+        self._map_current_candidate_id = ""
+        self.map_select_all_button = QPushButton("全选待审核")
+        self.map_select_all_button.setAccessibleName("全选待审核候选")
+        self.map_select_all_button.setToolTip("勾选或取消勾选全部待审核候选")
+        self.map_select_all_button.clicked.connect(self._toggle_all_candidates)
+        evidence_layout.addWidget(self.map_select_all_button)
         self.candidate_reason = QLineEdit()
         self.candidate_reason.setPlaceholderText("可选：记录确认或驳回原因")
         evidence_layout.addWidget(self.candidate_reason)
@@ -1833,6 +1843,7 @@ class MainWindow(QMainWindow):
         self._map_job_timer.setInterval(1200)
         self._map_job_timer.timeout.connect(self._poll_map_job)
         self._map_job_id = ""
+        self._update_candidate_select_all_button()
         return page
 
     def _teacher_chat(self) -> QWidget:
@@ -2072,8 +2083,21 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _task_progress(item: dict) -> tuple[int, int]:
-        total = max(0, int(item.get("task_count") or 0))
-        completed = min(total, max(0, int(item.get("completed_task_count") or 0)))
+        # Overview cards describe progress through the learner's knowledge
+        # route, not the implementation-level phase/review task rows.  One
+        # concept may expand into several execution tasks, so showing those
+        # counts (for example 167/648) conflicts with the classroom's 42/150
+        # position even when both refer to the same authoritative session.
+        total = max(
+            0,
+            int(item.get("knowledge_point_count") or item.get("task_count") or 0),
+        )
+        completed_value = (
+            item.get("completed_knowledge_point_count")
+            if item.get("completed_knowledge_point_count") is not None
+            else item.get("completed_task_count") or 0
+        )
+        completed = min(total, max(0, int(completed_value)))
         return completed, total
 
     @staticmethod
@@ -2880,15 +2904,28 @@ class MainWindow(QMainWindow):
         self.evidence_text.setPlainText("\n".join(lines))
 
     def _refresh_candidates(self, workspace_id: str) -> None:
+        self._remember_candidate_selection()
+        previous_current_id = self._map_current_candidate_id
         self.map_candidates.clear()
         try:
             candidates = self.api.knowledge_map_candidates(workspace_id).get("candidates", [])
         except ApiError as exc:
             self.map_state.setText(self.map_state.text() + f"\n候选读取失败：{exc.code}")
             return
+        pending_candidates = []
         for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
             if str(candidate.get("status") or "pending") != "pending":
                 continue
+            pending_candidates.append(candidate)
+        pending_ids = {
+            str(candidate.get("id") or "")
+            for candidate in pending_candidates
+            if str(candidate.get("id") or "")
+        }
+        self._map_checked_candidate_ids.intersection_update(pending_ids)
+        for candidate in pending_candidates:
             payload = candidate.get("payload") or {}
             candidate_type = str(candidate.get("candidate_type") or "candidate")
             type_label = {
@@ -2914,10 +2951,97 @@ class MainWindow(QMainWindow):
             else:
                 label = str(payload.get("name") or payload.get("label") or relation_label or "请查看详情")
             item = QListWidgetItem(f"{type_label} · {label}")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            candidate_id = str(candidate.get("id") or "")
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if candidate_id and candidate_id in self._map_checked_candidate_ids
+                else Qt.CheckState.Unchecked
+            )
             item.setData(Qt.ItemDataRole.UserRole, candidate)
             self.map_candidates.addItem(item)
         if self.map_candidates.count() == 0:
-            self.map_candidates.addItem("没有待审核候选")
+            empty = QListWidgetItem("没有待审核候选")
+            empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.map_candidates.addItem(empty)
+        else:
+            target = next(
+                (index for index in range(self.map_candidates.count()) if self._candidate_id_for_item(self.map_candidates.item(index)) == previous_current_id),
+                -1,
+            )
+            if target < 0:
+                target = 0
+            self.map_candidates.setCurrentRow(target)
+        self._update_candidate_select_all_button()
+
+    @staticmethod
+    def _candidate_id_for_item(item: QListWidgetItem | None) -> str:
+        if item is None:
+            return ""
+        candidate = item.data(Qt.ItemDataRole.UserRole)
+        return str(candidate.get("id") or "") if isinstance(candidate, dict) else ""
+
+    def _remember_candidate_selection(self) -> None:
+        """Keep checked/current candidate IDs across candidate list rebuilds."""
+
+        if not hasattr(self, "map_candidates"):
+            return
+        checked: set[str] = set()
+        for index in range(self.map_candidates.count()):
+            item = self.map_candidates.item(index)
+            candidate = item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(candidate, dict):
+                continue
+            candidate_id = str(candidate.get("id") or "")
+            if candidate_id and item.checkState() == Qt.CheckState.Checked:
+                checked.add(candidate_id)
+        self._map_checked_candidate_ids = checked
+        current = self.map_candidates.currentItem()
+        candidate = current.data(Qt.ItemDataRole.UserRole) if current else None
+        self._map_current_candidate_id = str(candidate.get("id") or "") if isinstance(candidate, dict) else ""
+
+    def _candidate_check_changed(self, _item: QListWidgetItem) -> None:
+        self._remember_candidate_selection()
+        self._update_candidate_select_all_button()
+
+    def _update_candidate_select_all_button(self) -> None:
+        button = getattr(self, "map_select_all_button", None)
+        candidates = []
+        widget = getattr(self, "map_candidates", None)
+        if widget is not None:
+            for index in range(widget.count()):
+                candidate = widget.item(index).data(Qt.ItemDataRole.UserRole)
+                if isinstance(candidate, dict) and str(candidate.get("id") or ""):
+                    candidates.append(candidate)
+        all_checked = bool(candidates) and all(
+            str(candidate.get("id") or "") in self._map_checked_candidate_ids for candidate in candidates
+        )
+        if button is not None:
+            button.setEnabled(bool(candidates))
+            button.setText("取消全选" if all_checked else "全选待审核")
+            button.setAccessibleName("取消全选待审核候选" if all_checked else "全选待审核候选")
+
+    def _toggle_all_candidates(self) -> None:
+        self._remember_candidate_selection()
+        candidates = []
+        for index in range(self.map_candidates.count()):
+            item = self.map_candidates.item(index)
+            candidate = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(candidate, dict) and str(candidate.get("id") or ""):
+                candidates.append(item)
+        if not candidates:
+            self._update_candidate_select_all_button()
+            return
+        select_all = not all(item.checkState() == Qt.CheckState.Checked for item in candidates)
+        self.map_candidates.blockSignals(True)
+        try:
+            state = Qt.CheckState.Checked if select_all else Qt.CheckState.Unchecked
+            for item in candidates:
+                item.setCheckState(state)
+        finally:
+            self.map_candidates.blockSignals(False)
+        self._remember_candidate_selection()
+        self._update_candidate_select_all_button()
 
     def _show_candidate(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
         if current is None:
@@ -2925,6 +3049,7 @@ class MainWindow(QMainWindow):
         candidate = current.data(Qt.ItemDataRole.UserRole)
         if not isinstance(candidate, dict):
             return
+        self._map_current_candidate_id = str(candidate.get("id") or "")
         payload = candidate.get("payload") or {}
         candidate_type = str(candidate.get("candidate_type") or "candidate")
         lines = [
@@ -2961,26 +3086,98 @@ class MainWindow(QMainWindow):
 
     def _decide_candidate(self, decision: str) -> None:
         workspace_id = str(self.map_workspace.currentData() or "")
-        current = self.map_candidates.currentItem()
-        candidate = current.data(Qt.ItemDataRole.UserRole) if current else None
-        if not workspace_id or not isinstance(candidate, dict):
+        self._remember_candidate_selection()
+        checked: list[dict] = []
+        for index in range(self.map_candidates.count()):
+            item = self.map_candidates.item(index)
+            candidate = item.data(Qt.ItemDataRole.UserRole)
+            if (
+                isinstance(candidate, dict)
+                and item.checkState() == Qt.CheckState.Checked
+                and str(candidate.get("id") or "")
+            ):
+                checked.append(candidate)
+        selected = checked
+        if not selected:
+            current = self.map_candidates.currentItem()
+            candidate = current.data(Qt.ItemDataRole.UserRole) if current else None
+            if isinstance(candidate, dict) and str(candidate.get("id") or ""):
+                selected = [candidate]
+        deduped: list[dict] = []
+        seen_ids: set[str] = set()
+        for candidate in selected:
+            candidate_id = str(candidate.get("id") or "")
+            if candidate_id and candidate_id not in seen_ids:
+                seen_ids.add(candidate_id)
+                deduped.append(candidate)
+        if not workspace_id or not deduped:
             self.map_state.setText("请选择一个待审核候选。")
             return
-        try:
-            result = self.api.decide_knowledge_map_candidate(
-                workspace_id,
-                str(candidate.get("id") or ""),
-                decision=decision,
-                reason=self.candidate_reason.text().strip(),
+        reason = self.candidate_reason.text().strip()
+        action = "确认" if decision == "confirmed" else "驳回"
+        if checked:
+            candidate_ids = [str(candidate.get("id") or "") for candidate in deduped]
+            try:
+                result = self.api.decide_knowledge_map_candidates(
+                    workspace_id,
+                    candidate_ids,
+                    decision=decision,
+                    reason=reason,
+                )
+            except ApiError as exc:
+                # The batch endpoint is atomic: do not reload or report a
+                # partial success when the server rejects a stale revision.
+                self.map_state.setText(f"批量{action}失败：{exc.code}：{exc.message}")
+                return
+
+            decided_count = result.get("decided_count") if isinstance(result, dict) else None
+            if decided_count is None:
+                rows = (
+                    (result.get("results") or result.get("candidates"))
+                    if isinstance(result, dict)
+                    else []
+                )
+                decided_count = len(rows) if isinstance(rows, list) else len(candidate_ids)
+            try:
+                decided_count = int(decided_count)
+            except (TypeError, ValueError):
+                decided_count = len(candidate_ids)
+            remaining_pending = result.get("remaining_pending_count") if isinstance(result, dict) else None
+            remaining_label = str(remaining_pending) if remaining_pending is not None else "未知"
+            revision = (
+                str(result.get("revision") or result.get("revision_id") or "")
+                if isinstance(result, dict)
+                else ""
             )
-        except ApiError as exc:
-            self.map_state.setText(f"候选处理失败：{exc.code}：{exc.message}")
-            return
+            final_status = (
+                f"已{action} {decided_count} 项，剩余待审核 {remaining_label} 项，"
+                f"新修订：{revision or '未知'}"
+            )
+        else:
+            # Keep the legacy single-candidate path for callers that have no
+            # checked rows.  A checked selection always uses the atomic batch
+            # endpoint above; never loop over single decisions here.
+            try:
+                result = self.api.decide_knowledge_map_candidate(
+                    workspace_id,
+                    str(deduped[0].get("id") or ""),
+                    decision=decision,
+                    reason=reason,
+                )
+            except ApiError as exc:
+                self.map_state.setText(f"{action}失败：{exc.code}：{exc.message}")
+                return
+            revision = str(result.get("revision") or result.get("revision_id") or "")
+            final_status = f"已{action} 1 项，新修订：{revision or '未知'}"
+
         self.candidate_reason.clear()
-        self.map_state.setText(
-            f"候选已{'确认' if decision == 'confirmed' else '驳回'}，新修订：{result.get('revision') or result.get('revision_id')}"
-        )
         self._load_selected_map()
+        # Loading the refreshed graph replaces ``map_state`` with its graph
+        # summary.  Keep the decision receipt visible afterwards.
+        graph_summary = self.map_state.text().strip()
+        self.map_state.setText(
+            f"{graph_summary}\n{final_status}" if graph_summary else final_status
+        )
 
     def _logout(self) -> None:
         try:

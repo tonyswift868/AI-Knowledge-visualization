@@ -19,6 +19,8 @@ from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from xml.etree import ElementTree
 
+from backend.app.safe_xml import XMLSecurityError, fromstring as safe_xml_fromstring
+
 FEED_URLS = (
     "https://openai.com/news/rss.xml",
     "https://blog.google/rss/",
@@ -104,10 +106,10 @@ def parse_feed(xml: bytes | str, *, publisher: str, now: datetime | None = None,
     raw = xml.encode("utf-8") if isinstance(xml, str) else bytes(xml)
     if len(raw) > MAX_BYTES:
         raise ValueError("official feed exceeds size limit")
-    lowered = raw[: min(len(raw), 8192)].lower()
-    if b"<!doctype" in lowered or b"<!entity" in lowered:
-        raise ValueError("official feed contains a prohibited document type or entity")
-    root = ElementTree.fromstring(raw)
+    try:
+        root = safe_xml_fromstring(raw)
+    except XMLSecurityError as exc:
+        raise ValueError("official feed contains a prohibited document type or entity") from exc
     reference = now or datetime.now(timezone.utc)
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=timezone.utc)

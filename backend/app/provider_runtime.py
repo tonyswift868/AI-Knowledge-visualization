@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from .credential_store import CredentialStoreError, delete_secret, get_secret
 from .provider_service import ProviderError, get_provider
+from .provider_url_policy import ProviderURLPolicyError, validate_provider_base_url
 
 @dataclass
 class ProviderSession:
@@ -40,6 +41,20 @@ def _credential_error_status(error: CredentialStoreError) -> int:
     if error.code == "CREDENTIAL_NOT_FOUND":
         return 404
     return 503
+
+
+def _validated_base_url(value: object) -> str:
+    """Validate a real Provider URL without echoing the rejected value."""
+
+    try:
+        return validate_provider_base_url(value)  # type: ignore[arg-type]
+    except ProviderURLPolicyError as exc:
+        raise ProviderError(
+            exc.code,
+            exc.message,
+            exc.status,
+            {"field": "base_url"},
+        ) from exc
 
 
 def _now() -> datetime:
@@ -78,6 +93,8 @@ def create_provider_session(config: dict[str, Any], *, owner_user_id: str | None
                 400,
                 {"provider": provider},
             )
+        base_url = _validated_base_url(config.get("base_url"))
+        effective_config["base_url"] = base_url
         try:
             credential_ref = str(config.get("credential_ref") or "").strip()
             api_key = get_secret(credential_ref)
@@ -179,6 +196,11 @@ async def test_provider_session(session_id: str) -> dict[str, Any]:
 
 
 def provider_for_session(session: ProviderSession):
+    if session.provider != "fake":
+        # Validate before touching the credential store as well as at the
+        # Provider factory boundary.  This protects legacy/manually-created
+        # in-memory handles from reaching a network client.
+        _validated_base_url(session.base_url)
     try:
         api_key = get_secret(session.credential_ref) if session.provider != "fake" else ""
     except CredentialStoreError as exc:

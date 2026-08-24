@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import mimetypes
+import time
 import zipfile
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -12,7 +14,9 @@ import fitz
 import pytest
 from docx import Document
 
-from app import expedition_service, koikatsu_runtime
+from app import active_teaching, expedition_service, generic_knowledge_api, koikatsu_runtime, teacher_avatar_card_presets
+from app.credential_store import store_secret
+from app.provider_runtime import create_provider_session, get_provider_session
 from app.student_model import initial_student_state
 from app.tutor_decision import decide_next_action, offer_self_study
 
@@ -21,6 +25,194 @@ PROOF = (
     "I explain the reason with an example and evidence, then list the steps "
     "and workflow and make a decision."
 )
+
+
+class _GroundedProvider:
+    """Deterministic fake transport exposed through a verified real-provider session."""
+
+    async def json(self, messages):
+        prompt = json.loads(messages[-1]["content"])
+        if "learner_answer" in prompt:
+            return {
+                "score": 0.96,
+                "criteria_met": True,
+                "rationale": "The answer is grounded in the selected material and observable rubric.",
+            }
+        if "concept" in prompt and "phase" in prompt:
+            concept = prompt["concept"]
+            return {
+                "explanation": f"Grounded explanation of {concept.get('name', 'the concept')}.",
+                "analogy": "Use a small concrete example to connect the source evidence to practice.",
+                "worked_example": "Apply the concept to one input and check the observable result.",
+                "check_prompt": "Explain the concept in your own words and give one example.",
+            }
+        if "fixed_action" in prompt:
+            return {"content": f"Grounded teaching expression for {prompt['fixed_action']}."}
+        chunks = prompt.get("chunks") or []
+        chunk_ids = [str(item["chunk_id"]) for item in chunks]
+        points = [
+            {
+                "id": f"concept-{index}",
+                "name": str(item.get("heading") or f"Grounded concept {index + 1}"),
+                "explanation": str(item.get("text") or "Source-grounded concept")[:320],
+                "node_type": "concept",
+                "layer": "material",
+                "source_chunk_ids": [str(item["chunk_id"])],
+                "acceptance_method": "Explain the concept with a concrete example and evidence.",
+                "estimated_mastery_minutes": 40,
+            }
+            for index, item in enumerate(chunks)
+        ]
+        return {
+            "knowledge_points": [
+                {
+                    "id": "theme",
+                    "name": "Grounded study theme",
+                    "explanation": "A theme grounded in every selected source chunk.",
+                    "node_type": "theme",
+                    "layer": "material",
+                    "source_chunk_ids": chunk_ids,
+                },
+                *points,
+            ],
+            "dependencies": [
+                {
+                    "prerequisite_id": "theme",
+                    "dependent_id": item["id"],
+                    "relation": "contains",
+                    "layer": "material",
+                    "source_chunk_ids": [item["source_chunk_ids"][0]],
+                }
+                for item in points
+            ],
+        }
+
+
+def _verified_provider(monkeypatch) -> str:
+    public = create_provider_session(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://example.invalid",
+            "model": "w6-grounded-test",
+            "credential_ref": store_secret("w6-test-key"),
+        }
+    )
+    session = get_provider_session(public["provider_session_id"])
+    assert session is not None
+    session.verified = True
+    provider = _GroundedProvider()
+    monkeypatch.setattr(generic_knowledge_api, "provider_for_session", lambda _session: provider)
+    monkeypatch.setattr(active_teaching, "provider_for_session", lambda _session: provider)
+    return public["provider_session_id"]
+
+
+def _canonical_map_plan_and_learning(client, workspace_id: str, material_ids: list[str], monkeypatch) -> dict:
+    provider_session_id = _verified_provider(monkeypatch)
+    rejected = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/jobs", json={}
+    )
+    assert rejected.status_code == 428
+    assert rejected.json()["error"]["code"] == "PROVIDER_VERIFICATION_REQUIRED"
+    retired = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-graph/generate"
+    )
+    assert retired.status_code == 410
+    assert retired.json()["error"]["code"] == "LEGACY_KNOWLEDGE_GRAPH_ENDPOINT"
+    receipt = {
+        "learning_goal": "Complete a grounded learning loop",
+        "current_level": "beginner",
+        "deadline": (date.today() + timedelta(days=14)).isoformat(),
+        "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
+        "preferred_learning_style": "explain-and-practice",
+        "daily_task_minutes": 120,
+        "material_ids": material_ids,
+        "discover_external_resources": False,
+    }
+    saved = client.put(f"/api/active-teaching/workspaces/{workspace_id}/receipt", json=receipt)
+    assert saved.status_code == 200, saved.text
+    queued = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/jobs",
+        json={"provider_session_id": provider_session_id},
+    )
+    assert queued.status_code == 202, queued.text
+    job = queued.json()
+    for _ in range(300):
+        if job.get("status") in {"ready", "ready_with_review", "failed", "cancelled"}:
+            break
+        time.sleep(0.01)
+        polled = client.get(f"/api/active-teaching/knowledge-map/jobs/{job['id']}")
+        assert polled.status_code == 200, polled.text
+        job = polled.json()
+    assert job["status"] in {"ready", "ready_with_review"}, job
+    graph = client.get(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map",
+        params={"revision": "active"},
+    )
+    assert graph.status_code == 200, graph.text
+    graph_body = graph.json()
+    assert graph_body["schema"] == "mentorflow.knowledge-map.v1"
+    assert graph_body["quality"]["status"] == "passed"
+    assert graph_body["quality"]["evidence_complete"] is True
+    assert all(node["evidence"] for node in graph_body["nodes"])
+    while True:
+        candidates = client.get(
+            f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/candidates"
+        )
+        assert candidates.status_code == 200, candidates.text
+        pending = [
+            item
+            for item in candidates.json().get("candidates", [])
+            if item.get("status") == "pending" and item.get("candidate_type") == "edge"
+        ]
+        if not pending:
+            break
+        decision = client.post(
+            f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map/candidates/{pending[0]['id']}/decision",
+            json={"decision": "confirmed", "reason": "grounded W6 contract"},
+        )
+        assert decision.status_code == 200, decision.text
+    refreshed = client.get(
+        f"/api/active-teaching/workspaces/{workspace_id}/knowledge-map",
+        params={"revision": "active"},
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    graph_body = refreshed.json()
+    preview = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/mastery-plans/preview",
+        json={"revision": graph_body["revision"]},
+    )
+    assert preview.status_code == 200, preview.text
+    preview_body = preview.json()
+    assert preview_body["tasks"]
+    activated = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/mastery-plans/{preview_body['preview_id']}/activate",
+        json={"confirm_extension": True},
+    )
+    assert activated.status_code == 200, activated.text
+    assert activated.json()["status"] == "active"
+    started = client.post(
+        f"/api/active-teaching/workspaces/{workspace_id}/sessions/start",
+        json={"provider_session_id": provider_session_id},
+    )
+    assert started.status_code == 200, started.text
+    state = started.json()["state"]
+    concept_name = state["teacher_turn_v1"]["concept"]["name"]
+    advanced = client.post(
+        f"/api/active-teaching/sessions/{started.json()['session_id']}/advance",
+        json={
+            "message": f"{concept_name}: {PROOF}",
+            "understood": True,
+            "provider_session_id": provider_session_id,
+        },
+    )
+    assert advanced.status_code == 200, advanced.text
+    learning = advanced.json()
+    assert learning["state"]["mastery_evidence"]
+    evidence = learning["state"]["mastery_evidence"][-1]
+    assert evidence["passed"] is True
+    assert evidence["evaluation"]["scope"] == "grounded_rubric_evaluation"
+    assert evidence["evaluation"]["criteria_met"] is True
+    return {"job": job, "graph": graph_body, "plan": activated.json(), "learning": learning}
 TERMINAL_TASK_TYPES = {
     "review",
     "final",
@@ -297,58 +489,45 @@ def _complete_run(client, task: dict) -> tuple[dict, dict, dict]:
     "dataset", STANDARD_DATASETS, ids=lambda dataset: dataset.dataset_id
 )
 def test_three_standard_datasets_complete_a_grounded_http_learning_loop(
-    client, dataset: StandardDataset
+    client, dataset: StandardDataset, monkeypatch
 ):
     workspace, import_evidence = _import_dataset(client, dataset)
-    generated = client.post(
-        f"/api/workspaces/{workspace['id']}/knowledge-map/regenerate"
+    active_material_ids: list[str] = []
+    for relative_path, content in dataset.files.items():
+        payload = content.encode() if isinstance(content, str) else content
+        uploaded = client.post(
+            f"/api/active-teaching/workspaces/{workspace['id']}/materials",
+            files={
+                "file": (
+                    relative_path,
+                    payload,
+                    mimetypes.guess_type(relative_path)[0] or "application/octet-stream",
+                )
+            },
+        )
+        if uploaded.status_code in {415, 422} and relative_path in dataset.optional_formats:
+            continue
+        assert uploaded.status_code == 200, uploaded.text
+        active_material_ids.append(uploaded.json()["id"])
+    assert active_material_ids
+    canonical = _canonical_map_plan_and_learning(
+        client, workspace["id"], active_material_ids, monkeypatch
     )
-    assert generated.status_code == 200, generated.text
-    knowledge_map = generated.json()["knowledge_map"]
-    assert knowledge_map["quality"]["sourced_node_ratio"] == 1
-    assert all(
-        node["source_refs"] for node in knowledge_map["nodes"] if node["status"] == "active"
-    )
-    source_ids = {
-        item["source"]["id"] for item in import_evidence["receipt"]["imported"]
-    }
-    assert {
-        reference["source_id"]
-        for node in knowledge_map["nodes"]
-        for reference in node["source_refs"]
-    } <= source_ids
-
-    plan = _generate_plan(client, workspace["id"], dataset)
-    assert plan["generation_meta"]["provider"] == "fake"
-    assert plan["generation_meta"]["fallback_used"] is False
-    today = client.get(f"/api/workspaces/{workspace['id']}/today")
-    assert today.status_code == 200 and today.json()["day"]["tasks"]
-
-    task = _first_pass_tasks(plan)[0]
-    run, terminal_request, terminal_response = _complete_run(client, task)
-    duplicate = client.post(
-        f"/api/learning-runs/{run['run_id']}/submit", json=terminal_request
-    )
-    assert duplicate.status_code == 200
-    assert duplicate.json()["revision"] == terminal_response["revision"]
-    ledger = expedition_service.get_ledger()["items"]
-    matching_rewards = [
-        item for item in ledger if item["learning_run_id"] == run["run_id"]
-    ]
-    assert len(matching_rewards) == 1
-
-    progress = client.get(f"/api/workspaces/{workspace['id']}/progress").json()
-    assert progress["validated_completed_tasks"] >= 1
-    review_queue = client.get(
-        f"/api/workspaces/{workspace['id']}/review-queue"
-    ).json()
-    assert review_queue
+    assert canonical["graph"]["quality"]["evidence_complete"] is True
+    assert canonical["graph"]["nodes"]
+    assert canonical["plan"]["execution_task_count"] >= 1
+    assert canonical["learning"]["state"]["mastery_evidence"][-1]["passed"] is True
 
 
 def test_absence_half_completion_goal_change_undo_and_advance_are_reproducible(client):
     dataset = STANDARD_DATASETS[0]
     workspace, _ = _import_dataset(client, dataset)
     plan = _generate_plan(client, workspace["id"], dataset)
+    existing_absence = (date.today() + timedelta(days=3)).isoformat()
+    assert client.patch(
+        f"/api/workspaces/{workspace['id']}/goal",
+        json={"unavailable_dates": [existing_absence]},
+    ).status_code == 200
     tasks = _first_pass_tasks(plan)
     assert len(tasks) >= 2
     completed, _, _ = _complete_run(client, tasks[0])
@@ -392,6 +571,7 @@ def test_absence_half_completion_goal_change_undo_and_advance_are_reproducible(c
     }
 
     goal = client.get(f"/api/workspaces/{workspace['id']}/goal").json()["payload"]
+    assert existing_absence in goal["unavailable_dates"]
     assert absence in goal["unavailable_dates"]
     assert goal["deadline"] == changed_deadline
     assert goal["minutes_per_day"] == 55
@@ -479,23 +659,38 @@ def test_kks_unavailable_partial_and_teacher_without_avatar_fallback_are_truthfu
     monkeypatch.setattr(
         koikatsu_runtime, "BASE_MODEL_PATH", missing_root / "base.glb"
     )
-    unavailable = client.get("/api/koikatsu/readiness")
-    assert unavailable.status_code == 200
-    assert unavailable.json()["status"] == "unavailable"
-    assert unavailable.json()["available"] is False
-    assert unavailable.json()["fallback"] == "teacher_without_avatar"
+    unavailable = koikatsu_runtime.runtime_readiness()
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["available"] is False
+    assert unavailable["fallback"] == "teacher_without_avatar"
 
     missing_root.mkdir()
     koikatsu_runtime.CARD_INDEX_PATH.write_bytes(b"index-present")
-    partial = client.get("/api/koikatsu/readiness")
-    assert partial.status_code == 200
-    assert partial.json()["status"] == "partial"
-    assert partial.json()["available"] is False
-    assert "zipmod_index" in partial.json()["manifest"]["missing_artifacts"]
-    assert "base_model" in partial.json()["manifest"]["missing_artifacts"]
+    partial = koikatsu_runtime.runtime_readiness()
+    assert partial["status"] == "partial"
+    assert partial["available"] is False
+    assert "zipmod_index" in partial["manifest"]["missing_artifacts"]
+    assert "base_model" in partial["manifest"]["missing_artifacts"]
 
-    avatar = client.get("/api/teacher-avatars")
-    assert avatar.status_code == 503
-    assert avatar.json()["error"]["code"] == "KKS_RUNTIME_PARTIAL"
-    assert avatar.json()["error"]["details"]["status"] == "partial"
-    assert avatar.json()["error"]["details"]["fallback"] == "teacher_without_avatar"
+    # The retired runtime HTTP routes are replaced by the card-preset roster.
+    # Force its manifest unavailable so this test checks the truthful optional
+    # resource state without depending on bundled game assets.
+    monkeypatch.setattr(
+        teacher_avatar_card_presets,
+        "MANIFEST",
+        missing_root / "card-presets-manifest.json",
+    )
+    presets = client.get("/api/teacher-avatar-card-presets")
+    assert presets.status_code == 200
+    preset_body = presets.json()
+    assert preset_body["status"] == "unavailable"
+    assert preset_body["available"] is False
+    assert preset_body["items"] == []
+    assert preset_body["count"] == preset_body["total"] == 0
+    assert preset_body["reason"]
+    assert preset_body["reason_code"] == "CARD_PRESET_MANIFEST_INVALID"
+
+    registry = client.get("/api/teacher-avatars")
+    assert registry.status_code == 200
+    registry_body = registry.json()
+    assert registry_body["count"] == len(registry_body["items"])

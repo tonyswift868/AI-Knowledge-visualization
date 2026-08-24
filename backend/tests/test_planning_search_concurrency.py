@@ -17,8 +17,18 @@ def test_planning_searches_three_queries_concurrently_and_merges_stably(monkeypa
         active -= 1
         return {
             "results": [
-                {"url": "https://example.test/shared", "title": query},
-                {"url": f"https://example.test/{query}"},
+                {
+                    "url": "https://example.test/shared",
+                    "title": f"Qualified shared course note {query}",
+                    "snippet": f"A complete worked explanation for {query} with examples.",
+                    "media_kind": "document",
+                },
+                {
+                    "url": f"https://example.test/{query}",
+                    "title": f"Qualified course note {query}",
+                    "snippet": f"Definitions, derivations, and exercises for {query}.",
+                    "media_kind": "document",
+                },
                 {"url": "http://example.test/insecure"},
             ]
         }
@@ -46,7 +56,12 @@ def test_planning_search_cache_reuses_results(monkeypatch):
     async def fake_search(query: str, *, max_results: int):
         nonlocal calls
         calls += 1
-        return {"results": [{"url": f"https://example.test/{query}", "title": query}]}
+        return {"results": [{
+            "url": f"https://example.test/{query}",
+            "title": f"Qualified course note for {query}",
+            "snippet": f"Definitions, examples, and exercises for {query}.",
+            "media_kind": "document",
+        }]}
 
     monkeypatch.setattr(planner, "search_web", fake_search)
     query = [{"query": "portable topic", "reason": "test"}]
@@ -56,6 +71,13 @@ def test_planning_search_cache_reuses_results(monkeypatch):
     second = asyncio.run(planner._planning_search_resources(query, cache_stats=second_stats))
 
     assert calls == 1
-    assert first[0] == second[0]
+    assert len(first[0]) == 1
+    # The cache boundary deliberately whitelists and re-normalizes evidence
+    # metadata.  Its public candidate identity/content contract must remain
+    # stable even when internal evidence bookkeeping is enriched.
+    fields = ("stable_id", "url", "title", "media_kind", "coverage_role", "authority_status")
+    assert [tuple(item.get(field) for field in fields) for item in first[0]] == [
+        tuple(item.get(field) for field in fields) for item in second[0]
+    ]
     assert first_stats == {"queries": 1}
     assert second_stats == {"hits": 1, "queries": 1}

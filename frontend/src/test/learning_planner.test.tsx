@@ -129,7 +129,7 @@ describe("learning planner", () => {
     }))
   })
 
-  it("requires a clear acknowledgement for a video-only bundle", async () => {
+  it("does not publish or hand off a video-only bundle", async () => {
     activeRequestMock.activeRequest.mockResolvedValue({
       reply: "找到一份完整视频合集。",
       goal_summary: "学习一个可验证主题",
@@ -139,6 +139,7 @@ describe("learning planner", () => {
         title: "完整视频合集",
         media_kind: "video_collection",
         coverage_role: "primary",
+        direct_user_reference: true,
       }],
     })
     const onStartPlan = vi.fn()
@@ -146,14 +147,65 @@ describe("learning planner", () => {
     fireEvent.click(screen.getByTestId("planning-companion-search"))
     fireEvent.change(screen.getByTestId("planning-companion-input"), { target: { value: "找完整视频合集" } })
     fireEvent.click(screen.getByTestId("planning-companion-send"))
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "选择 完整视频合集" })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择 完整视频合集" }))
+    await waitFor(() => expect(activeRequestMock.activeRequest).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole("checkbox", { name: "选择 完整视频合集" })).not.toBeInTheDocument()
+    expect(screen.queryByText("完整视频合集")).not.toBeInTheDocument()
     fireEvent.click(screen.getByTestId("planning-companion-start"))
-    expect(screen.getByTestId("planning-video-only-confirmation")).toBeInTheDocument()
     expect(onStartPlan).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "继续仅使用视频" }))
-    expect(onStartPlan).toHaveBeenCalledWith(expect.objectContaining({
-      resources: [expect.objectContaining({ media_kind: "video_collection", video_only_acknowledged: true })],
-    }))
+    expect(screen.queryByTestId("planning-video-only-confirmation")).not.toBeInTheDocument()
+  })
+
+  it("keeps only the selected document while searching for companion documents", async () => {
+    let finishRefinement: (value: any) => void = () => undefined
+    const refinement = new Promise(resolve => { finishRefinement = resolve })
+    activeRequestMock.activeRequest
+      .mockResolvedValueOnce({
+        reply: "我找到了三份文字资料候选。",
+        goal_summary: "学习线性代数",
+        resources: [
+          { candidate_id: "doc-1", url: "https://docs.example.test/one", title: "课程主讲义", media_kind: "document", direct_user_reference: true },
+          { candidate_id: "doc-2", url: "https://docs.example.test/two", title: "练习手册", media_kind: "document", direct_user_reference: false },
+          { candidate_id: "doc-3", url: "https://docs.example.test/three", title: "公式速查表", media_kind: "document", direct_user_reference: false },
+        ],
+      })
+      .mockReturnValueOnce(refinement)
+
+    render(<CasualTeacherChat workspaceId="workspace-companion-notes" mode="planner" />)
+    fireEvent.click(screen.getByTestId("planning-companion-search"))
+    fireEvent.change(screen.getByTestId("planning-companion-input"), {
+      target: { value: "帮我找线性代数文字资料" },
+    })
+    fireEvent.click(screen.getByTestId("planning-companion-send"))
+    const firstDocument = await screen.findByRole("checkbox", { name: "选择 课程主讲义" })
+    fireEvent.click(firstDocument)
+
+    fireEvent.change(screen.getByTestId("planning-companion-input"), {
+      target: { value: "我已选择主讲义，再找一份配套练习资料" },
+    })
+    fireEvent.click(screen.getByTestId("planning-companion-send"))
+
+    expect(await screen.findByText("正在保留已选资料并检索配套内容…")).toBeInTheDocument()
+    await waitFor(() => expect(activeRequestMock.activeRequest).toHaveBeenCalledTimes(2))
+    const refinementBody = JSON.parse(String(activeRequestMock.activeRequest.mock.calls[1][1].body))
+    expect(refinementBody.selected_resources).toEqual([
+      expect.objectContaining({ candidate_id: "doc-1", title: "课程主讲义" }),
+    ])
+    expect(refinementBody.retained_candidates).toEqual(refinementBody.selected_resources)
+
+    finishRefinement({
+      reply: "已保留你选中的 1 份资料，并找到 1 份新的文字笔记候选。",
+      goal_summary: "学习线性代数",
+      resource_bundle: {
+        candidates: [
+          { candidate_id: "doc-1", url: "https://docs.example.test/one", title: "课程主讲义", media_kind: "document", selected: true, direct_user_reference: true },
+          { candidate_id: "notes-1", url: "https://notes.example.test/one", title: "配套练习笔记", media_kind: "document" },
+        ],
+      },
+    })
+
+    expect(await screen.findByText("配套练习笔记")).toBeInTheDocument()
+    expect(screen.getByText("已保留选择 · 本轮不会被旧候选替换")).toBeInTheDocument()
+    expect(screen.queryByText("练习手册")).not.toBeInTheDocument()
+    expect(screen.queryByText("公式速查表")).not.toBeInTheDocument()
   })
 })

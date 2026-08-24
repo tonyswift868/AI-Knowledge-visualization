@@ -1,12 +1,11 @@
-"""Own the local runtime or connect to an authenticated cloud API."""
+"""Own the local loopback runtime used by the desktop application."""
 
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
-import os
-from urllib.parse import urlparse
 
 import httpx
 import uvicorn
@@ -20,20 +19,45 @@ class LocalService(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self.port = self._free_port()
+        # Keep the listening socket open from port selection through uvicorn
+        # startup.  Binding an ephemeral port and then closing it creates a
+        # race in which another local process can claim the port before the
+        # embedded API starts.
+        self._listener: socket.socket | None = self._bind_listener()
+        self.port = int(self._listener.getsockname()[1])
         self.origin = f"http://127.0.0.1:{self.port}"
         self.server: uvicorn.Server | None = None
         self.thread: threading.Thread | None = None
+        self.health_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._server_error: Exception | None = None
 
     @staticmethod
-    def _free_port() -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-            listener.bind(("127.0.0.1", 0))
-            return int(listener.getsockname()[1])
+    def _bind_listener(port: int = 0) -> socket.socket:
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            # Windows can otherwise allow a second bind under some socket
+            # reuse configurations.  The option is unavailable on POSIX.
+            if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            listener.bind(("127.0.0.1", port))
+            listener.listen(socket.SOMAXCONN)
+            return listener
+        except BaseException:
+            listener.close()
+            raise
 
     def start(self) -> None:
         from backend.app.main import app
 
+        if self.thread and self.thread.is_alive():
+            return
+        if self._listener is None or self._listener.fileno() < 0:
+            self._listener = self._bind_listener()
+            self.port = int(self._listener.getsockname()[1])
+            self.origin = f"http://127.0.0.1:{self.port}"
+
+        listener = self._listener
         self.server = uvicorn.Server(
             uvicorn.Config(
                 app,
@@ -47,77 +71,93 @@ class LocalService(QObject):
                 log_config=None,
             )
         )
-        self.thread = threading.Thread(target=self.server.run, name="mentorflow-local-api", daemon=True)
+        self._server_error = None
+        self._stop_event.clear()
+        self.thread = threading.Thread(
+            target=self._run_server,
+            args=(listener,),
+            name="mentorflow-local-api",
+            daemon=True,
+        )
         self.thread.start()
-        threading.Thread(target=self._wait_until_ready, name="mentorflow-health", daemon=True).start()
+        self.health_thread = threading.Thread(
+            target=self._wait_until_ready,
+            name="mentorflow-health",
+            daemon=True,
+        )
+        self.health_thread.start()
+
+    def _run_server(self, listener: socket.socket) -> None:
+        try:
+            # Passing the already-bound socket closes the selection-to-bind
+            # window while remaining compatible with source and packaged
+            # uvicorn launches (both expose Server.run(sockets=...)).
+            assert self.server is not None
+            self.server.run(sockets=[listener])
+        except Exception as exc:  # surfaced by _wait_until_ready
+            self._server_error = exc
+        finally:
+            self._close_listener(listener)
+
+    def _close_listener(self, listener: socket.socket | None = None) -> None:
+        target = listener if listener is not None else self._listener
+        if target is None:
+            return
+        try:
+            target.close()
+        except OSError:
+            pass
+        if target is self._listener:
+            self._listener = None
+
+    @staticmethod
+    def _is_expected_health(response: httpx.Response) -> bool:
+        """Require the local API's documented identity, not any HTTP 200."""
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            return False
+        return (
+            isinstance(payload, dict)
+            and payload.get("status") == "ok"
+            and payload.get("service") == "MentorFlow"
+        )
 
     def _wait_until_ready(self) -> None:
         deadline = time.monotonic() + 120
         last_error = "服务尚未响应"
-        while time.monotonic() < deadline:
+        while not self._stop_event.is_set() and time.monotonic() < deadline:
             if self.thread and not self.thread.is_alive():
-                self.failed.emit("本地服务提前退出。")
+                detail = f"：{self._server_error}" if self._server_error else "。"
+                self._close_listener()
+                self.failed.emit(f"本地服务提前退出{detail}")
                 return
             try:
                 response = httpx.get(f"{self.origin}/api/health", timeout=2)
-                if response.status_code == 200:
+                if response.status_code == 200 and self._is_expected_health(response):
                     self.ready.emit(self.origin)
                     return
-                last_error = f"HTTP {response.status_code}"
+                if response.status_code != 200:
+                    last_error = f"HTTP {response.status_code}"
+                else:
+                    last_error = "健康响应身份不匹配"
             except httpx.HTTPError as exc:
                 last_error = str(exc)
-            time.sleep(0.25)
+            except (TypeError, ValueError) as exc:
+                last_error = str(exc)
+            self._stop_event.wait(0.25)
+        if self._stop_event.is_set():
+            return
+        self._close_listener()
         self.failed.emit(f"本地服务启动超时：{last_error}")
 
     def stop(self) -> None:
+        self._stop_event.set()
         if self.server:
             self.server.should_exit = True
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=15)
-        self.stopped.emit()
-
-
-class RemoteService(QObject):
-    """Connect the desktop client to a user-configured cloud API.
-
-    The cloud endpoint is deliberately a public URL only; credentials remain
-    in the server environment.  HTTPS is required for a non-loopback endpoint
-    so a packaged client cannot silently downgrade account traffic to HTTP.
-    """
-
-    ready = Signal(str)
-    failed = Signal(str)
-    stopped = Signal()
-
-    def __init__(self, origin: str | None = None) -> None:
-        super().__init__()
-        self.origin = (origin or os.getenv("MENTORFLOW_REMOTE_API_URL", "")).strip().rstrip("/")
-        self.thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        parsed = urlparse(self.origin)
-        if parsed.scheme != "https" and not (
-            parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
-        ):
-            self.failed.emit("云端 API 必须使用 HTTPS 地址。")
-            return
-        self.thread = threading.Thread(target=self._wait_until_ready, name="mentorflow-cloud-health", daemon=True)
-        self.thread.start()
-
-    def _wait_until_ready(self) -> None:
-        deadline = time.monotonic() + 120
-        last_error = "云端服务尚未响应"
-        while time.monotonic() < deadline:
-            try:
-                response = httpx.get(f"{self.origin}/api/health", timeout=5)
-                if response.status_code == 200:
-                    self.ready.emit(self.origin)
-                    return
-                last_error = f"HTTP {response.status_code}"
-            except httpx.HTTPError as exc:
-                last_error = str(exc)
-            time.sleep(1)
-        self.failed.emit(f"云端服务连接超时：{last_error}")
-
-    def stop(self) -> None:
+        if self.health_thread and self.health_thread.is_alive():
+            self.health_thread.join(timeout=3)
+        self._close_listener()
         self.stopped.emit()

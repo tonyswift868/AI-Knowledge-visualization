@@ -83,6 +83,21 @@ class TeacherExpressionV1(BaseModel):
         min_length=1,
         max_length=TEXT_LIMITS_POLICY.explanation_characters,
     )
+    # The Provider may choose only the renderer's visual mood.  Learning
+    # state, grading, timing and route transitions remain application-owned.
+    presentation_state: Literal[
+        "idle",
+        "greeting",
+        "talking",
+        "explaining",
+        "questioning",
+        "praising",
+        "encouraging",
+        "confused",
+        "shy",
+        "playful_annoyed",
+        "ending",
+    ] = "explaining"
 
 
 class LearnerPreferenceV1(BaseModel):
@@ -350,9 +365,10 @@ class TeacherTurnV1:
     expected_learner_action: str
     plain_text: str
     schema_version: str = SCHEMA_VERSION
+    presentation_state: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "state": self.state,
             "concept": self.concept,
@@ -362,6 +378,9 @@ class TeacherTurnV1:
             "expected_learner_action": self.expected_learner_action,
             "plain_text": self.plain_text,
         }
+        if self.presentation_state:
+            payload["presentation_state"] = self.presentation_state
+        return payload
 
     def model_dump(self, **_: Any) -> dict[str, Any]:
         return self.to_dict()
@@ -483,7 +502,7 @@ def build_teacher_turn(
 
 
 def merge_provider_expression(turn: TeacherTurnV1, provider_payload: Any) -> TeacherTurnV1:
-    """Apply provider wording without accepting provider-controlled state."""
+    """Apply Provider wording and a visual-only pose without changing learning state."""
 
     if isinstance(provider_payload, TeacherExpressionV1):
         expression = provider_payload.model_dump()
@@ -529,6 +548,16 @@ def merge_provider_expression(turn: TeacherTurnV1, provider_payload: Any) -> Tea
         expression.get("check_prompt"),
         limit=TEXT_LIMITS_POLICY.explanation_characters,
     )
+    presentation_state = _text(
+        expression.get("presentation_state"),
+        limit=TEXT_LIMITS_POLICY.short_label_characters,
+    ).lower()
+    if presentation_state not in {
+        "idle", "greeting", "talking", "explaining", "questioning",
+        "praising", "encouraging", "confused", "shy",
+        "playful_annoyed", "ending",
+    }:
+        presentation_state = turn.presentation_state
     if not any((explanation, analogy, worked_example, check_prompt)):
         return turn
     blocks = [dict(item) for item in turn.blocks]
@@ -566,6 +595,7 @@ def merge_provider_expression(turn: TeacherTurnV1, provider_payload: Any) -> Tea
             }
         ),
         schema_version=turn.schema_version,
+        presentation_state=presentation_state,
     )
 
 
@@ -801,6 +831,10 @@ def turn_from_dict(payload: Mapping[str, Any]) -> TeacherTurnV1:
             payload.get("schema_version") or SCHEMA_VERSION,
             limit=TEXT_LIMITS_POLICY.short_label_characters,
         ),
+        presentation_state=_text(
+            payload.get("presentation_state"),
+            limit=TEXT_LIMITS_POLICY.short_label_characters,
+        ).lower(),
     )
     if turn.schema_version != SCHEMA_VERSION:
         raise ValueError(f"unsupported teacher turn schema: {turn.schema_version}")

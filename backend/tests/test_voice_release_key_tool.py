@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from backend.app import teacher_voice_pack as voice_pack
+from backend.app.windows_install_path_budget import calculate_windows_install_path_budget
 from scripts import manage_voice_release_keys as key_tool
 
 
@@ -242,25 +243,30 @@ def generated_key(e_key_workspace: Path) -> dict[str, Any]:
     key_root = e_key_workspace / "keys-main"
     stdout = io.StringIO()
     stderr = io.StringIO()
-    with redirect_stdout(stdout), redirect_stderr(stderr):
-        exit_code = key_tool.main(
-            [
-                "--generate",
-                "--output-root",
-                str(key_root),
-                "--key-id",
-                key_id,
-                "--purpose",
-                PURPOSE,
-                "--rotation-start",
-                STARTS_ON,
-                "--rotate-after",
-                ROTATE_AFTER,
-                "--overlap-days",
-                "14",
-                "--test-key",
-            ]
-        )
+    generation_clock = key_tool._utc_now
+    key_tool._utc_now = lambda: datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
+    try:
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = key_tool.main(
+                [
+                    "--generate",
+                    "--output-root",
+                    str(key_root),
+                    "--key-id",
+                    key_id,
+                    "--purpose",
+                    PURPOSE,
+                    "--rotation-start",
+                    STARTS_ON,
+                    "--rotate-after",
+                    ROTATE_AFTER,
+                    "--overlap-days",
+                    "14",
+                    "--test-key",
+                ]
+            )
+    finally:
+        key_tool._utc_now = generation_clock
     assert exit_code == 0, stderr.getvalue()
     assert stderr.getvalue() == ""
     paths = _index_paths(key_root)
@@ -574,6 +580,9 @@ def test_signed_engine_is_accepted_by_full_runtime_catalog_adapter(
         "kind": voice_pack.QWEN_BASE_CLONE_ENGINE_KIND,
         "package_id": package_id,
         "version": version,
+        "install_path_budget": calculate_windows_install_path_budget(
+            [*payloads, "engine-manifest.json", "engine-manifest.sig"]
+        ),
         "files": files,
     }
     raw_manifest = key_tool._canonical_json_bytes(manifest)

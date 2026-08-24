@@ -99,6 +99,15 @@ MIGRATION_OWNED_KNOWLEDGE_TABLES = frozenset({
     'orm_plan_mastery_events',
     'orm_learning_resources',
     'orm_planning_assistant_cache',
+    'orm_planning_resource_pools',
+    'orm_planning_resource_candidates',
+    'orm_planning_resource_pool_events',
+    'orm_planning_resource_pool_requests',
+    'orm_video_collections',
+    'orm_video_episodes',
+    'orm_video_subtitle_segments',
+    'orm_video_collection_jobs',
+    'orm_video_summaries',
 })
 class WorkspaceORM(Base):
     __tablename__='orm_workspaces'; id:Mapped[str]=mapped_column(String(64),primary_key=True); title:Mapped[str]=mapped_column(String(120)); description:Mapped[str]=mapped_column(Text,default=''); character_id:Mapped[str]=mapped_column(String(32),default='warm'); allow_external_knowledge:Mapped[bool]=mapped_column(Boolean,default=False); execution_mode:Mapped[str]=mapped_column(String(16),default='demo'); provider_name:Mapped[str]=mapped_column(String(64),default='fake'); provider_model:Mapped[str]=mapped_column(String(128),default=''); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); sources:Mapped[list['SourceORM']]=relationship(cascade='all,delete-orphan'); goals:Mapped[list['GoalORM']]=relationship(cascade='all,delete-orphan'); plans:Mapped[list['PlanORM']]=relationship(cascade='all,delete-orphan')
@@ -181,7 +190,7 @@ class SourceRevisionORM(Base):
 class ConversionManifestORM(Base):
     __tablename__='orm_conversion_manifests'; id:Mapped[str]=mapped_column(String(96),primary_key=True); source_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_source_revisions.id',ondelete='CASCADE'),index=True); adapter_name:Mapped[str]=mapped_column(String(80)); adapter_version:Mapped[str]=mapped_column(String(32)); mime_type:Mapped[str]=mapped_column(String(120),default=''); source_path:Mapped[str]=mapped_column(Text,default=''); content_hash:Mapped[str]=mapped_column(String(128)); metadata_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); status:Mapped[str]=mapped_column(String(24),default='ready'); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow)
 class KnowledgeMapRevisionORM(Base):
-    __tablename__='orm_knowledge_map_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); map_id:Mapped[str]=mapped_column(String(64),index=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); is_current:Mapped[bool]=mapped_column(Boolean,default=True,index=True); status:Mapped[str]=mapped_column(String(24),default='staged',index=True); generation_mode:Mapped[str]=mapped_column(String(40)); provider_used:Mapped[bool]=mapped_column(Boolean,default=False); source_revisions:Mapped[list[Any]]=mapped_column(JSON,default=list); quality:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); fingerprint:Mapped[str]=mapped_column(String(128)); warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); staging_token:Mapped[str]=mapped_column(String(128),default=''); staged_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); activation_id:Mapped[str|None]=mapped_column(String(96),nullable=True); activated_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('workspace_id','revision',name='uq_orm_knowledge_map_revision'),Index('ix_orm_knowledge_map_revision_workspace_status','workspace_id','status'))
+    __tablename__='orm_knowledge_map_revisions'; id:Mapped[str]=mapped_column(String(96),primary_key=True); map_id:Mapped[str]=mapped_column(String(64),index=True); workspace_id:Mapped[str]=mapped_column(String(64),index=True); revision:Mapped[int]=mapped_column(Integer); is_current:Mapped[bool]=mapped_column(Boolean,default=True,index=True); status:Mapped[str]=mapped_column(String(24),default='staged',index=True); generation_mode:Mapped[str]=mapped_column(String(40)); provider_used:Mapped[bool]=mapped_column(Boolean,default=False); source_revisions:Mapped[list[Any]]=mapped_column(JSON,default=list); anchor_material_id:Mapped[str|None]=mapped_column(String(160),nullable=True,index=True); supporting_material_ids:Mapped[list[Any]]=mapped_column(JSON,default=list); scope_policy:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); role_provenance:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); source_fingerprints:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); quality:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); fingerprint:Mapped[str]=mapped_column(String(128)); warnings:Mapped[list[Any]]=mapped_column(JSON,default=list); staging_token:Mapped[str]=mapped_column(String(128),default=''); staged_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); activation_id:Mapped[str|None]=mapped_column(String(96),nullable=True); activated_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True); failure_json:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=utcnow); __table_args__=(UniqueConstraint('workspace_id','revision',name='uq_orm_knowledge_map_revision'),Index('ix_orm_knowledge_map_revision_workspace_status','workspace_id','status'))
 class KnowledgeNodeORM(Base):
     __tablename__='orm_knowledge_nodes'; id:Mapped[str]=mapped_column(String(160),primary_key=True); map_revision_id:Mapped[str]=mapped_column(ForeignKey('orm_knowledge_map_revisions.id',ondelete='CASCADE'),index=True); node_id:Mapped[str]=mapped_column(String(64),index=True); source_id:Mapped[str]=mapped_column(String(64),index=True); semantic_key:Mapped[str]=mapped_column(String(240)); label:Mapped[str]=mapped_column(String(240)); summary:Mapped[str]=mapped_column(Text); kind:Mapped[str]=mapped_column(String(40)); revision:Mapped[int]=mapped_column(Integer); status:Mapped[str]=mapped_column(String(24)); content_hash:Mapped[str]=mapped_column(String(128)); source_refs:Mapped[list[Any]]=mapped_column(JSON,default=list); history:Mapped[dict[str,Any]]=mapped_column(JSON,default=dict); __table_args__=(UniqueConstraint('map_revision_id','node_id',name='uq_orm_knowledge_node_revision'),)
 class KnowledgeEdgeORM(Base):
@@ -234,6 +243,78 @@ class PlanningAssistantCacheORM(KnowledgeMapBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PlanningResourcePoolORM(KnowledgeMapBase):
+    """Durable server-owned state for one workspace planning session."""
+
+    __tablename__ = "orm_planning_resource_pools"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    planning_session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    page_size: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    anchor_candidate_id: Mapped[str] = mapped_column(String(180), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "planning_session_id", name="uq_orm_planning_resource_pool_session"),
+        Index("ix_orm_planning_resource_pool_workspace_revision", "workspace_id", "revision"),
+    )
+
+
+class PlanningResourceCandidateORM(KnowledgeMapBase):
+    """Stable candidate record; inactive rows are retained for audit history."""
+
+    __tablename__ = "orm_planning_resource_candidates"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pool_id: Mapped[str] = mapped_column(String(64), index=True)
+    candidate_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    stable_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    selection_state: Mapped[str] = mapped_column(String(24), nullable=False, default="unselected", index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    retained: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    direct_user_reference: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("pool_id", "stable_id", name="uq_orm_planning_resource_candidate_identity"),
+        Index("ix_orm_planning_resource_candidate_pool_active", "pool_id", "active", "ordinal"),
+    )
+
+
+class PlanningResourcePoolEventORM(KnowledgeMapBase):
+    """Append-only decision/replenishment audit trail."""
+
+    __tablename__ = "orm_planning_resource_pool_events"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pool_id: Mapped[str] = mapped_column(String(64), index=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidate_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    before_state: Mapped[str] = mapped_column(String(24), nullable=False, default="")
+    after_state: Mapped[str] = mapped_column(String(24), nullable=False, default="")
+    client_request_id: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (Index("ix_orm_planning_resource_pool_event_pool_revision", "pool_id", "revision"),)
+
+
+class PlanningResourcePoolRequestORM(KnowledgeMapBase):
+    """Idempotency ledger for explicit pool mutations."""
+
+    __tablename__ = "orm_planning_resource_pool_requests"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pool_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_request_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("pool_id", "client_request_id", name="uq_orm_planning_resource_pool_request"),
+    )
 
 
 class MaterialDispositionORM(KnowledgeMapBase):
@@ -473,6 +554,170 @@ class TeacherEventORM(KnowledgeMapBase):
         UniqueConstraint('workspace_id', 'event_key', name='uq_orm_teacher_event_key'),
         UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_teacher_event_idempotency'),
         Index('ix_orm_teacher_event_workspace_status', 'workspace_id', 'status'),
+    )
+
+
+class VideoCollectionORM(KnowledgeMapBase):
+    """Durable source collection and manifest revision projection.
+
+    The collection record intentionally contains no provider credentials or
+    raw transcript data.  ``stable_id`` is derived by the service from the
+    provider identity (or canonical URL hash) and is safe to replay.
+    """
+
+    __tablename__ = 'orm_video_collections'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    stable_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False, default='')
+    provider_collection_id: Mapped[str] = mapped_column(String(240), nullable=False, default='')
+    canonical_url: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    canonical_url_hash: Mapped[str] = mapped_column(String(128), nullable=False, default='', index=True)
+    input_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False, default='')
+    title: Mapped[str] = mapped_column(String(300), nullable=False, default='')
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default='active', index=True)
+    source_manifest_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reported_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enumerated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    manifest_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'stable_id', name='uq_orm_video_collection_workspace_stable_id'),
+        UniqueConstraint('workspace_id', 'input_fingerprint', name='uq_orm_video_collection_workspace_input'),
+        UniqueConstraint('workspace_id', 'idempotency_key', name='uq_orm_video_collection_workspace_idempotency'),
+        Index('ix_orm_video_collection_provider_identity', 'provider', 'provider_collection_id'),
+        Index('ix_orm_video_collection_workspace_status', 'workspace_id', 'status'),
+        Index('ix_orm_video_collection_manifest_revision', 'id', 'source_manifest_revision'),
+    )
+
+
+class VideoEpisodeORM(KnowledgeMapBase):
+    """Manifest entry and durable per-episode checkpoint."""
+
+    __tablename__ = 'orm_video_episodes'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey('orm_video_collections.id', ondelete='CASCADE'), index=True
+    )
+    stable_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False, default='')
+    provider_episode_id: Mapped[str] = mapped_column(String(240), nullable=False, default='')
+    canonical_url: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    canonical_url_hash: Mapped[str] = mapped_column(String(128), nullable=False, default='', index=True)
+    input_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    title: Mapped[str] = mapped_column(String(300), nullable=False, default='')
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default='unprocessed', index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    processing_token: Mapped[str] = mapped_column(String(96), nullable=False, default='', index=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checkpoint_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    failure_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    source_manifest_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('collection_id', 'stable_id', name='uq_orm_video_episode_stable_id'),
+        UniqueConstraint('collection_id', 'input_fingerprint', name='uq_orm_video_episode_input_fingerprint'),
+        UniqueConstraint('collection_id', 'ordinal', name='uq_orm_video_episode_ordinal'),
+        Index('ix_orm_video_episode_collection_active_ordinal', 'collection_id', 'active', 'ordinal'),
+        Index('ix_orm_video_episode_collection_status', 'collection_id', 'status'),
+        Index('ix_orm_video_episode_collection_selected_status', 'collection_id', 'selected', 'status'),
+    )
+
+
+class VideoSubtitleSegmentORM(KnowledgeMapBase):
+    """One bounded subtitle segment; no episode-wide concatenation column."""
+
+    __tablename__ = 'orm_video_subtitle_segments'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    episode_id: Mapped[str] = mapped_column(
+        ForeignKey('orm_video_episodes.id', ondelete='CASCADE'), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    quote_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('episode_id', 'ordinal', name='uq_orm_video_segment_episode_ordinal'),
+        UniqueConstraint('episode_id', 'input_fingerprint', name='uq_orm_video_segment_episode_fingerprint'),
+        Index('ix_orm_video_segment_episode_time', 'episode_id', 'start_ms', 'end_ms'),
+    )
+
+
+class VideoCollectionJobORM(KnowledgeMapBase):
+    """Collection-level durable orchestration state and request ledger."""
+
+    __tablename__ = 'orm_video_collection_jobs'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey('orm_video_collections.id', ondelete='CASCADE'), index=True
+    )
+    job_type: Mapped[str] = mapped_column(String(48), nullable=False, default='transcribe')
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default='queued', index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    request_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    failure_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    progress_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    checkpoint_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint('collection_id', 'idempotency_key', name='uq_orm_video_job_idempotency'),
+        Index('ix_orm_video_job_collection_status', 'collection_id', 'status'),
+        Index('ix_orm_video_job_collection_updated', 'collection_id', 'updated_at'),
+    )
+
+
+class VideoSummaryORM(KnowledgeMapBase):
+    """Provider output with auditable evidence references.
+
+    ``evidence_json`` contains only segment/summary ids and bounded timestamp
+    and quote-hash claims.  Collection summaries therefore never need to
+    duplicate a raw transcript.
+    """
+
+    __tablename__ = 'orm_video_summaries'
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey('orm_video_collections.id', ondelete='CASCADE'), index=True
+    )
+    episode_id: Mapped[str | None] = mapped_column(
+        ForeignKey('orm_video_episodes.id', ondelete='CASCADE'), nullable=True, index=True
+    )
+    scope_type: Mapped[str] = mapped_column(String(24), nullable=False, default='episode', index=True)
+    scope_id: Mapped[str] = mapped_column(String(180), nullable=False, default='')
+    batch_key: Mapped[str] = mapped_column(String(180), nullable=False, default='')
+    input_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_json: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default='ready', index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint(
+            'collection_id', 'scope_type', 'scope_id', 'input_fingerprint', 'provider_fingerprint',
+            name='uq_orm_video_summary_scope_input_provider',
+        ),
+        Index('ix_orm_video_summary_collection_scope', 'collection_id', 'scope_type', 'scope_id'),
     )
 
 

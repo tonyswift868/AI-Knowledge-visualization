@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
@@ -5,29 +6,98 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metada
 
 root = Path.cwd()
 datas = [
-    (str(root / "backend" / "alembic"), "backend/alembic"),
+    (str(root / "backend" / "alembic" / "env.py"), "backend/alembic"),
+    (str(root / "backend" / "alembic" / "script.py.mako"), "backend/alembic"),
     (str(root / "backend" / "alembic.ini"), "backend"),
-    (str(root / "backend" / "config"), "backend/config"),
-    (str(root / "frontend" / "dist"), "frontend/dist"),
-    (str(root / "frontend" / "public"), "frontend/public"),
-    (str(root / "data" / "presets"), "data/presets"),
-    (str(root / "content"), "content"),
-    (str(root / "story_packs"), "story_packs"),
+    # Only checked-in, non-secret runtime configuration belongs in a release.
+    # Never replace these entries with the whole config tree: local voice
+    # credentials are intentionally ignored by git but may still exist here.
+    (str(root / "backend" / "config" / "knowledge_policy_v1.json"), "backend/config"),
+    (str(root / "backend" / "config" / "prompts" / "casual_chat_teacher_prompt.md"), "backend/config/prompts"),
+    (str(root / "backend" / "config" / "voice" / "qwen3_tts_runtime.json"), "backend/config/voice"),
+    (str(root / "backend" / "config" / "voice" / "release_trust_roots.v1.json"), "backend/config/voice"),
+    (str(root / "backend" / "config" / "voice" / "teacher_voice_pack_catalog.v1.json"), "backend/config/voice"),
+    (str(root / "backend" / "config" / "voice" / "teacher_voice_release_slot.v1.json"), "backend/config/voice"),
+    # The card preset manifest and its three tiny parameter-only cards are
+    # optional runtime resources.  Keep the package scoped to this directory;
+    # the full Koikatsu game tree and external assets must never be bundled.
+    (str(root / "legacy" / "koikatsu-3d" / "resources" / "card-presets" / "1.0.0" / "manifest.json"), "legacy/koikatsu-3d/resources/card-presets/1.0.0"),
+    (str(root / "legacy" / "koikatsu-3d" / "resources" / "card-presets" / "1.0.0" / "mentorflow-balanced-default.json"), "legacy/koikatsu-3d/resources/card-presets/1.0.0"),
+    (str(root / "legacy" / "koikatsu-3d" / "resources" / "card-presets" / "1.0.0" / "kks-br-chan-maki.json"), "legacy/koikatsu-3d/resources/card-presets/1.0.0"),
+    (str(root / "legacy" / "koikatsu-3d" / "resources" / "card-presets" / "1.0.0" / "kks-br-chan-nozomu.json"), "legacy/koikatsu-3d/resources/card-presets/1.0.0"),
+    # Public, tracked content is listed by pack/version.  In particular, do
+    # not collect ``content`` or ``story_packs`` recursively: those roots are
+    # also used for ignored development fixtures and local user exports.
+    (str(root / "content" / "knowledge_cards" / "offline_facts.v1.json"), "content/knowledge_cards"),
+    (str(root / "content" / "expedition_art_packs" / "mentorflow_expedition_art_v1" / "1.0.0"), "content/expedition_art_packs/mentorflow_expedition_art_v1/1.0.0"),
+    (str(root / "content" / "expedition_art_packs" / "mentorflow_expedition_art_v1" / "1.1.0"), "content/expedition_art_packs/mentorflow_expedition_art_v1/1.1.0"),
+    (str(root / "story_packs" / "reference_echo_before_rain"), "story_packs/reference_echo_before_rain"),
     (str(root / "docs" / "distribution-readme.txt"), "."),
     (str(root / "mentorflow-version.json"), "."),
     (str(root / "docs" / "knowledge-map-v1-third-party.md"), "docs"),
     (str(root / "docs" / "knowledge-map-v1-sbom.json"), "docs"),
 ]
+
+
+def add_frontend_tree(source_root: Path, destination_root: str) -> None:
+    """Add frontend assets while keeping private local models out of releases."""
+
+    include_private = os.getenv("MENTORFLOW_INCLUDE_PRIVATE_TEACHER_ASSETS", "").strip() == "1"
+    private_subtree = Path("teacher2d/tsubaki-live2d")
+    for candidate in sorted(source_root.rglob("*")):
+        if not candidate.is_file():
+            continue
+        relative = candidate.relative_to(source_root)
+        if not include_private and (relative == private_subtree or private_subtree in relative.parents):
+            continue
+        destination = Path(destination_root) / relative.parent
+        datas.append((str(candidate), destination.as_posix()))
+
+
+# ``frontend/dist`` is the runtime web root.  ``frontend/public`` remains for
+# native-shell assets that are accessed directly in source/private builds.
+# Public builds omit the unlicensed local Live2D subtree from both copies.
+add_frontend_tree(root / "frontend" / "dist", "frontend/dist")
+add_frontend_tree(root / "frontend" / "public", "frontend/public")
+# The catalogue is public, but its source tree may contain local build notes or
+# ignored generated files.  Keep the release input list file-level and stable.
+for catalog_relative in (
+    "CANDIDATE_SELECTION_METHODOLOGY.md", "CATALOG_INTERFACE_SPEC.md",
+    "CODEX_INTEGRATION_TASK.md", "README.md", "SHA256SUMS.json",
+    "SOURCE_AND_LICENSE_NOTES.md", "build_provenance.json",
+    "builtin_catalog_overlay.json", "candidate_index_9959.jsonl",
+    "candidate_index_schema_v2.json", "catalog_manifest.json",
+    "catalog_stats.json", "curated_dna_cards_41.jsonl",
+    "curation_queue_top500.jsonl", "integrity_report.json",
+    "narrative_catalog_v2.sqlite", "source_connector_specs_v2.json",
+    "story_catalog_api_v2.openapi.yaml", "unified_story_catalog_10000.jsonl",
+    "unified_story_catalog_10000_compact.csv",
+    "legacy_v1_seed/COLLECTION_METHODOLOGY.md",
+    "legacy_v1_seed/NARRATIVE_DNA_LIBRARY_V1.md",
+    "legacy_v1_seed/README_FOR_CODEX.md", "legacy_v1_seed/SHA256SUMS.json",
+    "legacy_v1_seed/learning_narrative_model_v1.json",
+    "legacy_v1_seed/leetcode150_match_example.json",
+    "legacy_v1_seed/library_manifest.json", "legacy_v1_seed/matcher_rules_v1.json",
+    "legacy_v1_seed/narrative_dna_families_v1.json",
+    "legacy_v1_seed/narrative_dna_library_v1.jsonl",
+    "legacy_v1_seed/narrative_dna_schema_v1.json", "legacy_v1_seed/sources.csv",
+):
+    catalog_path = root / "content" / "narrative_catalog" / "v2" / catalog_relative
+    datas.append((str(catalog_path), f"content/narrative_catalog/v2/{catalog_path.parent.name}" if catalog_path.parent.name == "legacy_v1_seed" else "content/narrative_catalog/v2"))
+# Alembic migration files are public runtime inputs, but a checkout may have
+# ignored ``__pycache__`` entries.  Add only the tracked migration sources.
+for migration in sorted((root / "backend" / "alembic" / "versions").glob("*.py")):
+    datas.append((str(migration), "backend/alembic/versions"))
 binaries = []
 hiddenimports = collect_submodules("backend.app") + collect_submodules("keyring.backends")
 
-for package in ("docling", "rapidocr", "instructor"):
+for package in ("docling", "rapidocr", "instructor", "yt_dlp"):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_hidden
 
-for package in ("keyring", "argon2-cffi", "docling", "instructor"):
+for package in ("keyring", "argon2-cffi", "docling", "instructor", "yt-dlp"):
     try:
         datas += copy_metadata(package, recursive=True)
     except Exception:

@@ -1,9 +1,16 @@
 import * as PIXI from "pixi.js"
 
-import { resolveTeacherAnimation } from "../teacherPresentationManifest"
 import type { Teacher2DManifest, Teacher2DRenderer, TeacherPresentationState } from "../teacherPresentationTypes"
+import {
+  type Live2DModelCapabilities,
+  scanLive2DModelCapabilities,
+  registeredExpressionNames,
+  registeredMotionNames,
+} from "../live2d/live2dCapabilities"
+import { createLive2DMotionRegistry, type Live2DActionCurve, type Live2DMotionRegistry, type Live2DSemanticAction } from "../live2d/live2dMotionRegistry"
 
 const DEFAULT_CORE_SCRIPT = "/vendor/live2d/live2dcubismcore.min.js"
+const NEVER_WRITE_ROLES = new Set(["bodyX", "bodyY", "bodyZ", "eyeExpression1", "eyeExpression2", "eyeBrowX", "leftHand1", "leftHand2", "rightHand1", "rightHand2"])
 const coreLoads = new Map<string, Promise<void>>()
 let runtimePromise: Promise<typeof import("untitled-pixi-live2d-engine/cubism")> | null = null
 let pluginRegistered = false
@@ -11,14 +18,29 @@ let pluginRegistered = false
 type Model3Settings = {
   FileReferences?: {
     Textures?: string[]
-    Motions?: Record<string, Array<{ File?: string }>>
+    Motions?: Record<string, Array<{ File?: string; Loop?: boolean; Priority?: number; DurationMs?: number; Duration?: number; FadeInTime?: number; FadeOutTime?: number }>>
     Expressions?: Array<{ Name?: string; File?: string }>
+    Physics?: string
+    DisplayInfo?: string
   }
+  Groups?: Array<{ Target?: string; Name?: string; Ids?: string[] }>
 }
 
 type CubismIdManager = { getId: (id: string) => unknown }
 type ReleasableCubismCoreModel = { release: () => void }
 type CubismCoreModel = ReleasableCubismCoreModel & {
+  parameters?: {
+    ids?: string[]
+    minimumValues?: ArrayLike<number>
+    maximumValues?: ArrayLike<number>
+    defaultValues?: ArrayLike<number>
+    values?: ArrayLike<number>
+  }
+  getParameterCount?: () => number
+  getParameterMinimumValue?: (index: number) => number
+  getParameterMaximumValue?: (index: number) => number
+  getParameterDefaultValue?: (index: number) => number
+  getParameterId?: (index: number) => unknown
   getParameterIndex: (id: unknown) => number
   addParameterValueById: (id: unknown, value: number, weight?: number) => void
   setParameterValueById: (id: unknown, value: number, weight?: number) => void
@@ -40,7 +62,7 @@ type Live2DInternalModel = {
   originalWidth: number
   originalHeight: number
   focusController: { focus: (x: number, y: number, instant?: boolean) => void }
-  motionManager: { expressionManager?: { resetExpression: () => void } }
+  motionManager: { expressionManager?: { resetExpression: () => void }; stopAllMotions?: () => void }
   on: (event: "beforeModelUpdate", listener: () => void) => void
   off: (event: "beforeModelUpdate", listener: () => void) => void
 }
@@ -156,6 +178,8 @@ const poses: Record<string, Partial<Live2DProceduralPose>> = {
   praising: { focusX: .16, focusY: -.03, headX: 5, headY: -2, headZ: 5, bodyX: 4, bodyZ: -2.8, mouthForm: .9, eyeOpen: .82, browY: .3, browForm: .24, cheekPuff: .1, eyeExpression2: .95, leftHand: 3, rightHand: 4.4, speaking: true },
   encouraging: { focusX: .12, focusY: .03, headX: 3.5, headZ: -4, bodyX: 2.8, bodyZ: -1.2, mouthForm: .72, mouthShrug: .1, eyeOpen: .86, browY: .3, browForm: .2, cheekPuff: .08, eyeExpression2: .76, rightHand: 3, speaking: true },
   confused: { focusX: -.28, focusY: .18, headX: -5, headY: 3, headZ: -9, bodyX: -2.8, bodyY: 1.8, bodyZ: 3, mouthForm: -.34, mouthX: -.22, mouthPucker: .36, eyeOpen: 1, eyeAsymmetry: -.08, browY: -.28, browAsymmetry: .2, browForm: -.46, eyeBrowX: -.3, cheekPuff: .2, eyeExpression1: -.72, eyeExpression2: -.32, speaking: true },
+  shy: { focusX: -.2, focusY: .14, headX: -4, headY: 2.2, headZ: 7, bodyX: -2.2, bodyY: 1.4, bodyZ: 2.2, mouthForm: .46, mouthPucker: .12, eyeOpen: .74, eyeAsymmetry: .05, browY: .26, browAsymmetry: .12, browForm: .16, cheekPuff: .34, eyeExpression2: .8, leftHand: 1.8, rightHand: 1.4 },
+  playful_annoyed: { focusX: .02, focusY: .08, headX: .8, headY: 1.4, headZ: -5.5, bodyX: 1.2, bodyY: 1.2, bodyZ: 2.8, mouthForm: -.26, mouthX: .08, mouthPucker: .42, eyeOpen: .8, eyeAsymmetry: -.04, browY: -.24, browAsymmetry: .08, browForm: -.3, eyeBrowX: -.08, cheekPuff: .48, eyeExpression1: -.34, eyeExpression2: .18, leftHand: 2.2, rightHand: 2.2 },
   ending: { focusX: .2, focusY: .08, headX: 3.5, headZ: 3.8, bodyX: 3.2, bodyZ: -2, mouthForm: .66, eyeOpen: .86, browY: .2, browForm: .18, cheekPuff: .05, eyeExpression2: .68, rightHand: 3.2, speaking: true },
   error: { focusX: -.12, focusY: .22, headY: 4, headZ: -3, bodyX: -2, bodyZ: 1.5, mouthForm: -.48, mouthShrug: .24, eyeOpen: .72, browY: -.46, browForm: -.56, eyeBrowX: -.2, eyeExpression1: -.78, eyeExpression2: -.46 },
 }
@@ -320,6 +344,105 @@ async function loadRuntime(coreScript: string) {
   return runtimePromise
 }
 
+/** The canvas itself is fixed.  Ambient life belongs to model parameters. */
+export function resolveLive2DIdleAmbient(elapsedSeconds: number, enabled = true): { x: number; y: number } {
+  void elapsedSeconds
+  void enabled
+  return { x: 0, y: 0 }
+}
+
+/**
+ * A quiet model-native body sway.  It never changes the Pixi model position
+ * and deliberately leaves the head/eye input channels alone.  The adapter
+ * adds these small values after Cubism physics has evaluated the frame so the
+ * body, hair and clothes keep their authored secondary motion.
+ */
+export function resolveLive2DIdleBodySway(elapsedSeconds: number, enabled = true): { bodyX: number; bodyZ: number } {
+  if (!enabled) return { bodyX: 0, bodyZ: 0 }
+  const time = Math.max(0, elapsedSeconds)
+  return {
+    bodyX: Math.sin(time * .72) * 2.35,
+    bodyZ: Math.sin(time * .72 + Math.PI / 2) * .7,
+  }
+}
+
+function resolveModelResource(base: string, relative: string): string {
+  if (/^(?:https?:|data:|blob:|\/\/)/i.test(relative)) return relative
+  const slash = base.lastIndexOf("/")
+  return `${slash >= 0 ? base.slice(0, slash + 1) : ""}${relative}`
+}
+
+async function loadOptionalJson(url: string | undefined): Promise<unknown> {
+  if (!url) return undefined
+  try {
+    const response = await fetch(url, { cache: "no-store" })
+    if (!response.ok) return undefined
+    return await response.json()
+  } catch {
+    return undefined
+  }
+}
+
+async function loadReferencedMotionMetadata(settings: Model3Settings, skeleton: string): Promise<Record<string, unknown>> {
+  const files = new Set<string>()
+  for (const entries of Object.values(settings.FileReferences?.Motions || {})) {
+    if (!Array.isArray(entries)) continue
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue
+      if (typeof entry.File === "string" && entry.File.length > 0) files.add(entry.File)
+    }
+  }
+  const metadata: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  await Promise.all([...files].map(async file => {
+    const value = await loadOptionalJson(resolveModelResource(skeleton, file))
+    // Keep failed loads explicitly absent.  The capability scanner will leave
+    // duration/loop unknown instead of fabricating a fallback from the URL.
+    if (value !== undefined) metadata[file] = value
+  }))
+  return metadata
+}
+
+function nativeCoreParameters(core: CubismCoreModel, cdi: unknown): unknown {
+  if (core.parameters?.ids?.length) return core.parameters
+  const count = typeof core.getParameterCount === "function" ? core.getParameterCount() : 0
+  const cdiParameters = cdi && typeof cdi === "object" && Array.isArray((cdi as { Parameters?: unknown }).Parameters)
+    ? (cdi as { Parameters: Array<{ Id?: unknown }> }).Parameters
+    : []
+  const cdiIds = cdiParameters.map(parameter => typeof parameter.Id === "string" ? parameter.Id : undefined).filter((id): id is string => Boolean(id))
+  const nativeIds = typeof core.getParameterId === "function"
+    ? Array.from({ length: count }, (_, index) => {
+      const handle = core.getParameterId!(index) as unknown as { getString?: () => { s?: string } | string; s?: string }
+      const value = typeof handle?.getString === "function" ? handle.getString() : handle
+      return typeof value === "string" ? value : value?.s
+    }).filter((id): id is string => Boolean(id))
+    : []
+  const ids = cdiIds.length >= count ? cdiIds : nativeIds
+  if (!count || !ids.length) return undefined
+  return {
+    ids: ids.slice(0, count),
+    minimumValues: Array.from({ length: Math.min(count, ids.length) }, (_, index) => core.getParameterMinimumValue?.(index) ?? -1),
+    maximumValues: Array.from({ length: Math.min(count, ids.length) }, (_, index) => core.getParameterMaximumValue?.(index) ?? 1),
+    defaultValues: Array.from({ length: Math.min(count, ids.length) }, (_, index) => core.getParameterDefaultValue?.(index) ?? 0),
+  }
+}
+
+function interpolateActionCurve(curve: Live2DActionCurve, progress: number): number {
+  const points = curve.points
+  if (!points.length) return 0
+  if (progress <= points[0].at) return points[0].value
+  const last = points[points.length - 1]
+  if (progress >= last.at) return last.value
+  for (let index = 1; index < points.length; index += 1) {
+    const right = points[index]
+    const left = points[index - 1]
+    if (progress > right.at) continue
+    const span = Math.max(.0001, right.at - left.at)
+    const alpha = (progress - left.at) / span
+    return left.value + (right.value - left.value) * alpha
+  }
+  return last.value
+}
+
 export type Live2DAdapterOptions = {
   host: HTMLElement
   onSnapshot?: (snapshot: {
@@ -331,6 +454,8 @@ export type Live2DAdapterOptions = {
     canvasWidth: number
     canvasHeight: number
     webgl: boolean
+    live2dCapabilities?: Live2DModelCapabilities
+    live2dActions?: readonly import("../live2d/live2dMotionRegistry").Live2DSemanticAction[]
   }) => void
   onError?: (error: Error) => void
 }
@@ -343,8 +468,14 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
   private model: Live2DModelInstance | null = null
   private manifest: Teacher2DManifest | null = null
   private settings: Model3Settings | null = null
+  private capabilities: Live2DModelCapabilities | undefined
+  private motionRegistry: Live2DMotionRegistry | undefined
   private resizeObserver: ResizeObserver | null = null
   private currentSemantic: TeacherPresentationState = "loading"
+  private authoritativeSemantic: TeacherPresentationState = "loading"
+  private inspectorSemantic: TeacherPresentationState | undefined
+  private activeAction: { action: Live2DSemanticAction; startedAt: number; progress: number; frozen: boolean; frozenAt?: number; loop: boolean; restoreOnComplete?: boolean } | undefined
+  private readonly actionCooldownUntil = new Map<string, number>()
   private currentAnimation = "idle"
   private animationNames: string[] = []
   private userScale = 1
@@ -352,20 +483,30 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
   private initialOffsetY = 0
   private offsetX = 0
   private offsetY = 0
+  private idleAmbientX = 0
+  private idleAmbientY = 0
   private mirrored = false
   private paused = false
+  private requestedPause = false
+  private visibilityPaused = false
   private elapsed = 0
   private lastDeltaSeconds = 1 / 60
   private smoothedPose: Live2DProceduralPose = { ...neutralPose }
   private pointer = { x: 0, y: 0, active: false }
   private gestureTimer: number | undefined
   private parameterIds = new Map<string, unknown>()
+  private physicsOutputIds = new Set<string>()
+  private readonly nativePlaybackFailures = new Set<string>()
+  private nativePlaybackGeneration = 0
   private currentSkin = "default"
   private loadGeneration = 0
   private readonly pointerMove = (event: PointerEvent) => this.updatePointer(event)
   private readonly pointerLeave = () => { this.pointer.active = false }
   private readonly pointerTap = () => this.playTapGesture()
-  private readonly visibilityChange = () => document.hidden ? this.pause() : this.resume()
+  private readonly visibilityChange = () => {
+    this.visibilityPaused = document.hidden
+    this.applyPauseState()
+  }
   private readonly tick = (ticker: PIXI.Ticker) => this.update(ticker.deltaMS / 1000)
   private readonly beforeModelUpdate = () => this.applyProceduralPose()
 
@@ -384,11 +525,19 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
     this.initialOffsetY = manifest.initialOffsetY || 0
     this.offsetX = 0
     this.offsetY = 0
+    this.idleAmbientX = 0
+    this.idleAmbientY = 0
     try {
       const settingsResponse = await fetch(manifest.skeleton, { cache: "no-store" })
       if (generation !== this.loadGeneration) return
       if (!settingsResponse.ok) throw new Error(`Live2D model3.json 加载失败：HTTP ${settingsResponse.status}`)
       this.settings = await settingsResponse.json() as Model3Settings
+      if (generation !== this.loadGeneration) return
+      const [physics, cdi, motionMetadata] = await Promise.all([
+        loadOptionalJson(this.settings.FileReferences?.Physics ? resolveModelResource(manifest.skeleton, this.settings.FileReferences.Physics) : undefined),
+        loadOptionalJson(this.settings.FileReferences?.DisplayInfo ? resolveModelResource(manifest.skeleton, this.settings.FileReferences.DisplayInfo) : undefined),
+        loadReferencedMotionMetadata(this.settings, manifest.skeleton),
+      ])
       if (generation !== this.loadGeneration) return
 
       const runtime = await loadRuntime(manifest.live2d?.coreScript || DEFAULT_CORE_SCRIPT)
@@ -416,6 +565,15 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
       }
       model.textures.forEach(texture => ensurePixiTextureSourceGpuData(texture.source))
       this.model = model
+      this.capabilities = scanLive2DModelCapabilities({
+        settings: this.settings,
+        parameters: nativeCoreParameters(model.internalModel.coreModel, cdi),
+        physics,
+        cdi,
+        motionMetadata,
+      })
+      this.physicsOutputIds = new Set(this.capabilities.physicsOutputParameterIds)
+      this.motionRegistry = createLive2DMotionRegistry(manifest, this.capabilities)
       model.anchor.set(.5, .5)
       model.eventMode = "none"
       app.stage.addChild(model)
@@ -425,12 +583,14 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
       app.canvas.addEventListener("pointerleave", this.pointerLeave)
       app.canvas.addEventListener("click", this.pointerTap)
       document.addEventListener("visibilitychange", this.visibilityChange)
+      this.visibilityPaused = document.hidden
+      this.applyPauseState()
       this.resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => this.resize(this.host.clientWidth, this.host.clientHeight))
       this.resizeObserver?.observe(this.host)
 
-      const motionNames = Object.entries(this.settings.FileReferences?.Motions || {}).flatMap(([group, entries]) => entries.map((_, index) => `motion:${group}:${index}`))
-      const expressionNames = (this.settings.FileReferences?.Expressions || []).map(entry => `expression:${entry.Name || "unknown"}`)
-      const semanticNames = Array.from(new Set([manifest.defaultAnimation, ...Object.values(manifest.animationAliases || {})].filter(Boolean) as string[]))
+      const motionNames = registeredMotionNames(this.capabilities)
+      const expressionNames = registeredExpressionNames(this.capabilities)
+      const semanticNames = this.motionRegistry.actions.map(action => action.id)
       this.animationNames = Array.from(new Set([...semanticNames, ...motionNames, ...expressionNames]))
       this.resize(this.host.clientWidth, this.host.clientHeight)
       this.currentSkin = live2DSkinNames(manifest)[0]
@@ -473,34 +633,299 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
     this.model = null
     this.manifest = null
     this.settings = null
+    this.capabilities = undefined
+    this.motionRegistry = undefined
+    this.physicsOutputIds.clear()
     this.animationNames = []
+    this.currentAnimation = "idle"
     this.parameterIds.clear()
     this.currentSkin = "default"
     this.elapsed = 0
+    this.idleAmbientX = 0
+    this.idleAmbientY = 0
     this.lastDeltaSeconds = 1 / 60
     this.smoothedPose = { ...neutralPose }
     this.paused = false
+    this.requestedPause = false
+    this.visibilityPaused = false
+    this.currentSemantic = "loading"
+    this.authoritativeSemantic = "loading"
+    this.inspectorSemantic = undefined
+    this.activeAction = undefined
+    this.actionCooldownUntil.clear()
+    this.nativePlaybackFailures.clear()
+    // Invalidate any pending native motion/expression promises from the
+    // destroyed model before a future load reuses this adapter instance.
+    this.nativePlaybackGeneration += 1
   }
 
   playSemanticState(state: TeacherPresentationState): void {
     this.currentSemantic = state
+    this.authoritativeSemantic = state
+    this.inspectorSemantic = undefined
+    this.stopNativeMotions()
+    this.activeAction = undefined
     if (!this.manifest || state === "hidden") return
-    const next = resolveTeacherAnimation(this.manifest, state, this.animationNames)
-    this.playAnimation(next, state === "idle" || state === "talking" || state === "explaining")
-    const expression = this.manifest.live2d?.expressions?.[state]
-    if (expression) void this.model?.expression(expression)
-    else this.model?.internalModel.motionManager.expressionManager?.resetExpression()
+    // Idle is presentation ambience, not a named action.  Keeping an
+    // internal/native idle action active here could reintroduce a periodic
+    // head turn through model-authored motion data. Neutral blinking and the
+    // bounded model-body sway continue without moving the Pixi stage.
+    if (state === "idle") {
+      this.currentAnimation = "idle"
+      this.model?.internalModel.motionManager.expressionManager?.resetExpression()
+      this.publish()
+      return
+    }
+    const resolution = this.motionRegistry?.resolve(state)
+    if (resolution && !resolution.noop && !resolution.fallback) {
+      const action = resolution.action
+      // Semantic poses are authoritative and stay active until the
+      // controller selects another state.  Native one-shot assets still keep
+      // their authored loop metadata for explicit action triggers.
+      const persistent = action.source !== "registered-motion"
+        || state === "talking" || state === "explaining"
+      this.startAction(action, persistent || Boolean(action.motion?.loop), true, false)
+    }
+    this.publish()
   }
 
   playAnimation(name: string, loop: boolean): void {
-    this.currentAnimation = name
-    if (name.startsWith("motion:")) {
-      const [, group, rawIndex] = name.split(":")
-      void this.model?.motion(group, Number(rawIndex) || 0, 2, { loop })
-    } else if (name.startsWith("expression:")) {
-      void this.model?.expression(name.slice("expression:".length))
+    this.triggerLive2DAction(name, loop)
+  }
+
+  getLive2DCapabilities(): Live2DModelCapabilities | undefined { return this.capabilities }
+  listLive2DActions() { return this.runtimeActions() }
+
+  triggerLive2DAction(name: string, loop = false): { requested: string; applied: string; supported: boolean; fallback: boolean; reason?: string } {
+    const resolution = this.motionRegistry?.resolve(name)
+    if (!resolution) {
+      return { requested: name, applied: this.currentAnimation, supported: false, fallback: true, reason: "Live2D 尚未加载" }
     }
+    if (resolution.noop || resolution.fallback) {
+      return { requested: name, applied: this.currentAnimation, supported: false, fallback: true, reason: resolution.reason || `未知动作：${name}` }
+    }
+    const action = resolution.action
+    const nativeKeys = [
+      action.motion ? this.nativeFailureKey(action, "motion") : undefined,
+      action.expression ? this.nativeFailureKey(action, "expression") : undefined,
+    ].filter((key): key is string => Boolean(key))
+    if (nativeKeys.some(key => this.nativePlaybackFailures.has(key))) {
+      return { requested: name, applied: this.currentAnimation, supported: false, fallback: true, reason: "原生动作播放失败，已禁用重试" }
+    }
+    const cooldownUntil = this.actionCooldownUntil.get(action.id) || 0
+    if (this.elapsed < cooldownUntil) {
+      return { requested: name, applied: this.currentAnimation, supported: false, fallback: true, reason: `动作冷却中：${Math.ceil((cooldownUntil - this.elapsed) * 1000)}ms` }
+    }
+    if (this.activeAction && (!this.activeAction.action.interruptible || action.priority < this.activeAction.action.priority)) {
+      return { requested: name, applied: this.currentAnimation, supported: false, fallback: true, reason: "当前动作优先级更高且不可中断" }
+    }
+    this.inspectorSemantic = action.semanticState
+    this.currentAnimation = action.id
+    // A valid motion3 Meta.Loop is authoritative when the caller did not
+    // explicitly request a one-shot override.  Track the effective value too,
+    // otherwise the native motion would loop while our lifecycle restored the
+    // semantic state after an invented 1.2s fallback.
+    this.startAction(action, loop || Boolean(action.motion?.loop), true)
     this.publish()
+    const hasNativeFailure = () => nativeKeys.some(key => this.nativePlaybackFailures.has(key))
+    const hasInternalFallback = this.hasObservableInternalCurves(action)
+    return {
+      requested: name,
+      applied: action.id,
+      get supported() { return !resolution.fallback && (!hasNativeFailure() || hasInternalFallback) },
+      get fallback() { return resolution.fallback || (hasNativeFailure() && hasInternalFallback) },
+      get reason() {
+        return hasNativeFailure()
+          ? hasInternalFallback
+            ? "模型原生资源未接受播放，已继续使用安全参数动作"
+            : "模型原生资源未接受播放；该动作已标记为不可用"
+          : resolution.reason
+      },
+    }
+  }
+
+  restoreLive2DAuthoritativeState(): void {
+    this.inspectorSemantic = undefined
+    this.activeAction = undefined
+    this.stopNativeMotions()
+    this.resumeTickerWhenRenderable()
+    this.playSemanticState(this.authoritativeSemantic)
+  }
+
+  stopLive2DAction(): void {
+    this.stopNativeMotions()
+    this.activeAction = undefined
+    this.restoreLive2DAuthoritativeState()
+  }
+
+  freezeLive2DAction(): void {
+    if (!this.activeAction) return
+    this.activeAction.frozen = true
+    this.activeAction.frozenAt = this.elapsed
+    this.stopNativeMotions()
+    // The Cubism engine restores its saved parameter array after each render.
+    // Holding only our curve runner would therefore let the next engine frame
+    // redraw the model in its pre-action pose.  Stop the shared Pixi ticker so
+    // Freeze preserves the last genuinely rendered action frame.
+    this.app?.ticker.stop()
+  }
+
+  resumeLive2DAction(): void {
+    if (!this.activeAction?.frozen) return
+    const action = this.activeAction.action
+    const frozenAt = this.activeAction.frozenAt
+    if (frozenAt !== undefined) this.activeAction.startedAt += Math.max(0, this.elapsed - frozenAt)
+    this.activeAction.frozen = false
+    this.activeAction.frozenAt = undefined
+    if (!this.paused && !this.visibilityPaused) {
+      this.resumeTickerWhenRenderable()
+      this.startNativeMotion(action, this.activeAction.loop)
+      this.startNativeExpression(action)
+    }
+  }
+
+  private resumeTickerWhenRenderable(): void {
+    if (!this.paused && !this.visibilityPaused) this.app?.ticker.start()
+  }
+
+  private startAction(action: Live2DSemanticAction, loop: boolean, track: boolean, restoreOnComplete = true): void {
+    this.currentAnimation = action.id
+    if (track) this.activeAction = { action, startedAt: this.elapsed, progress: 0, frozen: false, loop, restoreOnComplete }
+    if (action.motion) {
+      this.startNativeMotion(action, loop)
+    }
+    if (action.expression) {
+      this.startNativeExpression(action)
+    } else if (action.source !== "registered-motion") {
+      this.model?.internalModel.motionManager.expressionManager?.resetExpression()
+    }
+  }
+
+  private stopNativeMotions(): void {
+    this.nativePlaybackGeneration += 1
+    this.model?.internalModel.motionManager.stopAllMotions?.()
+  }
+
+  private startNativeMotion(action: Live2DSemanticAction, loop: boolean): void {
+    if (!action.motion) return
+    if (this.nativePlaybackFailures.has(this.nativeFailureKey(action, "motion"))) return
+    if (this.paused || this.visibilityPaused) return
+    const model = this.model
+    if (!model) {
+      this.handleNativePlaybackFailure(action, "motion", new Error("Live2D 模型尚未就绪"))
+      return
+    }
+    this.stopNativeMotions()
+    try {
+      const request = model.motion(
+        action.motion.group,
+        action.motion.index,
+        action.motion.priority ?? action.priority,
+        { loop: loop || Boolean(action.motion.loop) },
+      )
+      const generation = this.nativePlaybackGeneration
+      void request.then(result => {
+        // false means the Cubism motion manager declined this attempt (often
+        // because another request was interrupted or held priority).  It does
+        // not prove that the model asset is broken, so do not permanently
+        // disable the registry action.
+        void result
+      }).catch(error => this.handleNativePlaybackFailure(action, "motion", error, generation))
+    } catch (error) {
+      this.handleNativePlaybackFailure(action, "motion", error)
+    }
+  }
+
+  private startNativeExpression(action: Live2DSemanticAction): void {
+    if (!action.expression) return
+    if (this.nativePlaybackFailures.has(this.nativeFailureKey(action, "expression"))) return
+    const model = this.model
+    if (!model) {
+      this.handleNativePlaybackFailure(action, "expression", new Error("Live2D 模型尚未就绪"))
+      return
+    }
+    try {
+      const generation = this.nativePlaybackGeneration
+      void model.expression(action.expression).then(result => {
+        // Expression promises resolve false when a newer expression replaces
+        // the prior request.  Treat that as normal interruption, not a
+        // renderer or capability failure.
+        void result
+      }).catch(error => this.handleNativePlaybackFailure(action, "expression", error, generation))
+    } catch (error) {
+      this.handleNativePlaybackFailure(action, "expression", error)
+    }
+  }
+
+  private handleNativePlaybackFailure(action: Live2DSemanticAction, kind: "motion" | "expression", error: unknown, generation?: number): void {
+    if (generation !== undefined && generation !== this.nativePlaybackGeneration) return
+    this.nativePlaybackFailures.add(this.nativeFailureKey(action, kind))
+    const hasInternalFallback = this.hasObservableInternalCurves(action)
+    if (!hasInternalFallback) {
+      if (this.activeAction?.action.id === action.id) this.activeAction = undefined
+      if (this.currentAnimation === action.id) this.currentAnimation = "idle"
+    }
+    if (kind === "motion") this.stopNativeMotions()
+    // A rejected optional motion/expression is an action-level capability
+    // result, not a renderer failure.  Keep the classroom and Live2D canvas
+    // ready; actions with safe curves continue through that local fallback.
+    void error
+    this.publish()
+  }
+
+  private hasObservableInternalCurves(action: Live2DSemanticAction): boolean {
+    return Boolean(action.curves?.some(curve => {
+      const values = curve.points.map(point => point.value)
+      return values.length > 1 && Math.max(...values) - Math.min(...values) > .001
+    }))
+  }
+
+  private runtimeActions(): readonly Live2DSemanticAction[] {
+    return (this.motionRegistry?.actions || []).map(action => {
+      const failed = [
+        action.motion ? this.nativeFailureKey(action, "motion") : undefined,
+        action.expression ? this.nativeFailureKey(action, "expression") : undefined,
+      ].some(key => key ? this.nativePlaybackFailures.has(key) : false)
+      if (!failed) return action
+      if (this.hasObservableInternalCurves(action)) {
+        return {
+          ...action,
+          source: "internal-parameters" as const,
+          implementation: "internal-parameters" as const,
+          sourceLicense: "retargeted" as const,
+          supported: true,
+          supportReason: "模型原生资源未接受播放，当前使用安全参数动作",
+        }
+      }
+      return { ...action, supported: false, supportReason: "模型原生资源未接受播放" }
+    })
+  }
+
+  private nativeFailureKey(action: Live2DSemanticAction, kind: "motion" | "expression"): string {
+    return kind === "motion" && action.motion
+      ? `motion:${action.motion.group}:${action.motion.index}`
+      : kind === "expression" && action.expression
+        ? `expression:${action.expression}`
+        : `${kind}:${action.id}`
+  }
+
+  private applyPauseState(): void {
+    this.paused = this.requestedPause || this.visibilityPaused
+    if (this.paused) {
+      this.stopNativeMotions()
+      this.app?.ticker.stop()
+      return
+    }
+    // Inspector Freeze is independent of global pause/visibility.  Returning
+    // from a hidden tab must not silently unfreeze the captured action frame.
+    if (this.activeAction?.frozen) return
+    this.app?.ticker.start()
+    if (this.activeAction && !this.activeAction.frozen && this.activeAction.action.motion) {
+      this.startNativeMotion(this.activeAction.action, this.activeAction.loop)
+    }
+    if (this.activeAction && !this.activeAction.frozen && this.activeAction.action.expression) {
+      this.startNativeExpression(this.activeAction.action)
+    }
   }
 
   listAnimations(): string[] { return [...this.animationNames] }
@@ -514,8 +939,8 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
   setScale(scale: number): void { this.userScale = Math.max(.3, Math.min(2.5, scale)); this.layout() }
   setOffset(x: number, y: number): void { this.offsetX = Math.max(-1.2, Math.min(1.2, x)); this.offsetY = Math.max(-1.4, Math.min(1.4, y)); this.layout() }
   setMirror(mirrored: boolean): void { this.mirrored = mirrored; this.layout() }
-  pause(): void { this.paused = true; this.app?.ticker.stop() }
-  resume(): void { this.paused = false; if (!document.hidden) this.app?.ticker.start() }
+  pause(): void { this.requestedPause = true; this.applyPauseState() }
+  resume(): void { this.requestedPause = false; this.applyPauseState() }
   resize(width: number, height: number): void { this.app?.renderer.resize(Math.max(1, width), Math.max(1, height)); this.layout(); this.publish() }
 
   private layout(): void {
@@ -527,8 +952,8 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
     const fit = Math.min(width / sourceWidth, height / sourceHeight) * .94 * this.userScale
     this.model.scale.set(fit * (this.mirrored ? -1 : 1), fit)
     this.model.position.set(
-      width / 2 + this.initialOffsetX + this.offsetX * width,
-      height / 2 + this.initialOffsetY + this.offsetY * height,
+      width / 2 + this.initialOffsetX + this.offsetX * width + this.idleAmbientX,
+      height / 2 + this.initialOffsetY + this.offsetY * height + this.idleAmbientY,
     )
   }
 
@@ -554,39 +979,48 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
   }
 
   private update(deltaSeconds: number): void {
-    if (!this.model || !this.manifest || this.paused) return
+    if (!this.model || !this.manifest || this.paused || this.activeAction?.frozen) return
     const dt = Math.min(.05, Math.max(0, deltaSeconds))
     this.lastDeltaSeconds = dt
     this.elapsed += dt
+    this.advanceActiveAction()
     const pose = this.smoothedPose
-    const idleX = Math.sin(this.elapsed * .62) * .08
-    const idleY = Math.sin(this.elapsed * .43 + .7) * .035
-    const focusX = this.pointer.active ? this.pointer.x * .65 : pose.focusX + idleX
-    const focusY = this.pointer.active ? this.pointer.y * .5 : pose.focusY + idleY
-    this.model.internalModel.focusController.focus(focusX, focusY)
+    // The stage/canvas never moves during idle.  Body life is applied in
+    // applyProceduralPose through the model's body parameters.
+    this.idleAmbientX = 0
+    this.idleAmbientY = 0
+    // Default idle no longer performs a periodic look-left/look-right cycle.
+    // Pointer focus and explicit Look actions remain available independently.
+    if (!this.pointer.active && !this.activeAction && !this.inspectorSemantic && this.currentSemantic === "idle") {
+      // Do not continuously ease the head toward a stale focus target during
+      // idle.  Reset once-per-frame without interpolation; body life comes
+      // from the bounded ambient sway above and native physics.
+      this.model.internalModel.focusController.focus(0, 0, true)
+    } else {
+      const focusX = this.pointer.active ? this.pointer.x * .65 : pose.focusX
+      const focusY = this.pointer.active ? this.pointer.y * .5 : pose.focusY
+      this.model.internalModel.focusController.focus(focusX, focusY)
+    }
   }
 
   private applyProceduralPose(): void {
-    if (!this.model || !this.manifest || this.paused) return
+    if (!this.model || !this.manifest || this.paused || this.activeAction?.frozen || !this.capabilities?.physicsKnown) return
     this.smoothedPose = blendLive2DProceduralPose(
       this.smoothedPose,
-      resolveLive2DProceduralPose(this.currentAnimation),
+      // The physical animation name may be an authored alias such as
+      // `motion:Cry:0`; classroom meaning lives in currentSemantic.
+      resolveLive2DProceduralPose(this.inspectorSemantic || this.currentSemantic),
       this.lastDeltaSeconds,
     )
     const pose = this.smoothedPose
-    const idleX = Math.sin(this.elapsed * .62) * .08
-
     const breathe = (Math.sin(this.elapsed * 1.55) + 1) * .5
     const face = resolveLive2DFacialFrame(pose, this.elapsed)
-    const isGesturing = this.currentAnimation !== "idle"
+    const isGesturing = (this.inspectorSemantic || this.currentSemantic) !== "idle"
     const gestureWave = isGesturing ? Math.sin(this.elapsed * 2.1) : 0
     const speechNod = pose.speaking ? Math.sin(this.elapsed * 2.65) * .7 : 0
-    this.setParameter("angleX", pose.headX + idleX * 14, .78)
+    this.setParameter("angleX", pose.headX, .78)
     this.setParameter("angleY", pose.headY + speechNod, .76)
     this.setParameter("angleZ", pose.headZ + gestureWave * 1.05, .78)
-    this.setParameter("bodyX", pose.bodyX + idleX * 7, .7)
-    this.setParameter("bodyY", pose.bodyY, .65)
-    this.setParameter("bodyZ", pose.bodyZ + gestureWave * .7, .72)
     this.setParameter("eyeLeftOpen", face.eyeLeftOpen, .9)
     this.setParameter("eyeRightOpen", face.eyeRightOpen, .9)
     this.setParameter("mouthForm", face.mouthForm, .86)
@@ -599,16 +1033,58 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
     this.setParameter("browRightY", face.browRightY, .84)
     this.setParameter("browLeftForm", face.browLeftForm, .82)
     this.setParameter("browRightForm", face.browRightForm, .82)
-    this.setParameter("eyeBrowX", face.eyeBrowX, .8)
     this.setParameter("cheekPuff", pose.cheekPuff, .72)
-    this.setParameter("eyeExpression1", pose.eyeExpression1, .9)
-    this.setParameter("eyeExpression2", pose.eyeExpression2, .9)
     this.setParameter("breath", breathe, .22)
-    this.setParameter("leftHand1", pose.leftHand + gestureWave * .7, .42)
-    this.setParameter("leftHand2", pose.leftHand * .6 - gestureWave * .42, .4)
-    this.setParameter("rightHand1", pose.rightHand - gestureWave * .78, .42)
-    this.setParameter("rightHand2", pose.rightHand * .6 + gestureWave * .46, .4)
+    const ambient = resolveLive2DIdleBodySway(
+      this.elapsed,
+      !this.activeAction && !this.inspectorSemantic && this.currentSemantic === "idle",
+    )
+    this.addAmbientBodyParameter("bodyX", ambient.bodyX, .58)
+    this.addAmbientBodyParameter("bodyZ", ambient.bodyZ, .46)
+    if (this.activeAction?.action.id === "BREATH") {
+      const cycle = Math.sin(Math.max(0, Math.min(1, this.activeAction.progress)) * Math.PI)
+      this.addAmbientBodyParameter("bodyX", cycle * .55, .5)
+      this.addAmbientBodyParameter("bodyZ", cycle * 1.35, .55)
+    }
+    this.applyActiveActionCurves()
 
+  }
+
+  private advanceActiveAction(): void {
+    const active = this.activeAction
+    if (!active || active.frozen) return
+    const durationMs = active.action.durationMs ?? active.action.motion?.durationMs
+    // Native motion duration is owned by motion3 metadata.  If that metadata
+    // could not be fetched or validated, keep the action active and let the
+    // native runtime own its lifecycle rather than inventing a timeout.
+    if (durationMs === undefined && active.action.source === "registered-motion") return
+    const duration = Math.max(.05, (durationMs ?? 1200) / 1000)
+    if (active.loop) {
+      active.progress = ((this.elapsed - active.startedAt) / duration) % 1
+      return
+    }
+    active.progress = Math.max(0, (this.elapsed - active.startedAt) / duration)
+    if (active.progress < 1) return
+    this.actionCooldownUntil.set(active.action.id, this.elapsed + active.action.cooldownMs / 1000)
+    this.activeAction = undefined
+    if (active.restoreOnComplete !== false) this.restoreLive2DAuthoritativeState()
+  }
+
+  private applyActiveActionCurves(): void {
+    const active = this.activeAction
+    const capabilities = this.capabilities
+    const internal = this.model?.internalModel
+    if (!active || active.frozen || !capabilities?.physicsKnown || !internal || active.action.source === "registered-motion") return
+    const curves = active.action.curves || []
+    for (const curve of curves) {
+      const parameter = capabilities.parameters.find(candidate => candidate.id === curve.parameterId)
+      if (!parameter || parameter.physicsOutput || this.physicsOutputIds.has(curve.parameterId)) continue
+      const id = internal.idManager?.getId(curve.parameterId)
+      if (id === undefined || internal.coreModel.getParameterIndex(id) < 0) continue
+      const normalized = interpolateActionCurve(curve, active.progress)
+      const value = parameter.minimum + normalized * (parameter.maximum - parameter.minimum)
+      internal.coreModel.setParameterValueById(id, value, 1)
+    }
   }
 
   private parameterName(role: keyof NonNullable<NonNullable<Teacher2DManifest["live2d"]>["parameters"]>): string | undefined {
@@ -634,13 +1110,29 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
   }
 
   private addParameter(role: keyof NonNullable<NonNullable<Teacher2DManifest["live2d"]>["parameters"]>, value: number, weight: number): void {
+    const name = this.parameterName(role)
+    if (!this.capabilities?.physicsKnown || NEVER_WRITE_ROLES.has(String(role)) || (name && this.physicsOutputIds.has(name))) return
     const id = this.parameterId(role)
     if (id !== undefined) this.model?.internalModel.coreModel.addParameterValueById(id, value, weight)
   }
 
   private setParameter(role: keyof NonNullable<NonNullable<Teacher2DManifest["live2d"]>["parameters"]>, value: number, weight: number): void {
+    const name = this.parameterName(role)
+    if (!this.capabilities?.physicsKnown || NEVER_WRITE_ROLES.has(String(role)) || (name && this.physicsOutputIds.has(name))) return
     const id = this.parameterId(role)
     if (id !== undefined) this.model?.internalModel.coreModel.setParameterValueById(id, value, weight)
+  }
+
+  private addAmbientBodyParameter(
+    role: "bodyX" | "bodyZ",
+    value: number,
+    weight: number,
+  ): void {
+    if (!this.capabilities?.physicsKnown || !Number.isFinite(value)) return
+    const name = this.parameterName(role)
+    if (!name || !this.physicsOutputIds.has(name)) return
+    const id = this.parameterId(role)
+    if (id !== undefined) this.model?.internalModel.coreModel.addParameterValueById(id, value, weight)
   }
 
   private applySkin(name: string): void {
@@ -685,6 +1177,8 @@ export class Live2DTeacherAdapter implements Teacher2DRenderer {
       canvasWidth: this.host.clientWidth,
       canvasHeight: this.host.clientHeight,
       webgl: Boolean(this.app),
+      live2dCapabilities: this.capabilities,
+      live2dActions: this.runtimeActions(),
     })
   }
 }

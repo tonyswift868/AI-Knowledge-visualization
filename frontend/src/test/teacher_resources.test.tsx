@@ -49,15 +49,75 @@ afterEach(() => {
 })
 
 describe("standalone teacher resources", () => {
-  it("keeps separate visible download entries for 2D resources and voice packs", async () => {
+  it("restores the workspace's explicitly saved local Live2D teacher on the detached stage", async () => {
+    window.history.pushState({}, "", "/?tool=teacher-stage&workspaceId=workspace-tsubaki&state=idle&theme=rainy_window")
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/active-teaching/workspaces/workspace-tsubaki/snapshot")) {
+        return jsonResponse({
+          workspace_id: "workspace-tsubaki",
+          materials: [],
+          receipt: null,
+          knowledge_graph: { knowledge_points: [], edges: [] },
+          plan: null,
+          session: {
+            state: {
+              teacher_persona_name: "艾莉丝",
+              teacher_visual_manifest_url: "/teacher2d/tsubaki-live2d/manifest.json",
+            },
+          },
+        })
+      }
+      if (url === "/teacher2d/tsubaki-live2d/manifest.json") {
+        return jsonResponse({
+          id: "teacher-live2d-tsubaki-local",
+          displayName: "艾莉丝",
+          renderer: "image2d",
+          skeleton: "teacher.png",
+          armature: "teacher-live2d-tsubaki-local",
+          defaultAnimation: "idle",
+          textures: ["teacher.png"],
+          imageStates: { teaching: "teacher.png", swimsuit: "teacher.png" },
+        })
+      }
+      if (url.includes("/api/teacher-avatars/today")) return jsonResponse({ item: null, requires_import: false, rotation_key: "today" })
+      if (url.includes("/api/teacher-avatar-card-presets")) return jsonResponse({ items: [], count: 0, total: 0, status: "unavailable", available: false })
+      if (url.includes("/api/teacher-avatar-character-packs")) return jsonResponse({ items: [], count: 0 })
+      if (url.includes("/api/teacher-avatars")) return jsonResponse({ items: [], motion_library: [] })
+      return jsonResponse({})
+    }))
+
     render(<App />)
 
-    const twoDDownload = screen.getByRole("link", { name: "下载 2D 资源包" })
-    expect(twoDDownload).toHaveAttribute("href", "/api/teacher2d/tsubaki-live2d/download")
-    expect(twoDDownload).toHaveAttribute("download")
+    expect(await screen.findByRole("heading", { name: "艾莉丝" })).toBeInTheDocument()
+    const stage = screen.getByRole("main", { name: "课堂 2D 教师" })
+    expect(stage).toHaveAttribute("data-classroom-theme", "rainy_window")
+    fireEvent(window, new MessageEvent("message", {
+      origin: window.location.origin,
+      data: { type: "mentorflow.teacher-theme", theme: "cyber" },
+    }))
+    expect(stage).toHaveAttribute("data-classroom-theme", "cyber")
+    await vi.waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls.map(([input]) => String(input))).toContain(
+        "/teacher2d/tsubaki-live2d/manifest.json",
+      )
+    })
+    const requestedUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
+    expect(requestedUrls).not.toContain("/api/provider-sessions/current")
+  })
+
+  it("does not redistribute private 2D models and keeps voice packs separate", async () => {
+    render(<App />)
+
+    expect(screen.queryByRole("link", { name: "下载 2D 资源包" })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "连接你已合法持有的 2D 教师" })).toBeInTheDocument()
+    expect(screen.getByText(/不提供或再分发第三方 Live2D 模型/)).toBeInTheDocument()
 
     expect(await screen.findByRole("button", { name: "下载并使用" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "准备教师资源" })).toBeInTheDocument()
+    const requestedUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
+    expect(requestedUrls).not.toContain("/api/provider-sessions/current")
+    expect(requestedUrls).not.toContain("/api/workspaces")
   })
 
   it("keeps an empty catalog explicit and matches local 2D and voice selections", async () => {

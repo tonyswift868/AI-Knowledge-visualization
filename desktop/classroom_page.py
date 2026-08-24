@@ -3,17 +3,31 @@
 from __future__ import annotations
 
 import html
+import json
+import math
 import os
 import re
+import sys
 import time
 import uuid
 import wave
+from copy import deepcopy
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QMicrophonePermission, QTimer, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QTextCursor
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEasingCurve,
+    QEvent,
+    QMicrophonePermission,
+    QPropertyAnimation,
+    QSettings,
+    QTimer,
+    Qt,
+    QUrl,
+)
+from PySide6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QTextCursor
 from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 from PySide6.QtNetwork import QNetworkCookie
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
@@ -26,6 +40,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFrame,
     QFileDialog,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -34,6 +49,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
+    QRadioButton,
     QPushButton,
     QLayout,
     QScrollArea,
@@ -46,6 +62,11 @@ from PySide6.QtWidgets import (
 )
 
 from .api import ApiError, DesktopApi
+from .classroom_theme import (
+    DEFAULT_CLASSROOM_THEME,
+    classroom_theme,
+    normalize_classroom_theme,
+)
 
 
 BLOCK_LABELS = {
@@ -74,6 +95,565 @@ _CLASSROOM_PHASE_LABELS = {
     "in_progress": "进行中",
     "completed": "已完成",
 }
+
+
+_TEACHER_PRESENTATION_STATES = {
+    "idle",
+    "greeting",
+    "thinking",
+    "talking",
+    "explaining",
+    "questioning",
+    "praising",
+    "encouraging",
+    "confused",
+    "shy",
+    "playful_annoyed",
+    "ending",
+}
+
+_TEACHER_PRESENTATION_LABELS = {
+    "idle": "待机",
+    "greeting": "问候",
+    "thinking": "思考中",
+    "talking": "对话中",
+    "explaining": "讲解中",
+    "questioning": "提问中",
+    "praising": "表扬",
+    "encouraging": "鼓励",
+    "confused": "一起梳理",
+    "shy": "害羞",
+    "playful_annoyed": "等待回答",
+    "ending": "下课告别",
+}
+
+
+_TEACHER_ACTION_REVIEW_SETTINGS_KEY = "development/teacher_action_reviews_v1"
+_FREE_CHAT_PROMPT_SETTINGS_KEY = "classroom/free_chat_prompt"
+_TEACHER_ACTION_REVIEW_LABELS = {
+    "pending": "待验收",
+    "excellent": "★ 很好",
+    "keep": "✓ 保留",
+    "weak": "△ 太弱",
+    "ineffective": "✕ 没效果",
+    "unnatural": "~ 不自然",
+}
+_TEACHER_ACTION_REVIEW_FILTERS = (
+    ("全部", "all"),
+    ("待验收", "pending"),
+    ("很好", "excellent"),
+    ("保留", "keep"),
+    ("太弱", "weak"),
+    ("没效果", "ineffective"),
+    ("不自然", "unnatural"),
+)
+_TEACHER_ACTION_REVIEW_VALUES = frozenset(_TEACHER_ACTION_REVIEW_LABELS)
+_TEACHER_ACTION_FAILED_REVIEWS = frozenset({"weak", "ineffective", "unnatural"})
+
+
+_TEACHER_ACTION_HUMAN_PROFILES: dict[str, tuple[int, str, str]] = {
+    "IDLE_SOFT": (0, "自然待机", "模型身体轻微左右晃动与呼吸；舞台和头部不做周期平移。"),
+    "TALK_SOFT": (10, "轻声说话", "轻柔的说话表情与头部变化。"),
+    "TALK_ACTIVE": (11, "积极说话", "更明显的说话表情与头部变化。"),
+    "THINK": (12, "思考", "进入思考相关表情或姿态。"),
+    "QUESTION": (13, "提问", "进入提问相关表情或姿态。"),
+    "ALERT": (20, "注意 / 警觉", "眼睛与头部进入注意状态。"),
+    "NOD": (30, "点头", "头部做点头变化。"),
+    "SHAKE_HEAD": (31, "摇头", "头部做左右摇头变化。"),
+    "LOOK_LEFT": (32, "看左边", "视线向左移动。"),
+    "LOOK_RIGHT": (33, "看右边", "视线向右移动。"),
+    "LOOK_UP": (34, "向上看", "视线向上移动。"),
+    "LOOK_DOWN": (35, "向下看", "视线向下移动。"),
+    "HEAD_TILT_LEFT": (36, "向左歪头", "头部向左轻微倾斜。"),
+    "HEAD_TILT_RIGHT": (37, "向右歪头", "头部向右轻微倾斜。"),
+    "BLINK": (50, "眨眼", "双眼完成一次眨眼。"),
+    "WINK": (51, "眨单眼", "一只眼睛闭合后恢复。"),
+    "BREATH": (52, "呼吸", "呼吸参数发生轻微周期变化。"),
+    "SURPRISED": (53, "惊讶", "眼睛和眉毛进入惊讶表情。"),
+    "CRY": (59, "完整哭泣", "模型原生哭泣表情与泪水物理组合播放。"),
+    "motion:Cry:0": (60, "哭泣", "模型原生哭泣动作，具体表现请播放确认。"),
+    "expression:dark-face": (70, "阴沉 / 黑脸", "模型原生阴沉表情。"),
+    "expression:blush": (71, "害羞脸红", "模型原生脸红表情。"),
+    "expression:heart-eyes": (72, "爱心眼 / 非常开心", "模型原生爱心眼表情。"),
+    "expression:no-highlights": (73, "失神 / 眼神失去高光", "模型原生失去眼神高光的表情。"),
+    "expression:cry": (74, "哭泣表情", "模型原生哭泣表情。"),
+}
+
+
+def teacher_action_human_profile(action_id: object) -> tuple[int, str, str]:
+    """Return truthful, user-facing action copy without inventing motion details."""
+
+    normalized = str(action_id or "").strip()
+    known = _TEACHER_ACTION_HUMAN_PROFILES.get(normalized)
+    if known is not None:
+        return known
+    raw_name = normalized
+    if normalized.startswith("motion:"):
+        raw_name = normalized.split(":", 2)[1] or normalized
+    elif normalized.startswith("expression:"):
+        raw_name = normalized.split(":", 1)[1] or normalized
+    return (999, f"{raw_name or '未命名动作'}（待确认）", "模型已注册该项目，具体表现请播放确认。")
+
+
+def teacher_action_type_label(action: dict[str, Any]) -> str:
+    implementation = str(action.get("implementation") or "").strip()
+    if implementation == "registered-motion":
+        return "🎬 模型原生动作"
+    if implementation == "registered-expression":
+        return "😊 模型表情"
+    if implementation == "internal-parameters":
+        return "🦴 参数驱动动作"
+    return "🔧 适配动作"
+
+
+def _classroom_panel_stylesheet(theme_key: str) -> str:
+    theme = classroom_theme(theme_key)
+    # Read canonical manifest names here (rather than only their aliases) so
+    # every declared structural field participates in the scoped control
+    # renderer.
+    bubble_style = str(theme.get("bubbleStyle", "soft-card"))
+    shadow_name = str(theme.get("shadow", "soft-petal"))
+    chrome_name = str(theme.get("chrome", "soft"))
+    icon_name = str(theme.get("iconTreatment", "line"))
+    border_style = str(theme.get("borderStyle", theme.get("border_style", "solid")))
+    if border_style not in {"solid", "dashed", "dotted"}:
+        border_style = str(theme.get("border_style", "solid"))
+    control_fill = str(theme.get(theme.get("control_fill_role", "surface_elevated"), theme["surface_elevated"]))
+    control_border = str(theme.get(theme.get("control_border_role", "border"), theme["border"]))
+    shadow_width = int(theme.get("bubble_shadow_width", 2))
+    shadow_color = str(theme.get("shadow_color", theme["border"]))
+    bubble_padding = int(theme.get("bubble_padding", 12)) + (1 if bubble_style in {"glass", "watercolor"} else 0)
+    icon_weight = int(theme.get("icon_weight", 800)) + (50 if icon_name in {"glow", "hologram", "pixel"} else 0)
+    icon_letter_spacing = int(theme.get("icon_letter_spacing", 0))
+    button_weight = int(theme.get("button_weight", 800))
+    focus_width = int(theme.get("focus_width", 2)) + (1 if chrome_name in {"cyber", "retro"} else 0)
+    shadow_tint = shadow_color if shadow_name else theme["border"]
+    return f"""
+    QWidget#classroomSessionPanel {{ background: transparent; color: {theme['text']};
+        font-family: {theme['font_family']}; font-size: {theme['font_size']}px; }}
+    QWidget#classroomSessionPanel QLabel {{ color: {theme['text']}; background: transparent; }}
+    QWidget#classroomSessionPanel QLabel#pageSubtitle {{ color: {theme['muted']}; }}
+    QWidget#classroomSessionPanel QLabel#pageHeading {{ color: {theme['text']}; }}
+    QWidget#classroomHeaderPanel {{ background: transparent; }}
+    QLabel#classroomPageIcon {{ color: {theme['accent_dark']}; font-size: 20px; font-weight: {icon_weight};
+        letter-spacing: {icon_letter_spacing}px; background: transparent; }}
+    QWidget#classroomManagementPanel {{ background: {theme['surface_elevated']}; border: 1px {theme['border_style']} {theme['border']};
+        border-radius: {theme['panel_radius']}px; padding: {theme['spacing']}px; }}
+    QLabel#classroomStateLabel {{ color: {theme['muted']}; background: transparent;
+        border: 0; padding: 0; }}
+    QFrame#explanationCard {{ background: {theme['surface']}; border: 1px {theme['border_style']} {theme['border']};
+        border-radius: {theme['panel_radius']}px; }}
+    QFrame#classroomConversation {{ background: {theme['surface']}; border: 1px {theme['border_style']} {theme['border']};
+        border-radius: {theme['panel_radius']}px; }}
+    QFrame#classroomComposer {{ background: {theme['surface_inset']}; border: 1px {theme['border_style']} {theme['border']};
+        border-radius: {theme['panel_radius']}px; }}
+    QLabel#classroomConversationTitle {{ color: {theme['text']}; font-size: 17px; font-weight: {theme['title_weight']}; }}
+    QLabel#classroomConversationStatus {{ color: {theme['accent_dark']}; background: {theme['status_bg']};
+        border: 1px {theme['border_style']} {theme['status_border']}; border-radius: {theme['control_radius']}px; padding: 5px 10px; font-weight: 800; }}
+    QFrame#classroomConversation QPlainTextEdit {{ color: {theme['text']}; background: {theme['surface']};
+        border: 1px {theme['border_style']} {theme['border']}; border-radius: {theme['control_radius']}px; padding: 11px 13px;
+        selection-background-color: {theme['accent_soft']}; }}
+    QFrame#currentKnowledgePointCard {{ background: {theme['surface_alt']}; border: 1px solid {theme['border']};
+        border-radius: {theme['panel_radius']}px; }}
+    QLabel#currentKnowledgePointKicker, QLabel#currentKnowledgePointMeta {{ color: {theme['muted']}; }}
+    QLabel#currentKnowledgePointName {{ color: {theme['text']}; font-size: 20px; font-weight: 850; }}
+    QLabel#currentKnowledgePointReview {{ color: {theme['accent_dark']}; font-weight: 800; }}
+    QWidget#classroomSessionPanel QPushButton {{ color: {theme['text']};
+        background: {control_fill}; border: 1px {border_style} {control_border};
+        border-radius: {theme['control_radius']}px; padding: 0 {bubble_padding}px; min-height: 36px;
+        font-weight: {button_weight}; }}
+    QWidget#classroomSessionPanel QPushButton:hover {{ color: {theme['accent_dark']};
+        background: {theme['accent_soft']}; border-color: {theme['accent']}; }}
+    QWidget#classroomSessionPanel QPushButton:pressed {{ background: {theme['status_bg']};
+        border-color: {theme['accent_dark']}; }}
+    QWidget#classroomSessionPanel QPushButton#classroomExitButton {{ color: #ffffff;
+        background: #c73e4c; border: 1px solid #a72f3e; min-width: 104px; max-width: 142px;
+        padding: 0 14px; font-weight: 850; }}
+    QWidget#classroomSessionPanel QPushButton#classroomExitButton:hover {{ color: #ffffff;
+        background: #ad3040; border-color: #8f2433; }}
+    QWidget#classroomSessionPanel QPushButton#classroomExitButton:pressed {{ color: #ffffff;
+        background: #8f2433; border-color: #7b1d2b; }}
+    QWidget#classroomSessionPanel QPushButton:disabled {{ color: {theme['muted']}; background: {theme['surface_alt']};
+        border-color: {theme['border']}; }}
+    QWidget#classroomSessionPanel QPushButton:focus, QWidget#classroomSessionPanel QComboBox:focus,
+    QWidget#classroomSessionPanel QPlainTextEdit:focus {{ border: {focus_width}px solid {theme['accent']}; }}
+    QPushButton#teacherStageToggleButton, QPushButton#immersiveToggleButton {{ color: {theme['accent_dark']};
+        background: {theme['accent_soft']}; border: 1px solid {theme['status_border']};
+        border-radius: {theme['control_radius']}px; font-weight: {button_weight}; }}
+    QPushButton#teacherStageToggleButton:hover, QPushButton#immersiveToggleButton:hover {{
+        background: {theme['status_bg']}; border-color: {theme['accent']}; }}
+    QWidget#classroomSessionPanel QComboBox {{ color: {theme['text']}; background: {control_fill};
+        border: 1px {theme['border_style']} {control_border}; border-radius: {theme['control_radius']}px;
+        padding: 0 10px; min-height: 36px; selection-background-color: {theme['accent_soft']}; }}
+    QWidget#classroomSessionPanel QComboBox QAbstractItemView {{ color: {theme['text']}; background: {theme['surface']};
+        border: 1px solid {theme['border']}; selection-background-color: {theme['accent_soft']}; }}
+    QWidget#classroomSessionPanel QPlainTextEdit {{ color: {theme['text']}; background: {theme['surface']};
+        border: 1px {theme['border_style']} {control_border}; border-radius: {theme['control_radius']}px;
+        padding: 10px 12px; selection-background-color: {theme['accent_soft']}; }}
+    QWidget#classroomSessionPanel QPlainTextEdit QScrollBar:vertical {{ width: {theme['scrollbar_width']}px;
+        background: transparent; border: 0; }}
+    QWidget#classroomSessionPanel QPlainTextEdit QScrollBar::handle:vertical {{ background: {theme['scrollbar']};
+        border-radius: {theme['control_radius']}px; min-height: 40px; }}
+    QWidget#classroomSessionPanel QRadioButton {{ spacing: 8px; color: {theme['text']}; font-weight: 700; padding: 6px 10px;
+        border: 1px {theme['border_style']} {theme['border']}; border-radius: {theme['control_radius']}px; background: {theme['surface_elevated']}; }}
+    QWidget#classroomSessionPanel QRadioButton:hover {{ border-color: {theme['accent']}; background: {theme['accent_soft']}; }}
+    QWidget#classroomSessionPanel QRadioButton::indicator {{ width: 18px; height: 18px; border-radius: 9px;
+        border: 2px solid {theme['accent']}; background: {theme['surface']}; }}
+    QWidget#classroomSessionPanel QRadioButton::indicator:checked {{ border: none;
+        background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 {theme['accent']}, stop:0.31 {theme['accent']}, stop:0.35 {theme['surface']},
+        stop:0.66 {theme['surface']}, stop:0.70 {theme['accent']}, stop:1 {theme['accent']}); }}
+    QLabel#interactionNotice {{ color: {theme['accent_dark']}; background: {theme['status_bg']};
+        border: 1px {theme['border_style']} {theme['status_border']}; border-radius: {theme['control_radius']}px; padding: 6px 9px; }}
+    QFrame#classroomConversation, QFrame#classroomComposer, QFrame#currentKnowledgePointCard {{
+        border-bottom: {shadow_width}px solid {shadow_tint}; }}
+    """
+
+
+def _transcript_stylesheet(theme_key: str) -> str:
+    theme = classroom_theme(theme_key)
+    bubble_style = str(theme.get("bubbleStyle", "soft-card"))
+    shadow_name = str(theme.get("shadow", "soft-petal"))
+    bubble_padding = int(theme.get("bubble_padding", 12)) + (1 if bubble_style in {"glass", "watercolor"} else 0)
+    bubble_edge = int(theme.get("bubble_edge_width", 1))
+    shadow_width = int(theme.get("bubble_shadow_width", 2))
+    shadow_color = str(theme.get("shadow_color", theme["border"])) if shadow_name else theme["border"]
+    bubble_shape = str(theme.get("bubble_shape", "rounded"))
+    shape_radius = int(theme["bubble_radius"])
+    if bubble_shape in {"minimal", "pixel", "terminal"}:
+        shape_radius = min(shape_radius, 5)
+    elif bubble_shape in {"pill", "glass"}:
+        shape_radius = max(shape_radius, 14)
+    return f"""
+    QScrollArea#classroomTranscript {{ border: 0; border-radius: {theme['panel_radius']}px;
+        background: {theme['surface_alt']}; }}
+    QScrollArea#classroomTranscript QWidget#classroomTranscriptContent {{ background: transparent; }}
+    QScrollArea#classroomTranscript QScrollBar:vertical {{ width: {theme['scrollbar_width']}px; margin: 5px 2px;
+        background: transparent; border: 0; border-radius: {theme['control_radius']}px; }}
+    QScrollArea#classroomTranscript QScrollBar::handle:vertical {{ min-height: 56px; border-radius: {theme['control_radius']}px;
+        background: {theme['scrollbar']}; }}
+    QScrollArea#classroomTranscript QScrollBar::add-line:vertical,
+    QScrollArea#classroomTranscript QScrollBar::sub-line:vertical {{ height: 0; background: transparent; }}
+    QTextBrowser#transcriptMessageBody {{ border: 0; background: transparent; color: {theme['text']};
+        padding: 0; font-family: {theme['font_family']}; font-size: {theme['font_size']}px; }}
+    QLabel#teacherMessageRole {{ color: {theme['accent_dark']}; font-size: 12px; font-weight: 800; }}
+    QLabel#learnerMessageRole {{ color: {theme['accent_dark']}; font-size: 12px; font-weight: 800; }}
+    QLabel#teacherAvatarBadge {{ color: white; background: {theme['accent']}; border-radius: {theme['bubble_radius']}px;
+        min-width: 28px; max-width: 28px; min-height: 28px; max-height: 28px; font-weight: 900; }}
+    QLabel#learnerAvatarBadge {{ color: white; background: {theme['accent_dark']}; border-radius: {theme['bubble_radius']}px;
+        min-width: 28px; max-width: 28px; min-height: 28px; max-height: 28px; font-weight: 900; }}
+    QPushButton#messageCopyButton {{ color: {theme['muted']}; border: 1px solid {theme['border']};
+        border-radius: {theme['control_radius']}px; padding: 2px 8px; min-height: 24px; background: {theme['surface_elevated']}; }}
+    QPushButton#messageCopyButton:hover {{ color: {theme['accent_dark']}; border-color: {theme['accent']};
+        background: {theme['accent_soft']}; }}
+    QLabel#messageAttachments {{ color: {theme['muted']}; font-size: 12px; padding-top: 3px; }}
+    QFrame#teacherMessageBubble {{ background: {theme['teacher_bubble']}; border: {bubble_edge}px {theme['border_style']} {theme['teacher_border']};
+        border-radius: {shape_radius}px; padding: {bubble_padding}px; border-bottom: {shadow_width}px solid {shadow_color}; }}
+    QFrame#learnerMessageBubble {{ background: {theme['learner_bubble']}; border: {bubble_edge}px {theme['border_style']} {theme['learner_border']};
+        border-radius: {shape_radius}px; padding: {bubble_padding}px; border-bottom: {shadow_width}px solid {shadow_color}; }}
+    """
+
+
+def _message_document_style(theme_key: str) -> str:
+    theme = classroom_theme(theme_key)
+    shape = str(theme.get("bubble_shape", "rounded"))
+    code_background = str(theme["surface_alt"] if shape in {"terminal", "minimal", "pixel"} else "#24333a")
+    return (
+        f"body{{font-family:{theme['font_family']};"
+        f"color:{theme['text']};margin:0;font-size:{theme['font_size']}px;line-height:1.62;}}"
+        ".teacher-paragraph{margin:0 0 10px;}"
+        f".teacher-example{{margin:10px 0;padding:10px 12px;background:{theme['accent_soft']};"
+        f"border-radius:{theme['control_radius']}px;color:{theme['text']};}}"
+        f".teacher-question{{margin:12px 0 6px;padding:11px 13px;background:{theme['status_bg']};"
+        f"border-left:3px solid {theme['accent']};border-radius:{theme['control_radius']}px;font-weight:700;}}"
+        f".teacher-invite{{margin:7px 0 0;color:{theme['accent_dark']};font-weight:700;}}"
+        f".concept-heading{{color:{theme['accent_dark']};margin:0 0 10px;font-size:18px;}}"
+        ".hard-focus{color:#b42318;font-weight:700;}"
+        "a{color:#246b9b;text-decoration:underline;}"
+        f"pre{{background:{code_background};color:{theme['text']};padding:10px;border-radius:{theme['control_radius']}px;white-space:pre-wrap;}}"
+    )
+
+
+def _teacher_stage_stylesheet(theme_key: str) -> str:
+    theme = classroom_theme(theme_key)
+    stage_name = str(theme.get("teacherStage", "sakura-window"))
+    stage_frame = str(theme.get("stage_frame", "window"))
+    stage_role = str((theme.get("stage_descriptor") or {}).get("panel_role", "surface_alt"))
+    stage_background = str(theme.get(stage_role, theme["surface_alt"]))
+    shadow_width = int(theme.get("bubble_shadow_width", 2))
+    icon_weight = int(theme.get("icon_weight", 800))
+    stage_border_style = "dashed" if stage_frame in {"board", "journal"} or stage_name == "journal-clip" else theme["border_style"]
+    stage_radius = max(2, int(theme["panel_radius"]) - (2 if stage_frame in {"crt", "holo", "board"} else 0))
+    return f"""
+    QFrame#teacherStagePanel {{ border: {max(1, shadow_width // 2)}px {stage_border_style} {theme['border']}; border-radius: {stage_radius}px;
+        background: {stage_background}; border-bottom: {shadow_width}px solid {theme['shadow_color']}; }}
+    QLabel#teacherStageTitle {{ color: {theme['text']}; font-size: 18px; font-weight: {theme['title_weight']};
+        letter-spacing: {int(theme.get('icon_letter_spacing', 0))}px; }}
+    QLabel#teacherStageFrameMark {{ color: {theme['accent']}; font-size: 24px; font-weight: {icon_weight}; }}
+    QLabel#teacherStageStatus {{ color: {theme['accent_dark']}; background: {theme['status_bg']};
+        border: 1px {theme['border_style']} {theme['status_border']}; border-radius: {theme['control_radius']}px; padding: 4px 8px; font-weight: 800; }}
+    QFrame#teacherStagePanel QPushButton {{ color: {theme['accent_dark']}; background: {theme['accent_soft']};
+        border: 1px {theme['border_style']} {theme['accent']}; border-radius: {theme['control_radius']}px; padding: 5px 10px; font-weight: 800; }}
+    QFrame#teacherStagePanel QPushButton:hover {{ background: {theme['status_bg']}; border-color: {theme['accent_dark']}; }}
+    """
+
+
+def _teacher_stage_window_stylesheet(theme_key: str) -> str:
+    theme = classroom_theme(theme_key)
+    return f"""
+    QWidget#teacherStageWindow {{ background: {theme['background_bottom']}; color: {theme['text']};
+        border: 1px {theme['border_style']} {theme['border']}; }}
+    """
+
+
+class ClassroomAtmosphere(QWidget):
+    """Low-cost animated backdrop; learning state remains completely separate."""
+
+    def __init__(self, theme_key: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._theme_key = normalize_classroom_theme(theme_key)
+        self._phase = 0.0
+        self._ambient_timer = QTimer(self)
+        self._ambient_timer.setInterval(55)
+        self._ambient_timer.timeout.connect(self._tick_ambient)
+        self._ambient_timer.start()
+
+    def set_theme(self, theme_key: str) -> None:
+        self._theme_key = normalize_classroom_theme(theme_key)
+        self.update()
+
+    def _tick_ambient(self) -> None:
+        if not self.isVisible():
+            return
+        if os.getenv("MENTORFLOW_REDUCED_MOTION", "").strip().lower() in {"1", "true", "yes", "on"}:
+            return
+        theme = classroom_theme(self._theme_key)
+        intensity = str(theme.get("motionIntensity", theme.get("motion_intensity", "gentle")))
+        phase_step = {"quiet": 0.004, "gentle": 0.010, "active": 0.020}.get(intensity, 0.010)
+        self._phase = (self._phase + phase_step) % 1000
+        self.update()
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        theme = classroom_theme(self._theme_key)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if theme.get("background_direction") == "diagonal":
+            gradient = QLinearGradient(0, 0, self.width(), self.height())
+        else:
+            gradient = QLinearGradient(0, 0, 0, self.height())
+        gradient.setColorAt(0.0, QColor(str(theme["background_top"])))
+        gradient.setColorAt(1.0, QColor(str(theme["background_bottom"])))
+        painter.fillRect(self.rect(), gradient)
+        colors = tuple(str(value) for value in theme.get("ambientOverlay", theme["ambient"]))
+        pattern = str(theme.get("backgroundPattern", theme.get("background_pattern", "")))
+        pattern_color = QColor(str(theme.get("pattern_color", colors[0])))
+        pattern_color.setAlpha(38)
+        painter.setPen(pattern_color)
+        width, height = self.width(), self.height()
+        # Each named background family has its own small geometric grammar.
+        # The renderer is deterministic for screenshot acceptance and cheap
+        # enough for a classroom backdrop.
+        if pattern == "petals":
+            for i in range(14):
+                x, y = (i * 137) % max(1, width), (i * 83) % max(1, height)
+                painter.save(); painter.translate(x, y); painter.rotate(i * 27 + self._phase * 8)
+                painter.drawEllipse(-13, -4, 26, 8); painter.restore()
+        elif pattern in {"paper", "ruled-paper"}:
+            step = 23 if pattern == "paper" else 20
+            for y in range(step, height, step):
+                painter.drawLine(0, y, width, y)
+            if pattern == "ruled-paper":
+                painter.drawLine(54, 0, 54, height)
+        elif pattern == "clouds":
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(pattern_color)
+            for i in range(6):
+                x, y = (i * 211) % max(1, width), 70 + (i * 97) % max(1, height // 2 or 1)
+                painter.drawEllipse(x, y, 130, 34); painter.drawEllipse(x + 25, y - 18, 66, 52)
+        elif pattern == "stars":
+            for i in range(32):
+                x, y = (i * 173) % max(1, width), (i * 277) % max(1, height)
+                radius = 2 + i % 3
+                painter.drawLine(x - radius, y, x + radius, y); painter.drawLine(x, y - radius, x, y + radius)
+        elif pattern == "chalk-grid":
+            for x in range(0, width, 34): painter.drawLine(x, 0, x, height)
+            for y in range(0, height, 30): painter.drawLine(0, y, width, y)
+        elif pattern == "woodgrain":
+            for offset in range(-height, width, 30):
+                painter.drawArc(offset, -18, max(40, height // 2), height + 36, 0, 180 * 16)
+        elif pattern == "window-light":
+            painter.save()
+            sun = QColor(str(colors[0])); sun.setAlpha(92)
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(sun)
+            painter.drawEllipse(max(0, width - 260), 46, 126, 126)
+            painter.restore()
+            painter.setPen(pattern_color)
+            for x in range(48, width, 180):
+                painter.drawRect(x, 0, 4, height); painter.drawRect(x + 86, 0, 3, height)
+            for y in range(80, height, 150): painter.drawLine(0, y, width, y)
+            # Long diagonal desk/window shadows make the sunset composition
+            # visibly different from Sakura instead of merely recolouring it.
+            for offset in range(-height, width, 190):
+                painter.drawLine(offset, 0, offset + height, height)
+        elif pattern == "raindrops":
+            painter.save()
+            lamp = QColor(str(colors[2])); lamp.setAlpha(58)
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(lamp)
+            painter.drawEllipse(max(0, width - 330), max(0, height - 300), 250, 250)
+            painter.restore()
+            mullion = QColor(str(theme.get("border", colors[0]))); mullion.setAlpha(105)
+            painter.setPen(mullion)
+            painter.drawLine(width // 2, 0, width // 2, height)
+            painter.drawLine(0, height // 2, width, height // 2)
+            painter.setPen(pattern_color)
+            for i in range(28):
+                x, y = (i * 97) % max(1, width), (i * 149) % max(1, height)
+                painter.drawLine(x, y, x - 4, y + 18 + i % 8)
+        elif pattern == "wash":
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i, color_value in enumerate(colors):
+                color = QColor(color_value); color.setAlpha(42); painter.setBrush(color)
+                painter.drawEllipse((i * 237) % max(1, width), (i * 131) % max(1, height), 220, 110)
+        elif pattern == "ruled-paper":
+            for y in range(20, height, 20): painter.drawLine(0, y, width, y)
+            painter.drawLine(54, 0, 54, height)
+        elif pattern == "circuit":
+            for i in range(11):
+                x, y = 30 + (i * 113) % max(1, width - 30), 30 + (i * 71) % max(1, height - 30)
+                painter.drawLine(x, y, min(width, x + 52), y); painter.drawLine(min(width, x + 52), y, min(width, x + 52), y + 28)
+                painter.drawEllipse(min(width, x + 46), y - 3, 7, 7)
+        elif pattern == "whiteboard":
+            for x in range(0, width, 70): painter.drawLine(x, 0, x, height)
+            for y in range(0, height, 70): painter.drawLine(0, y, width, y)
+        elif pattern == "pixel-grid":
+            for x in range(0, width, 16):
+                for y in range(0, height, 16):
+                    if (x // 16 + y // 16) % 3 == 0: painter.drawRect(x, y, 4, 4)
+        elif pattern in {"leaves", "coffee-rings"}:
+            for i in range(12):
+                x, y = (i * 139) % max(1, width), (i * 91) % max(1, height)
+                if pattern == "coffee-rings": painter.drawEllipse(x, y, 32 + i % 4 * 8, 16 + i % 3 * 5)
+                else:
+                    painter.save(); painter.translate(x, y); painter.rotate(i * 23); painter.drawEllipse(-14, -5, 28, 10); painter.restore()
+        # Decorative layers are a second, named pass over the background.
+        decorative_name = str(theme.get("decorativeLayer", "marker-dots"))
+        family = str(theme.get("decorative_family", "dot"))
+        if decorative_name in {"scanline", "scanlines"}:
+            family = "scanline"
+        descriptor = theme.get("decorative_descriptor") or {}
+        count = int(descriptor.get("count", 12))
+        motion = float(descriptor.get("motion", 0.004))
+        for i in range(count):
+            x = (i * 173 + 27) % max(1, width)
+            y = int(((i * 257 + 31) + self._phase * motion * max(1, height)) % max(1, height))
+            color = QColor(colors[i % len(colors)]); color.setAlpha(24 if self._theme_key != "night" else 40)
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(color)
+            if family in {"petal", "leaf"}:
+                painter.save(); painter.translate(x, y); painter.rotate(i * 31 + self._phase * 8); painter.drawEllipse(-12, -4, 24, 8); painter.restore()
+            elif family == "star":
+                painter.setPen(color); painter.drawLine(x - 7, y, x + 7, y); painter.drawLine(x, y - 7, x, y + 7)
+            elif family == "cloud": painter.drawEllipse(x, y, 48 + i % 3 * 18, 15)
+            elif family == "rain": painter.setPen(color); painter.drawLine(x, y, x - 5, y + 28)
+            elif family == "ray":
+                painter.drawLine(x, y, x + 80, y + 18); painter.drawLine(x + 80, y + 18, x + 110, y + 90)
+            elif family == "wash": painter.drawEllipse(x, y, 70 + i % 3 * 20, 32 + i % 4 * 10)
+            elif family == "scanline": painter.drawRect(0, y, width, 1 + i % 2)
+            elif family == "steam": painter.setPen(color); painter.drawArc(x, y, 24, 46, 45 * 16, 240 * 16)
+            elif family == "note": painter.drawRect(x, y, 20, 14)
+            else: painter.drawEllipse(x, y, 4 + i % 3, 4 + i % 3)
+        # Texture is intentionally subtle: it differentiates fibres, CRT,
+        # frost and carbon without competing with the transcript.
+        texture_name = str(theme.get("texture", "paper-grain"))
+        texture_family = str(theme.get("texture_family", "grain"))
+        texture = theme.get("texture_descriptor") or {}
+        texture_color = QColor(str(theme.get("pattern_color", colors[0]))); texture_color.setAlpha(int(texture.get("alpha", 14)))
+        painter.setPen(texture_color)
+        step = max(6, int(texture.get("step", 20)))
+        if texture_name == "crt":
+            texture_family = "scanline"
+        elif texture_name == "lined-paper":
+            texture_family = "lines"
+        if texture_family in {"lines", "scanline"}:
+            for y in range(0, height, step): painter.drawLine(0, y, width, y)
+        elif texture_family == "crosshatch":
+            for offset in range(-height, width, step): painter.drawLine(offset, 0, offset + height, height)
+        elif texture_family == "carbon":
+            for x in range(0, width, step): painter.drawLine(x, 0, x + height, height)
+        elif texture_family in {"grain", "fibres", "frost", "erase", "mist", "velvet", "chalk", "wash"}:
+            for i in range(max(8, width // step)):
+                x, y = (i * 83) % max(1, width), (i * 47) % max(1, height)
+                painter.drawPoint(x, y); painter.drawPoint((x + 17) % max(1, width), (y + 11) % max(1, height))
+        painter.end()
+        super().paintEvent(event)
+
+
+def teacher_presentation_state(
+    session: dict[str, Any] | None,
+    *,
+    busy: bool = False,
+) -> str:
+    """Map durable teaching semantics to a renderer state.
+
+    The sidecar must reflect the real classroom turn instead of remaining in a
+    decorative, permanently ``explaining`` pose.  Only workflow semantics are
+    inspected; no course title, subject, resource ID, or model-specific action
+    is embedded here.
+    """
+
+    if busy:
+        return "thinking"
+    if not isinstance(session, dict) or not session:
+        return "idle"
+    state = session.get("state")
+    state = state if isinstance(state, dict) else {}
+    turn = state.get("teacher_turn_v1")
+    turn = turn if isinstance(turn, dict) else {}
+    free_turn = state.get("latest_free_chat_turn_v1")
+    free_turn = free_turn if isinstance(free_turn, dict) else {}
+    turn_state = turn.get("state")
+    turn_state = turn_state if isinstance(turn_state, dict) else {}
+    explicit_state = str(
+        free_turn.get("presentation_state")
+        or turn.get("presentation_state")
+        or state.get("teacher_presentation_state")
+        or ""
+    ).strip().lower()
+    if explicit_state in _TEACHER_PRESENTATION_STATES:
+        return explicit_state
+    action = str(
+        free_turn.get("action")
+        or turn.get("action")
+        or state.get("last_teacher_action")
+        or state.get("next_action")
+        or ""
+    ).strip().lower()
+    phase = str(
+        turn_state.get("phase")
+        or state.get("current_teaching_step")
+        or ""
+    ).strip().lower()
+    status = str(turn_state.get("status") or state.get("status") or "").strip().lower()
+
+    if status == "completed" or phase == "completed" or re.search(
+        r"complete_route|course_complete|lesson_end", action
+    ):
+        return "ending"
+    if re.search(r"daily_briefing|knowledge_jump|lesson_start", action):
+        return "greeting"
+    if re.search(r"praise|pass|advance_route|resume_main_route|mastered", action):
+        return "praising"
+    if re.search(r"source_conflict|insufficient_evidence|confus", action):
+        return "confused"
+    if re.search(r"remediation|encourag|learning_coach", action):
+        return "encouraging"
+    if re.search(r"question|check|guided_practice|clarify_feedback|invite_questions|point_readiness", action):
+        return "questioning"
+    if re.search(r"explain|example", action):
+        return "explaining"
+    if re.search(r"free_chat|grounded_answer|model_general_answer|coach_response", action):
+        return "talking"
+    if status in {"awaiting_answer", "waiting_for_answer"}:
+        return "questioning"
+    return "talking" if turn or free_turn else "idle"
 
 
 def current_knowledge_point_summary(session: dict[str, Any]) -> dict[str, Any]:
@@ -289,7 +869,10 @@ def session_transcript(session: dict[str, Any]) -> str:
     for message in messages:
         if not isinstance(message, dict):
             continue
-        role = "教师" if message.get("role") == "teacher" else "你"
+        free_chat = str(message.get("action") or "") in {"free_chat", "free_chat_response"}
+        role = (
+            "教师 · 自由聊天" if message.get("role") == "teacher" else "你 · 自由聊天"
+        ) if free_chat else ("教师" if message.get("role") == "teacher" else "你")
         turn = message.get("teacher_turn")
         content = teacher_turn_text(turn) if isinstance(turn, dict) else str(message.get("content") or "")
         rendered.extend([f"──────── {role} ────────", content.strip(), ""])
@@ -298,6 +881,24 @@ def session_transcript(session: dict[str, Any]) -> str:
             rendered.append("附件：" + "、".join(str(item.get("original_filename") or item.get("id")) for item in attachments))
             rendered.append("")
     return "\n".join(rendered).strip()
+
+
+def message_copy_text(message: dict[str, Any]) -> str:
+    """Return the plain-text body used by a per-message copy action."""
+
+    turn = message.get("teacher_turn")
+    if isinstance(turn, dict):
+        text = teacher_turn_text(turn)
+    else:
+        text = str(message.get("content") or "").strip()
+    # Focus markers are an internal state-machine representation.  The
+    # rendered message exposes their visible label and value, so copied text
+    # must do the same without leaking ``[[...]]`` syntax.
+    return re.sub(
+        r"\[\[(重难点|难点|重点)\s*[:：]\s*([^\]]+)\]\]",
+        lambda match: f"{match.group(1)}：{match.group(2).strip()}",
+        text,
+    )
 
 
 def _safe_link(value: object) -> str:
@@ -337,7 +938,7 @@ def teacher_turn_html(turn: dict[str, Any]) -> str:
     concept = turn.get("concept") or {}
     name = concept.get("name") if isinstance(concept, dict) else concept
     if name:
-        blocks.append(f'<h3 class="concept-heading">当前概念：{html.escape(str(name))}</h3>')
+        blocks.append(f'<h3 class="concept-heading">{html.escape(str(name))}</h3>')
     for block in turn.get("blocks") or []:
         if not isinstance(block, dict):
             continue
@@ -350,27 +951,42 @@ def teacher_turn_html(turn: dict[str, Any]) -> str:
             content_html = f"<pre><code>{html.escape(content.replace('```', '').strip())}</code></pre>"
         else:
             content_html = _inline_teacher_html(content)
-        blocks.append(f'<section class="teacher-block"><h4>{title}</h4><div>{content_html}</div></section>')
+        if block_type == "worked_example":
+            blocks.append(f'<div class="teacher-example">{content_html}</div>')
+        elif block_type in {"correction", "alternate_example", "prerequisite"}:
+            blocks.append(f'<section class="teacher-block"><h4>{title}</h4><div>{content_html}</div></section>')
+        else:
+            # The turn remains structured in state and copy/export data, but
+            # the visible classroom should read like a conversation rather
+            # than exposing every internal block label to the learner.
+            blocks.append(f'<p class="teacher-paragraph">{content_html}</p>')
     check = turn.get("check") or {}
     if isinstance(check, dict) and check.get("prompt"):
-        blocks.append(f'<section class="teacher-block check-block"><h4>最小检查</h4><div>{_inline_teacher_html(check["prompt"])}</div></section>')
+        blocks.append(f'<div class="teacher-question">{_inline_teacher_html(check["prompt"])}</div>')
     expected = turn.get("expected_learner_action") or turn.get("expected_action")
-    if expected:
-        blocks.append(f'<p class="expected-action">请你做：{_inline_teacher_html(expected)}</p>')
+    check_prompt = str(check.get("prompt") or "").strip() if isinstance(check, dict) else ""
+    if expected and str(expected).strip() != check_prompt:
+        blocks.append(f'<p class="teacher-invite">{_inline_teacher_html(expected)}</p>')
     return "".join(blocks) or "<p>教师暂时没有生成可展示的内容。</p>"
 
 
-def session_transcript_html(session: dict[str, Any]) -> str:
+def session_transcript_html(
+    session: dict[str, Any], theme_key: str = DEFAULT_CLASSROOM_THEME
+) -> str:
+    theme = classroom_theme(theme_key)
+    shadow_width = int(theme.get("bubble_shadow_width", 2))
+    shape_radius = int(theme.get("bubble_radius", 16))
     rendered: list[str] = [
         "<style>"
-        "body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;color:#38423d;background:#fffdf9;margin:4px 2px 16px;}"
-        ".teacher-message{max-width:92%;margin:10px 0 14px;padding:13px 15px;background:#fff3f6;border:1px solid #edc2d3;border-radius:18px 18px 18px 7px;box-shadow:0 4px 14px #8d3f6218;}"
-        ".learner-message{max-width:82%;margin:10px 0 14px auto;padding:11px 14px;background:#edf7f0;border:1px solid #c7dfcf;border-radius:18px 18px 7px 18px;}"
-        ".message-role{font-size:12px;font-weight:800;color:#a94f79;margin-bottom:7px;}"
-        ".learner-message .message-role{color:#5b806b;text-align:right;}"
-        ".teacher-block{margin:8px 0;padding:9px 11px;background:#fff0f5;border-radius:10px;}"
-        ".teacher-block h4{margin:0 0 5px;color:#a94f79;} .concept-heading{color:#8d3f62;}"
-        ".hard-focus{color:#b42318;font-weight:700;} .expected-action{font-weight:700;}"
+        f"body{{font-family:{theme['font_family']};color:{theme['text']};background:{theme['background_top']};margin:4px 2px 16px;}}"
+        f".teacher-message{{max-width:92%;margin:10px 0 14px;padding:13px 15px;background:{theme['teacher_bubble']};border:1px {theme['border_style']} {theme['teacher_border']};border-radius:{shape_radius}px;border-bottom:{shadow_width}px solid {theme['shadow_color']};}}"
+        f".learner-message{{max-width:82%;margin:10px 0 14px auto;padding:11px 14px;background:{theme['learner_bubble']};border:1px {theme['border_style']} {theme['learner_border']};border-radius:{shape_radius}px;border-bottom:{shadow_width}px solid {theme['shadow_color']};}}"
+        f".message-role{{font-size:12px;font-weight:{theme['button_weight']};color:{theme['accent_dark']};margin-bottom:7px;}}"
+        f".learner-message .message-role{{color:{theme['accent_dark']};text-align:right;}}"
+        f".teacher-block{{margin:8px 0;padding:9px 11px;background:{theme['accent_soft']};border-left:3px solid {theme['accent']};border-radius:{theme['control_radius']}px;}}"
+        f".teacher-block h4{{margin:0 0 5px;color:{theme['accent_dark']};}} .concept-heading{{color:{theme['accent_dark']};}}"
+        f".teacher-paragraph{{margin:0 0 10px}}.teacher-question{{padding:10px 12px;background:{theme['status_bg']};border-left:3px solid {theme['accent']};border-radius:{theme['control_radius']}px;font-weight:700}}.teacher-invite{{color:{theme['accent_dark']};font-weight:700}}"
+        ".hard-focus{color:#b42318;font-weight:700;}"
         "a{color:#246b9b;text-decoration:underline;} pre{background:#24333a;color:#f7fbf9;padding:10px;border-radius:8px;white-space:pre-wrap;}"
         "</style>"
     ]
@@ -407,28 +1023,18 @@ class ClassroomTranscriptView(QScrollArea):
     and the existing teacher formatting continue to work.
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme_key: str = DEFAULT_CLASSROOM_THEME, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._theme_key = normalize_classroom_theme(theme_key)
+        self._last_session: dict[str, Any] = {}
+        self._rendered_message_count = 0
+        self._bubble_animations: list[QPropertyAnimation] = []
         self.setObjectName("classroomTranscript")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setStyleSheet(
-            "QScrollArea#classroomTranscript { border: 1px solid #eadde2; border-radius: 18px; background: #fffdfb; }"
-            "QScrollArea#classroomTranscript QWidget#classroomTranscriptContent { background: #fffdfb; }"
-            "QScrollArea#classroomTranscript QScrollBar:vertical { width: 18px; margin: 5px 2px; background: #f4e9ee; border: 0; border-radius: 8px; }"
-            "QScrollArea#classroomTranscript QScrollBar::handle:vertical { min-height: 56px; border-radius: 8px; background: #b887a0; }"
-            "QScrollArea#classroomTranscript QScrollBar::handle:vertical:hover { background: #b887a0; }"
-            "QScrollArea#classroomTranscript QScrollBar::add-line:vertical, QScrollArea#classroomTranscript QScrollBar::sub-line:vertical { height: 0; background: transparent; }"
-            "QScrollArea#classroomTranscript QScrollBar::add-page:vertical, QScrollArea#classroomTranscript QScrollBar::sub-page:vertical { background: transparent; }"
-            "QTextBrowser#transcriptMessageBody { border: 0; background: transparent; color: #38423d; padding: 0; }"
-            "QLabel#teacherMessageRole { color: #9e4a72; font-size: 12px; font-weight: 800; }"
-            "QLabel#learnerMessageRole { color: #4f7c62; font-size: 12px; font-weight: 800; }"
-            "QLabel#messageAttachments { color: #6d6870; font-size: 12px; padding-top: 3px; }"
-            "QFrame#teacherMessageBubble { background: #fff3f6; border: 1px solid #edc2d3; border-radius: 18px; }"
-            "QFrame#learnerMessageBubble { background: #edf7f0; border: 1px solid #c7dfcf; border-radius: 18px; }"
-        )
+        self.setStyleSheet(_transcript_stylesheet(self._theme_key))
         self._content = QWidget(self)
         self._content.setObjectName("classroomTranscriptContent")
         self._layout = QVBoxLayout(self._content)
@@ -439,7 +1045,26 @@ class ClassroomTranscriptView(QScrollArea):
         self.setWidget(self._content)
         self._has_rendered_session = False
 
+    def set_theme(self, theme_key: str) -> None:
+        normalized = normalize_classroom_theme(theme_key)
+        if normalized == self._theme_key:
+            return
+        self._theme_key = normalized
+        self.setStyleSheet(_transcript_stylesheet(normalized))
+        # Restyle existing bodies in place. Rebuilding a long transcript here
+        # used to destroy/recreate every bubble and could make a simple skin
+        # preview look frozen while also resetting scroll/focus state.
+        document_style = _message_document_style(normalized)
+        for body in self.findChildren(QTextBrowser, "transcriptMessageBody"):
+            content = str(body.property("mentorflowMessageHtml") or "")
+            if content:
+                body.setHtml("<style>" + document_style + "</style>" + content)
+                body.document().setDocumentMargin(0)
+
     def _clear_messages(self) -> None:
+        for animation in self._bubble_animations:
+            animation.stop()
+        self._bubble_animations.clear()
         while self._layout.count():
             item = self._layout.takeAt(0)
             widget = item.widget()
@@ -464,15 +1089,11 @@ class ClassroomTranscriptView(QScrollArea):
         body.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         body.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         body.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        body.setProperty("mentorflowMessageHtml", content)
         body.setHtml(
             "<style>"
-            "body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;color:#38423d;margin:0;}"
-            ".teacher-block{margin:8px 0;padding:9px 11px;background:#fff0f5;border-radius:10px;}"
-            ".teacher-block h4{margin:0 0 5px;color:#a94f79;} .concept-heading{color:#8d3f62;margin:0 0 8px;}"
-            ".hard-focus{color:#b42318;font-weight:700;} .expected-action{font-weight:700;}"
-            "a{color:#246b9b;text-decoration:underline;}"
-            "pre{background:#24333a;color:#f7fbf9;padding:10px;border-radius:8px;white-space:pre-wrap;}"
-            "</style>"
+            + _message_document_style(self._theme_key)
+            + "</style>"
             + content
         )
         body.document().setDocumentMargin(0)
@@ -487,11 +1108,38 @@ class ClassroomTranscriptView(QScrollArea):
         bubble_layout = QVBoxLayout(bubble)
         bubble_layout.setContentsMargins(16, 12, 16, 13)
         bubble_layout.setSpacing(5)
-        role = QLabel("教师" if teacher else "你", bubble)
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        free_chat = str(message.get("action") or "") in {"free_chat", "free_chat_response"}
+        role = QLabel(
+            ("教师 · 自由聊天" if teacher else "你 · 自由聊天")
+            if free_chat
+            else ("教师" if teacher else "你"),
+            bubble,
+        )
         role.setObjectName("teacherMessageRole" if teacher else "learnerMessageRole")
-        if not teacher:
+        avatar = QLabel("师" if teacher else "我", bubble)
+        avatar.setObjectName("teacherAvatarBadge" if teacher else "learnerAvatarBadge")
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if teacher:
+            header.addWidget(avatar)
+            header.addWidget(role)
+            header.addStretch(1)
+        else:
             role.setAlignment(Qt.AlignmentFlag.AlignRight)
-        bubble_layout.addWidget(role)
+            header.addStretch(1)
+            header.addWidget(role)
+            header.addWidget(avatar)
+        copy_button = QPushButton("复制", bubble)
+        copy_button.setObjectName("messageCopyButton")
+        copy_button.setToolTip("复制这条消息的纯文本")
+        copy_button.clicked.connect(
+            lambda _checked=False, selected=message, button=copy_button: self._copy_message(
+                selected, button
+            )
+        )
+        header.addWidget(copy_button, 0, Qt.AlignmentFlag.AlignTop)
+        bubble_layout.addLayout(header)
         bubble_layout.addWidget(self._make_body(self._message_body(message)))
         attachments = message.get("attachments") or []
         names = "、".join(
@@ -506,6 +1154,27 @@ class ClassroomTranscriptView(QScrollArea):
             bubble_layout.addWidget(attachments_label)
         return bubble
 
+    def _animate_bubble(self, bubble: QFrame) -> None:
+        effect = QGraphicsOpacityEffect(bubble)
+        effect.setOpacity(0.12)
+        bubble.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", bubble)
+        animation.setDuration(260)
+        animation.setStartValue(0.12)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(lambda: bubble.setGraphicsEffect(None))
+        animation.finished.connect(lambda: self._bubble_animations.remove(animation) if animation in self._bubble_animations else None)
+        self._bubble_animations.append(animation)
+        animation.start()
+
+    @staticmethod
+    def _copy_message(message: dict[str, Any], button: QPushButton) -> None:
+        """Copy one message from the Qt GUI thread without exposing markup."""
+
+        QApplication.clipboard().setText(message_copy_text(message))
+        button.setText("已复制")
+
     def _fit_bodies(self) -> None:
         available = max(180, self.viewport().width() - 22)
         for bubble in self._content.findChildren(QFrame, options=Qt.FindChildOption.FindDirectChildrenOnly):
@@ -513,8 +1182,13 @@ class ClassroomTranscriptView(QScrollArea):
             if body is None:
                 continue
             role = str(bubble.property("messageRole") or "teacher")
-            max_width = 760 if role == "teacher" else 640
-            ratio = 0.94 if role == "teacher" else 0.82
+            # Structured teaching turns are materially denser than ordinary
+            # chat.  Give them a calm, readable content column inspired by
+            # mature role-based chat layouts instead of squeezing them into a
+            # narrow form-like card.  Learner replies stay a little shorter so
+            # the left/right speaking rhythm remains immediately visible.
+            max_width = 960 if role == "teacher" else 760
+            ratio = 0.80 if role == "teacher" else 0.70
             width = max(150, min(max_width, int(available * ratio) - 32))
             body.setFixedWidth(width)
             body.document().setTextWidth(width)
@@ -539,13 +1213,19 @@ class ClassroomTranscriptView(QScrollArea):
             self.verticalScrollBar().setValue(self.verticalScrollBar().minimum())
 
     def set_session(self, session: dict[str, Any]) -> None:
+        self._last_session = deepcopy(session) if isinstance(session, dict) else {}
+        self._render_session(self._last_session, animate_from=self._rendered_message_count)
+
+    def _render_session(self, session: dict[str, Any], *, animate_from: int) -> None:
         scroll_to_latest = self._has_rendered_session
         self._clear_messages()
         messages = _current_point_messages(session)
-        for message in messages:
+        for index, message in enumerate(messages):
             bubble = self._make_bubble(message)
             alignment = Qt.AlignmentFlag.AlignLeft if message.get("role") == "teacher" else Qt.AlignmentFlag.AlignRight
             self._layout.addWidget(bubble, 0, alignment)
+            if index >= animate_from:
+                self._animate_bubble(bubble)
         if not messages:
             empty = QLabel("进入课堂后，结构化讲解会显示在这里。", self._content)
             empty.setObjectName("messageAttachments")
@@ -557,11 +1237,14 @@ class ClassroomTranscriptView(QScrollArea):
             lambda: self._fit_and_scroll_to_latest(scroll_to_latest=scroll_to_latest),
         )
         self._has_rendered_session = True
+        self._rendered_message_count = len(messages)
 
     def setHtml(self, content: str) -> None:
         """Compatibility fallback for callers that still provide one HTML document."""
 
         self._clear_messages()
+        self._last_session = {}
+        self._rendered_message_count = 0
         bubble = QFrame(self._content)
         bubble.setObjectName("teacherMessageBubble")
         bubble.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
@@ -612,11 +1295,24 @@ class TeacherStageWindow(QWidget):
         if host is None or not host.isVisible() or host.isMinimized():
             return
         frame = host.frameGeometry()
-        # A tiny overlap avoids a visible seam between the two frameless
-        # surfaces while keeping the sidecar anchored to the host boundary.
+        # Restore the original compact, host-height sidecar proportions.  The
+        # model canvas receives the full remaining height instead of sharing a
+        # larger window with an action test console.
+        screen = host.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen is not None else None
+        width = max(460, min(500, self.width()))
         x = frame.x() + frame.width() - 4
-        width = max(460, self.width())
-        self.setGeometry(x, frame.y(), width, frame.height())
+        if available is not None:
+            if x + width > available.right() + 1:
+                x = available.right() - width + 1
+            x = max(available.left(), x)
+        height = max(360, frame.height())
+        if available is not None:
+            height = min(height, available.height())
+        y = frame.y()
+        if available is not None:
+            y = min(max(available.top(), y), available.bottom() - height + 1)
+        self.setGeometry(x, y, width, height)
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:
         if watched is self.host:
@@ -808,6 +1504,18 @@ class ClassroomPage(QWidget):
         self._teacher_stage_profile: QWebEngineProfile | None = None
         self._teacher_stage_button: QPushButton | None = None
         self._teacher_stage_window: TeacherStageWindow | None = None
+        self._teacher_stage_status: QLabel | None = None
+        self._teacher_stage_splitter: QSplitter | None = None
+        self._teacher_action_debug_dialog: QDialog | None = None
+        self._teacher_action_debug_rows: QVBoxLayout | None = None
+        self._teacher_action_debug_status: QLabel | None = None
+        self._teacher_action_debug_notice: QLabel | None = None
+        self._teacher_action_debug_filter: QComboBox | None = None
+        self._teacher_action_debug_actions: list[dict[str, Any]] = []
+        self._teacher_action_debug_played: set[str] = set()
+        self._teacher_action_debug_reviews = self._load_teacher_action_reviews()
+        self._teacher_action_debug_attempts = 0
+        self._teacher_presentation_state = "idle"
         self._voice_source: QAudioSource | None = None
         self._audio_io: Any | None = None
         self._audio_buffer = bytearray()
@@ -819,10 +1527,45 @@ class ClassroomPage(QWidget):
         self._voice_future_path: Path | None = None
         self._voice_future_final = False
         self._voice_final_pending = False
+        self._closed = False
         self._voice_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="mentorflow-live-asr",
         )
+        self._action_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="mentorflow-classroom-actions",
+        )
+        self._action_future: Future[dict[str, Any]] | None = None
+        self._action_generation = 0
+        self._action_kind = ""
+        self._action_context: dict[str, Any] = {}
+        self.send_button: QPushButton | None = None
+        self.complete_button: QPushButton | None = None
+        self.attach_button: QPushButton | None = None
+        self.learning_evidence_radio: QRadioButton | None = None
+        self.free_chat_radio: QRadioButton | None = None
+        self.interaction_notice: QLabel | None = None
+        self.interaction_mode = "learning_evidence"
+        self._classroom_theme_key = normalize_classroom_theme(
+            QSettings("MentorFlow", "MentorFlow").value(
+                "appearance/classroom_theme", DEFAULT_CLASSROOM_THEME
+            )
+        )
+        self._classroom_panel: ClassroomAtmosphere | None = None
+        self._conversation_status: QLabel | None = None
+        self._typing_step = 0
+        self._typing_timer = QTimer(self)
+        self._typing_timer.setInterval(360)
+        self._typing_timer.timeout.connect(self._advance_typing_indicator)
+        # The classroom keeps the transcript and answer controls stable while
+        # allowing a one-key presentation mode for focused teaching.  These
+        # references are populated by ``_build`` once the upper management
+        # shell exists.
+        self._immersive_mode = False
+        self._immersive_toggle: QPushButton | None = None
+        self.immersive_toggle: QPushButton | None = None
+        self._immersive_top_widgets: list[QWidget] = []
         self._voice_timer = QTimer(self)
         self._voice_timer.setInterval(900)
         self._voice_timer.timeout.connect(self._voice_tick)
@@ -866,7 +1609,12 @@ class ClassroomPage(QWidget):
         return super().eventFilter(watched, event)
 
     def _track_active_learning_second(self) -> None:
-        if not self.session_id or not self.isVisible() or not self.window().isActiveWindow():
+        if (
+            not self.session_id
+            or self.interaction_mode == "free_chat"
+            or not self.isVisible()
+            or not self.window().isActiveWindow()
+        ):
             return
         # Reading and thinking are learning activity, but an abandoned window
         # must not silently accumulate hours. A fresh classroom interaction
@@ -891,27 +1639,55 @@ class ClassroomPage(QWidget):
         outer.addWidget(self._view_stack, 1)
         landing = self._build_plan_landing()
         self._view_stack.addWidget(landing)
-        classroom_panel = QWidget(self)
+        classroom_panel = ClassroomAtmosphere(self._classroom_theme_key, self)
+        classroom_panel.setObjectName("classroomSessionPanel")
+        classroom_panel.setStyleSheet(_classroom_panel_stylesheet(self._classroom_theme_key))
+        self._classroom_panel = classroom_panel
         layout = QVBoxLayout(classroom_panel)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
 
         def compact_button(button: QPushButton, height: int = 36) -> None:
             button.setMinimumHeight(height)
-            button.setStyleSheet(f"QPushButton {{ min-height: {height}px; padding: 0 11px; }}")
+            # Keep all visual properties in the classroom-scoped stylesheet;
+            # a per-button stylesheet would mask the selected skin and fall
+            # back to desktop/style.py's Sakura controls.
+            button.setProperty("classroomCompact", True)
 
         heading_row = QHBoxLayout()
+        page_icon = QLabel(str(classroom_theme(self._classroom_theme_key).get("symbol", "✿")))
+        page_icon.setObjectName("classroomPageIcon")
+        page_icon.setAccessibleName("课堂主题图标")
+        self._classroom_page_icon = page_icon
+        heading_row.addWidget(page_icon)
         heading = QLabel("原生课堂")
         heading.setObjectName("pageHeading")
         heading_row.addWidget(heading)
         heading_row.addStretch()
-        stage_button = QPushButton("展开教师面板")
-        stage_button.setToolTip("在课堂右侧展开 Live2D 教师面板；默认不占用对话区。")
+        stage_button = QPushButton("打开教师舞台")
+        stage_button.setObjectName("teacherStageToggleButton")
+        stage_button.setAccessibleName("打开教师舞台")
+        stage_button.setToolTip("打开可移动的教师舞台；对话区会保持完整宽度。")
         stage_button.clicked.connect(self.open_teacher_stage)
         compact_button(stage_button)
         self._teacher_stage_button = stage_button
         heading_row.addWidget(stage_button)
-        layout.addLayout(heading_row)
+        action_debug = QPushButton("教师动作调试")
+        action_debug.setObjectName("teacherActionDebugButton")
+        action_debug.setAccessibleName("教师动作调试")
+        action_debug.setToolTip("读取当前 Live2D 舞台注册动作与能力；仅调试当前会话，不保存设置。")
+        action_debug.clicked.connect(self.open_teacher_action_debug)
+        compact_button(action_debug)
+        self._teacher_action_debug_button = action_debug
+        debug_actions_enabled = not getattr(sys, "frozen", False) or os.getenv(
+            "MENTORFLOW_ENABLE_TEACHER_ACTION_DEBUG", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        action_debug.setVisible(debug_actions_enabled)
+        heading_row.addWidget(action_debug)
+        heading_panel = QWidget(classroom_panel)
+        heading_panel.setObjectName("classroomHeaderPanel")
+        heading_panel.setLayout(heading_row)
+        layout.addWidget(heading_panel)
         subtitle = QLabel("教师进入概念后自动讲解、举例并提出最小检查；回答错误时按状态机纠错，不由模型擅自宣布掌握。")
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -934,43 +1710,60 @@ class ClassroomPage(QWidget):
         self._evidence_button = evidence_button
         controls.addWidget(evidence_button, 0, 3)
         controls.addWidget(QLabel("课堂管理"), 1, 0)
-        exit_classroom = QPushButton("退出课堂")
-        exit_classroom.setToolTip("离开当前课堂并返回任务选择；不会删除学习记录。")
-        exit_classroom.clicked.connect(self.exit_classroom)
-        compact_button(exit_classroom)
-        controls.addWidget(exit_classroom, 1, 1)
+        management_actions = QHBoxLayout()
+        management_actions.setContentsMargins(0, 0, 0, 0)
+        management_actions.setSpacing(8)
+        management_actions.addStretch(1)
         teacher_library = QPushButton("更换教师")
         teacher_library.setToolTip("从教师库选择并应用另一位教师")
         teacher_library.clicked.connect(self.open_teacher_library)
         compact_button(teacher_library)
-        controls.addWidget(teacher_library, 1, 2)
+        management_actions.addWidget(teacher_library)
         modeling = QPushButton("编辑当前教师")
         modeling.setToolTip("编辑当前教师人设；保存后可应用到本计划")
         modeling.clicked.connect(self.open_teacher_modeling)
         compact_button(modeling)
-        controls.addWidget(modeling, 1, 3)
+        management_actions.addWidget(modeling)
+        exit_classroom = QPushButton("退出课堂")
+        exit_classroom.setObjectName("classroomExitButton")
+        exit_classroom.setAccessibleName("退出课堂")
+        exit_classroom.setToolTip("离开当前课堂并返回任务选择；不会删除学习记录。")
+        exit_classroom.clicked.connect(self.exit_classroom)
+        compact_button(exit_classroom)
+        management_actions.addWidget(exit_classroom)
+        management_actions_widget = QWidget(classroom_panel)
+        management_actions_widget.setLayout(management_actions)
+        controls.addWidget(management_actions_widget, 1, 1, 1, 3)
         controls.setColumnStretch(1, 1)
-        layout.addLayout(controls)
+        management_panel = QWidget(classroom_panel)
+        management_panel.setObjectName("classroomManagementPanel")
+        management_panel.setLayout(controls)
+        layout.addWidget(management_panel)
 
         self.state = QLabel("请选择已激活计划的任务。")
+        self.state.setObjectName("classroomStateLabel")
         self.state.setWordWrap(True)
-        layout.addWidget(self.state)
 
         current_point_card = QFrame(classroom_panel)
         current_point_card.setObjectName("currentKnowledgePointCard")
-        current_point_card.setMinimumHeight(72)
+        current_point_card.setMinimumHeight(54)
         current_point_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        current_point_card.setStyleSheet(
-            "QFrame#currentKnowledgePointCard { background: #fff0f5; border: 1px solid #e7b7ca; "
-            "border-radius: 16px; }"
-            "QLabel#currentKnowledgePointKicker { color: #9e4a72; font-size: 12px; font-weight: 850; }"
-            "QLabel#currentKnowledgePointName { color: #553449; font-size: 20px; font-weight: 850; }"
-            "QLabel#currentKnowledgePointMeta { color: #725b68; font-size: 12px; }"
-            "QLabel#currentKnowledgePointReview { color: #8d3f62; font-size: 12px; font-weight: 800; }"
-        )
-        current_point_layout = QVBoxLayout(current_point_card)
-        current_point_layout.setContentsMargins(14, 9, 14, 9)
-        current_point_layout.setSpacing(3)
+        # Keep the status and point summary on one compact row.  The status
+        # may grow to use spare width while the summary keeps its phase,
+        # route, and review metadata grouped on the right.
+        current_point_layout = QHBoxLayout(current_point_card)
+        current_point_layout.setContentsMargins(12, 7, 12, 7)
+        current_point_layout.setSpacing(16)
+        self.state.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        current_point_layout.addWidget(self.state, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        current_point_summary = QWidget(current_point_card)
+        current_point_summary.setObjectName("currentKnowledgePointSummary")
+        current_point_summary.setAccessibleName("当前知识点摘要")
+        current_point_summary.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        current_point_summary_layout = QVBoxLayout(current_point_summary)
+        current_point_summary_layout.setContentsMargins(0, 0, 0, 0)
+        current_point_summary_layout.setSpacing(2)
         current_point_header = QHBoxLayout()
         current_point_kicker = QLabel("当前知识点", current_point_card)
         current_point_kicker.setObjectName("currentKnowledgePointKicker")
@@ -980,7 +1773,7 @@ class ClassroomPage(QWidget):
         self.current_point_review.setObjectName("currentKnowledgePointReview")
         self.current_point_review.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         current_point_header.addWidget(self.current_point_review)
-        current_point_layout.addLayout(current_point_header)
+        current_point_summary_layout.addLayout(current_point_header)
         current_point_body = QHBoxLayout()
         current_point_body.setSpacing(12)
         self.current_point_name = QLabel("进入课堂后显示", current_point_card)
@@ -1000,82 +1793,230 @@ class ClassroomPage(QWidget):
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
         current_point_body.addWidget(self.current_point_meta)
-        current_point_layout.addLayout(current_point_body)
+        current_point_summary_layout.addLayout(current_point_body)
+        current_point_layout.addWidget(current_point_summary, 2, Qt.AlignmentFlag.AlignVCenter)
         self.current_point_card = current_point_card
         layout.addWidget(current_point_card)
 
-        teacher_strip = QFrame()
-        teacher_strip.setObjectName("explanationCard")
-        teacher_strip_layout = QVBoxLayout(teacher_strip)
-        teacher_strip_layout.setContentsMargins(12, 8, 12, 8)
-        title_row = QHBoxLayout()
-        title_row.addWidget(QLabel("今日 AI 教师"))
-        title_row.addStretch()
-        teacher_strip_layout.addLayout(title_row)
-        teacher_hint = QLabel("教师会先讲解、举例和检查，再等待你的回答。")
-        teacher_hint.setWordWrap(True)
-        teacher_strip_layout.addWidget(teacher_hint)
-        self._evidence_panel = QTextBrowser(teacher_strip)
-        self._evidence_panel.setObjectName("classroomEvidencePanel")
-        self._evidence_panel.setReadOnly(True)
-        self._evidence_panel.setOpenExternalLinks(True)
-        self._evidence_panel.setOpenLinks(True)
-        self._evidence_panel.setMaximumHeight(180)
-        self._evidence_panel.setHtml(self._evidence_html)
-        self._evidence_panel.setVisible(False)
-        layout.addWidget(teacher_strip)
+        # Evidence is available from the explicit "依据" dialog.  The old
+        # full-width teacher hint duplicated no actionable information and
+        # pushed the actual conversation below the fold.
+        self._evidence_panel = None
+
+        # The upper shell is intentionally reversible and does not own any
+        # session or draft state.  The immersive toggle itself lives with the
+        # lower answer controls, so it remains available while this shell is
+        # hidden.
+        self._immersive_top_widgets = [
+            heading_panel,
+            subtitle,
+            management_panel,
+            current_point_card,
+        ]
 
         conversation = QFrame()
         conversation.setObjectName("classroomConversation")
         conversation_layout = QVBoxLayout(conversation)
-        conversation_layout.setContentsMargins(0, 0, 0, 0)
-        conversation_layout.setSpacing(8)
-        self.transcript = ClassroomTranscriptView()
+        conversation_layout.setContentsMargins(12, 12, 12, 12)
+        conversation_layout.setSpacing(10)
+        conversation_header = QHBoxLayout()
+        conversation_title = QLabel("课堂对话")
+        conversation_title.setObjectName("classroomConversationTitle")
+        conversation_header.addWidget(conversation_title)
+        conversation_header.addStretch(1)
+        conversation_status = QLabel("●  教师在线")
+        conversation_status.setObjectName("classroomConversationStatus")
+        conversation_header.addWidget(conversation_status)
+        self._conversation_status = conversation_status
+        conversation_layout.addLayout(conversation_header)
+        self.transcript = ClassroomTranscriptView(self._classroom_theme_key)
         conversation_layout.addWidget(self.transcript, 1)
+        composer = QFrame(conversation)
+        composer.setObjectName("classroomComposer")
+        composer_layout = QVBoxLayout(composer)
+        composer_layout.setContentsMargins(10, 10, 10, 10)
+        composer_layout.setSpacing(8)
         self.answer = QPlainTextEdit()
-        self.answer.setMinimumHeight(56)
-        self.answer.setMaximumHeight(88)
+        self.answer.setMinimumHeight(48)
+        self.answer.setMaximumHeight(72)
         self.answer.setPlaceholderText("写下你的解释、答案或具体不理解的地方……")
-        conversation_layout.addWidget(self.answer)
+        composer_layout.addWidget(self.answer)
+        interaction_row = QHBoxLayout()
+        interaction_row.setSpacing(10)
+        interaction_label = QLabel("本条消息用途")
+        interaction_label.setToolTip("学习回答会参与课堂判断；自由聊聊只回应问题，不计入掌握判定或学习计划。")
+        interaction_row.addWidget(interaction_label)
+        learning_evidence = QRadioButton("学习回答")
+        learning_evidence.setObjectName("learningEvidenceRadio")
+        learning_evidence.setAccessibleName("学习回答模式")
+        learning_evidence.setToolTip("参与当前知识点的学习回答与掌握判断。")
+        learning_evidence.setChecked(True)
+        learning_evidence.toggled.connect(
+            lambda checked: checked and self._set_interaction_mode("learning_evidence")
+        )
+        interaction_row.addWidget(learning_evidence)
+        free_chat = QRadioButton("自由聊聊")
+        free_chat.setObjectName("freeChatRadio")
+        free_chat.setAccessibleName("自由聊聊模式")
+        free_chat.setToolTip("不会计入掌握判定，也不会推进学习计划。")
+        free_chat.toggled.connect(
+            lambda checked: checked and self._set_interaction_mode("free_chat")
+        )
+        interaction_row.addWidget(free_chat)
+        interaction_row.addStretch(1)
+        composer_layout.addLayout(interaction_row)
+        self.learning_evidence_radio = learning_evidence
+        self.free_chat_radio = free_chat
+        self.interaction_notice = QLabel("")
+        self.interaction_notice.setObjectName("interactionNotice")
+        self.interaction_notice.setWordWrap(True)
+        self.interaction_notice.setVisible(False)
+        composer_layout.addWidget(self.interaction_notice)
         self.pending_attachments = QLabel("未选择附件。")
         self.pending_attachments.setWordWrap(True)
-        conversation_layout.addWidget(self.pending_attachments)
+        self.pending_attachments.setVisible(False)
+        composer_layout.addWidget(self.pending_attachments)
         answer_actions = QVBoxLayout()
         answer_actions.setSpacing(6)
         answer_inputs = QHBoxLayout()
         answer_inputs.setSpacing(6)
         attach = QPushButton("添加截图/文档")
+        attach.setObjectName("classroomAttachmentButton")
+        attach.setAccessibleName("添加截图或文档附件")
         attach.clicked.connect(self.choose_attachments)
+        self.attach_button = attach
         answer_inputs.addWidget(attach)
         transcribe = QPushButton("🎙 语音")
+        transcribe.setAccessibleName("语音输入")
         transcribe.setToolTip("点击后申请麦克风权限并开始语音输入；再次点击结束。")
         transcribe.clicked.connect(self.toggle_voice_recording)
         self.voice_button = transcribe
         answer_inputs.addWidget(transcribe)
+        immersive_toggle = QPushButton("进入沉浸模式")
+        immersive_toggle.setObjectName("immersiveToggleButton")
+        immersive_toggle.setAccessibleName("沉浸课堂切换")
+        immersive_toggle.setToolTip("隐藏课堂标题、管理、状态和知识点摘要；再次点击可恢复。")
+        immersive_toggle.clicked.connect(self.toggle_immersive_mode)
+        compact_button(immersive_toggle)
+        self._immersive_toggle = immersive_toggle
+        self.immersive_toggle = immersive_toggle
+        answer_inputs.addWidget(immersive_toggle)
         answer_inputs.addStretch()
         answer_actions.addLayout(answer_inputs)
         completion_actions = QHBoxLayout()
         completion_actions.setSpacing(6)
         completion_actions.addStretch()
         self_assessed = QPushButton("我已掌握，完成此知识点")
+        self_assessed.setAccessibleName("完成当前知识点")
         self_assessed.setToolTip(
             "直接完成当前知识点并进入下一知识点；当前进度会立即保存。"
         )
         self_assessed.clicked.connect(self.skip_to_next_point)
+        self.complete_button = self_assessed
         completion_actions.addWidget(self_assessed)
         send = QPushButton("提交回答")
         send.setObjectName("primaryButton")
+        send.setAccessibleName("提交课堂回答")
         send.clicked.connect(self.send_answer)
+        self.send_button = send
         completion_actions.addWidget(send)
         answer_actions.addLayout(completion_actions)
         for button in (attach, transcribe, self_assessed, send):
             compact_button(button)
-        conversation_layout.addLayout(answer_actions)
-        # The teacher stage is a sidecar window attached to the main window,
-        # not a splitter child.  Keep the classroom conversation full width.
+        composer_layout.addLayout(answer_actions)
+        conversation_layout.addWidget(composer)
+
+        # Conversation owns the full classroom width.  The teacher stage is
+        # created lazily as a larger detachable window from the two persistent
+        # stage buttons, so the Live2D surface never squeezes the transcript.
         layout.addWidget(conversation, 1)
         self._view_stack.addWidget(classroom_panel)
         self._view_stack.setCurrentIndex(0)
+
+    @property
+    def immersive_mode(self) -> bool:
+        """Whether the reversible focused classroom layout is active."""
+
+        return self._immersive_mode
+
+    @property
+    def classroom_theme_key(self) -> str:
+        return self._classroom_theme_key
+
+    def apply_theme(self, theme_key: str, *, persist: bool = True) -> None:
+        """Apply one local visual skin without touching lesson or draft state."""
+
+        normalized = normalize_classroom_theme(theme_key)
+        self._classroom_theme_key = normalized
+        if persist:
+            settings = QSettings("MentorFlow", "MentorFlow")
+            settings.setValue("appearance/classroom_theme", normalized)
+            settings.sync()
+        if self._classroom_panel is not None:
+            self._classroom_panel.set_theme(normalized)
+            self._classroom_panel.setStyleSheet(_classroom_panel_stylesheet(normalized))
+        if hasattr(self, "_classroom_page_icon"):
+            self._classroom_page_icon.setText(str(classroom_theme(normalized).get("symbol", "✿")))
+        if hasattr(self, "transcript"):
+            self.transcript.set_theme(normalized)
+        if self._teacher_stage_panel is not None:
+            self._teacher_stage_panel.setStyleSheet(_teacher_stage_stylesheet(normalized))
+        if self._teacher_stage_window is not None:
+            self._teacher_stage_window.setStyleSheet(_teacher_stage_window_stylesheet(normalized))
+            for mark in self._teacher_stage_window.findChildren(QLabel, "teacherStageFrameMark"):
+                mark.setText(str(classroom_theme(normalized).get("stage_header_mark", "✦")))
+        web = self._teacher_stage_web
+        if web is not None:
+            payload = json.dumps(
+                {"type": "mentorflow.teacher-theme", "theme": normalized},
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+            web.page().runJavaScript(
+                f"window.postMessage({payload}, window.location.origin);"
+            )
+
+    def _advance_typing_indicator(self) -> None:
+        if self._conversation_status is None:
+            return
+        self._typing_step = (self._typing_step + 1) % 3
+        self._conversation_status.setText("●  教师正在思考" + "·" * (self._typing_step + 1))
+
+    def set_immersive_mode(self, enabled: bool) -> None:
+        """Hide or restore only upper classroom chrome.
+
+        Transcript, draft text, attachments, voice input, mode radios, and
+        mastery/submit actions are deliberately outside ``_immersive_top_widgets``
+        so switching modes cannot lose a learner's in-progress work.
+        """
+
+        self._immersive_mode = bool(enabled)
+        for widget in self._immersive_top_widgets:
+            widget.setVisible(not self._immersive_mode)
+        button = self._immersive_toggle
+        if button is not None:
+            button.setText("退出沉浸模式" if self._immersive_mode else "进入沉浸模式")
+            button.setToolTip(
+                "恢复课堂管理、状态和知识点摘要。"
+                if self._immersive_mode
+                else "隐藏课堂管理、状态和知识点摘要；再次点击可恢复。"
+            )
+            button.setAccessibleName(
+                "退出沉浸课堂" if self._immersive_mode else "进入沉浸课堂"
+            )
+        # Let Qt recompute the conversation height immediately after the
+        # upper cards change visibility, including when the page is offscreen.
+        self.layout().activate()
+
+    def toggle_immersive_mode(self) -> None:
+        """Toggle the focused classroom layout without changing the session."""
+
+        self.set_immersive_mode(not self._immersive_mode)
+
+    # Explicit alias for callers that describe the action as a classroom
+    # toggle rather than a layout mode; both paths share one stateful method.
+    def toggle_immersive_classroom(self) -> None:
+        self.toggle_immersive_mode()
 
     def _build_plan_landing(self) -> QWidget:
         landing = QWidget(self)
@@ -1211,27 +2152,33 @@ class ClassroomPage(QWidget):
     def _build_teacher_stage_panel(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("teacherStagePanel")
-        panel.setStyleSheet(
-            "QFrame#teacherStagePanel { border: 1px solid #edc2d3; border-radius: 16px; "
-            "background: #fff8fb; }"
-        )
-        panel.setMinimumWidth(460)
+        panel.setStyleSheet(_teacher_stage_stylesheet(self._classroom_theme_key))
+        panel.setMinimumWidth(330)
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(12, 12, 12, 12)
-        panel_layout.setSpacing(8)
+        panel_layout.setContentsMargins(16, 16, 16, 16)
+        panel_layout.setSpacing(10)
         self._teacher_stage_panel_layout = panel_layout
         header = QHBoxLayout()
-        title = QLabel("Live2D 教师")
-        title.setObjectName("cardHeading")
+        frame_mark = QLabel(str(classroom_theme(self._classroom_theme_key).get("stage_header_mark", "✦")))
+        frame_mark.setObjectName("teacherStageFrameMark")
+        frame_mark.setAccessibleName("教师舞台主题标记")
+        header.addWidget(frame_mark)
+        title = QLabel("动态教师舞台")
+        title.setObjectName("teacherStageTitle")
         header.addWidget(title)
         header.addStretch()
-        collapse = QPushButton("收起")
-        collapse.setToolTip("收起右侧教师面板，回到完整对话区。")
+        stage_status = QLabel("●  待机")
+        stage_status.setObjectName("teacherStageStatus")
+        header.addWidget(stage_status)
+        self._teacher_stage_status = stage_status
+        collapse = QPushButton("关闭")
+        collapse.setAccessibleName("关闭教师舞台")
+        collapse.setToolTip("关闭教师舞台；课堂对话不会中断。")
         collapse.clicked.connect(self._collapse_teacher_stage)
         collapse.setMinimumHeight(42)
         header.addWidget(collapse)
         panel_layout.addLayout(header)
-        hint = QLabel("教师形象仅作为课堂辅助；对话和学习记录仍以左侧课堂为准。")
+        hint = QLabel("教师会随讲解、思考、提问、等待与鼓励自然切换表情和动作。")
         hint.setWordWrap(True)
         panel_layout.addWidget(hint)
         self._teacher_stage_placeholder = QLabel("正在准备教师舞台……")
@@ -1249,6 +2196,7 @@ class ClassroomPage(QWidget):
         if self._teacher_stage_window is not None:
             return
         window = TeacherStageWindow(self)
+        window.setStyleSheet(_teacher_stage_window_stylesheet(self._classroom_theme_key))
         window_layout = QVBoxLayout(window)
         window_layout.setContentsMargins(0, 0, 0, 0)
         panel = self._build_teacher_stage_panel()
@@ -1271,12 +2219,479 @@ class ClassroomPage(QWidget):
             host = None
         self._teacher_stage_window.attach_to(host)
         self._teacher_stage_window.sync_to_host()
-        self._ensure_teacher_stage_web()
+        # QWebEngine reports a newly-created page as hidden while its parent
+        # top-level window is still hidden.  The Live2D runtime correctly
+        # pauses hidden pages, so mounting the web view first can stop the
+        # ticker before its first rendered frame and leave a ready-but-blank
+        # stage.  Expose the detached window before creating/loading the view.
         self._teacher_stage_window.show()
         self._teacher_stage_window.raise_()
+        self._ensure_teacher_stage_web()
         if self._teacher_stage_button is not None:
-            self._teacher_stage_button.setText("收起教师面板")
-            self._teacher_stage_button.setToolTip("收起右侧教师面板，回到完整对话区。")
+            self._teacher_stage_button.setText("关闭教师舞台")
+            self._teacher_stage_button.setAccessibleName("关闭教师舞台")
+            self._teacher_stage_button.setToolTip("关闭可移动的教师舞台，回到完整对话区。")
+
+    def open_teacher_action_debug(self) -> None:
+        """Show an opt-in inspector backed by the live stage registry.
+
+        The native shell does not invent a second motion system.  Rows are
+        read from the already-mounted React Live2D inspector, which itself is
+        built from the model's runtime registry/capabilities.  Play and Stop
+        therefore dispatch to the same controller instance that drives the
+        visible stage and never remount the model or classroom session.
+        """
+
+        if not self.origin:
+            QMessageBox.information(self, "教师动作调试", "当前服务没有可用的教师舞台页面。")
+            return
+        if self._teacher_stage_window is None or not self._teacher_stage_window.isVisible():
+            self.open_teacher_stage()
+        if self._teacher_action_debug_dialog is not None and self._teacher_action_debug_dialog.isVisible():
+            self._teacher_action_debug_dialog.raise_()
+            self._teacher_action_debug_dialog.activateWindow()
+            self._refresh_teacher_action_debug()
+            return
+
+        dialog = QDialog(self)
+        dialog.setObjectName("teacherActionDebugDialog")
+        dialog.setWindowTitle("教师动作人工验收")
+        dialog.setMinimumSize(1040, 680)
+        layout = QVBoxLayout(dialog)
+        title = QLabel("教师动作人工验收")
+        title.setObjectName("teacherActionReviewTitle")
+        title.setStyleSheet("font-size: 20px; font-weight: 700;")
+        layout.addWidget(title)
+        hint = QLabel(
+            "逐个播放并按肉眼观感评价。评价只保存在本机开发设置中，"
+            "不会修改模型资产、学习状态、教师人设或业务数据库。"
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        status = QLabel("正在读取当前教师模型已注册的动作……")
+        status.setObjectName("teacherActionDebugStatus")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+        notice = QLabel("播放后请直接观察教师模型；调用成功不等于肉眼有效。")
+        notice.setObjectName("teacherActionDebugNotice")
+        notice.setWordWrap(True)
+        notice.setStyleSheet("color: #776d73;")
+        layout.addWidget(notice)
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("显示："))
+        review_filter = QComboBox(dialog)
+        review_filter.setAccessibleName("动作验收筛选")
+        for filter_label, filter_value in _TEACHER_ACTION_REVIEW_FILTERS:
+            review_filter.addItem(filter_label, filter_value)
+        review_filter.currentIndexChanged.connect(self._rerender_teacher_action_debug_rows)
+        filter_row.addWidget(review_filter)
+        filter_row.addStretch(1)
+        layout.addLayout(filter_row)
+        scroll = QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget(scroll)
+        rows = QVBoxLayout(content)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(6)
+        rows.addStretch(1)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        actions = QHBoxLayout()
+        refresh = QPushButton("刷新能力")
+        refresh.setAccessibleName("刷新教师动作能力")
+        refresh.clicked.connect(self._refresh_teacher_action_debug)
+        actions.addWidget(refresh)
+        stop = QPushButton("■ 停止当前动作")
+        stop.setAccessibleName("停止教师动作")
+        stop.clicked.connect(self._stop_teacher_action_debug)
+        actions.addWidget(stop)
+        restore = QPushButton("↺ 恢复待机")
+        restore.setAccessibleName("恢复教师自然待机")
+        restore.clicked.connect(self._restore_teacher_idle_debug)
+        actions.addWidget(restore)
+        close = QPushButton("关闭")
+        close.clicked.connect(dialog.close)
+        actions.addWidget(close)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+        self._teacher_action_debug_dialog = dialog
+        self._teacher_action_debug_rows = rows
+        self._teacher_action_debug_status = status
+        self._teacher_action_debug_notice = notice
+        self._teacher_action_debug_filter = review_filter
+        self._teacher_action_debug_actions = []
+        self._teacher_action_debug_played = set()
+        self._teacher_action_debug_attempts = 0
+        dialog.finished.connect(self._on_teacher_action_debug_closed)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        if self._teacher_stage_panel is not None:
+            self._teacher_stage_panel.showNormal()
+            self._teacher_stage_panel.raise_()
+            dialog.raise_()
+        self._refresh_teacher_action_debug()
+
+    def _on_teacher_action_debug_closed(self, _result: int = 0) -> None:
+        self._teacher_action_debug_dialog = None
+        self._teacher_action_debug_rows = None
+        self._teacher_action_debug_status = None
+        self._teacher_action_debug_notice = None
+        self._teacher_action_debug_filter = None
+        self._teacher_action_debug_actions = []
+        self._teacher_action_debug_played = set()
+
+    @staticmethod
+    def _load_teacher_action_reviews() -> dict[str, str]:
+        raw = QSettings("MentorFlow", "MentorFlow").value(
+            _TEACHER_ACTION_REVIEW_SETTINGS_KEY, "{}"
+        )
+        try:
+            decoded = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = {}
+        if not isinstance(decoded, dict):
+            return {}
+        return {
+            str(action_id): str(review)
+            for action_id, review in decoded.items()
+            if str(review) in _TEACHER_ACTION_REVIEW_VALUES
+            and str(review) != "pending"
+        }
+
+    def _save_teacher_action_reviews(self) -> None:
+        settings = QSettings("MentorFlow", "MentorFlow")
+        settings.setValue(
+            _TEACHER_ACTION_REVIEW_SETTINGS_KEY,
+            json.dumps(self._teacher_action_debug_reviews, ensure_ascii=False, sort_keys=True),
+        )
+        settings.sync()
+
+    def _review_teacher_action(self, action_id: str, review: str) -> None:
+        if review not in _TEACHER_ACTION_REVIEW_VALUES or review == "pending":
+            return
+        if review in _TEACHER_ACTION_FAILED_REVIEWS:
+            # Failed human review is a durable local blocklist, not a label.
+            # Remove the action from the tester immediately and keep it gone
+            # across restarts; do not silently rename or rebuild it.
+            self._teacher_action_debug_reviews[action_id] = review
+            self._teacher_action_debug_actions = [
+                action for action in self._teacher_action_debug_actions
+                if str(action.get("id") or "") != action_id
+            ]
+            self._stop_teacher_action_debug()
+            if self._teacher_action_debug_notice is not None:
+                self._teacher_action_debug_notice.setText(
+                    "该动作未通过验收，已从本机动作测试列表移除。"
+                )
+        elif self._teacher_action_debug_reviews.get(action_id) == review:
+            self._teacher_action_debug_reviews.pop(action_id, None)
+        else:
+            self._teacher_action_debug_reviews[action_id] = review
+        self._save_teacher_action_reviews()
+        self._rerender_teacher_action_debug_rows()
+
+    def _stop_teacher_action_debug(self) -> None:
+        web = self._teacher_stage_web
+        if web is None:
+            return
+        web.page().runJavaScript(
+            "(() => { const buttons = [...document.querySelectorAll('button')]; "
+            "buttons.find(button => button.textContent.trim() === 'Stop')?.click(); "
+            "window.postMessage({type:'mentorflow.teacher-state', state:'idle'}, window.location.origin); })();"
+        )
+        if self._teacher_action_debug_notice is not None:
+            self._teacher_action_debug_notice.setText(
+                "已停止当前动作，并回到自然待机；评价结果不会被自动更改。"
+            )
+
+    def _restore_teacher_idle_debug(self) -> None:
+        web = self._teacher_stage_web
+        if web is None:
+            return
+        web.page().runJavaScript(
+            "(() => { const buttons = [...document.querySelectorAll('button')]; "
+            "buttons.find(button => button.textContent.trim() === 'Stop')?.click(); "
+            "buttons.find(button => button.textContent.trim() === 'Restore authoritative state')?.click(); "
+            "window.postMessage({type:'mentorflow.teacher-state', state:'idle'}, window.location.origin); })();"
+        )
+        if self._teacher_action_debug_notice is not None:
+            self._teacher_action_debug_notice.setText(
+                "已清理临时 Motion / Expression，并恢复自然轻微晃动的待机状态。"
+            )
+
+    def _refresh_teacher_action_debug(self) -> None:
+        web = self._teacher_stage_web
+        if web is None or self._teacher_action_debug_dialog is None:
+            return
+        self._teacher_action_debug_attempts += 1
+        if self._teacher_action_debug_notice is not None:
+            self._teacher_action_debug_notice.setText("正在读取当前教师模型已注册的动作……")
+        # The React stage keeps the inspector opt-in.  Enable only this
+        # debug surface; the underlying teacher canvas remains the same.
+        web.page().runJavaScript(
+            "(() => { const buttons = [...document.querySelectorAll('button')]; "
+            "const face = buttons.find(item => item.textContent.trim() === '脸部'); "
+            "if (face && face.getAttribute('aria-pressed') !== 'true') face.click(); "
+            "const button = buttons.find(item => item.title === '调试信息'); "
+            "if (button && !button.classList.contains('active')) button.click(); return Boolean(button); })();",
+            lambda _enabled: self._collect_teacher_action_debug_rows(),
+        )
+
+    def _collect_teacher_action_debug_rows(self) -> None:
+        web = self._teacher_stage_web
+        if web is None or self._teacher_action_debug_dialog is None:
+            return
+        script = """
+        (() => {
+          const inspector = document.querySelector('[data-testid="live2d-motion-inspector"]');
+          if (!inspector) return JSON.stringify({ready:false, live2d:false, actions:[]});
+          const rows = [...inspector.querySelectorAll('[role="listitem"]')].map(row => {
+            const button = row.querySelector('button[data-action-id]');
+            if (!button || button.dataset.actionPreview !== 'true') return null;
+            const title = button.getAttribute('title') || '';
+            return {id: button.getAttribute('data-action-id') || '', label: button.textContent || '',
+              source: button.dataset.actionSource || title.split('/')[0] || 'unknown',
+              implementation: button.dataset.actionImplementation || title.split('/')[1] || 'unknown',
+              parameters: button.dataset.actionParameters || '',
+              reason: button.dataset.actionReason || '',
+              supported: button.dataset.actionSupported !== 'false' && !button.disabled};
+          }).filter(Boolean);
+          return JSON.stringify({ready:true, live2d:true, actions:rows});
+        })();
+        """
+        web.page().runJavaScript(script, self._render_teacher_action_debug_rows)
+
+    def _render_teacher_action_debug_rows(self, payload: object) -> None:
+        rows_layout = self._teacher_action_debug_rows
+        status = self._teacher_action_debug_status
+        if rows_layout is None:
+            return
+        while rows_layout.count() > 1:
+            item = rows_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        data = payload if isinstance(payload, dict) else {}
+        if isinstance(payload, str):
+            try:
+                decoded = json.loads(payload)
+                data = decoded if isinstance(decoded, dict) else {}
+            except json.JSONDecodeError:
+                data = {}
+        actions = data.get("actions") if isinstance(data, dict) else []
+        if not data.get("ready"):
+            if status is not None:
+                status.setText("当前教师模型尚未完成动作注册；请稍候或确认教师舞台已加载。")
+            if self._teacher_action_debug_attempts < 80:
+                QTimer.singleShot(250, self._refresh_teacher_action_debug)
+            return
+        self._teacher_action_debug_actions = [
+            dict(action)
+            for action in actions
+            if isinstance(action, dict) and str(action.get("id") or "").strip()
+            and self._teacher_action_debug_reviews.get(str(action.get("id") or ""))
+            not in _TEACHER_ACTION_FAILED_REVIEWS
+        ]
+        self._teacher_action_debug_actions.sort(
+            key=lambda action: (
+                teacher_action_human_profile(action.get("id"))[0],
+                str(action.get("id") or ""),
+            )
+        )
+        if self._teacher_action_debug_notice is not None:
+            self._teacher_action_debug_notice.setText(
+                "教师舞台已切到脸部近景。播放后请按肉眼效果评价；调用成功不等于动作通过。"
+            )
+        if not self._teacher_action_debug_actions:
+            empty = QLabel("当前模型没有可执行的已注册动作。动作不会被伪造或改写为整模型变换。")
+            empty.setWordWrap(True)
+            rows_layout.insertWidget(0, empty)
+            return
+        self._rerender_teacher_action_debug_rows()
+
+    def _rerender_teacher_action_debug_rows(self, _index: int = 0) -> None:
+        rows_layout = self._teacher_action_debug_rows
+        status = self._teacher_action_debug_status
+        if rows_layout is None:
+            return
+        while rows_layout.count() > 1:
+            item = rows_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        actions = self._teacher_action_debug_actions
+        review_counts = {
+            key: sum(
+                1
+                for action in actions
+                if self._teacher_action_debug_reviews.get(str(action.get("id") or ""), "pending") == key
+            )
+            for key in _TEACHER_ACTION_REVIEW_LABELS
+        }
+        approved = review_counts["excellent"] + review_counts["keep"]
+        if status is not None:
+            status.setText(
+                f"已发现动作 {len(actions)}　·　已注册 {len(actions)}　·　"
+                f"待人工验收 {review_counts['pending']}　·　已通过 {approved}\n"
+                f"很好 {review_counts['excellent']}　保留 {review_counts['keep']}　"
+                f"太弱 {review_counts['weak']}　没效果 {review_counts['ineffective']}　"
+                f"不自然 {review_counts['unnatural']}"
+            )
+        selected_filter = "all"
+        if self._teacher_action_debug_filter is not None:
+            selected_filter = str(self._teacher_action_debug_filter.currentData() or "all")
+        filtered_actions = [
+            action
+            for action in actions
+            if selected_filter == "all"
+            or self._teacher_action_debug_reviews.get(str(action.get("id") or ""), "pending") == selected_filter
+        ]
+        if not filtered_actions:
+            empty = QLabel("当前筛选下没有动作。")
+            empty.setObjectName("teacherActionDebugEmpty")
+            rows_layout.insertWidget(0, empty)
+            return
+        ordinal_by_id = {
+            str(action.get("id") or ""): index
+            for index, action in enumerate(actions, start=1)
+        }
+        for action in filtered_actions:
+            action_id = str(action.get("id") or "").strip()
+            if not action_id:
+                continue
+            _sort_order, human_name, description = teacher_action_human_profile(action_id)
+            ordinal = ordinal_by_id[action_id]
+            review = self._teacher_action_debug_reviews.get(action_id, "pending")
+            row = QFrame()
+            row.setObjectName("teacherActionDebugRow")
+            row.setStyleSheet(
+                "QFrame#teacherActionDebugRow { border: 1px solid #e5cbd6; border-radius: 10px; "
+                "background: #fffafb; }"
+            )
+            row_layout = QVBoxLayout(row)
+            row_layout.setContentsMargins(12, 10, 12, 10)
+            row_layout.setSpacing(7)
+            heading = QHBoxLayout()
+            number = QLabel(f"{ordinal:02d}")
+            number.setObjectName("teacherActionDebugNumber")
+            number.setFixedWidth(34)
+            number.setStyleSheet("font-weight: 700; color: #a84370;")
+            heading.addWidget(number)
+            label = QLabel(human_name)
+            label.setObjectName("teacherActionDebugName")
+            label.setStyleSheet("font-size: 16px; font-weight: 700;")
+            heading.addWidget(label, 1)
+            kind = QLabel(teacher_action_type_label(action))
+            kind.setObjectName("teacherActionDebugType")
+            heading.addWidget(kind)
+            review_label = QLabel(_TEACHER_ACTION_REVIEW_LABELS.get(review, "待验收"))
+            review_label.setObjectName("teacherActionDebugReviewState")
+            review_label.setStyleSheet("font-weight: 700;")
+            heading.addWidget(review_label)
+            row_layout.addLayout(heading)
+
+            summary = QLabel(f"预期表现：{description}")
+            summary.setObjectName("teacherActionDebugDescription")
+            summary.setWordWrap(True)
+            row_layout.addWidget(summary)
+
+            implementation = str(action.get("implementation") or "unknown")
+            parameters = str(action.get("parameters") or "").strip()
+            detail = (
+                f"原始 ID：{action_id}　·　内部来源："
+                f"{implementation} · {str(action.get('source') or 'unknown')}"
+            )
+            if parameters:
+                detail += f"　·　参数：{parameters}"
+            reason = str(action.get("reason") or "").strip()
+            if reason:
+                detail += f"　·　{reason}"
+            source = QLabel(detail)
+            source.setObjectName("teacherActionDebugSource")
+            source.setStyleSheet("color: #776d73; font-size: 11px;")
+            source.setWordWrap(True)
+            source.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            row_layout.addWidget(source)
+
+            support = bool(action.get("supported"))
+            if not support:
+                visible_state = "REGISTERED 已注册　·　PLAYABLE 当前不可调用　·　VISIBLE 待确认　·　APPROVED 待确认"
+            elif action_id in self._teacher_action_debug_played:
+                visible_state = "REGISTERED 已注册　·　PLAYABLE 已发起调用　·　VISIBLE 请肉眼确认"
+            else:
+                visible_state = "REGISTERED 已注册　·　PLAYABLE 待播放确认　·　VISIBLE 待人工验收"
+            if review in {"excellent", "keep"}:
+                visible_state += "　·　APPROVED 用户通过"
+            elif review == "ineffective":
+                visible_state += "　·　VISIBLE 用户判定无明显效果"
+            elif review != "pending":
+                visible_state += "　·　APPROVED 未通过"
+            support_label = QLabel(visible_state)
+            support_label.setObjectName("teacherActionDebugSupport")
+            support_label.setWordWrap(True)
+            row_layout.addWidget(support_label)
+
+            controls = QHBoxLayout()
+            play = QPushButton("▶ 播放")
+            play.setAccessibleName(f"播放教师动作：{action_id}")
+            play.setEnabled(support)
+            action_json = json.dumps(action_id, ensure_ascii=True)
+            play.clicked.connect(
+                lambda _checked=False, action_id_json=action_json: self._play_teacher_action_debug(action_id_json)
+            )
+            controls.addWidget(play)
+            stop = QPushButton("■ 停止")
+            stop.setAccessibleName(f"停止教师动作：{action_id}")
+            stop.setEnabled(support)
+            stop.clicked.connect(self._stop_teacher_action_debug)
+            controls.addWidget(stop)
+            restore = QPushButton("↺ 恢复待机")
+            restore.setAccessibleName(f"恢复待机：{action_id}")
+            restore.clicked.connect(self._restore_teacher_idle_debug)
+            controls.addWidget(restore)
+            controls.addSpacing(14)
+            controls.addWidget(QLabel("我的评价："))
+            for review_value in ("excellent", "keep", "weak", "ineffective", "unnatural"):
+                review_button = QPushButton(_TEACHER_ACTION_REVIEW_LABELS[review_value])
+                review_button.setAccessibleName(
+                    f"评价教师动作：{action_id}：{_TEACHER_ACTION_REVIEW_LABELS[review_value]}"
+                )
+                review_button.setCheckable(True)
+                review_button.setChecked(review == review_value)
+                review_button.clicked.connect(
+                    lambda _checked=False, selected_action_id=action_id, selected_review=review_value:
+                    self._review_teacher_action(selected_action_id, selected_review)
+                )
+                controls.addWidget(review_button)
+            controls.addStretch(1)
+            row_layout.addLayout(controls)
+            rows_layout.insertWidget(max(0, rows_layout.count() - 1), row)
+
+    def _play_teacher_action_debug(self, action_id_json: str) -> None:
+        web = self._teacher_stage_web
+        if web is None:
+            return
+        try:
+            action_id = str(json.loads(action_id_json))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            action_id = ""
+        if action_id:
+            self._teacher_action_debug_played.add(action_id)
+        if self._teacher_stage_panel is not None:
+            self._teacher_stage_panel.showNormal()
+            self._teacher_stage_panel.raise_()
+        if self._teacher_action_debug_notice is not None:
+            self._teacher_action_debug_notice.setText(
+                "已发起动作调用；这只证明 API 已调用，不代表肉眼有效或已经通过。请直接观察教师模型并评价。"
+            )
+        web.page().runJavaScript(
+            "(() => { const id = %s; const button = [...document.querySelectorAll("
+            "'[data-testid=\\\"live2d-motion-inspector\\\"] button[data-action-id]')].find(item => item.dataset.actionId === id); "
+            "if (button && !button.disabled) button.click(); })();" % action_id_json
+        )
+        QTimer.singleShot(900, self._collect_teacher_action_debug_rows)
 
     def _ensure_teacher_stage_web(self) -> None:
         if self._teacher_stage_web is not None or self._teacher_stage_panel_layout is None:
@@ -1296,10 +2711,14 @@ class ClassroomPage(QWidget):
             cookie.setPath("/")
             profile.cookieStore().setCookie(cookie, QUrl(self.origin))
         if self._teacher_stage_placeholder is not None:
-            self._teacher_stage_panel_layout.removeWidget(self._teacher_stage_placeholder)
-            self._teacher_stage_placeholder.deleteLater()
+            placeholder = self._teacher_stage_placeholder
+            insertion_index = self._teacher_stage_panel_layout.indexOf(placeholder)
+            self._teacher_stage_panel_layout.removeWidget(placeholder)
+            placeholder.deleteLater()
             self._teacher_stage_placeholder = None
-        self._teacher_stage_panel_layout.addWidget(web, 1)
+            self._teacher_stage_panel_layout.insertWidget(max(0, insertion_index), web, 1)
+        else:
+            self._teacher_stage_panel_layout.insertWidget(2, web, 1)
         self._teacher_stage_web = web
         self._teacher_stage_profile = profile
         self._load_teacher_stage_url()
@@ -1309,19 +2728,58 @@ class ClassroomPage(QWidget):
             return
         workspace_id = str(self._teacher_stage_workspace_id or self.workspace.currentData() or "")
         query = f"&workspaceId={QUrl.toPercentEncoding(workspace_id).data().decode('ascii')}" if workspace_id else ""
-        self._teacher_stage_web.load(QUrl(f"{self.origin}/?tool=teacher-stage{query}"))
+        presentation = QUrl.toPercentEncoding(self._teacher_presentation_state).data().decode("ascii")
+        theme = QUrl.toPercentEncoding(self._classroom_theme_key).data().decode("ascii")
+        self._teacher_stage_web.load(QUrl(f"{self.origin}/?tool=teacher-stage{query}&state={presentation}&theme={theme}"))
+
+    def _set_teacher_presentation_state(self, value: str) -> None:
+        """Apply the classroom-selected state to the existing model runtime."""
+        state = self._normalize_teacher_state(value)
+        self._apply_teacher_visual_state(state)
+
+    @staticmethod
+    def _normalize_teacher_state(value: str) -> str:
+        state = str(value or "idle").strip().lower()
+        return state if state in _TEACHER_PRESENTATION_STATES else "idle"
+
+    def _apply_teacher_visual_state(self, state: str, *, force: bool = False) -> None:
+        """Send a semantic state to the already-open stage without backend work."""
+
+        state = self._normalize_teacher_state(state)
+        if self._teacher_stage_status is not None:
+            self._teacher_stage_status.setText(
+                f"●  {_TEACHER_PRESENTATION_LABELS.get(state, '待机')}"
+            )
+        if not force and state == self._teacher_presentation_state:
+            return
+        self._teacher_presentation_state = state
+        web = self._teacher_stage_web
+        if web is None:
+            return
+        payload = json.dumps(
+            {"type": "mentorflow.teacher-state", "state": state},
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+        web.page().runJavaScript(
+            f"window.postMessage({payload}, window.location.origin);"
+        )
 
     def _collapse_teacher_stage(self) -> None:
         if self._teacher_stage_window is not None:
             self._teacher_stage_window.hide()
+        elif self._teacher_stage_panel is not None:
+            self._teacher_stage_panel.setVisible(False)
         if self._teacher_stage_button is not None:
-            self._teacher_stage_button.setText("展开教师面板")
-            self._teacher_stage_button.setToolTip("从主窗口右边界展开等高的教师建模面板。")
+            self._teacher_stage_button.setText("打开教师舞台")
+            self._teacher_stage_button.setAccessibleName("打开教师舞台")
+            self._teacher_stage_button.setToolTip("打开可移动的教师舞台；对话区会保持完整宽度。")
 
     def _on_teacher_stage_hidden(self) -> None:
         if self._teacher_stage_button is not None:
-            self._teacher_stage_button.setText("展开教师面板")
-            self._teacher_stage_button.setToolTip("从主窗口右边界展开等高的教师建模面板。")
+            self._teacher_stage_button.setText("打开教师舞台")
+            self._teacher_stage_button.setAccessibleName("打开教师舞台")
+            self._teacher_stage_button.setToolTip("打开可移动的教师舞台；对话区会保持完整宽度。")
 
     def open_evidence(self) -> None:
         """Show current-point evidence without expanding the classroom layout."""
@@ -1442,6 +2900,7 @@ class ClassroomPage(QWidget):
         if not workspace_id:
             self.state.setText("请先从今日计划中选择一个计划。")
             return
+        self._cancel_pending_action()
         try:
             session = self.api.start_teaching_session(workspace_id, self.provider_session())
         except ApiError as exc:
@@ -1456,9 +2915,18 @@ class ClassroomPage(QWidget):
         self._render_session(session)
         if self._view_stack is not None:
             self._view_stack.setCurrentIndex(1)
+        # The stage remains closed until explicitly opened.  This preserves a
+        # wide, calm conversation canvas while retaining the detachable stage
+        # The teacher stage has one stable entry point in the upper-right
+        # classroom header.  Duplicating the same toggle beside the composer
+        # made the two controls look like different actions.
+        if self._teacher_stage_button is not None:
+            self._teacher_stage_button.setText("打开教师舞台")
+            self._teacher_stage_button.setAccessibleName("打开教师舞台")
 
     def exit_classroom(self) -> None:
         """Leave the current classroom view without deleting any learning data."""
+        self._cancel_pending_action()
         self._cancel_voice_recording()
         self._commit_activity()
         self.session_id = ""
@@ -1467,26 +2935,32 @@ class ClassroomPage(QWidget):
         self.pending_attachment_ids.clear()
         self.answer.clear()
         self.pending_attachments.setText("未选择附件。")
+        self.pending_attachments.setVisible(False)
         self.transcript.setHtml("<p>已退出本次课堂。请选择任务后重新进入，学习记录不会被删除。</p>")
         self._evidence_html = "<p>当前回合没有可展示的引用。</p>"
-        self._collapse_teacher_stage()
+        if self._teacher_stage_window is not None:
+            self._collapse_teacher_stage()
         self.state.setText("已退出本次课堂。请选择学习任务后重新进入；已有学习记录仍会保留。")
         if self._view_stack is not None:
             self._view_stack.setCurrentIndex(0)
         self.refresh_workspaces()
 
     def hideEvent(self, event) -> None:  # type: ignore[override]
-        # Switching to another left-nav page must also hide the sidecar; it is
-        # a classroom companion, never a floating overlay for other pages.
+        # A detached sidecar must not float over another page.
         self._cancel_voice_recording()
-        self._collapse_teacher_stage()
+        if self._teacher_stage_window is not None:
+            self._collapse_teacher_stage()
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self._closed = True
+        self._typing_timer.stop()
+        self._cancel_pending_action()
         self._cancel_voice_recording()
         application = QApplication.instance()
         if application is not None:
             application.removeEventFilter(self)
+        self._action_executor.shutdown(wait=False, cancel_futures=True)
         self._voice_executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
 
@@ -1604,9 +3078,332 @@ class ClassroomPage(QWidget):
         dialog.exec()
 
     def send_confusion(self) -> None:
+        if self._voice_input_active():
+            self.state.setText("语音正在录音或转写，请完成后再提交课堂操作。")
+            return
         if not self.answer.toPlainText().strip():
             self.answer.setPlainText("我还没有理解当前概念，请针对我可能混淆的对象和关系重新解释。")
         self.send_answer()
+
+    def _set_interaction_mode(self, mode: str) -> None:
+        """Switch only the purpose of the next message, preserving the draft."""
+
+        selected = "free_chat" if str(mode).strip() == "free_chat" else "learning_evidence"
+        self.interaction_mode = selected
+        selected_radio = (
+            self.free_chat_radio if selected == "free_chat" else self.learning_evidence_radio
+        )
+        # Keep programmatic mode changes (for example restoring a session) in
+        # lockstep with the visible filled-dot radio state.  Signal handlers
+        # are already guarded by the checked argument, so this is idempotent.
+        if selected_radio is not None and not selected_radio.isChecked():
+            selected_radio.setChecked(True)
+        if self.interaction_notice is not None:
+            # The filled radio already communicates the mode.  Keep the
+            # composer conversational instead of inserting a warning banner
+            # every time the learner chooses ordinary free chat.
+            self.interaction_notice.clear()
+            self.interaction_notice.setVisible(False)
+        self.answer.setPlaceholderText(
+            "想聊什么都可以，直接告诉老师……"
+            if selected == "free_chat"
+            else "写下你的解释、答案或具体不理解的地方……"
+        )
+        if self.send_button is not None and self._action_future is None:
+            self.send_button.setText("发送自由消息" if selected == "free_chat" else "提交回答")
+
+    def _voice_input_active(self) -> bool:
+        """Return whether recording or an ASR result is still being finalized."""
+
+        return bool(
+            self._voice_recording
+            or self._voice_future is not None
+            or self._voice_final_pending
+        )
+
+    def _refresh_voice_button(self) -> None:
+        """Keep voice controls synchronized with action/ASR ownership."""
+
+        if not hasattr(self, "voice_button"):
+            return
+        # A classroom action owns the answer controls until its result is
+        # rendered.  A completed ASR callback must not race that ownership.
+        if self._action_future is not None:
+            self.voice_button.setEnabled(False)
+            return
+        self.voice_button.setEnabled(True)
+
+    def _restore_action_controls(self) -> None:
+        """Restore controls after a classroom action succeeds or fails."""
+
+        self._typing_timer.stop()
+        self._typing_step = 0
+        if self._conversation_status is not None:
+            self._conversation_status.setText("●  教师在线")
+        self.answer.setReadOnly(False)
+        if self.send_button is not None:
+            self.send_button.setEnabled(True)
+            self.send_button.setText("发送自由消息" if self.interaction_mode == "free_chat" else "提交回答")
+        if self.complete_button is not None:
+            self.complete_button.setEnabled(True)
+            self.complete_button.setText("我已掌握，完成此知识点")
+        if self.attach_button is not None:
+            self.attach_button.setEnabled(True)
+        for radio in (self.learning_evidence_radio, self.free_chat_radio):
+            if radio is not None:
+                radio.setEnabled(True)
+        self._refresh_voice_button()
+
+    def _cancel_pending_action(self) -> None:
+        """Invalidate a result that must not be applied to a new/closed session."""
+
+        self._action_generation += 1
+        future = self._action_future
+        self._action_future = None
+        self._action_kind = ""
+        self._action_context = {}
+        if future is not None and not future.done():
+            future.cancel()
+        if hasattr(self, "answer"):
+            self._restore_action_controls()
+
+    def _set_action_pending(self, kind: str) -> None:
+        self._set_teacher_presentation_state("thinking")
+        self._typing_step = 0
+        if self._conversation_status is not None:
+            self._conversation_status.setText("●  教师正在思考·")
+        self._typing_timer.start()
+        self.answer.setReadOnly(True)
+        if self.send_button is not None:
+            self.send_button.setEnabled(False)
+            self.send_button.setText(
+                "正在发送自由消息…"
+                if kind == "send" and self.interaction_mode == "free_chat"
+                else "正在提交…"
+                if kind == "send"
+                else "提交回答"
+            )
+        if self.complete_button is not None:
+            self.complete_button.setEnabled(False)
+            self.complete_button.setText(
+                "正在进入下一知识点…" if kind == "complete" else "我已掌握，完成此知识点"
+            )
+        if self.attach_button is not None:
+            self.attach_button.setEnabled(False)
+        if hasattr(self, "voice_button"):
+            self.voice_button.setEnabled(False)
+        for radio in (self.learning_evidence_radio, self.free_chat_radio):
+            if radio is not None:
+                radio.setEnabled(False)
+        self.state.setText(
+            (
+                "正在发送自由消息；不会计入掌握判定或推进学习计划……"
+                if self.interaction_mode == "free_chat"
+                else "正在提交回答，教师完成本回合后会更新课堂……"
+            )
+            if kind == "send"
+            else "正在完成当前知识点并进入下一知识点……"
+        )
+
+    def _perform_teaching_action(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        provider_session_id: str,
+        attachment_ids: list[str],
+        interaction_mode: str = "learning_evidence",
+        free_chat_prompt: str = "",
+        force_complete: bool,
+        actual_elapsed_minutes: float,
+        activity_event_id: str,
+        workspace_id: str,
+    ) -> dict[str, Any]:
+        """Run network work off the Qt GUI thread and return render inputs."""
+
+        request_payload: dict[str, Any] = {
+            "message": message,
+            "provider_session_id": provider_session_id,
+            "interaction_mode": interaction_mode,
+            "attachment_ids": list(attachment_ids),
+        }
+        if interaction_mode == "free_chat" and free_chat_prompt:
+            request_payload["free_chat_prompt"] = free_chat_prompt
+        if interaction_mode == "learning_evidence":
+            request_payload.update(
+                force_complete=force_complete,
+                actual_elapsed_minutes=actual_elapsed_minutes,
+                activity_event_id=activity_event_id,
+            )
+        session = self.api.advance_teaching_session(session_id, **request_payload)
+        material_index: dict[str, dict[str, Any]] = {}
+        if workspace_id:
+            try:
+                material_rows = self.api.materials(workspace_id)
+            except Exception:
+                material_rows = []
+            if not isinstance(material_rows, (list, tuple)):
+                material_rows = []
+            material_index = {
+                str(item.get("id") or ""): item
+                for item in material_rows
+                if isinstance(item, dict)
+            }
+        return {"session": session, "material_index": material_index}
+
+    def _start_teaching_action(
+        self,
+        *,
+        kind: str,
+        session_id: str,
+        message: str,
+        provider_session_id: str,
+        attachment_ids: list[str],
+        interaction_mode: str = "learning_evidence",
+        force_complete: bool,
+        actual_elapsed_minutes: float,
+        activity_event_id: str,
+        workspace_id: str,
+    ) -> bool:
+        interaction_mode = (
+            "learning_evidence"
+            if kind == "complete"
+            else "free_chat"
+            if str(interaction_mode).strip() == "free_chat"
+            else "learning_evidence"
+        )
+        free_chat_prompt = (
+            str(QSettings("MentorFlow", "MentorFlow").value(_FREE_CHAT_PROMPT_SETTINGS_KEY, "") or "")[:6000]
+            if interaction_mode == "free_chat"
+            else ""
+        )
+        if self._action_future is not None:
+            self.state.setText("上一项课堂操作仍在进行，请稍候。")
+            return False
+        if self._voice_input_active():
+            self.state.setText("语音正在录音或转写，请完成后再提交课堂操作。")
+            return False
+        self._action_generation += 1
+        generation = self._action_generation
+        self._action_kind = kind
+        self._action_context = {
+            "generation": generation,
+            "message": message,
+            "attachment_ids": list(attachment_ids),
+            "interaction_mode": interaction_mode,
+        }
+        self._set_action_pending(kind)
+        try:
+            self._action_future = self._action_executor.submit(
+                self._perform_teaching_action,
+                session_id=session_id,
+                message=message,
+                provider_session_id=provider_session_id,
+                attachment_ids=list(attachment_ids),
+                interaction_mode=interaction_mode,
+                free_chat_prompt=free_chat_prompt,
+                force_complete=force_complete,
+                actual_elapsed_minutes=actual_elapsed_minutes,
+                activity_event_id=activity_event_id,
+                workspace_id=workspace_id,
+            )
+        except RuntimeError as exc:
+            self._action_future = None
+            self._action_kind = ""
+            self._action_context = {}
+            self._restore_action_controls()
+            self.state.setText(f"课堂操作无法启动：{exc}")
+            return False
+        QTimer.singleShot(40, lambda token=generation: self._poll_teaching_action(token))
+        return True
+
+    def _poll_teaching_action(self, generation: int) -> None:
+        if self._closed or generation != self._action_generation:
+            return
+        future = self._action_future
+        if future is None:
+            return
+        if not future.done():
+            QTimer.singleShot(40, lambda token=generation: self._poll_teaching_action(token))
+            return
+        self._action_future = None
+        kind = self._action_kind
+        action_context = dict(self._action_context)
+        self._action_kind = ""
+        self._action_context = {}
+        try:
+            result = future.result()
+        except ApiError as exc:
+            self._render_session(self.current_session, material_index={}, update_current=False)
+            self.state.setText(f"{'教师回合' if kind == 'send' else '进入下一知识点'}失败：{exc.code}：{exc.message}")
+            self._restore_action_controls()
+            return
+        except Exception as exc:  # keep the native page responsive on transport/runtime failures
+            self._render_session(self.current_session, material_index={}, update_current=False)
+            action = "教师回合" if kind == "send" else "进入下一知识点"
+            self.state.setText(f"{action}失败：{str(exc).strip() or '出现未知错误，请重试。'}")
+            self._restore_action_controls()
+            return
+        if generation != self._action_generation:
+            return
+        session = result.get("session") if isinstance(result, dict) else None
+        if not isinstance(session, dict):
+            self._render_session(self.current_session, material_index={}, update_current=False)
+            self.state.setText("教师回合失败：服务未返回有效课堂状态。")
+            self._restore_action_controls()
+            return
+        if str(action_context.get("interaction_mode") or "learning_evidence") != "free_chat":
+            self._commit_activity()
+        if kind == "send":
+            submitted_message = str(action_context.get("message") or "").strip()
+            # Normally the editor is read-only while the request is in
+            # flight.  Keep any programmatic ASR/draft update that arrived
+            # during that interval instead of clearing newly entered text.
+            if self.answer.toPlainText().strip() == submitted_message:
+                self.answer.clear()
+                self.pending_attachment_ids.clear()
+                self.pending_attachments.setText("未选择附件。")
+                self.pending_attachments.setVisible(False)
+        material_index = result.get("material_index") if isinstance(result, dict) else {}
+        self._render_session(
+            session,
+            material_index=material_index if isinstance(material_index, dict) else {},
+        )
+        self._restore_action_controls()
+
+    def _render_optimistic_learner_message(
+        self,
+        message: str,
+        *,
+        interaction_mode: str = "learning_evidence",
+    ) -> None:
+        """Show the learner's submitted text without changing server state."""
+
+        optimistic = deepcopy(self.current_session)
+        projection = optimistic.get("current_point")
+        if not isinstance(projection, dict):
+            projection = {}
+            optimistic["current_point"] = projection
+        current_messages = projection.get("messages")
+        if not isinstance(current_messages, list):
+            current_messages = []
+        projection["messages"] = [
+            *current_messages,
+            {
+                "role": "user",
+                "action": (
+                    "free_chat"
+                    if interaction_mode == "free_chat"
+                    else "feedback"
+                ),
+                "content": message,
+                "attachments": [],
+            },
+        ]
+        projection["message_projection"] = projection["messages"]
+        optimistic["current_point_projection"] = projection
+        optimistic["current_point_messages"] = projection["messages"]
+        self._render_session(optimistic, material_index={}, update_current=False)
 
     def send_answer(self) -> None:
         message = self.answer.toPlainText().strip()
@@ -1616,24 +3413,38 @@ class ClassroomPage(QWidget):
         if not message and not self.pending_attachment_ids:
             self.state.setText("请输入回答、具体疑问，或添加附件。")
             return
-        elapsed, event_id = self._activity_payload()
-        try:
-            session = self.api.advance_teaching_session(
-                self.session_id,
-                message=message,
-                provider_session_id=self.provider_session(),
-                attachment_ids=self.pending_attachment_ids,
-                actual_elapsed_minutes=elapsed,
-                activity_event_id=event_id,
-            )
-        except ApiError as exc:
-            self.state.setText(f"教师回合失败：{exc.code}：{exc.message}")
+        if self._action_future is not None:
+            self.state.setText("上一项课堂操作仍在进行，请稍候。")
             return
-        self._commit_activity()
-        self.answer.clear()
-        self.pending_attachment_ids.clear()
-        self.pending_attachments.setText("未选择附件。")
-        self._render_session(session)
+        if self._voice_input_active():
+            self.state.setText("语音正在录音或转写，请完成后再提交课堂操作。")
+            return
+        interaction_mode = self.interaction_mode
+        if interaction_mode == "free_chat":
+            elapsed, event_id = 0.0, ""
+        else:
+            elapsed, event_id = self._activity_payload()
+        optimistic_message = message or (
+            "请阅读我添加的附件，并自然回应当前话题。"
+            if interaction_mode == "free_chat"
+            else "请阅读我添加的附件，并结合当前知识点继续指导。"
+        )
+        self._render_optimistic_learner_message(
+            optimistic_message,
+            interaction_mode=interaction_mode,
+        )
+        self._start_teaching_action(
+            kind="send",
+            session_id=self.session_id,
+            message=message,
+            provider_session_id=self.provider_session(),
+            attachment_ids=list(self.pending_attachment_ids),
+            interaction_mode=interaction_mode,
+            force_complete=False,
+            actual_elapsed_minutes=elapsed,
+            activity_event_id=event_id,
+            workspace_id=str(self.current_session.get("workspace_id") or self.workspace.currentData() or ""),
+        )
 
     def choose_attachments(self) -> None:
         if not self.session_id:
@@ -1659,10 +3470,14 @@ class ClassroomPage(QWidget):
                 f"待随下一条回答发送：{len(self.pending_attachment_ids)} 个附件"
                 + ("（" + "、".join(names) + "）" if names else "")
             )
+            self.pending_attachments.setVisible(True)
 
     def toggle_voice_recording(self) -> None:
         """Start/stop microphone capture; partial ASR runs while recording."""
 
+        if self._action_future is not None:
+            self.state.setText("课堂操作进行中，请等待完成后再使用语音。")
+            return
         if self._voice_recording:
             self._stop_voice_recording()
             return
@@ -1691,6 +3506,10 @@ class ClassroomPage(QWidget):
         self._start_voice_recording()
 
     def _microphone_permission_result(self, permission: QMicrophonePermission) -> None:
+        if self._action_future is not None:
+            self.voice_button.setEnabled(False)
+            self.voice_button.setText("🎙 语音")
+            return
         self.voice_button.setEnabled(True)
         self.voice_button.setText("🎙 语音")
         app = QCoreApplication.instance()
@@ -1858,7 +3677,7 @@ class ClassroomPage(QWidget):
 
     def _finish_voice_transcription(self, text: str, *, error: str = "") -> None:
         self._voice_final_pending = False
-        self.voice_button.setEnabled(True)
+        self._refresh_voice_button()
         self.voice_button.setText("🎙 语音")
         if text or self._voice_preview_text:
             self.state.setText("语音已转成文字；可以继续编辑，也可以直接提交回答。")
@@ -1877,7 +3696,7 @@ class ClassroomPage(QWidget):
         self._voice_final_pending = False
         self._voice_timer.stop()
         if hasattr(self, "voice_button"):
-            self.voice_button.setEnabled(True)
+            self._refresh_voice_button()
             self.voice_button.setText("🎙 语音")
 
     def skip_to_next_point(self) -> None:
@@ -1885,20 +3704,18 @@ class ClassroomPage(QWidget):
             self.state.setText("请先进入课堂。")
             return
         elapsed, event_id = self._activity_payload()
-        try:
-            session = self.api.advance_teaching_session(
-                self.session_id,
-                message="学习者自我确认已掌握，完成当前知识点并进入下一知识点。",
-                provider_session_id=self.provider_session(),
-                force_complete=True,
-                actual_elapsed_minutes=elapsed,
-                activity_event_id=event_id,
-            )
-        except ApiError as exc:
-            self.state.setText(f"无法进入下一知识点：{exc.code}：{exc.message}")
-            return
-        self._commit_activity()
-        self._render_session(session)
+        self._start_teaching_action(
+            kind="complete",
+            session_id=self.session_id,
+            message="学习者自我确认已掌握，完成当前知识点并进入下一知识点。",
+            provider_session_id=self.provider_session(),
+            attachment_ids=[],
+            interaction_mode="learning_evidence",
+            force_complete=True,
+            actual_elapsed_minutes=elapsed,
+            activity_event_id=event_id,
+            workspace_id=str(self.current_session.get("workspace_id") or self.workspace.currentData() or ""),
+        )
 
     def _render_current_point(self, session: dict[str, Any]) -> None:
         """Refresh the compact current-point summary before the transcript."""
@@ -1913,13 +3730,21 @@ class ClassroomPage(QWidget):
         self.current_point_review.setText(str(summary.get("review") or ""))
         self.current_point_review.setVisible(bool(summary.get("review")))
 
-    def _render_session(self, session: dict[str, Any]) -> None:
-        self.current_session = session
+    def _render_session(
+        self,
+        session: dict[str, Any],
+        *,
+        material_index: dict[str, dict[str, Any]] | None = None,
+        update_current: bool = True,
+    ) -> None:
+        if update_current:
+            self.current_session = session
         self._render_current_point(session)
         self.transcript.set_session(session)
         state = session.get("state") or {}
         turn = state.get("teacher_turn_v1") or {}
         turn_state = turn.get("state") or {}
+        self._set_teacher_presentation_state(teacher_presentation_state(session))
         phase_labels = {
             "understand": "理解知识点",
             "recall": "回忆知识点",
@@ -1968,17 +3793,18 @@ class ClassroomPage(QWidget):
         messages = session.get("messages") or []
         if not citations and messages and isinstance(messages[-1], dict):
             citations = messages[-1].get("citations") or []
-        material_index: dict[str, dict[str, Any]] = {}
-        try:
-            workspace_id = str(session.get("workspace_id") or self.workspace.currentData() or "")
-            if workspace_id:
-                material_index = {
-                    str(item.get("id") or ""): item
-                    for item in self.api.materials(workspace_id)
-                    if isinstance(item, dict)
-                }
-        except ApiError:
+        if material_index is None:
             material_index = {}
+            try:
+                workspace_id = str(session.get("workspace_id") or self.workspace.currentData() or "")
+                if workspace_id:
+                    material_index = {
+                        str(item.get("id") or ""): item
+                        for item in self.api.materials(workspace_id)
+                        if isinstance(item, dict)
+                    }
+            except (ApiError, AttributeError, TypeError):
+                material_index = {}
         lines: list[str] = []
         for index, item in enumerate(citations, 1):
             source = item.get("source_file") or item.get("source_id") or item.get("material_id") or "未知来源"

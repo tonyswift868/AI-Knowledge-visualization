@@ -183,6 +183,19 @@ export type TeacherAvatarCardPreset = {
   native_summary?: TeacherAvatarCard["native_summary"]
 }
 
+export type TeacherAvatarCardPresetList = {
+  items: TeacherAvatarCardPreset[]
+  count: number
+  total: number
+  source: string
+  status: "ready" | "partial" | "unavailable"
+  available: boolean
+  reason?: string | null
+  reason_code?: string | null
+  declared_count?: number
+  unavailable?: { card_id: string; code: string; message: string }[]
+}
+
 export type TeacherAvatarPreset = {
   preset_id: string
   display_name: string
@@ -429,6 +442,6 @@ export const teacherAvatarApi = {
   activeSpineTeacher: () => request<{ item: SpineTeacher | null }>("/spine-teachers/active"),
   importSpineTeacher: (body: FormData) => request<{ item: SpineTeacher }>("/spine-teachers/import", { method: "POST", body }),
   saveKoikatsuTeacher: (body: FormData) => request<{ item: KoikatsuTeacher }>("/koikatsu-teachers", { method: "POST", body }),
-  cardPresets: () => request<{ items: TeacherAvatarCardPreset[]; count: number; total: number }>("/teacher-avatar-card-presets"),
+  cardPresets: () => request<TeacherAvatarCardPresetList>("/teacher-avatar-card-presets"),
   updateMorph: (modelId: string, morph: Partial<TeacherAvatarMorph>) => request<{ item: TeacherAvatar }>(`/teacher-avatars/${encodeURIComponent(modelId)}/morph`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(morph) }),
 }

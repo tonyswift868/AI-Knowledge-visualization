@@ -309,6 +309,12 @@ describe("ActiveTeachingChainView", () => {
     expect(resolveActiveTeacherPresentationState(false, "advance_route", {})).toBe("praising");
     expect(resolveActiveTeacherPresentationState(false, "complete_route", {})).toBe("ending");
     expect(resolveActiveTeacherPresentationState(false, "", {})).toBe("idle");
+    expect(resolveActiveTeacherPresentationState(false, "grounded_answer", {
+      teacher_turn_v1: { presentation_state: "shy" },
+    })).toBe("shy");
+    expect(resolveActiveTeacherPresentationState(false, "free_chat_response", {
+      latest_free_chat_turn_v1: { presentation_state: "playful_annoyed" },
+    })).toBe("playful_annoyed");
   });
 
   it("uses teaching-answer semantics when the provider action is generic", () => {
@@ -1217,6 +1223,7 @@ describe("ActiveTeachingChainView", () => {
       );
       expect(forceCall).toBeTruthy();
       expect(JSON.parse(String(forceCall?.[1]?.body))).toEqual({
+        interaction_mode: "learning_evidence",
         force_complete: true,
       });
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1231,6 +1238,52 @@ describe("ActiveTeachingChainView", () => {
     expect(screen.getByTestId("active-teacher-input")).toHaveValue(
       "这段文字只留在输入框，不应作为完成消息发送。",
     );
+  });
+
+  it("sends free chat without learning or completion fields and labels the exchange", async () => {
+    const freeSession = structuredClone(snapshot.session);
+    freeSession.messages = [
+      ...freeSession.messages,
+      { id: "free-user", role: "user", action: "free_chat", content: "可以聊聊相关背景吗？", citations: [] },
+      { id: "free-teacher", role: "teacher", action: "free_chat_response", content: "当然可以，这里是独立的背景补充。", citations: [] },
+    ];
+    let freeChatSent = false;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const isAdvance = String(url).endsWith("/sessions/session_1/advance") && init?.method === "POST";
+      if (isAdvance) freeChatSent = true;
+      return Promise.resolve({
+        ok: true,
+        json: async () => isAdvance
+          ? freeSession
+          : freeChatSent ? { ...snapshot, session: freeSession } : snapshot,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" />);
+
+    const mode = await screen.findByTestId("active-interaction-mode");
+    fireEvent.click(screen.getByLabelText("自由聊聊"));
+    expect(screen.getByTestId("active-free-chat-notice")).toHaveTextContent(
+      "不会计入掌握判定，也不会推进学习计划",
+    );
+    fireEvent.change(screen.getByTestId("active-teacher-input"), {
+      target: { value: "可以聊聊相关背景吗？" },
+    });
+    fireEvent.click(screen.getByTestId("active-send-teacher"));
+    await waitFor(() => {
+      const advanceCall = fetchMock.mock.calls.find(
+        ([url, init]) => String(url).endsWith("/sessions/session_1/advance") && init?.method === "POST",
+      );
+      expect(advanceCall).toBeTruthy();
+      const body = JSON.parse(String(advanceCall?.[1]?.body));
+      expect(body).toMatchObject({ interaction_mode: "free_chat", message: "可以聊聊相关背景吗？" });
+      expect(body).not.toHaveProperty("actual_elapsed_minutes");
+      expect(body).not.toHaveProperty("activity_event_id");
+      expect(body).not.toHaveProperty("verify_completion");
+      expect(body).not.toHaveProperty("force_complete");
+    });
+    expect(mode).toBeInTheDocument();
+    expect(await screen.findByText("艾莉丝 · 自由聊天")).toBeInTheDocument();
   });
 
   it("shows the teacher and the learner message immediately while a reply is pending", async () => {
@@ -1840,10 +1893,10 @@ describe("ActiveTeachingChainView", () => {
     );
   });
 
-  it("asks before extracting a selected video and only plans from explicitly confirmed materials", async () => {
+  it("rejects a video-only planner handoff without transcript or ingest paths", async () => {
     localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify({
       goal: "理解视频课程并完成练习",
-      resource: { title: "视频课程", url: "https://www.bilibili.com/video/BVTEST123" },
+      resource: { title: "视频课程", url: "https://www.bilibili.com/video/BVTEST123", media_kind: "video", direct_user_reference: true },
       created_at: "2026-08-18T00:00:00Z",
     }));
     const emptySnapshot = {
@@ -1854,39 +1907,49 @@ describe("ActiveTeachingChainView", () => {
       plan: null,
       session: null,
     };
-    let videoIngestCalls = 0;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => emptySnapshot });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ActiveTeachingChainView workspaceId="generic" createRequest={1} compactPlannerFlow />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/已过滤视频/);
+    expect(screen.queryByRole("button", { name: "开始整理已选资料并生成计划" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("active-long-course")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-supplementary-choice")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-transcript-review")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/materials/video/ingest"))).toBe(false);
+  });
+
+  it("filters a stale video anchor, imports every selected document, and falls back to the first document", async () => {
+    const noteOneUrl = "https://notes.example/course-one";
+    const noteTwoUrl = "https://notes.example/course-two";
+    localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify({
+      goal: "完成线性代数课程",
+      resources: [
+        { candidate_id: "bili-course", media_kind: "video_collection", title: "线性代数视频合集", url: "https://space.bilibili.com/100/lists/200?type=season", direct_user_reference: true },
+        { candidate_id: "notes-1", media_kind: "document", title: "配套笔记一", url: noteOneUrl },
+        { candidate_id: "notes-2", media_kind: "document", title: "配套笔记二", url: noteTwoUrl },
+      ],
+      anchor_resource: { candidate_id: "bili-course", media_kind: "video_collection", title: "线性代数视频合集", url: "https://space.bilibili.com/100/lists/200?type=season", direct_user_reference: true },
+      created_at: "2026-08-21T00:00:00Z",
+    }));
+    const emptySnapshot = {
+      ...snapshot,
+      materials: [],
+      receipt: null,
+      knowledge_graph: { knowledge_points: [], edges: [] },
+      plan: null,
+      session: null,
+    };
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       const endpoint = String(url);
       let payload: any = emptySnapshot;
       if (endpoint.endsWith("/materials/url") && init?.method === "POST") {
-        payload = { status: "awaiting_supplementary_choice", ingested: false };
-      } else if (endpoint.endsWith("/materials/video/search") && init?.method === "POST") {
-        payload = {
-          status: "supplementary_candidates",
-          supplementary_search: {
-            candidates: [{ id: "notes-1", title: "配套讲义", url: "https://notes.example/course", snippet: "课程公式与例题" }],
-          },
-        };
-      } else if (endpoint.endsWith("/materials/video/ingest") && init?.method === "POST") {
-        videoIngestCalls += 1;
         const body = JSON.parse(String(init.body || "{}"));
-        payload = body.confirm_transcript
-          ? { status: "ingested", ingested: true, material_ids: ["video-transcript-1", "notes-material-1"] }
-          : {
-              status: "transcript_preview",
-              requires_transcript_confirmation: true,
-              transcript: {
-                title: "视频课程",
-                subtitle: {
-                  language: "zh-Hans",
-                  automatic: true,
-                  segments: [{ start_ms: 0, end_ms: 5000, text: "字幕第一段" }],
-                  quality: { state: "ready", segment_count: 1 },
-                },
-              },
-            };
+        payload = { id: body.url === noteOneUrl ? "material-note-one" : "material-note-two", status: "ready" };
+      } else if (endpoint.endsWith("/receipt") && init?.method === "PUT") {
+        payload = { ok: true };
       } else if (endpoint.endsWith("/knowledge-map/jobs") && init?.method === "POST") {
-        payload = { id: "km-job-video", status: "ready", revision_id: "kmr_test_1" };
+        payload = { id: "km-job-docs", status: "ready", revision_id: "kmr_test_1" };
       } else if (endpoint.includes("/knowledge-map?revision=active")) {
         payload = canonicalMap;
       } else if (endpoint.includes("/knowledge-map/candidates?revision=active")) {
@@ -1899,31 +1962,42 @@ describe("ActiveTeachingChainView", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ActiveTeachingChainView workspaceId="generic" createRequest={1} compactPlannerFlow />);
 
+    const handoff = await screen.findByTestId("planner-resource-handoff");
+    expect(handoff).toHaveTextContent("纲领：配套笔记一");
+    expect(handoff).toHaveTextContent("辅助：配套笔记二");
+    expect(screen.queryByTestId("active-long-course")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-transcript-review")).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "开始整理已选资料并生成计划" }));
-    expect(await screen.findByTestId("video-supplementary-choice")).toBeInTheDocument();
-    expect(videoIngestCalls).toBe(0);
-
-    fireEvent.click(screen.getByRole("button", { name: "愿意，先帮我找资料" }));
-    const candidate = await screen.findByText("配套讲义");
-    fireEvent.click(candidate.closest("label")!);
-    fireEvent.click(screen.getByRole("button", { name: "使用已选 1 份资料并提取字幕" }));
-
-    expect(await screen.findByTestId("video-transcript-review")).toHaveTextContent("自动字幕，可能存在偏差");
-    fireEvent.click(screen.getByRole("button", { name: "字幕可以使用，生成知识地图和计划" }));
 
     await waitFor(() => {
       const receiptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/receipt"));
       expect(receiptCall).toBeTruthy();
-      expect(JSON.parse(String(receiptCall![1].body)).material_ids).toEqual(["video-transcript-1", "notes-material-1"]);
+      const body = JSON.parse(String(receiptCall![1].body || "{}"));
+      expect(body.material_ids).toEqual(["material-note-one", "material-note-two"]);
+      expect(body.anchor_material_id).toBe("material-note-one");
+      expect(body.supporting_material_ids).toEqual(["material-note-two"]);
     });
-    const ingestBodies = fetchMock.mock.calls
-      .filter(([url]) => String(url).endsWith("/materials/video/ingest"))
-      .map(([, init]) => JSON.parse(String(init.body || "{}")));
-    expect(ingestBodies[0].selected_candidate_urls).toEqual(["https://notes.example/course"]);
-    expect(ingestBodies[1]).toMatchObject({
-      find_additional_materials: true,
-      confirm_transcript: true,
-      selected_candidate_urls: ["https://notes.example/course"],
-    });
+    const urlImports = fetchMock.mock.calls
+      .filter(([url]) => String(url).endsWith("/materials/url"))
+      .map(([, init]) => JSON.parse(String(init?.body || "{}")));
+    expect(urlImports.map((item) => item.url)).toEqual([noteOneUrl, noteTwoUrl]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/materials/video/ingest"))).toBe(false);
+  });
+
+  it("preserves an explicitly selected valid document anchor while filtering video companions", async () => {
+    localStorage.setItem("mentorflow_planner_handoff_v1", JSON.stringify({
+      resources: [
+        { candidate_id: "bili-course", media_kind: "video", title: "视频课程", url: "https://www.bilibili.com/video/BVTEST123" },
+        { candidate_id: "notes-1", media_kind: "document", title: "配套笔记一", url: "https://notes.example/course-one" },
+        { candidate_id: "notes-2", media_kind: "document", title: "明确纲领", url: "https://notes.example/course-two" },
+      ],
+      anchor_resource: { candidate_id: "notes-2", media_kind: "document", title: "明确纲领", url: "https://notes.example/course-two" },
+    }));
+    const emptySnapshot = { ...snapshot, materials: [], receipt: null, plan: null, session: null };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => emptySnapshot }));
+    render(<ActiveTeachingChainView workspaceId="generic" createRequest={1} compactPlannerFlow />);
+
+    expect(await screen.findByTestId("planner-resource-handoff")).toHaveTextContent("纲领：明确纲领");
+    expect(screen.queryByTestId("active-long-course")).not.toBeInTheDocument();
   });
 });

@@ -107,6 +107,7 @@ def test_structured_provider_expression_fills_all_content_blocks_but_not_state()
             "code_example": "print('observable')",
             "code_language": "python",
             "check_prompt": "请解释输出为何可观察。",
+            "presentation_state": "shy",
             "state": {"phase": "mastered"},
         },
     )
@@ -120,6 +121,8 @@ def test_structured_provider_expression_fills_all_content_blocks_but_not_state()
     ]
     assert rendered.blocks[3]["code"] == "print('observable')"
     assert rendered.check["prompt"] == "请解释输出为何可观察。"
+    assert rendered.presentation_state == "shy"
+    assert rendered.to_dict()["presentation_state"] == "shy"
 
 
 def test_two_remediation_attempts_then_blocked():

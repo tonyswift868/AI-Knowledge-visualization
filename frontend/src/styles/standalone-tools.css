@@ -315,6 +315,90 @@ html[data-mf-standalone] body {
 .teacher-stage-standalone .teacher-companion-portrait-copy h2 { color: #a94f79; }
 .teacher-stage-standalone .teacher-companion-portrait-copy p { color: #77766e; }
 
+/* Classroom skins affect only the detached teacher stage.  The model and its
+   Pixi/Cubism runtime stay mounted while the surrounding art direction swaps. */
+.teacher-stage-standalone.teacher-stage-theme-sakura,
+.teacher-stage-standalone.teacher-stage-theme-sakura .teacher-companion-portrait {
+  background:
+    radial-gradient(ellipse at 78% 13%, rgba(255, 255, 255, .88) 0 5%, transparent 23%),
+    radial-gradient(circle at 18% 80%, rgba(238, 147, 182, .28), transparent 31%),
+    linear-gradient(145deg, #fff8fb 0%, #f8dce8 48%, #f1c7d9 100%);
+}
+.teacher-stage-standalone.teacher-stage-theme-sakura .teacher-2d-stage {
+  background:
+    radial-gradient(circle at 70% 22%, rgba(250, 173, 204, .38), transparent 35%),
+    linear-gradient(145deg, #3d2332 0%, #221521 56%, #130f16 100%) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-sakura .teacher-2d-stage::after {
+  background:
+    radial-gradient(ellipse at 22% 78%, rgba(232, 117, 164, .17), transparent 30%),
+    linear-gradient(180deg, transparent 58%, rgba(22, 10, 17, .78)) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-after_school,
+.teacher-stage-standalone.teacher-stage-theme-after_school .teacher-companion-portrait {
+  background:
+    linear-gradient(74deg, transparent 0 52%, rgba(255, 208, 137, .25) 52% 58%, transparent 58% 100%),
+    linear-gradient(90deg, rgba(113, 50, 59, .12) 1px, transparent 1px) 0 0 / 22% 100%,
+    radial-gradient(circle at 78% 18%, rgba(255, 197, 103, .95) 0 7%, rgba(255, 178, 98, .34) 8% 25%, transparent 42%),
+    linear-gradient(155deg, #fff1d5 0%, #e9a37c 57%, #8b5360 100%);
+}
+.teacher-stage-standalone.teacher-stage-theme-after_school .teacher-2d-stage {
+  background:
+    linear-gradient(72deg, transparent 0 51%, rgba(255, 202, 123, .22) 51% 58%, transparent 58%),
+    linear-gradient(90deg, rgba(255, 218, 161, .12) 1px, transparent 1px) 0 0 / 23% 100%,
+    radial-gradient(circle at 78% 17%, rgba(255, 190, 96, .92) 0 6%, rgba(225, 104, 83, .31) 7% 27%, transparent 43%),
+    linear-gradient(150deg, #5a2d35 0%, #2a1823 58%, #120f18 100%) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-after_school .teacher-2d-stage::after {
+  background: linear-gradient(180deg, transparent 52%, rgba(40, 17, 25, .72)) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-rainy_window,
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-companion-portrait {
+  background:
+    repeating-linear-gradient(102deg, transparent 0 28px, rgba(151, 204, 229, .17) 29px 31px, transparent 32px 58px),
+    linear-gradient(90deg, transparent 49.6%, rgba(105, 151, 178, .42) 49.7% 50.3%, transparent 50.4%),
+    radial-gradient(circle at 84% 78%, rgba(240, 179, 108, .52), transparent 24%),
+    linear-gradient(155deg, #17283d 0%, #0b1424 65%, #142b40 100%);
+  color: #f0f7fb;
+}
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-2d-stage {
+  background:
+    repeating-linear-gradient(102deg, transparent 0 30px, rgba(151, 204, 229, .16) 31px 33px, transparent 34px 61px),
+    linear-gradient(90deg, transparent 49.6%, rgba(105, 151, 178, .36) 49.7% 50.3%, transparent 50.4%),
+    radial-gradient(circle at 83% 77%, rgba(240, 179, 108, .42), transparent 24%),
+    linear-gradient(155deg, #17283d 0%, #0b1424 66%, #07101b 100%) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-2d-stage::after {
+  background: linear-gradient(180deg, rgba(16, 37, 55, .18), rgba(4, 12, 22, .72)) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-companion-portrait-copy span,
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-companion-portrait-copy h2 { color: #b8def0; }
+.teacher-stage-standalone.teacher-stage-theme-rainy_window .teacher-companion-portrait-copy p { color: #a9bdc9; }
+.teacher-stage-standalone.teacher-stage-theme-cyber,
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-companion-portrait {
+  background:
+    linear-gradient(rgba(120, 234, 223, .12) 1px, transparent 1px) 0 0 / 42px 42px,
+    linear-gradient(90deg, rgba(217, 109, 245, .12) 1px, transparent 1px) 0 0 / 42px 42px,
+    radial-gradient(circle at 50% 55%, rgba(90, 118, 229, .25), transparent 34%),
+    linear-gradient(145deg, #18152b, #0b0d19 66%, #252143);
+  color: #f3edff;
+}
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-2d-stage {
+  background:
+    linear-gradient(rgba(120, 234, 223, .13) 1px, transparent 1px) 0 0 / 42px 42px,
+    linear-gradient(90deg, rgba(217, 109, 245, .13) 1px, transparent 1px) 0 0 / 42px 42px,
+    radial-gradient(circle at 50% 54%, rgba(90, 118, 229, .28), transparent 35%),
+    linear-gradient(145deg, #21183c, #0b0d19 66%, #15112b) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-2d-stage::after {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 4px, rgba(217, 109, 245, .045) 5px),
+    linear-gradient(180deg, transparent 58%, rgba(8, 7, 17, .78)) !important;
+}
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-companion-portrait-copy span,
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-companion-portrait-copy h2 { color: #f4c0ff; }
+.teacher-stage-standalone.teacher-stage-theme-cyber .teacher-companion-portrait-copy p { color: #b0a7cd; }
+
 /* Casual chat and the requirements-to-plan flow. */
 .casual-teacher-chat,
 .planning-companion {

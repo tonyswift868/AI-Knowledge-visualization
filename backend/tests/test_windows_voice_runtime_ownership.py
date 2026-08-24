@@ -17,6 +17,7 @@ from app import local_voice_runtime_supervisor as supervisor_module
 from app import qwen_engine_launch_attestation as launch_attestation
 from app import teacher_voice_pack as voice_pack
 from app import windows_voice_runtime_ownership as windows_runtime
+from app.windows_install_path_budget import calculate_windows_install_path_budget
 
 
 class FakeProcess:
@@ -236,6 +237,7 @@ def test_unlisted_file_in_suspended_child_gate_prevents_resume_and_transport(tmp
         "e" * 64,
         (("signed.bin", signed_file.stat().st_size, hashlib.sha256(signed_file.read_bytes()).hexdigest()),),
         (),
+        install_path_budget=calculate_windows_install_path_budget(("signed.bin",)),
     )
     lease = launch_attestation.acquire_qwen_engine_launch_attestation(capability)
     api = FakeWindowsApi()

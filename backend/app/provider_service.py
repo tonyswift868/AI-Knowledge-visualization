@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel
 
 from .knowledge_policy import PROVIDER_POLICY
+from .provider_url_policy import ProviderURLPolicyError, validate_provider_base_url
 
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
@@ -28,6 +29,20 @@ class ProviderError(Exception):
         self.message = message
         self.status = status
         self.details = details or {}
+
+
+def _validated_base_url(value: object) -> str:
+    """Convert lexical URL policy failures to the shared Provider error type."""
+
+    try:
+        return validate_provider_base_url(value)  # type: ignore[arg-type]
+    except ProviderURLPolicyError as exc:
+        raise ProviderError(
+            exc.code,
+            exc.message,
+            exc.status,
+            {"field": "base_url"},
+        ) from exc
 
 
 def parse_json_object(raw: str) -> dict[str, Any] | None:
@@ -190,7 +205,7 @@ class FakeProvider(Provider):
 
 class HTTPProvider(Provider):
     def __init__(self, base_url: str, model: str, key: str, temperature: float = 0.2):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = _validated_base_url(base_url).rstrip("/")
         self.model = model
         self.key = key
         self.temperature = temperature
@@ -202,11 +217,22 @@ class HTTPProvider(Provider):
 
     async def request(self, *args: Any, **kwargs: Any) -> httpx.Response:
         try:
+            # Re-check at the network boundary as a defense against mutable
+            # legacy handles or callers changing ``base_url`` after
+            # construction.
+            _validated_base_url(self.base_url)
             # Semantic extraction and grounded teaching prompts are materially
             # larger than the lightweight connection probe. Keep connection
             # failures fast, while allowing a real model enough time to finish
             # a bounded response without forcing a Fake fallback.
-            async with httpx.AsyncClient(timeout=PROVIDER_TIMEOUT) as client:
+            # Force this per-request as well as at client construction so a
+            # future caller cannot accidentally opt a Provider request into
+            # redirect following.
+            kwargs["follow_redirects"] = False
+            async with httpx.AsyncClient(
+                timeout=PROVIDER_TIMEOUT,
+                follow_redirects=False,
+            ) as client:
                 return await client.request(*args, **kwargs)
         except httpx.TimeoutException as exc:
             raise ProviderError("PROVIDER_TIMEOUT", "Provider 请求超时", 504) from exc
@@ -220,8 +246,19 @@ class HTTPProvider(Provider):
             404: ("PROVIDER_ROUTE_NOT_FOUND", "Provider Base URL 或请求路由不存在"),
             429: ("PROVIDER_RATE_LIMITED", "Provider 请求过于频繁或余额不足"),
         }
-        code, message = code_map.get(response.status_code, ("PROVIDER_HTTP_ERROR", f"{provider} Provider 返回 HTTP {response.status_code}"))
-        return ProviderError(code, message, response.status_code, {"provider": provider, "model": self.model})
+        if 300 <= response.status_code < 400:
+            # Keep redirect responses inside the JSON Provider error surface;
+            # returning the upstream 3xx as our API status would make clients
+            # follow a redirect before they can inspect the error payload.
+            code, message, status = (
+                "PROVIDER_HTTP_ERROR",
+                "Provider 请求被重定向；请直接填写最终 Base URL",
+                502,
+            )
+        else:
+            code, message = code_map.get(response.status_code, ("PROVIDER_HTTP_ERROR", f"{provider} Provider 返回 HTTP {response.status_code}"))
+            status = response.status_code
+        return ProviderError(code, message, status, {"provider": provider, "model": self.model, "upstream_status": response.status_code})
 
 
 class OpenAICompatibleProvider(HTTPProvider):
@@ -247,7 +284,7 @@ class OpenAICompatibleProvider(HTTPProvider):
 
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         response = await self.request("POST", self.completions_url(), headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"}, json={"model": self.model, "messages": messages, "temperature": temperature})
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -280,7 +317,7 @@ class OpenAICompatibleProvider(HTTPProvider):
             headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"},
             json=payload,
         )
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             body = response.json()
@@ -315,20 +352,34 @@ class OpenAICompatibleProvider(HTTPProvider):
         """Use Instructor retries/schema transport on the existing Provider config."""
 
         try:
+            _validated_base_url(self.base_url)
             import instructor
             from openai import AsyncOpenAI
 
-            client = instructor.from_openai(
-                AsyncOpenAI(api_key=self.key, base_url=self.api_base_url(), timeout=PROVIDER_TIMEOUT),
-                mode=instructor.Mode.JSON,
-            )
-            result = await client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                response_model=response_model,
-                temperature=temperature,
-                max_retries=PROVIDER_POLICY.structured_max_retries,
-            )
+            # The OpenAI SDK's default AsyncClient follows redirects.  Pass an
+            # explicit client so a 3xx response remains an upstream error and
+            # cannot silently switch the Provider destination.
+            async with httpx.AsyncClient(
+                timeout=PROVIDER_TIMEOUT,
+                follow_redirects=False,
+            ) as http_client:
+                client = instructor.from_openai(
+                    AsyncOpenAI(
+                        api_key=self.key,
+                        base_url=self.api_base_url(),
+                        timeout=PROVIDER_TIMEOUT,
+                        max_retries=0,
+                        http_client=http_client,
+                    ),
+                    mode=instructor.Mode.JSON,
+                )
+                result = await client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    response_model=response_model,
+                    temperature=temperature,
+                    max_retries=PROVIDER_POLICY.structured_max_retries,
+                )
             self.last_model = self.model
             return result
         except ProviderError:
@@ -371,7 +422,7 @@ class GeminiProvider(HTTPProvider):
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         content = "\n".join(str(x.get("content", "")) for x in messages)
         response = await self.request("POST", f"{self.base_url}/models/{self.model}:generateContent", headers={"x-goog-api-key": self.key, "content-type": "application/json"}, json={"contents": [{"parts": [{"text": content}]}], "generationConfig": {"temperature": temperature}})
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -405,7 +456,7 @@ class GeminiProvider(HTTPProvider):
                 "generationConfig": {"temperature": temperature},
             },
         )
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -438,7 +489,7 @@ class GeminiProvider(HTTPProvider):
                 "generationConfig": {"temperature": temperature},
             },
         )
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -504,7 +555,7 @@ class AnthropicProvider(HTTPProvider):
 
     async def text(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         response = await self.request("POST", self.base_url + "/messages", headers={"x-api-key": self.key, "anthropic-version": "2023-06-01", "content-type": "application/json"}, json={"model": self.model, "max_tokens": 1200, "messages": messages, "temperature": temperature})
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -547,7 +598,7 @@ class AnthropicProvider(HTTPProvider):
                 "temperature": temperature,
             },
         )
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
         try:
             payload = response.json()
@@ -571,5 +622,6 @@ def get_provider(config: dict[str, Any] | None):
         raise ProviderError("PROVIDER_UNSUPPORTED", "不支持的 Provider", 400, {"provider": kind})
     if not all(config.get(field) for field in ("base_url", "model", "api_key")):
         raise ProviderError("PROVIDER_CONFIG_MISSING", "真实 Provider 需要 Base URL、Model 和 API Key", 400, {"provider": kind, "model": config.get("model", "")})
+    base_url = _validated_base_url(config["base_url"])
     provider_cls = {"openai-compatible": OpenAICompatibleProvider, "gemini": GeminiProvider, "claude": AnthropicProvider, "anthropic": AnthropicProvider}[kind]
-    return provider_cls(config["base_url"], config["model"], config["api_key"], config.get("temperature", 0.2))
+    return provider_cls(base_url, config["model"], config["api_key"], config.get("temperature", 0.2))
