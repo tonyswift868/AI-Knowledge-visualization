@@ -1,21 +1,51 @@
 """Video source capability checks that do not ingest learning material."""
 
 from .bilibili_preflight import (
+    BilibiliPreflightSnapshot,
     BilibiliReference,
+    BilibiliSubtitleTrack,
     SubtitleKind,
     VideoPartDiagnostic,
     VideoPreflightResult,
     VideoPreflightStatus,
+    inspect_bilibili_video,
     normalize_bilibili_reference,
     preflight_bilibili_video,
+    select_bilibili_subtitle_track,
+)
+from .transcript_evidence import (
+    ParsedSubtitleTimeline,
+    ParsedTranscriptCue,
+    SelectedTrackEvidence,
+    TranscriptEvidenceBundle,
+    TranscriptEvidenceError,
+    TranscriptPartEvidence,
+    TranscriptSegment,
+    fetch_bilibili_transcript_evidence,
+    fetch_subtitle_url_payload,
+    parse_subtitle_timeline,
 )
 
 __all__ = [
+    "BilibiliPreflightSnapshot",
     "BilibiliReference",
+    "BilibiliSubtitleTrack",
+    "ParsedSubtitleTimeline",
+    "ParsedTranscriptCue",
+    "SelectedTrackEvidence",
     "SubtitleKind",
+    "TranscriptEvidenceBundle",
+    "TranscriptEvidenceError",
+    "TranscriptPartEvidence",
+    "TranscriptSegment",
     "VideoPartDiagnostic",
     "VideoPreflightResult",
     "VideoPreflightStatus",
+    "fetch_bilibili_transcript_evidence",
+    "fetch_subtitle_url_payload",
+    "inspect_bilibili_video",
     "normalize_bilibili_reference",
+    "parse_subtitle_timeline",
     "preflight_bilibili_video",
+    "select_bilibili_subtitle_track",
 ]

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import urlsplit
@@ -102,6 +102,39 @@ class VideoPreflightResult:
         }
 
 
+@dataclass(frozen=True)
+class BilibiliSubtitleTrack:
+    """One deterministic, yt-dlp-provided subtitle representation."""
+
+    language: str
+    kind: SubtitleKind
+    extension: str
+    name: str | None
+    data: str | bytes | bytearray | None = field(repr=False, compare=False)
+    url: str | None
+    http_headers: tuple[tuple[str, str], ...]
+    source_field: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "language": self.language,
+            "kind": self.kind.value,
+            "extension": self.extension,
+            "name": self.name,
+            "has_inline_data": self.data is not None,
+            "has_url": self.url is not None,
+            "source_field": self.source_field,
+        }
+
+
+@dataclass(frozen=True)
+class BilibiliPreflightSnapshot:
+    """Preflight result plus the exact part metadata used to produce it."""
+
+    result: VideoPreflightResult
+    part_infos: tuple[Mapping[str, Any], ...] = field(repr=False, compare=False)
+
+
 _BVID_RE = re.compile(r"^BV(?P<body>[0-9A-Za-z]{10})$", re.IGNORECASE)
 _VIDEO_PATH_RE = re.compile(r"^/video/(?P<bvid>BV[0-9A-Za-z]{10})/?$", re.IGNORECASE)
 _DIRECT_VIDEO_HOSTS = frozenset({"bilibili.com", "www.bilibili.com", "m.bilibili.com"})
@@ -143,12 +176,6 @@ class _YtdlpMessageLog:
 
     def error(self, message: Any) -> None:
         self.messages.append(str(message or ""))
-
-
-@dataclass(frozen=True)
-class _SubtitleTrack:
-    kind: SubtitleKind
-    language: str | None
 
 
 def normalize_bilibili_reference(reference: str) -> BilibiliReference:
@@ -253,8 +280,17 @@ def _is_readable_track(language: str, track: Mapping[str, Any]) -> bool:
     return has_data or has_url
 
 
-def _subtitle_tracks(info: Mapping[str, Any]) -> list[_SubtitleTrack]:
-    tracks: list[_SubtitleTrack] = []
+def _track_extension(track: Mapping[str, Any]) -> str:
+    extension = str(track.get("ext") or "").casefold().lstrip(".")
+    raw_url = str(track.get("url") or "").strip()
+    if not extension and raw_url:
+        filename = urlsplit(raw_url).path.rsplit("/", 1)[-1]
+        extension = filename.rsplit(".", 1)[-1].casefold() if "." in filename else ""
+    return extension
+
+
+def _subtitle_tracks(info: Mapping[str, Any]) -> list[BilibiliSubtitleTrack]:
+    tracks: list[BilibiliSubtitleTrack] = []
     for field, field_is_automatic in (("subtitles", False), ("automatic_captions", True)):
         raw_languages = info.get(field)
         if not isinstance(raw_languages, Mapping):
@@ -272,20 +308,91 @@ def _subtitle_tracks(info: Mapping[str, Any]) -> list[_SubtitleTrack]:
                 if not isinstance(raw_track, Mapping) or not _is_readable_track(language, raw_track):
                     continue
                 automatic = field_is_automatic or _looks_automatic(language, raw_track)
-                tracks.append(
-                    _SubtitleTrack(
-                        SubtitleKind.AUTOMATIC if automatic else SubtitleKind.MANUAL,
-                        language or None,
+                raw_headers = raw_track.get("http_headers")
+                headers = tuple(
+                    sorted(
+                        (str(key), str(value))
+                        for key, value in (raw_headers.items() if isinstance(raw_headers, Mapping) else ())
                     )
                 )
-    tracks.sort(
-        key=lambda track: (
-            track.kind is SubtitleKind.AUTOMATIC,
-            0 if str(track.language or "").casefold().startswith(("zh", "ai-zh", "en")) else 1,
-            str(track.language or "").casefold(),
-        )
-    )
+                tracks.append(
+                    BilibiliSubtitleTrack(
+                        language=language,
+                        kind=SubtitleKind.AUTOMATIC if automatic else SubtitleKind.MANUAL,
+                        extension=_track_extension(raw_track),
+                        name=str(raw_track.get("name") or raw_track.get("label") or "").strip() or None,
+                        data=raw_track.get("data"),
+                        url=str(raw_track.get("url") or "").strip() or None,
+                        http_headers=headers,
+                        source_field=field,
+                    )
+                )
     return tracks
+
+
+def _language_key(value: str) -> str:
+    return str(value or "").casefold().replace("_", "-").strip()
+
+
+def _is_chinese_track(track: BilibiliSubtitleTrack) -> bool:
+    language = _language_key(track.language)
+    label = f"{language} {str(track.name or '').casefold()}"
+    return language.startswith(("zh", "ai-zh", "chi", "zho", "cmn", "cn")) or any(
+        token in label for token in ("中文", "简体", "繁体", "漢語", "汉语")
+    )
+
+
+def _preferred_language_index(language: str, preferences: tuple[str, ...]) -> int | None:
+    candidate = _language_key(language)
+    for index, raw_preference in enumerate(preferences):
+        preference = _language_key(raw_preference)
+        if candidate == preference or candidate.startswith(preference + "-") or preference.startswith(candidate + "-"):
+            return index
+    return None
+
+
+def select_bilibili_subtitle_track(
+    info: Mapping[str, Any],
+    *,
+    preferred_languages: Iterable[str] = (),
+    allowed_extensions: Iterable[str] | None = None,
+) -> BilibiliSubtitleTrack | None:
+    """Select Chinese manual, Chinese automatic, preferred, then other tracks."""
+
+    preferences = tuple(str(value or "").strip() for value in preferred_languages if str(value or "").strip())
+    allowed = (
+        {str(value or "").casefold().lstrip(".") for value in allowed_extensions}
+        if allowed_extensions is not None
+        else None
+    )
+    candidates = [track for track in _subtitle_tracks(info) if allowed is None or track.extension in allowed]
+    if not candidates:
+        return None
+
+    extension_priority = {"srt": 0, "vtt": 1, "json": 2, "json3": 3, "bcc": 4}
+
+    def priority(track: BilibiliSubtitleTrack) -> tuple[Any, ...]:
+        chinese = _is_chinese_track(track)
+        preferred_index = _preferred_language_index(track.language, preferences)
+        if chinese and track.kind is SubtitleKind.MANUAL:
+            group = (0, 0)
+        elif chinese:
+            group = (1, 0)
+        elif preferred_index is not None:
+            group = (2, preferred_index)
+        else:
+            group = (3, 0)
+        return (
+            *group,
+            track.kind is SubtitleKind.AUTOMATIC,
+            extension_priority.get(track.extension, 99),
+            track.data is None,
+            _language_key(track.language),
+            str(track.name or "").casefold(),
+            str(track.url or ""),
+        )
+
+    return min(candidates, key=priority)
 
 
 def _explicit_login_required(info: Mapping[str, Any]) -> bool:
@@ -354,12 +461,13 @@ def _aggregate_result(
     reference: BilibiliReference,
     info: Mapping[str, Any],
     logger: _YtdlpMessageLog,
+    *,
+    source_parts: list[Mapping[str, Any]] | None = None,
 ) -> VideoPreflightResult:
-    source_parts = _part_infos(info)
+    source_parts = source_parts if source_parts is not None else _part_infos(info)
     diagnostics: list[VideoPartDiagnostic] = []
     for ordinal, part_info in enumerate(source_parts, start=1):
-        tracks = _subtitle_tracks(part_info)
-        selected = tracks[0] if tracks else None
+        selected = select_bilibili_subtitle_track(part_info)
         raw_index = part_info.get("playlist_index", ordinal)
         try:
             index = max(1, int(raw_index))
@@ -432,33 +540,39 @@ def _safe_exception_message(exc: BaseException) -> str:
     return message[:400]
 
 
-def preflight_bilibili_video(
+def inspect_bilibili_video(
     reference: str,
     *,
     ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
-) -> VideoPreflightResult:
-    """Return the Video v1 capability status without downloading media."""
+) -> BilibiliPreflightSnapshot:
+    """Run preflight once and retain only the exact part metadata it assessed."""
 
     try:
         normalized = normalize_bilibili_reference(reference)
     except ValueError:
-        return _failure(
-            reference,
-            VideoPreflightStatus.INVALID_REFERENCE,
-            "INVALID_BILIBILI_REFERENCE",
-            "仅支持合法的 Bilibili BV 号或视频链接",
+        return BilibiliPreflightSnapshot(
+            _failure(
+                reference,
+                VideoPreflightStatus.INVALID_REFERENCE,
+                "INVALID_BILIBILI_REFERENCE",
+                "仅支持合法的 Bilibili BV 号或视频链接",
+            ),
+            (),
         )
 
     if ydl_factory is None:
         try:
             import yt_dlp
         except ImportError:
-            return _failure(
-                reference,
-                VideoPreflightStatus.FETCH_ERROR,
-                "YTDLP_UNAVAILABLE",
-                "yt-dlp 未安装，无法读取 Bilibili 字幕元数据",
-                normalized=normalized,
+            return BilibiliPreflightSnapshot(
+                _failure(
+                    reference,
+                    VideoPreflightStatus.FETCH_ERROR,
+                    "YTDLP_UNAVAILABLE",
+                    "yt-dlp 未安装，无法读取 Bilibili 字幕元数据",
+                    normalized=normalized,
+                ),
+                (),
             )
         ydl_factory = yt_dlp.YoutubeDL
 
@@ -483,21 +597,39 @@ def preflight_bilibili_video(
             raw_info = ydl.extract_info(normalized.canonical_url, download=False)
         if not isinstance(raw_info, Mapping):
             raise _InvalidExtraction("yt-dlp returned invalid metadata")
-        return _aggregate_result(normalized, raw_info, logger)
+        source_parts = _part_infos(raw_info)
+        result = _aggregate_result(normalized, raw_info, logger, source_parts=source_parts)
+        return BilibiliPreflightSnapshot(result, tuple(source_parts))
     except Exception as exc:
         messages = [*logger.messages, _safe_exception_message(exc)]
         if _messages_require_subtitle_login(messages):
-            return _failure(
-                reference,
-                VideoPreflightStatus.SUBTITLE_LOGIN_REQUIRED,
-                "BILIBILI_SUBTITLE_LOGIN_REQUIRED",
-                "字幕存在，但当前需要登录 Bilibili 才能读取",
-                normalized=normalized,
+            return BilibiliPreflightSnapshot(
+                _failure(
+                    reference,
+                    VideoPreflightStatus.SUBTITLE_LOGIN_REQUIRED,
+                    "BILIBILI_SUBTITLE_LOGIN_REQUIRED",
+                    "字幕存在，但当前需要登录 Bilibili 才能读取",
+                    normalized=normalized,
+                ),
+                (),
             )
-        return _failure(
-            reference,
-            VideoPreflightStatus.FETCH_ERROR,
-            "BILIBILI_FETCH_ERROR",
-            f"Bilibili 元数据读取失败：{_safe_exception_message(exc)}",
-            normalized=normalized,
+        return BilibiliPreflightSnapshot(
+            _failure(
+                reference,
+                VideoPreflightStatus.FETCH_ERROR,
+                "BILIBILI_FETCH_ERROR",
+                f"Bilibili 元数据读取失败：{_safe_exception_message(exc)}",
+                normalized=normalized,
+            ),
+            (),
         )
+
+
+def preflight_bilibili_video(
+    reference: str,
+    *,
+    ydl_factory: Callable[[dict[str, Any]], Any] | None = None,
+) -> VideoPreflightResult:
+    """Return the Video v1 capability status without downloading media."""
+
+    return inspect_bilibili_video(reference, ydl_factory=ydl_factory).result
