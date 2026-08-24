@@ -6,6 +6,22 @@ from .capabilities import (
     ProviderCapabilityProfile,
     RoutingMode,
 )
+from .identity import (
+    BaseURLClass,
+    CanonicalProviderIdentity,
+    ProviderProfileRegistration,
+    ProviderProfileSource,
+    capability_profile_id,
+    classify_base_url,
+)
+from .orchestrator import (
+    ProviderOrchestrator,
+    RouteDecisionReceipt,
+    RoutingQualityPolicy,
+    TaskRoutingDiagnostic,
+    TaskRoutingMatrix,
+)
+from .registry import ProviderProfileRegistry, RegisteredProviderProfile
 from .requirements import (
     DEFAULT_TASK_REQUIREMENTS,
     CapabilityFallback,
@@ -23,19 +39,32 @@ from .router import (
 )
 
 __all__ = [
+    "BaseURLClass",
     "Capability",
     "CapabilityDegradation",
     "CapabilityFallback",
     "CapabilityRouter",
     "CapabilityStatus",
+    "CanonicalProviderIdentity",
     "DEFAULT_TASK_REQUIREMENTS",
     "ProviderCapabilityProfile",
+    "ProviderOrchestrator",
+    "ProviderProfileRegistration",
+    "ProviderProfileRegistry",
+    "ProviderProfileSource",
+    "RegisteredProviderProfile",
+    "RouteDecisionReceipt",
     "RoutingDecision",
     "RoutingMode",
     "RoutingPreference",
+    "RoutingQualityPolicy",
     "RoutingQualityMetadata",
     "TaskCapabilityRequirement",
+    "TaskRoutingDiagnostic",
+    "TaskRoutingMatrix",
     "TaskType",
+    "capability_profile_id",
+    "classify_base_url",
     "requirement_for",
     "route_provider",
 ]
