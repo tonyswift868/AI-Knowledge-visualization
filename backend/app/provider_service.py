@@ -8,6 +8,10 @@ import httpx
 from pydantic import BaseModel
 
 from .knowledge_policy import PROVIDER_POLICY
+from .providers.telemetry import (
+    provider_http_error_class,
+    start_provider_request,
+)
 from .provider_url_policy import ProviderURLPolicyError, validate_provider_base_url
 
 
@@ -204,6 +208,8 @@ class FakeProvider(Provider):
 
 
 class HTTPProvider(Provider):
+    _telemetry_extension = "mentorflow_provider_request_timer"
+
     def __init__(self, base_url: str, model: str, key: str, temperature: float = 0.2):
         self.base_url = _validated_base_url(base_url).rstrip("/")
         self.model = model
@@ -216,6 +222,7 @@ class HTTPProvider(Provider):
         return {"ok": True, "provider": self.provider_name, "model": self.model, "model_reported": self.last_model or self.model}
 
     async def request(self, *args: Any, **kwargs: Any) -> httpx.Response:
+        telemetry = start_provider_request(provider=self.provider_name, model=self.model)
         try:
             # Re-check at the network boundary as a defense against mutable
             # legacy handles or callers changing ``base_url`` after
@@ -233,11 +240,59 @@ class HTTPProvider(Provider):
                 timeout=PROVIDER_TIMEOUT,
                 follow_redirects=False,
             ) as client:
-                return await client.request(*args, **kwargs)
+                response = await client.request(*args, **kwargs)
+            if response.status_code >= 300:
+                telemetry.finish(
+                    success=False,
+                    error_class=provider_http_error_class(response.status_code),
+                )
+            else:
+                # Defer successful completion until the concrete adapter has
+                # parsed and validated the response schema. This keeps a 200
+                # response with an invalid body from being reported as a
+                # successful model request.
+                extensions = getattr(response, "extensions", None)
+                if isinstance(extensions, dict):
+                    extensions[self._telemetry_extension] = telemetry
+                else:
+                    # Some narrow adapter tests replace AsyncClient itself and
+                    # return a response-shaped object. There is no safe place
+                    # to defer finalization on that object, so retain a single
+                    # transport-success receipt without inventing usage.
+                    telemetry.finish(success=True)
+            return response
+        except ProviderError as exc:
+            telemetry.finish(success=False, error_class=exc.code)
+            raise
         except httpx.TimeoutException as exc:
+            telemetry.finish(success=False, error_class="PROVIDER_TIMEOUT")
             raise ProviderError("PROVIDER_TIMEOUT", "Provider 请求超时", 504) from exc
         except httpx.HTTPError as exc:
+            telemetry.finish(success=False, error_class="PROVIDER_CONNECTION_ERROR")
             raise ProviderError("PROVIDER_CONNECTION_ERROR", "无法连接到 Provider", 502) from exc
+
+    def finish_response_telemetry(
+        self,
+        response: httpx.Response,
+        *,
+        payload: object = None,
+        error_class: str | None = None,
+    ) -> None:
+        extensions = getattr(response, "extensions", None)
+        if not isinstance(extensions, dict):
+            # Narrow legacy test doubles may replace ``request`` and return a
+            # response-shaped object without httpx extensions. The real
+            # transport always supplies the timer; compatibility doubles must
+            # remain usable and simply have no transport receipt to finish.
+            return
+        telemetry = extensions.pop(self._telemetry_extension, None)
+        if telemetry is None:
+            return
+        telemetry.finish(
+            payload=payload,
+            success=error_class is None,
+            error_class=error_class,
+        )
 
     def response_error(self, response: httpx.Response, provider: str) -> ProviderError:
         code_map = {
@@ -286,11 +341,19 @@ class OpenAICompatibleProvider(HTTPProvider):
         response = await self.request("POST", self.completions_url(), headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"}, json={"model": self.model, "messages": messages, "temperature": temperature})
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             self.last_model = payload.get("model") or self.model
-            return str(payload["choices"][0]["message"]["content"])
+            result = str(payload["choices"][0]["message"]["content"])
+            self.finish_response_telemetry(response, payload=payload)
+            return result
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "OpenAI-compatible 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
 
     async def compact_json(
@@ -319,6 +382,7 @@ class OpenAICompatibleProvider(HTTPProvider):
         )
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        body: object = None
         try:
             body = response.json()
             choice = body["choices"][0]
@@ -332,10 +396,21 @@ class OpenAICompatibleProvider(HTTPProvider):
             result = parse_json_object(str(choice["message"]["content"] or ""))
             if result is None:
                 raise ProviderError("INVALID_PROVIDER_JSON", "Provider 返回的不是合法 JSON", 502)
+            self.finish_response_telemetry(response, payload=body)
             return result
-        except ProviderError:
+        except ProviderError as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=body,
+                error_class=exc.code,
+            )
             raise
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=body,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError(
                 "PROVIDER_SCHEMA_ERROR",
                 "OpenAI-compatible 返回结构不兼容",
@@ -351,6 +426,7 @@ class OpenAICompatibleProvider(HTTPProvider):
     ) -> StructuredModel:
         """Use Instructor retries/schema transport on the existing Provider config."""
 
+        telemetry = start_provider_request(provider=self.provider_name, model=self.model)
         try:
             _validated_base_url(self.base_url)
             import instructor
@@ -381,10 +457,16 @@ class OpenAICompatibleProvider(HTTPProvider):
                     max_retries=PROVIDER_POLICY.structured_max_retries,
                 )
             self.last_model = self.model
+            telemetry.finish(success=True)
             return result
-        except ProviderError:
+        except ProviderError as exc:
+            telemetry.finish(success=False, error_class=exc.code)
             raise
         except Exception as exc:
+            telemetry.finish(
+                success=False,
+                error_class="PROVIDER_STRUCTURED_OUTPUT_INVALID",
+            )
             raise ProviderError(
                 "PROVIDER_STRUCTURED_OUTPUT_INVALID",
                 "OpenAI-compatible Provider 未能返回可验证结构",
@@ -424,11 +506,19 @@ class GeminiProvider(HTTPProvider):
         response = await self.request("POST", f"{self.base_url}/models/{self.model}:generateContent", headers={"x-goog-api-key": self.key, "content-type": "application/json"}, json={"contents": [{"parts": [{"text": content}]}], "generationConfig": {"temperature": temperature}})
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             self.last_model = payload.get("modelVersion") or self.model
-            return str(payload["candidates"][0]["content"]["parts"][0]["text"])
+            result = str(payload["candidates"][0]["content"]["parts"][0]["text"])
+            self.finish_response_telemetry(response, payload=payload)
+            return result
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "Gemini 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
 
     async def vision(
@@ -458,11 +548,19 @@ class GeminiProvider(HTTPProvider):
         )
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             self.last_model = payload.get("modelVersion") or self.model
-            return str(payload["candidates"][0]["content"]["parts"][0]["text"])
+            result = str(payload["candidates"][0]["content"]["parts"][0]["text"])
+            self.finish_response_telemetry(response, payload=payload)
+            return result
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError(
                 "PROVIDER_SCHEMA_ERROR",
                 "Gemini 图片理解返回结构不兼容",
@@ -491,6 +589,7 @@ class GeminiProvider(HTTPProvider):
         )
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             candidate = payload["candidates"][0]
@@ -528,7 +627,7 @@ class GeminiProvider(HTTPProvider):
                         ],
                     }
                 )
-            return {
+            result = {
                 "text": text,
                 "sources": sources,
                 "supports": supports,
@@ -541,7 +640,14 @@ class GeminiProvider(HTTPProvider):
                 "model": self.last_model or self.model,
                 "search_grounded": bool(sources),
             }
-        except (KeyError, TypeError, ValueError) as exc:
+            self.finish_response_telemetry(response, payload=payload)
+            return result
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SEARCH_SCHEMA_ERROR",
+            )
             raise ProviderError(
                 "PROVIDER_SEARCH_SCHEMA_ERROR",
                 "Gemini 联网检索返回结构不兼容",
@@ -557,11 +663,19 @@ class AnthropicProvider(HTTPProvider):
         response = await self.request("POST", self.base_url + "/messages", headers={"x-api-key": self.key, "anthropic-version": "2023-06-01", "content-type": "application/json"}, json={"model": self.model, "max_tokens": 1200, "messages": messages, "temperature": temperature})
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             self.last_model = payload.get("model") or self.model
-            return str(payload["content"][0]["text"])
+            result = str(payload["content"][0]["text"])
+            self.finish_response_telemetry(response, payload=payload)
+            return result
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError("PROVIDER_SCHEMA_ERROR", "Anthropic 返回结构不兼容", 502, {"provider": self.provider_name, "model": self.model}) from exc
 
     async def vision(
@@ -600,11 +714,19 @@ class AnthropicProvider(HTTPProvider):
         )
         if response.status_code >= 300:
             raise self.response_error(response, self.provider_name)
+        payload: object = None
         try:
             payload = response.json()
             self.last_model = payload.get("model") or self.model
-            return str(payload["content"][0]["text"])
+            result = str(payload["content"][0]["text"])
+            self.finish_response_telemetry(response, payload=payload)
+            return result
         except Exception as exc:
+            self.finish_response_telemetry(
+                response,
+                payload=payload,
+                error_class="PROVIDER_SCHEMA_ERROR",
+            )
             raise ProviderError(
                 "PROVIDER_SCHEMA_ERROR",
                 "Anthropic 图片理解返回结构不兼容",

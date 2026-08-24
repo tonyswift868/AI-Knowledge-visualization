@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .credential_store import CredentialStoreError, delete_secret, get_secret
+from .providers.telemetry import provider_request_context
 from .provider_service import ProviderError, get_provider
 from .provider_url_policy import ProviderURLPolicyError, validate_provider_base_url
 
@@ -181,7 +182,12 @@ async def test_provider_session(session_id: str) -> dict[str, Any]:
     started = time.perf_counter()
     request_id = "req_" + secrets.token_hex(10)
     try:
-        result = await provider_for_session(session).test()
+        with provider_request_context(
+            task_type="provider_connection_test",
+            request_id=request_id,
+            prompt_version="provider-connection-v1",
+        ):
+            result = await provider_for_session(session).test()
     except ProviderError as exc:
         session.verified = False
         session.last_error_code = exc.code
