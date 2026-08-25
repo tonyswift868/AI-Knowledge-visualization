@@ -1,0 +1,60 @@
+"""Durable, crash-aware budgeted AI execution foundation."""
+
+from .audit import build_execution_audit_report
+from .contracts import (
+    CheckpointReport,
+    DurableExecutionError,
+    DurableExecutionResult,
+    DurableExecutionStopped,
+    DurableIdentityConflict,
+    DurableOperationPermission,
+    ExecutionAuditReport,
+    ExecutionSchemaMissing,
+    ExecutionSessionRecord,
+    ExecutionStoreClosed,
+    ExecutionStoreCorruption,
+    IntegrityCheckReport,
+    OperationRecord,
+    OperationState,
+    ProviderStartClaim,
+    ReceiptAccountingState,
+    ReceiptCommitResult,
+    ReceiptStageResult,
+    RecoveryDecision,
+    RecoveryOutcome,
+    RetryLineageRecord,
+    UsageReceiptRecord,
+)
+from .provider_runtime_v2 import ProviderRuntimeV2DurablePorts
+from .runtime import CrashSimulationHook, DurableExecutionRuntime
+from .store import SQLiteExecutionStore
+
+__all__ = [
+    "CheckpointReport",
+    "CrashSimulationHook",
+    "DurableExecutionError",
+    "DurableExecutionResult",
+    "DurableExecutionRuntime",
+    "DurableExecutionStopped",
+    "DurableIdentityConflict",
+    "DurableOperationPermission",
+    "ExecutionAuditReport",
+    "ExecutionSchemaMissing",
+    "ExecutionSessionRecord",
+    "ExecutionStoreClosed",
+    "ExecutionStoreCorruption",
+    "IntegrityCheckReport",
+    "OperationRecord",
+    "OperationState",
+    "ProviderRuntimeV2DurablePorts",
+    "ProviderStartClaim",
+    "ReceiptAccountingState",
+    "ReceiptCommitResult",
+    "ReceiptStageResult",
+    "RecoveryDecision",
+    "RecoveryOutcome",
+    "RetryLineageRecord",
+    "SQLiteExecutionStore",
+    "UsageReceiptRecord",
+    "build_execution_audit_report",
+]
