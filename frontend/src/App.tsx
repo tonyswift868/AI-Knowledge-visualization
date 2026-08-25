@@ -7,6 +7,7 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  Coins,
   FileText,
   Gauge,
   Leaf,
@@ -42,6 +43,7 @@ import { ExpeditionView } from "./features/expedition/ExpeditionView";
 import { ActiveTeachingChainView, materialAcceptFromCapabilities } from "./features/active-teaching/ActiveTeachingChainView";
 import { activeSnapshot } from "./features/active-teaching/api";
 import { CasualTeacherChat, type PlannerHandoff } from "./features/casual-chat/CasualTeacherChat";
+import { CostCacheDashboard } from "./features/cost-cache-control/CostCacheDashboard";
 import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
 import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
@@ -146,11 +148,11 @@ function CharacterPortrait({ character, className = "" }: { character: any; clas
 
 export function App() {
   const standaloneTool = new URLSearchParams(window.location.search).get("tool");
-  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources";
+  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache";
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache"
   >(() => {
     try {
       const saved = localStorage.getItem("mentorflow_last_tab_v1");
@@ -165,8 +167,9 @@ export function App() {
         "teachers",
         "active",
         "casual",
+        "cost-cache",
       ].includes(saved || "")
-        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual"
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache"
         : "home";
     } catch {
       return "home";
@@ -585,6 +588,9 @@ export function App() {
   if (standaloneTool === "teachers") {
     return <StandaloneTeacherModeling workspaceId={ws?.id || "default"} />;
   }
+  if (standaloneTool === "cost-cache") {
+    return <CostCacheDashboard initialDemo={new URLSearchParams(window.location.search).get("demo") === "true"} />;
+  }
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -613,6 +619,7 @@ export function App() {
             ["casual", MessageCircle, "教师闲聊"],
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
+            ["cost-cache", Coins, "成本与缓存"],
             ["expedition", Sparkles, "学习远征"],
             ["settings", Settings2, "Provider 设置"],
           ].map(([key, Icon, label]: any) => (
@@ -665,6 +672,8 @@ export function App() {
                         ? "进度与掌握"
                     : tab === "active"
                       ? "学习任务"
+                    : tab === "cost-cache"
+                      ? "成本与缓存"
                         : "设置"}
             </b>
           </div>
@@ -747,6 +756,7 @@ export function App() {
           {tab === "progress" && (
             <Progress progress={progress} plan={plan} completed={completed} />
           )}{" "}
+          {tab === "cost-cache" && <CostCacheDashboard />}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
           {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} mode="casual" />}
