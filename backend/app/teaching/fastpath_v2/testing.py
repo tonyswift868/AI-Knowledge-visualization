@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from ..composer import FollowUpKind
-from ..runtime_v2 import TeacherResponseChunk
+from ..runtime_v2 import TeacherCachedInputMetadata, TeacherResponseChunk
 from .models import TeacherPromptEnvelope, TeacherResponseMode
 
 
@@ -20,10 +20,12 @@ class FakeStreamingTeacherProvider:
         chunks: tuple[TeacherResponseChunk | object, ...] | None = None,
         error: Exception | None = None,
         first_chunk_delay_seconds: float = 0.0,
+        cached_input_metadata: TeacherCachedInputMetadata | dict[str, object] | None = None,
     ) -> None:
         self._chunks = chunks
         self._error = error
         self._first_chunk_delay_seconds = first_chunk_delay_seconds
+        self.cached_input_metadata = cached_input_metadata
         self.call_count = 0
         self.envelopes: list[TeacherPromptEnvelope] = []
         self.response_modes: list[TeacherResponseMode] = []

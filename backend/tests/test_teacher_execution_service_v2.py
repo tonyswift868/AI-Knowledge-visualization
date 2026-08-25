@@ -88,6 +88,8 @@ def test_normal_fast_turn_flows_to_existing_pending_commit_plan() -> None:
         application = execution.application_result
         assert execution.stream_receipt.response_mode == TeacherResponseMode.FAST.value
         assert execution.stream_receipt.provider_call_count == 1
+        assert execution.execution_trace == execution.stream_receipt.execution_trace
+        assert execution.degradation_decision == execution.execution_trace.degradation_decision
         assert application.transaction.status is TurnTransactionStatus.PENDING_COMMIT
         assert application.transaction.commit_plan.status is TurnCommitStatus.PENDING
         assert application.runtime_result is not None

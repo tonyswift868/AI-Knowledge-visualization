@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from enum import Enum
 from typing import Any, Literal
 
@@ -33,6 +35,7 @@ class TeacherRuntimeChannel(str, Enum):
 class TeacherStreamStatus(str, Enum):
     COMPLETED = "completed"
     TIMED_OUT = "timed_out"
+    CANCELLED = "cancelled"
     INVALID = "invalid"
 
 
@@ -41,6 +44,95 @@ class TeacherLatencyClassification(str, Enum):
     FAST_SLOW = "fast_slow"
     DEEP_EXPECTED = "deep_expected"
     TIMEOUT_RISK = "timeout_risk"
+
+
+class TeacherCachedInputStatus(str, Enum):
+    UNKNOWN = "unknown"
+    HIT = "hit"
+    MISS = "miss"
+    NOT_SUPPORTED = "not_supported"
+
+
+class TeacherDegradationAction(str, Enum):
+    NONE = "none"
+    CONTINUE_CURRENT_STREAM = "continue_current_stream"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+    DISCARD_INVALID_STREAM = "discard_invalid_stream"
+
+
+class TeacherCachedInputMetadata(_RuntimeModel):
+    """Sanitized cache signal supplied by an adapter after streaming."""
+
+    metadata_available: bool = False
+    status: TeacherCachedInputStatus = TeacherCachedInputStatus.UNKNOWN
+    cached_input_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_availability(self) -> "TeacherCachedInputMetadata":
+        if not self.metadata_available and (
+            self.status is not TeacherCachedInputStatus.UNKNOWN
+            or self.cached_input_tokens is not None
+        ):
+            raise ValueError("unavailable cache metadata cannot claim a cache result")
+        return self
+
+
+class TeacherDegradationDecision(_RuntimeModel):
+    action: TeacherDegradationAction
+    reason: str = Field(min_length=1, max_length=240)
+    continue_current_stream: bool
+    fallback_recommendation: str | None = Field(default=None, max_length=500)
+    retry_requires_caller_decision: bool
+    automatic_additional_provider_calls: Literal[0] = 0
+
+
+class TeacherExecutionTrace(_RuntimeModel):
+    """Monotonic relative timings and sanitized Provider execution metadata."""
+
+    mode: Literal["fast", "deep"]
+    route: Literal["teacher-fastpath-v2-stream"] = "teacher-fastpath-v2-stream"
+    prompt_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    stable_prefix_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    estimated_prompt_tokens: int = Field(ge=1)
+    stable_prefix_tokens: int = Field(ge=1)
+    dynamic_tokens: int = Field(ge=1)
+    evidence_tokens: int = Field(ge=0)
+    context_budget_id: str | None = Field(default=None, min_length=1, max_length=160)
+    dropped_optional_context: tuple[str, ...] = Field(default=(), max_length=1_000)
+    cached_input_metadata: TeacherCachedInputMetadata
+    provider_start_offset_ms: float = Field(ge=0.0)
+    first_chunk_offset_ms: float | None = Field(default=None, ge=0.0)
+    last_chunk_offset_ms: float | None = Field(default=None, ge=0.0)
+    time_to_first_chunk_ms: float | None = Field(default=None, ge=0.0)
+    total_latency_ms: float = Field(ge=0.0)
+    provider_calls: int = Field(ge=0, le=1)
+    cancelled: bool
+    timed_out: bool
+    degradation_decision: TeacherDegradationDecision
+
+    @model_validator(mode="after")
+    def validate_timeline(self) -> "TeacherExecutionTrace":
+        epsilon = 0.001
+        offsets = (
+            self.provider_start_offset_ms,
+            self.first_chunk_offset_ms,
+            self.last_chunk_offset_ms,
+        )
+        if any(
+            value is not None and value > self.total_latency_ms + epsilon
+            for value in offsets
+        ):
+            raise ValueError("execution trace offset cannot exceed total latency")
+        if (
+            self.first_chunk_offset_ms is not None
+            and self.last_chunk_offset_ms is not None
+            and self.first_chunk_offset_ms > self.last_chunk_offset_ms + epsilon
+        ):
+            raise ValueError("first chunk cannot follow last chunk")
+        if self.cancelled and self.timed_out:
+            raise ValueError("execution cannot be both cancelled and timed out")
+        return self
 
 
 class TeacherResponseChunk(_RuntimeModel):
@@ -75,6 +167,10 @@ class TeacherStreamReceipt(_RuntimeModel):
     provider_call_count: int = Field(ge=0, le=1)
     latency_classification: TeacherLatencyClassification
     degradation_recommendation: str | None = Field(default=None, max_length=500)
+    execution_trace: TeacherExecutionTrace | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def validate_timing_and_completion(self) -> "TeacherStreamReceipt":
@@ -158,11 +254,26 @@ class TeacherRuntimeError(Exception):
         self.details = details or {}
 
 
+class TeacherRuntimeCancelledError(asyncio.CancelledError):
+    """Cancellation that preserves a safe execution trace while still cancelling."""
+
+    def __init__(self, *, trace: TeacherRuntimeTrace) -> None:
+        super().__init__("TEACHER_STREAM_CANCELLED")
+        self.code = "TEACHER_STREAM_CANCELLED"
+        self.trace = trace
+
+
 __all__ = [
     "ExampleChoiceTrace",
     "PedagogyDecisionTrace",
     "TEACHER_RUNTIME_SCHEMA_VERSION",
+    "TeacherCachedInputMetadata",
+    "TeacherCachedInputStatus",
+    "TeacherDegradationAction",
+    "TeacherDegradationDecision",
+    "TeacherExecutionTrace",
     "TeacherRuntimeChannel",
+    "TeacherRuntimeCancelledError",
     "TeacherRuntimeError",
     "TeacherRuntimeTrace",
     "TeacherLatencyClassification",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Sequence
 from typing import Any
@@ -29,8 +30,11 @@ from ..runtime_v2 import (
     ExampleChoiceTrace,
     PedagogyDecisionTrace,
     TeacherLatencyClassification,
+    TeacherCachedInputMetadata,
+    TeacherExecutionTrace,
     TeacherResponseChunk,
     TeacherRuntimeChannel,
+    TeacherRuntimeCancelledError,
     TeacherRuntimeError,
     TeacherRuntimeTrace,
     TeacherStreamReceipt,
@@ -40,11 +44,13 @@ from ..runtime_v2 import (
 from ..student_move import StudentMoveContext, StudentMoveResolution, StudentMoveResolver
 from .latency import TeacherLatencyClassifier
 from .context_budget import (
+    ContextSelectionReceipt,
     ContextBudgetPlanner,
     TeacherContextBudget,
     TeacherContextBudgetError,
     estimate_text_tokens,
 )
+from .degradation import TeacherDegradationPolicy
 from .models import (
     TeacherLatencyBudget,
     TeacherPromptEnvelope,
@@ -210,13 +216,17 @@ def _receipt(
     status: TeacherStreamStatus,
     started_at: float,
     finished_at: float,
+    provider_started_at: float,
     first_chunk_at: float | None,
+    last_chunk_at: float | None,
     chunk_count: int,
     provider_wait_ms: float,
     provider_call_count: int,
     classifier: TeacherLatencyClassifier,
     budget: TeacherLatencyBudget,
-    degradation_recommendation: str | None = None,
+    provider: object,
+    context_receipt: ContextSelectionReceipt | None,
+    cancelled: bool = False,
 ) -> TeacherStreamReceipt:
     total_ms = max(0.0, finished_at - started_at)
     wait_ms = min(total_ms, max(0.0, provider_wait_ms))
@@ -236,6 +246,69 @@ def _receipt(
             budget=budget,
         )
     )
+    degradation = TeacherDegradationPolicy().decide(
+        response_mode=mode,
+        status=status,
+        latency_classification=classification,
+    )
+    try:
+        raw_cache_metadata = getattr(provider, "cached_input_metadata", None)
+    except Exception:
+        raw_cache_metadata = None
+    try:
+        cached_input_metadata = (
+            TeacherCachedInputMetadata.model_validate(raw_cache_metadata)
+            if raw_cache_metadata is not None
+            else TeacherCachedInputMetadata()
+        )
+    except ValidationError:
+        cached_input_metadata = TeacherCachedInputMetadata()
+    stable_tokens = (
+        context_receipt.stable_prefix_tokens
+        if context_receipt is not None
+        else estimate_text_tokens(envelope.stable_prefix.content)
+    )
+    dynamic_tokens = (
+        context_receipt.dynamic_tokens
+        if context_receipt is not None
+        else estimate_text_tokens(envelope.dynamic_tail.content)
+    )
+    total_ms = max(0.0, finished_at - started_at)
+
+    def offset(value: float | None) -> float | None:
+        if value is None:
+            return None
+        return min(total_ms, max(0.0, value - started_at))
+
+    execution_trace = TeacherExecutionTrace(
+        mode=mode.value,
+        prompt_identity=envelope.identity.prompt_identity,
+        stable_prefix_hash=envelope.stable_prefix.stable_prefix_hash,
+        estimated_prompt_tokens=stable_tokens + dynamic_tokens,
+        stable_prefix_tokens=stable_tokens,
+        dynamic_tokens=dynamic_tokens,
+        evidence_tokens=(
+            context_receipt.evidence_tokens if context_receipt is not None else 0
+        ),
+        context_budget_id=(
+            context_receipt.budget_id if context_receipt is not None else None
+        ),
+        dropped_optional_context=(
+            context_receipt.dropped_optional_context
+            if context_receipt is not None
+            else ()
+        ),
+        cached_input_metadata=cached_input_metadata,
+        provider_start_offset_ms=offset(provider_started_at) or 0.0,
+        first_chunk_offset_ms=offset(first_chunk_at),
+        last_chunk_offset_ms=offset(last_chunk_at),
+        time_to_first_chunk_ms=first_ms,
+        total_latency_ms=total_ms,
+        provider_calls=provider_call_count,
+        cancelled=cancelled,
+        timed_out=status is TeacherStreamStatus.TIMED_OUT,
+        degradation_decision=degradation,
+    )
     return TeacherStreamReceipt(
         response_mode=mode.value,
         status=status,
@@ -249,7 +322,8 @@ def _receipt(
         composer_overhead_ms=max(0.0, total_ms - wait_ms),
         provider_call_count=provider_call_count,
         latency_classification=classification,
-        degradation_recommendation=degradation_recommendation,
+        degradation_recommendation=degradation.fallback_recommendation,
+        execution_trace=execution_trace,
     )
 
 
@@ -357,6 +431,7 @@ async def run_streaming_teacher_turn(
         else None
     )
     classifier = latency_classifier or TeacherLatencyClassifier()
+    context_selection_receipt: ContextSelectionReceipt | None = None
     evidence_ids = tuple(
         item for item in brief.relevant_evidence_ids if item in {e.evidence_id for e in evidence}
     )
@@ -375,6 +450,7 @@ async def run_streaming_teacher_turn(
                 recent_conversation=recent_conversation,
             )
             envelope = context_plan.envelope
+            context_selection_receipt = context_plan.receipt
         else:
             envelope = build_teacher_prompt_envelope(
                 teaching_brief=brief,
@@ -402,7 +478,9 @@ async def run_streaming_teacher_turn(
 
     provider_call_count = 1
     provider_wait_ms = 0.0
+    provider_started_at = timer.now_ms()
     first_chunk_at: float | None = None
+    last_chunk_at: float | None = None
     chunks: list[TeacherResponseChunk] = []
     final_seen = False
     try:
@@ -429,6 +507,7 @@ async def run_streaming_teacher_turn(
             provider_wait_ms += max(0.0, wait_finished - wait_started)
             if first_chunk_at is None:
                 first_chunk_at = wait_finished
+            last_chunk_at = wait_finished
             chunk = TeacherResponseChunk.model_validate(raw_chunk)
             if final_seen:
                 raise ValueError("chunk received after final chunk")
@@ -447,15 +526,16 @@ async def run_streaming_teacher_turn(
             status=TeacherStreamStatus.TIMED_OUT,
             started_at=started_at,
             finished_at=finished_at,
+            provider_started_at=provider_started_at,
             first_chunk_at=first_chunk_at,
+            last_chunk_at=last_chunk_at,
             chunk_count=len(chunks),
             provider_wait_ms=provider_wait_ms,
             provider_call_count=provider_call_count,
             classifier=classifier,
             budget=latency_budget,
-            degradation_recommendation=(
-                "return a retry-later notice without a second Provider call"
-            ),
+            provider=provider,
+            context_receipt=context_selection_receipt,
         )
         trace = _trace(
             resolution=resolution,
@@ -475,6 +555,37 @@ async def run_streaming_teacher_turn(
                 "degradation_recommendation": receipt.degradation_recommendation,
             },
         ) from error
+    except asyncio.CancelledError as error:
+        finished_at = timer.now_ms()
+        receipt = _receipt(
+            envelope=envelope,
+            mode=mode,
+            status=TeacherStreamStatus.CANCELLED,
+            started_at=started_at,
+            finished_at=finished_at,
+            provider_started_at=provider_started_at,
+            first_chunk_at=first_chunk_at,
+            last_chunk_at=last_chunk_at,
+            chunk_count=len(chunks),
+            provider_wait_ms=provider_wait_ms,
+            provider_call_count=provider_call_count,
+            classifier=classifier,
+            budget=latency_budget,
+            provider=provider,
+            context_receipt=context_selection_receipt,
+            cancelled=True,
+        )
+        trace = _trace(
+            resolution=resolution,
+            brief=brief,
+            example_plan=example_plan,
+            evidence_ids=evidence_ids,
+            assessment_state=turn_assessment_state,
+            provider_call_count=provider_call_count,
+            elapsed_ms=finished_at - started_at,
+            stream_receipt=receipt,
+        )
+        raise TeacherRuntimeCancelledError(trace=trace) from error
     except (ValidationError, ValueError, TypeError, AttributeError) as error:
         finished_at = timer.now_ms()
         receipt = _receipt(
@@ -483,13 +594,16 @@ async def run_streaming_teacher_turn(
             status=TeacherStreamStatus.INVALID,
             started_at=started_at,
             finished_at=finished_at,
+            provider_started_at=provider_started_at,
             first_chunk_at=first_chunk_at,
+            last_chunk_at=last_chunk_at,
             chunk_count=len(chunks),
             provider_wait_ms=provider_wait_ms,
             provider_call_count=provider_call_count,
             classifier=classifier,
             budget=latency_budget,
-            degradation_recommendation="discard the invalid stream without state commit",
+            provider=provider,
+            context_receipt=context_selection_receipt,
         )
         trace = _trace(
             resolution=resolution,
@@ -514,13 +628,16 @@ async def run_streaming_teacher_turn(
             status=TeacherStreamStatus.INVALID,
             started_at=started_at,
             finished_at=finished_at,
+            provider_started_at=provider_started_at,
             first_chunk_at=first_chunk_at,
+            last_chunk_at=last_chunk_at,
             chunk_count=len(chunks),
             provider_wait_ms=provider_wait_ms,
             provider_call_count=provider_call_count,
             classifier=classifier,
             budget=latency_budget,
-            degradation_recommendation="stop the failed stream without a second Provider call",
+            provider=provider,
+            context_receipt=context_selection_receipt,
         )
         trace = _trace(
             resolution=resolution,
@@ -596,13 +713,16 @@ async def run_streaming_teacher_turn(
             status=TeacherStreamStatus.INVALID,
             started_at=started_at,
             finished_at=finished_at,
+            provider_started_at=provider_started_at,
             first_chunk_at=first_chunk_at,
+            last_chunk_at=last_chunk_at,
             chunk_count=len(chunks),
             provider_wait_ms=provider_wait_ms,
             provider_call_count=provider_call_count,
             classifier=classifier,
             budget=latency_budget,
-            degradation_recommendation="discard the invalid stream without state commit",
+            provider=provider,
+            context_receipt=context_selection_receipt,
         )
         trace = _trace(
             resolution=resolution,
@@ -627,12 +747,16 @@ async def run_streaming_teacher_turn(
         status=TeacherStreamStatus.COMPLETED,
         started_at=started_at,
         finished_at=finished_at,
+        provider_started_at=provider_started_at,
         first_chunk_at=first_chunk_at,
+        last_chunk_at=last_chunk_at,
         chunk_count=len(chunks),
         provider_wait_ms=provider_wait_ms,
         provider_call_count=provider_call_count,
         classifier=classifier,
         budget=latency_budget,
+        provider=provider,
+        context_receipt=context_selection_receipt,
     )
     trace = _trace(
         resolution=resolution,

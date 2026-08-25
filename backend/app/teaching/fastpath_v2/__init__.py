@@ -22,16 +22,23 @@ from .context_budget import (
     estimate_text_tokens,
 )
 from .execution import TeacherExecutionResult, TeacherExecutionService
+from .degradation import TeacherDegradationPolicy
 from .response_length import (
     TeacherResponseLengthDecision,
     TeacherResponseLengthPolicy,
     TeacherResponseLengthReason,
 )
 from ..runtime_v2 import (
+    TeacherCachedInputMetadata,
+    TeacherCachedInputStatus,
+    TeacherDegradationAction,
+    TeacherDegradationDecision,
+    TeacherExecutionTrace,
     TeacherLatencyClassification,
     TeacherResponseChunk,
     TeacherStreamReceipt,
     TeacherStreamStatus,
+    TeacherRuntimeCancelledError,
 )
 from .latency import TeacherLatencyClassifier
 from .policy import TeacherResponseModeResolver
@@ -59,6 +66,12 @@ __all__ = [
     "TeacherLatencyBudget",
     "TeacherContextBudget",
     "TeacherContextBudgetError",
+    "TeacherCachedInputMetadata",
+    "TeacherCachedInputStatus",
+    "TeacherDegradationAction",
+    "TeacherDegradationDecision",
+    "TeacherDegradationPolicy",
+    "TeacherExecutionTrace",
     "TeacherLatencyClassification",
     "TeacherLatencyClassifier",
     "TeacherResponseChunk",
@@ -72,6 +85,7 @@ __all__ = [
     "TeacherResponseLengthReason",
     "TeacherStreamReceipt",
     "TeacherStreamStatus",
+    "TeacherRuntimeCancelledError",
     "StreamingTeacherPort",
     "TeacherChunkObserverPort",
     "TeacherFastPathRuntime",

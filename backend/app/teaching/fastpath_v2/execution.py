@@ -12,7 +12,11 @@ from ..application_v2 import (
     TeacherTurnApplicationResult,
     TeacherTurnApplicationService,
 )
-from ..runtime_v2 import TeacherStreamReceipt
+from ..runtime_v2 import (
+    TeacherDegradationDecision,
+    TeacherExecutionTrace,
+    TeacherStreamReceipt,
+)
 from ..session_v2 import (
     ClassroomSessionReceipt,
     ClassroomSessionRuntime,
@@ -42,6 +46,8 @@ class _ExecutionModel(BaseModel):
 class TeacherExecutionResult(_ExecutionModel):
     application_result: TeacherTurnApplicationResult
     stream_receipt: TeacherStreamReceipt
+    execution_trace: TeacherExecutionTrace
+    degradation_decision: TeacherDegradationDecision
 
 
 class TeacherExecutionService:
@@ -123,9 +129,13 @@ class TeacherExecutionService:
         )
         if receipt is None:
             raise RuntimeError("TeacherExecutionService requires a streaming receipt")
+        if receipt.execution_trace is None:
+            raise RuntimeError("TeacherExecutionService requires an execution trace")
         return TeacherExecutionResult(
             application_result=application_result,
             stream_receipt=receipt,
+            execution_trace=receipt.execution_trace,
+            degradation_decision=receipt.execution_trace.degradation_decision,
         )
 
     async def commit_turn(
