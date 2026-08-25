@@ -179,7 +179,8 @@ def test_real_windows_runner_preserves_raw_docling_page_provenance(
         ),
     )
 
-    conversion = tuple(runner.convert_all((pdf,), raises_on_error=False))[0]
+    with runner:
+        conversion = tuple(runner.convert_all((pdf,), raises_on_error=False))[0]
 
     assert conversion.status.value == "success"
     assert conversion.document is not None
@@ -202,6 +203,8 @@ def test_real_windows_runner_preserves_raw_docling_page_provenance(
     assert runtime.network_attempts == 0
     assert runtime.model_download_attempts == 0
     assert runtime.artifact_hash_unchanged is True
+    assert len(runner.platform_receipts) == 1
+    assert runner.platform_receipts[0].clean_shutdown is True
     assert _sha256(model) == artifact_before
 
 

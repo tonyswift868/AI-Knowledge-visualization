@@ -37,6 +37,7 @@ from .contracts import (
     DocumentIngestionStage,
     DocumentIngestionStatus,
     DocumentPipelineHandoff,
+    DocumentPlatformCompatibilityReceipt,
     DoclingRuntimeReceipt,
 )
 from .execution import (
@@ -193,6 +194,7 @@ class DocumentBatchIngestion:
                 counts=counts,
                 interrupted=False,
                 runtime_receipts=(),
+                platform_receipts=(),
             )
 
         prepared: list[_PreparedDocument] = []
@@ -450,6 +452,10 @@ class DocumentBatchIngestion:
                 )
                 emit(DocumentIngestionStage.INTERRUPTED, item.candidate.source_file)
 
+        close_converter = getattr(converter, "close", None)
+        if callable(close_converter):
+            close_converter()
+
         emit(
             DocumentIngestionStage.INTERRUPTED if interrupted else DocumentIngestionStage.COMPLETE,
             None,
@@ -466,6 +472,9 @@ class DocumentBatchIngestion:
             interrupted=interrupted,
             runtime_receipts=tuple(
                 getattr(converter, "runtime_receipts", ()) if converter else ()
+            ),
+            platform_receipts=tuple(
+                getattr(converter, "platform_receipts", ()) if converter else ()
             ),
         )
 
@@ -517,6 +526,14 @@ class DocumentBatchIngestion:
                 if errors
                 else "DoclingConversionError"
             )
+            error_code = (
+                str(getattr(errors[0], "error_code", "DOCLING_CONVERSION_FAILED"))
+                if errors
+                else "DOCLING_CONVERSION_FAILED"
+            )
+            retryable = bool(
+                getattr(errors[0], "retryable", False) if errors else False
+            )
             return (
                 self._failed_receipt(
                     index=item.index,
@@ -524,9 +541,9 @@ class DocumentBatchIngestion:
                     source_identity=item.conversion_identity.value,
                     stage=DocumentIngestionStage.CONVERSION,
                     error_class=error_class,
-                    error_code="DOCLING_CONVERSION_FAILED",
+                    error_code=error_code,
                     message="Docling could not convert this document",
-                    retryable=False,
+                    retryable=retryable,
                     source_id=item.candidate.source_id,
                     fingerprint=item.fingerprint,
                     conversion_identity=item.conversion_identity,
@@ -801,6 +818,7 @@ class DocumentBatchIngestion:
         counts: dict[str, int],
         interrupted: bool,
         runtime_receipts: tuple[DoclingRuntimeReceipt, ...],
+        platform_receipts: tuple[DocumentPlatformCompatibilityReceipt, ...],
     ) -> DocumentBatchResult:
         receipts = tuple(receipts_by_index[index] for index in sorted(receipts_by_index))
         if interrupted:
@@ -841,6 +859,7 @@ class DocumentBatchIngestion:
                 mapped_evidence_items=counts["evidence"],
             ),
             runtime_receipts=runtime_receipts,
+            platform_receipts=platform_receipts,
             exercise_candidates=self._exercise_extractor.extract_batch(bundles),
         )
 

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 DOCUMENT_INGESTION_SCHEMA = "mentorflow.document-ingestion.v1"
 DOCUMENT_HANDOFF_SCHEMA = "mentorflow.document-pipeline-handoff.v1"
+DOCUMENT_WORKER_SCHEMA = "mentorflow.document-conversion-worker.v1"
 
 
 class DocumentIngestionStatus(str, Enum):
@@ -60,6 +61,14 @@ class DoclingCompileMode(str, Enum):
 class DoclingRuntimeStatus(str, Enum):
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+
+
+class DocumentWorkerState(str, Enum):
+    READY = "READY"
+    STOPPED = "STOPPED"
+    FAILED = "FAILED"
+    CRASHED = "CRASHED"
+    TIMED_OUT = "TIMED_OUT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,6 +390,8 @@ class DoclingRuntimeReceipt:
     worker_exit_code: int | None
     error_class: str | None = None
     error_code: str | None = None
+    worker_id: str | None = None
+    duration_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if self.network_attempts < 0 or self.model_download_attempts < 0:
@@ -391,6 +402,8 @@ class DoclingRuntimeReceipt:
             self.error_class is not None or self.error_code is not None
         ):
             raise ValueError("successful runtime receipt cannot include an error")
+        if self.duration_seconds is not None and self.duration_seconds < 0:
+            raise ValueError("runtime duration must not be negative")
 
     @property
     def artifact_hash_unchanged(self) -> bool | None:
@@ -416,6 +429,92 @@ class DoclingRuntimeReceipt:
             "artifact_sha256_after": self.artifact_sha256_after,
             "artifact_hash_unchanged": self.artifact_hash_unchanged,
             "source_files": list(self.source_files),
+            "worker_exit_code": self.worker_exit_code,
+            "error_class": self.error_class,
+            "error_code": self.error_code,
+            "worker_id": self.worker_id,
+            "duration_seconds": self.duration_seconds,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentPlatformCompatibilityReceipt:
+    receipt_id: str
+    worker_id: str
+    state: DocumentWorkerState
+    platform: str
+    process_isolated: bool
+    startup_succeeded: bool
+    utf8_mode: bool
+    default_encoding: str
+    compile_mode: DoclingCompileMode
+    fallback_reason: str | None
+    msvc_available: bool | None
+    artifact_available: bool
+    artifact_sha256: str | None
+    network_allowed: bool
+    network_attempts: int
+    model_download_attempts: int
+    jobs_started: int
+    jobs_completed: int
+    jobs_failed: int
+    startup_seconds: float
+    clean_shutdown: bool
+    timed_out: bool
+    crashed: bool
+    worker_exit_code: int | None
+    error_class: str | None = None
+    error_code: str | None = None
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.network_attempts,
+            self.model_download_attempts,
+            self.jobs_started,
+            self.jobs_completed,
+            self.jobs_failed,
+        )
+        if any(value < 0 for value in counts):
+            raise ValueError("worker receipt counts must not be negative")
+        if self.startup_seconds < 0:
+            raise ValueError("worker startup duration must not be negative")
+        if self.jobs_completed + self.jobs_failed > self.jobs_started:
+            raise ValueError("worker job counts are inconsistent")
+        if self.clean_shutdown and self.state is not DocumentWorkerState.STOPPED:
+            raise ValueError("clean worker shutdown requires STOPPED state")
+        if self.state in {
+            DocumentWorkerState.FAILED,
+            DocumentWorkerState.CRASHED,
+            DocumentWorkerState.TIMED_OUT,
+        } and not self.error_code:
+            raise ValueError("failed worker receipt requires an error code")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DOCUMENT_WORKER_SCHEMA,
+            "receipt_id": self.receipt_id,
+            "worker_id": self.worker_id,
+            "state": self.state.value,
+            "platform": self.platform,
+            "process_isolated": self.process_isolated,
+            "startup_succeeded": self.startup_succeeded,
+            "utf8_mode": self.utf8_mode,
+            "default_encoding": self.default_encoding,
+            "compile_mode": self.compile_mode.value,
+            "fallback_reason": self.fallback_reason,
+            "msvc_available": self.msvc_available,
+            "artifact_available": self.artifact_available,
+            "artifact_sha256": self.artifact_sha256,
+            "network_allowed": self.network_allowed,
+            "network_attempts": self.network_attempts,
+            "model_download_attempts": self.model_download_attempts,
+            "jobs_started": self.jobs_started,
+            "jobs_completed": self.jobs_completed,
+            "jobs_failed": self.jobs_failed,
+            "startup_seconds": self.startup_seconds,
+            "clean_shutdown": self.clean_shutdown,
+            "timed_out": self.timed_out,
+            "crashed": self.crashed,
             "worker_exit_code": self.worker_exit_code,
             "error_class": self.error_class,
             "error_code": self.error_code,
@@ -456,6 +555,7 @@ class DocumentBatchResult:
     progress: tuple[DocumentIngestionProgress, ...]
     metrics: DocumentIngestionMetrics
     runtime_receipts: tuple[DoclingRuntimeReceipt, ...] = ()
+    platform_receipts: tuple[DocumentPlatformCompatibilityReceipt, ...] = ()
     exercise_candidates: tuple["DocumentExerciseCandidate", ...] = ()
 
     def __post_init__(self) -> None:
@@ -474,6 +574,9 @@ class DocumentBatchResult:
             "progress": [item.to_dict() for item in self.progress],
             "metrics": self.metrics.to_dict(),
             "runtime_receipts": [item.to_dict() for item in self.runtime_receipts],
+            "platform_receipts": [
+                item.to_dict() for item in self.platform_receipts
+            ],
             "exercise_candidates": [
                 item.to_dict() for item in self.exercise_candidates
             ],
@@ -485,6 +588,7 @@ class DocumentBatchResult:
 __all__ = [
     "DOCUMENT_HANDOFF_SCHEMA",
     "DOCUMENT_INGESTION_SCHEMA",
+    "DOCUMENT_WORKER_SCHEMA",
     "DocumentBatchRequest",
     "DocumentBatchResult",
     "DocumentBatchStatus",
@@ -502,4 +606,6 @@ __all__ = [
     "DocumentIngestionStage",
     "DocumentIngestionStatus",
     "DocumentPipelineHandoff",
+    "DocumentPlatformCompatibilityReceipt",
+    "DocumentWorkerState",
 ]

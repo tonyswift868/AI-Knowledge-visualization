@@ -7,14 +7,24 @@ from .application import (
 )
 from .benchmark import (
     SYNTHETIC_BENCHMARK_DISCLAIMER,
+    DocumentWorkerPoolBenchmarkObservation,
+    DocumentWorkerPoolBenchmarkReport,
+    DocumentWorkerPoolBenchmarkSample,
     SyntheticBatchBenchmarkReport,
     SyntheticBatchBenchmarkSample,
+    run_document_worker_pool_benchmark,
     run_synthetic_batch_benchmark,
 )
 from .bridge import DocumentKnowledgePipelinePort, build_document_pipeline_handoff
+from .checkpoint import (
+    DOCUMENT_CHECKPOINT_FILE_SCHEMA,
+    DocumentCheckpointIntegrityError,
+    DocumentCheckpointStore,
+)
 from .contracts import (
     DOCUMENT_HANDOFF_SCHEMA,
     DOCUMENT_INGESTION_SCHEMA,
+    DOCUMENT_WORKER_SCHEMA,
     DocumentBatchRequest,
     DocumentBatchResult,
     DocumentBatchStatus,
@@ -29,6 +39,8 @@ from .contracts import (
     DocumentIngestionStage,
     DocumentIngestionStatus,
     DocumentPipelineHandoff,
+    DocumentPlatformCompatibilityReceipt,
+    DocumentWorkerState,
     DoclingCompileMode,
     DoclingRuntimeReceipt,
     DoclingRuntimeStatus,
@@ -39,6 +51,20 @@ from .execution import (
     DoclingWorkerExecutionError,
     WindowsDoclingCompatibilityPolicy,
 )
+from .corpus import (
+    DOCUMENT_EXERCISE_CORPUS_SCHEMA,
+    DocumentExerciseCorpus,
+    DocumentExerciseCorpusBuilder,
+    DocumentExerciseCorpusEntry,
+    DocumentExerciseSectionGroup,
+    DocumentExerciseSourceLineage,
+)
+from .pool import (
+    MAX_LOCAL_WORKERS,
+    DocumentConversionWorker,
+    DocumentConversionWorkerOutcome,
+    DocumentConversionWorkerPool,
+)
 from .exercises import (
     DocumentAnswerCandidate,
     DocumentExerciseCandidate,
@@ -46,11 +72,41 @@ from .exercises import (
     DocumentExerciseExtractor,
 )
 from .provenance import DocumentProvenanceGate, DocumentProvenanceGateError
+from .quality import (
+    DOCUMENT_PROVENANCE_QUALITY_SCHEMA,
+    DocumentProvenanceQualityReport,
+    DocumentProvenanceQualityReporter,
+    DocumentProvenanceSourceQuality,
+)
+from .review import (
+    DOCUMENT_REVIEW_CONTENT_SCHEMA,
+    DocumentReviewContentFeed,
+    DocumentReviewContentFeedBuilder,
+    DocumentReviewContentItem,
+)
+from .runtime import (
+    DOCUMENT_KNOWLEDGE_BATCH_SCHEMA,
+    DOCUMENT_LEARNING_RUNTIME_SCHEMA,
+    DocumentBatchSubmissionStatus,
+    DocumentKnowledgeBatchHandoff,
+    DocumentKnowledgeBatchPipelinePort,
+    DocumentKnowledgeBatchSubmissionReceipt,
+    DocumentLearningCorpusResult,
+    DocumentLearningCorpusRuntime,
+)
 
 
 __all__ = [
     "DOCUMENT_HANDOFF_SCHEMA",
+    "DOCUMENT_CHECKPOINT_FILE_SCHEMA",
+    "DOCUMENT_EXERCISE_CORPUS_SCHEMA",
     "DOCUMENT_INGESTION_SCHEMA",
+    "DOCUMENT_KNOWLEDGE_BATCH_SCHEMA",
+    "DOCUMENT_LEARNING_RUNTIME_SCHEMA",
+    "DOCUMENT_PROVENANCE_QUALITY_SCHEMA",
+    "DOCUMENT_REVIEW_CONTENT_SCHEMA",
+    "DOCUMENT_WORKER_SCHEMA",
+    "MAX_LOCAL_WORKERS",
     "SYNTHETIC_BENCHMARK_DISCLAIMER",
     "DoclingBatchConverterProtocol",
     "DoclingCompileMode",
@@ -64,12 +120,23 @@ __all__ = [
     "DocumentBatchRequest",
     "DocumentBatchResult",
     "DocumentBatchStatus",
+    "DocumentBatchSubmissionStatus",
+    "DocumentCheckpointIntegrityError",
+    "DocumentCheckpointStore",
     "DocumentCheckpointEntry",
     "DocumentConversionIdentity",
+    "DocumentConversionWorker",
+    "DocumentConversionWorkerOutcome",
+    "DocumentConversionWorkerPool",
     "DocumentFingerprint",
     "DocumentExerciseCandidate",
     "DocumentExerciseCandidateStatus",
+    "DocumentExerciseCorpus",
+    "DocumentExerciseCorpusBuilder",
+    "DocumentExerciseCorpusEntry",
     "DocumentExerciseExtractor",
+    "DocumentExerciseSectionGroup",
+    "DocumentExerciseSourceLineage",
     "DocumentIngestionApplication",
     "DocumentIngestionCheckpoint",
     "DocumentIngestionFailure",
@@ -79,12 +146,29 @@ __all__ = [
     "DocumentIngestionStage",
     "DocumentIngestionStatus",
     "DocumentKnowledgePipelinePort",
+    "DocumentKnowledgeBatchHandoff",
+    "DocumentKnowledgeBatchPipelinePort",
+    "DocumentKnowledgeBatchSubmissionReceipt",
+    "DocumentLearningCorpusResult",
+    "DocumentLearningCorpusRuntime",
     "DocumentPipelineHandoff",
+    "DocumentPlatformCompatibilityReceipt",
     "DocumentProvenanceGate",
     "DocumentProvenanceGateError",
+    "DocumentProvenanceQualityReport",
+    "DocumentProvenanceQualityReporter",
+    "DocumentProvenanceSourceQuality",
+    "DocumentReviewContentFeed",
+    "DocumentReviewContentFeedBuilder",
+    "DocumentReviewContentItem",
+    "DocumentWorkerState",
+    "DocumentWorkerPoolBenchmarkObservation",
+    "DocumentWorkerPoolBenchmarkReport",
+    "DocumentWorkerPoolBenchmarkSample",
     "SyntheticBatchBenchmarkReport",
     "SyntheticBatchBenchmarkSample",
     "WindowsDoclingCompatibilityPolicy",
     "build_document_pipeline_handoff",
+    "run_document_worker_pool_benchmark",
     "run_synthetic_batch_benchmark",
 ]

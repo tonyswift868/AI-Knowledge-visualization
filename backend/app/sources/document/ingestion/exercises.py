@@ -98,12 +98,12 @@ class DocumentExerciseCandidate:
 
 _QUESTION_PREFIX = re.compile(
     r"^\s*(?:question|exercise|quiz|example\s+problem|problem|q(?:uestion)?\s*\d*|"
-    r"问题|练习|测验|例题|问)\s*(?:\d+[.)、]?\s*)?[:：.\-]?\s*\S+",
+    r"问题|练习|测验|例题|问)\s*(?:\d+[.)、]?\s*)?[:：.\-]\s*\S+",
     re.IGNORECASE,
 )
 _ANSWER_PREFIX = re.compile(
     r"^\s*(?:answer|solution|explanation|a(?:nswer)?\s*\d*|答案|解答|解析)"
-    r"\s*[:：.\-]?\s*\S+",
+    r"\s*[:：.\-]\s*\S+",
     re.IGNORECASE,
 )
 _SECTION_MARKER = re.compile(
@@ -250,7 +250,7 @@ class DocumentExerciseExtractor:
         rows = self._markdown_table_rows(item.content)
         if len(rows) < 2:
             return []
-        header = [value.casefold() for value in rows[0]]
+        header = [self._normalize_table_header(value) for value in rows[0]]
         question_column = self._column_index(header, _QUESTION_PREFIX, ("q", "question"))
         answer_column = self._column_index(
             header,
@@ -317,6 +317,10 @@ class DocumentExerciseExtractor:
             if value in exact_values or marker.match(f"{value}: placeholder"):
                 return index
         return None
+
+    @staticmethod
+    def _normalize_table_header(value: str) -> str:
+        return re.sub(r"[*_`]", "", value).strip().casefold()
 
     @staticmethod
     def _candidate(

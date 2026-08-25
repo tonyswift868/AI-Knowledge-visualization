@@ -147,6 +147,33 @@ def test_source_qa_table_yields_paired_and_unanswered_candidates() -> None:
     assert candidates[1].answer is None
 
 
+def test_markdown_styled_table_headers_work_and_bare_headers_are_ignored() -> None:
+    table = _evidence(
+        1,
+        "| **Question** | **Answer** |\n"
+        "|---|---|\n"
+        "| What is local? | Offline execution. |",
+        kind=DocumentEvidenceKind.TABLE,
+        section=("Q&A",),
+    )
+    bare_question = _evidence(2, "Question", section=("Q&A",))
+    bare_answer = _evidence(3, "Answer", section=("Q&A",))
+    descriptive_text = _evidence(
+        4,
+        "Question and answer content with exact slide provenance.",
+        section=(),
+    )
+
+    candidates = DocumentExerciseExtractor().extract(
+        _bundle(table, bare_question, bare_answer, descriptive_text)
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].question == "What is local?"
+    assert candidates[0].answer is not None
+    assert candidates[0].answer.content == "Offline execution."
+
+
 def test_candidate_ids_are_deterministic_and_ordinary_prose_is_ignored() -> None:
     question = _evidence(1, "Quiz: Select the correct option.")
     answer = _evidence(2, "Explanation: Option B is stated in the source.")
