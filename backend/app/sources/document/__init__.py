@@ -1,0 +1,63 @@
+"""Docling-first document source contracts and adapters."""
+
+from .contracts import (
+    DOCUMENT_ADAPTER_NAME,
+    DOCUMENT_ADAPTER_VERSION,
+    DOCUMENT_EVIDENCE_SCHEMA,
+    DOCUMENT_SOURCE_SCHEMA,
+    DoclingDependencyInfo,
+    DocumentBatchResult,
+    DocumentBatchStatus,
+    DocumentBoundingBox,
+    DocumentEvidence,
+    DocumentEvidenceBundle,
+    DocumentEvidenceKind,
+    DocumentFileReceipt,
+    DocumentFileStatus,
+    DocumentFormat,
+    DocumentItemProvenance,
+    DocumentPreflightResult,
+    DocumentPreflightStatus,
+    DocumentProcessingEstimate,
+    DocumentProcessingShape,
+    DocumentSourceCandidate,
+    DocumentSourceMetadata,
+    DocumentSourcePolicy,
+    DocumentSourceReceipt,
+)
+from .evidence import DocumentEvidenceBuildError, DocumentEvidenceBuilder
+from .preflight import DocumentSourcePreflight, probe_docling_dependency
+from .source import DoclingDocumentSource, build_docling_converter
+
+
+__all__ = [
+    "DOCUMENT_ADAPTER_NAME",
+    "DOCUMENT_ADAPTER_VERSION",
+    "DOCUMENT_EVIDENCE_SCHEMA",
+    "DOCUMENT_SOURCE_SCHEMA",
+    "DoclingDependencyInfo",
+    "DoclingDocumentSource",
+    "DocumentBatchResult",
+    "DocumentBatchStatus",
+    "DocumentBoundingBox",
+    "DocumentEvidence",
+    "DocumentEvidenceBuildError",
+    "DocumentEvidenceBuilder",
+    "DocumentEvidenceBundle",
+    "DocumentEvidenceKind",
+    "DocumentFileReceipt",
+    "DocumentFileStatus",
+    "DocumentFormat",
+    "DocumentItemProvenance",
+    "DocumentPreflightResult",
+    "DocumentPreflightStatus",
+    "DocumentProcessingEstimate",
+    "DocumentProcessingShape",
+    "DocumentSourceCandidate",
+    "DocumentSourceMetadata",
+    "DocumentSourcePolicy",
+    "DocumentSourcePreflight",
+    "DocumentSourceReceipt",
+    "build_docling_converter",
+    "probe_docling_dependency",
+]
