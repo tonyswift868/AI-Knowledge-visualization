@@ -4,6 +4,8 @@ from .adapters import cache_events_from_usage_receipt, local_cache_miss_reason
 from .benchmark import (
     SyntheticBenchmarkConfig,
     SyntheticBenchmarkResult,
+    SyntheticCacheWorkload,
+    build_synthetic_cache_workload,
     run_synthetic_cache_benchmark,
 )
 from .contracts import (
@@ -46,6 +48,14 @@ from .opportunity import (
     CacheOpportunityTrace,
     WorkloadKind,
 )
+from .optimization import (
+    OptimizationRecommendation,
+    OptimizationRecommendationCode,
+    ReviewOptimizationReport,
+    TeacherOptimizationReport,
+    analyze_review_optimization,
+    analyze_teacher_optimization,
+)
 from .persistence import (
     CacheMetricsCheckpoint,
     CacheMetricsIntegrityReport,
@@ -55,6 +65,10 @@ from .persistence import (
     CacheMetricsStoreCorruption,
     CacheMetricsStoreError,
     StoredCacheEvent,
+)
+from .product_metrics import (
+    ProductMetricsProjector,
+    ProductMetricsReadModel,
 )
 from .profiles import (
     LOCAL_REVIEW_ACTIONS,
@@ -125,23 +139,33 @@ __all__ = [
     "ExecutionObservatoryAdapter",
     "LayerIdentityPolicy",
     "MissReasonCount",
+    "OptimizationRecommendation",
+    "OptimizationRecommendationCode",
+    "ProductMetricsProjector",
+    "ProductMetricsReadModel",
     "ReviewAction",
     "ReviewActionCostProfile",
     "ReviewActionCostTrace",
     "ReviewCostProfile",
     "ReviewExecutionPlane",
+    "ReviewOptimizationReport",
     "StoredCacheEvent",
     "SyntheticBenchmarkConfig",
     "SyntheticBenchmarkResult",
+    "SyntheticCacheWorkload",
     "TTFTMetadata",
     "TeacherComponentCost",
     "TeacherCostComponent",
     "TeacherCostMode",
     "TeacherCostProfileReport",
+    "TeacherOptimizationReport",
     "TeacherTurnCostProfile",
     "TeacherTurnCostTrace",
     "WorkloadKind",
+    "analyze_review_optimization",
+    "analyze_teacher_optimization",
     "build_review_cost_profile",
+    "build_synthetic_cache_workload",
     "build_teacher_cost_profile_report",
     "build_teacher_turn_cost_profile",
     "cache_events_from_usage_receipt",

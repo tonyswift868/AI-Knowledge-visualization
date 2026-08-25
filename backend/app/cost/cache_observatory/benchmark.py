@@ -91,6 +91,16 @@ class SyntheticBenchmarkResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class SyntheticCacheWorkload:
+    config: SyntheticBenchmarkConfig
+    teacher_cost_traces: tuple[TeacherTurnCostTrace, ...]
+    review_cost_traces: tuple[ReviewActionCostTrace, ...]
+    opportunity_traces: tuple[CacheOpportunityTrace, ...]
+    data_classification: str = "synthetic_offline_estimate"
+    real_provider_calls: int = 0
+
+
 def _input_cost(tokens: int, rate: Decimal) -> Decimal:
     return Decimal(tokens) * rate / _TOKENS_PER_MILLION
 
@@ -568,21 +578,33 @@ def run_synthetic_cache_benchmark(
 ) -> SyntheticBenchmarkResult:
     """Run deterministic offline fixtures; no Provider or business mutation."""
 
-    config = config or SyntheticBenchmarkConfig()
     started = perf_counter()
-    teacher_traces, teacher_opportunities = _teacher_fixture(config)
-    review_traces, review_opportunities = _review_fixture(config)
+    workload = build_synthetic_cache_workload(config)
     opportunity_report = CacheOpportunityAnalyzer().analyze(
-        (*teacher_opportunities, *review_opportunities),
+        workload.opportunity_traces,
         source_classification="synthetic_offline_estimate",
     )
     elapsed_ms = Decimal(str((perf_counter() - started) * 1_000))
     return SyntheticBenchmarkResult(
-        config=config,
-        teacher_profile=build_teacher_cost_profile_report(teacher_traces),
-        review_profile=build_review_cost_profile(review_traces),
+        config=workload.config,
+        teacher_profile=build_teacher_cost_profile_report(workload.teacher_cost_traces),
+        review_profile=build_review_cost_profile(workload.review_cost_traces),
         opportunity_report=opportunity_report,
         elapsed_ms=elapsed_ms,
+    )
+
+
+def build_synthetic_cache_workload(
+    config: SyntheticBenchmarkConfig | None = None,
+) -> SyntheticCacheWorkload:
+    normalized = config or SyntheticBenchmarkConfig()
+    teacher_traces, teacher_opportunities = _teacher_fixture(normalized)
+    review_traces, review_opportunities = _review_fixture(normalized)
+    return SyntheticCacheWorkload(
+        config=normalized,
+        teacher_cost_traces=tuple(teacher_traces),
+        review_cost_traces=tuple(review_traces),
+        opportunity_traces=(*teacher_opportunities, *review_opportunities),
     )
 
 
