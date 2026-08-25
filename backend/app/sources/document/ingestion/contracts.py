@@ -307,6 +307,7 @@ class DocumentIngestionProgress:
     failed_count: int
     limited_count: int
     duplicate_count: int
+    evidence_count: int
     current_source: str | None
     elapsed_seconds: float
 
@@ -327,6 +328,7 @@ class DocumentIngestionProgress:
             "failed_count": self.failed_count,
             "limited_count": self.limited_count,
             "duplicate_count": self.duplicate_count,
+            "evidence_count": self.evidence_count,
             "current_source": self.current_source,
             "elapsed_seconds": self.elapsed_seconds,
             "fraction": self.fraction,

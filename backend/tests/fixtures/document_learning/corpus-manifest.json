@@ -1,0 +1,49 @@
+{
+  "schema": "mentorflow.document-learning-fixture-corpus.v1",
+  "purpose": "Local-only five-format document import, provenance, and T0 exercise validation",
+  "network_required": false,
+  "files": [
+    {
+      "file": "learning-corpus.pdf",
+      "format": "pdf",
+      "bytes": 5854,
+      "sha256": "2c603d769f669f443be261dc984bd7eae3d69151191c1c6383656446624accd3",
+      "location_kind": "page",
+      "unit_count": 2,
+      "contains_answered_and_unanswered_exercises": true
+    },
+    {
+      "file": "learning-corpus.docx",
+      "format": "docx",
+      "bytes": 37197,
+      "sha256": "b36e081752d7e006c3ec09d8799600b6dfffe308cfa9437da80b790187b4d31a",
+      "location_kind": "section",
+      "contains_answered_and_unanswered_exercises": true
+    },
+    {
+      "file": "learning-corpus.pptx",
+      "format": "pptx",
+      "bytes": 15839,
+      "sha256": "0869f14ae7f1b502086f5ce329c24c0cf1106679bc9387f1b1c6d41877d09f78",
+      "location_kind": "slide",
+      "unit_count": 2,
+      "contains_answered_and_unanswered_exercises": false
+    },
+    {
+      "file": "learning-corpus.html",
+      "format": "html",
+      "bytes": 790,
+      "sha256": "ef65ba4f36278e0a725503fa94700249abc05cc7398144777112498e7b662699",
+      "location_kind": "section",
+      "contains_answered_and_unanswered_exercises": true
+    },
+    {
+      "file": "learning-corpus.md",
+      "format": "markdown",
+      "bytes": 362,
+      "sha256": "2a0254a69b730e1aa27dad06ceef4b1e08bcd12548e9889be3ef6807a02a35e3",
+      "location_kind": "section",
+      "contains_answered_and_unanswered_exercises": true
+    }
+  ]
+}

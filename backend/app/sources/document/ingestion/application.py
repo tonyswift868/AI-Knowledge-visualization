@@ -158,6 +158,7 @@ class DocumentBatchIngestion:
                     value.status is DocumentIngestionStatus.SKIPPED_DUPLICATE
                     for value in receipts
                 ),
+                evidence_count=sum(value.evidence_count for value in receipts),
                 current_source=current_source,
                 elapsed_seconds=max(0.0, self._clock() - started),
             )
