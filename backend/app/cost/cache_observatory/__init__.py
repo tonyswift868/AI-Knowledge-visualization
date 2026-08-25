@@ -69,12 +69,21 @@ from .profiles import (
     review_trace_from_evaluation_result,
     teacher_trace_from_usage_receipt,
 )
+from .runtime_ports import (
+    CacheEventSinkPort,
+    CacheEventSourcePort,
+    CacheObservationReceipt,
+    CacheObservationSource,
+    ExecutionObservatoryAdapter,
+)
 
 __all__ = [
     "DEFAULT_CACHE_IDENTITY_POLICY",
     "LOCAL_REVIEW_ACTIONS",
     "CacheEvent",
     "CacheEventConflict",
+    "CacheEventSinkPort",
+    "CacheEventSourcePort",
     "CacheIdentity",
     "CacheIdentityPolicy",
     "CacheIdentityPolicyViolation",
@@ -93,12 +102,15 @@ __all__ = [
     "CacheMetricsStoreCorruption",
     "CacheMetricsStoreError",
     "CacheMissReason",
+    "CacheObservationReceipt",
+    "CacheObservationSource",
     "CacheObservatoryError",
     "CacheObservatoryReport",
     "CacheOpportunityAnalyzer",
     "CacheOpportunityReport",
     "CacheOpportunityTrace",
     "CurrencyAmount",
+    "ExecutionObservatoryAdapter",
     "LayerIdentityPolicy",
     "MissReasonCount",
     "ReviewAction",
