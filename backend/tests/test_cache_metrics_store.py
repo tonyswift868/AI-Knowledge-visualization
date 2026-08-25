@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 from app.cost.cache_observatory import (
+    DEFAULT_CACHE_IDENTITY_POLICY,
     CacheEvent,
     CacheEventConflict,
     CacheIdentity,
@@ -30,8 +31,13 @@ def _identity(layer: CacheLayer, artifact: str = "artifact-1") -> CacheIdentity:
         route_identity="route-a",
         stable_prefix_hash="stable-a",
         dynamic_context_hash="learner-a",
+        source_hash="source-a",
         evidence_hash="evidence-a",
+        question_hash="question-a",
+        question_bank_version="question-bank-v1",
         parser_version="parser-v1",
+        evaluation_version="evaluation-v1",
+        identity_policy_version="cache-identity-policy-v1",
     )
 
 
@@ -113,7 +119,7 @@ def test_store_persists_restart_safe_separated_metrics_and_exact_columns(
     assert persisted == (
         1,
         "PROVIDER_PROMPT_CACHE",
-        provider.identity.cache_key,
+        DEFAULT_CACHE_IDENTITY_POLICY.cache_key(provider.identity),
         1,
         None,
         700,

@@ -19,6 +19,18 @@ from .contracts import (
     MissReasonCount,
     classify_cache_miss,
 )
+from .identity_policy import (
+    DEFAULT_CACHE_IDENTITY_POLICY,
+    CacheIdentityPolicy,
+    CacheIdentityPolicyViolation,
+    CacheIdentityValidation,
+    LayerIdentityPolicy,
+)
+from .invalidation import (
+    CacheInvalidationDecision,
+    CacheInvalidationPlanner,
+    CacheInvalidationReason,
+)
 from .metrics import CacheMetricsAggregator
 from .opportunity import (
     CacheOpportunityAnalyzer,
@@ -59,10 +71,17 @@ from .profiles import (
 )
 
 __all__ = [
+    "DEFAULT_CACHE_IDENTITY_POLICY",
     "LOCAL_REVIEW_ACTIONS",
     "CacheEvent",
     "CacheEventConflict",
     "CacheIdentity",
+    "CacheIdentityPolicy",
+    "CacheIdentityPolicyViolation",
+    "CacheIdentityValidation",
+    "CacheInvalidationDecision",
+    "CacheInvalidationPlanner",
+    "CacheInvalidationReason",
     "CacheLayer",
     "CacheMetricsAggregator",
     "CacheMetricsCheckpoint",
@@ -80,6 +99,7 @@ __all__ = [
     "CacheOpportunityReport",
     "CacheOpportunityTrace",
     "CurrencyAmount",
+    "LayerIdentityPolicy",
     "MissReasonCount",
     "ReviewAction",
     "ReviewActionCostProfile",

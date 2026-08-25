@@ -25,6 +25,7 @@ from .contracts import (
     CurrencyAmount,
     MissReasonCount,
 )
+from .identity_policy import DEFAULT_CACHE_IDENTITY_POLICY, CacheIdentityPolicy
 
 _SCHEMA_VERSION = 1
 
@@ -160,12 +161,14 @@ class CacheMetricsStore:
         busy_timeout_ms: int = 5_000,
         auto_bootstrap: bool = True,
         clock_ms: Callable[[], int] | None = None,
+        identity_policy: CacheIdentityPolicy = DEFAULT_CACHE_IDENTITY_POLICY,
     ) -> None:
         if isinstance(busy_timeout_ms, bool) or int(busy_timeout_ms) < 1:
             raise ValueError("busy_timeout_ms must be a positive integer")
         self._path = _validated_database_path(database_path)
         self._busy_timeout_ms = int(busy_timeout_ms)
         self._clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+        self._identity_policy = identity_policy
         self._writer_lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
         self._closed = False
@@ -357,6 +360,7 @@ class CacheMetricsStore:
     def _insert(self, connection: sqlite3.Connection, event: CacheEvent) -> bool:
         if not isinstance(event, CacheEvent):
             raise TypeError("event must be CacheEvent")
+        self._identity_policy.require(event.identity)
         payload_json, payload_hash = _canonical_payload(event)
         recorded_at_ms = int(self._clock_ms())
         effective_at_ms = (
@@ -383,7 +387,7 @@ class CacheMetricsStore:
                 event.event_id,
                 event.trace_id,
                 event.layer.value,
-                event.identity.cache_key,
+                self._identity_policy.cache_key(event.identity),
                 identity_json,
                 int(event.hit),
                 event.miss_reason.value if event.miss_reason else None,

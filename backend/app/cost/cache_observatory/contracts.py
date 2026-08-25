@@ -100,10 +100,13 @@ class CacheIdentity:
     route_identity: str | None = None
     stable_prefix_hash: str | None = None
     dynamic_context_hash: str | None = None
+    source_hash: str | None = None
     evidence_hash: str | None = None
     question_hash: str | None = None
+    question_bank_version: str | None = None
     parser_version: str | None = None
     evaluation_version: str | None = None
+    identity_policy_version: str | None = None
     expires_at_ms: int | None = None
 
     def __post_init__(self) -> None:
@@ -122,10 +125,13 @@ class CacheIdentity:
             "route_identity",
             "stable_prefix_hash",
             "dynamic_context_hash",
+            "source_hash",
             "evidence_hash",
             "question_hash",
+            "question_bank_version",
             "parser_version",
             "evaluation_version",
+            "identity_policy_version",
         ):
             object.__setattr__(self, field_name, _optional(getattr(self, field_name)))
         _non_negative_int("expires_at_ms", self.expires_at_ms)
@@ -141,10 +147,13 @@ class CacheIdentity:
             "route_identity": self.route_identity,
             "stable_prefix_hash": self.stable_prefix_hash,
             "dynamic_context_hash": self.dynamic_context_hash,
+            "source_hash": self.source_hash,
             "evidence_hash": self.evidence_hash,
             "question_hash": self.question_hash,
+            "question_bank_version": self.question_bank_version,
             "parser_version": self.parser_version,
             "evaluation_version": self.evaluation_version,
+            "identity_policy_version": self.identity_policy_version,
             "expires_at_ms": self.expires_at_ms,
         }
 
