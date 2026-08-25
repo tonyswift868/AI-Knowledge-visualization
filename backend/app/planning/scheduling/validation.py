@@ -22,6 +22,7 @@ from .contracts import (
     ScheduleAllocation,
     ScheduleInfeasibility,
     ScheduleStatus,
+    SolverTerminationStatus,
     SolutionValidation,
     TaskSplitPolicy,
 )
@@ -89,6 +90,50 @@ def explain_obvious_infeasibility(
         remaining_task_minutes + completed_window_minutes + reserved_minutes
     )
     available_minutes = _available_capacity(problem)
+
+    completed_by_day: dict[date, int] = defaultdict(int)
+    completed_allocations = [
+        allocation
+        for completed in problem.completed_tasks
+        for allocation in completed.allocations
+    ]
+    completed_allocation_ids = [
+        item.allocation_id for item in completed_allocations
+    ]
+    completed_positions = [
+        (item.day, item.order_in_day) for item in completed_allocations
+    ]
+    if len(completed_allocation_ids) != len(
+        set(completed_allocation_ids)
+    ) or len(completed_positions) != len(set(completed_positions)):
+        reasons.append(
+            ScheduleInfeasibility(
+                code=InfeasibilityCode.COMPLETED_HISTORY_CONFLICT,
+                message=(
+                    "Immutable completed history contains duplicate allocation "
+                    "ids or day-order positions."
+                ),
+            )
+        )
+    for completed in problem.completed_tasks:
+        for allocation in completed.allocations:
+            if problem.start_date <= allocation.day <= problem.deadline:
+                completed_by_day[allocation.day] += allocation.minutes
+    for day, minutes in sorted(completed_by_day.items()):
+        capacity = problem.capacity_by_day.get(day, 0)
+        if minutes > capacity:
+            reasons.append(
+                ScheduleInfeasibility(
+                    code=InfeasibilityCode.COMPLETED_WORK_CAPACITY_CONFLICT,
+                    message=(
+                        "Immutable completed work exceeds declared capacity "
+                        "on its recorded day."
+                    ),
+                    dates=(day,),
+                    required_minutes=minutes,
+                    available_minutes=capacity,
+                )
+            )
 
     if required_minutes > 0 and available_minutes == 0:
         reasons.append(
@@ -158,6 +203,32 @@ def explain_obvious_infeasibility(
                     details=(f"reservation_id={workload.workload_id}",),
                 )
             )
+        max_window_capacity = max(
+            (
+                minutes
+                for day, minutes in problem.capacity_by_day.items()
+                if workload.earliest_date <= day <= workload.latest_date
+            ),
+            default=0,
+        )
+        if (
+            workload.minutes <= window_capacity
+            and not workload.splittable
+            and workload.minutes > max_window_capacity
+        ):
+            reasons.append(
+                ScheduleInfeasibility(
+                    code=InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL,
+                    message=(
+                        "An unsplittable review workload is larger than every "
+                        "available day in its window."
+                    ),
+                    dates=(workload.earliest_date, workload.latest_date),
+                    required_minutes=workload.minutes,
+                    available_minutes=max_window_capacity,
+                    details=(f"reservation_id={workload.workload_id}",),
+                )
+            )
     if problem.final_buffer is not None:
         window_capacity = _available_capacity(
             problem,
@@ -177,6 +248,80 @@ def explain_obvious_infeasibility(
                     available_minutes=window_capacity,
                     details=(
                         f"reservation_id={problem.final_buffer.buffer_id}",
+                    ),
+                )
+            )
+        max_window_capacity = max(
+            (
+                minutes
+                for day, minutes in problem.capacity_by_day.items()
+                if problem.final_buffer.earliest_date <= day
+                <= problem.final_buffer.latest_date
+            ),
+            default=0,
+        )
+        if (
+            problem.final_buffer.minutes <= window_capacity
+            and problem.final_buffer.minutes > max_window_capacity
+        ):
+            reasons.append(
+                ScheduleInfeasibility(
+                    code=InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL,
+                    message=(
+                        "The unsplittable final buffer is larger than every "
+                        "available day in its window."
+                    ),
+                    dates=(
+                        problem.final_buffer.earliest_date,
+                        problem.final_buffer.latest_date,
+                    ),
+                    required_minutes=problem.final_buffer.minutes,
+                    available_minutes=max_window_capacity,
+                    details=(
+                        f"reservation_id={problem.final_buffer.buffer_id}",
+                    ),
+                )
+            )
+
+    completed_by_id = {
+        item.task_id: item.allocations for item in problem.completed_tasks
+    }
+    for edge in problem.prerequisite_edges:
+        dependent = completed_by_id.get(edge.dependent_task_id)
+        if dependent is None:
+            continue
+        prerequisite = completed_by_id.get(edge.prerequisite_task_id)
+        if prerequisite is None:
+            reasons.append(
+                ScheduleInfeasibility(
+                    code=InfeasibilityCode.COMPLETED_PREREQUISITE_CONFLICT,
+                    message=(
+                        "A completed task has a prerequisite that is still "
+                        "marked as remaining."
+                    ),
+                    task_ids=(
+                        edge.prerequisite_task_id,
+                        edge.dependent_task_id,
+                    ),
+                )
+            )
+            continue
+        prerequisite_end = max(
+            (item.day.toordinal(), item.order_in_day) for item in prerequisite
+        )
+        dependent_start = min(
+            (item.day.toordinal(), item.order_in_day) for item in dependent
+        )
+        if prerequisite_end >= dependent_start:
+            reasons.append(
+                ScheduleInfeasibility(
+                    code=InfeasibilityCode.COMPLETED_PREREQUISITE_CONFLICT,
+                    message=(
+                        "Immutable completed history violates prerequisite order."
+                    ),
+                    task_ids=(
+                        edge.prerequisite_task_id,
+                        edge.dependent_task_id,
                     ),
                 )
             )
@@ -274,6 +419,17 @@ def _position(item: ScheduleAllocation) -> tuple[int, int]:
     return item.day.toordinal(), item.order_in_day
 
 
+def _canonical_allocation_key(item: ScheduleAllocation) -> tuple[object, ...]:
+    return (
+        item.day,
+        item.order_in_day,
+        item.kind.value,
+        item.task_id or item.reservation_id or "",
+        item.chunk_index,
+        item.allocation_id,
+    )
+
+
 def validate_solution(
     problem: PlanScheduleProblem,
     solution: PlanScheduleSolution,
@@ -303,6 +459,86 @@ def validate_solution(
             ConstraintViolationCode.PROBLEM_ID_MISMATCH,
             "solution problem_id does not match the problem",
         )
+    allowed_terminations = {
+        ScheduleStatus.FEASIBLE: {
+            SolverTerminationStatus.NOT_RUN,
+            SolverTerminationStatus.OPTIMAL,
+            SolverTerminationStatus.FEASIBLE,
+        },
+        ScheduleStatus.INFEASIBLE: {
+            SolverTerminationStatus.NOT_RUN,
+            SolverTerminationStatus.INFEASIBLE,
+        },
+        ScheduleStatus.NOT_SOLVED: {
+            SolverTerminationStatus.NOT_RUN,
+            SolverTerminationStatus.UNKNOWN,
+            SolverTerminationStatus.MODEL_INVALID,
+            SolverTerminationStatus.DEPENDENCY_UNAVAILABLE,
+        },
+    }
+    if solution.solver_metadata.termination_status not in allowed_terminations[
+        solution.status
+    ]:
+        add(
+            ConstraintViolationCode.SOLVER_STATUS_MISMATCH,
+            "solution status contradicts solver termination metadata",
+        )
+    if any(
+        item.code is InfeasibilityCode.SOLVER_DEPENDENCY_UNAVAILABLE
+        for item in solution.infeasibilities
+    ) and solution.solver_metadata.dependency_available:
+        add(
+            ConstraintViolationCode.SOLVER_STATUS_MISMATCH,
+            "dependency-unavailable reason contradicts solver metadata",
+        )
+    if solution.status is ScheduleStatus.NOT_SOLVED:
+        termination_by_reason = {
+            InfeasibilityCode.SOLVER_DEPENDENCY_UNAVAILABLE: (
+                SolverTerminationStatus.DEPENDENCY_UNAVAILABLE
+            ),
+            InfeasibilityCode.SOLVER_TIMEOUT: SolverTerminationStatus.UNKNOWN,
+            InfeasibilityCode.SOLVER_STATUS_UNKNOWN: SolverTerminationStatus.UNKNOWN,
+            InfeasibilityCode.SOLVER_MODEL_INVALID: (
+                SolverTerminationStatus.MODEL_INVALID
+            ),
+        }
+        reported_terminations = {
+            termination_by_reason[item.code]
+            for item in solution.infeasibilities
+            if item.code in termination_by_reason
+        }
+        if (
+            solution.solver_metadata.termination_status
+            is not SolverTerminationStatus.NOT_RUN
+            and reported_terminations
+            != {solution.solver_metadata.termination_status}
+        ):
+            add(
+                ConstraintViolationCode.SOLVER_STATUS_MISMATCH,
+                "solver termination reason contradicts termination metadata",
+            )
+    if problem.deterministic:
+        if not solution.solver_metadata.deterministic:
+            add(
+                ConstraintViolationCode.NONDETERMINISTIC_OUTPUT,
+                "deterministic problem requires deterministic solver metadata",
+            )
+        if list(solution.allocations) != sorted(
+            solution.allocations,
+            key=_canonical_allocation_key,
+        ):
+            add(
+                ConstraintViolationCode.NONDETERMINISTIC_OUTPUT,
+                "allocations are not in canonical deterministic order",
+            )
+        if list(solution.daily_loads) != sorted(
+            solution.daily_loads,
+            key=lambda item: item.day,
+        ):
+            add(
+                ConstraintViolationCode.NONDETERMINISTIC_OUTPUT,
+                "daily loads are not in canonical deterministic order",
+            )
     if solution.status is not ScheduleStatus.FEASIBLE:
         if solution.status is ScheduleStatus.INFEASIBLE:
             obvious_codes = {

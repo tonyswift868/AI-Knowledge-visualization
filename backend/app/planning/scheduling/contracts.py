@@ -62,11 +62,18 @@ class InfeasibilityCode(StrEnum):
     RESERVATION_WINDOW_CAPACITY_SHORTFALL = (
         "reservation_window_capacity_shortfall"
     )
+    COMPLETED_WORK_CAPACITY_CONFLICT = "completed_work_capacity_conflict"
+    COMPLETED_PREREQUISITE_CONFLICT = "completed_prerequisite_conflict"
+    COMPLETED_HISTORY_CONFLICT = "completed_history_conflict"
     SOLVER_DEPENDENCY_UNAVAILABLE = "solver_dependency_unavailable"
+    SOLVER_TIMEOUT = "solver_timeout"
+    SOLVER_STATUS_UNKNOWN = "solver_status_unknown"
+    SOLVER_MODEL_INVALID = "solver_model_invalid"
     OTHER = "other"
 
 
 class ConstraintViolationCode(StrEnum):
+    INVALID_SOLUTION_PAYLOAD = "invalid_solution_payload"
     PROBLEM_ID_MISMATCH = "problem_id_mismatch"
     PROBLEM_OBVIOUSLY_INFEASIBLE = "problem_obviously_infeasible"
     UNKNOWN_ALLOCATION_TARGET = "unknown_allocation_target"
@@ -81,6 +88,8 @@ class ConstraintViolationCode(StrEnum):
     COMPLETED_TASK_CHANGED = "completed_task_changed"
     DAILY_LOAD_MISMATCH = "daily_load_mismatch"
     UTILIZATION_MISMATCH = "utilization_mismatch"
+    NONDETERMINISTIC_OUTPUT = "nondeterministic_output"
+    SOLVER_STATUS_MISMATCH = "solver_status_mismatch"
 
 
 class KnowledgeTask(_FrozenContract):
@@ -325,6 +334,16 @@ class DailyLoad(_FrozenContract):
         return self
 
 
+class SolverTerminationStatus(StrEnum):
+    NOT_RUN = "not_run"
+    OPTIMAL = "optimal"
+    FEASIBLE = "feasible"
+    INFEASIBLE = "infeasible"
+    UNKNOWN = "unknown"
+    MODEL_INVALID = "model_invalid"
+    DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
+
+
 class SolverMetadata(_FrozenContract):
     solver_name: str = Field(min_length=1, max_length=160)
     solver_version: str = Field(min_length=1, max_length=120)
@@ -334,7 +353,24 @@ class SolverMetadata(_FrozenContract):
     dependency_name: str | None = Field(default=None, max_length=120)
     dependency_version: str | None = Field(default=None, max_length=120)
     dependency_available: bool
+    termination_status: SolverTerminationStatus = SolverTerminationStatus.NOT_RUN
     configuration: tuple[str, ...] = ()
+
+
+class ScheduleSolveConfig(_FrozenContract):
+    max_time_seconds: float = Field(default=10.0, gt=0, le=300)
+    deterministic: bool = True
+    random_seed: int = Field(default=0, ge=0, le=2_147_483_647)
+    num_search_workers: int = Field(default=1, ge=1, le=64)
+    log_search_progress: bool = False
+
+    @model_validator(mode="after")
+    def validate_deterministic_workers(self) -> "ScheduleSolveConfig":
+        if self.deterministic and self.num_search_workers != 1:
+            raise ValueError(
+                "deterministic solve config requires num_search_workers=1"
+            )
+        return self
 
 
 class PlanScheduleSolution(_FrozenContract):
@@ -366,12 +402,18 @@ class PlanScheduleSolution(_FrozenContract):
                 raise ValueError("non-feasible solution requires a reason")
             if self.allocations or self.daily_loads:
                 raise ValueError("non-feasible solution cannot claim allocations")
+            allowed_not_solved_codes = {
+                InfeasibilityCode.SOLVER_DEPENDENCY_UNAVAILABLE,
+                InfeasibilityCode.SOLVER_TIMEOUT,
+                InfeasibilityCode.SOLVER_STATUS_UNKNOWN,
+                InfeasibilityCode.SOLVER_MODEL_INVALID,
+            }
             if self.status is ScheduleStatus.NOT_SOLVED and not any(
-                item.code is InfeasibilityCode.SOLVER_DEPENDENCY_UNAVAILABLE
+                item.code in allowed_not_solved_codes
                 for item in self.infeasibilities
             ):
                 raise ValueError(
-                    "not_solved status requires solver_dependency_unavailable"
+                    "not_solved status requires an explicit solver termination reason"
                 )
         return self
 
@@ -429,8 +471,10 @@ __all__ = [
     "ScheduleAllocation",
     "ScheduleDependencyStatus",
     "ScheduleInfeasibility",
+    "ScheduleSolveConfig",
     "ScheduleStatus",
     "SolutionValidation",
     "SolverMetadata",
+    "SolverTerminationStatus",
     "TaskSplitPolicy",
 ]

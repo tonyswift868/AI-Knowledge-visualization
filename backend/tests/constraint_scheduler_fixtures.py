@@ -268,6 +268,51 @@ def prerequisite_chain() -> FeasibleScenario:
     )
 
 
+def prerequisite_dag() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    problem = PlanScheduleProblem(
+        problem_id="prerequisite-dag",
+        tasks=(
+            task("root", 15),
+            task("left", 20),
+            task("right", 20),
+            task("leaf", 15),
+        ),
+        prerequisite_edges=(
+            PrerequisiteEdge(
+                prerequisite_task_id="root",
+                dependent_task_id="left",
+            ),
+            PrerequisiteEdge(
+                prerequisite_task_id="root",
+                dependent_task_id="right",
+            ),
+            PrerequisiteEdge(
+                prerequisite_task_id="left",
+                dependent_task_id="leaf",
+            ),
+            PrerequisiteEdge(
+                prerequisite_task_id="right",
+                dependent_task_id="leaf",
+            ),
+        ),
+        start_date=start,
+        deadline=start + timedelta(days=2),
+        daily_capacities=capacities(start, 60, 60, 60),
+    )
+    allocations = (
+        task_allocation("root", start, 15, 0),
+        task_allocation("left", start + timedelta(days=1), 20, 0),
+        task_allocation("right", start + timedelta(days=1), 20, 1),
+        task_allocation("leaf", start + timedelta(days=2), 15, 0),
+    )
+    return FeasibleScenario(
+        "prerequisite_dag",
+        problem,
+        feasible_solution(problem, "prerequisite-dag-solution", allocations),
+    )
+
+
 def parallel_independent() -> FeasibleScenario:
     start = date(2026, 9, 1)
     problem = PlanScheduleProblem(
@@ -285,6 +330,143 @@ def parallel_independent() -> FeasibleScenario:
         "parallel_independent",
         problem,
         feasible_solution(problem, "parallel-independent-solution", allocations),
+    )
+
+
+def daily_capacity_edge() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    problem = PlanScheduleProblem(
+        problem_id="daily-capacity-edge",
+        tasks=(task("capacity-a", 30), task("capacity-b", 30)),
+        start_date=start,
+        deadline=start,
+        daily_capacities=capacities(start, 60),
+    )
+    allocations = (
+        task_allocation("capacity-a", start, 30, 0),
+        task_allocation("capacity-b", start, 30, 1),
+    )
+    return FeasibleScenario(
+        "daily_capacity_deadline_edge",
+        problem,
+        feasible_solution(problem, "daily-capacity-edge-solution", allocations),
+    )
+
+
+def review_workload_feasible() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    review = ReviewWorkload(
+        workload_id="review-only",
+        minutes=20,
+        earliest_date=start + timedelta(days=1),
+        latest_date=start + timedelta(days=1),
+        splittable=False,
+    )
+    problem = PlanScheduleProblem(
+        problem_id="review-workload-feasible",
+        tasks=(task("review-source", 30),),
+        start_date=start,
+        deadline=start + timedelta(days=1),
+        daily_capacities=capacities(start, 60, 60),
+        review_workloads=(review,),
+    )
+    allocations = (
+        task_allocation("review-source", start, 30, 0),
+        reservation_allocation(
+            AllocationKind.REVIEW,
+            review.workload_id,
+            start + timedelta(days=1),
+            review.minutes,
+            0,
+        ),
+    )
+    return FeasibleScenario(
+        "review_workload",
+        problem,
+        feasible_solution(problem, "review-workload-solution", allocations),
+    )
+
+
+def final_buffer_feasible() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    buffer = FinalBuffer(
+        minutes=20,
+        earliest_date=start + timedelta(days=1),
+        latest_date=start + timedelta(days=1),
+    )
+    problem = PlanScheduleProblem(
+        problem_id="final-buffer-feasible",
+        tasks=(task("buffer-source", 30),),
+        start_date=start,
+        deadline=start + timedelta(days=1),
+        daily_capacities=capacities(start, 60, 60),
+        final_buffer=buffer,
+    )
+    allocations = (
+        task_allocation("buffer-source", start, 30, 0),
+        reservation_allocation(
+            AllocationKind.FINAL_BUFFER,
+            buffer.buffer_id,
+            start + timedelta(days=1),
+            buffer.minutes,
+            0,
+        ),
+    )
+    return FeasibleScenario(
+        "final_buffer",
+        problem,
+        feasible_solution(problem, "final-buffer-solution", allocations),
+    )
+
+
+def split_allowed() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    problem = PlanScheduleProblem(
+        problem_id="split-allowed",
+        tasks=(task("split-task", 90, splittable=True),),
+        start_date=start,
+        deadline=start + timedelta(days=1),
+        daily_capacities=capacities(start, 60, 60),
+    )
+    allocations = (
+        task_allocation(
+            "split-task",
+            start,
+            50,
+            0,
+            chunk_index=1,
+            chunk_count=2,
+        ),
+        task_allocation(
+            "split-task",
+            start + timedelta(days=1),
+            40,
+            0,
+            chunk_index=2,
+            chunk_count=2,
+        ),
+    )
+    return FeasibleScenario(
+        "split_allowed",
+        problem,
+        feasible_solution(problem, "split-allowed-solution", allocations),
+    )
+
+
+def split_forbidden() -> FeasibleScenario:
+    start = date(2026, 9, 1)
+    problem = PlanScheduleProblem(
+        problem_id="split-forbidden",
+        tasks=(task("single-block", 60),),
+        start_date=start,
+        deadline=start,
+        daily_capacities=capacities(start, 60),
+    )
+    allocations = (task_allocation("single-block", start, 60, 0),)
+    return FeasibleScenario(
+        "split_forbidden",
+        problem,
+        feasible_solution(problem, "split-forbidden-solution", allocations),
     )
 
 
@@ -402,6 +584,22 @@ def prerequisite_cycle() -> InfeasibleScenario:
     )
 
 
+def zero_capacity_impossible() -> InfeasibleScenario:
+    start = date(2026, 9, 1)
+    problem = PlanScheduleProblem(
+        problem_id="zero-capacity-impossible",
+        tasks=(task("no-room", 20, splittable=True),),
+        start_date=start,
+        deadline=start + timedelta(days=1),
+        daily_capacities=capacities(start, 0, 0),
+    )
+    return InfeasibleScenario(
+        "zero_capacity",
+        problem,
+        infeasible_solution(problem, "zero-capacity-solution"),
+    )
+
+
 def completed_replan() -> ReplanScenario:
     start = date(2026, 9, 1)
     completed_allocation = task_allocation(
@@ -455,13 +653,62 @@ def completed_replan() -> ReplanScenario:
     )
 
 
+def completed_history_feasible() -> FeasibleScenario:
+    scenario = completed_replan()
+    return FeasibleScenario(
+        "completed_work_immutable",
+        scenario.new_problem,
+        scenario.new_solution,
+    )
+
+
+def high_load_synthetic(task_count: int = 120) -> FeasibleScenario:
+    if task_count < 100:
+        raise ValueError("high-load fixture requires at least 100 tasks")
+    start = date(2026, 9, 1)
+    tasks_per_day = 10
+    day_count = (task_count + tasks_per_day - 1) // tasks_per_day
+    fixture_tasks = tuple(
+        task(f"synthetic-{index:03d}", 10) for index in range(task_count)
+    )
+    problem = PlanScheduleProblem(
+        problem_id=f"high-load-{task_count}",
+        tasks=fixture_tasks,
+        start_date=start,
+        deadline=start + timedelta(days=day_count - 1),
+        daily_capacities=capacities(start, *(100 for _ in range(day_count))),
+    )
+    allocations = tuple(
+        task_allocation(
+            item.task_id,
+            start + timedelta(days=index // tasks_per_day),
+            10,
+            index % tasks_per_day,
+        )
+        for index, item in enumerate(fixture_tasks)
+    )
+    return FeasibleScenario(
+        f"high_load_{task_count}",
+        problem,
+        feasible_solution(problem, f"high-load-{task_count}-solution", allocations),
+    )
+
+
 def all_feasible_scenarios() -> tuple[FeasibleScenario, ...]:
     return (
         simple_feasible(),
         prerequisite_chain(),
+        prerequisite_dag(),
         parallel_independent(),
+        daily_capacity_edge(),
         weekend_unavailable(),
+        review_workload_feasible(),
+        final_buffer_feasible(),
+        split_allowed(),
+        split_forbidden(),
+        completed_history_feasible(),
         *interval_scenarios(),
+        high_load_synthetic(),
     )
 
 
@@ -470,4 +717,5 @@ def all_infeasible_scenarios() -> tuple[InfeasibleScenario, ...]:
         deadline_impossible(),
         daily_capacity_impossible(),
         prerequisite_cycle(),
+        zero_capacity_impossible(),
     )

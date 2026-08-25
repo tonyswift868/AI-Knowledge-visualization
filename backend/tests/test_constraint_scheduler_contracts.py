@@ -19,10 +19,18 @@ from app.planning.scheduling import (
     TaskSplitPolicy,
     build_daily_loads,
     calculate_utilization,
+    dependency_unavailable_solution,
     ortools_dependency_status,
     validate_solution,
 )
-from app.planning.scheduling import availability, contracts, replan, validation
+from app.planning.scheduling import (
+    availability,
+    benchmark,
+    contracts,
+    replan,
+    validation,
+    validator,
+)
 from constraint_scheduler_fixtures import (
     all_feasible_scenarios,
     capacities,
@@ -47,15 +55,44 @@ def _import_names(module: object) -> set[str]:
 def test_dependency_status_requires_ortools_without_importing_or_installing_it() -> None:
     status = ortools_dependency_status()
     imported = set().union(
-        *(_import_names(module) for module in (availability, contracts, validation, replan))
+        *(
+            _import_names(module)
+            for module in (
+                availability,
+                benchmark,
+                contracts,
+                validation,
+                validator,
+                replan,
+            )
+        )
     )
 
-    assert ORTOOLS_AVAILABLE is False
-    assert DEPENDENCY_CHANGE_REQUIRED == "ortools"
-    assert status.available is False
-    assert status.dependency_change_required == "ortools"
+    assert status.available is ORTOOLS_AVAILABLE
+    assert DEPENDENCY_CHANGE_REQUIRED == (
+        None if ORTOOLS_AVAILABLE else "ortools"
+    )
+    assert status.dependency_change_required == DEPENDENCY_CHANGE_REQUIRED
+    assert (status.version is not None) is ORTOOLS_AVAILABLE
     assert "ortools" not in imported
     assert not hasattr(availability, "ORToolsScheduleSolver")
+
+
+def test_dependency_blocker_returns_explicit_valid_non_solution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = simple_feasible()
+    monkeypatch.setattr(availability, "ORTOOLS_AVAILABLE", False)
+
+    solution = dependency_unavailable_solution(scenario.problem)
+    result = validate_solution(scenario.problem, solution)
+
+    assert solution.status is ScheduleStatus.NOT_SOLVED
+    assert solution.allocations == ()
+    assert solution.solver_metadata.termination_status.value == (
+        "dependency_unavailable"
+    )
+    assert result.valid, result.violations
 
 
 @pytest.mark.parametrize(

@@ -4,9 +4,11 @@ from datetime import timedelta
 
 import pytest
 
+from app.planning.scheduling import availability
 from app.planning.scheduling import (
     DeadlineImpact,
     build_replan_delta,
+    dependency_unavailable_solution,
     validate_solution,
 )
 from constraint_scheduler_fixtures import completed_replan
@@ -145,3 +147,24 @@ def test_replan_delta_records_deadline_extension() -> None:
 
     assert delta.deadline_impact is DeadlineImpact.EXTENDED
     assert delta.deadline_days_delta == 1
+
+
+def test_replan_reports_at_risk_when_dependency_blocks_new_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = completed_replan()
+    monkeypatch.setattr(availability, "ORTOOLS_AVAILABLE", False)
+    blocked_solution = dependency_unavailable_solution(scenario.new_problem)
+
+    delta = build_replan_delta(
+        scenario.old_problem,
+        scenario.old_solution,
+        scenario.new_problem,
+        blocked_solution,
+        cause="OR-Tools dependency unavailable",
+    )
+
+    assert delta.completed_task_ids == ("completed",)
+    assert delta.remaining_task_ids == ("remaining",)
+    assert delta.moved_tasks[0].new_dates == ()
+    assert delta.deadline_impact is DeadlineImpact.AT_RISK
