@@ -37,6 +37,7 @@ class FreeChatSession:
     created_at: datetime
     updated_at: datetime
     version: int = 0
+    persona_context: str | None = None
 
     def __post_init__(self) -> None:
         if not self.session_id.strip():
@@ -49,6 +50,8 @@ class FreeChatSession:
             raise ValueError("Free Chat updated_at cannot precede created_at")
         if self.version < 0:
             raise ValueError("Free Chat version cannot be negative")
+        if self.persona_context is not None and not self.persona_context.strip():
+            raise ValueError("Free Chat persona_context cannot be blank")
         expected_sequences = tuple(range(1, len(self.messages) + 1))
         if tuple(message.sequence for message in self.messages) != expected_sequences:
             raise ValueError("Free Chat message sequences must be contiguous")
