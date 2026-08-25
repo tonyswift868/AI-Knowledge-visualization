@@ -12,7 +12,21 @@ from .models import (
     TeacherResponseModeReason,
     TeacherResponseModeRequest,
 )
+from .context_budget import (
+    ContextBudgetPlan,
+    ContextBudgetPlanner,
+    ContextSelectionReason,
+    ContextSelectionReceipt,
+    TeacherContextBudget,
+    TeacherContextBudgetError,
+    estimate_text_tokens,
+)
 from .execution import TeacherExecutionResult, TeacherExecutionService
+from .response_length import (
+    TeacherResponseLengthDecision,
+    TeacherResponseLengthPolicy,
+    TeacherResponseLengthReason,
+)
 from ..runtime_v2 import (
     TeacherLatencyClassification,
     TeacherResponseChunk,
@@ -34,11 +48,17 @@ from .testing import FakeStreamingTeacherProvider, RecordingTeacherChunkObserver
 __all__ = [
     "TEACHER_FASTPATH_SCHEMA_VERSION",
     "DynamicTeacherTail",
+    "ContextBudgetPlan",
+    "ContextBudgetPlanner",
+    "ContextSelectionReason",
+    "ContextSelectionReceipt",
     "PromptIdentity",
     "StableTeacherPrefix",
     "TeacherPromptAssemblyError",
     "TeacherPromptEnvelope",
     "TeacherLatencyBudget",
+    "TeacherContextBudget",
+    "TeacherContextBudgetError",
     "TeacherLatencyClassification",
     "TeacherLatencyClassifier",
     "TeacherResponseChunk",
@@ -47,6 +67,9 @@ __all__ = [
     "TeacherResponseModeReason",
     "TeacherResponseModeRequest",
     "TeacherResponseModeResolver",
+    "TeacherResponseLengthDecision",
+    "TeacherResponseLengthPolicy",
+    "TeacherResponseLengthReason",
     "TeacherStreamReceipt",
     "TeacherStreamStatus",
     "StreamingTeacherPort",
@@ -59,4 +82,5 @@ __all__ = [
     "build_teacher_prompt_envelope",
     "stable_teacher_prefix",
     "run_streaming_teacher_turn",
+    "estimate_text_tokens",
 ]

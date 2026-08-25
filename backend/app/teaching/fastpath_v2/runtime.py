@@ -39,6 +39,12 @@ from ..runtime_v2 import (
 )
 from ..student_move import StudentMoveContext, StudentMoveResolution, StudentMoveResolver
 from .latency import TeacherLatencyClassifier
+from .context_budget import (
+    ContextBudgetPlanner,
+    TeacherContextBudget,
+    TeacherContextBudgetError,
+    estimate_text_tokens,
+)
 from .models import (
     TeacherLatencyBudget,
     TeacherPromptEnvelope,
@@ -53,6 +59,9 @@ from .ports import (
     TeacherChunkObserverPort,
 )
 from .prompt import TeacherPromptAssemblyError, build_teacher_prompt_envelope
+from .response_length import (
+    TeacherResponseLengthPolicy,
+)
 
 
 _EXAMPLE_TEACHER_MOVES = frozenset(
@@ -277,6 +286,8 @@ async def run_streaming_teacher_turn(
     learner_context: LearnerContext,
     provider: StreamingTeacherPort,
     latency_budget: TeacherLatencyBudget,
+    context_budget: TeacherContextBudget | None = None,
+    response_length_policy: TeacherResponseLengthPolicy | None = None,
     evidence: Sequence[TeacherEvidence] = (),
     assessment_state: AssessmentState | None = None,
     explicit_action: StudentMove | str | None = None,
@@ -284,6 +295,7 @@ async def run_streaming_teacher_turn(
     channel: TeacherRuntimeChannel | str = TeacherRuntimeChannel.LEARNING,
     use_example_engine: bool = True,
     response_mode_resolver: TeacherResponseModeResolver | None = None,
+    context_budget_planner: ContextBudgetPlanner | None = None,
     latency_classifier: TeacherLatencyClassifier | None = None,
     chunk_observer: TeacherChunkObserverPort | None = None,
     clock: PerformanceClockPort | None = None,
@@ -336,22 +348,46 @@ async def run_streaming_teacher_turn(
             evidence=evidence,
         )
     ).mode
+    response_length = (
+        response_length_policy.resolve(
+            response_mode=mode,
+            student_move=resolution.primary_move,
+        )
+        if response_length_policy is not None
+        else None
+    )
     classifier = latency_classifier or TeacherLatencyClassifier()
     evidence_ids = tuple(
         item for item in brief.relevant_evidence_ids if item in {e.evidence_id for e in evidence}
     )
     try:
-        envelope = build_teacher_prompt_envelope(
-            teaching_brief=brief,
-            learner_context=turn_context,
-            latest_user_message=latest_user_message,
-            evidence=evidence,
-            assessment_state=turn_assessment_state,
-            response_mode=mode,
-            example_plan=example_plan,
-            recent_conversation=recent_conversation,
-        )
-    except TeacherPromptAssemblyError as error:
+        if context_budget is not None:
+            context_plan = (context_budget_planner or ContextBudgetPlanner()).plan(
+                budget=context_budget,
+                teaching_brief=brief,
+                learner_context=turn_context,
+                latest_user_message=latest_user_message,
+                evidence=evidence,
+                assessment_state=turn_assessment_state,
+                response_mode=mode,
+                response_length=response_length,
+                example_plan=example_plan,
+                recent_conversation=recent_conversation,
+            )
+            envelope = context_plan.envelope
+        else:
+            envelope = build_teacher_prompt_envelope(
+                teaching_brief=brief,
+                learner_context=turn_context,
+                latest_user_message=latest_user_message,
+                evidence=evidence,
+                assessment_state=turn_assessment_state,
+                response_mode=mode,
+                response_length=response_length,
+                example_plan=example_plan,
+                recent_conversation=recent_conversation,
+            )
+    except (TeacherPromptAssemblyError, TeacherContextBudgetError) as error:
         trace = _trace(
             resolution=resolution,
             brief=brief,
@@ -508,6 +544,12 @@ async def run_streaming_teacher_turn(
         text = "".join(chunk.text_delta for chunk in chunks).strip()
         if not text:
             raise ValueError("stream response text is empty")
+        if (
+            response_length is not None
+            and estimate_text_tokens(text)
+            > response_length.maximum_output_tokens
+        ):
+            raise ValueError("stream response exceeds response length policy")
         final_chunk = chunks[-1]
         if not final_chunk.is_final:
             raise ValueError("final metadata must be the last chunk")
@@ -622,14 +664,20 @@ class TeacherFastPathRuntime:
         self,
         *,
         latency_budget: TeacherLatencyBudget,
+        context_budget: TeacherContextBudget | None = None,
+        response_length_policy: TeacherResponseLengthPolicy | None = None,
         response_mode_resolver: TeacherResponseModeResolver | None = None,
         latency_classifier: TeacherLatencyClassifier | None = None,
+        context_budget_planner: ContextBudgetPlanner | None = None,
         chunk_observer: TeacherChunkObserverPort | None = None,
         clock: PerformanceClockPort | None = None,
     ) -> None:
         self._latency_budget = latency_budget
+        self._context_budget = context_budget
+        self._response_length_policy = response_length_policy
         self._response_mode_resolver = response_mode_resolver
         self._latency_classifier = latency_classifier
+        self._context_budget_planner = context_budget_planner
         self._chunk_observer = chunk_observer
         self._clock = clock
 
@@ -637,8 +685,11 @@ class TeacherFastPathRuntime:
         return await run_streaming_teacher_turn(
             **kwargs,
             latency_budget=self._latency_budget,
+            context_budget=self._context_budget,
+            response_length_policy=self._response_length_policy,
             response_mode_resolver=self._response_mode_resolver,
             latency_classifier=self._latency_classifier,
+            context_budget_planner=self._context_budget_planner,
             chunk_observer=self._chunk_observer,
             clock=self._clock,
         )

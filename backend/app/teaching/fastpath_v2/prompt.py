@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import lru_cache
 
 from ..composer import ConversationTurn, TeacherEvidence
@@ -29,6 +29,7 @@ from .models import (
     TeacherPromptEnvelope,
     TeacherResponseMode,
 )
+from .response_length import TeacherResponseLengthDecision
 
 
 class TeacherPromptAssemblyError(Exception):
@@ -96,10 +97,12 @@ def build_teacher_prompt_envelope(
     *,
     teaching_brief: TeachingBrief,
     learner_context: LearnerContext,
+    learner_context_payload: Mapping[str, object] | None = None,
     latest_user_message: str,
     evidence: Sequence[TeacherEvidence],
     assessment_state: AssessmentState,
     response_mode: TeacherResponseMode,
+    response_length: TeacherResponseLengthDecision | None = None,
     example_plan: ExamplePlan | None = None,
     recent_conversation: Sequence[ConversationTurn] = (),
 ) -> TeacherPromptEnvelope:
@@ -112,7 +115,12 @@ def build_teacher_prompt_envelope(
     dynamic_sections = (
         ("RESPONSE_MODE", response_mode.value),
         ("TEACHING_BRIEF", teaching_brief.model_dump(mode="json")),
-        ("LATEST_LEARNER_CONTEXT", learner_context.model_dump(mode="json")),
+        (
+            "LATEST_LEARNER_CONTEXT",
+            dict(learner_context_payload)
+            if learner_context_payload is not None
+            else learner_context.model_dump(mode="json"),
+        ),
         ("CURRENT_CONCEPT", learner_context.current_concept),
         (
             "EXAMPLE_PLAN",
@@ -121,6 +129,12 @@ def build_teacher_prompt_envelope(
         ("LATEST_USER_MESSAGE", message),
         ("DYNAMIC_EVIDENCE", [item.model_dump(mode="json") for item in selected]),
         ("ASSESSMENT_STATE", assessment_state.value),
+        (
+            "RESPONSE_LENGTH_POLICY",
+            response_length.model_dump(mode="json")
+            if response_length is not None
+            else None,
+        ),
         (
             "RECENT_CONVERSATION",
             [item.model_dump(mode="json") for item in recent_conversation],

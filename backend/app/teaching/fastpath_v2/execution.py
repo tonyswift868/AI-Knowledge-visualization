@@ -23,6 +23,7 @@ from ..session_v2 import (
     SessionTurnCommand,
 )
 from .latency import TeacherLatencyClassifier
+from .context_budget import ContextBudgetPlanner, TeacherContextBudget
 from .models import TeacherLatencyBudget
 from .policy import TeacherResponseModeResolver
 from .ports import (
@@ -31,6 +32,7 @@ from .ports import (
     TeacherChunkObserverPort,
 )
 from .runtime import TeacherFastPathRuntime
+from .response_length import TeacherResponseLengthPolicy
 
 
 class _ExecutionModel(BaseModel):
@@ -62,17 +64,23 @@ class TeacherExecutionService:
         session_store: ClassroomSessionStorePort,
         learning_position_port: LearningPositionPort,
         latency_budget: TeacherLatencyBudget,
+        context_budget: TeacherContextBudget,
+        response_length_policy: TeacherResponseLengthPolicy,
         evaluation_port: EvaluationPort | None = None,
         response_mode_resolver: TeacherResponseModeResolver | None = None,
         latency_classifier: TeacherLatencyClassifier | None = None,
+        context_budget_planner: ContextBudgetPlanner | None = None,
         chunk_observer: TeacherChunkObserverPort | None = None,
         performance_clock: PerformanceClockPort | None = None,
         application_clock: ClockPort | None = None,
     ) -> "TeacherExecutionService":
         fast_runtime = TeacherFastPathRuntime(
             latency_budget=latency_budget,
+            context_budget=context_budget,
+            response_length_policy=response_length_policy,
             response_mode_resolver=response_mode_resolver,
             latency_classifier=latency_classifier,
+            context_budget_planner=context_budget_planner,
             chunk_observer=chunk_observer,
             clock=performance_clock,
         )

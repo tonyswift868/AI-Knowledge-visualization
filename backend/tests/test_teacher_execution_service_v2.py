@@ -7,9 +7,11 @@ import inspect
 from app.teaching.application_v2 import TurnCommitStatus, TurnTransactionStatus
 from app.teaching.fastpath_v2 import (
     FakeStreamingTeacherProvider,
+    TeacherContextBudget,
     TeacherExecutionService,
     TeacherLatencyBudget,
     TeacherResponseMode,
+    TeacherResponseLengthPolicy,
 )
 from app.teaching.session_v2 import (
     ClassroomSessionState,
@@ -31,6 +33,27 @@ def _budget() -> TeacherLatencyBudget:
     )
 
 
+def _context_budget() -> TeacherContextBudget:
+    return TeacherContextBudget(
+        budget_id="execution-context-fixture",
+        maximum_prompt_tokens=8_000,
+        maximum_evidence_tokens=4_000,
+        maximum_history_tokens=1_000,
+    )
+
+
+def _length_policy() -> TeacherResponseLengthPolicy:
+    return TeacherResponseLengthPolicy(
+        fast_clarification_target_tokens=80,
+        fast_why_target_tokens=160,
+        fast_example_target_tokens=220,
+        fast_default_target_tokens=140,
+        fast_maximum_output_tokens=320,
+        deep_target_tokens=600,
+        deep_maximum_output_tokens=1_200,
+    )
+
+
 def _service():
     state = ClassroomStateFixture(("session-1",))
     store = InMemoryClassroomSessionStore()
@@ -41,6 +64,8 @@ def _service():
         session_store=store,
         learning_position_port=state,
         latency_budget=_budget(),
+        context_budget=_context_budget(),
+        response_length_policy=_length_policy(),
     )
     return service, store, state
 
@@ -67,6 +92,8 @@ def test_normal_fast_turn_flows_to_existing_pending_commit_plan() -> None:
         assert application.transaction.commit_plan.status is TurnCommitStatus.PENDING
         assert application.runtime_result is not None
         assert state.commit_calls == []
+        assert "<RESPONSE_LENGTH_POLICY>" in provider.envelopes[0].dynamic_tail.content
+        assert '"maximum_output_tokens":320' in provider.envelopes[0].dynamic_tail.content
 
         committed = await service.commit_turn(command)
         assert committed.transaction.status is TurnTransactionStatus.COMMITTED
