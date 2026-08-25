@@ -26,8 +26,16 @@ from .contracts import (
     MissReasonCount,
 )
 from .identity_policy import DEFAULT_CACHE_IDENTITY_POLICY, CacheIdentityPolicy
+from .profiles import (
+    ReviewActionCostTrace,
+    ReviewCostProfile,
+    TeacherCostProfileReport,
+    TeacherTurnCostTrace,
+    build_review_cost_profile,
+    build_teacher_cost_profile_report,
+)
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 class CacheMetricsStoreError(RuntimeError):
@@ -45,6 +53,10 @@ class CacheMetricsStoreCorruption(CacheMetricsStoreError):
 
 
 class CacheMetricsSchemaMissing(CacheMetricsStoreError):
+    pass
+
+
+class CostProfileConflict(CacheMetricsStoreError, ValueError):
     pass
 
 
@@ -147,6 +159,77 @@ def _event_from_payload(payload_json: str) -> CacheEvent:
     )
 
 
+def _teacher_trace_payload(trace: TeacherTurnCostTrace) -> dict[str, object]:
+    money = lambda value: str(value) if value is not None else None
+    return {
+        "trace_id": trace.trace_id,
+        "mode": trace.mode.value,
+        "prompt_tokens": trace.prompt_tokens,
+        "stable_prefix_tokens": trace.stable_prefix_tokens,
+        "dynamic_tokens": trace.dynamic_tokens,
+        "cached_input_tokens": trace.cached_input_tokens,
+        "output_tokens": trace.output_tokens,
+        "provider_call_count": trace.provider_call_count,
+        "estimated_actual_cost": money(trace.estimated_actual_cost),
+        "currency": trace.currency,
+        "stable_prefix_estimated_cost": money(trace.stable_prefix_estimated_cost),
+        "dynamic_input_estimated_cost": money(trace.dynamic_input_estimated_cost),
+        "output_estimated_cost": money(trace.output_estimated_cost),
+        "ttft_ms": money(trace.ttft_ms),
+        "estimation_basis": trace.estimation_basis,
+        "cost_classification": trace.cost_classification,
+        "synthetic": trace.synthetic,
+    }
+
+
+def _teacher_trace_from_payload(payload_json: str) -> TeacherTurnCostTrace:
+    payload = json.loads(payload_json)
+    for name in (
+        "estimated_actual_cost",
+        "stable_prefix_estimated_cost",
+        "dynamic_input_estimated_cost",
+        "output_estimated_cost",
+        "ttft_ms",
+    ):
+        if payload[name] is not None:
+            payload[name] = Decimal(payload[name])
+    return TeacherTurnCostTrace(**payload)
+
+
+def _review_trace_payload(trace: ReviewActionCostTrace) -> dict[str, object]:
+    return {
+        "trace_id": trace.trace_id,
+        "evaluation_id": trace.evaluation_id,
+        "action": trace.action.value,
+        "provider_call_count": trace.provider_call_count,
+        "input_tokens": trace.input_tokens,
+        "output_tokens": trace.output_tokens,
+        "estimated_cost": (
+            str(trace.estimated_cost) if trace.estimated_cost is not None else None
+        ),
+        "currency": trace.currency,
+        "synthetic": trace.synthetic,
+        "cost_classification": trace.cost_classification,
+    }
+
+
+def _review_trace_from_payload(payload_json: str) -> ReviewActionCostTrace:
+    payload = json.loads(payload_json)
+    if payload["estimated_cost"] is not None:
+        payload["estimated_cost"] = Decimal(payload["estimated_cost"])
+    return ReviewActionCostTrace(**payload)
+
+
+def _profile_payload(payload: dict[str, object]) -> tuple[str, str]:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return encoded, hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 class CacheMetricsStore:
     """Local-only SQLite event store for persistent cache metrics.
 
@@ -234,6 +317,36 @@ class CacheMetricsStore:
                 f"unsupported cache metrics schema version: {row['value']}"
             )
 
+    @staticmethod
+    def _set_or_migrate_schema(connection: sqlite3.Connection) -> None:
+        row = connection.execute(
+            "SELECT value FROM cache_observatory_metadata WHERE key='schema_version'"
+        ).fetchone()
+        if row is None:
+            connection.execute(
+                "INSERT INTO cache_observatory_metadata(key, value) VALUES(?, ?)",
+                ("schema_version", str(_SCHEMA_VERSION)),
+            )
+            return
+        try:
+            current = int(row["value"])
+        except (TypeError, ValueError) as exc:
+            raise CacheMetricsStoreCorruption(
+                f"invalid cache metrics schema version: {row['value']}"
+            ) from exc
+        if current == _SCHEMA_VERSION:
+            return
+        if current == 1:
+            connection.execute(
+                "UPDATE cache_observatory_metadata SET value=? "
+                "WHERE key='schema_version'",
+                (str(_SCHEMA_VERSION),),
+            )
+            return
+        raise CacheMetricsStoreCorruption(
+            f"unsupported cache metrics schema version: {current}"
+        )
+
     @contextmanager
     def _reader(self) -> Iterator[sqlite3.Connection]:
         connection = self._connect()
@@ -320,6 +433,35 @@ class CacheMetricsStore:
             CREATE INDEX IF NOT EXISTS cache_events_trace_idx
             ON cache_events(trace_id, sequence)
             """,
+            """
+            CREATE TABLE IF NOT EXISTS teacher_cost_traces (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                trace_id TEXT NOT NULL UNIQUE,
+                mode TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                payload_hash TEXT NOT NULL,
+                recorded_at_ms INTEGER NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS teacher_cost_mode_idx
+            ON teacher_cost_traces(mode, sequence)
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS review_cost_traces (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                trace_id TEXT NOT NULL UNIQUE,
+                evaluation_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                payload_hash TEXT NOT NULL,
+                recorded_at_ms INTEGER NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS review_cost_evaluation_idx
+            ON review_cost_traces(evaluation_id, sequence)
+            """,
         )
         with self._writer_lock:
             connection = self._connect()
@@ -334,14 +476,7 @@ class CacheMetricsStore:
                 connection.execute("BEGIN IMMEDIATE")
                 for statement in statements:
                     connection.execute(statement)
-                connection.execute(
-                    """
-                    INSERT INTO cache_observatory_metadata(key, value)
-                    VALUES('schema_version', ?)
-                    ON CONFLICT(key) DO NOTHING
-                    """,
-                    (str(_SCHEMA_VERSION),),
-                )
+                self._set_or_migrate_schema(connection)
                 self._require_schema(connection)
                 connection.execute("COMMIT")
             except CacheMetricsStoreError:
@@ -433,6 +568,138 @@ class CacheMetricsStore:
         immutable_events = tuple(events)
         with self._writer() as connection:
             return sum(self._insert(connection, event) for event in immutable_events)
+
+    def _insert_profile(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        table: str,
+        trace_id: str,
+        columns: tuple[object, ...],
+        payload: dict[str, object],
+    ) -> bool:
+        if table not in {"teacher_cost_traces", "review_cost_traces"}:
+            raise ValueError("unsupported cost profile table")
+        payload_json, payload_hash = _profile_payload(payload)
+        recorded_at_ms = int(self._clock_ms())
+        if table == "teacher_cost_traces":
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO teacher_cost_traces(
+                    trace_id, mode, payload_json, payload_hash, recorded_at_ms
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (trace_id, *columns, payload_json, payload_hash, recorded_at_ms),
+            )
+        else:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO review_cost_traces(
+                    trace_id, evaluation_id, action, payload_json, payload_hash,
+                    recorded_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (trace_id, *columns, payload_json, payload_hash, recorded_at_ms),
+            )
+        if cursor.rowcount == 1:
+            return True
+        existing = connection.execute(
+            f"SELECT payload_hash, payload_json FROM {table} WHERE trace_id=?",
+            (trace_id,),
+        ).fetchone()
+        if (
+            existing is not None
+            and existing["payload_hash"] == payload_hash
+            and existing["payload_json"] == payload_json
+        ):
+            return False
+        raise CostProfileConflict(
+            "trace_id is already bound to a different cost profile payload"
+        )
+
+    def ingest_teacher_trace(self, trace: TeacherTurnCostTrace) -> bool:
+        if not isinstance(trace, TeacherTurnCostTrace):
+            raise TypeError("trace must be TeacherTurnCostTrace")
+        with self._writer() as connection:
+            return self._insert_profile(
+                connection,
+                table="teacher_cost_traces",
+                trace_id=trace.trace_id,
+                columns=(trace.mode.value,),
+                payload=_teacher_trace_payload(trace),
+            )
+
+    def extend_teacher_traces(self, traces: Iterable[TeacherTurnCostTrace]) -> int:
+        immutable_traces = tuple(traces)
+        if any(
+            not isinstance(trace, TeacherTurnCostTrace) for trace in immutable_traces
+        ):
+            raise TypeError("traces must contain TeacherTurnCostTrace values")
+        with self._writer() as connection:
+            return sum(
+                self._insert_profile(
+                    connection,
+                    table="teacher_cost_traces",
+                    trace_id=trace.trace_id,
+                    columns=(trace.mode.value,),
+                    payload=_teacher_trace_payload(trace),
+                )
+                for trace in immutable_traces
+            )
+
+    def ingest_review_trace(self, trace: ReviewActionCostTrace) -> bool:
+        if not isinstance(trace, ReviewActionCostTrace):
+            raise TypeError("trace must be ReviewActionCostTrace")
+        with self._writer() as connection:
+            return self._insert_profile(
+                connection,
+                table="review_cost_traces",
+                trace_id=trace.trace_id,
+                columns=(trace.evaluation_id, trace.action.value),
+                payload=_review_trace_payload(trace),
+            )
+
+    def extend_review_traces(self, traces: Iterable[ReviewActionCostTrace]) -> int:
+        immutable_traces = tuple(traces)
+        if any(
+            not isinstance(trace, ReviewActionCostTrace) for trace in immutable_traces
+        ):
+            raise TypeError("traces must contain ReviewActionCostTrace values")
+        with self._writer() as connection:
+            return sum(
+                self._insert_profile(
+                    connection,
+                    table="review_cost_traces",
+                    trace_id=trace.trace_id,
+                    columns=(trace.evaluation_id, trace.action.value),
+                    payload=_review_trace_payload(trace),
+                )
+                for trace in immutable_traces
+            )
+
+    def teacher_traces(self) -> tuple[TeacherTurnCostTrace, ...]:
+        with self._reader() as connection:
+            rows = tuple(
+                connection.execute(
+                    "SELECT payload_json FROM teacher_cost_traces ORDER BY sequence"
+                ).fetchall()
+            )
+        return tuple(_teacher_trace_from_payload(row["payload_json"]) for row in rows)
+
+    def review_traces(self) -> tuple[ReviewActionCostTrace, ...]:
+        with self._reader() as connection:
+            rows = tuple(
+                connection.execute(
+                    "SELECT payload_json FROM review_cost_traces ORDER BY sequence"
+                ).fetchall()
+            )
+        return tuple(_review_trace_from_payload(row["payload_json"]) for row in rows)
+
+    def teacher_cost_profile(self) -> TeacherCostProfileReport:
+        return build_teacher_cost_profile_report(self.teacher_traces())
+
+    def review_cost_profile(self) -> ReviewCostProfile:
+        return build_review_cost_profile(self.review_traces())
 
     @staticmethod
     def _time_filter(

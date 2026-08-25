@@ -485,6 +485,15 @@ class SQLiteExecutionStore:
             ).fetchone()
             return self._session_from_row(row) if row is not None else None
 
+    def list_sessions(self) -> tuple[ExecutionSessionRecord, ...]:
+        """Return durable sessions without mutating budget or execution state."""
+
+        with self._reader() as connection:
+            rows = connection.execute(
+                "SELECT * FROM execution_sessions ORDER BY created_at, session_id"
+            ).fetchall()
+            return tuple(self._session_from_row(row) for row in rows)
+
     def authorize_operation(
         self,
         *,

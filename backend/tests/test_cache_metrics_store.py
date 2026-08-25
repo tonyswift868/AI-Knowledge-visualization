@@ -12,6 +12,11 @@ from app.cost.cache_observatory import (
     CacheIdentity,
     CacheLayer,
     CacheMissReason,
+    CostProfileConflict,
+    ReviewAction,
+    ReviewActionCostTrace,
+    TeacherCostMode,
+    TeacherTurnCostTrace,
 )
 from app.cost.cache_observatory.persistence import (
     CacheMetricsStore,
@@ -175,3 +180,89 @@ def test_corrupt_database_fails_closed_without_reinitializing(tmp_path) -> None:
     with pytest.raises(CacheMetricsStoreCorruption):
         CacheMetricsStore(database)
     assert database.read_bytes() == original
+
+
+def test_teacher_and_review_profiles_survive_restart_without_prompt_data(
+    tmp_path,
+) -> None:
+    database = tmp_path / "profiles.db"
+    store = CacheMetricsStore(database)
+    teacher = TeacherTurnCostTrace(
+        trace_id="teacher-fast-1",
+        mode=TeacherCostMode.FAST,
+        prompt_tokens=1_000,
+        stable_prefix_tokens=700,
+        dynamic_tokens=300,
+        cached_input_tokens=700,
+        output_tokens=200,
+        provider_call_count=1,
+        estimated_actual_cost=Decimal("0.12"),
+        currency="USD",
+        stable_prefix_estimated_cost=Decimal("0.01"),
+        dynamic_input_estimated_cost=Decimal("0.03"),
+        output_estimated_cost=Decimal("0.08"),
+        ttft_ms=Decimal(90),
+    )
+    review = ReviewActionCostTrace(
+        trace_id="review-objective-1",
+        evaluation_id="evaluation-1",
+        action=ReviewAction.OBJECTIVE_EVALUATION,
+    )
+
+    assert store.ingest_teacher_trace(teacher)
+    assert store.ingest_review_trace(review)
+    assert not store.ingest_teacher_trace(teacher)
+    with pytest.raises(CostProfileConflict):
+        store.ingest_teacher_trace(replace(teacher, output_tokens=201))
+    store.close()
+
+    restarted = CacheMetricsStore(database)
+    teacher_profile = restarted.teacher_cost_profile()
+    review_profile = restarted.review_cost_profile()
+    assert teacher_profile.fast.turn_count == 1
+    assert teacher_profile.fast.cached_input_tokens == 700
+    assert teacher_profile.fast.estimated_actual_cost == Decimal("0.12")
+    assert teacher_profile.fast.ttft.p50_ms == Decimal(90)
+    assert review_profile.evaluation_count == 1
+    assert review_profile.provider_call_count == 0
+    assert review_profile.zero_provider_evaluation_count == 1
+
+    connection = sqlite3.connect(database)
+    serialized = connection.execute(
+        "SELECT payload_json FROM teacher_cost_traces"
+    ).fetchone()[0]
+    connection.close()
+    assert "prompt_tokens" in serialized
+    assert "raw_prompt" not in serialized
+    assert "api_key" not in serialized.casefold()
+
+
+def test_schema_v1_store_is_migrated_to_cost_profile_schema(tmp_path) -> None:
+    database = tmp_path / "v1.db"
+    store = CacheMetricsStore(database)
+    store.close()
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "UPDATE cache_observatory_metadata SET value='1' WHERE key='schema_version'"
+    )
+    connection.execute("DROP TABLE teacher_cost_traces")
+    connection.execute("DROP TABLE review_cost_traces")
+    connection.commit()
+    connection.close()
+
+    migrated = CacheMetricsStore(database)
+    connection = sqlite3.connect(database)
+    version = connection.execute(
+        "SELECT value FROM cache_observatory_metadata WHERE key='schema_version'"
+    ).fetchone()[0]
+    table_names = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    connection.close()
+    assert version == "2"
+    assert {"teacher_cost_traces", "review_cost_traces"} <= table_names
+    assert migrated.teacher_traces() == ()
+    assert migrated.review_traces() == ()
