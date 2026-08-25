@@ -9,6 +9,8 @@ from .models import (
     ClassroomSessionState,
     CompletedSessionTurn,
     PendingTurnRecovery,
+    RecoveryDecision,
+    RecoveryOutcome,
     SessionRecoverySnapshot,
     SessionTurnCommand,
 )
@@ -30,6 +32,8 @@ __all__ = [
     "InMemoryClassroomSessionStore",
     "LearningPositionPort",
     "PendingTurnRecovery",
+    "RecoveryDecision",
+    "RecoveryOutcome",
     "SessionRecoverySnapshot",
     "SessionTurnCommand",
 ]

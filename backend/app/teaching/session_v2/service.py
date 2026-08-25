@@ -13,6 +13,8 @@ from .models import (
     ClassroomSessionState,
     CompletedSessionTurn,
     PendingTurnRecovery,
+    RecoveryDecision,
+    RecoveryOutcome,
     SessionRecoverySnapshot,
     SessionTurnCommand,
 )
@@ -214,6 +216,107 @@ class ClassroomSessionRuntime:
                 expected_revision=snapshot.revision,
             )
             return self._receipt(saved, ClassroomSessionAction.COMPLETED)
+
+    async def pause_session(self, session_id: str) -> ClassroomSessionReceipt:
+        async with self._lock(session_id):
+            snapshot = await self._required(session_id)
+            if snapshot.state is ClassroomSessionState.PAUSED:
+                return self._receipt(
+                    snapshot,
+                    ClassroomSessionAction.PAUSED,
+                    idempotent_replay=True,
+                )
+            if snapshot.state is not ClassroomSessionState.ACTIVE:
+                raise ClassroomSessionError("SESSION_NOT_ACTIVE", snapshot=snapshot)
+            saved = await self._session_store.save(
+                snapshot.model_copy(update={"state": ClassroomSessionState.PAUSED}),
+                expected_revision=snapshot.revision,
+            )
+            return self._receipt(saved, ClassroomSessionAction.PAUSED)
+
+    async def resume_session(self, session_id: str) -> ClassroomSessionReceipt:
+        async with self._lock(session_id):
+            snapshot = await self._required(session_id)
+            if snapshot.state is ClassroomSessionState.ACTIVE:
+                return self._receipt(
+                    snapshot,
+                    ClassroomSessionAction.RESUMED,
+                    idempotent_replay=True,
+                )
+            if snapshot.state is not ClassroomSessionState.PAUSED:
+                raise ClassroomSessionError("SESSION_NOT_PAUSED", snapshot=snapshot)
+            saved = await self._session_store.save(
+                snapshot.model_copy(update={"state": ClassroomSessionState.ACTIVE}),
+                expected_revision=snapshot.revision,
+            )
+            return self._receipt(saved, ClassroomSessionAction.RESUMED)
+
+    async def recover_pending_turn(self, session_id: str) -> RecoveryOutcome:
+        """Restore a pending Application transaction without a Provider call."""
+
+        async with self._lock(session_id):
+            snapshot = await self._required(session_id)
+            if snapshot.state is ClassroomSessionState.ABORTED:
+                raise ClassroomSessionError("SESSION_ABORTED", snapshot=snapshot)
+            if snapshot.state is ClassroomSessionState.COMPLETED:
+                raise ClassroomSessionError("SESSION_COMPLETED", snapshot=snapshot)
+            pending = snapshot.pending_turn
+            if pending is None:
+                return RecoveryOutcome(
+                    decision=RecoveryDecision.NO_PENDING_TURN,
+                    snapshot=snapshot,
+                )
+
+            recovering = await self._session_store.save(
+                snapshot.model_copy(update={"state": ClassroomSessionState.RECOVERING}),
+                expected_revision=snapshot.revision,
+            )
+            restored = await self._teacher_application.restore_pending_turn(
+                pending.command,
+                pending.application_result,
+            )
+            paused = await self._session_store.save(
+                recovering.model_copy(update={"state": ClassroomSessionState.PAUSED}),
+                expected_revision=recovering.revision,
+            )
+            return RecoveryOutcome(
+                decision=RecoveryDecision.RESUME_PENDING_COMMIT,
+                snapshot=paused,
+                pending_result=restored,
+            )
+
+    async def abort_session(self, session_id: str) -> ClassroomSessionReceipt:
+        async with self._lock(session_id):
+            snapshot = await self._required(session_id)
+            if snapshot.state is ClassroomSessionState.ABORTED:
+                return self._receipt(
+                    snapshot,
+                    ClassroomSessionAction.ABORTED,
+                    idempotent_replay=True,
+                )
+            if snapshot.state is ClassroomSessionState.COMPLETED:
+                raise ClassroomSessionError("SESSION_COMPLETED", snapshot=snapshot)
+            pending = snapshot.pending_turn
+            if pending is not None:
+                await self._teacher_application.restore_pending_turn(
+                    pending.command,
+                    pending.application_result,
+                )
+                await self._teacher_application.abort_turn(
+                    session_id=session_id,
+                    turn_id=pending.command.turn_id,
+                    idempotency_key=pending.command.idempotency_key,
+                )
+            saved = await self._session_store.save(
+                snapshot.model_copy(
+                    update={
+                        "state": ClassroomSessionState.ABORTED,
+                        "pending_turn": None,
+                    }
+                ),
+                expected_revision=snapshot.revision,
+            )
+            return self._receipt(saved, ClassroomSessionAction.ABORTED)
 
 
 __all__ = ["ClassroomSessionRuntime"]

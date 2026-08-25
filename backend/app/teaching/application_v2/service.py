@@ -452,6 +452,56 @@ class TeacherTurnApplicationService:
                 record.result = pending
             return pending
 
+    async def restore_pending_turn(
+        self,
+        command: TeacherTurnCommand,
+        pending_result: TeacherTurnApplicationResult,
+    ) -> TeacherTurnApplicationResult:
+        """Restore a durable pending transaction without running Runtime again."""
+
+        fingerprint = _command_fingerprint(command)
+        transaction = pending_result.transaction
+        plan = transaction.commit_plan
+        valid = (
+            transaction.turn_id == command.turn_id
+            and transaction.session_id == command.session_id
+            and transaction.idempotency_key == command.idempotency_key
+            and transaction.command_fingerprint == fingerprint
+            and transaction.status is TurnTransactionStatus.PENDING_COMMIT
+            and plan.turn_id == command.turn_id
+            and plan.expected_learning_position
+            == command.expected_learning_position
+            and plan.status is TurnCommitStatus.PENDING
+            and pending_result.receipt.turn_id == command.turn_id
+            and pending_result.receipt.commit_status is TurnCommitStatus.PENDING
+            and pending_result.runtime_result is not None
+        )
+        if not valid:
+            raise TeacherApplicationError(
+                "INVALID_PENDING_RECOVERY",
+                transaction=transaction,
+                receipt=pending_result.receipt,
+            )
+
+        async with self._session_lock(command.session_id):
+            async with self._registry_lock:
+                existing = await self._existing_record(command, fingerprint)
+                if existing is not None:
+                    if existing.result == pending_result:
+                        return existing.result.model_copy(
+                            update={"idempotent_replay": True}
+                        )
+                    raise self._error_from_record(
+                        existing,
+                        code="PENDING_RECOVERY_CONFLICT",
+                    )
+                record = _TurnRecord(command, fingerprint, pending_result)
+                self._records_by_turn[(command.session_id, command.turn_id)] = record
+                self._turn_by_idempotency[
+                    (command.session_id, command.idempotency_key)
+                ] = command.turn_id
+                return pending_result
+
     async def complete_turn(
         self,
         *,

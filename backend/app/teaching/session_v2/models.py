@@ -35,7 +35,16 @@ class ClassroomSessionAction(str, Enum):
     ACTIVATED = "activated"
     TURN_STARTED = "turn_started"
     TURN_COMMITTED = "turn_committed"
+    PAUSED = "paused"
+    RESUMED = "resumed"
+    RECOVERED = "recovered"
     COMPLETED = "completed"
+    ABORTED = "aborted"
+
+
+class RecoveryDecision(str, Enum):
+    NO_PENDING_TURN = "no_pending_turn"
+    RESUME_PENDING_COMMIT = "resume_pending_commit"
 
 
 class SessionTurnCommand(_SessionModel):
@@ -92,6 +101,12 @@ class ClassroomSessionReceipt(_SessionModel):
     idempotent_replay: bool = False
 
 
+class RecoveryOutcome(_SessionModel):
+    decision: RecoveryDecision
+    snapshot: SessionRecoverySnapshot
+    pending_result: TeacherTurnApplicationResult | None = None
+
+
 class ClassroomSessionError(Exception):
     """Fail-closed session error with the latest durable snapshot."""
 
@@ -117,6 +132,8 @@ __all__ = [
     "ClassroomSessionState",
     "CompletedSessionTurn",
     "PendingTurnRecovery",
+    "RecoveryDecision",
+    "RecoveryOutcome",
     "SessionRecoverySnapshot",
     "SessionTurnCommand",
 ]
