@@ -25,3 +25,4 @@ argon2-cffi==25.1.0
 networkx==3.6.1
 yt-dlp==2026.8.19
 ortools==9.15.6755
+fsrs==6.3.2
