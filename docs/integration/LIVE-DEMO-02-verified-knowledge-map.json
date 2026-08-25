@@ -1,0 +1,57 @@
+{
+  "schema_version": "mentorflow.feature-integration-manifest.v1",
+  "work_item": "LIVE-DEMO-02",
+  "feature": "Verified Knowledge Map API + React Flow Experience",
+  "backend": {
+    "router_module": "app.knowledge.map_read_api",
+    "router_symbol": "router",
+    "prefix": "/api/verified-knowledge-map",
+    "registration_required": true,
+    "registration_instructions": [
+      "from app.knowledge.map_read_api import router as verified_knowledge_map_router",
+      "app.include_router(verified_knowledge_map_router)"
+    ],
+    "endpoints": [
+      "GET /demo/java-database",
+      "GET /maps/{map_reference}",
+      "GET /maps/{map_reference}/concepts/{concept_reference}",
+      "GET /maps/{map_reference}/roots",
+      "GET /maps/{map_reference}/leaves",
+      "GET /maps/{map_reference}/critical-concepts",
+      "GET /maps/{map_reference}/orphans",
+      "GET /maps/{map_reference}/concepts/{concept_reference}/prerequisites",
+      "GET /maps/{map_reference}/concepts/{concept_reference}/dependents",
+      "GET /maps/{map_reference}/uncertain-edges",
+      "GET /maps/{map_reference}/diagnostics"
+    ]
+  },
+  "frontend": {
+    "feature_module": "src/features/verified-knowledge-map/index.ts",
+    "route_module": "src/features/verified-knowledge-map/route.tsx",
+    "route_symbol": "verifiedKnowledgeMapFeatureRoute",
+    "route_path": "/verified-knowledge-map",
+    "registration_required": true,
+    "registration_instructions": [
+      "Import verifiedKnowledgeMapFeatureRoute from the feature route module.",
+      "Append the exported RouteObject to the owning React Router route array."
+    ]
+  },
+  "required_packages": {
+    "backend_existing": [
+      "fastapi>=0.115,<1",
+      "pydantic>=2.8,<3"
+    ],
+    "frontend_existing": [
+      "@xyflow/react@12.11.3",
+      "@dagrejs/dagre@3.1.1",
+      "react-router-dom@7.18.2"
+    ],
+    "new_packages_added": []
+  },
+  "integration_boundary": {
+    "central_backend_main_modified": false,
+    "central_frontend_router_modified": false,
+    "runtime_registration_deferred": true,
+    "demo_data_label_required": "DEMO DATA"
+  }
+}
