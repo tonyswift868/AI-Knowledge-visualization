@@ -473,6 +473,7 @@ class TeacherLiveRuntime:
                     public.model_dump(mode="json"),
                 )
             usage = routed_provider.usage_metadata
+            provider_cached_input_tokens = usage.get("cached_input_tokens")
             metrics = TeacherLiveMetrics(
                 response_mode=execution.execution_trace.mode,
                 ttft_ms=execution.execution_trace.time_to_first_chunk_ms,
@@ -484,8 +485,9 @@ class TeacherLiveRuntime:
                 input_tokens=usage.get("input_tokens"),
                 output_tokens=usage.get("output_tokens"),
                 cached_input_tokens=(
-                    usage.get("cached_input_tokens")
-                    or execution.execution_trace.cached_input_metadata.cached_input_tokens
+                    provider_cached_input_tokens
+                    if isinstance(provider_cached_input_tokens, int)
+                    else execution.execution_trace.cached_input_metadata.cached_input_tokens
                 ),
                 cache_status=(
                     execution.execution_trace.cached_input_metadata.status.value
