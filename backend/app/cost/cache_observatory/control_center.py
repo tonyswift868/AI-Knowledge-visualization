@@ -110,12 +110,19 @@ class CostCacheControlCenterReadModel:
     teacher: dict[str, object]
     review: dict[str, object]
     recent_anomalies: tuple[dict[str, object], ...]
+    demo_fixture_id: str | None = None
 
     def to_public_dict(self) -> dict[str, object]:
         return deepcopy(
             {
                 "schema_version": CONTROL_CENTER_SCHEMA_VERSION,
                 "mode": self.mode,
+                "demo_fixture_id": self.demo_fixture_id,
+                "demo_metadata": (
+                    {"synthetic": True, "real_provider_calls": 0}
+                    if self.mode == "DEMO"
+                    else None
+                ),
                 "generated_at": self.generated_at,
                 "read_only": True,
                 "current_session": self.current_session,

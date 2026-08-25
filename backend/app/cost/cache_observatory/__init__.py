@@ -27,6 +27,15 @@ from .control_center import (
     CostCacheReadService,
     cache_miss_message,
 )
+from .control_center_delivery import (
+    CONTROL_CENTER_DELIVERY_ID,
+    CONTROL_CENTER_INTEGRATION_MANIFEST,
+    CONTROL_CENTER_PREREQUISITE_COMMIT,
+    ControlCenterDeliveryEvidence,
+    ControlCenterDeliveryReceipt,
+    ControlCenterIntegrationManifest,
+    evaluate_control_center_delivery_fence,
+)
 from .delivery import (
     DELIVERY_ID,
     DELIVERY_PREREQUISITE_COMMIT,
@@ -34,6 +43,11 @@ from .delivery import (
     CacheRuntimeDeliveryEvidence,
     CacheRuntimeDeliveryReceipt,
     evaluate_delivery_fence,
+)
+from .demo import (
+    DEMO_FIXTURE_ID,
+    DEMO_REAL_PROVIDER_CALLS,
+    build_demo_control_center_fixture,
 )
 from .experiments import (
     CacheExperiment,
@@ -119,10 +133,15 @@ from .runtime_ports import (
 )
 
 __all__ = [
+    "CONTROL_CENTER_DELIVERY_ID",
+    "CONTROL_CENTER_INTEGRATION_MANIFEST",
+    "CONTROL_CENTER_PREREQUISITE_COMMIT",
     "CONTROL_CENTER_SCHEMA_VERSION",
     "DEFAULT_CACHE_IDENTITY_POLICY",
     "DELIVERY_ID",
     "DELIVERY_PREREQUISITE_COMMIT",
+    "DEMO_FIXTURE_ID",
+    "DEMO_REAL_PROVIDER_CALLS",
     "LOCAL_REVIEW_ACTIONS",
     "CacheEvent",
     "CacheEventConflict",
@@ -161,6 +180,9 @@ __all__ = [
     "CacheRuntimeDeliveryReceipt",
     "CacheScenario",
     "CacheScenarioResult",
+    "ControlCenterDeliveryEvidence",
+    "ControlCenterDeliveryReceipt",
+    "ControlCenterIntegrationManifest",
     "CostCacheControlCenterReadModel",
     "CostCacheReadService",
     "CostProfileConflict",
@@ -193,6 +215,7 @@ __all__ = [
     "WorkloadKind",
     "analyze_review_optimization",
     "analyze_teacher_optimization",
+    "build_demo_control_center_fixture",
     "build_review_cost_profile",
     "build_synthetic_cache_workload",
     "build_teacher_cost_profile_report",
@@ -200,6 +223,7 @@ __all__ = [
     "cache_events_from_usage_receipt",
     "cache_miss_message",
     "classify_cache_miss",
+    "evaluate_control_center_delivery_fence",
     "evaluate_delivery_fence",
     "local_cache_miss_reason",
     "review_execution_plane",
