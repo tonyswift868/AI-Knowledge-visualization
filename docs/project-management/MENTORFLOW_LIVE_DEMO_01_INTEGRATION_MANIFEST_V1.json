@@ -1,0 +1,113 @@
+{
+  "schema_version": "MENTORFLOW-LIVE-DEMO-INTEGRATION-MANIFEST-V1",
+  "feature": "LIVE-DEMO-01 Teacher Live Classroom",
+  "status": "READY_FOR_A_REGISTRATION",
+  "branch": "core-v2/w5-teacher-fastpath-cache",
+  "base_commit": "75f7a37c51fe56f0aaee279820e6b4d8b39f0e29",
+  "exact_commits": [
+    "f53f5fbd8beeab67949fa2b204c0c989ed757f20",
+    "e54ab18ee83a5205186664d9d4d7bd6786dbbf07",
+    "ec0d4389a0d75212e3d2181572b0a354ffe92f9d"
+  ],
+  "backend": {
+    "package": "backend/app/teacher_live_api/",
+    "router_export": "app.teacher_live_api.router",
+    "prefix": "/api/teacher-live",
+    "routes_to_register": [
+      "POST /api/teacher-live/sessions",
+      "POST /api/teacher-live/sessions/{session_id}/turns",
+      "GET /api/teacher-live/sessions/{session_id}/turns/{turn_id}/stream",
+      "POST /api/teacher-live/sessions/{session_id}/pause",
+      "POST /api/teacher-live/sessions/{session_id}/resume",
+      "POST /api/teacher-live/sessions/{session_id}/abort"
+    ],
+    "a_owned_registration": {
+      "file": "backend/app/main.py",
+      "import": "from .teacher_live_api import router as teacher_live_router",
+      "registration": "app.include_router(teacher_live_router)",
+      "placement": "beside the existing feature-router imports and include_router calls"
+    },
+    "sse_contract": {
+      "media_type": "text/event-stream",
+      "named_events": [
+        "turn_started",
+        "response_chunk",
+        "citation",
+        "metrics",
+        "completed",
+        "error"
+      ],
+      "resume_cursor": "after=<last_sequence_number>",
+      "headers": {
+        "Cache-Control": "no-store",
+        "X-Accel-Buffering": "no",
+        "X-MentorFlow-Teacher-Streaming": "sse-v1"
+      }
+    }
+  },
+  "frontend": {
+    "package": "frontend/src/features/teacher-live/",
+    "component_export": "TeacherLiveClassroom",
+    "route_constant_export": "TEACHER_LIVE_ROUTE",
+    "frontend_route_to_register": "/teacher-live",
+    "a_owned_registration": {
+      "file": "frontend/src/main.tsx",
+      "import": "import { TEACHER_LIVE_ROUTE, TeacherLiveClassroom } from './features/teacher-live'",
+      "route": "<Route path={TEACHER_LIVE_ROUTE} element={<TeacherLiveClassroom />} />",
+      "placement": "before the wildcard Route so the standalone classroom does not render App"
+    },
+    "route_registry_note": {
+      "file": "frontend/src/app/routes.ts",
+      "required": false,
+      "reason": "The dedicated route uses the exported feature constant and must not be added to MENTORFLOW_ROUTES, whose entries all render App. A may extend the shared registry only if its contract is changed deliberately."
+    }
+  },
+  "provider_runtime": {
+    "selection": "Use an explicitly requested verified ProviderRuntime session, otherwise use the latest verified non-fake session; with no verified real session create an explicitly labelled DEMO_FAKE classroom.",
+    "real_mode": "REAL",
+    "demo_mode": "DEMO_FAKE",
+    "silent_real_to_demo_fallback": false,
+    "normal_turn_primary_provider_calls_max": 1,
+    "automatic_retry_calls": 0,
+    "native_provider_streaming_contract": "true only when the verified ProviderRuntime handle exposes stream_text; existing text-only handles make one real text call and then emit local SSE chunks with native_provider_streaming=false",
+    "secrets_boundary": "The public session, events, diagnostics, QA evidence, and errors must never contain credentials, raw keys, raw cache keys, the prompt envelope, or raw provider payloads."
+  },
+  "required_environment_and_configuration": {
+    "demo": "None; the five-turn fixture is offline and uses zero Provider calls.",
+    "real": "An existing verified ProviderRuntime session and its normal credential-store entry. No credential or key is accepted by the Teacher Live API request schema.",
+    "new_environment_variables": [],
+    "new_dependencies": []
+  },
+  "shared_files_a_alone_may_edit": [
+    "backend/app/main.py",
+    "frontend/src/main.tsx",
+    "frontend/src/app/routes.ts"
+  ],
+  "worker_forbidden_changes_confirmed": [
+    "backend/app/main.py",
+    "frontend/src/main.tsx",
+    "frontend/src/app/routes.ts",
+    "backend/app/active_teaching.py"
+  ],
+  "qa": {
+    "request_id": "TRQ-W01-20260825-220037-02",
+    "queue_path": "test_handoff_v1/inbox/01/TRQ-W01-20260825-220037-02.ready.md",
+    "request_sha256": "ad137f0a385d4804dd97b0e91a76ec77611bb3bacdb86a92d173c0ff174d49c0",
+    "blocking": false,
+    "pending_evidence": [
+      "real Provider TTFT",
+      "true native streaming",
+      "actual token usage",
+      "Provider cache signal",
+      "live abort"
+    ]
+  },
+  "integration_smoke_checks": [
+    "POST /api/teacher-live/sessions with no verified real session returns provider_label=DEMO_FAKE and demo_fixture=true",
+    "Submit one fixture turn and observe turn_started, incremental response_chunk events, citation, metrics, and completed",
+    "Open /teacher-live and verify the provider badge, current concept, send, pause/resume, abort, citation toggle, closed diagnostics, and safe retry",
+    "Run backend/tests/test_teacher_live_api.py and frontend/src/test/teacher_live_classroom.test.tsx",
+    "Run the frontend production build"
+  ],
+  "acceptance_boundary": "Offline module, contract, UI, and fake-stream behavior are ready. Real-provider performance and capability observations remain pending under the nonblocking QA request and must not be inferred from offline results."
+}
