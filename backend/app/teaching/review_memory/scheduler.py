@@ -16,6 +16,7 @@ from .models import (
     ReviewRating,
     SchedulerReviewResult,
 )
+from .service_models import SchedulerStateIdentity
 
 
 DEPENDENCY_CHANGE_REQUIRED = "fsrs"
@@ -57,6 +58,9 @@ class ReviewSchedulerAdapter(Protocol):
     @property
     def adapter_id(self) -> str: ...
 
+    @property
+    def scheduler_identity(self) -> SchedulerStateIdentity: ...
+
     def serialize_scheduler(self) -> str: ...
 
     def validate_serialized_card(self, card_state_json: str) -> None: ...
@@ -89,6 +93,19 @@ class FsrsReviewSchedulerAdapter:
     @property
     def adapter_id(self) -> str:
         return f"py-fsrs:{self._version}"
+
+    @property
+    def scheduler_identity(self) -> SchedulerStateIdentity:
+        scheduler_json = self.serialize_scheduler()
+        return SchedulerStateIdentity(
+            package_version=self._version,
+            adapter_id=self.adapter_id,
+            scheduler_config_json=scheduler_json,
+            scheduler_config_sha256=hashlib.sha256(
+                scheduler_json.encode("utf-8")
+            ).hexdigest(),
+            card_schema_version=f"py-fsrs.Card.to_dict@{self._version}",
+        )
 
     def serialize_scheduler(self) -> str:
         return self._scheduler.to_json()

@@ -1,6 +1,21 @@
 """Review memory, rating mapping, weak queue, and scheduler integration seams."""
 
 from .mapping import ReviewEvaluationMappingPolicy
+from .due_queue import ReviewDueQueue
+from .durable_service import (
+    DurableFsrsReviewMemoryService,
+    DurableReviewRecoveryError,
+)
+from .durable_store import (
+    DurableReviewStoreCorruptionError,
+    DurableReviewStoreError,
+    ReviewEventConflictError,
+    ReviewItemConflictError,
+    ReviewItemVersionConflictError,
+    ReviewObservationOrderError,
+    SchedulerVersionMismatchError,
+    SqliteReviewMemoryStore,
+)
 from .models import (
     REVIEW_MEMORY_SCHEMA_VERSION,
     MacroRoundBoundary,
@@ -32,6 +47,19 @@ from .scheduler import (
     ReviewSchedulerAdapter,
     detect_fsrs_dependency,
 )
+from .service_models import (
+    DURABLE_REVIEW_SCHEMA_VERSION,
+    DurableObservationStatus,
+    DurableReviewLog,
+    DurableReviewObservationRecord,
+    DurableReviewReceipt,
+    PersistedReviewMemoryItem,
+    ReviewCheckpointReceipt,
+    ReviewHistoryPage,
+    ReviewMemoryAnalytics,
+    ReviewPrioritySnapshot,
+    SchedulerStateIdentity,
+)
 from .store import (
     AtomicJsonReviewMemoryStore,
     ReviewMemoryStoreCorruptionError,
@@ -41,15 +69,26 @@ from .store import (
 
 __all__ = [
     "DEPENDENCY_CHANGE_REQUIRED",
+    "DURABLE_REVIEW_SCHEMA_VERSION",
     "REVIEW_MEMORY_SCHEMA_VERSION",
     "AtomicJsonReviewMemoryStore",
     "DuplicateReviewObservationError",
+    "DurableFsrsReviewMemoryService",
+    "DurableObservationStatus",
+    "DurableReviewLog",
+    "DurableReviewObservationRecord",
+    "DurableReviewReceipt",
+    "DurableReviewRecoveryError",
+    "DurableReviewStoreCorruptionError",
+    "DurableReviewStoreError",
     "FsrsDependencyStatus",
     "FsrsReviewSchedulerAdapter",
     "MacroRoundBoundary",
     "MacroRoundBoundaryError",
+    "PersistedReviewMemoryItem",
     "ReviewEvaluationMappingPolicy",
     "ReviewMemoryEventProposal",
+    "ReviewMemoryAnalytics",
     "ReviewMemoryItem",
     "ReviewMemoryProposalPage",
     "ReviewMemoryReceipt",
@@ -59,15 +98,26 @@ __all__ = [
     "ReviewMemoryStoreCorruptionError",
     "ReviewMemoryStoreError",
     "ReviewMemoryVersionConflictError",
+    "ReviewDueQueue",
+    "ReviewEventConflictError",
+    "ReviewItemConflictError",
+    "ReviewItemVersionConflictError",
+    "ReviewObservationOrderError",
     "ReviewObservation",
     "ReviewObservationOutcome",
     "ReviewPriority",
+    "ReviewPrioritySnapshot",
     "ReviewPriorityBand",
     "ReviewRating",
     "ReviewRatingDecision",
     "ReviewSchedulerAdapter",
+    "ReviewCheckpointReceipt",
+    "ReviewHistoryPage",
     "RoundAttemptCount",
     "SchedulerReviewResult",
+    "SchedulerStateIdentity",
+    "SchedulerVersionMismatchError",
+    "SqliteReviewMemoryStore",
     "StudentRepositoryReviewMemoryPort",
     "WeakItemPriorityPolicy",
     "WeakItemQueue",

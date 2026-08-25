@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -18,6 +19,7 @@ from app.teaching.review_memory import (
     ReviewRating,
     RoundAttemptCount,
     SchedulerReviewResult,
+    SchedulerStateIdentity,
 )
 
 
@@ -26,6 +28,17 @@ NOW = datetime(2026, 8, 25, 16, 0, tzinfo=timezone.utc)
 
 class FakeReviewScheduler:
     adapter_id = "fake-review-scheduler.v1"
+
+    @property
+    def scheduler_identity(self) -> SchedulerStateIdentity:
+        config = self.serialize_scheduler()
+        return SchedulerStateIdentity(
+            package_version="test",
+            adapter_id=self.adapter_id,
+            scheduler_config_json=config,
+            scheduler_config_sha256=hashlib.sha256(config.encode()).hexdigest(),
+            card_schema_version="fake-card.v1",
+        )
 
     def serialize_scheduler(self) -> str:
         return '{"adapter":"fake-review-scheduler.v1"}'

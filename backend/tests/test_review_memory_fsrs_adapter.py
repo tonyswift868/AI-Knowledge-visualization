@@ -117,11 +117,18 @@ def test_card_serialization_reloads_into_a_fresh_adapter() -> None:
         reviewed_at=NOW.replace(hour=16),
         boundary=boundary,
     )
+    repeated = _adapter().review(
+        item=reviewed_item,
+        rating=ReviewRating.HARD,
+        reviewed_at=NOW.replace(hour=16),
+        boundary=boundary,
+    )
 
     assert json.loads(second.card_state_json)["card_id"] == json.loads(
         first.card_state_json
     )["card_id"]
     assert second.review_log_id != first.review_log_id
+    assert repeated == second
 
 
 def test_scheduler_configuration_serializes_and_reloads() -> None:
