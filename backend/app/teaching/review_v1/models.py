@@ -12,6 +12,8 @@ from ..evaluator_v2 import EvaluationEvidence, EvaluationResult, EvaluationRubri
 
 
 REVIEW_SESSION_SCHEMA_VERSION = "review-session-v1.v1"
+MAX_REVIEW_ITEMS = 2_000
+MAX_REVIEW_ATTEMPTS = 8_000
 
 
 class _ReviewModel(BaseModel):
@@ -77,12 +79,15 @@ class ReviewCompletionPolicy(_ReviewModel):
 
 
 class ReviewSessionInput(_ReviewModel):
-    concept_scope: tuple[str, ...] = Field(min_length=1, max_length=50)
+    concept_scope: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
     round_number: int = Field(ge=1, le=10_000)
     question_source_policy: QuestionSourcePolicy = (
         QuestionSourcePolicy.TRUSTED_BALANCED
     )
-    target_item_count: int = Field(ge=1, le=50)
+    target_item_count: int = Field(ge=1, le=MAX_REVIEW_ITEMS)
     completion_policy: ReviewCompletionPolicy = Field(
         default_factory=ReviewCompletionPolicy
     )
@@ -104,8 +109,14 @@ class ReviewMemorySignal(_ReviewModel):
 
 class ReviewMemorySnapshot(_ReviewModel):
     snapshot_id: str = Field(min_length=1, max_length=160)
-    concept_scope: tuple[str, ...] = Field(min_length=1, max_length=50)
-    weak_signals: tuple[ReviewMemorySignal, ...] = Field(default=(), max_length=200)
+    concept_scope: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    weak_signals: tuple[ReviewMemorySignal, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ATTEMPTS,
+    )
     position_token: str = Field(min_length=1, max_length=240)
 
     @model_validator(mode="after")
@@ -131,8 +142,14 @@ class StudentProgressItem(_ReviewModel):
 
 class StudentProgressSnapshot(_ReviewModel):
     snapshot_id: str = Field(min_length=1, max_length=160)
-    concept_scope: tuple[str, ...] = Field(min_length=1, max_length=50)
-    items: tuple[StudentProgressItem, ...] = Field(default=(), max_length=200)
+    concept_scope: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    items: tuple[StudentProgressItem, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ITEMS,
+    )
     position_token: str = Field(min_length=1, max_length=240)
 
     @model_validator(mode="after")
@@ -170,10 +187,13 @@ class ReviewItem(_ReviewModel):
 
 class ReviewQuestionSelectionRequest(_ReviewModel):
     session_id: str = Field(min_length=1, max_length=160)
-    concept_scope: tuple[str, ...] = Field(min_length=1, max_length=50)
+    concept_scope: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
     round_number: int = Field(ge=1, le=10_000)
     source_policy: QuestionSourcePolicy
-    target_item_count: int = Field(ge=1, le=50)
+    target_item_count: int = Field(ge=1, le=MAX_REVIEW_ITEMS)
     memory: ReviewMemorySnapshot
     progress: StudentProgressSnapshot
 
@@ -317,10 +337,22 @@ class ReviewCompletionEvaluation(_ReviewModel):
     policy_id: str = Field(min_length=1, max_length=160)
     passed: bool
     retrieval_score: float = Field(ge=0.0, le=1.0)
-    required_item_ids: tuple[str, ...] = Field(default=(), max_length=50)
-    passed_required_item_ids: tuple[str, ...] = Field(default=(), max_length=50)
-    critical_concept_ids: tuple[str, ...] = Field(default=(), max_length=50)
-    passed_critical_concept_ids: tuple[str, ...] = Field(default=(), max_length=50)
+    required_item_ids: tuple[str, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    passed_required_item_ids: tuple[str, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    critical_concept_ids: tuple[str, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    passed_critical_concept_ids: tuple[str, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ITEMS,
+    )
     failed_gates: tuple[str, ...] = Field(default=(), max_length=3)
     reason: str = Field(min_length=1, max_length=1_000)
 
@@ -338,10 +370,13 @@ class ReviewResult(_ReviewModel):
     status: ReviewCompletionStatus
     passed: bool
     completion: ReviewCompletionEvaluation
-    item_results: tuple[ReviewItemResult, ...] = Field(min_length=1, max_length=50)
-    total_attempts: int = Field(ge=1, le=200)
-    evaluator_provider_calls: int = Field(ge=0, le=200)
-    teacher_provider_calls: int = Field(ge=0, le=200)
+    item_results: tuple[ReviewItemResult, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    total_attempts: int = Field(ge=1, le=MAX_REVIEW_ATTEMPTS)
+    evaluator_provider_calls: int = Field(ge=0, le=MAX_REVIEW_ATTEMPTS)
+    teacher_provider_calls: int = Field(ge=0, le=MAX_REVIEW_ATTEMPTS)
     completed_at_ms: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -365,8 +400,14 @@ class ReviewRoundReceipt(_ReviewModel):
     round_id: str = Field(min_length=1, max_length=160)
     round_number: int = Field(ge=1, le=10_000)
     result: ReviewResult
-    attempt_receipt_ids: tuple[str, ...] = Field(min_length=1, max_length=200)
-    weak_proposal_ids: tuple[str, ...] = Field(default=(), max_length=200)
+    attempt_receipt_ids: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ATTEMPTS,
+    )
+    weak_proposal_ids: tuple[str, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ATTEMPTS,
+    )
     recorded_at_ms: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -423,18 +464,30 @@ class TeacherExplanationReceipt(_ReviewModel):
 class ReviewRound(_ReviewModel):
     round_id: str = Field(min_length=1, max_length=160)
     round_number: int = Field(ge=1, le=10_000)
-    items: tuple[ReviewItem, ...] = Field(min_length=1, max_length=50)
-    initial_item_ids: tuple[str, ...] = Field(min_length=1, max_length=50)
-    pending_entries: tuple[ReviewQueueEntry, ...] = Field(default=(), max_length=200)
+    items: tuple[ReviewItem, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    initial_item_ids: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=MAX_REVIEW_ITEMS,
+    )
+    pending_entries: tuple[ReviewQueueEntry, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ATTEMPTS,
+    )
     current_entry: ReviewQueueEntry | None = None
-    attempts: tuple[ReviewAttempt, ...] = Field(default=(), max_length=200)
+    attempts: tuple[ReviewAttempt, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ATTEMPTS,
+    )
     attempt_receipts: tuple[ReviewAttemptReceipt, ...] = Field(
         default=(),
-        max_length=200,
+        max_length=MAX_REVIEW_ATTEMPTS,
     )
     weak_item_proposals: tuple[ReviewWeakItemProposal, ...] = Field(
         default=(),
-        max_length=200,
+        max_length=MAX_REVIEW_ATTEMPTS,
     )
 
     @model_validator(mode="after")
@@ -488,7 +541,7 @@ class ReviewSession(_ReviewModel):
     pending_submission_id: str | None = Field(default=None, max_length=160)
     explanation_receipts: tuple[TeacherExplanationReceipt, ...] = Field(
         default=(),
-        max_length=200,
+        max_length=MAX_REVIEW_ATTEMPTS,
     )
     result: ReviewResult | None = None
     round_receipt: ReviewRoundReceipt | None = None
@@ -574,6 +627,8 @@ class ReviewSessionCrashDTO(_ReviewModel):
 
 
 __all__ = [
+    "MAX_REVIEW_ATTEMPTS",
+    "MAX_REVIEW_ITEMS",
     "REVIEW_SESSION_SCHEMA_VERSION",
     "QuestionSourcePolicy",
     "ReviewAttempt",

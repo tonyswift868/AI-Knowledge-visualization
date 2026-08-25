@@ -1,6 +1,8 @@
 """Public API for Active Recall Review Session v1."""
 
 from .models import (
+    MAX_REVIEW_ATTEMPTS,
+    MAX_REVIEW_ITEMS,
     REVIEW_SESSION_SCHEMA_VERSION,
     QuestionSourcePolicy,
     ReviewAttempt,
@@ -42,6 +44,8 @@ from .runtime import ReviewSessionError, ReviewSessionRuntime
 
 
 __all__ = [
+    "MAX_REVIEW_ATTEMPTS",
+    "MAX_REVIEW_ITEMS",
     "REVIEW_SESSION_SCHEMA_VERSION",
     "QuestionSourcePolicy",
     "ReviewAttempt",

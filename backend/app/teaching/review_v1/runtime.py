@@ -229,20 +229,22 @@ class ReviewSessionRuntime:
         return self._session
 
     def to_crash_dto(self) -> ReviewSessionCrashDTO:
+        self._validate_snapshot()
         return ReviewSessionCrashDTO(
             session=self._session,
             exported_at_ms=self._clock_ms(),
         )
 
+    def _validate_snapshot(self) -> None:
+        self._session = ReviewSession.model_validate(
+            self._session.model_dump(mode="python")
+        )
+
     def _replace(self, **changes) -> None:
-        payload = self._session.model_dump(mode="python")
-        payload.update(changes)
-        self._session = ReviewSession.model_validate(payload)
+        self._session = self._session.model_copy(update=changes)
 
     def _round_with(self, **changes) -> ReviewRound:
-        payload = self._session.round.model_dump(mode="python")
-        payload.update(changes)
-        return ReviewRound.model_validate(payload)
+        return self._session.round.model_copy(update=changes)
 
     def _transition(self, state: ReviewSessionState, **changes) -> None:
         history = self._session.state_history
@@ -255,6 +257,12 @@ class ReviewSessionRuntime:
             version=self._session.version + 1,
             **changes,
         )
+        if state in {
+            ReviewSessionState.COMPLETED,
+            ReviewSessionState.ABORTED,
+            ReviewSessionState.FAILED,
+        }:
+            self._validate_snapshot()
 
     def _item(self, item_id: str) -> ReviewItem | None:
         return next(
@@ -784,6 +792,7 @@ class ReviewSessionRuntime:
     def complete(self) -> ReviewRoundReceipt:
         if self._session.state is not ReviewSessionState.READY_TO_COMPLETE:
             raise ReviewSessionError("review_completion_requires_exhausted_queue")
+        self._validate_snapshot()
         completion, item_results = evaluate_completion(
             items=self._session.round.items,
             attempts=self._session.round.attempts,

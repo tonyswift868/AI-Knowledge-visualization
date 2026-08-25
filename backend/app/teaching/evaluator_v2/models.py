@@ -93,7 +93,7 @@ class EvaluatorRequest(_EvaluatorModel):
     attempt: AssessmentAttempt
     rubric: EvaluationRubric
     evidence: tuple[EvaluationEvidence, ...] = Field(default=(), max_length=32)
-    processed_assessment_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    processed_assessment_ids: tuple[str, ...] = Field(default=(), max_length=10_000)
 
 
 class RubricCriterionResult(_EvaluatorModel):
