@@ -69,6 +69,9 @@ class InfeasibilityCode(StrEnum):
     SOLVER_TIMEOUT = "solver_timeout"
     SOLVER_STATUS_UNKNOWN = "solver_status_unknown"
     SOLVER_MODEL_INVALID = "solver_model_invalid"
+    INFEASIBLE_WITH_SELECTED_REVIEW_ROUNDS = (
+        "infeasible_with_selected_review_rounds"
+    )
     OTHER = "other"
 
 
@@ -84,6 +87,8 @@ class ConstraintViolationCode(StrEnum):
     TASK_MINUTES_MISMATCH = "task_minutes_mismatch"
     RESERVATION_MINUTES_MISMATCH = "reservation_minutes_mismatch"
     PREREQUISITE_ORDER = "prerequisite_order"
+    REVIEW_AFTER_LEARNING_ORDER = "review_after_learning_order"
+    REVIEW_ROUND_ORDER = "review_round_order"
     SPLIT_POLICY = "split_policy"
     COMPLETED_TASK_CHANGED = "completed_task_changed"
     DAILY_LOAD_MISMATCH = "daily_load_mismatch"
@@ -132,15 +137,25 @@ class DailyCapacity(_FrozenContract):
 
 class ReviewWorkload(_FrozenContract):
     workload_id: str = Field(min_length=1, max_length=160)
-    minutes: int = Field(gt=0, le=24 * 60)
+    # One macro round may span several days, so its total is not a daily value.
+    minutes: int = Field(gt=0, le=100_000_000)
     earliest_date: date
     latest_date: date
     splittable: bool = True
+    round_index: int | None = Field(default=None, gt=0)
+    relevant_task_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def validate_window(self) -> "ReviewWorkload":
         if self.latest_date < self.earliest_date:
             raise ValueError("review workload latest_date precedes earliest_date")
+        if len(self.relevant_task_ids) != len(set(self.relevant_task_ids)):
+            raise ValueError("review relevant_task_ids must be unique")
+        if self.round_index is not None:
+            if self.workload_id != f"REVIEW_ROUND_{self.round_index}":
+                raise ValueError("fixed review workload id must match round_index")
+            if not self.relevant_task_ids:
+                raise ValueError("fixed review round requires relevant tasks")
         return self
 
 
@@ -256,12 +271,28 @@ class PlanScheduleProblem(_FrozenContract):
         workload_ids = [item.workload_id for item in self.review_workloads]
         if len(workload_ids) != len(set(workload_ids)):
             raise ValueError("review workload ids must be unique")
+        if set(workload_ids) & task_id_set:
+            raise ValueError("review workload ids must differ from task ids")
         for workload in self.review_workloads:
             if (
                 workload.earliest_date < self.start_date
                 or workload.latest_date > self.deadline
             ):
                 raise ValueError("review workload lies outside the plan window")
+            if any(item not in task_id_set for item in workload.relevant_task_ids):
+                raise ValueError("review workload references an unknown task")
+        fixed_rounds = sorted(
+            (
+                item
+                for item in self.review_workloads
+                if item.round_index is not None
+            ),
+            key=lambda item: item.round_index or 0,
+        )
+        if [item.round_index for item in fixed_rounds] != list(
+            range(1, len(fixed_rounds) + 1)
+        ):
+            raise ValueError("fixed review rounds must be contiguous from one")
         if self.final_buffer is not None and (
             self.final_buffer.earliest_date < self.start_date
             or self.final_buffer.latest_date > self.deadline
@@ -300,6 +331,23 @@ class PlanScheduleProblem(_FrozenContract):
 
     def planning_minutes(self, task_id: str) -> int:
         return self.task_by_id[task_id].minutes_for(self.effort_interval_policy)
+
+    @property
+    def fixed_review_workloads(self) -> tuple[ReviewWorkload, ...]:
+        return tuple(
+            sorted(
+                (
+                    item
+                    for item in self.review_workloads
+                    if item.round_index is not None
+                ),
+                key=lambda item: item.round_index or 0,
+            )
+        )
+
+    @property
+    def selected_review_round_count(self) -> int:
+        return len(self.fixed_review_workloads)
 
 
 class ScheduleInfeasibility(_FrozenContract):

@@ -145,12 +145,21 @@ def explain_obvious_infeasibility(
             )
         )
     if required_minutes > available_minutes:
+        selected_rounds = problem.selected_review_round_count
         reasons.append(
             ScheduleInfeasibility(
-                code=InfeasibilityCode.DEADLINE_CAPACITY_SHORTFALL,
+                code=(
+                    InfeasibilityCode.INFEASIBLE_WITH_SELECTED_REVIEW_ROUNDS
+                    if selected_rounds
+                    else InfeasibilityCode.DEADLINE_CAPACITY_SHORTFALL
+                ),
                 message=(
-                    "Required task, review, and buffer minutes exceed capacity "
-                    "before the deadline."
+                    "Initial learning plus all user-selected review rounds "
+                    "exceed capacity before the deadline; review effort was "
+                    "not shortened."
+                    if selected_rounds
+                    else "Required task, review, and buffer minutes exceed "
+                    "capacity before the deadline."
                 ),
                 required_minutes=required_minutes,
                 available_minutes=available_minutes,
@@ -158,6 +167,7 @@ def explain_obvious_infeasibility(
                     f"remaining_task_minutes={remaining_task_minutes}",
                     f"completed_window_minutes={completed_window_minutes}",
                     f"reserved_minutes={reserved_minutes}",
+                    f"selected_review_rounds={selected_rounds}",
                 ),
             )
         )
@@ -195,8 +205,17 @@ def explain_obvious_infeasibility(
         if workload.minutes > window_capacity:
             reasons.append(
                 ScheduleInfeasibility(
-                    code=InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL,
-                    message="A review workload exceeds capacity in its allowed window.",
+                    code=(
+                        InfeasibilityCode.INFEASIBLE_WITH_SELECTED_REVIEW_ROUNDS
+                        if workload.round_index is not None
+                        else InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL
+                    ),
+                    message=(
+                        "A selected review round exceeds capacity in its allowed "
+                        "window; its effort was not shortened."
+                        if workload.round_index is not None
+                        else "A review workload exceeds capacity in its allowed window."
+                    ),
                     dates=(workload.earliest_date, workload.latest_date),
                     required_minutes=workload.minutes,
                     available_minutes=window_capacity,
@@ -218,7 +237,11 @@ def explain_obvious_infeasibility(
         ):
             reasons.append(
                 ScheduleInfeasibility(
-                    code=InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL,
+                    code=(
+                        InfeasibilityCode.INFEASIBLE_WITH_SELECTED_REVIEW_ROUNDS
+                        if workload.round_index is not None
+                        else InfeasibilityCode.RESERVATION_WINDOW_CAPACITY_SHORTFALL
+                    ),
                     message=(
                         "An unsplittable review workload is larger than every "
                         "available day in its window."
@@ -722,6 +745,37 @@ def validate_solution(
             add(
                 ConstraintViolationCode.SPLIT_POLICY,
                 "unsplittable review workload must have one allocation",
+            )
+
+    for workload in problem.fixed_review_workloads:
+        review_values = review_allocations.get(workload.workload_id, ())
+        if not review_values:
+            continue
+        review_start = min(map(_position, review_values))
+        for task_id in workload.relevant_task_ids:
+            task_values = task_allocations.get(task_id, ())
+            if task_values and max(map(_position, task_values)) >= review_start:
+                add(
+                    ConstraintViolationCode.REVIEW_AFTER_LEARNING_ORDER,
+                    "review round starts before relevant initial learning is complete",
+                    task_ids=(task_id,),
+                )
+    for previous, current in zip(
+        problem.fixed_review_workloads,
+        problem.fixed_review_workloads[1:],
+        strict=False,
+    ):
+        previous_values = review_allocations.get(previous.workload_id, ())
+        current_values = review_allocations.get(current.workload_id, ())
+        if (
+            previous_values
+            and current_values
+            and max(map(_position, previous_values))
+            >= min(map(_position, current_values))
+        ):
+            add(
+                ConstraintViolationCode.REVIEW_ROUND_ORDER,
+                "review round order does not match the selected macro rounds",
             )
 
     expected_buffer_id = (

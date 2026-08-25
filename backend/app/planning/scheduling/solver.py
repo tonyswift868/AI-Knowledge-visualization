@@ -110,22 +110,40 @@ class ORToolsScheduleSolver:
             return solution
 
         if status == cp_model.INFEASIBLE:
+            if problem.selected_review_round_count:
+                infeasibility = ScheduleInfeasibility(
+                    code=(
+                        InfeasibilityCode.INFEASIBLE_WITH_SELECTED_REVIEW_ROUNDS
+                    ),
+                    message=(
+                        "CP-SAT proved the initial plan infeasible with the "
+                        "user-selected fixed review rounds; review workload "
+                        "was not shortened or removed."
+                    ),
+                    required_minutes=sum(
+                        item.minutes for item in problem.fixed_review_workloads
+                    ),
+                    details=(
+                        f"selected_review_rounds={problem.selected_review_round_count}",
+                        "cp_sat_status=INFEASIBLE",
+                    ),
+                )
+            else:
+                infeasibility = ScheduleInfeasibility(
+                    code=InfeasibilityCode.OTHER,
+                    message=(
+                        "CP-SAT proved the complete scheduling model "
+                        "infeasible; deterministic prechecks did not isolate "
+                        "a narrower cause."
+                    ),
+                    details=("cp_sat_status=INFEASIBLE",),
+                )
             return self._non_feasible_solution(
                 problem,
                 effective_config,
                 status=ScheduleStatus.INFEASIBLE,
                 termination=SolverTerminationStatus.INFEASIBLE,
-                reasons=(
-                    ScheduleInfeasibility(
-                        code=InfeasibilityCode.OTHER,
-                        message=(
-                            "CP-SAT proved the complete scheduling model "
-                            "infeasible; deterministic prechecks did not isolate "
-                            "a narrower cause."
-                        ),
-                        details=("cp_sat_status=INFEASIBLE",),
-                    ),
-                ),
+                reasons=(infeasibility,),
                 wall_time_ms=wall_time_ms,
             )
 
@@ -331,6 +349,8 @@ class ORToolsScheduleSolver:
                         )
 
         reservation_decisions: list[_DecisionAllocation] = []
+        review_start: dict[str, Any] = {}
+        review_end: dict[str, Any] = {}
         for workload in problem.review_workloads:
             eligible = [
                 index
@@ -369,6 +389,53 @@ class ORToolsScheduleSolver:
                 model.Add(sum(minute_values) == workload.minutes)
             else:
                 model.Add(sum(used_values) == 1)
+
+            start_candidates: list[Any] = []
+            end_candidates: list[Any] = []
+            for index, used in zip(eligible, used_values, strict=True):
+                start_candidate = model.NewIntVar(
+                    0,
+                    day_count,
+                    f"review:{workload.workload_id}:start-candidate:{index}",
+                )
+                model.Add(start_candidate == index).OnlyEnforceIf(used)
+                model.Add(start_candidate == day_count).OnlyEnforceIf(used.Not())
+                start_candidates.append(start_candidate)
+                end_candidate = model.NewIntVar(
+                    -1,
+                    day_count - 1,
+                    f"review:{workload.workload_id}:end-candidate:{index}",
+                )
+                model.Add(end_candidate == index).OnlyEnforceIf(used)
+                model.Add(end_candidate == -1).OnlyEnforceIf(used.Not())
+                end_candidates.append(end_candidate)
+            start = model.NewIntVar(
+                0,
+                day_count - 1,
+                f"review:{workload.workload_id}:start",
+            )
+            end = model.NewIntVar(
+                0,
+                day_count - 1,
+                f"review:{workload.workload_id}:end",
+            )
+            model.AddMinEquality(start, start_candidates)
+            model.AddMaxEquality(end, end_candidates)
+            review_start[workload.workload_id] = start
+            review_end[workload.workload_id] = end
+
+        for workload in problem.fixed_review_workloads:
+            for task_id in workload.relevant_task_ids:
+                model.Add(task_end[task_id] <= review_start[workload.workload_id])
+        for previous, current in zip(
+            problem.fixed_review_workloads,
+            problem.fixed_review_workloads[1:],
+            strict=False,
+        ):
+            model.Add(
+                review_end[previous.workload_id]
+                <= review_start[current.workload_id]
+            )
 
         if problem.final_buffer is not None:
             buffer = problem.final_buffer
@@ -480,10 +547,10 @@ class ORToolsScheduleSolver:
                     )
                 )
 
-        kind_rank = {
-            AllocationKind.REVIEW: len(task_rank) + 1,
-            AllocationKind.FINAL_BUFFER: len(task_rank) + 2,
+        review_by_id = {
+            item.workload_id: item for item in problem.review_workloads
         }
+        fixed_round_count = problem.selected_review_round_count
         for decision in context.reservation_decisions:
             if not solver.Value(decision.used):
                 continue
@@ -501,7 +568,15 @@ class ORToolsScheduleSolver:
                         minutes=solver.Value(decision.minutes),
                         order_in_day=0,
                     ),
-                    kind_rank[decision.kind],
+                    (
+                        len(task_rank)
+                        + (
+                            review_by_id[decision.target_id].round_index
+                            or fixed_round_count + 1
+                        )
+                        if decision.kind is AllocationKind.REVIEW
+                        else len(task_rank) + fixed_round_count + 2
+                    ),
                 )
             )
 

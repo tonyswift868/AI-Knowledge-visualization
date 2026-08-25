@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..scheduling.contracts import ScheduleAllocation
+from ..scheduling.contracts import AllocationKind, ScheduleAllocation
 
 
 RUNTIME_SCHEMA_VERSION = "mentorflow.plan-runtime.v2"
@@ -75,6 +75,13 @@ class RuntimeTaskDefinition(_FrozenRuntimeContract):
     title: str = Field(min_length=1, max_length=500)
     sequence_index: int = Field(ge=0)
     prerequisite_task_ids: tuple[str, ...] = ()
+    allocation_kind: AllocationKind = AllocationKind.TASK
+
+    @model_validator(mode="after")
+    def validate_trackable_kind(self) -> "RuntimeTaskDefinition":
+        if self.allocation_kind not in {AllocationKind.TASK, AllocationKind.REVIEW}:
+            raise ValueError("runtime tasks may track learning or review allocations")
+        return self
 
 
 class ImmutablePlanSchedule(_FrozenRuntimeContract):
@@ -120,11 +127,30 @@ class ImmutablePlanSchedule(_FrozenRuntimeContract):
         ):
             raise ValueError("runtime allocation references an unknown task")
         allocated_task_ids = {
-            item.task_id for item in self.allocations if item.task_id is not None
+            item.task_id
+            if item.kind is AllocationKind.TASK
+            else item.reservation_id
+            for item in self.allocations
+            if item.kind in {AllocationKind.TASK, AllocationKind.REVIEW}
         }
         missing_task_ids = task_id_set - allocated_task_ids
         if missing_task_ids:
             raise ValueError("runtime task is missing schedule allocations")
+        for definition in self.tasks:
+            if not any(
+                (
+                    definition.allocation_kind is AllocationKind.TASK
+                    and item.kind is AllocationKind.TASK
+                    and item.task_id == definition.task_id
+                )
+                or (
+                    definition.allocation_kind is AllocationKind.REVIEW
+                    and item.kind is AllocationKind.REVIEW
+                    and item.reservation_id == definition.task_id
+                )
+                for item in self.allocations
+            ):
+                raise ValueError("runtime task allocation kind does not match")
         allocation_start = min(item.day for item in self.allocations)
         allocation_end = max(item.day for item in self.allocations)
         if self.start_date != allocation_start or self.end_date != allocation_end:
@@ -137,7 +163,26 @@ class ImmutablePlanSchedule(_FrozenRuntimeContract):
 
     @property
     def task_allocations(self) -> tuple[ScheduleAllocation, ...]:
-        return tuple(item for item in self.allocations if item.task_id is not None)
+        tracked_allocation_ids = {
+            item.allocation_id
+            for definition in self.tasks
+            for item in self.allocations_for(definition.task_id)
+        }
+        return tuple(
+            item
+            for item in self.allocations
+            if item.allocation_id in tracked_allocation_ids
+        )
+
+    def allocations_for(self, task_id: str) -> tuple[ScheduleAllocation, ...]:
+        definition = self.task_by_id[task_id]
+        if definition.allocation_kind is AllocationKind.TASK:
+            return tuple(item for item in self.allocations if item.task_id == task_id)
+        return tuple(
+            item
+            for item in self.allocations
+            if item.kind is AllocationKind.REVIEW and item.reservation_id == task_id
+        )
 
 
 class TaskCompletion(_FrozenRuntimeContract):
@@ -155,6 +200,7 @@ class ScheduledTaskRuntime(_FrozenRuntimeContract):
     title: str = Field(min_length=1, max_length=500)
     sequence_index: int = Field(ge=0)
     prerequisite_task_ids: tuple[str, ...] = ()
+    allocation_kind: AllocationKind = AllocationKind.TASK
     scheduled_dates: tuple[date, ...] = Field(min_length=1)
     planned_minutes: int = Field(gt=0)
     status: ScheduledTaskStatus
@@ -217,6 +263,7 @@ class OverdueLedgerEntry(_FrozenRuntimeContract):
     title: str = Field(min_length=1, max_length=500)
     original_due_date: date
     planned_minutes: int = Field(gt=0)
+    allocation_kind: AllocationKind = AllocationKind.TASK
     status: OverdueEntryStatus
     days_overdue: int = Field(ge=1)
     resolved_on: date | None = None

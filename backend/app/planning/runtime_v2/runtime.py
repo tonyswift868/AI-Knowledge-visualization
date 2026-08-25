@@ -58,7 +58,7 @@ def build_immutable_plan_schedule(
     }
     for edge in problem.prerequisite_edges:
         prerequisites[edge.dependent_task_id].append(edge.prerequisite_task_id)
-    tasks = tuple(
+    learning_tasks = tuple(
         RuntimeTaskDefinition(
             task_id=item.task_id,
             title=item.title,
@@ -67,6 +67,48 @@ def build_immutable_plan_schedule(
         )
         for index, item in enumerate(problem.tasks)
     )
+    review_tasks: list[RuntimeTaskDefinition] = []
+    previous_fixed_round_id: str | None = None
+    ordered_review_workloads = tuple(
+        sorted(
+            problem.review_workloads,
+            key=lambda item: (
+                item.round_index is None,
+                item.round_index or 0,
+                item.workload_id,
+            ),
+        )
+    )
+    for workload in ordered_review_workloads:
+        review_allocated = any(
+            item.kind is AllocationKind.REVIEW
+            and item.reservation_id == workload.workload_id
+            for item in solution.allocations
+        )
+        if not review_allocated:
+            raise ValueError(
+                "initial schedule has review workload without allocations: "
+                + workload.workload_id
+            )
+        review_prerequisites = list(workload.relevant_task_ids)
+        if workload.round_index is not None and previous_fixed_round_id is not None:
+            review_prerequisites.append(previous_fixed_round_id)
+        review_tasks.append(
+            RuntimeTaskDefinition(
+                task_id=workload.workload_id,
+                title=(
+                    f"Review round {workload.round_index}"
+                    if workload.round_index is not None
+                    else f"Review: {workload.workload_id}"
+                ),
+                sequence_index=len(problem.tasks) + len(review_tasks),
+                prerequisite_task_ids=tuple(review_prerequisites),
+                allocation_kind=AllocationKind.REVIEW,
+            )
+        )
+        if workload.round_index is not None:
+            previous_fixed_round_id = workload.workload_id
+    tasks = (*learning_tasks, *review_tasks)
     allocations = tuple(
         sorted(
             solution.allocations,
@@ -110,7 +152,11 @@ class PlanRuntime:
         self._completions: dict[str, TaskCompletion] = {}
         self._skips: dict[str, TaskSkip] = {}
         for allocation in schedule.task_allocations:
-            if allocation.completed and allocation.task_id is not None:
+            if (
+                allocation.kind is AllocationKind.TASK
+                and allocation.completed
+                and allocation.task_id is not None
+            ):
                 existing = self._completions.get(allocation.task_id)
                 completed_on = allocation.day
                 if existing is None or completed_on > existing.completed_on:
@@ -229,7 +275,16 @@ class PlanRuntime:
         if self._current_schedule.schedule_id != preview.source_schedule_id:
             raise StaleScheduleError("cannot apply preview to a newer schedule")
         moved_task_ids = {
-            item.task_id for item in preview.moves if item.task_id is not None
+            item.task_id or item.reservation_id
+            for item in preview.moves
+            if item.task_id is not None
+            or (
+                item.reservation_id in self._current_schedule.task_by_id
+                and self._current_schedule.task_by_id[
+                    item.reservation_id
+                ].allocation_kind
+                is AllocationKind.REVIEW
+            )
         }
         terminal_task_ids = set(self._completions) | set(self._skips)
         if moved_task_ids & terminal_task_ids:

@@ -183,9 +183,16 @@ class PlanShiftService:
             learning_days_added=learning_days_added,
             tasks_moved=len(
                 {
-                    item.task_id
+                    item.task_id or item.reservation_id
                     for item in moves
                     if item.task_id is not None
+                    or (
+                        item.reservation_id in schedule.task_by_id
+                        and schedule.task_by_id[
+                            item.reservation_id
+                        ].allocation_kind
+                        is AllocationKind.REVIEW
+                    )
                 }
             ),
             allocations_moved=len(moves),
@@ -258,8 +265,14 @@ class PlanShiftService:
         completed_task_ids: set[str],
     ) -> bool:
         return (
-            allocation.kind is AllocationKind.TASK
-            and allocation.task_id in completed_task_ids
+            (
+                allocation.kind is AllocationKind.TASK
+                and allocation.task_id in completed_task_ids
+            )
+            or (
+                allocation.kind is AllocationKind.REVIEW
+                and allocation.reservation_id in completed_task_ids
+            )
         ) or allocation.completed
 
     @staticmethod
@@ -364,7 +377,15 @@ class PlanShiftService:
             ):
                 raise PlanShiftError("shift changed planned workload or identity")
             if (
-                old.task_id in completed_task_ids or old.completed
+                (
+                    old.kind is AllocationKind.TASK
+                    and old.task_id in completed_task_ids
+                )
+                or (
+                    old.kind is AllocationKind.REVIEW
+                    and old.reservation_id in completed_task_ids
+                )
+                or old.completed
             ) and old != new:
                 raise PlanShiftError("shift changed completed history")
 
@@ -372,6 +393,11 @@ class PlanShiftService:
         for item in shifted:
             if item.task_id is not None:
                 allocations_by_task[item.task_id].append(item)
+            elif (
+                item.kind is AllocationKind.REVIEW
+                and item.reservation_id in source.task_by_id
+            ):
+                allocations_by_task[item.reservation_id].append(item)
         for task in source.tasks:
             dependent = allocations_by_task[task.task_id]
             dependent_start = min(

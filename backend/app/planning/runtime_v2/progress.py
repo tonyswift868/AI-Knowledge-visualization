@@ -63,6 +63,7 @@ class PlanProgressTracker:
                     title=definition.title,
                     sequence_index=definition.sequence_index,
                     prerequisite_task_ids=definition.prerequisite_task_ids,
+                    allocation_kind=definition.allocation_kind,
                     scheduled_dates=scheduled_dates,
                     planned_minutes=sum(item.minutes for item in allocations),
                     status=status,
@@ -125,6 +126,7 @@ class PlanProgressTracker:
                         title=task.title,
                         original_due_date=original_due_date,
                         planned_minutes=task.planned_minutes,
+                        allocation_kind=task.allocation_kind,
                         status=OverdueEntryStatus.ACTIVE,
                         days_overdue=(today - original_due_date).days,
                     )
@@ -141,6 +143,7 @@ class PlanProgressTracker:
                         title=task.title,
                         original_due_date=original_due_date,
                         planned_minutes=task.planned_minutes,
+                        allocation_kind=task.allocation_kind,
                         status=OverdueEntryStatus.RESOLVED,
                         days_overdue=(
                             completion.completed_on - original_due_date
@@ -167,9 +170,11 @@ class PlanProgressTracker:
         schedule: ImmutablePlanSchedule,
     ) -> dict[str, tuple[ScheduleAllocation, ...]]:
         values: dict[str, list[ScheduleAllocation]] = defaultdict(list)
-        for allocation in schedule.task_allocations:
-            values[allocation.task_id].append(allocation)
-        missing = [item.task_id for item in schedule.tasks if item.task_id not in values]
+        for definition in schedule.tasks:
+            values[definition.task_id].extend(
+                schedule.allocations_for(definition.task_id)
+            )
+        missing = [item.task_id for item in schedule.tasks if not values[item.task_id]]
         if missing:
             raise ValueError(
                 "runtime schedule has tasks without allocations: " + ", ".join(missing)
