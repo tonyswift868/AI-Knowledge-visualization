@@ -47,6 +47,7 @@ import { CostCacheDashboard } from "./features/cost-cache-control/CostCacheDashb
 import { ReviewDemoApp } from "./features/review-demo/ReviewDemoApp";
 import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
+import { ProgressExperience } from "./features/progress/ProgressExperience";
 import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
 import {
   TEACHER_STAGE_IDLE_REACTION_MS,
@@ -155,6 +156,9 @@ export function App() {
   const [tab, setTab] = useState<
     "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review"
   >(() => {
+    if (/\/workspaces\/[^/]+\/progress\/?$/.test(window.location.pathname)) {
+      return "progress";
+    }
     try {
       const saved = localStorage.getItem("mentorflow_last_tab_v1");
       return [
@@ -182,7 +186,6 @@ export function App() {
   const [ws, setWs] = useState<Workspace | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [today, setToday] = useState<any>(null);
-  const [progress, setProgress] = useState<any>(null);
   const [toast, setToast] = useState("");
   const [activeCreateRequest, setActiveCreateRequest] = useState(0);
   const [pendingPlannerFile, setPendingPlannerFile] = useState<File | null>(null);
@@ -255,7 +258,11 @@ export function App() {
     request<Workspace[]>("/workspaces")
       .then((items) => {
         setWorkspaces(items);
-        if (items[0]) selectWs(items[0]);
+        const routedId = window.location.pathname.match(/^\/workspaces\/([^/]+)/)?.[1];
+        const routedWorkspace = routedId
+          ? items.find(item => item.id === decodeURIComponent(routedId))
+          : undefined;
+        if (routedWorkspace || items[0]) selectWs(routedWorkspace || items[0]);
       })
       .catch(() => {})
       .finally(() => setWorkspacesLoaded(true));
@@ -352,9 +359,6 @@ export function App() {
     request(`/workspaces/${item.id}/today`)
       .then(setToday)
       .catch(() => {});
-    request(`/workspaces/${item.id}/progress`)
-      .then(setProgress)
-      .catch(() => {});
     request<any>(`/workspaces/${item.id}/campaigns`)
       .then(async (result) => {
         const latest = result.campaigns?.[0];
@@ -423,9 +427,7 @@ export function App() {
         body: JSON.stringify(providerRequestContext()),
       });
       setPlan(p);
-      const [nextToday, nextProgress] = await Promise.all([request<any>(`/workspaces/${ws.id}/today`), request<any>(`/workspaces/${ws.id}/progress`)]);
-      setToday(nextToday);
-      setProgress(nextProgress);
+      setToday(await request<any>(`/workspaces/${ws.id}/today`));
       setTab("active");
       setToast("计划已生成：包含里程碑、日历任务和交付缓冲");
     } catch (e: any) {
@@ -436,13 +438,11 @@ export function App() {
   }
   async function refreshDailyState(showToast = true) {
     if (!ws?.id) return;
-    const [nextToday, nextProgress, plans] = await Promise.all([
+    const [nextToday, plans] = await Promise.all([
       request<any>(`/workspaces/${ws.id}/today`),
-      request<any>(`/workspaces/${ws.id}/progress`),
       request<any[]>(`/workspaces/${ws.id}/plans`),
     ]);
     setToday(nextToday);
-    setProgress(nextProgress);
     if (plans.length) setPlan(normalizePlan(plans[plans.length - 1], ws));
     if (showToast) setToast("每日计划已刷新");
     if (dailySettings.reminder && "Notification" in window && Notification.permission === "granted") {
@@ -474,8 +474,6 @@ export function App() {
   async function completeTask(id: string, evidence: any = {}) {
     await request(`/tasks/${id}/complete`, { method: "POST", body: JSON.stringify(evidence) });
     if (ws) {
-      const p = await request<any>(`/workspaces/${ws.id}/progress`);
-      setProgress(p);
       const t = await request<any>(`/workspaces/${ws.id}/today`);
       setToday(t);
     }
@@ -573,7 +571,11 @@ export function App() {
           <span>学习检测</span>
           <small>只读取当前计划的完成、掌握、复习与风险记录</small>
         </header>
-        <Progress progress={progress} plan={plan} completed={completed} />
+        <ProgressExperience
+          studentId={ws?.id || "DEMO-student-progress"}
+          sessionId={ws?.id || "DEMO-session-progress"}
+          demo={ws?.execution_mode === "demo" || !ws}
+        />
       </div>
     );
   }
@@ -762,7 +764,11 @@ export function App() {
             />
           )}{" "}
           {tab === "progress" && (
-            <Progress progress={progress} plan={plan} completed={completed} />
+            <ProgressExperience
+              studentId={ws?.id || "DEMO-student-progress"}
+              sessionId={ws?.id || "DEMO-session-progress"}
+              demo={ws?.execution_mode === "demo" || !ws}
+            />
           )}{" "}
           {tab === "cost-cache" && <CostCacheDashboard />}
           {tab === "review" && <ReviewDemoApp />}
@@ -2357,101 +2363,6 @@ function LearningRunInteractive({ today, task, workspaceId, chat, text, setText,
   </>;
 }
 
-function Progress({ progress, plan, completed }: any) {
-  return (
-    <>
-      <div className="page-title">
-        <div>
-          <div className="eyebrow">PROGRESS · SIGNALS</div>
-          <h1>你的掌握，不只是一条进度条。</h1>
-          <p>把完成、复习、独立回答和时间风险放在一起看。</p>
-        </div>
-        <span className="secondary">
-          <RefreshCw size={16} />
-          生成调整建议
-        </span>
-      </div>
-      <div className="stats-grid">
-        <div className="stat-card accent">
-          <span>计划完成度</span>
-          <b>
-            {Math.round((progress?.completion_rate || 0) * 100)}
-            <small>%</small>
-          </b>
-          <div className="sparkline">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-        </div>
-        <div className="stat-card">
-          <span>综合掌握度</span>
-          <b>
-            {Math.round((progress?.mastery || 0) * 100)}
-            <small>%</small>
-          </b>
-          <p>基于尝试、独立完成和复习表现</p>
-        </div>
-        <div className="stat-card">
-          <span>已完成场景任务</span>
-          <b>
-            {completed || 0}
-            <small> / {progress?.total_tasks || 0}</small>
-          </b>
-          <p>每一次完成都会留下记录</p>
-        </div>
-      </div>
-      <div className="progress-columns">
-        <section className="card">
-          <div className="card-kicker">
-            <Brain size={16} />
-            掌握信号
-          </div>
-          <div className="mastery-ring">
-            <div>
-              <b>{Math.round((progress?.mastery || 0) * 100)}%</b>
-              <span>当前掌握</span>
-            </div>
-          </div>
-          <div className="signal-list">
-            <div>
-              <span className="signal-good" />
-              已完成的场景回合<b>{completed || 0} 次</b>
-            </div>
-            <div>
-              <span className="signal-warn" />
-              需要复习的薄弱点<b>{progress?.weak_points?.length || 0} 个</b>
-            </div>
-            <div>
-              <span className="signal-neutral" />
-              截止日期风险<b>{progress?.at_risk ? "需关注" : "稳定"}</b>
-            </div>
-          </div>
-        </section>
-        <section className="card adjustment">
-          <div className="card-kicker">
-            <Sparkles size={16} />
-            下一步建议
-          </div>
-          <h3>
-            {progress?.recommendation ||
-              "先创建学习任务，系统会根据真实表现给出建议。"}
-          </h3>
-          <p>
-            动态重排会生成新版本，旧计划始终保留，任何调整都需要你确认后生效。
-          </p>
-          <span className="secondary">
-            查看重排规则 <ArrowRight size={15} />
-          </span>
-        </section>
-      </div>
-    </>
-  );
-}
 export function Settings() {
   const state = useMentorStore();
   const [message, setMessage] = useState("");

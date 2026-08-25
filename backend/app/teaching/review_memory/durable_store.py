@@ -109,6 +109,8 @@ CREATE INDEX IF NOT EXISTS idx_review_items_due
     ON review_items(student_id, due_at, critical_weight DESC);
 CREATE INDEX IF NOT EXISTS idx_review_items_weak
     ON review_items(student_id, last_observation, failure_streak DESC);
+CREATE INDEX IF NOT EXISTS idx_review_items_concept
+    ON review_items(student_id, concept_id, item_id);
 
 CREATE TABLE IF NOT EXISTS review_observations (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +157,8 @@ CREATE TABLE IF NOT EXISTS review_logs (
 
 CREATE INDEX IF NOT EXISTS idx_review_logs_history
     ON review_logs(student_id, item_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_review_logs_student_sequence
+    ON review_logs(student_id, sequence);
 
 CREATE TRIGGER IF NOT EXISTS review_items_no_delete
 BEFORE DELETE ON review_items
@@ -567,6 +571,31 @@ class SqliteReviewMemoryStore:
         if missing:
             raise KeyError(f"unknown review items: {missing[:5]}")
         return tuple(found[key] for key in normalized)
+
+    def list_student_items(
+        self,
+        *,
+        student_id: str,
+        after_item_id: str = "",
+        limit: int = 10_000,
+    ) -> tuple[PersistedReviewMemoryItem, ...]:
+        """List one student's cards in stable item order for read projections."""
+
+        normalized_student_id = student_id.strip()
+        if not normalized_student_id:
+            raise ValueError("student_id must be non-empty")
+        if not 1 <= limit <= 10_000:
+            raise ValueError("limit must be between 1 and 10000")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM review_items
+                WHERE student_id=? AND item_id>?
+                ORDER BY item_id LIMIT ?
+                """,
+                (normalized_student_id, after_item_id.strip(), limit),
+            ).fetchall()
+        return tuple(self._item_from_row(row) for row in rows)
 
     @staticmethod
     def _observation_payload(
@@ -1168,6 +1197,33 @@ class SqliteReviewMemoryStore:
                 records[-1].sequence if has_more and records else None
             ),
         )
+
+    def list_student_review_logs(
+        self,
+        *,
+        student_id: str,
+        after_sequence: int = 0,
+        limit: int = 10_000,
+    ) -> tuple[DurableReviewLog, ...]:
+        """Read a bounded student-wide append-only log without per-card queries."""
+
+        normalized_student_id = student_id.strip()
+        if not normalized_student_id:
+            raise ValueError("student_id must be non-empty")
+        if after_sequence < 0:
+            raise ValueError("after_sequence must be non-negative")
+        if not 1 <= limit <= 10_000:
+            raise ValueError("limit must be between 1 and 10000")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM review_logs
+                WHERE student_id=? AND sequence>?
+                ORDER BY sequence LIMIT ?
+                """,
+                (normalized_student_id, after_sequence, limit),
+            ).fetchall()
+        return tuple(self._log_from_row(row) for row in rows)
 
     def analytics(self, student_id: str, item_id: str) -> ReviewMemoryAnalytics:
         persisted = self.load_item(student_id, item_id)

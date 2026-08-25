@@ -1,0 +1,58 @@
+{
+  "schema": "mentorflow.integration-manifest.v1",
+  "delivery_id": "LIVE-DEMO-06-PROGRESS-EXPERIENCE-V1",
+  "status": "READY_FOR_INTEGRATION",
+  "base_commit": "cc6f7ef205a386ffedfdafd73ca10f4ca8a9e44c",
+  "branch": "core-v2/w5-review-memory",
+  "goal": "Student Progress + Review Memory Experience",
+  "provider_calls": 0,
+  "real_user_data": false,
+  "progress_api": {
+    "overview": "/api/progress/students/{student_id}/sessions/{session_id}",
+    "concept": "/api/progress/students/{student_id}/sessions/{session_id}/concepts/{concept_id}",
+    "demo": "/api/progress/demo",
+    "demo_concept": "/api/progress/demo/concepts/{concept_id}",
+    "model": "ExplainProgressReadModel"
+  },
+  "semantic_fence": {
+    "mastery": ["learning", "self_attested", "verified"],
+    "memory": ["difficulty", "stability", "retrievability", "due"],
+    "retrievability_is_mastery": false,
+    "privacy_scope": "learning_evidence_only",
+    "personality_or_psychological_profile": false
+  },
+  "persistence": {
+    "student_events": "SQLite append-only StudentEventRepository",
+    "review_memory": "SQLite durable FSRS review memory",
+    "root_environment": "MENTORFLOW_PROGRESS_DATA_ROOT",
+    "restart_fixture_verified": true
+  },
+  "frontend": {
+    "component": "frontend/src/features/progress/ProgressExperience.tsx",
+    "concept_list": true,
+    "due_and_weak_signals": true,
+    "evidence_timeline": true,
+    "advanced_diagnostics_collapsed": true,
+    "legacy_combined_mastery_percentage_removed_from_active_progress_ui": true
+  },
+  "timeline_categories": ["teaching", "assessment", "review", "verified", "weak"],
+  "demo": {
+    "explicit": true,
+    "student_id": "DEMO-student-progress",
+    "session_id": "DEMO-session-progress",
+    "concept_count": 4
+  },
+  "scale_evidence": "reports/LIVE_DEMO_06_PROGRESS_READ_BENCHMARK.json",
+  "qa_request": "reports/LIVE_DEMO_06_QA_REQUEST.json",
+  "integration_points": [
+    "backend/app/main.py includes the independent progress router",
+    "frontend/src/App.tsx uses ProgressExperience for embedded and standalone progress views",
+    "SqliteReviewMemoryStore exposes bounded student-wide item and log reads"
+  ],
+  "compatibility": {
+    "legacy_workspace_progress_endpoint_retained": true,
+    "active_progress_ui_uses_legacy_endpoint": false,
+    "database_migration_required": false,
+    "dependency_mutation": false
+  }
+}

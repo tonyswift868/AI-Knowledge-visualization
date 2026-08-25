@@ -1,0 +1,30 @@
+{
+  "schema": "mentorflow.machine-qa-request.v1",
+  "request_id": "LIVE-DEMO-06-UI-RELOAD-20260825",
+  "delivery_id": "LIVE-DEMO-06-PROGRESS-EXPERIENCE-V1",
+  "mode": "NON_BLOCKING",
+  "blocking": false,
+  "required_for_delivery": false,
+  "status": "REQUESTED_NOT_RUN",
+  "reason": "Automated contract, restart, frontend component, build, and scale checks cover the delivery. A packaged desktop reload remains useful for visual and live-process confirmation.",
+  "provider_calls_allowed": 0,
+  "real_user_data_allowed": false,
+  "fixture": {
+    "kind": "DEMO",
+    "student_id": "DEMO-student-progress",
+    "session_id": "DEMO-session-progress"
+  },
+  "checks": [
+    "Open the Progress screen and confirm the DEMO ribbon is visible.",
+    "Confirm mastery uses only Learning, Self-attested, and Independently verified states and shows no mastery percentage derived from retrievability.",
+    "Select each concept and verify the evidence timeline reloads.",
+    "Expand Advanced memory diagnostics and confirm D/S/R are labelled as memory state, not mastery.",
+    "Restart the local backend or packaged desktop, reopen the same DEMO student, and compare concept, due, weak, and timeline content."
+  ],
+  "expected": {
+    "timeline_categories": ["teaching", "assessment", "review", "verified", "weak"],
+    "advanced_diagnostics_default": "collapsed",
+    "persistence_after_restart": "consistent",
+    "privacy_scope": "learning_evidence_only"
+  }
+}

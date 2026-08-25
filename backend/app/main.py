@@ -74,6 +74,7 @@ from .teacher_live_api import router as teacher_live_router
 from .knowledge.map_read_api import router as verified_knowledge_map_router
 from .cost_cache_control_api import router as cost_cache_control_router
 from .integration_routes import install_review_product
+from .teaching.progress_read.api import router as progress_read_router
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -271,6 +272,7 @@ app.include_router(teacher_voice_pack_router)
 app.include_router(teacher_live_router)
 app.include_router(verified_knowledge_map_router)
 app.include_router(cost_cache_control_router)
+app.include_router(progress_read_router)
 _configured_origins = [
     item.strip().rstrip("/")
     for item in os.getenv(
