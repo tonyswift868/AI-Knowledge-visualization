@@ -20,6 +20,7 @@ from app.teaching.fastpath_v2 import (
     TeacherPromptEnvelope,
     TeacherResponseMode,
     build_teacher_prompt_envelope,
+    stable_teacher_prefix,
 )
 from app.teaching.pedagogy import plan_teaching
 
@@ -92,6 +93,7 @@ def test_stable_prefix_is_reused_while_every_dynamic_identity_changes() -> None:
     assert "beginner" in first.dynamic_tail.content
     assert "advanced" in second.dynamic_tail.content
     assert "beginner" not in second.dynamic_tail.content
+    assert stable_teacher_prefix() is stable_teacher_prefix()
 
 
 def test_stable_prefix_contains_only_policy_contract_and_schema_material() -> None:

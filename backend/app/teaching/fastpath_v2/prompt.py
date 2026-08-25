@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from functools import lru_cache
 
 from ..composer import ConversationTurn, TeacherEvidence
 from ..contracts import (
@@ -69,6 +70,7 @@ def _selected_evidence(
     return tuple(by_id[item] for item in expected_ids if item in by_id)
 
 
+@lru_cache(maxsize=1)
 def stable_teacher_prefix() -> StableTeacherPrefix:
     contract_declaration = _json(
         {
