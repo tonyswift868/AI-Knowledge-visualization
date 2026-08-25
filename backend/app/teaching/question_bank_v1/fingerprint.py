@@ -59,15 +59,21 @@ def build_answer_key_id(
         "qak",
         {
             "accepted_answers": sorted(
-                canonical_semantic_key(item) for item in accepted_answers
+                {
+                    key
+                    for item in accepted_answers
+                    if (key := canonical_semantic_key(item))
+                }
             ),
             "criteria": sorted(
-                (
-                    canonical_semantic_key(item.description),
-                    item.weight,
-                    item.required,
-                )
-                for item in criteria
+                {
+                    (
+                        canonical_semantic_key(item.description),
+                        item.weight,
+                        item.required,
+                    )
+                    for item in criteria
+                }
             ),
         },
     )

@@ -329,6 +329,7 @@ def test_exact_duplicate_collapses_and_unions_multi_source_provenance() -> None:
     merged = bank.questions[0]
     assert merged.source_tier is QuestionSourceTier.T0_SOURCE_ORIGINAL
     assert merged.validation_status is QuestionValidationStatus.TRUSTED
+    assert merged.answer_key.answer_key_id == first.answer_key.answer_key_id
     assert {item.source_identity for item in merged.provenance} == {
         "source-a",
         "source-b",
