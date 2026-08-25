@@ -207,7 +207,14 @@ class ORToolsScheduleSolver:
 
     def _build_model(self, problem: PlanScheduleProblem) -> _ModelContext:
         model = cp_model.CpModel()
-        days = tuple(sorted(problem.capacity_by_day))
+        # Zero-capacity dates are calendar evidence, not decision slots. Keeping
+        # them out of the model materially reduces weekly-preference problems
+        # (especially 1000-task plans) without changing feasible allocations.
+        days = tuple(
+            day
+            for day, capacity in sorted(problem.capacity_by_day.items())
+            if capacity > 0
+        )
         day_index = {day: index for index, day in enumerate(days)}
         day_count = len(days)
         load_terms: list[list[Any]] = [[] for _ in days]
