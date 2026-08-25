@@ -21,6 +21,14 @@ from .contracts import (
     MissReasonCount,
     classify_cache_miss,
 )
+from .delivery import (
+    DELIVERY_ID,
+    DELIVERY_PREREQUISITE_COMMIT,
+    CacheRuntimeCapability,
+    CacheRuntimeDeliveryEvidence,
+    CacheRuntimeDeliveryReceipt,
+    evaluate_delivery_fence,
+)
 from .experiments import (
     CacheExperiment,
     CacheExperimentReport,
@@ -35,6 +43,10 @@ from .identity_policy import (
     CacheIdentityPolicyViolation,
     CacheIdentityValidation,
     LayerIdentityPolicy,
+)
+from .integrity_benchmark import (
+    CacheIntegrityBenchmarkResult,
+    run_cache_integrity_benchmark,
 )
 from .invalidation import (
     CacheInvalidationDecision,
@@ -101,6 +113,8 @@ from .runtime_ports import (
 
 __all__ = [
     "DEFAULT_CACHE_IDENTITY_POLICY",
+    "DELIVERY_ID",
+    "DELIVERY_PREREQUISITE_COMMIT",
     "LOCAL_REVIEW_ACTIONS",
     "CacheEvent",
     "CacheEventConflict",
@@ -112,6 +126,7 @@ __all__ = [
     "CacheIdentityPolicy",
     "CacheIdentityPolicyViolation",
     "CacheIdentityValidation",
+    "CacheIntegrityBenchmarkResult",
     "CacheInvalidationDecision",
     "CacheInvalidationPlanner",
     "CacheInvalidationReason",
@@ -133,6 +148,9 @@ __all__ = [
     "CacheOpportunityAnalyzer",
     "CacheOpportunityReport",
     "CacheOpportunityTrace",
+    "CacheRuntimeCapability",
+    "CacheRuntimeDeliveryEvidence",
+    "CacheRuntimeDeliveryReceipt",
     "CacheScenario",
     "CacheScenarioResult",
     "CurrencyAmount",
@@ -170,10 +188,12 @@ __all__ = [
     "build_teacher_turn_cost_profile",
     "cache_events_from_usage_receipt",
     "classify_cache_miss",
+    "evaluate_delivery_fence",
     "local_cache_miss_reason",
     "review_execution_plane",
     "review_trace_from_evaluation_result",
     "run_cache_experiment",
+    "run_cache_integrity_benchmark",
     "run_synthetic_cache_benchmark",
     "standard_cache_scenarios",
     "teacher_trace_from_usage_receipt",
