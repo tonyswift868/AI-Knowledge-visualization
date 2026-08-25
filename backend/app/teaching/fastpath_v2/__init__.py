@@ -12,6 +12,7 @@ from .models import (
     TeacherResponseModeReason,
     TeacherResponseModeRequest,
 )
+from .execution import TeacherExecutionResult, TeacherExecutionService
 from ..runtime_v2 import (
     TeacherLatencyClassification,
     TeacherResponseChunk,
@@ -51,6 +52,8 @@ __all__ = [
     "StreamingTeacherPort",
     "TeacherChunkObserverPort",
     "TeacherFastPathRuntime",
+    "TeacherExecutionResult",
+    "TeacherExecutionService",
     "FakeStreamingTeacherProvider",
     "RecordingTeacherChunkObserver",
     "build_teacher_prompt_envelope",
