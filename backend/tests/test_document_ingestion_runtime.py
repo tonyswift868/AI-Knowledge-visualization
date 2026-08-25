@@ -149,6 +149,7 @@ class _BatchConverter:
     def __init__(self, outcomes: dict[str, Any]):
         self.outcomes = outcomes
         self.calls: list[tuple[list[str], dict[str, Any]]] = []
+        self.close_calls = 0
 
     def convert_all(self, source: list[Path], **kwargs: Any):
         self.calls.append(([path.name for path in source], kwargs))
@@ -157,6 +158,9 @@ class _BatchConverter:
             if isinstance(outcome, BaseException):
                 raise outcome
             yield outcome
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class _PipelinePort:
@@ -385,6 +389,7 @@ def test_interrupted_batch_resumes_in_new_application_without_reconversion(
 
     assert first.status is DocumentBatchStatus.INTERRUPTED
     assert [call[0] for call in first_converter.calls] == [["doc-0.md"]]
+    assert first_converter.close_calls == 1
     assert len(checkpoint.completed) == 1
 
     second_converter = _BatchConverter(
@@ -410,6 +415,29 @@ def test_interrupted_batch_resumes_in_new_application_without_reconversion(
     ]
     assert len(second_port.calls) == 2
     assert len(checkpoint.completed) == 3
+
+
+def test_progress_callback_exception_closes_converter(tmp_path: Path) -> None:
+    path = _write(tmp_path, "exception.md", b"# Exception")
+    converter = _BatchConverter(
+        {path.name: _Result("success", _Document("Exception"))}
+    )
+
+    def progress_sink(progress: Any) -> None:
+        if progress.current_source == path.name:
+            raise RuntimeError("progress callback failed")
+
+    with pytest.raises(RuntimeError, match="progress callback failed"):
+        _application(tmp_path, converter).ingest(
+            DocumentBatchRequest(
+                request_id="callback-exception",
+                selected_documents=(path,),
+                conversion_config_identity="callback-exception-config",
+            ),
+            progress_sink=progress_sink,
+        )
+
+    assert converter.close_calls == 1
 
 
 def test_handoff_failure_resumes_from_converted_bundle_and_retries_only_handoff(

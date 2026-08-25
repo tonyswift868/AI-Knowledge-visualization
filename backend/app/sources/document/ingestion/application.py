@@ -131,6 +131,17 @@ class DocumentBatchIngestion:
         handoff_by_identity: dict[str, DocumentPipelineHandoff] = {}
         progress: list[DocumentIngestionProgress] = []
         interrupted = False
+        converter: DoclingBatchConverterProtocol | None = None
+        converter_closed = False
+
+        def close_converter() -> None:
+            nonlocal converter_closed
+            if converter_closed:
+                return
+            close = getattr(converter, "close", None)
+            if callable(close):
+                close()
+            converter_closed = True
 
         def emit(stage: DocumentIngestionStage, current_source: str | None) -> None:
             receipts = tuple(receipts_by_index.values())
@@ -164,7 +175,11 @@ class DocumentBatchIngestion:
             )
             progress.append(item)
             if progress_sink is not None:
-                progress_sink(item)
+                try:
+                    progress_sink(item)
+                except BaseException:
+                    close_converter()
+                    raise
 
         emit(DocumentIngestionStage.PREFLIGHT, None)
         if (
@@ -344,7 +359,6 @@ class DocumentBatchIngestion:
             )
 
         emit(DocumentIngestionStage.PREFLIGHT, None)
-        converter: DoclingBatchConverterProtocol | None = None
         if prepared:
             try:
                 if self._converter_factory is not None:
@@ -411,26 +425,36 @@ class DocumentBatchIngestion:
                     emit(DocumentIngestionStage.CONVERSION, item.candidate.source_file)
                     continue
                 assert result is not None
-                receipt, bundle, handoff = self._consume_conversion_result(
-                    item,
-                    result,
-                    checkpoint=checkpoint,
-                    durations=durations,
-                    counts=counts,
-                )
+                try:
+                    receipt, bundle, handoff = self._consume_conversion_result(
+                        item,
+                        result,
+                        checkpoint=checkpoint,
+                        durations=durations,
+                        counts=counts,
+                    )
+                except BaseException:
+                    close_converter()
+                    raise
                 receipts_by_index[item.index] = receipt
                 if bundle is not None:
                     bundle_by_identity[item.conversion_identity.value] = bundle
                 if handoff is not None:
                     handoff_by_identity[item.conversion_identity.value] = handoff
                 emit(receipt.stage, item.candidate.source_file)
-                if should_stop is not None and should_stop(progress[-1]):
-                    interrupted = True
-                    pending_after_interrupt.extend(chunk[position + 1 :])
-                    pending_after_interrupt.extend(
-                        prepared[offset + request.conversion_batch_size :]
-                    )
-                    break
+                if should_stop is not None:
+                    try:
+                        stop_requested = should_stop(progress[-1])
+                    except BaseException:
+                        close_converter()
+                        raise
+                    if stop_requested:
+                        interrupted = True
+                        pending_after_interrupt.extend(chunk[position + 1 :])
+                        pending_after_interrupt.extend(
+                            prepared[offset + request.conversion_batch_size :]
+                        )
+                        break
             if interrupted:
                 break
 
@@ -453,9 +477,7 @@ class DocumentBatchIngestion:
                 )
                 emit(DocumentIngestionStage.INTERRUPTED, item.candidate.source_file)
 
-        close_converter = getattr(converter, "close", None)
-        if callable(close_converter):
-            close_converter()
+        close_converter()
 
         emit(
             DocumentIngestionStage.INTERRUPTED if interrupted else DocumentIngestionStage.COMPLETE,

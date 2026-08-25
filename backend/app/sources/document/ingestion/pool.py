@@ -189,7 +189,7 @@ class DocumentConversionWorker:
             self._timed_out = True
             self._state = DocumentWorkerState.TIMED_OUT
             self._record_error("DOCLING_WORKER_STARTUP_TIMEOUT", type(error).__name__)
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 self._last_error_code or "DOCLING_WORKER_STARTUP_TIMEOUT",
                 self._last_error_class or "TimeoutError",
@@ -202,7 +202,7 @@ class DocumentConversionWorker:
                 getattr(error, "code", "DOCLING_WORKER_STARTUP_FAILED"),
                 getattr(error, "error_class", type(error).__name__),
             )
-            self._terminate_process()
+            self._abort_process()
             if isinstance(error, DoclingWorkerExecutionError):
                 raise
             raise DoclingWorkerExecutionError(
@@ -242,7 +242,7 @@ class DocumentConversionWorker:
             self._crashed = True
             self._state = DocumentWorkerState.CRASHED
             self._record_error("DOCLING_WORKER_CRASHED", type(error).__name__)
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 "DOCLING_WORKER_CRASHED",
                 type(error).__name__,
@@ -257,7 +257,7 @@ class DocumentConversionWorker:
             self._timed_out = True
             self._state = DocumentWorkerState.TIMED_OUT
             self._record_error("DOCLING_WORKER_TIMEOUT", type(error).__name__)
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 "DOCLING_WORKER_TIMEOUT",
                 type(error).__name__,
@@ -268,7 +268,7 @@ class DocumentConversionWorker:
             self._crashed = True
             self._state = DocumentWorkerState.CRASHED
             self._record_error("DOCLING_WORKER_CRASHED", type(error).__name__)
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 "DOCLING_WORKER_CRASHED",
                 type(error).__name__,
@@ -281,7 +281,7 @@ class DocumentConversionWorker:
                 "DOCLING_WORKER_PROTOCOL_MISMATCH",
                 type(error).__name__,
             )
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 "DOCLING_WORKER_PROTOCOL_MISMATCH",
                 type(error).__name__,
@@ -307,7 +307,7 @@ class DocumentConversionWorker:
                 "DOCLING_WORKER_PROTOCOL_MISMATCH",
                 protocol_error_class,
             )
-            self._terminate_process()
+            self._abort_process()
             raise DoclingWorkerExecutionError(
                 self._last_error_code,
                 self._last_error_class or protocol_error_class,
@@ -335,8 +335,8 @@ class DocumentConversionWorker:
         if process is None:
             self._cleanup_temporary_directory()
             return self.receipt()
-        if self.healthy:
-            try:
+        try:
+            if self.healthy:
                 self._write_frame(
                     {
                         "protocol": DOCLING_WORKER_PROTOCOL,
@@ -365,25 +365,31 @@ class DocumentConversionWorker:
                         "DOCLING_WORKER_SHUTDOWN_FAILED",
                         "DoclingWorkerShutdownError",
                     )
-            except subprocess.TimeoutExpired as error:
-                self._timed_out = True
-                self._state = DocumentWorkerState.TIMED_OUT
-                self._record_error(
-                    "DOCLING_WORKER_SHUTDOWN_TIMEOUT",
-                    type(error).__name__,
-                )
+            else:
                 self._terminate_process()
-            except Exception as error:
-                self._state = DocumentWorkerState.FAILED
-                self._record_error(
-                    "DOCLING_WORKER_SHUTDOWN_FAILED",
-                    type(error).__name__,
-                )
-                self._terminate_process()
-        else:
+        except subprocess.TimeoutExpired as error:
+            self._timed_out = True
+            self._state = DocumentWorkerState.TIMED_OUT
+            self._record_error(
+                "DOCLING_WORKER_SHUTDOWN_TIMEOUT",
+                type(error).__name__,
+            )
             self._terminate_process()
-        self._join_pumps()
-        self._cleanup_temporary_directory()
+        except Exception as error:
+            self._state = DocumentWorkerState.FAILED
+            self._record_error(
+                "DOCLING_WORKER_SHUTDOWN_FAILED",
+                type(error).__name__,
+            )
+            self._terminate_process()
+        finally:
+            try:
+                self._terminate_process()
+            finally:
+                try:
+                    self._finalize_process_resources()
+                finally:
+                    self._cleanup_temporary_directory()
         return self.receipt()
 
     def receipt(self) -> DocumentPlatformCompatibilityReceipt:
@@ -604,6 +610,33 @@ class DocumentConversionWorker:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=2)
+
+    def _abort_process(self) -> None:
+        try:
+            self._terminate_process()
+        finally:
+            try:
+                self._finalize_process_resources()
+            finally:
+                self._cleanup_temporary_directory()
+
+    def _finalize_process_resources(self) -> None:
+        process = self._process
+        if process is None:
+            return
+        if process.stdin is not None and not process.stdin.closed:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+        self._join_pumps()
+        for stream in (process.stdout, process.stderr):
+            if stream is not None and not stream.closed:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+        self._join_pumps()
 
     def _join_pumps(self) -> None:
         for thread in (self._stdout_thread, self._stderr_thread):

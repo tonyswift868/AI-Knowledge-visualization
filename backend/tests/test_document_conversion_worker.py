@@ -55,6 +55,19 @@ def _command(mode: str):
     return build
 
 
+def _assert_worker_resources_released(worker: DocumentConversionWorker) -> None:
+    process = worker._process
+    assert process is not None
+    assert process.poll() is not None
+    assert process.stdin is not None and process.stdin.closed
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+    assert worker._stdout_thread is not None
+    assert worker._stderr_thread is not None
+    assert not worker._stdout_thread.is_alive()
+    assert not worker._stderr_thread.is_alive()
+
+
 def test_real_markdown_worker_probes_and_shuts_down_cleanly(tmp_path: Path) -> None:
     source = tmp_path / "lesson.md"
     source.write_text("# Lesson\n\nQuestion: What is local?", encoding="utf-8")
@@ -66,8 +79,13 @@ def test_real_markdown_worker_probes_and_shuts_down_cleanly(tmp_path: Path) -> N
 
     with runner:
         conversion = tuple(runner.convert_all((source,), raises_on_error=False))[0]
+        assert runner._pool is not None
+        workers = tuple(runner._pool._workers)
 
-    assert conversion.status.value == "success"
+    assert conversion.status.value == "success", {
+        "runtime_receipts": [item.to_dict() for item in runner.runtime_receipts],
+        "platform_receipts": [item.to_dict() for item in runner.platform_receipts],
+    }
     assert conversion.document is not None
     assert len(runner.runtime_receipts) == 1
     runtime = runner.runtime_receipts[0]
@@ -82,6 +100,8 @@ def test_real_markdown_worker_probes_and_shuts_down_cleanly(tmp_path: Path) -> N
     assert probe.clean_shutdown is True
     assert probe.jobs_completed == 1
     assert probe.jobs_failed == 0
+    assert len(workers) == 1
+    _assert_worker_resources_released(workers[0])
     assert not list((tmp_path / "workers").glob("mentorflow-docling-worker-*"))
 
 
@@ -119,6 +139,7 @@ def test_real_process_crash_and_timeout_are_contained(
     assert receipt.jobs_failed == 1
     assert receipt.crashed is (mode == "crash")
     assert receipt.timed_out is (mode == "timeout")
+    _assert_worker_resources_released(worker)
     assert not list((tmp_path / "workers").glob("mentorflow-docling-worker-*"))
 
 
@@ -142,6 +163,8 @@ def test_startup_rejects_worker_artifact_probe_mismatch(tmp_path: Path) -> None:
         worker.start()
 
     assert exc_info.value.code == "DOCLING_WORKER_ARTIFACT_MISMATCH"
+    _assert_worker_resources_released(worker)
+    assert not list((tmp_path / "workers").glob("mentorflow-docling-worker-*"))
     receipt = worker.close()
     assert receipt.state is DocumentWorkerState.FAILED
     assert receipt.clean_shutdown is False
