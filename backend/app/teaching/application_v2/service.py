@@ -502,6 +502,100 @@ class TeacherTurnApplicationService:
                 ] = command.turn_id
                 return pending_result
 
+    async def attach_proposed_events(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        idempotency_key: str,
+        events: tuple[ProposedLearningEvent, ...],
+    ) -> TeacherTurnApplicationResult:
+        """Attach evaluator-owned proposals to the still-pending atomic batch."""
+
+        async with self._session_lock(session_id):
+            async with self._registry_lock:
+                record = self._records_by_turn.get((session_id, turn_id))
+                if record is None:
+                    raise KeyError("TURN_NOT_FOUND")
+                if (
+                    record.command is None
+                    or record.command.idempotency_key != idempotency_key
+                ):
+                    raise self._error_from_record(record, code="TURN_ID_CONFLICT")
+                if (
+                    record.result.transaction.status
+                    is not TurnTransactionStatus.PENDING_COMMIT
+                ):
+                    raise self._error_from_record(record, code="TURN_NOT_READY")
+
+                current = record.result.transaction.commit_plan.events
+                current_by_id = {event.event_id: event for event in current}
+                current_by_idempotency = {
+                    event.idempotency_key: event for event in current
+                }
+                incoming_ids: set[str] = set()
+                incoming_idempotency_keys: set[str] = set()
+                for event in events:
+                    if event.turn_id != turn_id:
+                        raise self._error_from_record(
+                            record,
+                            code="PROPOSED_EVENT_TURN_MISMATCH",
+                        )
+                    if event.event_id in incoming_ids:
+                        raise self._error_from_record(
+                            record,
+                            code="DUPLICATE_PROPOSED_EVENT",
+                        )
+                    incoming_ids.add(event.event_id)
+                    if event.idempotency_key in incoming_idempotency_keys:
+                        raise self._error_from_record(
+                            record,
+                            code="DUPLICATE_PROPOSED_EVENT",
+                        )
+                    incoming_idempotency_keys.add(event.idempotency_key)
+                    existing = current_by_id.get(event.event_id)
+                    if existing is not None and existing != event:
+                        raise self._error_from_record(
+                            record,
+                            code="PROPOSED_EVENT_CONFLICT",
+                        )
+                    existing_idempotency = current_by_idempotency.get(
+                        event.idempotency_key
+                    )
+                    if (
+                        existing_idempotency is not None
+                        and existing_idempotency != event
+                    ):
+                        raise self._error_from_record(
+                            record,
+                            code="PROPOSED_EVENT_CONFLICT",
+                        )
+
+                appended = tuple(
+                    event for event in events if event.event_id not in current_by_id
+                )
+                if not appended:
+                    return record.result.model_copy(update={"idempotent_replay": True})
+                combined = (*current, *appended)
+                if len(combined) > 8:
+                    raise self._error_from_record(
+                        record,
+                        code="TOO_MANY_PROPOSED_EVENTS",
+                    )
+                plan = record.result.transaction.commit_plan.model_copy(
+                    update={"events": combined}
+                )
+                transaction = record.result.transaction.model_copy(
+                    update={"commit_plan": plan}
+                )
+                receipt = record.result.receipt.model_copy(
+                    update={"proposed_event_count": len(combined)}
+                )
+                record.result = record.result.model_copy(
+                    update={"transaction": transaction, "receipt": receipt}
+                )
+                return record.result
+
     async def complete_turn(
         self,
         *,

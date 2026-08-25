@@ -7,7 +7,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..application_v2 import TeacherTurnApplicationResult, TeacherTurnCommand
+from ..application_v2 import (
+    ProposedLearningEvent,
+    TeacherTurnApplicationResult,
+    TeacherTurnCommand,
+)
 
 
 CLASSROOM_SESSION_SCHEMA_VERSION = "classroom-session.v2"
@@ -47,9 +51,39 @@ class RecoveryDecision(str, Enum):
     RESUME_PENDING_COMMIT = "resume_pending_commit"
 
 
+class AssessmentSubmission(_SessionModel):
+    assessment_id: str = Field(min_length=1, max_length=160)
+    response: str = Field(min_length=1, max_length=20_000)
+
+
+class EvaluationRequest(_SessionModel):
+    session_id: str = Field(min_length=1, max_length=160)
+    turn_id: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=240)
+    expected_learning_position: str = Field(min_length=1, max_length=240)
+    assessment_id: str = Field(min_length=1, max_length=160)
+    response: str = Field(min_length=1, max_length=20_000)
+
+
+class EvaluationProposal(_SessionModel):
+    proposal_id: str = Field(min_length=1, max_length=160)
+    result_identity: str = Field(min_length=1, max_length=240)
+    events: tuple[ProposedLearningEvent, ...] = Field(min_length=1, max_length=4)
+
+
 class SessionTurnCommand(_SessionModel):
     sequence_number: int = Field(ge=1)
     turn: TeacherTurnCommand
+    assessment_submission: AssessmentSubmission | None = None
+
+    @model_validator(mode="after")
+    def validate_assessment_response(self) -> "SessionTurnCommand":
+        if (
+            self.assessment_submission is not None
+            and self.assessment_submission.response != self.turn.latest_user_message
+        ):
+            raise ValueError("assessment response must match the learner turn")
+        return self
 
 
 class PendingTurnRecovery(_SessionModel):
@@ -125,12 +159,15 @@ class ClassroomSessionError(Exception):
 
 __all__ = [
     "CLASSROOM_SESSION_SCHEMA_VERSION",
+    "AssessmentSubmission",
     "ClassroomSessionAction",
     "ClassroomSessionError",
     "ClassroomSessionId",
     "ClassroomSessionReceipt",
     "ClassroomSessionState",
     "CompletedSessionTurn",
+    "EvaluationProposal",
+    "EvaluationRequest",
     "PendingTurnRecovery",
     "RecoveryDecision",
     "RecoveryOutcome",

@@ -12,13 +12,14 @@ from .models import (
     ClassroomSessionReceipt,
     ClassroomSessionState,
     CompletedSessionTurn,
+    EvaluationRequest,
     PendingTurnRecovery,
     RecoveryDecision,
     RecoveryOutcome,
     SessionRecoverySnapshot,
     SessionTurnCommand,
 )
-from .ports import ClassroomSessionStorePort, LearningPositionPort
+from .ports import ClassroomSessionStorePort, EvaluationPort, LearningPositionPort
 
 
 class ClassroomSessionRuntime:
@@ -30,10 +31,12 @@ class ClassroomSessionRuntime:
         teacher_application: TeacherTurnApplicationService,
         session_store: ClassroomSessionStorePort,
         learning_position_port: LearningPositionPort,
+        evaluation_port: EvaluationPort | None = None,
     ) -> None:
         self._teacher_application = teacher_application
         self._session_store = session_store
         self._learning_position_port = learning_position_port
+        self._evaluation_port = evaluation_port
         self._session_locks: dict[str, asyncio.Lock] = {}
 
     def _lock(self, session_id: str) -> asyncio.Lock:
@@ -133,10 +136,56 @@ class ClassroomSessionRuntime:
                     snapshot=snapshot,
                 )
 
+            evaluation = None
+            if command.assessment_submission is not None:
+                if self._evaluation_port is None:
+                    raise ClassroomSessionError(
+                        "EVALUATION_PORT_REQUIRED",
+                        snapshot=snapshot,
+                    )
+                submission = command.assessment_submission
+                evaluation = await self._evaluation_port.evaluate(
+                    EvaluationRequest(
+                        session_id=session_id,
+                        turn_id=command.turn.turn_id,
+                        idempotency_key=command.turn.idempotency_key,
+                        expected_learning_position=(
+                            command.turn.expected_learning_position
+                        ),
+                        assessment_id=submission.assessment_id,
+                        response=submission.response,
+                    )
+                )
+                if any(
+                    event.turn_id != command.turn.turn_id
+                    for event in evaluation.events
+                ):
+                    raise ClassroomSessionError(
+                        "EVALUATION_PROPOSAL_INVALID",
+                        snapshot=snapshot,
+                    )
+
             pending_result = await self._teacher_application.start_turn(
                 command.turn,
                 provider=provider,
             )
+            if evaluation is not None:
+                try:
+                    pending_result = (
+                        await self._teacher_application.attach_proposed_events(
+                            session_id=session_id,
+                            turn_id=command.turn.turn_id,
+                            idempotency_key=command.turn.idempotency_key,
+                            events=evaluation.events,
+                        )
+                    )
+                except Exception:
+                    await self._teacher_application.abort_turn(
+                        session_id=session_id,
+                        turn_id=command.turn.turn_id,
+                        idempotency_key=command.turn.idempotency_key,
+                    )
+                    raise
             pending = PendingTurnRecovery(
                 sequence_number=command.sequence_number,
                 command=command.turn,

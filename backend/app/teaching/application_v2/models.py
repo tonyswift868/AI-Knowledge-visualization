@@ -40,6 +40,7 @@ class ProposedEventType(str, Enum):
     LEARNER_SELF_ATTESTED = "learner_self_attested"
     TRANSITION_RECOMMENDED = "transition_recommended"
     ASSESSMENT_RECOMMENDED = "assessment_recommended"
+    EVALUATION_PROPOSED = "evaluation_proposed"
 
 
 class EventAttribute(_ApplicationModel):

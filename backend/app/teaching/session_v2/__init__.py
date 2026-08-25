@@ -1,26 +1,37 @@
 """Public API for Classroom Session Runtime v2."""
 
+from .adapters import StudentStateLearningEventSink
+from .harness import FakeClassroomHarness
 from .models import (
     CLASSROOM_SESSION_SCHEMA_VERSION,
+    AssessmentSubmission,
     ClassroomSessionAction,
     ClassroomSessionError,
     ClassroomSessionId,
     ClassroomSessionReceipt,
     ClassroomSessionState,
     CompletedSessionTurn,
+    EvaluationProposal,
+    EvaluationRequest,
     PendingTurnRecovery,
     RecoveryDecision,
     RecoveryOutcome,
     SessionRecoverySnapshot,
     SessionTurnCommand,
 )
-from .ports import ClassroomSessionStorePort, LearningPositionPort
+from .ports import (
+    ClassroomSessionStorePort,
+    EvaluationPort,
+    LearningPositionPort,
+    StudentStatePort,
+)
 from .service import ClassroomSessionRuntime
 from .stores import InMemoryClassroomSessionStore
 
 
 __all__ = [
     "CLASSROOM_SESSION_SCHEMA_VERSION",
+    "AssessmentSubmission",
     "ClassroomSessionAction",
     "ClassroomSessionError",
     "ClassroomSessionId",
@@ -29,6 +40,10 @@ __all__ = [
     "ClassroomSessionState",
     "ClassroomSessionStorePort",
     "CompletedSessionTurn",
+    "EvaluationPort",
+    "EvaluationProposal",
+    "EvaluationRequest",
+    "FakeClassroomHarness",
     "InMemoryClassroomSessionStore",
     "LearningPositionPort",
     "PendingTurnRecovery",
@@ -36,4 +51,6 @@ __all__ = [
     "RecoveryOutcome",
     "SessionRecoverySnapshot",
     "SessionTurnCommand",
+    "StudentStateLearningEventSink",
+    "StudentStatePort",
 ]

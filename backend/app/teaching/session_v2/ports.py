@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .models import SessionRecoverySnapshot
+from ..application_v2 import ProposedLearningEvent
+from .models import EvaluationProposal, EvaluationRequest, SessionRecoverySnapshot
 
 
 class ClassroomSessionStorePort(Protocol):
@@ -25,4 +26,27 @@ class LearningPositionPort(Protocol):
         """Return the current opaque learning-position token."""
 
 
-__all__ = ["ClassroomSessionStorePort", "LearningPositionPort"]
+class EvaluationPort(Protocol):
+    async def evaluate(self, request: EvaluationRequest) -> EvaluationProposal:
+        """Return evaluator-owned proposals without updating student state."""
+
+
+class StudentStatePort(Protocol):
+    async def commit_proposed_events(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        idempotency_key: str,
+        expected_learning_position: str,
+        events: tuple[ProposedLearningEvent, ...],
+    ) -> tuple[str, ...]:
+        """Atomically and idempotently commit one complete proposed event batch."""
+
+
+__all__ = [
+    "ClassroomSessionStorePort",
+    "EvaluationPort",
+    "LearningPositionPort",
+    "StudentStatePort",
+]
