@@ -14,6 +14,7 @@ from ..contracts import (
     PEDAGOGY_PLANNER_SCHEMA_VERSION,
     TeachingBrief,
 )
+from ..examples import ExamplePlan
 from ..prompt import (
     STABLE_OUTPUT_CONTRACT,
     STABLE_TEACHER_RULES,
@@ -97,6 +98,7 @@ def build_teacher_prompt_envelope(
     evidence: Sequence[TeacherEvidence],
     assessment_state: AssessmentState,
     response_mode: TeacherResponseMode,
+    example_plan: ExamplePlan | None = None,
     recent_conversation: Sequence[ConversationTurn] = (),
 ) -> TeacherPromptEnvelope:
     """Build fresh dynamic state after one reusable stable prefix."""
@@ -110,6 +112,10 @@ def build_teacher_prompt_envelope(
         ("TEACHING_BRIEF", teaching_brief.model_dump(mode="json")),
         ("LATEST_LEARNER_CONTEXT", learner_context.model_dump(mode="json")),
         ("CURRENT_CONCEPT", learner_context.current_concept),
+        (
+            "EXAMPLE_PLAN",
+            example_plan.model_dump(mode="json") if example_plan is not None else None,
+        ),
         ("LATEST_USER_MESSAGE", message),
         ("DYNAMIC_EVIDENCE", [item.model_dump(mode="json") for item in selected]),
         ("ASSESSMENT_STATE", assessment_state.value),

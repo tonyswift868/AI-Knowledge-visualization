@@ -6,17 +6,28 @@ from .models import (
     PromptIdentity,
     StableTeacherPrefix,
     TeacherPromptEnvelope,
+    TeacherLatencyBudget,
     TeacherResponseMode,
     TeacherResponseModeDecision,
     TeacherResponseModeReason,
     TeacherResponseModeRequest,
 )
+from ..runtime_v2 import (
+    TeacherLatencyClassification,
+    TeacherResponseChunk,
+    TeacherStreamReceipt,
+    TeacherStreamStatus,
+)
+from .latency import TeacherLatencyClassifier
 from .policy import TeacherResponseModeResolver
+from .ports import StreamingTeacherPort, TeacherChunkObserverPort
 from .prompt import (
     TeacherPromptAssemblyError,
     build_teacher_prompt_envelope,
     stable_teacher_prefix,
 )
+from .runtime import TeacherFastPathRuntime, run_streaming_teacher_turn
+from .testing import FakeStreamingTeacherProvider, RecordingTeacherChunkObserver
 
 
 __all__ = [
@@ -26,11 +37,23 @@ __all__ = [
     "StableTeacherPrefix",
     "TeacherPromptAssemblyError",
     "TeacherPromptEnvelope",
+    "TeacherLatencyBudget",
+    "TeacherLatencyClassification",
+    "TeacherLatencyClassifier",
+    "TeacherResponseChunk",
     "TeacherResponseMode",
     "TeacherResponseModeDecision",
     "TeacherResponseModeReason",
     "TeacherResponseModeRequest",
     "TeacherResponseModeResolver",
+    "TeacherStreamReceipt",
+    "TeacherStreamStatus",
+    "StreamingTeacherPort",
+    "TeacherChunkObserverPort",
+    "TeacherFastPathRuntime",
+    "FakeStreamingTeacherProvider",
+    "RecordingTeacherChunkObserver",
     "build_teacher_prompt_envelope",
     "stable_teacher_prefix",
+    "run_streaming_teacher_turn",
 ]

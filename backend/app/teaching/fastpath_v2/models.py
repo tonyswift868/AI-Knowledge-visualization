@@ -121,12 +121,35 @@ class TeacherPromptEnvelope(_FastPathModel):
         ]
 
 
+class TeacherLatencyBudget(_FastPathModel):
+    budget_id: str = Field(min_length=1, max_length=160)
+    fast_ttft_expected_ms: float = Field(gt=0.0)
+    fast_total_expected_ms: float = Field(gt=0.0)
+    deep_ttft_expected_ms: float = Field(gt=0.0)
+    deep_total_expected_ms: float = Field(gt=0.0)
+    timeout_risk_ms: float = Field(gt=0.0)
+
+    @model_validator(mode="after")
+    def validate_budget_order(self) -> "TeacherLatencyBudget":
+        if self.fast_ttft_expected_ms > self.fast_total_expected_ms:
+            raise ValueError("FAST TTFT budget cannot exceed FAST total budget")
+        if self.deep_ttft_expected_ms > self.deep_total_expected_ms:
+            raise ValueError("DEEP TTFT budget cannot exceed DEEP total budget")
+        if self.timeout_risk_ms <= max(
+            self.fast_total_expected_ms,
+            self.deep_total_expected_ms,
+        ):
+            raise ValueError("timeout risk threshold must exceed expected totals")
+        return self
+
+
 __all__ = [
     "TEACHER_FASTPATH_SCHEMA_VERSION",
     "DynamicTeacherTail",
     "PromptIdentity",
     "StableTeacherPrefix",
     "TeacherPromptEnvelope",
+    "TeacherLatencyBudget",
     "TeacherResponseMode",
     "TeacherResponseModeDecision",
     "TeacherResponseModeReason",

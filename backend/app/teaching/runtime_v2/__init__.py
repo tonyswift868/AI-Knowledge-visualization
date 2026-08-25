@@ -7,6 +7,10 @@ from .models import (
     TeacherRuntimeChannel,
     TeacherRuntimeError,
     TeacherRuntimeTrace,
+    TeacherLatencyClassification,
+    TeacherResponseChunk,
+    TeacherStreamReceipt,
+    TeacherStreamStatus,
     TeacherTurnResult,
 )
 from .orchestrator import run_teacher_turn
@@ -19,6 +23,10 @@ __all__ = [
     "TeacherRuntimeChannel",
     "TeacherRuntimeError",
     "TeacherRuntimeTrace",
+    "TeacherLatencyClassification",
+    "TeacherResponseChunk",
+    "TeacherStreamReceipt",
+    "TeacherStreamStatus",
     "TeacherTurnResult",
     "run_teacher_turn",
 ]
