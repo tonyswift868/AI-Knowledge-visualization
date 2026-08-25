@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import hashlib
 import inspect
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,7 @@ from app.teaching.composer import (
     TeacherResponseDraft,
     compose_teacher_response,
 )
+from app.teaching.contract_identity import verify_contract_identity
 from app.teaching.contracts import (
     AssessmentState,
     CurrentTaskKind,
@@ -370,7 +370,11 @@ def test_input_contract_hashes_match_the_formal_w2_receipt() -> None:
         ),
     }
     for relative_path, expected_hash in expected.items():
-        digest = hashlib.sha256((BACKEND_ROOT / relative_path).read_bytes()).hexdigest()
+        digest = verify_contract_identity(
+            contract_id=relative_path,
+            path=BACKEND_ROOT / relative_path,
+            expected_identities=expected,
+        )
         assert digest == expected_hash
 
 
