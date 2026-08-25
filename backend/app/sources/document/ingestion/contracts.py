@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..contracts import (
     DocumentEvidenceBundle,
@@ -16,6 +16,10 @@ from ..contracts import (
     sha256_bytes,
     sha256_json,
 )
+
+
+if TYPE_CHECKING:
+    from .exercises import DocumentExerciseCandidate
 
 
 DOCUMENT_INGESTION_SCHEMA = "mentorflow.document-ingestion.v1"
@@ -45,6 +49,17 @@ class DocumentIngestionStage(str, Enum):
     HANDOFF = "HANDOFF"
     COMPLETE = "COMPLETE"
     INTERRUPTED = "INTERRUPTED"
+
+
+class DoclingCompileMode(str, Enum):
+    DISABLED_UNCOMPILED_HERON = "DISABLED_UNCOMPILED_HERON"
+    RUNTIME_DEFAULT = "RUNTIME_DEFAULT"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class DoclingRuntimeStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,6 +362,67 @@ class DocumentIngestionMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class DoclingRuntimeReceipt:
+    receipt_id: str
+    status: DoclingRuntimeStatus
+    platform: str
+    process_isolated: bool
+    utf8_mode: bool
+    default_encoding: str
+    compile_mode: DoclingCompileMode
+    fallback_reason: str | None
+    msvc_available: bool | None
+    network_allowed: bool
+    network_attempts: int
+    model_download_attempts: int
+    artifact_sha256_before: str | None
+    artifact_sha256_after: str | None
+    source_files: tuple[str, ...]
+    worker_exit_code: int | None
+    error_class: str | None = None
+    error_code: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.network_attempts < 0 or self.model_download_attempts < 0:
+            raise ValueError("runtime attempt counts must not be negative")
+        if self.status is DoclingRuntimeStatus.FAILED and not self.error_code:
+            raise ValueError("failed runtime receipt requires an error code")
+        if self.status is DoclingRuntimeStatus.SUCCESS and (
+            self.error_class is not None or self.error_code is not None
+        ):
+            raise ValueError("successful runtime receipt cannot include an error")
+
+    @property
+    def artifact_hash_unchanged(self) -> bool | None:
+        if self.artifact_sha256_before is None or self.artifact_sha256_after is None:
+            return None
+        return self.artifact_sha256_before == self.artifact_sha256_after
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "receipt_id": self.receipt_id,
+            "status": self.status.value,
+            "platform": self.platform,
+            "process_isolated": self.process_isolated,
+            "utf8_mode": self.utf8_mode,
+            "default_encoding": self.default_encoding,
+            "compile_mode": self.compile_mode.value,
+            "fallback_reason": self.fallback_reason,
+            "msvc_available": self.msvc_available,
+            "network_allowed": self.network_allowed,
+            "network_attempts": self.network_attempts,
+            "model_download_attempts": self.model_download_attempts,
+            "artifact_sha256_before": self.artifact_sha256_before,
+            "artifact_sha256_after": self.artifact_sha256_after,
+            "artifact_hash_unchanged": self.artifact_hash_unchanged,
+            "source_files": list(self.source_files),
+            "worker_exit_code": self.worker_exit_code,
+            "error_class": self.error_class,
+            "error_code": self.error_code,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DocumentBatchRequest:
     request_id: str
     selected_documents: tuple[str | Path, ...]
@@ -379,6 +455,8 @@ class DocumentBatchResult:
     checkpoint: DocumentIngestionCheckpoint
     progress: tuple[DocumentIngestionProgress, ...]
     metrics: DocumentIngestionMetrics
+    runtime_receipts: tuple[DoclingRuntimeReceipt, ...] = ()
+    exercise_candidates: tuple["DocumentExerciseCandidate", ...] = ()
 
     def __post_init__(self) -> None:
         if [item.index for item in self.receipts] != list(range(len(self.receipts))):
@@ -395,6 +473,10 @@ class DocumentBatchResult:
             "checkpoint": self.checkpoint.to_dict(),
             "progress": [item.to_dict() for item in self.progress],
             "metrics": self.metrics.to_dict(),
+            "runtime_receipts": [item.to_dict() for item in self.runtime_receipts],
+            "exercise_candidates": [
+                item.to_dict() for item in self.exercise_candidates
+            ],
         }
         payload["result_hash"] = sha256_bytes(canonical_json_bytes(payload))
         return payload
@@ -406,6 +488,9 @@ __all__ = [
     "DocumentBatchRequest",
     "DocumentBatchResult",
     "DocumentBatchStatus",
+    "DoclingCompileMode",
+    "DoclingRuntimeReceipt",
+    "DoclingRuntimeStatus",
     "DocumentCheckpointEntry",
     "DocumentConversionIdentity",
     "DocumentFingerprint",

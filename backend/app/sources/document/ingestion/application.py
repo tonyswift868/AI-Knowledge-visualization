@@ -37,7 +37,14 @@ from .contracts import (
     DocumentIngestionStage,
     DocumentIngestionStatus,
     DocumentPipelineHandoff,
+    DoclingRuntimeReceipt,
 )
+from .execution import (
+    DoclingConversionRunner,
+    DoclingExecutionEnvironment,
+    WindowsDoclingCompatibilityPolicy,
+)
+from .exercises import DocumentExerciseExtractor
 from .provenance import DocumentProvenanceGate, DocumentProvenanceGateError
 
 
@@ -78,9 +85,12 @@ class DocumentBatchIngestion:
         policy: DocumentSourcePolicy,
         *,
         dependency_probe: DependencyProbe = probe_docling_dependency,
-        converter_factory: BatchConverterFactory = build_docling_converter,
+        converter_factory: BatchConverterFactory | None = None,
         pipeline_port: DocumentKnowledgePipelinePort | None = None,
         provenance_gate: DocumentProvenanceGate | None = None,
+        execution_environment: DoclingExecutionEnvironment | None = None,
+        compatibility_policy: WindowsDoclingCompatibilityPolicy | None = None,
+        exercise_extractor: DocumentExerciseExtractor | None = None,
         clock: MonotonicClock = time.perf_counter,
     ) -> None:
         self.policy = policy
@@ -92,6 +102,9 @@ class DocumentBatchIngestion:
         self._converter_factory = converter_factory
         self._pipeline_port = pipeline_port
         self._provenance_gate = provenance_gate or DocumentProvenanceGate()
+        self._execution_environment = execution_environment
+        self._compatibility_policy = compatibility_policy
+        self._exercise_extractor = exercise_extractor or DocumentExerciseExtractor()
         self._clock = clock
 
     def ingest(
@@ -179,6 +192,7 @@ class DocumentBatchIngestion:
                 durations=durations,
                 counts=counts,
                 interrupted=False,
+                runtime_receipts=(),
             )
 
         prepared: list[_PreparedDocument] = []
@@ -327,9 +341,18 @@ class DocumentBatchIngestion:
             )
 
         emit(DocumentIngestionStage.PREFLIGHT, None)
+        converter: DoclingBatchConverterProtocol | None = None
         if prepared:
             try:
-                converter = self._converter_factory(self.policy)
+                if self._converter_factory is not None:
+                    converter = self._converter_factory(self.policy)
+                else:
+                    converter = DoclingConversionRunner(
+                        self.policy,
+                        execution_environment=self._execution_environment,
+                        compatibility_policy=self._compatibility_policy,
+                        converter_factory=build_docling_converter,
+                    )
             except Exception as error:
                 for item in prepared:
                     receipts_by_index[item.index] = self._failed_receipt(
@@ -349,6 +372,7 @@ class DocumentBatchIngestion:
                 prepared = []
 
         pending_after_interrupt: list[_PreparedDocument] = []
+        assert converter is not None or not prepared
         for offset in range(0, len(prepared), request.conversion_batch_size):
             chunk = prepared[offset : offset + request.conversion_batch_size]
             iterator, stream_failure = self._start_convert_all_chunk(
@@ -440,6 +464,9 @@ class DocumentBatchIngestion:
             durations=durations,
             counts=counts,
             interrupted=interrupted,
+            runtime_receipts=tuple(
+                getattr(converter, "runtime_receipts", ()) if converter else ()
+            ),
         )
 
     def _start_convert_all_chunk(
@@ -485,7 +512,11 @@ class DocumentBatchIngestion:
         partial = status_text == "partial_success"
         if status_text not in {"success", "partial_success"}:
             errors = tuple(getattr(result, "errors", ()) or ())
-            error_class = type(errors[0]).__name__ if errors else "DoclingConversionError"
+            error_class = (
+                str(getattr(errors[0], "error_class", type(errors[0]).__name__))
+                if errors
+                else "DoclingConversionError"
+            )
             return (
                 self._failed_receipt(
                     index=item.index,
@@ -769,6 +800,7 @@ class DocumentBatchIngestion:
         durations: dict[str, float],
         counts: dict[str, int],
         interrupted: bool,
+        runtime_receipts: tuple[DoclingRuntimeReceipt, ...],
     ) -> DocumentBatchResult:
         receipts = tuple(receipts_by_index[index] for index in sorted(receipts_by_index))
         if interrupted:
@@ -789,11 +821,12 @@ class DocumentBatchIngestion:
                 status = DocumentBatchStatus.PARTIAL
             else:
                 status = DocumentBatchStatus.FAILED
+        bundles = tuple(bundle_by_identity.values())
         return DocumentBatchResult(
             request_id=request.request_id,
             status=status,
             receipts=receipts,
-            bundles=tuple(bundle_by_identity.values()),
+            bundles=bundles,
             handoffs=tuple(handoff_by_identity.values()),
             checkpoint=checkpoint,
             progress=tuple(progress),
@@ -807,6 +840,8 @@ class DocumentBatchIngestion:
                 converted_documents=counts["converted"],
                 mapped_evidence_items=counts["evidence"],
             ),
+            runtime_receipts=runtime_receipts,
+            exercise_candidates=self._exercise_extractor.extract_batch(bundles),
         )
 
 
