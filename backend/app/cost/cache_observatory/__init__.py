@@ -19,6 +19,14 @@ from .contracts import (
     MissReasonCount,
     classify_cache_miss,
 )
+from .experiments import (
+    CacheExperiment,
+    CacheExperimentReport,
+    CacheScenario,
+    CacheScenarioResult,
+    run_cache_experiment,
+    standard_cache_scenarios,
+)
 from .identity_policy import (
     DEFAULT_CACHE_IDENTITY_POLICY,
     CacheIdentityPolicy,
@@ -84,6 +92,8 @@ __all__ = [
     "CacheEventConflict",
     "CacheEventSinkPort",
     "CacheEventSourcePort",
+    "CacheExperiment",
+    "CacheExperimentReport",
     "CacheIdentity",
     "CacheIdentityPolicy",
     "CacheIdentityPolicyViolation",
@@ -109,6 +119,8 @@ __all__ = [
     "CacheOpportunityAnalyzer",
     "CacheOpportunityReport",
     "CacheOpportunityTrace",
+    "CacheScenario",
+    "CacheScenarioResult",
     "CurrencyAmount",
     "ExecutionObservatoryAdapter",
     "LayerIdentityPolicy",
@@ -137,6 +149,8 @@ __all__ = [
     "local_cache_miss_reason",
     "review_execution_plane",
     "review_trace_from_evaluation_result",
+    "run_cache_experiment",
     "run_synthetic_cache_benchmark",
+    "standard_cache_scenarios",
     "teacher_trace_from_usage_receipt",
 ]
