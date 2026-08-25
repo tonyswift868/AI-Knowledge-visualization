@@ -70,6 +70,7 @@ from .video_collection_api import (
 from .code_practice import router as code_practice_router
 from .casual_chat import router as casual_chat_router
 from .teacher_voice_pack import router as teacher_voice_pack_router
+from .teacher_live_api import router as teacher_live_router
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -263,6 +264,7 @@ app.include_router(video_collection_router)
 app.include_router(code_practice_router)
 app.include_router(casual_chat_router)
 app.include_router(teacher_voice_pack_router)
+app.include_router(teacher_live_router)
 _configured_origins = [
     item.strip().rstrip("/")
     for item in os.getenv(
