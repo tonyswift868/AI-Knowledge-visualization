@@ -1,0 +1,58 @@
+{
+  "schema_version": "mentorflow.delivery-fence.v1",
+  "delivery_id": "MF-LIVE-DEMO-02-20260825-4555A13E",
+  "work_item": "LIVE-DEMO-02",
+  "status": "READY_FOR_REVIEW",
+  "branch": "core-v2/w5-review-knowledge",
+  "base_commit": "0a7da4602c0d1b8e79acd89f1d99174791c7395e",
+  "code_and_tests_head": "4555a13e8b06c86e4cca384887013fe9bb702ee4",
+  "commit_binding": "The commit containing this fence must have code_and_tests_head as its first parent.",
+  "deliverables": {
+    "map_read_api": "backend/app/knowledge/map_read_api.py",
+    "demo_dataset": "backend/app/knowledge/map_read_demo.py",
+    "frontend_feature": "frontend/src/features/verified-knowledge-map",
+    "integration_manifest": "docs/integration/LIVE-DEMO-02-verified-knowledge-map.json",
+    "performance_report": "docs/performance/verified-knowledge-map-20260825.json"
+  },
+  "experience_contract": {
+    "relation_types": [
+      "PREREQUISITE",
+      "SUPPORTS",
+      "RELATED",
+      "POSSIBLE_PREREQUISITE"
+    ],
+    "uncertain_relation_looks_verified": false,
+    "cycle_user_message": "发现知识依赖冲突，需要检查关系",
+    "partial_user_message": "资料尚未完全验证",
+    "failed_rendered_as_complete": false,
+    "demo_label": "DEMO DATA"
+  },
+  "large_graph_gate": {
+    "fixture_sizes": [50, 250, 1000],
+    "one_thousand_node_layout_ms": 996.852,
+    "one_thousand_node_mapping_ms": 3.407,
+    "one_thousand_node_jsdom_mount_ms": 1263.586,
+    "browser_paint_measured": false,
+    "perfect_fluidity_claimed": false
+  },
+  "verification": {
+    "backend_command": "$env:PYTHONPATH='backend'; <project-python> -m pytest -q --basetemp E:\\Codex\\Temp\\MF-w1-knowledge-inventory\\pytest-live-demo-02 backend/tests/test_knowledge_map_v2.py backend/tests/test_knowledge_map_v2_hardening.py backend/tests/test_knowledge_map_read_api.py",
+    "backend_result": "21 passed, 1 existing Starlette/httpx deprecation warning",
+    "frontend_command": "npm test -- src/test/verified_knowledge_map_graph.test.ts src/test/verified_knowledge_map_experience.test.tsx src/test/verified_knowledge_map_performance.test.tsx",
+    "frontend_result": "3 files passed, 11 tests passed",
+    "frontend_build": "PASS; Vite emitted the existing large-chunk warning",
+    "python_compile_and_json": "PASS",
+    "central_entrypoints_unchanged": true,
+    "dependency_manifests_unchanged": true
+  },
+  "safety": {
+    "real_provider_calls": 0,
+    "real_user_data_touched": false,
+    "live_runtime_used": false,
+    "dependency_mutated": false,
+    "central_backend_router_modified": false,
+    "central_frontend_router_modified": false
+  },
+  "integration_required": true,
+  "integration_boundary": "Register the exported backend APIRouter and frontend RouteObject using the committed integration manifest; no central entrypoint was modified in this delivery."
+}
