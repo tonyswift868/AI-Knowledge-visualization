@@ -193,6 +193,22 @@ class PlanProductRuntime:
             raise UnknownPublishedPlanError("unknown published plan")
         return published
 
+    def preview_schedule(self, preview_id: str) -> ImmutablePlanSchedule:
+        """Expose the solved draft schedule without publishing or mutating it."""
+
+        outcome = self._outcomes.get(preview_id)
+        if outcome is None:
+            raise UnknownPlanPreviewError("unknown plan preview")
+        if outcome.preview.status is not PlanPreviewStatus.READY_FOR_CONFIRMATION:
+            raise InfeasiblePlanCannotPublishError(
+                "only a feasible solved preview has a schedule"
+            )
+        return PlanRuntime.from_solver_result(
+            outcome.schedule_problem,
+            outcome.schedule_solution,
+            plan_id=outcome.request.plan_id,
+        ).initial_schedule
+
     def current_runtime_schedule(
         self,
         publication_id: str,

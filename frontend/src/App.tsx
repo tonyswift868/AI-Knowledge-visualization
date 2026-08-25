@@ -48,6 +48,7 @@ import { ReviewDemoApp } from "./features/review-demo/ReviewDemoApp";
 import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
 import { ProgressExperience } from "./features/progress/ProgressExperience";
+import { PlanProductExperience } from "./features/plan-product/PlanProductExperience";
 import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
 import {
   TEACHER_STAGE_IDLE_REACTION_MS,
@@ -150,7 +151,7 @@ function CharacterPortrait({ character, className = "" }: { character: any; clas
 
 export function App() {
   const standaloneTool = new URLSearchParams(window.location.search).get("tool");
-  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review";
+  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review" || standaloneTool === "plan-product";
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
@@ -560,6 +561,9 @@ export function App() {
         }}
       />
     );
+  }
+  if (standaloneTool === "plan-product") {
+    return <PlanProductExperience />;
   }
   if (standaloneTool === "casual") {
     return <StandaloneCasualTool workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} />;
