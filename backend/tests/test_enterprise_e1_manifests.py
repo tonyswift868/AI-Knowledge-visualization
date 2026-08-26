@@ -64,7 +64,9 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     ]
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "ISOLATED_WORKTREE_IN_PROGRESS_NO_DELIVERY"
-    assert by_id["E1-05"]["state"] == "OFFICE_STALE_NOT_STARTED"
+    assert by_id["E1-05"]["state"] == "RETURN_TO_OWNER_MIGRATION_HEAD_CONFLICT"
+    assert by_id["E1-05"]["delivery_id"] == "DLV-W05-20260826T111031Z-01"
+    assert "second Alembic head" in by_id["E1-05"]["notes"]
     assert by_id["E1-07"]["state"] == "IN_PROGRESS_DIRTY_NO_DELIVERY"
 
 
