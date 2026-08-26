@@ -351,8 +351,8 @@ def test_synthetic_fixture_and_isolation_corpus_cover_every_resource_and_operati
         "cost_events",
     }
     corpus = build_tenant_isolation_corpus()
-    assert len(corpus.probes) == 64
-    assert corpus.operation_count == len(IsolationOperation) == 8
+    assert len(corpus.probes) == 80
+    assert corpus.operation_count == len(IsolationOperation) == 10
     assert corpus.resource_kind_count == len(TenantResourceKind) == 8
     assert corpus.unauthorized_success_expected == 0
 
