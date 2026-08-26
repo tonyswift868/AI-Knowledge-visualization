@@ -1,0 +1,45 @@
+groups:
+  - name: mentorflow-enterprise-e1
+    rules:
+      - alert: MentorFlowServiceDown
+        expr: up{job="mentorflow-backend"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: MentorFlow backend is unavailable
+          runbook: Postgres outage or dependency-specific outage triage
+      - alert: MentorFlowHighErrorRate
+        expr: sum(rate(mentorflow_http_requests_total{status_class="5xx"}[5m])) / clamp_min(sum(rate(mentorflow_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: Ordinary API error rate exceeds 5 percent}
+      - alert: MentorFlowQueueStuck
+        expr: max(mentorflow_job_oldest_age_seconds) > 600
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: Oldest queued job is older than ten minutes, runbook: Job queue stuck}
+      - alert: MentorFlowWorkerFailureSpike
+        expr: sum(rate(mentorflow_job_failures_total[5m])) > 0.1
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: Background worker failures are spiking}
+      - alert: MentorFlowBackupStale
+        expr: max(mentorflow_backup_freshness_seconds) > 86400 or absent(mentorflow_backup_freshness_seconds)
+        for: 15m
+        labels: {severity: critical}
+        annotations: {summary: A verified enterprise backup is missing or older than 24 hours, runbook: Restore}
+      - alert: MentorFlowAuthDenialAnomaly
+        expr: sum(rate(mentorflow_auth_attempts_total{result="denied"}[10m])) / clamp_min(sum(rate(mentorflow_auth_attempts_total[10m])), 1) > 0.20
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: Authentication denial ratio exceeds 20 percent}
+      - alert: MentorFlowTenantIsolationAnomaly
+        expr: sum(increase(mentorflow_rls_denials_total[5m])) > 0 or sum(increase(mentorflow_authorization_denials_total{reason="tenant_mismatch"}[5m])) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: Tenant isolation denial observed, runbook: Cross-tenant incident}
+      - alert: MentorFlowProviderOutage
+        expr: sum(rate(mentorflow_provider_calls_total{status="failed"}[5m])) / clamp_min(sum(rate(mentorflow_provider_calls_total[5m])), 1) > 0.50
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: Provider failure ratio exceeds 50 percent, runbook: Provider outage}

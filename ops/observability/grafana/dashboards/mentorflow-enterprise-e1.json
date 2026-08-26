@@ -1,0 +1,33 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {"id": 1, "type": "row", "title": "System", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}},
+    {"id": 2, "type": "timeseries", "title": "System - request and error rate", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum(rate(mentorflow_http_requests_total[5m]))", "legendFormat": "requests/s", "refId": "A"}, {"expr": "sum(rate(mentorflow_http_requests_total{status_class=\"5xx\"}[5m]))", "legendFormat": "errors/s", "refId": "B"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 1}},
+    {"id": 3, "type": "row", "title": "Identity", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9}},
+    {"id": 4, "type": "timeseries", "title": "Identity - authentication outcomes", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum by (result) (rate(mentorflow_auth_attempts_total[5m]))", "legendFormat": "{{result}}", "refId": "A"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 10}},
+    {"id": 5, "type": "row", "title": "Tenant Security", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18}},
+    {"id": 6, "type": "timeseries", "title": "Tenant Security - authorization and RLS denials", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum by (reason) (rate(mentorflow_authorization_denials_total[5m]))", "legendFormat": "auth {{reason}}", "refId": "A"}, {"expr": "sum by (resource) (rate(mentorflow_rls_denials_total[5m]))", "legendFormat": "rls {{resource}}", "refId": "B"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 19}},
+    {"id": 7, "type": "row", "title": "Teacher/AI", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 27}},
+    {"id": 8, "type": "timeseries", "title": "Teacher/AI - availability, TTFT and total latency", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum by (status) (rate(mentorflow_teacher_turns_total[5m]))", "legendFormat": "turn {{status}}", "refId": "A"}, {"expr": "histogram_quantile(0.95, sum by (le, route) (rate(mentorflow_teacher_ttft_seconds_bucket[5m])))", "legendFormat": "TTFT p95 {{route}}", "refId": "B"}, {"expr": "histogram_quantile(0.95, sum by (le, route) (rate(mentorflow_teacher_total_seconds_bucket[5m])))", "legendFormat": "total p95 {{route}}", "refId": "C"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28}},
+    {"id": 9, "type": "row", "title": "Jobs", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 36}},
+    {"id": 10, "type": "timeseries", "title": "Jobs - depth, age and failures", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "mentorflow_job_queue_depth", "legendFormat": "depth {{queue}}", "refId": "A"}, {"expr": "mentorflow_job_oldest_age_seconds", "legendFormat": "age {{queue}}", "refId": "B"}, {"expr": "sum by (queue) (rate(mentorflow_job_failures_total[5m]))", "legendFormat": "failures {{queue}}", "refId": "C"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 37}},
+    {"id": 11, "type": "row", "title": "Documents", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 45}},
+    {"id": 12, "type": "timeseries", "title": "Documents - throughput and failures", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum by (status) (rate(mentorflow_document_processed_total[5m]))", "legendFormat": "{{status}}", "refId": "A"}, {"expr": "histogram_quantile(0.95, sum by (le, status) (rate(mentorflow_document_processing_duration_seconds_bucket[5m])))", "legendFormat": "duration p95 {{status}}", "refId": "B"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 46}},
+    {"id": 13, "type": "row", "title": "Cost/Cache", "collapsed": false, "panels": [], "gridPos": {"h": 1, "w": 24, "x": 0, "y": 54}},
+    {"id": 14, "type": "timeseries", "title": "Cost/Cache - cost, tokens and cache outcomes", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "sum by (provider_route) (rate(mentorflow_provider_cost_usd_total[1h]))", "legendFormat": "USD/h {{provider_route}}", "refId": "A"}, {"expr": "sum by (provider_route, token_type) (rate(mentorflow_provider_tokens_total[5m]))", "legendFormat": "tokens {{provider_route}} {{token_type}}", "refId": "B"}, {"expr": "sum by (layer, result) (rate(mentorflow_cache_requests_total[5m]))", "legendFormat": "cache {{layer}} {{result}}", "refId": "C"}], "gridPos": {"h": 8, "w": 24, "x": 0, "y": 55}}
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["mentorflow", "enterprise", "e1-06"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "MentorFlow Enterprise E1",
+  "uid": "mentorflow-enterprise-e1",
+  "version": 1
+}

@@ -10,6 +10,7 @@ from .audit import (
 from .context import CorrelationContext, correlation_scope, current_correlation
 from .health import configure_default_health_probes, health_registry
 from .instrumentation import (
+    observe_business_operation,
     observe_job,
     record_auth_attempt,
     record_authorization_denial,
@@ -32,7 +33,7 @@ from .recovery import (
     load_and_verify_manifest,
     restore_backup,
 )
-from .slo import error_budgets
+from .slo import SloWindow, error_budgets
 
 __all__ = [
     "CorrelationContext",
@@ -43,6 +44,7 @@ __all__ = [
     "PostgresEndpoint",
     "RecoveryOperationError",
     "RestorePlan",
+    "SloWindow",
     "configure_default_health_probes",
     "configure_open_telemetry",
     "correlation_scope",
@@ -52,6 +54,7 @@ __all__ = [
     "health_registry",
     "install_observability",
     "observe_http_request",
+    "observe_business_operation",
     "observe_job",
     "otel_status",
     "load_and_verify_manifest",

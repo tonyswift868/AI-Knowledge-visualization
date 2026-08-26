@@ -70,6 +70,7 @@ def observe_http_request(request: Request) -> Iterator[CorrelationContext]:
             registry.observe("mentorflow_http_request_duration_seconds", duration, method=method, route=route, feature=feature)
             if feature not in {"teacher", "provider", "health"} and path.startswith("/api"):
                 error_budgets.record("non_ai_api_availability", status_code < 500)
+                error_budgets.record("non_ai_api_latency", duration <= 0.5)
             emit_event(
                 _LOGGER,
                 "http_request_completed",

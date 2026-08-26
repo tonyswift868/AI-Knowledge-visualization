@@ -1,0 +1,26 @@
+{
+  "schema_version": "mentorflow.enterprise-recovery-plan.v1",
+  "backup_id": "staging-YYYYMMDDTHHMMSSZ",
+  "backup_root": "/var/backups/mentorflow",
+  "backup_directory": "/var/backups/mentorflow/staging-YYYYMMDDTHHMMSSZ",
+  "postgres": {
+    "host": "postgres",
+    "port": 5432,
+    "database": "mentorflow",
+    "username": "mentorflow_backup",
+    "password_env": "MENTORFLOW_BACKUP_DB_PASSWORD"
+  },
+  "keycloak_database": {
+    "host": "keycloak-postgres",
+    "port": 5432,
+    "database": "keycloak",
+    "username": "keycloak_backup",
+    "password_env": "MENTORFLOW_KEYCLOAK_BACKUP_DB_PASSWORD"
+  },
+  "object_source_root": "/srv/mentorflow/objects",
+  "object_restore_root": "/srv/mentorflow-restore/objects",
+  "keycloak_realm_export": "/var/lib/keycloak-export/mentorflow-realm.json",
+  "keycloak_realm_restore": "/var/lib/keycloak-restore/mentorflow-realm.json",
+  "pg_dump_binary": "/usr/bin/pg_dump",
+  "pg_restore_binary": "/usr/bin/pg_restore"
+}

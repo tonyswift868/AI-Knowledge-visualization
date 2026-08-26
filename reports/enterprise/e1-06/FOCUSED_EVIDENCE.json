@@ -2,9 +2,10 @@
   "schema_version": "mentorflow.e1-06-focused-evidence.v1",
   "work_item": "E1-06",
   "worker": "06",
-  "recorded_at": "2026-08-26T10:58:00Z",
+  "recorded_at": "2026-08-26T12:55:18Z",
   "office": "E:\\Codex\\Worktrees\\MF-w1-sm",
   "branch": "core-v2/e1-observability-recovery",
+  "integration_base": "4b2197f0c149bc28a62adbda14e15deeb216bc6f",
   "contract": {
     "version": "enterprise-context.v1",
     "commit": "fa488048d2856d687854b50a23137a45bb020d7d",
@@ -17,42 +18,63 @@
     {
       "name": "provider_trace_audit_backup_restore_failure",
       "status": "PASS",
-      "passed": 8,
+      "passed": 13,
       "failed": 0,
       "skipped": 0,
-      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py"
+      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py",
+      "evidence": "All 13 tests also passed inside the post-Integration 82-test dependency gate"
     },
     {
       "name": "affected_provider_teacher_document",
       "status": "PASS",
-      "passed": 48,
+      "passed": 40,
       "failed": 0,
       "skipped": 0,
-      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py backend/tests/test_provider_telemetry.py backend/tests/test_teacher_live_api.py backend/tests/test_document_ingestion_runtime.py"
+      "command": "python -m pytest -q backend/tests/test_provider_telemetry.py backend/tests/test_teacher_live_api.py backend/tests/test_document_ingestion_runtime.py",
+      "evidence": "40 passed post-Integration rebind in 59.07s"
     },
     {
       "name": "personal_local_and_contract",
       "status": "PASS_WITH_EXPECTED_SKIPS",
-      "passed": 28,
+      "passed": 17,
       "failed": 0,
       "skipped": 2,
       "skip_scope": "Windows link privileges unavailable",
-      "command": "python -m pytest -q backend/tests/test_enterprise_contracts_v1.py backend/tests/test_enterprise_e1_manifests.py backend/tests/test_local_auth.py backend/tests/test_api_contract_startup.py desktop/tests/test_single_user_storage_boundary.py desktop/tests/test_local_service_startup.py"
+      "command": "python -m pytest -q backend/tests/test_local_auth.py backend/tests/test_api_contract_startup.py desktop/tests/test_single_user_storage_boundary.py desktop/tests/test_local_service_startup.py",
+      "evidence": "17 passed, 2 expected Windows link-privilege skips post-Integration rebind in 20.97s; enterprise contracts/manifests are covered by the cross-dependency gate"
+    },
+    {
+      "name": "e1_02_e1_03_e1_05_cross_dependency_post_integration",
+      "status": "PASS",
+      "passed": 82,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py backend/tests/test_enterprise_tenant_persistence.py backend/tests/test_enterprise_governance.py backend/tests/test_enterprise_jobs_v1.py backend/tests/test_enterprise_jobs_migration.py backend/tests/test_enterprise_jobs_crash_matrix.py backend/tests/test_enterprise_contracts_v1.py backend/tests/test_enterprise_e1_manifests.py",
+      "evidence": "82 passed post-Integration rebind in 129.36s"
     },
     {
       "name": "frontend_production_build",
       "status": "PASS",
       "command": "npm run build",
-      "dependency_source": "read-only junction to existing canonical frontend/node_modules; junction removed after build"
+      "dependency_source": "read-only junction to existing canonical frontend/node_modules; junction verified and removed after build",
+      "evidence": "TypeScript and Vite production build passed in 5.82s"
+    },
+    {
+      "name": "external_observability_assets",
+      "status": "OFFLINE_PARSE_PASS_STAGING_PENDING",
+      "command": "PyYAML safe_load plus JSON parse",
+      "evidence": "8 YAML and 2 JSON assets parsed; Docker, Promtool and Linux staging unavailable"
     }
   ],
   "recovery_evidence": {
     "classification": "CONTRACT_HARNESS_PLUS_REAL_FILESYSTEM_DESTROY_RESTORE",
     "synthetic_entities_verified": {
       "organizations": 1,
-      "users": 1,
+      "members": 2,
       "workspaces": 1,
-      "resources": 2,
+      "documents": 2,
+      "plans": 1,
+      "student_state": 1,
       "audit_events": 1,
       "jobs": 1,
       "keycloak_realms": 1,
@@ -63,6 +85,7 @@
     "failure_cases": [
       "PG_DUMP_FAILED retains non-ready temporary evidence",
       "ARTIFACT_HASH_MISMATCH blocks restore before database commands",
+      "OBJECT_TENANT_PATH_INVALID blocks unscoped object backup publication",
       "RESTORE_TARGET_NOT_EMPTY blocks destructive overwrite",
       "audit sink missing or unavailable fails closed in ENTERPRISE_SERVER",
       "PII and content-bearing audit metadata are rejected"
@@ -75,15 +98,32 @@
     "javascript_dependency_diff": "EMPTY",
     "otel_python_sdk_lease": "NOT_ACQUIRED",
     "otel_javascript_sdk_lease": "NOT_ACQUIRED",
-    "collector": "EXTERNAL_CONTAINER_NOT_EMBEDDED",
+    "collector": "EXTERNAL_CONTAINER_CONFIG_VERSIONED_NOT_EMBEDDED_STAGING_NOT_RUN",
     "provider_calls": 0,
     "real_user_data_used": false
   },
-  "pending_cross_worker_dependencies": [
-    "E1-02 PostgreSQL schema, RLS and live backup target",
-    "E1-03 authoritative authorization audit sink",
-    "E1-05 durable jobs, outbox and dead letters"
+  "merged_cross_worker_dependencies": [
+    "E1-02 delivery b846ad3c5817f432fb5c815ebe0a66048cb5c065 merged by Delivery Fence",
+    "E1-03 delivery 2af634f1fa81575be63e4fa42635b454a57c2c2b merged by Delivery Fence",
+    "E1-05 delivery 258200f84e9a0f4996b3715e62abaf007bd818ba merged by Delivery Fence"
   ],
+  "goal_matrix": {
+    "M1_OTEL_FOUNDATION": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M2_CORRELATION": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M3_FRONTEND_PROPAGATION": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M4_METRICS": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M5_SLO": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M6_ERROR_BUDGET": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M7_HEALTH": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M8_COLLECTOR": "IMPLEMENTED_CONFIG_STAGING_VERIFICATION_PENDING",
+    "M9_DASHBOARDS": "IMPLEMENTED_CONFIG_STAGING_VERIFICATION_PENDING",
+    "M10_ALERTS": "IMPLEMENTED_CONFIG_STAGING_VERIFICATION_PENDING",
+    "M11_POSTGRES_BACKUP": "IMPLEMENTED_REAL_BACKUP_EXECUTION_PENDING_STAGING",
+    "M12_RESTORE_HARNESS": "OFFLINE_VERIFIED_STAGING_VERIFICATION_PENDING",
+    "M13_OBJECT_BACKUP": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M14_RUNBOOKS": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "M15_PII_SECRET_SAFETY": "IMPLEMENTED_OFFLINE_VERIFIED"
+  },
   "invalidated_exploratory_gate": {
     "status": "NOT_ACCEPTANCE_EVIDENCE",
     "observed": "81 passed, 2 failed plus live database isolation warning",
@@ -97,8 +137,11 @@
     "replacement_gates": ["affected_provider_teacher_document", "personal_local_and_contract"]
   },
   "claims": {
-    "focused_feature_evidence": "PASS",
+    "focused_feature_evidence": "PASS_13",
     "personal_local_preserved": true,
+    "dependencies_e1_02_e1_03_e1_05_merged": true,
+    "offline_goal_scope_complete": true,
+    "staging_verification_pending": true,
     "enterprise_server_live_acceptance": false,
     "enterprise_ready": false,
     "production_ready": false

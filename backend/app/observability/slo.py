@@ -10,17 +10,36 @@ from typing import Callable
 
 
 @dataclass(frozen=True, slots=True)
+class SloWindow:
+    """A named rolling time window used by SLO and dashboard read models."""
+
+    seconds: int
+
+    def __post_init__(self) -> None:
+        if self.seconds <= 0:
+            raise ValueError("SLO window must be positive")
+
+    def cutoff(self, observed_at: float) -> float:
+        return float(observed_at) - self.seconds
+
+
+@dataclass(frozen=True, slots=True)
 class SLOTarget:
     name: str
     target: float
     window_seconds: int
     description: str
 
+    @property
+    def window(self) -> SloWindow:
+        return SloWindow(self.window_seconds)
+
 
 STAGING_SLOS = {
     target.name: target
     for target in (
         SLOTarget("non_ai_api_availability", 0.999, 30 * 24 * 3600, "Non-AI API requests below 500"),
+        SLOTarget("non_ai_api_latency", 0.95, 30 * 24 * 3600, "Non-AI API requests completing within 500 ms"),
         SLOTarget("teacher_availability", 0.99, 30 * 24 * 3600, "Teacher turns completing without provider failure"),
         SLOTarget("job_success", 0.995, 7 * 24 * 3600, "Background jobs reaching succeeded"),
         SLOTarget("document_completion", 0.99, 7 * 24 * 3600, "Document batches completing or partially completing"),
@@ -46,7 +65,7 @@ class ErrorBudgetReadModel:
         with self._lock:
             events = self._events[name]
             events.append((now, bool(good)))
-            cutoff = now - target.window_seconds
+            cutoff = target.window.cutoff(now)
             while events and events[0][0] < cutoff:
                 events.popleft()
 
@@ -55,7 +74,7 @@ class ErrorBudgetReadModel:
         now = self._clock()
         with self._lock:
             events = self._events[name]
-            cutoff = now - target.window_seconds
+            cutoff = target.window.cutoff(now)
             while events and events[0][0] < cutoff:
                 events.popleft()
             total = len(events)
@@ -90,4 +109,4 @@ class ErrorBudgetReadModel:
 error_budgets = ErrorBudgetReadModel()
 
 
-__all__ = ["ErrorBudgetReadModel", "SLOTarget", "STAGING_SLOS", "error_budgets"]
+__all__ = ["ErrorBudgetReadModel", "SloWindow", "SLOTarget", "STAGING_SLOS", "error_budgets"]

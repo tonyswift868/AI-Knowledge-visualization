@@ -104,6 +104,19 @@ def record_provider_receipt(receipt: object) -> None:
     success = bool(getattr(receipt, "success", False))
     if bool(getattr(receipt, "provider_called", True)):
         registry.add("mentorflow_provider_calls_total", provider_route=route, status="success" if success else "failed")
+    for token_type, attribute in (
+        ("prompt", "prompt_tokens"),
+        ("completion", "completion_tokens"),
+        ("total", "total_tokens"),
+        ("cache_hit", "prompt_cache_hit_tokens"),
+        ("cache_miss", "prompt_cache_miss_tokens"),
+    ):
+        raw_tokens = getattr(receipt, attribute, 0)
+        try:
+            tokens = max(0, int(raw_tokens or 0))
+        except (TypeError, ValueError):
+            tokens = 0
+        registry.add("mentorflow_provider_tokens_total", tokens, provider_route=route, token_type=token_type)
     cost = getattr(receipt, "estimated_cost_usd", None)
     classification = "estimated" if cost is not None else "unavailable"
     registry.add("mentorflow_provider_cost_usd_total", float(cost or 0.0), provider_route=route, cost_classification=classification)
@@ -139,7 +152,43 @@ def record_backup_freshness(component: str, age_seconds: float, *, maximum_age_s
     error_budgets.record("backup_freshness", age_seconds <= maximum_age_seconds)
 
 
+@contextmanager
+def observe_business_operation(
+    feature: str,
+    operation: str,
+    *,
+    organization_id: str | None = None,
+    workspace_id: str | None = None,
+    provider_route: str | None = None,
+) -> Iterator[None]:
+    """Shared database/review/plan/provider instrumentation seam."""
+
+    normalized_feature = str(feature).casefold()
+    if normalized_feature not in {"database", "plan", "provider", "review"}:
+        raise ValueError("unsupported observability feature")
+    normalized_operation = str(operation).strip().casefold().replace("_", "-")
+    if not normalized_operation or len(normalized_operation) > 64:
+        raise ValueError("operation must be bounded")
+    updates: dict[str, object] = {"feature": normalized_feature}
+    if organization_id is not None:
+        updates["organization_id"] = organization_id
+    if workspace_id is not None:
+        updates["workspace_id"] = workspace_id
+    if provider_route is not None:
+        updates["provider_route"] = provider_route
+    with correlation_scope(**updates):
+        attributes: dict[str, object] = {
+            "mentorflow.feature": normalized_feature,
+            "mentorflow.operation": normalized_operation,
+        }
+        if normalized_feature == "database":
+            attributes["db.operation.name"] = normalized_operation
+        with business_span(f"mentorflow.{normalized_feature}.{normalized_operation}", attributes):
+            yield
+
+
 __all__ = [
+    "observe_business_operation",
     "observe_job",
     "record_auth_attempt",
     "record_authorization_denial",

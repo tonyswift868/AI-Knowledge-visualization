@@ -7,6 +7,9 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from typing import Iterator, Mapping
 
+from .context import current_correlation
+from .privacy import safe_span_attributes
+
 
 @dataclass(frozen=True, slots=True)
 class OpenTelemetryStatus:
@@ -88,11 +91,12 @@ def otel_status() -> OpenTelemetryStatus:
 def business_span(name: str, attributes: Mapping[str, object] | None = None) -> Iterator[object | None]:
     """Create an OTel span when available, keeping attribute values bounded."""
 
-    safe_attributes = {
-        str(key)[:64]: value
-        for key, value in (attributes or {}).items()
-        if isinstance(value, (str, bool, int, float)) and len(str(value)) <= 160
+    context = current_correlation()
+    correlation_attributes = {
+        f"mentorflow.{key}": value
+        for key, value in (context.log_fields() if context else {}).items()
     }
+    safe_attributes = safe_span_attributes({**correlation_attributes, **(attributes or {})})
     try:
         from opentelemetry import trace
         tracer = trace.get_tracer("mentorflow.observability")

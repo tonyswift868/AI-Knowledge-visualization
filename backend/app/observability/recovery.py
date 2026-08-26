@@ -71,6 +71,7 @@ class ArtifactReceipt:
     relative_path: str
     size_bytes: int
     sha256: str
+    tenant_path: str | None = None
 
 
 class CommandRunner(Protocol):
@@ -120,8 +121,32 @@ def _artifact_receipts(root: Path) -> tuple[ArtifactReceipt, ...]:
             continue
         relative = path.relative_to(root).as_posix()
         component = relative.split("/", 1)[0]
-        receipts.append(ArtifactReceipt(component, relative, path.stat().st_size, _sha256(path)))
+        tenant_path = _object_tenant_path(relative) if component == "objects" else None
+        receipts.append(
+            ArtifactReceipt(
+                component,
+                relative,
+                path.stat().st_size,
+                _sha256(path),
+                tenant_path,
+            )
+        )
     return tuple(receipts)
+
+
+def _object_tenant_path(relative_path: str) -> str:
+    parts = tuple(str(relative_path).split("/"))
+    if (
+        len(parts) < 6
+        or parts[0] != "objects"
+        or parts[1] != "organizations"
+        or parts[3] != "workspaces"
+        or not parts[2]
+        or not parts[4]
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise RecoveryOperationError("OBJECT_TENANT_PATH_INVALID", "objects")
+    return "/".join(parts[1:5])
 
 
 def _password_environment(endpoint: PostgresEndpoint) -> dict[str, str]:
@@ -224,6 +249,10 @@ def load_and_verify_manifest(backup_directory: Path) -> dict[str, object]:
             raise RecoveryOperationError("ARTIFACT_MISSING", str(item.get("component") or "unknown"))
         if target.stat().st_size != int(item.get("size_bytes", -1)) or _sha256(target) != item.get("sha256"):
             raise RecoveryOperationError("ARTIFACT_HASH_MISMATCH", str(item.get("component") or "unknown"))
+        if item.get("component") == "objects":
+            expected_tenant_path = _object_tenant_path(str(item.get("relative_path") or ""))
+            if item.get("tenant_path") != expected_tenant_path:
+                raise RecoveryOperationError("OBJECT_TENANT_PATH_MISMATCH", "objects")
     return payload
 
 

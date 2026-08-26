@@ -39,9 +39,34 @@ _SENSITIVE_VALUE = re.compile(
     r"(?:bearer\s+[A-Za-z0-9._~+/=-]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     re.IGNORECASE,
 )
+_FORBIDDEN_TELEMETRY_TEXT = re.compile(
+    r"(?:authorization\s*[:=]|api[_-]?key\s*[:=]|raw[_-]?prompt\s*[:=]|"
+    r"student[_-]?answer\s*[:=]|document[_-]?text\s*[:=]|"
+    r"bearer\s+[A-Za-z0-9._~+/=-]+)",
+    re.IGNORECASE,
+)
+_ALLOWED_SPAN_FIELDS = {
+    "db.operation.name",
+    "http.request.method",
+    "http.route",
+    "job.id",
+    "job.queue",
+    "mentorflow.feature",
+    "mentorflow.job_id",
+    "mentorflow.operation",
+    "mentorflow.organization_id",
+    "mentorflow.provider_route",
+    "mentorflow.request_id",
+    "mentorflow.trace_id",
+    "mentorflow.workspace_id",
+}
 
 
 class UnsafeTelemetryField(ValueError):
+    pass
+
+
+class UnsafeTelemetryContent(ValueError):
     pass
 
 
@@ -64,6 +89,31 @@ def safe_event_fields(fields: Mapping[str, object]) -> dict[str, object]:
     return result
 
 
+def safe_span_attributes(fields: Mapping[str, object]) -> dict[str, object]:
+    """Allow only bounded operational span attributes, never content fields."""
+
+    result: dict[str, object] = {}
+    for raw_key, raw_value in fields.items():
+        key = str(raw_key)
+        if key not in _ALLOWED_SPAN_FIELDS:
+            raise UnsafeTelemetryField(f"span attribute is not allowed: {key}")
+        if not isinstance(raw_value, (str, int, float, bool)):
+            raise UnsafeTelemetryField(f"span attribute must be scalar: {key}")
+        value = str(raw_value)
+        if len(value) > 160 or _SENSITIVE_VALUE.search(value):
+            raise UnsafeTelemetryField(f"span attribute is sensitive or unbounded: {key}")
+        result[key] = raw_value
+    return result
+
+
+def scan_telemetry_text(text: str) -> None:
+    """Fail an evidence scan when serialized traces/logs contain forbidden data."""
+
+    match = _FORBIDDEN_TELEMETRY_TEXT.search(str(text))
+    if match is not None:
+        raise UnsafeTelemetryContent(f"forbidden telemetry content at offset {match.start()}")
+
+
 def emit_event(logger: logging.Logger, event: str, **fields: object) -> None:
     context = current_correlation()
     merged: dict[str, object] = context.log_fields() if context else {}
@@ -76,4 +126,11 @@ def emit_event(logger: logging.Logger, event: str, **fields: object) -> None:
     logger.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
-__all__ = ["UnsafeTelemetryField", "emit_event", "safe_event_fields"]
+__all__ = [
+    "UnsafeTelemetryContent",
+    "UnsafeTelemetryField",
+    "emit_event",
+    "safe_event_fields",
+    "safe_span_attributes",
+    "scan_telemetry_text",
+]
