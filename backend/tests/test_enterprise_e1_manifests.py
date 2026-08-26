@@ -107,13 +107,19 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
         "fb7bd515d0ad5d4ad35977da8cea0d61d436fb04",
         "ae2f9876ce876c3c24cf907020dc850fa2bb2c51",
     ]
-    assert by_id["E1-07"]["state"] == "READY_AUDITED_BLOCKED_BY_E1_04_QA"
+    assert by_id["E1-07"]["state"] == "READY_AUDITED_CHAIN_COMPLETE_BLOCKED_BY_E1_04_QA"
     assert by_id["E1-07"]["delivery_id"] == "DLV-W07-20260826T105638Z-01"
     assert by_id["E1-07"]["source_commits"] == [
         "4011ea382f19509ce0a26591a5fa2617dff13dcb",
         "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69",
     ]
-    assert "has not been applied" in by_id["E1-07"]["notes"]
+    assert by_id["E1-07"]["incremental_delivery_id"] == "DLV-W07-20260826T125249Z-02"
+    assert by_id["E1-07"]["incremental_delivery_receipt_sha256"] == "FA9682EDE0F2BFF41DC321062A1F8C654AC5D832C3F82C2D22E821181371E0A4"
+    assert by_id["E1-07"]["incremental_source_commits"] == [
+        "7b889bd269d9b44f7e3d22117e388ac9430ca6a2",
+        "f85bc7b8e398827fecf0c4deef4ac63e41fd3284",
+    ]
+    assert "Neither delivery has been applied" in by_id["E1-07"]["notes"]
 
 
 def test_integration_authority_guard_keeps_new_tasks_with_architect_and_review_feedback_with_a() -> None:
