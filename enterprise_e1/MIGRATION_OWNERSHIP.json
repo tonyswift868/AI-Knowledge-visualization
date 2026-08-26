@@ -1,0 +1,55 @@
+{
+  "schema_version": "enterprise-migration-ownership.v1",
+  "canonical_base": {
+    "commit": "91d8ed5a094e483fd3be71a97d4f9af4ba8b8023",
+    "tree": "7ae189522dc307ddb2f3c5acec387717dcb565ac",
+    "tag": "mentorflow-enterprise-e1-base-20260826"
+  },
+  "shared_contract_version": "enterprise-context.v1",
+  "database": "PostgreSQL",
+  "migration_order": ["E1-02", "E1-01", "E1-03", "E1-05", "E1-04", "E1-06", "E1-07"],
+  "constraints": {
+    "single_owner_per_resource": true,
+    "workers_must_not_modify_foreign_resources": true,
+    "personal_local_schema_compatibility_required": true,
+    "integration_coordinates_order_only": true,
+    "reserved_resources_are_not_claims_of_implementation": true
+  },
+  "owners": [
+    {
+      "owner": "E1-02",
+      "domain": "identity_mirror_tenant_persistence_rls",
+      "resources": [
+        {"kind": "schema", "name": "enterprise_identity", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "schema", "name": "enterprise_tenant", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_identity.subject_mirror", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_tenant.organizations", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_tenant.workspaces", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_tenant.memberships", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "policy", "name": "enterprise_tenant.organization_isolation", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "policy", "name": "enterprise_tenant.workspace_isolation", "status": "RESERVED_NOT_CREATED"}
+      ]
+    },
+    {
+      "owner": "E1-03",
+      "domain": "authorization_audit_provider_governance_quota",
+      "resources": [
+        {"kind": "schema", "name": "enterprise_governance", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_governance.authorization_policies", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_governance.audit_events", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_governance.provider_policies", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_governance.quota_budgets", "status": "RESERVED_NOT_CREATED"}
+      ]
+    },
+    {
+      "owner": "E1-05",
+      "domain": "durable_jobs_outbox_dead_letter",
+      "resources": [
+        {"kind": "schema", "name": "enterprise_jobs", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_jobs.jobs", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_jobs.outbox", "status": "RESERVED_NOT_CREATED"},
+        {"kind": "table", "name": "enterprise_jobs.dead_letters", "status": "RESERVED_NOT_CREATED"}
+      ]
+    }
+  ]
+}
