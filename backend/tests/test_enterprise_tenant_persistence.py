@@ -44,6 +44,7 @@ from app.enterprise_tenancy.synthetic import build_synthetic_tenant_seed
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 TENANCY_ROOT = BACKEND_ROOT / "app" / "enterprise_tenancy"
 MIGRATION_REVISION = "0029_enterprise_tenancy_rls"
+DATABASE_HEAD_REVISION = "0030_enterprise_jobs_v1"
 
 
 def _tenant(*, workspace_id: str | None = "workspace-a") -> TenantContext:
@@ -284,7 +285,7 @@ def test_0029_sqlite_upgrade_downgrade_upgrade_round_trip(tmp_path: Path) -> Non
         assert expected_tables <= tables
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            MIGRATION_REVISION,
+            DATABASE_HEAD_REVISION,
         )
 
     command.downgrade(config, "0028_video_collection_v1")
@@ -304,5 +305,5 @@ def test_0029_sqlite_upgrade_downgrade_upgrade_round_trip(tmp_path: Path) -> Non
     with sqlite3.connect(database) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            MIGRATION_REVISION,
+            DATABASE_HEAD_REVISION,
         )

@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T19:25:31+08:00",
+  "updated_at": "2026-08-26T19:41:38+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -54,11 +54,14 @@
     {
       "work_item": "E1-05",
       "capability": "durable_jobs",
-      "state": "RETURN_TO_OWNER_MIGRATION_HEAD_CONFLICT",
+      "state": "INTEGRATED_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-03"],
-      "delivery_id": "DLV-W05-20260826T111031Z-01",
-      "delivery_receipt_sha256": "11B159A6A3FC1B4C9B17B0044B554A1A1183007349BC8022653D1E1C2BADDC9A",
-      "notes": "Returned before apply. The delivery defines revision 0029_enterprise_jobs_v1 with down_revision 0028_video_collection_v1, colliding with integrated E1-02 revision 0029_enterprise_tenancy_rls and creating a second Alembic head. A formally rebound self-contained delivery must use the next linear revision after E1-02."
+      "delivery_id": "DLV-W05-20260826T113308Z-02",
+      "delivery_receipt_sha256": "3DD8C14F8843384348404E6FA01CC32A1172F86063D21B8DE12A983E71DAA041",
+      "source_commit": "258200f84e9a0f4996b3715e62abaf007bd818ba",
+      "integration_commit": "657a17f4479bc00805b4d97baf55deba5002cbe8",
+      "supersedes_returned_delivery": "DLV-W05-20260826T111031Z-01",
+      "notes": "The replacement delivery is self-contained on the E1-03 integration dependency point and uses the next linear Alembic revision 0030_enterprise_jobs_v1 after E1-02 revision 0029_enterprise_tenancy_rls. E1-05, migration-chain, contracts, and manifest gates passed 46/46; Personal Local compatibility passed 28 with 1 platform skip. Compile/import, pip, JSON, Alembic unique-head, and diff checks passed. No live PostgreSQL, Procrastinate worker, or external Provider execution is claimed."
     },
     {
       "work_item": "E1-04",

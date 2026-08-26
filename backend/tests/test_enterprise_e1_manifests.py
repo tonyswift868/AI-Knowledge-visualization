@@ -64,9 +64,13 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     ]
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "ISOLATED_WORKTREE_IN_PROGRESS_NO_DELIVERY"
-    assert by_id["E1-05"]["state"] == "RETURN_TO_OWNER_MIGRATION_HEAD_CONFLICT"
-    assert by_id["E1-05"]["delivery_id"] == "DLV-W05-20260826T111031Z-01"
-    assert "second Alembic head" in by_id["E1-05"]["notes"]
+    assert by_id["E1-05"]["state"] in {
+        "INTEGRATED_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PENDING",
+        "INTEGRATED_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PASSED",
+    }
+    assert by_id["E1-05"]["delivery_id"] == "DLV-W05-20260826T113308Z-02"
+    assert by_id["E1-05"]["source_commit"] == "258200f84e9a0f4996b3715e62abaf007bd818ba"
+    assert by_id["E1-05"]["supersedes_returned_delivery"] == "DLV-W05-20260826T111031Z-01"
     assert by_id["E1-07"]["state"] == "IN_PROGRESS_DIRTY_NO_DELIVERY"
 
 
@@ -115,3 +119,19 @@ def test_migration_ownership_names_are_unique_and_match_e1_02_objects() -> None:
         name in {"enterprise_identity", "enterprise_tenant"}
         for _, name in actual
     )
+
+    e1_05 = by_owner["E1-05"]
+    assert "PERSONAL_LOCAL SQLite" in e1_05["implementation_notes"]
+    e1_05_actual = {
+        (entry["kind"], entry["name"]): entry for entry in e1_05["resources"]
+    }
+    assert e1_05_actual[("migration", "0030_enterprise_jobs_v1")]["status"] == "IMPLEMENTED"
+    assert {
+        name
+        for (kind, name), entry in e1_05_actual.items()
+        if kind == "table" and entry["status"] == "IMPLEMENTED_BY_0030"
+    } == {
+        "enterprise_jobs.jobs",
+        "enterprise_jobs.outbox",
+        "enterprise_jobs.dead_letters",
+    }

@@ -67,11 +67,13 @@
     {
       "owner": "E1-05",
       "domain": "durable_jobs_outbox_dead_letter",
+      "implementation_notes": "Migration 0030 creates the enterprise_jobs schema and jobs, outbox, and dead_letters tables on PostgreSQL. It is a no-op on PERSONAL_LOCAL SQLite and does not claim a Procrastinate schema or live worker execution.",
       "resources": [
-        {"kind": "schema", "name": "enterprise_jobs", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_jobs.jobs", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_jobs.outbox", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_jobs.dead_letters", "status": "RESERVED_NOT_CREATED"}
+        {"kind": "migration", "name": "0030_enterprise_jobs_v1", "status": "IMPLEMENTED"},
+        {"kind": "schema", "name": "enterprise_jobs", "status": "IMPLEMENTED_BY_0030"},
+        {"kind": "table", "name": "enterprise_jobs.jobs", "status": "IMPLEMENTED_BY_0030"},
+        {"kind": "table", "name": "enterprise_jobs.outbox", "status": "IMPLEMENTED_BY_0030"},
+        {"kind": "table", "name": "enterprise_jobs.dead_letters", "status": "IMPLEMENTED_BY_0030"}
       ]
     }
   ]

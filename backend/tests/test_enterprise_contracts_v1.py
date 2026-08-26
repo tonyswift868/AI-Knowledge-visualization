@@ -217,10 +217,10 @@ def test_migration_ownership_registry_has_one_owner_per_resource() -> None:
     by_owner = {entry["owner"]: entry for entry in payload["owners"]}
     assert all(
         resource["status"] != "RESERVED_NOT_CREATED"
-        for resource in by_owner["E1-02"]["resources"]
+        for owner in ("E1-02", "E1-05")
+        for resource in by_owner[owner]["resources"]
     )
     assert all(
         resource["status"] == "RESERVED_NOT_CREATED"
-        for owner in ("E1-03", "E1-05")
-        for resource in by_owner[owner]["resources"]
+        for resource in by_owner["E1-03"]["resources"]
     )
