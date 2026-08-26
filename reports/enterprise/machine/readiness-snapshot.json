@@ -1,0 +1,206 @@
+{
+  "domains": {
+    "AI_QUALITY": {
+      "blockers": [
+        "AI evaluation owner evidence pending",
+        "Real provider calls remain prohibited"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-06/ai-quality",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PENDING"
+    },
+    "AUTHORIZATION": {
+      "blockers": [
+        "Integrated negative authorization suite pending"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:docs/enterprise/authorization-matrix.md",
+          "status": "CI_CONFIGURED"
+        },
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-04/authorization",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PARTIAL"
+    },
+    "BACKUP_RESTORE": {
+      "blockers": [
+        "No staging backup/restore drill"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-03/backup-restore",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PENDING"
+    },
+    "DATABASE": {
+      "blockers": [
+        "REAL_POSTGRES_RLS = NOT_RUN"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-02/database",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PENDING"
+    },
+    "IDENTITY": {
+      "blockers": [
+        "Integrated OIDC/session evidence is pending E1-04 owner receipt"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:.github/enterprise-context.lock.json",
+          "status": "OFFLINE_VERIFIED"
+        },
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-04/identity",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PARTIAL"
+    },
+    "LOAD": {
+      "blockers": [
+        "REAL_K6 = NOT_RUN",
+        "Baseline requires Architect approval"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:tests/load/tenant-isolation/scenario.js",
+          "status": "OFFLINE_VERIFIED"
+        },
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:reports/enterprise/machine/load-test.pending.json",
+          "status": "STAGING_EXECUTION_PENDING"
+        }
+      ],
+      "owner_evidence_status": "PRESENT",
+      "status": "PARTIAL"
+    },
+    "OBSERVABILITY": {
+      "blockers": [
+        "Telemetry/SLO owner evidence pending"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-03/observability",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PENDING"
+    },
+    "RELEASE": {
+      "blockers": [
+        "REAL_CONTAINER = NOT_RUN",
+        "Promotion and rollback not executed"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:contracts/enterprise/release-contracts.schema.json",
+          "status": "IMPLEMENTED"
+        },
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:reports/enterprise/machine/release.pending.json",
+          "status": "STAGING_EXECUTION_PENDING"
+        }
+      ],
+      "owner_evidence_status": "PRESENT",
+      "status": "PARTIAL"
+    },
+    "SECURITY": {
+      "blockers": [
+        "Mature scanners are configured but not locally executed"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:.github/workflows/enterprise-security.yml",
+          "status": "CI_CONFIGURED"
+        },
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:reports/enterprise/machine/dependency-scan.pending.json",
+          "status": "STAGING_EXECUTION_PENDING"
+        }
+      ],
+      "owner_evidence_status": "PRESENT",
+      "status": "PARTIAL"
+    },
+    "STAGING": {
+      "blockers": [
+        "REAL_LINUX_STAGING = NOT_RUN",
+        "Linux staging is not provisioned"
+      ],
+      "evidence": [
+        {
+          "kind": "LOCAL_FILE",
+          "ref": "repo:reports/enterprise/machine/environment-truth.json",
+          "status": "NOT_RUN"
+        }
+      ],
+      "owner_evidence_status": "PRESENT",
+      "status": "PENDING"
+    },
+    "TENANCY": {
+      "blockers": [
+        "Tenant persistence and RLS owner evidence pending"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-02/tenancy",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PENDING"
+    },
+    "WORKFLOWS": {
+      "blockers": [
+        "Durable workflow owner evidence pending"
+      ],
+      "evidence": [
+        {
+          "kind": "OWNER_RECEIPT",
+          "ref": "owner:E1-05/workflows",
+          "status": "PENDING_OWNER_EVIDENCE"
+        }
+      ],
+      "owner_evidence_status": "PENDING_OWNER_EVIDENCE",
+      "status": "PARTIAL"
+    }
+  },
+  "overall_status": "PARTIAL",
+  "schema": "mentorflow.enterprise-readiness-snapshot.v1",
+  "score": null,
+  "source_commit": "4d61b3547a8d0865a53634abd549be004c904ce1",
+  "source_tree": "f423e124708aa22adcb55ac94d685328fe908d26"
+}
