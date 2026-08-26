@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T21:18:26+08:00",
+  "updated_at": "2026-08-26T21:22:33+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -99,7 +99,7 @@
     {
       "work_item": "E1-06",
       "capability": "observability_recovery",
-      "state": "INTEGRATED_HARDENING_EXACT_COMMITS_FOCUSED_GATES_PENDING",
+      "state": "INTEGRATED_HARDENING_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-03", "E1-05"],
       "delivery_id": "DLV-W06-20260826T110116Z-01",
       "delivery_receipt_sha256": "6931AB7D8E9D0A8D8252816463E431A0A7103062B211E748A76C045278276835",
@@ -113,7 +113,7 @@
       "hardening_delivery_receipt_sha256": "F216C9C1E990A7ACDB8E21CC6EDCDD954204920411DFBC83765250FD6AAB7847",
       "hardening_source_commit": "4a9d7da2c90bb0e8ceb69a4d7997360b6b09dae1",
       "hardening_integration_commit": "23ed3583db102c640b1899663f9ee545c04ee0c7",
-      "notes": "The two original frozen exact commits and completion delivery were applied sequentially with provenance. Hardening delivery DLV-W06-20260826T130201Z-03 was audited as the exact continuation of completion source 1b0efc92, touched only five observability-owned paths, changed no forbidden path, dependency, lock, migration, or shared contract, and was applied with -x provenance. Focused correlated-telemetry, provider-secret, Teacher Live, and document-ingestion gates are pending. Provider calls remain 0; live PostgreSQL/Keycloak recovery and external OTel Collector export are not claimed."
+      "notes": "The two original frozen exact commits and completion delivery were applied sequentially with provenance. Hardening delivery DLV-W06-20260826T130201Z-03 was audited as the exact continuation of completion source 1b0efc92, touched only five observability-owned paths, changed no forbidden path, dependency, lock, migration, or shared contract, and was applied with -x provenance. Isolated correlated-telemetry/provider-secret tests passed 28/28; Teacher Live/document-ingestion tests passed 25/25; frozen enterprise contract and Integration manifest tests passed 13/13; compile/import, JSON, pip, diff, and clean gates passed. Provider calls remain 0; live PostgreSQL/Keycloak recovery and external OTel Collector export are not claimed."
     },
     {
       "work_item": "E1-07",
