@@ -72,12 +72,11 @@ def test_personal_local_mode_requires_no_login_or_organization_context() -> None
     tenant = TenantContext(mode=TenantMode.PERSONAL_LOCAL)
     scope = ResourceScope(
         scope_type=ResourceScopeType.PERSONAL,
-        owner_subject_id="local-user",
         classification=ResourceClassification.CONFIDENTIAL,
     )
     assert tenant.organization_id is None
     assert tenant.workspace_id is None
-    assert scope.owner_subject_id == "local-user"
+    assert scope.owner_subject_id is None
 
 
 def test_enterprise_mode_and_scopes_fail_closed_without_tenant_identity() -> None:

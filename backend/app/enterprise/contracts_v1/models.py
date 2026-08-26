@@ -133,8 +133,6 @@ class ResourceScope(_ContractModel):
     @model_validator(mode="after")
     def validate_scope_identity(self) -> "ResourceScope":
         if self.scope_type is ResourceScopeType.PERSONAL:
-            if self.owner_subject_id is None:
-                raise ValueError("PERSONAL scope requires owner_subject_id")
             if self.organization_id is not None or self.workspace_id is not None:
                 raise ValueError("PERSONAL scope cannot carry organization or workspace ids")
         elif self.scope_type is ResourceScopeType.ORGANIZATION:
