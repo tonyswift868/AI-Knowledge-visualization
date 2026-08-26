@@ -36,13 +36,17 @@ _DENIED_FIELD = re.compile(
     re.IGNORECASE,
 )
 _SENSITIVE_VALUE = re.compile(
-    r"(?:bearer\s+[A-Za-z0-9._~+/=-]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+    r"(?:bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"(?:sk|rk|pk)-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     re.IGNORECASE,
 )
 _FORBIDDEN_TELEMETRY_TEXT = re.compile(
-    r"(?:authorization\s*[:=]|api[_-]?key\s*[:=]|raw[_-]?prompt\s*[:=]|"
-    r"student[_-]?answer\s*[:=]|document[_-]?text\s*[:=]|"
-    r"bearer\s+[A-Za-z0-9._~+/=-]+)",
+    r"(?:[\"']?(?:authorization|api[_-]?key|raw[_-]?prompt|student[_-]?answer|"
+    r"document[_-]?text)[\"']?\s*[:=]|bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"(?:sk|rk|pk)-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9]{20,})",
     re.IGNORECASE,
 )
 _ALLOWED_SPAN_FIELDS = {

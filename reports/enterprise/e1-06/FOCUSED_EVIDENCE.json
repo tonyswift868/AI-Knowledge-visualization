@@ -64,6 +64,24 @@
       "status": "OFFLINE_PARSE_PASS_STAGING_PENDING",
       "command": "PyYAML safe_load plus JSON parse",
       "evidence": "8 YAML and 2 JSON assets parsed; Docker, Promtool and Linux staging unavailable"
+    },
+    {
+      "name": "provider_trace_and_secret_hardening",
+      "status": "PASS",
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py backend/tests/test_provider_telemetry.py",
+      "evidence": "28 passed in 38.73s; correlated Provider span/event and JSON/common-key secret scanner coverage"
+    },
+    {
+      "name": "teacher_document_after_provider_hardening",
+      "status": "PASS",
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q backend/tests/test_teacher_live_api.py backend/tests/test_document_ingestion_runtime.py",
+      "evidence": "25 passed in 37.09s after Provider event/span hardening"
     }
   ],
   "recovery_evidence": {

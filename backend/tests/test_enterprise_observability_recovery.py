@@ -222,21 +222,34 @@ def test_privacy_gate_rejects_prompts_answers_keys_and_emails() -> None:
     for serialized in (
         "Authorization: Bearer abc.def.ghi",
         "api_key=secret-value",
+        '{"api_key":"secret-value"}',
         "raw_prompt=private lesson",
         "student_answer=private answer",
         "document_text=private document",
     ):
         with pytest.raises(UnsafeTelemetryContent):
             scan_telemetry_text(serialized)
+    for secret in (
+        "sk-1234567890abcdefghijklmnop",
+        "ghp_1234567890abcdefghijklmnop",
+        "AIza1234567890abcdefghijklmnop",
+    ):
+        with pytest.raises(UnsafeTelemetryField):
+            safe_event_fields({"error_class": secret})
 
 
-def test_provider_receipt_exports_bounded_metrics_without_content(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_receipt_exports_bounded_correlated_telemetry_without_content(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     monkeypatch.delenv("MENTORFLOW_PROVIDER_TELEMETRY_PATH", raising=False)
     monkeypatch.delenv("MENTORFLOW_USER_DATA_ROOT", raising=False)
     registry.reset()
     store = ProviderTelemetryStore()
-    store.record(
-        ProviderUsageReceipt(
+    context = new_correlation_context(request_id="request-1", feature="provider")
+    with caplog.at_level(logging.INFO, logger="mentorflow.provider.operations"):
+        with correlation_scope(context, organization_id="org-1", workspace_id="workspace-1"):
+            store.record(ProviderUsageReceipt(
             provider="deepseek",
             model="model-not-a-label",
             task_type="teacher",
@@ -255,8 +268,7 @@ def test_provider_receipt_exports_bounded_metrics_without_content(monkeypatch: p
             success=True,
             error_class=None,
             prompt_version="teacher.v1",
-        )
-    )
+            ))
     output = registry.render_prometheus()
     assert 'provider_route="deepseek",status="success"' in output
     assert 'provider_route="deepseek",token_type="total"} 15' in output
@@ -265,6 +277,13 @@ def test_provider_receipt_exports_bounded_metrics_without_content(monkeypatch: p
     assert "prompt_version" not in output.casefold()
     assert "teacher.v1" not in output
     assert "student_answer" not in output.casefold()
+    logs = "\n".join(record.getMessage() for record in caplog.records)
+    scan_telemetry_text(logs)
+    assert context.trace_id in logs
+    assert '"request_id":"request-1"' in logs
+    assert '"provider_route":"deepseek"' in logs
+    assert "model-not-a-label" not in logs
+    assert "teacher.v1" not in logs
 
 
 def test_audit_boundary_uses_frozen_envelope_and_personal_local_remains_optional(tmp_path: Path) -> None:

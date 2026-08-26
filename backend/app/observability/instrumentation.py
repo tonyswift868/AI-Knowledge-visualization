@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from contextlib import contextmanager
 from typing import Iterator, Mapping
 
-from .context import correlation_scope, current_correlation
+from .context import correlation_scope, current_correlation, new_correlation_context
 from .metrics import registry
+from .privacy import emit_event
 from .runtime import business_span
 from .slo import error_budgets
 
 
 _queue_lock = threading.RLock()
 _queued_at: dict[str, dict[str, float]] = {}
+_LOGGER = logging.getLogger("mentorflow.provider.operations")
 
 
 def _queue_name(kind: object) -> str:
@@ -127,6 +130,26 @@ def record_provider_receipt(receipt: object) -> None:
     provider_cache_ratio = getattr(receipt, "cache_hit_ratio", None)
     if provider_cache_ratio is not None:
         registry.add("mentorflow_cache_requests_total", layer="provider", result="hit" if float(provider_cache_ratio) > 0 else "miss")
+    base = current_correlation() or new_correlation_context(
+        request_id=getattr(receipt, "request_id", None),
+        feature="provider",
+    )
+    with correlation_scope(base, feature="provider", provider_route=route):
+        with business_span(
+            "mentorflow.provider.receipt",
+            {
+                "mentorflow.feature": "provider",
+                "mentorflow.operation": "receipt",
+                "mentorflow.provider_route": route,
+            },
+        ):
+            emit_event(
+                _LOGGER,
+                "provider_call_completed",
+                feature="provider",
+                provider_route=route,
+                outcome="success" if success else "failed",
+            )
 
 
 def record_db_pool(*, size: int, checked_in: int, checked_out: int, overflow: int) -> None:

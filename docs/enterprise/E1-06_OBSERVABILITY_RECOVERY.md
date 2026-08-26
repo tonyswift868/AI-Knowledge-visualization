@@ -26,6 +26,9 @@ or `AuditEnvelope`.
 - Provider receipts export bounded labels for route, result, cache outcome,
   tokens, latency, and available cost classification. Provider model names and
   prompt/response content are not metric labels.
+- Provider completion also emits a bounded correlated business span and JSON
+  event containing only trace/request/optional tenant IDs, feature, route, and
+  outcome.
 - `observe_business_operation` is the explicit database, Review, Plan, and
   Provider business-span seam. HTTP, SQLAlchemy, HTTPX, background jobs,
   Document processing, and Teacher paths have direct integration seams.
@@ -176,7 +179,8 @@ cross-tenant incident, and restore are versioned in
 
 Structured logs and span attributes use independent exact allowlists.
 `scan_telemetry_text` rejects serialized Authorization/API-key/raw-prompt/
-student-answer/document-text patterns and bearer values. Focused tests scan
+student-answer/document-text patterns, bearer values, JSON key forms, and
+common API-key prefixes. Focused tests scan
 emitted request logs, reject forbidden log/span fields, and confirm metrics omit
 model, prompt-version, answer, and content values.
 
