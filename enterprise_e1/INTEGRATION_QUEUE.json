@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T20:57:15+08:00",
+  "updated_at": "2026-08-26T20:59:21+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -42,7 +42,7 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PENDING",
+      "state": "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
       "delivery_id": "DLV-W03-20260826T111731Z-03",
       "delivery_receipt_sha256": "CAEB81CCE7DF2CD8F50E9C02EB2B29AD88DB3F9AF4F2FB074A6F88C861625A82",
@@ -67,7 +67,7 @@
         "0dfcc82f4bad7f6ca776055b5599ffef19fe07fd"
       ],
       "supersedes_returned_delivery": "DLV-W03-20260826T110330Z-02",
-      "notes": "The replacement delivery is self-contained: its first exact commit has fa488048 as first parent and the range contains exactly the two listed commits. Both were applied with provenance. Completion delivery DLV-W03-20260826T124718Z-04 was audited as a strict three-commit continuation of 2af634f1, touched only governance/tests/docs owned paths, and was applied with -x provenance; focused Integration gates are pending. No governance migration, PostgreSQL persistence, runtime route wiring, Provider call, or real data access is claimed."
+      "notes": "The replacement delivery is self-contained: its first exact commit has fa488048 as first parent and the range contains exactly the two listed commits. Both were applied with provenance. Completion delivery DLV-W03-20260826T124718Z-04 was audited as a strict three-commit continuation of 2af634f1, touched only governance/tests/docs owned paths, and was applied with -x provenance. Governance/contract/cost gates passed 83/83; Personal Local passed 31 with 1 platform skip; compile/import, frozen hashes, role/default-deny invariants, pip, and diff checks passed. No governance migration, PostgreSQL persistence, runtime route wiring, Provider call, or real data access is claimed."
     },
     {
       "work_item": "E1-05",
