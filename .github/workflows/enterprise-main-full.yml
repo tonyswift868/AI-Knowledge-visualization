@@ -1,0 +1,15 @@
+name: Enterprise MAIN_FULL
+
+on:
+  push:
+    branches: [main, "core-v2/integration"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    uses: ./.github/workflows/enterprise-ci.yml
+    with:
+      lane: MAIN_FULL

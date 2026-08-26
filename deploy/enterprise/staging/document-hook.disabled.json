@@ -1,0 +1,10 @@
+{
+  "schema": "mentorflow.document-staging-verification-hook.v1",
+  "status": "OPTIONAL_UNTIL_E1_04",
+  "enabled": false,
+  "required_for_release": false,
+  "e1_04_dependency": "NO",
+  "compose_overlay": null,
+  "smoke_check_names": [],
+  "evidence_refs": []
+}

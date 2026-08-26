@@ -1,0 +1,26 @@
+{
+  "schema": "mentorflow.enterprise-environment-truth.v1",
+  "observed_at_utc": "2026-08-26T16:59:37Z",
+  "host": "Windows",
+  "tools": {
+    "docker": "UNAVAILABLE",
+    "compose": "UNAVAILABLE",
+    "wsl2": "UNAVAILABLE_EXIT_50",
+    "postgres_tools": "UNAVAILABLE",
+    "k6": "UNAVAILABLE",
+    "gitleaks": "UNAVAILABLE",
+    "osv_scanner": "UNAVAILABLE",
+    "semgrep": "UNAVAILABLE",
+    "syft": "UNAVAILABLE",
+    "trivy": "UNAVAILABLE"
+  },
+  "gates": {
+    "LOCAL_WINDOWS_DOCKER": "NOT_RUN",
+    "LOCAL_WINDOWS_COMPOSE": "NOT_RUN",
+    "REAL_POSTGRES_RLS": "NOT_RUN",
+    "REAL_K6": "NOT_RUN",
+    "REAL_CONTAINER": "NOT_RUN",
+    "REAL_LINUX_STAGING": "NOT_RUN"
+  },
+  "installed_for_e1_07b": []
+}

@@ -1,0 +1,20 @@
+services:
+  docling-worker:
+    profiles: [document-hook, full]
+    image: "${MENTORFLOW_DOCUMENT_WORKER_IMAGE:?MENTORFLOW_DOCUMENT_WORKER_IMAGE is required when the document hook is registered}"
+    env_file: ["${MENTORFLOW_RUNTIME_ENV_FILE:?MENTORFLOW_RUNTIME_ENV_FILE is required}"]
+    environment:
+      MENTORFLOW_PROVIDER_MODE: fake
+      DOCLING_ALLOW_NETWORK: "0"
+      DOCLING_ALLOW_MODEL_DOWNLOADS: "0"
+    volumes:
+      - "${MENTORFLOW_DOCUMENT_CONFIG:?MENTORFLOW_DOCUMENT_CONFIG is required}:/run/mentorflow/document-worker-config.json:ro"
+    read_only: true
+    tmpfs: [/tmp:size=512m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_reservation: ${DOCLING_WORKER_MEMORY_RESERVATION:-512m}
+    mem_limit: ${DOCLING_WORKER_MEMORY_LIMIT:-2048m}
+    cpus: ${DOCLING_WORKER_CPUS:-1.0}
+    networks: [internal]
+    restart: unless-stopped

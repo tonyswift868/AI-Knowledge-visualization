@@ -1,0 +1,40 @@
+{
+  "schema": "mentorflow.staging-host-config.v1",
+  "target": {
+    "provider_label": "RackNerd",
+    "provider_api_binding": null,
+    "os_id": "ubuntu",
+    "os_version": "24.04",
+    "vcpu": 3,
+    "ram_mb": 4096,
+    "disk_gb": 60
+  },
+  "deploy_user": "mentorflow-deploy",
+  "timezone": "UTC",
+  "ssh": {
+    "port": 22,
+    "password_authentication": false,
+    "root_login": false
+  },
+  "network": {
+    "allowed_tcp_ports": [22, 80, 443],
+    "dns_name": null,
+    "ipv6_policy": "REVIEW_BEFORE_ENABLE"
+  },
+  "layout": {
+    "root": "/opt/mentorflow",
+    "releases": "/opt/mentorflow/releases",
+    "current": "/opt/mentorflow/current",
+    "data": "/opt/mentorflow/data",
+    "backups": "/opt/mentorflow/backups",
+    "artifacts": "/opt/mentorflow/artifacts",
+    "logs": "/opt/mentorflow/logs"
+  },
+  "swap": {
+    "policy": "CONFIGURE_IF_ABSENT",
+    "size_mb": 2048
+  },
+  "default_profile": "minimal",
+  "candidate_loopback_port": 18080,
+  "proxy_reload_command": []
+}

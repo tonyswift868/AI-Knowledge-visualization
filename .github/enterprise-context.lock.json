@@ -1,0 +1,22 @@
+{
+  "schema": "mentorflow.e1-ci-context-lock.v1",
+  "contract_version": "enterprise-context.v1",
+  "contract_final_commit": "fa488048d2856d687854b50a23137a45bb020d7d",
+  "contract_bundle_sha256": "03e4f66505b6b98202a07a70a39925293876ecc7b7c72f617dbe3b76dcb8b628",
+  "contract_manifest": "backend/app/enterprise/contracts_v1/contract_hash_manifest.json",
+  "contract_test": "backend/tests/test_enterprise_contracts_v1.py",
+  "integration_dependencies": [
+    "E1-01",
+    "E1-02",
+    "E1-03",
+    "E1-04",
+    "E1-05",
+    "E1-06"
+  ],
+  "provider_mode": "fake",
+  "real_provider_calls": 0,
+  "owned_contract_paths": [],
+  "forbidden_contract_paths": [
+    "backend/app/enterprise/contracts_v1/"
+  ]
+}

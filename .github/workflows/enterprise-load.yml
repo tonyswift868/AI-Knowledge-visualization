@@ -1,0 +1,71 @@
+name: Enterprise Load and Tenant Isolation
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: k6 profile
+        type: choice
+        required: true
+        options: [smoke, average, stress, spike, soak, tenant-isolation]
+
+permissions:
+  contents: read
+
+jobs:
+  lease:
+    runs-on: ubuntu-latest
+    outputs:
+      granted: ${{ steps.gate.outputs.granted }}
+    steps:
+      - id: gate
+        shell: bash
+        env:
+          K6_DEPENDENCY_LEASE: ${{ vars.K6_DEPENDENCY_LEASE }}
+        run: |
+          if [ "$K6_DEPENDENCY_LEASE" != "GRANTED" ]; then
+            echo "granted=false" >> "$GITHUB_OUTPUT"
+            echo "K6_DEPENDENCY_LEASE is not granted; load execution is fail-closed" >&2
+            exit 1
+          fi
+          echo "granted=true" >> "$GITHUB_OUTPUT"
+
+  load:
+    needs: lease
+    if: needs.lease.outputs.granted == 'true'
+    runs-on: [self-hosted, enterprise-load]
+    environment: staging-load
+    timeout-minutes: 45
+    env:
+      K6_PROFILE: ${{ inputs.profile }}
+      BASE_URL: ${{ vars.MENTORFLOW_STAGING_URL }}
+      PROVIDER_ADAPTER: fake
+      LOGIN_PATH: ${{ vars.LOGIN_PATH }}
+      SESSION_PATH: ${{ vars.SESSION_PATH }}
+      WORKSPACE_LIST_PATH: ${{ vars.WORKSPACE_LIST_PATH }}
+      KNOWLEDGE_MAP_PATH: ${{ vars.KNOWLEDGE_MAP_PATH }}
+      PLAN_READ_PATH: ${{ vars.PLAN_READ_PATH }}
+      PROGRESS_READ_PATH: ${{ vars.PROGRESS_READ_PATH }}
+      COST_READ_PATH: ${{ vars.COST_READ_PATH }}
+      DOCUMENT_SUBMIT_PATH: ${{ vars.DOCUMENT_SUBMIT_PATH }}
+      DOCUMENT_STATUS_PATH: ${{ vars.DOCUMENT_STATUS_PATH }}
+      REVIEW_READ_PATH: ${{ vars.REVIEW_READ_PATH }}
+      AUDIT_READ_PATH: ${{ vars.AUDIT_READ_PATH }}
+      AI_TEACHER_PATH: ${{ vars.AI_TEACHER_PATH }}
+      LOAD_USERS_JSON: ${{ secrets.LOAD_USERS_JSON }}
+      TENANT_CORPUS_PATH: ./tests/load/fixtures/tenant-corpus.v1.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require preinstalled leased k6
+        shell: bash
+        run: command -v k6 && k6 version
+      - run: mkdir -p artifacts/enterprise/load
+      - name: Execute selected profile
+        run: k6 run "tests/load/${K6_PROFILE}/scenario.js"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: enterprise-load-${{ inputs.profile }}
+          path: artifacts/enterprise/load
+          if-no-files-found: error
+          retention-days: 90

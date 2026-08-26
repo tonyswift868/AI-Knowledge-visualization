@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mentorflow.local/contracts/enterprise/readiness-snapshot.v1.schema.json",
+  "title": "EnterpriseReadinessSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source_commit", "source_tree", "overall_status", "domains", "score"],
+  "properties": {
+    "schema": {"const": "mentorflow.enterprise-readiness-snapshot.v1"},
+    "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "overall_status": {"enum": ["PASS", "PARTIAL", "FAIL", "PENDING"]},
+    "score": {"type": "null"},
+    "domains": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["IDENTITY", "TENANCY", "AUTHORIZATION", "DATABASE", "WORKFLOWS", "STAGING", "OBSERVABILITY", "BACKUP_RESTORE", "SECURITY", "LOAD", "RELEASE", "AI_QUALITY"],
+      "properties": {
+        "IDENTITY": {"$ref": "#/$defs/Domain"},
+        "TENANCY": {"$ref": "#/$defs/Domain"},
+        "AUTHORIZATION": {"$ref": "#/$defs/Domain"},
+        "DATABASE": {"$ref": "#/$defs/Domain"},
+        "WORKFLOWS": {"$ref": "#/$defs/Domain"},
+        "STAGING": {"$ref": "#/$defs/Domain"},
+        "OBSERVABILITY": {"$ref": "#/$defs/Domain"},
+        "BACKUP_RESTORE": {"$ref": "#/$defs/Domain"},
+        "SECURITY": {"$ref": "#/$defs/Domain"},
+        "LOAD": {"$ref": "#/$defs/Domain"},
+        "RELEASE": {"$ref": "#/$defs/Domain"},
+        "AI_QUALITY": {"$ref": "#/$defs/Domain"}
+      }
+    }
+  },
+  "$defs": {
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "kind", "status"],
+      "properties": {
+        "ref": {"type": "string", "minLength": 3},
+        "kind": {"enum": ["LOCAL_FILE", "CI_ARTIFACT", "OWNER_RECEIPT", "STAGING_ARTIFACT"]},
+        "status": {"enum": ["IMPLEMENTED", "OFFLINE_VERIFIED", "CI_CONFIGURED", "PENDING_OWNER_EVIDENCE", "STAGING_EXECUTION_PENDING", "NOT_RUN"]}
+      }
+    },
+    "Domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "owner_evidence_status", "evidence", "blockers"],
+      "properties": {
+        "status": {"enum": ["PASS", "PARTIAL", "FAIL", "PENDING"]},
+        "owner_evidence_status": {"enum": ["PRESENT", "PENDING_OWNER_EVIDENCE"]},
+        "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/Evidence"}},
+        "blockers": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}}
+      }
+    }
+  }
+}

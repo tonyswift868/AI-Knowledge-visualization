@@ -1,0 +1,237 @@
+name: Enterprise reusable CI lanes
+
+on:
+  workflow_call:
+    inputs:
+      lane:
+        description: PR_FAST or MAIN_FULL
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: CI lane
+        required: true
+        type: choice
+        options: [PR_FAST, MAIN_FULL]
+        default: PR_FAST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-${{ inputs.lane }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  MENTORFLOW_PROVIDER_MODE: fake
+
+jobs:
+  lane-contract:
+    name: ${{ inputs.lane }} / lane contract
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: test "${{ inputs.lane }}" = "PR_FAST" || test "${{ inputs.lane }}" = "MAIN_FULL"
+
+  backend-fast:
+    name: PR_FAST / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}
+    if: inputs.lane == 'PR_FAST'
+    needs: lane-contract
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Lint, dependency, compile, import, contract, and release artifact gates
+        env: {PYTHONPATH: backend}
+        run: |
+          python -m pip check
+          python -m tabnanny -q backend/app scripts/enterprise
+          python -m compileall -q backend/app scripts/enterprise backend/tests/test_e1b_enterprise_evidence.py
+          python -c "import app.main"
+          python scripts/enterprise/verify_security_waivers.py
+          python scripts/enterprise/generate_sbom.py --check --output reports/enterprise/machine/lockfile-sbom.cdx.json
+          python scripts/enterprise/generate_dependency_risk_report.py --check
+          python scripts/enterprise/generate_tenant_load_corpus.py --check
+          python scripts/enterprise/verify_release_assets.py
+      - name: Focused, Personal Local, authorization-negative, tenant-fixture, and fake-migration tests
+        env:
+          PYTHONPATH: backend
+          MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-fast-app.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/mentorflow-fast-orm.db
+        run: >-
+          python -m pytest -q
+          backend/tests/test_e1_release_assets.py
+          backend/tests/test_e1b_enterprise_evidence.py
+          backend/tests/test_local_auth.py
+          backend/tests/test_credential_store.py
+          backend/tests/test_planning_resource_authorization.py
+          backend/tests/test_provider_runtime_v2_security.py
+          backend/tests/test_local_migration.py
+          backend/tests/test_knowledge_map_v1_migration.py
+
+  backend-full:
+    name: MAIN_FULL / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}
+    if: inputs.lane == 'MAIN_FULL'
+    needs: lane-contract
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Full compile/import and release artifact gates
+        env: {PYTHONPATH: backend}
+        run: |
+          python -m pip check
+          python -m compileall -q backend/app scripts/enterprise
+          python -c "import app.main"
+          python scripts/enterprise/verify_release_assets.py
+      - name: Broader backend regression
+        env:
+          PYTHONPATH: backend
+          MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-full-app-${{ matrix.python }}.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/mentorflow-full-orm-${{ matrix.python }}.db
+        run: python -m pytest -q backend/tests backend/tests_w2 backend/tests_w6
+
+  frontend:
+    name: ${{ inputs.lane }} / Frontend / ${{ matrix.os }} / Node 22.20.0
+    needs: lane-contract
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run: {working-directory: frontend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.20.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Frontend tests
+        run: npm test
+      - name: TypeScript and production build
+        run: npm run build
+      - name: k6 JavaScript syntax seams
+        working-directory: .
+        shell: bash
+        run: find tests/load -name '*.js' -print0 | xargs -0 -n1 node --check
+
+  enterprise-contract:
+    name: ${{ inputs.lane }} / frozen enterprise contract and tenant fixtures
+    needs: lane-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python scripts/enterprise/verify_enterprise_context.py
+      - run: python -m pytest -q backend/tests/test_enterprise_contracts_v1.py backend/tests/test_e1b_enterprise_evidence.py
+
+  enterprise-security-corpus:
+    name: MAIN_FULL / enterprise security corpus
+    if: inputs.lane == 'MAIN_FULL'
+    needs: lane-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
+      - run: python -m pip install -r backend/requirements.txt
+      - name: File, path, provider, URL, and redaction regression
+        env: {PYTHONPATH: backend, MENTORFLOW_PROVIDER_MODE: fake}
+        run: >-
+          python -m pytest -q
+          backend/tests/test_archive_import_security.py
+          backend/tests/test_ingestion_path_security.py
+          backend/tests/test_provider_runtime_v2_security.py
+          backend/tests/test_provider_url_policy.py
+          backend/tests/test_public_path_redaction.py
+          backend/tests_w6/test_data_security_recovery.py
+
+  migrations:
+    name: MAIN_FULL / migration round trip
+    if: inputs.lane == 'MAIN_FULL'
+    needs: lane-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Alembic and portable migration gates
+        env: {PYTHONPATH: backend, MENTORFLOW_ORM_DB: "${{ runner.temp }}/migration-gate.db"}
+        run: >-
+          python -m pytest -q
+          backend/tests/test_local_migration.py
+          backend/tests/test_knowledge_map_v1_migration.py
+          backend/tests/test_api_contract_startup.py
+
+  database-lease:
+    name: MAIN_FULL / enterprise database dependency lease
+    if: inputs.lane == 'MAIN_FULL'
+    needs: lane-contract
+    runs-on: ubuntu-latest
+    outputs: {granted: "${{ steps.gate.outputs.granted }}"}
+    steps:
+      - id: gate
+        shell: bash
+        env: {E1_DATABASE_DEPENDENCY_LEASE: "${{ vars.E1_DATABASE_DEPENDENCY_LEASE }}"}
+        run: |
+          if [ "$E1_DATABASE_DEPENDENCY_LEASE" != "GRANTED" ]; then
+            echo "granted=false" >> "$GITHUB_OUTPUT"
+            echo "REAL_POSTGRES_RLS remains NOT_RUN; RLS is fail-closed" >&2
+            exit 1
+          fi
+          echo "granted=true" >> "$GITHUB_OUTPUT"
+
+  rls:
+    name: MAIN_FULL / PostgreSQL RLS
+    needs: database-lease
+    if: needs.database-lease.outputs.granted == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env: {POSTGRES_USER: mentorflow_ci, POSTGRES_PASSWORD: mentorflow_ci_only, POSTGRES_DB: mentorflow_ci}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mentorflow_ci -d mentorflow_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Require integrated upstream RLS tests
+        env:
+          MENTORFLOW_RLS_DSN: postgresql://mentorflow_ci:mentorflow_ci_only@127.0.0.1:5432/mentorflow_ci
+          DATABASE_URL: postgresql://mentorflow_ci:mentorflow_ci_only@127.0.0.1:5432/mentorflow_ci
+          PYTHONPATH: backend
+        run: python -m pytest -q backend -m rls

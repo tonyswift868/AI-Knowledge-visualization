@@ -1,0 +1,136 @@
+name: Container Build Scan Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish: {description: Push all commit-tagged images after every gate passes, type: boolean, required: true, default: false}
+      backend_rollback_image: {description: Immutable prior backend image, type: string, required: true}
+      frontend_rollback_image: {description: Immutable prior frontend image, type: string, required: true}
+      document_worker_rollback_image: {description: Immutable prior document-worker image, type: string, required: true}
+  push:
+    tags: ["v*"]
+
+permissions: {contents: read, packages: write, security-events: write}
+
+jobs:
+  quality:
+    uses: ./.github/workflows/enterprise-ci.yml
+    with:
+      lane: MAIN_FULL
+
+  scanner-lease:
+    name: Container scanner dependency lease
+    runs-on: ubuntu-latest
+    outputs: {granted: "${{ steps.gate.outputs.granted }}"}
+    steps:
+      - id: gate
+        shell: bash
+        env: {ENTERPRISE_SECURITY_SCANNER_LEASE: "${{ vars.ENTERPRISE_SECURITY_SCANNER_LEASE }}"}
+        run: |
+          if [ "$ENTERPRISE_SECURITY_SCANNER_LEASE" != "GRANTED" ]; then
+            echo "granted=false" >> "$GITHUB_OUTPUT"
+            echo "Container scan is fail-closed until the scanner lease is granted" >&2
+            exit 1
+          fi
+          echo "granted=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build three commit-tagged images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-node@v4
+        with: {node-version: "22.20.0"}
+      - name: Resolve immutable image and rollback references
+        shell: bash
+        env:
+          BACKEND_ROLLBACK: "${{ inputs.backend_rollback_image || vars.MENTORFLOW_BACKEND_ROLLBACK_IMAGE }}"
+          FRONTEND_ROLLBACK: "${{ inputs.frontend_rollback_image || vars.MENTORFLOW_FRONTEND_ROLLBACK_IMAGE }}"
+          DOCUMENT_WORKER_ROLLBACK: "${{ inputs.document_worker_rollback_image || vars.MENTORFLOW_DOCUMENT_WORKER_ROLLBACK_IMAGE }}"
+        run: |
+          set -euo pipefail
+          root="ghcr.io/${GITHUB_REPOSITORY,,}"
+          mkdir -p artifacts/enterprise/container
+          printf '%s\n' "${root}-backend:${GITHUB_SHA}" > artifacts/enterprise/container/backend-image.txt
+          printf '%s\n' "${root}-frontend:${GITHUB_SHA}" > artifacts/enterprise/container/frontend-image.txt
+          printf '%s\n' "${root}-document-worker:${GITHUB_SHA}" > artifacts/enterprise/container/document-worker-image.txt
+          test -n "$BACKEND_ROLLBACK" && printf '%s\n' "$BACKEND_ROLLBACK" > artifacts/enterprise/container/backend-rollback-image.txt
+          test -n "$FRONTEND_ROLLBACK" && printf '%s\n' "$FRONTEND_ROLLBACK" > artifacts/enterprise/container/frontend-rollback-image.txt
+          test -n "$DOCUMENT_WORKER_ROLLBACK" && printf '%s\n' "$DOCUMENT_WORKER_ROLLBACK" > artifacts/enterprise/container/document-worker-rollback-image.txt
+          immutable='(@sha256:[0-9a-f]{64}|:[0-9a-f]{40})$'
+          for target in backend frontend document-worker; do
+            grep -Eq "$immutable" "artifacts/enterprise/container/${target}-rollback-image.txt"
+          done
+      - name: Build and retain without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          app_version=$(node -p "require('./frontend/package.json').version")
+          for target in backend frontend document-worker; do
+            docker build --target "${target}-image" --build-arg "VCS_REF=${GITHUB_SHA}" --build-arg "BUILD_DATE=${build_date}" --build-arg "APP_VERSION=${app_version}" --tag "$(cat artifacts/enterprise/container/${target}-image.txt)" .
+            docker save "$(cat artifacts/enterprise/container/${target}-image.txt)" | gzip -1 > "artifacts/enterprise/container/${target}-image.tar.gz"
+          done
+      - uses: actions/upload-artifact@v4
+        with: {name: container-candidates, path: artifacts/enterprise/container, retention-days: 30}
+
+  scan:
+    name: Scan and SBOM / ${{ matrix.target }}
+    needs: [build, scanner-lease]
+    if: needs.scanner-lease.outputs.granted == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: {target: [backend, frontend, document-worker]}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: container-candidates, path: artifacts/enterprise/container}
+      - run: gunzip -c "artifacts/enterprise/container/${{ matrix.target }}-image.tar.gz" | docker load
+      - id: image
+        shell: bash
+        run: echo "value=$(cat artifacts/enterprise/container/${{ matrix.target }}-image.txt)" >> "$GITHUB_OUTPUT"
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: "${{ steps.image.outputs.value }}"
+          format: sarif
+          output: artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: {sarif_file: "artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif"}
+      - uses: anchore/sbom-action@v0.20.6
+        with:
+          image: "${{ steps.image.outputs.value }}"
+          format: cyclonedx-json
+          output-file: artifacts/enterprise/container/${{ matrix.target }}-image-sbom.cdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-scan-${{ matrix.target }}
+          path: |
+            artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif
+            artifacts/enterprise/container/${{ matrix.target }}-image-sbom.cdx.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish three images after quality and scan gates
+    needs: [quality, build, scan]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: container-candidates, path: artifacts/enterprise/container}
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Load and push commit tags only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in backend frontend document-worker; do
+            gunzip -c "artifacts/enterprise/container/${target}-image.tar.gz" | docker load
+            docker push "$(cat artifacts/enterprise/container/${target}-image.txt)"
+          done

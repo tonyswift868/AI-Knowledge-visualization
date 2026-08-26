@@ -1,0 +1,36 @@
+title = "MentorFlow enterprise secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "mentorflow-provider-api-key"
+description = "Provider API key with a live-looking prefix"
+regex = '''(?i)(?:sk-proj-|sk-ant-|AIzaSy)[A-Za-z0-9_\-]{20,}'''
+keywords = ["sk-proj-", "sk-ant-", "AIzaSy"]
+
+[[rules]]
+id = "mentorflow-authorization-bearer"
+description = "Long bearer credential in source, config, logs, fixtures, or artifacts"
+regex = '''(?i)authorization["']?\s*[:=]\s*["']?bearer\s+[A-Za-z0-9._~+\-/]{32,}'''
+keywords = ["authorization", "bearer"]
+
+[[rules]]
+id = "mentorflow-jwt"
+description = "Serialized JWT"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["eyJ"]
+
+[[rules]]
+id = "mentorflow-private-key"
+description = "PEM private key"
+regex = '''-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY"]
+
+[allowlist]
+description = "Clearly synthetic documentation markers only"
+regexTarget = "match"
+regexes = [
+  '''registry\.example''',
+  '''invalid\.example''',
+]

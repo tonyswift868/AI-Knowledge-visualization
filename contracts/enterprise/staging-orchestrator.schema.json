@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mentorflow.local/contracts/enterprise/staging-orchestrator.v1.schema.json",
+  "title": "MentorFlow Staging Release Orchestrator Contracts",
+  "$defs": {
+    "StagingHostConfig": {
+      "title": "StagingHostConfig",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "target", "deploy_user", "timezone", "ssh", "network", "layout", "swap", "default_profile", "candidate_loopback_port", "proxy_reload_command"],
+      "properties": {
+        "schema": {"const": "mentorflow.staging-host-config.v1"},
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_label", "provider_api_binding", "os_id", "os_version", "vcpu", "ram_mb", "disk_gb"],
+          "properties": {
+            "provider_label": {"type": "string", "minLength": 1},
+            "provider_api_binding": {"type": "null"},
+            "os_id": {"const": "ubuntu"},
+            "os_version": {"const": "24.04"},
+            "vcpu": {"type": "integer", "minimum": 1},
+            "ram_mb": {"type": "integer", "minimum": 2048},
+            "disk_gb": {"type": "integer", "minimum": 20}
+          }
+        },
+        "deploy_user": {"type": "string", "pattern": "^[a-z_][a-z0-9_-]{0,31}$"},
+        "timezone": {"type": "string", "minLength": 1},
+        "ssh": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port", "password_authentication", "root_login"],
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "password_authentication": {"const": false},
+            "root_login": {"const": false}
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed_tcp_ports", "dns_name", "ipv6_policy"],
+          "properties": {
+            "allowed_tcp_ports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 65535}},
+            "dns_name": {"type": ["string", "null"]},
+            "ipv6_policy": {"enum": ["REVIEW_BEFORE_ENABLE", "ENABLED_REVIEWED", "DISABLED_REVIEWED"]}
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root", "releases", "current", "data", "backups", "artifacts", "logs"],
+          "properties": {
+            "root": {"const": "/opt/mentorflow"},
+            "releases": {"const": "/opt/mentorflow/releases"},
+            "current": {"const": "/opt/mentorflow/current"},
+            "data": {"const": "/opt/mentorflow/data"},
+            "backups": {"const": "/opt/mentorflow/backups"},
+            "artifacts": {"const": "/opt/mentorflow/artifacts"},
+            "logs": {"const": "/opt/mentorflow/logs"}
+          }
+        },
+        "swap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "size_mb"],
+          "properties": {
+            "policy": {"enum": ["CONFIGURE_IF_ABSENT", "REQUIRE_EXISTING", "DISABLED_REVIEWED"]},
+            "size_mb": {"type": "integer", "minimum": 0}
+          }
+        },
+        "default_profile": {"enum": ["minimal", "full"]},
+        "candidate_loopback_port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+        "proxy_reload_command": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "ServiceResourceBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_reservation_mb", "memory_limit_mb", "cpus"],
+      "properties": {
+        "memory_reservation_mb": {"type": "integer", "minimum": 1},
+        "memory_limit_mb": {"type": "integer", "minimum": 1},
+        "cpus": {"type": "number", "exclusiveMinimum": 0, "maximum": 4}
+      }
+    },
+    "ContainerResourceBudget": {
+      "title": "ContainerResourceBudget",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "status", "claim", "host_ram_mb", "host_reserve_mb", "profiles"],
+      "properties": {
+        "schema": {"const": "mentorflow.container-resource-budget.v1"},
+        "status": {"const": "INITIAL_STAGING_BUDGET"},
+        "claim": {"const": "INITIAL_STAGING_BUDGET_NOT_PRODUCTION_OPTIMAL"},
+        "host_ram_mb": {"type": "integer", "minimum": 2048},
+        "host_reserve_mb": {"type": "integer", "minimum": 512},
+        "profiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimal", "full"],
+          "properties": {
+            "minimal": {"$ref": "#/$defs/ProfileResourceBudget"},
+            "full": {"$ref": "#/$defs/ProfileResourceBudget"}
+          }
+        }
+      }
+    },
+    "ProfileResourceBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_ram_mb", "minimum_observed_ram_mb", "requires_capacity_override", "services"],
+      "properties": {
+        "minimum_ram_mb": {"type": "integer", "minimum": 2048},
+        "minimum_observed_ram_mb": {"type": "integer", "minimum": 1843},
+        "requires_capacity_override": {"type": "boolean"},
+        "services": {"type": "object", "minProperties": 6, "additionalProperties": {"$ref": "#/$defs/ServiceResourceBudget"}}
+      }
+    },
+    "DocumentStagingVerificationHook": {
+      "title": "DocumentStagingVerificationHook",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "status", "enabled", "required_for_release", "e1_04_dependency", "compose_overlay", "smoke_check_names", "evidence_refs"],
+      "properties": {
+        "schema": {"const": "mentorflow.document-staging-verification-hook.v1"},
+        "status": {"enum": ["OPTIONAL_UNTIL_E1_04", "REGISTERED"]},
+        "enabled": {"type": "boolean"},
+        "required_for_release": {"const": false},
+        "e1_04_dependency": {"const": "NO"},
+        "compose_overlay": {"type": ["string", "null"]},
+        "smoke_check_names": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "StagingReleasePackage": {
+      "title": "StagingReleasePackage",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "release_id", "source_commit", "source_tree", "enterprise_contract_version", "enterprise_contract_bundle_sha256", "manifest_ref", "manifest_sha256", "migration_version", "migration_policy", "profile", "images", "resource_budget_status", "capacity_override", "provider_mode", "real_provider_calls", "e1_04_dependency", "document_hook", "required_secret_files", "artifacts", "artifact_sha256", "package_content_sha256"],
+      "properties": {
+        "schema": {"const": "mentorflow.staging-release-package.v1"},
+        "release_id": {"type": "string", "pattern": "^[0-9a-f]{12}-[0-9a-f]{12}$"},
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "enterprise_contract_version": {"const": "enterprise-context.v1"},
+        "enterprise_contract_bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "manifest_ref": {"type": "string", "minLength": 1},
+        "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "migration_version": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "migration_policy": {"const": "BACKUP_BEFORE_MIGRATE_FAIL_CLOSED"},
+        "profile": {"enum": ["minimal", "full"]},
+        "images": {"type": "object", "minProperties": 8, "additionalProperties": {"type": "string", "pattern": "(?:@sha256:[0-9a-f]{64}|:[0-9a-f]{40})$"}},
+        "resource_budget_status": {"const": "INITIAL_STAGING_BUDGET"},
+        "capacity_override": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["used", "reason"],
+          "properties": {"used": {"type": "boolean"}, "reason": {"type": ["string", "null"]}}
+        },
+        "provider_mode": {"const": "fake"},
+        "real_provider_calls": {"const": 0},
+        "e1_04_dependency": {"const": "NO"},
+        "document_hook": {"$ref": "#/$defs/DocumentStagingVerificationHook"},
+        "required_secret_files": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "artifacts": {"type": "object", "required": ["compose", "environment", "smoke", "resource_budget"], "additionalProperties": {"type": "string", "minLength": 1}},
+        "artifact_sha256": {"type": "object", "minProperties": 5, "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+        "package_content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: mentorflow-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: [backend:8000]
+  - job_name: mentorflow-otel
+    static_configs:
+      - targets: [otel-collector:8888]

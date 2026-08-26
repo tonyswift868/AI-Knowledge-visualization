@@ -1,0 +1,40 @@
+{
+  "schema": "mentorflow.container-resource-budget.v1",
+  "status": "INITIAL_STAGING_BUDGET",
+  "claim": "INITIAL_STAGING_BUDGET_NOT_PRODUCTION_OPTIMAL",
+  "host_ram_mb": 4096,
+  "host_reserve_mb": 768,
+  "profiles": {
+    "minimal": {
+      "minimum_ram_mb": 4096,
+      "minimum_observed_ram_mb": 3800,
+      "requires_capacity_override": false,
+      "services": {
+        "postgres": {"memory_reservation_mb": 384, "memory_limit_mb": 768, "cpus": 0.5},
+        "keycloak": {"memory_reservation_mb": 512, "memory_limit_mb": 896, "cpus": 0.75},
+        "backend": {"memory_reservation_mb": 256, "memory_limit_mb": 512, "cpus": 0.6},
+        "frontend": {"memory_reservation_mb": 32, "memory_limit_mb": 128, "cpus": 0.1},
+        "worker": {"memory_reservation_mb": 192, "memory_limit_mb": 384, "cpus": 0.45},
+        "otel-collector": {"memory_reservation_mb": 64, "memory_limit_mb": 192, "cpus": 0.2}
+      }
+    },
+    "full": {
+      "minimum_ram_mb": 12288,
+      "minimum_observed_ram_mb": 11600,
+      "requires_capacity_override": true,
+      "services": {
+        "postgres": {"memory_reservation_mb": 512, "memory_limit_mb": 1024, "cpus": 0.75},
+        "keycloak": {"memory_reservation_mb": 768, "memory_limit_mb": 1280, "cpus": 1.0},
+        "backend": {"memory_reservation_mb": 384, "memory_limit_mb": 768, "cpus": 0.75},
+        "frontend": {"memory_reservation_mb": 64, "memory_limit_mb": 160, "cpus": 0.15},
+        "worker": {"memory_reservation_mb": 256, "memory_limit_mb": 512, "cpus": 0.6},
+        "otel-collector": {"memory_reservation_mb": 96, "memory_limit_mb": 256, "cpus": 0.25},
+        "object-store": {"memory_reservation_mb": 256, "memory_limit_mb": 512, "cpus": 0.4},
+        "prometheus": {"memory_reservation_mb": 384, "memory_limit_mb": 768, "cpus": 0.5},
+        "grafana": {"memory_reservation_mb": 192, "memory_limit_mb": 384, "cpus": 0.3},
+        "testing-services": {"memory_reservation_mb": 512, "memory_limit_mb": 1536, "cpus": 1.0},
+        "docling-worker": {"memory_reservation_mb": 512, "memory_limit_mb": 2048, "cpus": 1.0}
+      }
+    }
+  }
+}

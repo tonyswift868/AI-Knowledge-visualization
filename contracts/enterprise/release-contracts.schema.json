@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mentorflow.local/contracts/enterprise/release-contracts.v2.schema.json",
+  "title": "MentorFlow Enterprise Release Contracts",
+  "$defs": {
+    "ImageVersion": {
+      "title": "ImageVersion",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_commit", "source_tree", "semantic_version"],
+      "properties": {
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "semantic_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"}
+      }
+    },
+    "ImageManifest": {
+      "title": "ImageManifest",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "image_version", "immutable_ref", "semantic_tag", "published", "build_status", "sbom_ref", "security_report_ref"],
+      "properties": {
+        "name": {"enum": ["backend", "frontend", "document-worker"]},
+        "image_version": {"$ref": "#/$defs/ImageVersion"},
+        "immutable_ref": {"type": "string", "pattern": "(?:@sha256:[0-9a-f]{64}|:[0-9a-f]{40})$"},
+        "semantic_tag": {"type": ["string", "null"], "not": {"const": "latest"}},
+        "published": {"type": "boolean"},
+        "build_status": {"enum": ["CI_CONFIGURED", "BUILT", "SCANNED", "PUBLISHED", "STAGING_VERIFIED", "STAGING_EXECUTION_PENDING"]},
+        "sbom_ref": {"type": "string", "minLength": 2},
+        "security_report_ref": {"type": "string", "minLength": 2}
+      }
+    },
+    "EnterpriseReleaseManifest": {
+      "title": "EnterpriseReleaseManifest",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "status", "source_commit", "source_tree", "enterprise_contract_version",
+        "enterprise_contract_bundle_sha256", "migration_version", "image_tags", "images", "sbom_refs",
+        "security_report_refs", "asvs_matrix_version", "load_report_refs", "qa_report_refs",
+        "known_blockers", "pending_staging_gates", "provider_mode", "real_provider_calls",
+        "manifest_content_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "mentorflow.enterprise-release-manifest.v2"},
+        "status": {"enum": ["IMPLEMENTED", "OFFLINE_VERIFIED", "CI_CONFIGURED", "STAGING_EXECUTION_PENDING", "STAGING_VERIFIED"]},
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "enterprise_contract_version": {"const": "enterprise-context.v1"},
+        "enterprise_contract_bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "migration_version": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "image_tags": {"type": "object", "required": ["backend", "frontend", "document-worker"]},
+        "images": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/ImageManifest"}},
+        "sbom_refs": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "security_report_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "asvs_matrix_version": {"const": "OWASP-ASVS-5.0.0"},
+        "load_report_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "qa_report_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "known_blockers": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "pending_staging_gates": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "provider_mode": {"const": "fake"},
+        "real_provider_calls": {"const": 0},
+        "manifest_content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
+  "$ref": "#/$defs/EnterpriseReleaseManifest"
+}
