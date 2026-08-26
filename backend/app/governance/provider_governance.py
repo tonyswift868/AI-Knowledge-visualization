@@ -41,6 +41,7 @@ def _required(name: str, value: str) -> str:
 
 class ProviderScope(str, Enum):
     ORGANIZATION = "ORGANIZATION"
+    WORKSPACE = "WORKSPACE"
     PERSONAL = "PERSONAL"
 
 
@@ -80,6 +81,7 @@ class ProviderConfig:
     approved_models: frozenset[str] = field(default_factory=frozenset)
     scope: ProviderScope = ProviderScope.ORGANIZATION
     owner_actor_id: str | None = None
+    workspace_id: str | None = None
     status: ProviderConfigStatus = ProviderConfigStatus.ACTIVE
     revision: int = 1
     rotated_at: datetime | None = None
@@ -99,14 +101,28 @@ class ProviderConfig:
             raise ValueError("approved_models must not be empty")
         object.__setattr__(self, "approved_models", models)
         if self.scope == ProviderScope.PERSONAL:
+            if self.workspace_id is not None:
+                raise ValueError("personal provider cannot carry workspace_id")
             object.__setattr__(
                 self,
                 "owner_actor_id",
                 _required("owner_actor_id", self.owner_actor_id or ""),
             )
+        elif self.scope == ProviderScope.WORKSPACE:
+            if self.organization_id is None:
+                raise ValueError("workspace-scoped provider requires organization_id")
+            object.__setattr__(
+                self,
+                "workspace_id",
+                _required("workspace_id", self.workspace_id or ""),
+            )
+            if self.owner_actor_id is not None:
+                raise ValueError("workspace-scoped config cannot have a personal owner")
         else:
             if self.organization_id is None:
                 raise ValueError("organization-scoped provider requires organization_id")
+            if self.workspace_id is not None:
+                raise ValueError("organization-scoped config cannot carry workspace_id")
             if self.owner_actor_id is not None:
                 raise ValueError("organization-scoped config cannot have a personal owner")
         if self.revision < 1:
@@ -143,6 +159,7 @@ class ProviderConfig:
             "model": normalized_model,
             "scope": self.scope.value,
             "organization_id": self.organization_id,
+            "workspace_id": self.workspace_id,
             "owner_actor_id": self.owner_actor_id,
             "revision": self.revision,
         }
@@ -199,6 +216,14 @@ class ProviderGovernanceService:
             return ResourceScope(
                 scope_type=ResourceScopeType.PERSONAL,
                 owner_subject_id=config.owner_actor_id,
+                classification=ResourceClassification.RESTRICTED,
+            )
+        if config.scope is ProviderScope.WORKSPACE:
+            return ResourceScope(
+                scope_type=ResourceScopeType.WORKSPACE,
+                owner_subject_id=config.owner_actor_id,
+                organization_id=config.organization_id,
+                workspace_id=config.workspace_id,
                 classification=ResourceClassification.RESTRICTED,
             )
         if tenant.workspace_id is not None:
@@ -396,6 +421,35 @@ class ProviderGovernanceService:
             status=ProviderConfigStatus.INVALID,
             revision=config.revision + 1,
             status_changed_at=_utc(now or datetime.now(timezone.utc)),
+        )
+        with self._lock:
+            self._configs[config_id] = updated
+        return MappingProxyType(updated.to_api_dict())
+
+    def update_model_policy(
+        self,
+        config_id: str,
+        approved_models: frozenset[str],
+        *,
+        subject: GovernanceActorAdapter,
+        tenant: TenantContext,
+        trace_id: str,
+    ) -> Mapping[str, object]:
+        config = self.get_internal(config_id)
+        self._authorize(
+            subject=subject,
+            tenant=tenant,
+            action=Action.UPDATE,
+            config=config,
+            trace_id=trace_id,
+        )
+        models = frozenset(_required("approved_model", value) for value in approved_models)
+        if not models:
+            raise ProviderGovernanceError("APPROVED_MODELS_REQUIRED")
+        updated = replace(
+            config,
+            approved_models=models,
+            revision=config.revision + 1,
         )
         with self._lock:
             self._configs[config_id] = updated

@@ -416,11 +416,16 @@ class TenantQuotaService:
         )
 
     def policies_for(self, subject: QuotaSubject) -> tuple[QuotaPolicy, ...]:
+        scope_rank = {
+            QuotaScope.ORGANIZATION: 0,
+            QuotaScope.WORKSPACE: 1,
+            QuotaScope.USER: 2,
+        }
         with self._lock:
             return tuple(
                 sorted(
                     (policy for policy in self._policies.values() if policy.applies_to(subject)),
-                    key=lambda policy: (policy.scope.value, policy.policy_id),
+                    key=lambda policy: (scope_rank[policy.scope], policy.policy_id),
                 )
             )
 
