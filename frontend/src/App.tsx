@@ -153,7 +153,7 @@ function CharacterPortrait({ character, className = "" }: { character: any; clas
 export function App() {
   const standaloneTool = new URLSearchParams(window.location.search).get("tool");
   const documentImportClient = useMemo(() => createDocumentImportClient(), []);
-  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review" || standaloneTool === "plan-product" || standaloneTool === "document-import";
+  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review" || standaloneTool === "plan-product" || standaloneTool === "document-import" || standaloneTool === "progress";
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
