@@ -20,7 +20,7 @@
     {
       "owner": "E1-02",
       "domain": "identity_mirror_tenant_persistence_rls",
-      "implementation_notes": "Migration 0029 creates the tenant foundation in the configured PostgreSQL default schema. Migration 0031 follows canonical E1-05 revision 0030_enterprise_jobs_v1, adds workspace_memberships, renames plans to learning_plans, completes role-binding shape, and reapplies FORCE RLS policies. Neither migration creates the previously proposed enterprise_identity or enterprise_tenant schemas.",
+      "implementation_notes": "Migration 0029 creates the tenant foundation in the configured PostgreSQL default schema. Migration 0031 follows canonical E1-05 revision 0030_enterprise_jobs_v1, adds workspace_memberships, renames plans to learning_plans, completes role-binding shape, and reapplies FORCE RLS policies. It does not create the previously proposed enterprise_identity or enterprise_tenant schemas.",
       "resources": [
         {"kind": "migration", "name": "0029_enterprise_tenancy_rls", "status": "IMPLEMENTED"},
         {"kind": "migration", "name": "0031_enterprise_tenancy_completion", "status": "IMPLEMENTED"},
