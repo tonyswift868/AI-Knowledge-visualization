@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, Sequence
 from uuid import uuid4
 
 from app.enterprise.contracts_v1 import (
@@ -321,6 +321,86 @@ class AuthorizationService:
             decision=decision,
             audit_sequence=record.sequence,
             break_glass_used=break_glass_used,
+        )
+
+    def authorize_bulk(
+        self,
+        requests: Sequence[PolicyRequest],
+    ) -> tuple[PolicyDecision, ...]:
+        """Evaluate one homogeneous query batch and emit one aggregate audit event."""
+
+        if not requests:
+            return ()
+        first = requests[0]
+        if len(requests) > 100_000:
+            raise ValueError("bulk authorization batch exceeds 100000 resources")
+        for request in requests[1:]:
+            if (
+                request.actor != first.actor
+                or request.tenant != first.tenant
+                or request.action is not first.action
+                or request.resource is not first.resource
+            ):
+                raise ValueError("bulk authorization requires one actor, tenant, action, and resource")
+
+        evaluated: list[tuple[PolicyRequest, AccessDecisionKind, str, bool]] = []
+        for request in requests:
+            outcome, reason_code = self._base_decision(request)
+            break_glass_used = False
+            if outcome is AccessDecisionKind.DENY and self._valid_break_glass(request):
+                outcome = AccessDecisionKind.ALLOW
+                reason_code = "BREAK_GLASS_ACTIVE"
+                break_glass_used = True
+            evaluated.append((request, outcome, reason_code, break_glass_used))
+
+        allowed_count = sum(
+            1 for _, outcome, _, _ in evaluated if outcome is AccessDecisionKind.ALLOW
+        )
+        denied_count = len(evaluated) - allowed_count
+        audit_outcome = (
+            AccessDecisionKind.ALLOW.value
+            if denied_count == 0
+            else AccessDecisionKind.DENY.value
+            if allowed_count == 0
+            else "PARTIAL"
+        )
+        record = self._append_audit(
+            AuditEnvelope(
+                event_id="audit_" + uuid4().hex,
+                actor_context=first.actor,
+                action=f"bulk.{first.resource.value}.{first.action.value.lower()}",
+                resource_type=first.resource.value,
+                resource_id="bulk_" + uuid4().hex,
+                outcome=audit_outcome,
+                reason_code="BULK_AUTHORIZATION_EVALUATED",
+                occurred_at=first.occurred_at,
+                request_id=first.request_id,
+                trace_id=first.trace_id,
+                metadata_redacted=_audit_metadata(
+                    allowed_count=allowed_count,
+                    candidate_count=len(evaluated),
+                    denied_count=denied_count,
+                    policy_id=POLICY_ID,
+                    role=first.subject.effective_role.value,
+                    tenant_mode=first.tenant.mode.value,
+                ),
+            )
+        )
+        return tuple(
+            PolicyDecision(
+                decision=AccessDecision(
+                    decision=outcome,
+                    policy_id=POLICY_ID,
+                    reason_code=reason_code,
+                    actor=request.actor,
+                    resource=request.resource_scope,
+                    action=f"{request.resource.value}.{request.action.value.lower()}",
+                    evaluated_at=request.occurred_at,
+                ),
+                audit_sequence=record.sequence,
+                break_glass_used=break_glass_used,
+            )
+            for request, outcome, reason_code, break_glass_used in evaluated
         )
 
     def _append_audit(self, envelope: AuditEnvelope):
