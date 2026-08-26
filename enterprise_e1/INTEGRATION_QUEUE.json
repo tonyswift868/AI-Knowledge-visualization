@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-27T00:52:27+08:00",
+  "updated_at": "2026-08-27T01:09:38+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -20,7 +20,7 @@
     {
       "work_item": "E1-02",
       "capability": "tenant_persistence",
-      "state": "INTEGRATED_COMPLETION_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_PRODUCT_PERSISTENCE_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["enterprise-context.v1"],
       "delivery_id": "DLV-W02-20260826T105314Z-02",
       "delivery_receipt_sha256": "18B319D959472CF3CE879F04A4B2BE1004F0FE772F82089C6F3A6939535E27AB",
@@ -34,7 +34,25 @@
       "completion_repair_receipt_sha256": "A9FA2B0EBF21D443CAC3AD7B51BDD23B5C6E6F1E97903A5716BE565FCDFE1A1E",
       "completion_repair_source_commit": "27996a044c6a6f66f339f02efc1214bf488ebec9",
       "completion_repair_integration_commit": "650a352ca6998d408c765be3dd7d352112ae952f",
-      "notes": "The frozen base exact commit remains legally integrated and its focused gates passed. Completion delivery DLV-W02-20260826T125813Z-03 was returned without consuming its colliding migration. Replacement DLV-W02-20260826T132400Z-04 was audited as an exact one-commit repair, uses unique revision 0031_enterprise_tenancy_completion after canonical 0030_enterprise_jobs_v1, changes no forbidden path, dependency, lock, shared contract, 0029 foundation migration, or 0030 jobs migration, and was applied with -x provenance. Isolated migration/tenant/contract/manifest gates passed 26/26; Personal Local passed 37 with 3 platform skips; compile/import, frozen hashes, YAML, pip, Alembic single-head/history, JSON, diff, and clean gates passed. Real PostgreSQL RLS execution remains unclaimed."
+      "product_persistence_delivery_id": "DLV-W02-20260826T162225Z-05",
+      "product_persistence_receipt_sha256": "146740A4137D77FE05A08803DF2AF2C6BBFAC857F3758B38A40F4834FFBF5AA5",
+      "product_persistence_source_commits": [
+        "ea5fb4223adddcea33b66d5542ab3083ab82b77e",
+        "261f8ee44738650a3c08ef26e47d59089b5a1501",
+        "dc825c8f4a2a2223f5c4029c4fc3a1e7799d9154",
+        "e1a157b2db0bca5a3c7471516f0e8fa05ab20338",
+        "2e9fed3c1640b803231659f1d42fb18ad2a3e597",
+        "e804201a0f6ee16dd7df4386af9c66f5a9fa4976"
+      ],
+      "product_persistence_integration_commits": [
+        "c1261350a6bec0b5b73d25cfe506d8c12ecfa2a4",
+        "c10497737942cb51489e4c2f1aa3e6197a4a5a3f",
+        "fc746d828dddf134b854eacb022815f8f8fc8a81",
+        "38df18826a2ffba63b80899596c37c968b557df2",
+        "0791bd109bff4824ed3d20576234aac1b3625284",
+        "8f74a6afdedfd762cf488667fab490df84f28ce5"
+      ],
+      "notes": "The frozen base and completion repair remain legally integrated. Product-persistence delivery DLV-W02-20260826T162225Z-05 was audited as six exact commits against the current canonical line: all 28 changed paths were owned, forbidden paths were zero, no migration/shared-contract/dependency/lock file changed, and the aggregate patch applied cleanly. Exact commits were consumed in receipt order with -x provenance. Tenant persistence, contract, and manifest gates passed 38/38; isolated Personal Local passed 37 with 3 platform skips; Alembic retains the single head 0031_enterprise_tenancy_completion; compile, import, pip, YAML/JSON, diff, and clean gates passed. Real PostgreSQL/RLS and DBAPI connection-reuse staging remain PENDING_STAGING and are not claimed."
     },
     {
       "work_item": "E1-01",
@@ -129,7 +147,7 @@
     {
       "work_item": "E1-06",
       "capability": "observability_recovery",
-      "state": "INTEGRATED_HARDENING_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_STAGING_VERIFY_RUNTIME_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-03", "E1-05"],
       "delivery_id": "DLV-W06-20260826T110116Z-01",
       "delivery_receipt_sha256": "6931AB7D8E9D0A8D8252816463E431A0A7103062B211E748A76C045278276835",
@@ -143,7 +161,18 @@
       "hardening_delivery_receipt_sha256": "F216C9C1E990A7ACDB8E21CC6EDCDD954204920411DFBC83765250FD6AAB7847",
       "hardening_source_commit": "4a9d7da2c90bb0e8ceb69a4d7997360b6b09dae1",
       "hardening_integration_commit": "23ed3583db102c640b1899663f9ee545c04ee0c7",
-      "notes": "The two original frozen exact commits and completion delivery were applied sequentially with provenance. Hardening delivery DLV-W06-20260826T130201Z-03 was audited as the exact continuation of completion source 1b0efc92, touched only five observability-owned paths, changed no forbidden path, dependency, lock, migration, or shared contract, and was applied with -x provenance. Isolated correlated-telemetry/provider-secret tests passed 28/28; Teacher Live/document-ingestion tests passed 25/25; frozen enterprise contract and Integration manifest tests passed 13/13; compile/import, JSON, pip, diff, and clean gates passed. Provider calls remain 0; live PostgreSQL/Keycloak recovery and external OTel Collector export are not claimed."
+      "staging_verify_delivery_id": "DLV-W06-20260826T163113Z-04",
+      "staging_verify_receipt_sha256": "B9BE33C4210AF7B39C5C2C2B7C32B3FE49BA8226F73ECF9ECC6B8E398F5B4D59",
+      "staging_verify_source_commits": [
+        "9b0d92a11381cbaeb5515faeb3d1ea245b54556f",
+        "dd9fc36e07ab1f6339e4d599de7b5d0c16629b89"
+      ],
+      "staging_verify_integration_commits": [
+        "01df426b6f2ee08b79b376485f2a9e8870a5502f",
+        "45bfc1675eaa7043a5b263acdf772e30aaeb1cf1"
+      ],
+      "staging_verify_preflight": "BLOCKED_EXPECTED_NON_STAGING_HOST__2_PASS_13_BLOCKED_0_FAIL",
+      "notes": "The prior observability deliveries remain legally integrated. Staging-verification delivery DLV-W06-20260826T163113Z-04 was audited as an exact two-commit continuation from canonical head 8f929b67, touched 27 owned paths and zero forbidden paths, changed no migration/shared-contract/dependency/lock file, and applied cleanly after E1-02B. Exact commits were consumed in receipt order with -x provenance. Combined staging/observability/tenant/governance/jobs/contracts/manifests passed 99/99; Provider/Teacher/Document/Personal Local compatibility passed 57 with 2 platform skips; compile/import, pip, YAML/JSON, diff, and clean gates passed. Root promtool was unavailable. Local preflight truthfully returned BLOCKED with 2 PASS, 13 BLOCKED, and 0 FAIL; Provider calls remain 0. Live Linux staging, OTel export, PostgreSQL/Keycloak/object-store restore, incident drill, and promtool re-execution remain unclaimed."
     },
     {
       "work_item": "E1-07",
