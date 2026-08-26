@@ -101,12 +101,19 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-06"]["state"] in {
         "INTEGRATED_EXACT_COMMITS_FOCUSED_GATES_PENDING",
         "INTEGRATED_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+        "INTEGRATED_COMPLETION_EXACT_COMMIT_FOCUSED_GATES_PENDING",
+        "INTEGRATED_COMPLETION_EXACT_COMMIT_FOCUSED_GATES_PASSED",
+        "INTEGRATED_HARDENING_EXACT_COMMITS_FOCUSED_GATES_PASSED",
     }
     assert by_id["E1-06"]["delivery_id"] == "DLV-W06-20260826T110116Z-01"
     assert by_id["E1-06"]["source_commits"] == [
         "fb7bd515d0ad5d4ad35977da8cea0d61d436fb04",
         "ae2f9876ce876c3c24cf907020dc850fa2bb2c51",
     ]
+    assert by_id["E1-06"]["completion_delivery_id"] == "DLV-W06-20260826T125610Z-02"
+    assert by_id["E1-06"]["completion_delivery_receipt_sha256"] == "2D47A227F7F341C6CB43B341CE173B5537558D5CE5139C29996C8A2D12C4A403"
+    assert by_id["E1-06"]["completion_source_commit"] == "1b0efc921da9515b1296c127fa7e6e8a2b7c7fa4"
+    assert by_id["E1-06"]["completion_integration_commit"] == "bf7eadd4ad10d944c20580e95432bd54151fabdd"
     assert by_id["E1-07"]["state"] == "READY_AUDITED_CHAIN_COMPLETE_BLOCKED_BY_E1_04_QA"
     assert by_id["E1-07"]["delivery_id"] == "DLV-W07-20260826T105638Z-01"
     assert by_id["E1-07"]["source_commits"] == [

@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T21:00:59+08:00",
+  "updated_at": "2026-08-26T21:06:30+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -99,13 +99,17 @@
     {
       "work_item": "E1-06",
       "capability": "observability_recovery",
-      "state": "INTEGRATED_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_COMPLETION_EXACT_COMMIT_FOCUSED_GATES_PENDING",
       "depends_on": ["E1-02", "E1-03", "E1-05"],
       "delivery_id": "DLV-W06-20260826T110116Z-01",
       "delivery_receipt_sha256": "6931AB7D8E9D0A8D8252816463E431A0A7103062B211E748A76C045278276835",
       "source_commits": ["fb7bd515d0ad5d4ad35977da8cea0d61d436fb04", "ae2f9876ce876c3c24cf907020dc850fa2bb2c51"],
       "integration_commits": ["03727e6693748316b3691d530a4b8eb3d7665cf0", "ce00ab79b0ec7a85324ce5ca63170acee69171bf"],
-      "notes": "The two frozen exact commits were applied sequentially with provenance. Observability/recovery, Provider telemetry, Teacher Live API, and document ingestion passed 48/48; enterprise and Personal Local compatibility passed 29 with 2 Windows link-privilege skips; the frontend production build and compile/import, pip, JSON, and diff checks passed. Provider calls remain 0; live PostgreSQL/Keycloak recovery and external OTel Collector export are not claimed."
+      "completion_delivery_id": "DLV-W06-20260826T125610Z-02",
+      "completion_delivery_receipt_sha256": "2D47A227F7F341C6CB43B341CE173B5537558D5CE5139C29996C8A2D12C4A403",
+      "completion_source_commit": "1b0efc921da9515b1296c127fa7e6e8a2b7c7fa4",
+      "completion_integration_commit": "bf7eadd4ad10d944c20580e95432bd54151fabdd",
+      "notes": "The two original frozen exact commits were applied sequentially with provenance. Completion delivery DLV-W06-20260826T125610Z-02 was audited as a strict single-commit continuation of Integration authority head 4b2197f0, had no owned-path drift or forbidden-path changes, and was applied with -x provenance; focused gates are pending. Provider calls remain 0; live PostgreSQL/Keycloak recovery and external OTel Collector export are not claimed."
     },
     {
       "work_item": "E1-07",
