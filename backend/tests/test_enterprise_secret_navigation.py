@@ -44,16 +44,26 @@ def tenant(workspace_id: str) -> TenantContext:
     )
 
 
-def test_whole_backend_secret_access_policy_reports_out_of_scope_plaintext_read() -> None:
+def test_whole_backend_secret_access_policy_accepts_only_named_local_compatibility_boundary() -> None:
     report = SecretAccessVerifier().scan(APP_ROOT)
-    assert report.complete is False
+    assert report.complete is True
     assert report.governed_domains == ("PROVIDER", "OIDC", "DATABASE", "OBJECT_STORE")
     assert "provider_runtime.py" in report.resolver_consumers
     assert "minimax_teacher_voice.py" in report.resolver_consumers
     assert "tencent_sms.py" in report.resolver_consumers
+    assert "teacher_avatar_registry.py" in report.resolver_consumers
     assert report.admin_plaintext_secret_fields == ()
-    assert tuple((item.path, item.symbol) for item in report.violations) == (
-        ("teacher_avatar_registry.py", "VROID_HUB_CLIENT_SECRET"),
+    assert report.violations == ()
+    assert tuple(
+        (item.path, item.class_name, item.function_name, item.symbol)
+        for item in report.compatibility_boundaries
+    ) == (
+        (
+            "teacher_avatar_registry.py",
+            "LegacyLocalVroidHubCompatibilityAdapter",
+            "credential_snapshot",
+            "VROID_HUB_CLIENT_SECRET",
+        ),
     )
 
 
@@ -66,6 +76,28 @@ def test_secret_policy_detects_direct_plaintext_environment_access(tmp_path: Pat
     report = SecretAccessVerifier().scan(tmp_path)
     assert report.complete is False
     assert report.violations[0].symbol == "PROVIDER_API_KEY"
+
+
+def test_vroid_legacy_allowance_is_unique_to_the_named_compatibility_method(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "teacher_avatar_registry.py"
+    source.write_text(
+        "import os\n"
+        "class LegacyLocalVroidHubCompatibilityAdapter:\n"
+        "    def credential_snapshot(self):\n"
+        "        return os.getenv('VROID_HUB_CLIENT_SECRET')\n"
+        "def enterprise_business_read():\n"
+        "    return os.getenv('VROID_HUB_CLIENT_SECRET')\n",
+        encoding="utf-8",
+    )
+
+    report = SecretAccessVerifier().scan(tmp_path)
+
+    assert len(report.compatibility_boundaries) == 1
+    assert tuple((item.line, item.symbol) for item in report.violations) == (
+        (6, "VROID_HUB_CLIENT_SECRET"),
+    )
 
 
 def test_enterprise_navigation_reprojects_role_and_workspace_immediately() -> None:

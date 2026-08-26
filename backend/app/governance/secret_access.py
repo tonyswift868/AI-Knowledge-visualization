@@ -26,6 +26,16 @@ _RAW_SECRET_NAMES = frozenset(
     }
 )
 _ENV_SECRET_MARKERS = ("API_KEY", "ACCESS_KEY", "CLIENT_SECRET", "PASSWORD", "PRIVATE_KEY", "SECRET_KEY")
+_COMPATIBILITY_ENVIRONMENT_BOUNDARIES = frozenset(
+    {
+        (
+            "teacher_avatar_registry.py",
+            "LegacyLocalVroidHubCompatibilityAdapter",
+            "credential_snapshot",
+            "VROID_HUB_CLIENT_SECRET",
+        ),
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,12 +55,31 @@ class SecretAccessViolation:
 
 
 @dataclass(frozen=True, slots=True)
+class SecretCompatibilityBoundary:
+    path: str
+    line: int
+    class_name: str
+    function_name: str
+    symbol: str
+
+    def to_public_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "line": self.line,
+            "class_name": self.class_name,
+            "function_name": self.function_name,
+            "symbol": self.symbol,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SecretAccessReport:
     policy_version: str
     scanned_python_files: int
     governed_domains: tuple[str, ...]
     resolver_consumers: tuple[str, ...]
     lexical_fallback_files: tuple[str, ...]
+    compatibility_boundaries: tuple[SecretCompatibilityBoundary, ...]
     violations: tuple[SecretAccessViolation, ...]
     admin_plaintext_secret_fields: tuple[str, ...]
 
@@ -65,6 +94,9 @@ class SecretAccessReport:
             "governed_domains": self.governed_domains,
             "resolver_consumers": self.resolver_consumers,
             "lexical_fallback_files": self.lexical_fallback_files,
+            "compatibility_boundaries": tuple(
+                item.to_public_dict() for item in self.compatibility_boundaries
+            ),
             "violations": tuple(item.to_public_dict() for item in self.violations),
             "admin_plaintext_secret_fields": self.admin_plaintext_secret_fields,
             "admin_plaintext_secret_read_allowed": False,
@@ -75,7 +107,7 @@ class SecretAccessReport:
 class SecretAccessVerifier:
     """AST-based policy check for Provider/OIDC/DB/object-store secret ingress."""
 
-    POLICY_VERSION = "mentorflow.enterprise-secret-access.v1"
+    POLICY_VERSION = "mentorflow.enterprise-secret-access.v2"
 
     @staticmethod
     def _literal_string(node: ast.AST) -> str | None:
@@ -133,6 +165,23 @@ class SecretAccessVerifier:
                         fields.append(f"{node.name}.{field_name}")
         return tuple(sorted(fields))
 
+    @staticmethod
+    def _enclosing_boundary(
+        node: ast.AST,
+        parents: dict[ast.AST, ast.AST],
+    ) -> tuple[str, str]:
+        class_name = ""
+        function_name = ""
+        current = parents.get(node)
+        while current is not None:
+            if not function_name and isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                function_name = current.name
+            if isinstance(current, ast.ClassDef):
+                class_name = current.name
+                break
+            current = parents.get(current)
+        return class_name, function_name
+
     def scan(self, app_root: Path) -> SecretAccessReport:
         root = app_root.resolve()
         python_files = tuple(sorted(root.rglob("*.py")))
@@ -140,6 +189,7 @@ class SecretAccessVerifier:
         consumers: list[str] = []
         admin_fields: list[str] = []
         lexical_fallbacks: list[str] = []
+        compatibility_boundaries: list[SecretCompatibilityBoundary] = []
         for path in python_files:
             relative = path.relative_to(root).as_posix()
             source = path.read_text(encoding="utf-8")
@@ -170,6 +220,11 @@ class SecretAccessVerifier:
             admin_fields.extend(self._admin_secret_fields(tree, relative))
             if relative == "credential_store.py":
                 continue
+            parents = {
+                child: parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
             for node in ast.walk(tree):
                 environment_name = (
                     self._environment_name(node)
@@ -179,6 +234,19 @@ class SecretAccessVerifier:
                     else None
                 )
                 if environment_name and self._is_raw_secret_environment(environment_name):
+                    class_name, function_name = self._enclosing_boundary(node, parents)
+                    boundary = (relative, class_name, function_name, environment_name)
+                    if boundary in _COMPATIBILITY_ENVIRONMENT_BOUNDARIES:
+                        compatibility_boundaries.append(
+                            SecretCompatibilityBoundary(
+                                path=relative,
+                                line=node.lineno,
+                                class_name=class_name,
+                                function_name=function_name,
+                                symbol=environment_name,
+                            )
+                        )
+                        continue
                     violations.append(
                         SecretAccessViolation(
                             code="PLAINTEXT_SECRET_ENVIRONMENT_READ",
@@ -193,6 +261,12 @@ class SecretAccessVerifier:
             governed_domains=tuple(domain.value for domain in SecretDomain),
             resolver_consumers=tuple(sorted(consumers)),
             lexical_fallback_files=tuple(sorted(lexical_fallbacks)),
+            compatibility_boundaries=tuple(
+                sorted(
+                    compatibility_boundaries,
+                    key=lambda item: (item.path, item.line, item.symbol),
+                )
+            ),
             violations=tuple(sorted(violations, key=lambda item: (item.path, item.line))),
             admin_plaintext_secret_fields=tuple(sorted(set(admin_fields))),
         )
@@ -209,6 +283,7 @@ class SecretAccessVerifier:
 
 
 __all__ = [
+    "SecretCompatibilityBoundary",
     "SecretAccessReport",
     "SecretAccessVerifier",
     "SecretAccessViolation",

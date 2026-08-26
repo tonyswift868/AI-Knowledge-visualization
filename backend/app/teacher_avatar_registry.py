@@ -15,11 +15,15 @@ import io
 import struct
 import zipfile
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from enum import Enum
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Callable, Protocol, TypeVar
 
+from .credential_store import get_secret
+from .enterprise.contracts_v1 import TenantMode
 from .koikatsu_paths import KKS_RUNTIME_ROOT, TEACHER_AVATAR_REGISTRY_ROOT
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +47,7 @@ KKS_RUNTIME_PACK_MANIFEST = "mentorflow-kks-runtime-pack.json"
 KKS_RUNTIME_PACK_SCHEMA = "mentorflow.kks-runtime-pack.v1"
 MOTION_LIBRARY = ("idle", "explain", "question", "encourage", "quiz", "celebrate", "redirect")
 _LOCK = Lock()
+_SecretResult = TypeVar("_SecretResult")
 
 
 class TeacherAvatarError(ValueError):
@@ -51,6 +56,137 @@ class TeacherAvatarError(ValueError):
         self.code = code
         self.message = message
         self.status_code = status_code
+
+
+class VroidHubCredentialSource(str, Enum):
+    LEGACY_PERSONAL_LOCAL_COMPATIBILITY = "LEGACY_PERSONAL_LOCAL_COMPATIBILITY"
+    ENTERPRISE_PROVIDER_GOVERNANCE = "ENTERPRISE_PROVIDER_GOVERNANCE"
+    ENTERPRISE_CREDENTIAL_REFERENCE_REQUIRED = "ENTERPRISE_CREDENTIAL_REFERENCE_REQUIRED"
+
+
+@dataclass(frozen=True, slots=True)
+class VroidHubCredentialSnapshot:
+    """Secret-free status projected into Teacher Avatar API metadata."""
+
+    configured: bool
+    source: VroidHubCredentialSource
+    status: str
+    revision: int | None = None
+
+    def to_public_dict(self) -> dict[str, object]:
+        return {
+            "vroid_hub_configured": self.configured,
+            "credential_source": self.source.value,
+            "credential_status": self.status,
+            "credential_revision": self.revision,
+        }
+
+
+class CredentialResolverPort(Protocol):
+    """Resolve secret material only for an already fenced execution."""
+
+    def __call__(self, credential_reference: str) -> str: ...
+
+
+class ProviderGovernancePort(Protocol):
+    """Narrow provider-governance seam used by the VRoid Hub adapter."""
+
+    def get_internal(self, config_id: str) -> Any: ...
+
+    def authorize_new_session(self, config_id: str, model: str) -> Any: ...
+
+    def validate_session(self, grant: Any) -> Any: ...
+
+
+class LegacyLocalVroidHubCompatibilityAdapter:
+    """The only permitted legacy plaintext environment compatibility boundary."""
+
+    @staticmethod
+    def credential_snapshot() -> VroidHubCredentialSnapshot:
+        configured = bool(
+            os.getenv("VROID_HUB_CLIENT_ID", "").strip()
+            and os.getenv("VROID_HUB_CLIENT_SECRET", "")
+        )
+        return VroidHubCredentialSnapshot(
+            configured=configured,
+            source=VroidHubCredentialSource.LEGACY_PERSONAL_LOCAL_COMPATIBILITY,
+            status="ACTIVE" if configured else "MISSING_LEGACY_CREDENTIAL",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EnterpriseVroidHubCredentialAdapter:
+    """Reference-only Enterprise adapter with revision-fenced secret execution."""
+
+    governance: ProviderGovernancePort
+    config_id: str
+    model: str = "vroid-hub-api"
+
+    def __post_init__(self) -> None:
+        if not str(self.config_id or "").strip():
+            raise ValueError("config_id must not be empty")
+        if not str(self.model or "").strip():
+            raise ValueError("model must not be empty")
+
+    def credential_snapshot(self) -> VroidHubCredentialSnapshot:
+        try:
+            config = self.governance.get_internal(self.config_id)
+        except RuntimeError as exc:
+            if getattr(exc, "code", None) != "PROVIDER_CONFIG_NOT_FOUND":
+                raise
+            return VroidHubCredentialSnapshot(
+                configured=False,
+                source=VroidHubCredentialSource.ENTERPRISE_CREDENTIAL_REFERENCE_REQUIRED,
+                status="MISSING_CREDENTIAL_REFERENCE",
+            )
+        status = str(getattr(config.status, "value", config.status))
+        return VroidHubCredentialSnapshot(
+            configured=status == "ACTIVE",
+            source=VroidHubCredentialSource.ENTERPRISE_PROVIDER_GOVERNANCE,
+            status=status,
+            revision=config.revision,
+        )
+
+    def authorize_new_session(self) -> Any:
+        """Revoked, rotating, or invalid configs are rejected by governance."""
+
+        return self.governance.authorize_new_session(self.config_id, self.model)
+
+    def execute_with_secret(
+        self,
+        grant: Any,
+        operation: Callable[[str], _SecretResult],
+        *,
+        resolver: CredentialResolverPort = get_secret,
+    ) -> _SecretResult:
+        """Resolve plaintext after fencing and expose it only to the provider call."""
+
+        config = self.governance.validate_session(grant)
+        credential_reference = config.secret_reference.value
+        try:
+            secret = resolver(credential_reference)
+        except Exception:
+            raise TeacherAvatarError(
+                "VROID_HUB_CREDENTIAL_UNAVAILABLE",
+                "VRoid Hub credential is unavailable.",
+                503,
+            ) from None
+        if not secret:
+            raise TeacherAvatarError(
+                "VROID_HUB_CREDENTIAL_UNAVAILABLE",
+                "VRoid Hub credential is unavailable.",
+                503,
+            )
+        try:
+            return operation(secret)
+        except Exception:
+            raise TeacherAvatarError(
+                "VROID_HUB_EXECUTION_FAILED",
+                "VRoid Hub provider execution failed.",
+                502,
+            ) from None
+        finally:
+            secret = ""
 
 
 def validate_kks_appearance_receipt(
@@ -225,7 +361,33 @@ def _public(item: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
-def list_models() -> dict[str, Any]:
+def list_models(
+    *,
+    tenant_mode: TenantMode = TenantMode.PERSONAL_LOCAL,
+    enterprise_credentials: EnterpriseVroidHubCredentialAdapter | None = None,
+) -> dict[str, Any]:
+    if not isinstance(tenant_mode, TenantMode):
+        raise TeacherAvatarError(
+            "TENANT_MODE_REQUIRED",
+            "A canonical TenantMode is required for VRoid Hub credential selection.",
+        )
+    if tenant_mode is TenantMode.ENTERPRISE_SERVER:
+        credential_snapshot = (
+            enterprise_credentials.credential_snapshot()
+            if enterprise_credentials is not None
+            else VroidHubCredentialSnapshot(
+                configured=False,
+                source=VroidHubCredentialSource.ENTERPRISE_CREDENTIAL_REFERENCE_REQUIRED,
+                status="MISSING_CREDENTIAL_REFERENCE",
+            )
+        )
+    else:
+        if enterprise_credentials is not None:
+            raise TeacherAvatarError(
+                "ENTERPRISE_CREDENTIAL_MODE_REQUIRED",
+                "Enterprise VRoid Hub credentials require Enterprise Server mode.",
+            )
+        credential_snapshot = LegacyLocalVroidHubCompatibilityAdapter.credential_snapshot()
     with _LOCK:
         items = [_public(item) for item in _load()["models"] if item.get("enabled", True)]
     return {
@@ -237,7 +399,7 @@ def list_models() -> dict[str, Any]:
             "recommended": "VRM 1.0 / VRoid Hub authorized model",
             "vroid_hub_api": "https://developer.vroid.com/en/api/",
             "vroid_hub_application_registration": "https://hub.vroid.com/oauth/applications/",
-            "vroid_hub_configured": bool(os.getenv("VROID_HUB_CLIENT_ID") and os.getenv("VROID_HUB_CLIENT_SECRET")),
+            **credential_snapshot.to_public_dict(),
             "oauth_requirements": ["OAuth 2.0", "PKCE S256", "X-Api-Version: 11", "per-model usage conditions"],
             "license_required": True,
         },

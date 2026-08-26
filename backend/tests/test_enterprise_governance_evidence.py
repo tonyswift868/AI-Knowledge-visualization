@@ -29,12 +29,15 @@ def test_governance_evidence_generator_emits_required_reports_and_qa_templates(t
     assert payloads["protected-surface-manifest.json"]["operation_count"] == 80
     assert payloads["audit-coverage-report.json"]["verification"]["complete"] is True
     assert payloads["authorization-negative-report.json"]["case_count"] == 404
-    assert payloads["secret-access-report.json"]["complete"] is False
-    assert payloads["secret-access-report.json"]["delivery_blocking"] is True
-    assert payloads["secret-access-report.json"]["violations"] == [
+    assert payloads["secret-access-report.json"]["complete"] is True
+    assert payloads["secret-access-report.json"]["delivery_blocking"] is False
+    assert payloads["secret-access-report.json"]["scope_resolution"] == "NONE"
+    assert payloads["secret-access-report.json"]["violations"] == []
+    assert payloads["secret-access-report.json"]["compatibility_boundaries"] == [
         {
-            "code": "PLAINTEXT_SECRET_ENVIRONMENT_READ",
-            "line": 240,
+            "class_name": "LegacyLocalVroidHubCompatibilityAdapter",
+            "function_name": "credential_snapshot",
+            "line": 108,
             "path": "teacher_avatar_registry.py",
             "symbol": "VROID_HUB_CLIENT_SECRET",
         }
