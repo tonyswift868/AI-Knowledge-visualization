@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T22:28:46+08:00",
+  "updated_at": "2026-08-26T23:38:55+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -176,8 +176,25 @@
       "integration_contract_passed": 8,
       "repair_commits_consumed": false,
       "repair_pending_reason": "E1-04 formal blocking QA remains BLOCKED_ENV under TRQ-W04-20260826-195459-02; E1-07 explicitly depends on E1-04.",
-      "review_after_fix": "SATISFIED_BY_DLV-W07-20260826T142210Z-04",
-      "notes": "The first two frozen W07 receipts remain audited successfully. Their source chain is exactly 91d8ed5a -> 4011ea38 -> 11d134ce -> 7b889bd2 -> f85bc7b8. Neither delivery has been applied because E1-04 blocking enterprise QA returned BLOCKED_ENV rather than PASS. E1-07B receipt DLV-W07-20260826T140436Z-03 was returned without consuming d8921741 or 40ff7d40 after a fresh Windows checkout exposed raw LF/CRLF SBOM hash drift. Replacement receipt DLV-W07-20260826T142210Z-04 freezes the full ordered chain d8921741 -> 40ff7d40 -> 359b88f1 and repairs the verifier to use sha256:canonical-json-v1. Root reproduced the repair at exact 359b88f1 in a clean core.autocrlf=true detached checkout: release verification and 439-component report check passed, the 14 focused source tests passed, and the frozen Integration contract suite passed 8/8. Raw checkout bytes remain auditable as 0242a4a7 with 14187 CRLF pairs while the canonical semantic hash is fa8e4cea. The three repair-chain commits remain unconsumed because E1-04 is an explicit dependency and its formal QA is still BLOCKED_ENV. The upstream W6 stale migration-head assertion remains a separate MAIN_FULL blocker and was not suppressed. Docker, k6, RLS, scanners, staging, promotion, rollback, and all real gates remain PENDING_STAGING; no CI, container, security, load, staging, or production claim is made."
+      "completion_delivery_id": "DLV-W07-20260826T153410Z-05",
+      "completion_delivery_receipt_sha256": "34554A4219ADA91B37C099AE3EF03DE09D7E6E90D7E29442959BA4DCC8F2F184",
+      "completion_base_commit": "359b88f1fd482f986f7b76beb50f6aea91500887",
+      "completion_source_commits": ["d7e7e032b24f6ca0365b62bd898a744ee198b3c1", "6c0e5ee00ec767f2bd11488e39c01e37b26a7d07"],
+      "completion_last_commit": "6c0e5ee00ec767f2bd11488e39c01e37b26a7d07",
+      "completion_audit_status": "PASS_EXACT_FRESH_WINDOWS_CHECKOUT",
+      "environment_not_run_facts": {
+        "LOCAL_WINDOWS_DOCKER": "NOT_RUN",
+        "LOCAL_WINDOWS_COMPOSE": "NOT_RUN",
+        "REAL_POSTGRES_RLS": "NOT_RUN",
+        "REAL_K6": "NOT_RUN",
+        "REAL_CONTAINER": "NOT_RUN",
+        "REAL_LINUX_STAGING": "NOT_RUN"
+      },
+      "completion_focused_passed": 15,
+      "completion_commits_consumed": false,
+      "completion_pending_reason": "E1-04 formal blocking QA remains BLOCKED_ENV under TRQ-W04-20260826-195459-02; the completed W07 chain remains dependency-blocked.",
+      "review_after_fix": "SATISFIED_THROUGH_DLV-W07-20260826T153410Z-05",
+      "notes": "The first two frozen W07 receipts remain audited successfully. Their source chain is exactly 91d8ed5a -> 4011ea38 -> 11d134ce -> 7b889bd2 -> f85bc7b8. Neither delivery has been applied because E1-04 blocking enterprise QA returned BLOCKED_ENV rather than PASS. E1-07B receipt DLV-W07-20260826T140436Z-03 was returned without consuming d8921741 or 40ff7d40 after a fresh Windows checkout exposed raw LF/CRLF SBOM hash drift. Replacement receipt DLV-W07-20260826T142210Z-04 freezes d8921741 -> 40ff7d40 -> 359b88f1 and repairs the verifier to use sha256:canonical-json-v1. Completion receipt DLV-W07-20260826T153410Z-05 extends exact 359b88f1 -> d7e7e032 -> 6c0e5ee0 and closes the original six-environment-fact acceptance gap. Root reproduced exact 6c0e5ee0 in a clean core.autocrlf=true detached checkout: release verification reported environment_not_run_facts=6, all 15 focused tests passed, the 439-component report check passed, raw SBOM SHA remained 0242a4a7 with 14187 CRLF pairs, and the worktree stayed clean. The full completed W07 chain remains unconsumed because E1-04 is an explicit dependency and its formal QA is still BLOCKED_ENV. The upstream W6 stale migration-head assertion remains a separate MAIN_FULL blocker and was not suppressed. Docker, Compose, PostgreSQL RLS, k6, containers, Linux staging, scanners, promotion, rollback, and all real gates remain NOT_RUN/PENDING_STAGING; no CI, container, security, load, staging, or production claim is made."
     }
   ]
 }
