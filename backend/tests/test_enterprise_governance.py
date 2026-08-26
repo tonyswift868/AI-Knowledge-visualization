@@ -376,6 +376,8 @@ def test_break_glass_is_disabled_by_default_and_short_lived_when_enabled(
             approved_by="owner-approver",
             actions=frozenset({Action.READ}),
             resources=frozenset({Resource.STUDENT_PROGRESS}),
+            resource_ids=frozenset({"student_progress-1"}),
+            resource_scope=_scope(),
             trace_id="trace-disabled",
             now=NOW,
         )
@@ -389,6 +391,8 @@ def test_break_glass_is_disabled_by_default_and_short_lived_when_enabled(
         approved_by="owner-approver",
         actions=frozenset({Action.READ}),
         resources=frozenset({Resource.STUDENT_PROGRESS}),
+        resource_ids=frozenset({"student_progress-1"}),
+        resource_scope=_scope(),
         trace_id="trace-enabled",
         duration=timedelta(minutes=10),
         now=NOW,
