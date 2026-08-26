@@ -152,9 +152,24 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-06"]["hardening_delivery_receipt_sha256"] == "F216C9C1E990A7ACDB8E21CC6EDCDD954204920411DFBC83765250FD6AAB7847"
     assert by_id["E1-06"]["hardening_source_commit"] == "4a9d7da2c90bb0e8ceb69a4d7997360b6b09dae1"
     assert by_id["E1-06"]["hardening_integration_commit"] == "23ed3583db102c640b1899663f9ee545c04ee0c7"
-    assert by_id["E1-07"]["state"] == "READY_AUDITED_CHAIN_COMPLETE_BLOCKED_BY_E1_04_QA"
-    assert by_id["E1-07"]["delivery_id"] == "DLV-W07-20260826T105638Z-01"
+    assert by_id["E1-07"]["state"] == "INTEGRATED_SELF_CONTAINED_REPLACEMENT_EXACT_COMMITS_FOCUSED_GATES_PASSED"
+    assert by_id["E1-07"]["delivery_id"] == "DLV-W07-20260826T172028Z-07"
+    assert by_id["E1-07"]["delivery_receipt_sha256"] == "60DF2823A5251E38422B8B1641736C2FB06D7B2A95BDF6912F873808876B1A40"
+    assert by_id["E1-07"]["depends_on"] == []
     assert by_id["E1-07"]["source_commits"] == [
+        "4d61b3547a8d0865a53634abd549be004c904ce1",
+        "d9dbb78294fb8ea10a6fed25be8322e98cb8c077",
+    ]
+    assert by_id["E1-07"]["integration_commits"] == [
+        "c9704f0cf628f96b73cf9cb06d9491ddce41c9c9",
+        "b0145551cbb2a12527d6ff76b794fbe148a414ec",
+    ]
+    assert by_id["E1-07"]["canonical_base"] == "5669a62ea71187934f17612ed324cb912c9429aa"
+    assert by_id["E1-07"]["prior_delivery_id"] is None
+    assert by_id["E1-07"]["delivery_dependencies"] == []
+    assert by_id["E1-07"]["replaces_returned_delivery_id"] == "DLV-W07-20260826T164749Z-06"
+    assert by_id["E1-07"]["legacy_delivery_id"] == "DLV-W07-20260826T105638Z-01"
+    assert by_id["E1-07"]["legacy_source_commits"] == [
         "4011ea382f19509ce0a26591a5fa2617dff13dcb",
         "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69",
     ]
@@ -164,7 +179,9 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
         "7b889bd269d9b44f7e3d22117e388ac9430ca6a2",
         "f85bc7b8e398827fecf0c4deef4ac63e41fd3284",
     ]
-    assert "Neither delivery has been applied" in by_id["E1-07"]["notes"]
+    assert by_id["E1-07"]["replacement_review_after_fix"] == "SATISFIED_THROUGH_DLV-W07-20260826T172028Z-07"
+    assert by_id["E1-07"]["replacement_focused_passed"] == 30
+    assert "Older W07 ready receipts are superseded" in by_id["E1-07"]["current_state_notes"]
 
 
 def test_integration_authority_guard_keeps_new_tasks_with_architect_and_review_feedback_with_a() -> None:

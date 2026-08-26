@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-27T01:09:38+08:00",
+  "updated_at": "2026-08-27T01:27:19+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -177,11 +177,19 @@
     {
       "work_item": "E1-07",
       "capability": "ci_security_load",
-      "state": "READY_AUDITED_CHAIN_COMPLETE_BLOCKED_BY_E1_04_QA",
-      "depends_on": ["E1-01", "E1-02", "E1-03", "E1-04", "E1-05", "E1-06"],
-      "delivery_id": "DLV-W07-20260826T105638Z-01",
-      "delivery_receipt_sha256": "C10F31B78CEC9CECEC5C025BCC42E645B7B70B089705A6AB4D76E8A4BC61F244",
-      "source_commits": ["4011ea382f19509ce0a26591a5fa2617dff13dcb", "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69"],
+      "state": "INTEGRATED_SELF_CONTAINED_REPLACEMENT_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+      "depends_on": [],
+      "delivery_id": "DLV-W07-20260826T172028Z-07",
+      "delivery_receipt_sha256": "60DF2823A5251E38422B8B1641736C2FB06D7B2A95BDF6912F873808876B1A40",
+      "source_commits": ["4d61b3547a8d0865a53634abd549be004c904ce1", "d9dbb78294fb8ea10a6fed25be8322e98cb8c077"],
+      "integration_commits": ["c9704f0cf628f96b73cf9cb06d9491ddce41c9c9", "b0145551cbb2a12527d6ff76b794fbe148a414ec"],
+      "canonical_base": "5669a62ea71187934f17612ed324cb912c9429aa",
+      "prior_delivery_id": null,
+      "delivery_dependencies": [],
+      "replaces_returned_delivery_id": "DLV-W07-20260826T164749Z-06",
+      "legacy_delivery_id": "DLV-W07-20260826T105638Z-01",
+      "legacy_delivery_receipt_sha256": "C10F31B78CEC9CECEC5C025BCC42E645B7B70B089705A6AB4D76E8A4BC61F244",
+      "legacy_source_commits": ["4011ea382f19509ce0a26591a5fa2617dff13dcb", "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69"],
       "incremental_delivery_id": "DLV-W07-20260826T125249Z-02",
       "incremental_delivery_receipt_sha256": "FA9682EDE0F2BFF41DC321062A1F8C654AC5D832C3F82C2D22E821181371E0A4",
       "incremental_source_commits": ["7b889bd269d9b44f7e3d22117e388ac9430ca6a2", "f85bc7b8e398827fecf0c4deef4ac63e41fd3284"],
@@ -234,6 +242,12 @@
       "independent_delivery_reason": "The receipt requires prior -05/-04 deliveries whose frozen dependency assumptions include E1-04. Canonical Integration contains none of the prior W07 exact commits, and the -06 incremental patch does not apply independently because .gitattributes differs and tests/load/lib/core.js is absent.",
       "independent_review_after_fix": "REQUIRED_NEW_DELIVERY_FENCE_RECEIPT",
       "review_after_fix": "SATISFIED_THROUGH_DLV-W07-20260826T153410Z-05",
+      "replacement_review_after_fix": "SATISFIED_THROUGH_DLV-W07-20260826T172028Z-07",
+      "replacement_focused_passed": 30,
+      "replacement_release_gate": "PASS",
+      "replacement_staging_gate": "PASS_OFFLINE_LIVE_STAGING_NOT_RUN",
+      "replacement_provider_calls": 0,
+      "current_state_notes": "Self-contained replacement DLV-W07-20260826T172028Z-07 has canonical base 5669a62, no prior delivery, and no delivery dependency. Its two exact commits changed 92 declared owned paths with forbidden paths 0, changed no dependency/lock/migration/shared-contract/main.py/E1-04 artifact, preserved old W07 receipt hashes, applied cleanly, and were consumed in order with -x provenance. Release/context/staging verifier gates passed and the focused E1 suite passed 30/30. The delivery-owned SBOM check passed with its explicit committed output path. Docker, Compose, PostgreSQL RLS, k6, containers, Linux staging, security scanners, promotion, rollback, and backup/restore remain NOT_RUN/PENDING_STAGING. Older W07 ready receipts are superseded and not consumption prerequisites; no branch tip or old W07 source commit was consumed.",
       "notes": "The first two frozen W07 receipts remain audited successfully. Their source chain is exactly 91d8ed5a -> 4011ea38 -> 11d134ce -> 7b889bd2 -> f85bc7b8. Neither delivery has been applied because E1-04 blocking enterprise QA returned BLOCKED_ENV rather than PASS. E1-07B receipt DLV-W07-20260826T140436Z-03 was returned without consuming d8921741 or 40ff7d40 after a fresh Windows checkout exposed raw LF/CRLF SBOM hash drift. Replacement receipt DLV-W07-20260826T142210Z-04 freezes d8921741 -> 40ff7d40 -> 359b88f1 and repairs the verifier to use sha256:canonical-json-v1. Completion receipt DLV-W07-20260826T153410Z-05 extends exact 359b88f1 -> d7e7e032 -> 6c0e5ee0 and closes the original six-environment-fact acceptance gap. Root reproduced exact 6c0e5ee0 in a clean core.autocrlf=true detached checkout: release verification reported environment_not_run_facts=6, all 15 focused tests passed, the 439-component report check passed, raw SBOM SHA remained 0242a4a7 with 14187 CRLF pairs, and the worktree stayed clean. The full completed W07 chain remains unconsumed because E1-04 is an explicit dependency and its formal QA is still BLOCKED_ENV. E1-07C receipt DLV-W07-20260826T164749Z-06 declared E1_04_DEPENDENCY=NO but required -05 first; -05 requires -04 and both retain E1-04 as an ordered dependency. None of the prior W07 commits exists in canonical Integration, and a direct incremental apply check failed on .gitattributes and absent tests/load/lib/core.js. The -06 receipt was returned unchanged and no commit was consumed; precise original-scope feedback requires a self-contained replacement against canonical Integration. The upstream W6 stale migration-head assertion remains a separate MAIN_FULL blocker and was not suppressed. Docker, Compose, PostgreSQL RLS, k6, containers, Linux staging, scanners, promotion, rollback, and all real gates remain NOT_RUN/PENDING_STAGING; no CI, container, security, load, staging, or production claim is made."
     }
   ]
