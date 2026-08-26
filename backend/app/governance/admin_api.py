@@ -43,8 +43,11 @@ from app.governance.models import (
     Role,
 )
 from app.governance.provider_governance import (
+    ProviderConfig,
+    ProviderCredentialRef,
     ProviderGovernanceError,
     ProviderGovernanceService,
+    ProviderScope,
 )
 from app.governance.quotas import QuotaSubject, TenantQuotaService
 from app.governance.runtime import GovernanceEnforcementService
@@ -65,6 +68,23 @@ class InviteMemberIn(_Input):
 class CreateWorkspaceIn(_Input):
     workspace_id: str = Field(min_length=1, max_length=160)
     name: str = Field(min_length=1, max_length=240)
+
+
+class RegisterProviderIn(_Input):
+    config_id: str = Field(min_length=1, max_length=160)
+    provider: str = Field(min_length=1, max_length=160)
+    credential_reference: str = Field(min_length=1, max_length=180, repr=False)
+    approved_models: tuple[str, ...] = Field(min_length=1)
+    scope: ProviderScope = ProviderScope.ORGANIZATION
+    workspace_id: str | None = None
+
+
+class CompleteProviderRotationIn(_Input):
+    credential_reference: str = Field(min_length=1, max_length=180, repr=False)
+
+
+class ProviderModelPolicyIn(_Input):
+    approved_models: tuple[str, ...] = Field(min_length=1)
 
 
 class AuditQueryIn(_Input):
@@ -427,6 +447,90 @@ def provider_status(config_id: str, request: Request) -> dict[str, object]:
     )
 
 
+@router.post("/providers", status_code=201)
+def register_provider(body: RegisterProviderIn, request: Request) -> dict[str, object]:
+    context = _context(request)
+    config = ProviderConfig(
+        config_id=body.config_id,
+        organization_id=str(context.tenant.organization_id),
+        workspace_id=body.workspace_id,
+        provider=body.provider,
+        secret_reference=ProviderCredentialRef(body.credential_reference),
+        approved_models=frozenset(body.approved_models),
+        scope=body.scope,
+    )
+    return dict(
+        _services(request).providers.register(
+            config,
+            subject=context.subject,
+            tenant=context.tenant,
+            trace_id="admin-api:provider-register",
+        )
+    )
+
+
+@router.post("/providers/{config_id}/rotation/start")
+def start_provider_rotation(config_id: str, request: Request) -> dict[str, object]:
+    context = _context(request)
+    return dict(
+        _services(request).providers.begin_rotation(
+            config_id,
+            subject=context.subject,
+            tenant=context.tenant,
+            trace_id="admin-api:provider-rotation-start",
+        )
+    )
+
+
+@router.post("/providers/{config_id}/rotation/complete")
+def complete_provider_rotation(
+    config_id: str,
+    body: CompleteProviderRotationIn,
+    request: Request,
+) -> dict[str, object]:
+    context = _context(request)
+    return dict(
+        _services(request).providers.complete_rotation(
+            config_id,
+            ProviderCredentialRef(body.credential_reference),
+            subject=context.subject,
+            tenant=context.tenant,
+            trace_id="admin-api:provider-rotation-complete",
+        )
+    )
+
+
+@router.put("/providers/{config_id}/models")
+def update_provider_models(
+    config_id: str,
+    body: ProviderModelPolicyIn,
+    request: Request,
+) -> dict[str, object]:
+    context = _context(request)
+    return dict(
+        _services(request).providers.update_model_policy(
+            config_id,
+            frozenset(body.approved_models),
+            subject=context.subject,
+            tenant=context.tenant,
+            trace_id="admin-api:provider-model-policy",
+        )
+    )
+
+
+@router.post("/providers/{config_id}/revoke")
+def revoke_provider(config_id: str, request: Request) -> dict[str, object]:
+    context = _context(request)
+    return dict(
+        _services(request).providers.revoke(
+            config_id,
+            subject=context.subject,
+            tenant=context.tenant,
+            trace_id="admin-api:provider-revoke",
+        )
+    )
+
+
 @router.get("/providers")
 def provider_statuses(request: Request) -> dict[str, object]:
     context = _context(request)
@@ -553,6 +657,10 @@ def create_enterprise_admin_app(
     @standalone.exception_handler(GovernanceMutationError)
     async def handle_mutation_error(_request: Request, exc: GovernanceMutationError):
         return JSONResponse(status_code=409, content={"error": {"code": exc.code}})
+
+    @standalone.exception_handler(ValueError)
+    async def handle_invalid_input(_request: Request, _exc: ValueError):
+        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_REQUEST"}})
 
     standalone.include_router(router)
     return standalone

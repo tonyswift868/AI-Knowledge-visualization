@@ -34,11 +34,35 @@ EXPORT, and EXECUTE.
 `ROLE_MATRIX` is immutable and machine tested. UI navigation derived from it is
 only a presentation hint; backend authorization remains authoritative.
 
+The Admin UI projection always returns the same eight categories—Organization
+Admin, Workspace Admin, Content, Instructor, Learner, Audit, Cost, and Provider
+Settings—with `VISIBLE`, `DISABLED`, or `HIDDEN`. These states are candidate
+presentation data. They do not authorize an API call or bypass relationship
+checks.
+
+## Enforcement runtime
+
+`GovernanceEnforcementService` is the application write gate. It resolves a
+canonical actor and tenant plus a domain adapter operation, appends the
+authorization audit decision, and only then invokes the mutation. A denied
+operation returns an `EnforcementReceipt` with `mutation_performed=false`; the
+business callback is never called.
+
+`ResourceVisibilityFilter` applies the same policy to list, search, detail, and
+export candidates after repository retrieval. It is an application-layer
+overfetch defense and does not replace PostgreSQL RLS. Homogeneous batches are
+evaluated through one bulk policy pass and one aggregate audit append while
+preserving a decision for every resource. Offline fixtures cover 100, 1,000,
+and 10,000 candidates.
+
 ## Relationship and IDOR rules
 
 - Actor, tenant, and resource organization/workspace identifiers must agree.
 - Instructor access to a learner through a cohort requires both an assigned
   cohort and evidence that the learner belongs to it.
+- Organization and workspace mutations use the same pre-mutation enforcement
+  gate. Workspace role bindings are stored per workspace, so one member may be
+  an Instructor in one workspace and a Content Manager in another.
 - Personal Provider configuration is owner-only unless a specific permission is
   present.
 - Resource identifiers are authorized before data is returned; guessing an ID
@@ -46,7 +70,10 @@ only a presentation hint; backend authorization remains authoritative.
 
 ## Break glass
 
-Break glass is disabled by default. An enabled grant requires a separate
-approver, an explicit redacted reason, a short lifetime, exact actions,
-resource types, resource identifiers, and one canonical `ResourceScope`.
-Every grant and use is audited. It is not a universal administrator bypass.
+Break glass is disabled by default. The application workflow is request,
+separate-person approval, requester activation, then expiry or revocation. A
+grant has a short TTL and exact actions, resource types, resource identifiers,
+and one canonical `ResourceScope`. Self-approval is denied and audited.
+Revocation is registered in the authorization service, so a previously issued
+grant cannot be replayed. Every lifecycle transition and use is audited. Break
+glass is not a universal administrator bypass.

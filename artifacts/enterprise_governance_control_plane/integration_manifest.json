@@ -47,5 +47,13 @@
     "cross_tenant_default": "DENY_AUDITED",
     "database_rls_replaced": false,
     "personal_local_regression_required": true
-  }
+  },
+  "verification": {
+    "backend_focused": "python -m pytest --noconftest -p no:cacheprovider -q backend/tests/test_enterprise_governance*.py",
+    "frontend_focused": "npm --prefix frontend test -- --run src/test/enterprise_admin.test.tsx",
+    "frontend_build": "npm --prefix frontend run build",
+    "offline_benchmark": "python backend/tools/benchmark_enterprise_governance.py",
+    "server_load_claimed": false
+  },
+  "non_blocking_qa_requests": "artifacts/enterprise_governance_control_plane/qa_requests.json"
 }
