@@ -30,11 +30,11 @@ NOW = datetime(2026, 8, 26, 3, 0, tzinfo=timezone.utc)
 EXPECTED_CONTRACT_HASHES = {
     "AccessDecision": "38d932726f013109d62695320108b12e409302a55be09bae82099add05de25b6",
     "ActorContext": "369e567572dbe0249c576521d2a3ae5555164a696053da6e5c66718447dd9c19",
-    "AuditEnvelope": "35e333537ac013dd05efe9166903e774902f9358289b87df76adb108d72e563c",
+    "AuditEnvelope": "69252134c5621486d952365158a1a9d56af4387efb0dbbe0c3b3ea9a62b1d962",
     "ModeBoundary": "0f5f6aa89a49205574a1ea77a05a8152e9a9ac823640b67d5135d4a756a34b1a",
     "ResourceScope": "859492267812e8bbec0e058d98cc2059041529e00505c08ddc895dcee2b9c046",
     "TenantContext": "dd3c7800c639a45467c11966d1971bc6997f8b98705448cb0fd3fa3c588a4729",
-    "bundle": "52fcf2b5006b4aa716d09e1757b04bb7e5ee61e0b368bc4852cde0db5d6943c3",
+    "bundle": "03e4f66505b6b98202a07a70a39925293876ecc7b7c72f617dbe3b76dcb8b628",
 }
 
 
@@ -168,6 +168,10 @@ def test_audit_metadata_is_deeply_immutable_and_json_safe() -> None:
     assert audit.model_dump(mode="json")["metadata_redacted"] == [
         {"key": "token_count", "value": 42}
     ]
+    with pytest.raises(ValidationError):
+        AuditMetadataEntry(key="nested", value={"mutable": True})
+    with pytest.raises(ValidationError):
+        AuditMetadataEntry(key="not_finite", value=float("nan"))
 
 
 def test_frozen_contract_hash_manifest_matches_canonical_schemas() -> None:

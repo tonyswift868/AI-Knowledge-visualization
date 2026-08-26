@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 
 ENTERPRISE_CONTEXT_CONTRACT_VERSION = "enterprise-context.v1"
@@ -16,7 +16,7 @@ Code = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 
 
 class _ContractModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
 
 class ActorKind(str, Enum):
@@ -166,7 +166,7 @@ class AccessDecision(_ContractModel):
 
 class AuditMetadataEntry(_ContractModel):
     key: Code
-    value: JsonValue
+    value: str | int | float | bool | None
 
     @field_validator("key")
     @classmethod

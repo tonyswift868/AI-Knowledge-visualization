@@ -23,3 +23,7 @@ manifest update by Integration.
 `AccessDecision` may intentionally represent a denied cross-tenant attempt.
 Actor/resource tenant equality is therefore evaluated by authorization policy,
 not rejected during parsing; the resulting `DENY` remains auditable.
+
+`AuditEnvelope.metadata_redacted` is a tuple of immutable, flat JSON-scalar
+entries. Callers flatten structured metadata before constructing the envelope;
+raw tokens, credentials, and nested mutable payloads are not contract values.
