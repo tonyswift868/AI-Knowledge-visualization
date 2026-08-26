@@ -155,7 +155,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product"
   >(() => {
     if (/\/workspaces\/[^/]+\/progress\/?$/.test(window.location.pathname)) {
       return "progress";
@@ -175,8 +175,9 @@ export function App() {
         "casual",
         "cost-cache",
         "review",
+        "plan-product",
       ].includes(saved || "")
-        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review"
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product"
         : "home";
     } catch {
       return "home";
@@ -631,6 +632,7 @@ export function App() {
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
             ["review", BookOpen, "主动回忆"],
+            ["plan-product", Target, "学习计划"],
             ["cost-cache", Coins, "成本与缓存"],
             ["expedition", Sparkles, "学习远征"],
             ["settings", Settings2, "Provider 设置"],
@@ -688,6 +690,8 @@ export function App() {
                       ? "成本与缓存"
                     : tab === "review"
                       ? "主动回忆"
+                    : tab === "plan-product"
+                      ? "学习计划"
                         : "设置"}
             </b>
           </div>
@@ -776,6 +780,7 @@ export function App() {
           )}{" "}
           {tab === "cost-cache" && <CostCacheDashboard />}
           {tab === "review" && <ReviewDemoApp />}
+          {tab === "plan-product" && <PlanProductExperience />}
           {tab === "expedition" && <ExpeditionView />}
           {tab === "teachers" && <Suspense fallback={<div className="empty-state">正在加载教师模型运行时…</div>}><TeacherAvatarStudio workspaceId={ws?.id || "default"} /></Suspense>}
           {tab === "casual" && <CasualTeacherChat workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} mode="casual" />}
