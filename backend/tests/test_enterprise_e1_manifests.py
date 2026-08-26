@@ -62,11 +62,26 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
     assert by_id["E1-02"]["source_commit"] == "b846ad3c5817f432fb5c815ebe0a66048cb5c065"
     assert by_id["E1-02"]["integration_commit"] == "2207d8867cedfe89a1d9be1768d16662da86abb9"
-    assert by_id["E1-03"]["state"] == "INTEGRATED_REPAIR_EXACT_COMMITS_FOCUSED_GATES_PASSED"
+    assert by_id["E1-03"]["state"] in {
+        "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PENDING",
+        "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+    }
     assert by_id["E1-03"]["delivery_id"] == "DLV-W03-20260826T111731Z-03"
     assert by_id["E1-03"]["source_commits"] == [
         "cf0125f1faba87094031f8eba2d51cfd3d03778a",
         "2af634f1fa81575be63e4fa42635b454a57c2c2b",
+    ]
+    assert by_id["E1-03"]["completion_delivery_id"] == "DLV-W03-20260826T124718Z-04"
+    assert by_id["E1-03"]["completion_delivery_receipt_sha256"] == "357113BE370340F05BC3B539CA1389899CA207B24241AA3FE0EF41F9F93295A4"
+    assert by_id["E1-03"]["completion_source_commits"] == [
+        "ad02d2a743d4012d54aaad0404a9b98a6d4a78dc",
+        "bd50e6e9a618310900b3483657490b43c5913f45",
+        "411f06188db7bbf291fccee5d888eac48f91237c",
+    ]
+    assert by_id["E1-03"]["completion_integration_commits"] == [
+        "fd95ff57ea8bbf8f3161e10da86fb4a79c790896",
+        "af4df71ad98cad1c33b223cbd519334ded8073e6",
+        "0dfcc82f4bad7f6ca776055b5599ffef19fe07fd",
     ]
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "READY_PENDING_BLOCKING_QA_CHECKOUT_PREPARED"
