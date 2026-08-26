@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T19:48:19+08:00",
+  "updated_at": "2026-08-26T19:50:17+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -86,9 +86,12 @@
     {
       "work_item": "E1-07",
       "capability": "ci_security_load",
-      "state": "IN_PROGRESS_DIRTY_NO_DELIVERY",
+      "state": "READY_AUDITED_BLOCKED_BY_E1_04_QA",
       "depends_on": ["E1-01", "E1-02", "E1-03", "E1-04", "E1-05", "E1-06"],
-      "notes": "The branch remains at the E1 base with untracked Docker/CI/deploy/security work. Integration will not consume it without a clean frozen receipt."
+      "delivery_id": "DLV-W07-20260826T105638Z-01",
+      "delivery_receipt_sha256": "C10F31B78CEC9CECEC5C025BCC42E645B7B70B089705A6AB4D76E8A4BC61F244",
+      "source_commits": ["4011ea382f19509ce0a26591a5fa2617dff13dcb", "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69"],
+      "notes": "The frozen exact two-commit chain, receipt hash, and owned paths were audited successfully. It has not been applied because E1-07 formally depends on E1-04 and E1-04 blocking enterprise QA has not passed. Docker, k6, and security scanners remain not run because leases or tools are unavailable; no CI, container, security, load, staging, or production claim is made."
     }
   ]
 }
