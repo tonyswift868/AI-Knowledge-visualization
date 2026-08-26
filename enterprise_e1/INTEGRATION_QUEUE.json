@@ -14,9 +14,9 @@
     {
       "work_item": "E1-02",
       "capability": "tenant_persistence",
-      "state": "IN_PROGRESS_NO_DELIVERY",
+      "state": "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY",
       "depends_on": ["enterprise-context.v1"],
-      "notes": "First schema owner; Worker branch started from the tagged base and must consume the frozen contract without duplicating it."
+      "notes": "First schema owner. Observed head 964583a defines a second TenantContext; it must adopt the frozen shared contract before publishing a Delivery Fence receipt."
     },
     {
       "work_item": "E1-01",
@@ -28,8 +28,9 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "IN_PROGRESS_NO_DELIVERY",
-      "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"]
+      "state": "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY",
+      "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
+      "notes": "Observed head 6c7ba59 defines duplicate ActorContext, TenantContext, and AccessDecision models; replace them with frozen contract imports before delivery."
     },
     {
       "work_item": "E1-05",
