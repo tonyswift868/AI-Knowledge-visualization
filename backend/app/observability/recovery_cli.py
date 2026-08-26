@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -19,6 +20,21 @@ from .recovery import (
 
 
 PLAN_SCHEMA = "mentorflow.enterprise-recovery-plan.v1"
+_FORBIDDEN_PLAN_KEY = re.compile(
+    r"(?:password(?!_env)|authorization|api.?key|secret|credential|cookie|database.?url|dsn)",
+    re.IGNORECASE,
+)
+
+
+def _reject_sensitive_fields(value: object) -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if _FORBIDDEN_PLAN_KEY.search(str(key)):
+                raise ValueError("recovery plans must contain references, not sensitive values")
+            _reject_sensitive_fields(item)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for item in value:
+            _reject_sensitive_fields(item)
 
 
 def _read_plan(path: Path) -> Mapping[str, object]:
@@ -27,8 +43,7 @@ def _read_plan(path: Path) -> Mapping[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or payload.get("schema_version") != PLAN_SCHEMA:
         raise ValueError("recovery plan schema is invalid")
-    if "password" in payload:
-        raise ValueError("recovery plans must reference password environment variables")
+    _reject_sensitive_fields(payload)
     return payload
 
 
@@ -65,6 +80,12 @@ def _backup_plan(payload: Mapping[str, object]) -> BackupPlan:
         keycloak_realm_export=_absolute(payload, "keycloak_realm_export"),
         pg_dump_binary=str(payload.get("pg_dump_binary") or "pg_dump"),
     )
+
+
+def load_backup_plan(path: Path) -> BackupPlan:
+    """Load the existing strict recovery plan as a backup operation."""
+
+    return _backup_plan(_read_plan(path))
 
 
 def _restore_plan(payload: Mapping[str, object]) -> RestorePlan:
@@ -120,4 +141,4 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["PLAN_SCHEMA", "main"]
+__all__ = ["PLAN_SCHEMA", "load_backup_plan", "main"]

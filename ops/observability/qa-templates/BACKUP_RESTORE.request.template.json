@@ -1,0 +1,17 @@
+{
+  "schema_version": "mentorflow.enterprise-staging-test-request-template.v1",
+  "request_type": "BACKUP_RESTORE",
+  "status": "WAITING_STAGING",
+  "source_commit": "<FEATURE_EXACT_COMMIT>",
+  "dependencies": ["E1-02", "E1-03", "E1-05"],
+  "commands": [
+    ["python", "scripts/mentorflow-enterprise-verify", "backup", "--plan", "<ABSOLUTE_BACKUP_PLAN>"],
+    ["python", "scripts/mentorflow-enterprise-verify", "restore-test", "--plan", "<ABSOLUTE_RESTORE_PLAN>", "--disposable-only"]
+  ],
+  "acceptance": [
+    "backup manifest contains metadata, PostgreSQL dumps, object hashes, and no secret values",
+    "non-disposable targets are refused before command execution",
+    "seed, destroy, restore, entity counts, and object hashes match"
+  ],
+  "evidence_path": "<SERVER_GENERATED_EVIDENCE_PATH>"
+}

@@ -4,15 +4,35 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import time
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Iterator
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel, ConfigDict
 
-from .context import CorrelationContext, correlation_scope, new_correlation_context
+from .context import (
+    CorrelationContext,
+    correlation_scope,
+    current_correlation,
+    new_correlation_context,
+)
 from .health import health_registry
+from .instrumentation import (
+    observe_business_operation,
+    observe_job,
+    record_auth_attempt,
+    record_authorization_denial,
+    record_backup_freshness,
+    record_db_pool,
+    record_document_result,
+    record_job_queued,
+    record_provider_receipt,
+    record_teacher_turn,
+)
 from .metrics import normalize_route, registry
 from .privacy import emit_event
 from .runtime import business_span, otel_status
@@ -21,6 +41,12 @@ from .slo import error_budgets
 
 _LOGGER = logging.getLogger("mentorflow.operations")
 router = APIRouter()
+
+
+class StagingVerificationProbe(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    simulate_provider_outage: bool = False
 
 
 def feature_from_path(path: str) -> str:
@@ -91,6 +117,23 @@ def _require_metrics_token(authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="metrics authentication required")
 
 
+def _require_staging_verification(authorization: str | None) -> None:
+    enabled = str(os.getenv("MENTORFLOW_STAGING_VERIFY_ENABLED") or "").casefold() in {
+        "1",
+        "true",
+        "yes",
+    }
+    environment = str(os.getenv("MENTORFLOW_ENVIRONMENT") or "local").casefold()
+    if not enabled or environment != "staging":
+        raise HTTPException(status_code=404, detail="not found")
+    expected = str(os.getenv("MENTORFLOW_STAGING_VERIFY_TOKEN") or "")
+    if not expected:
+        raise HTTPException(status_code=503, detail="staging verification token is not configured")
+    supplied = authorization.removeprefix("Bearer ") if authorization else ""
+    if not secrets.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="staging verification authentication required")
+
+
 @router.get("/health/live")
 def liveness() -> dict[str, str]:
     return {"status": "live", "service": "mentorflow-backend"}
@@ -124,6 +167,88 @@ def slo_read_model(authorization: str | None = Header(default=None)) -> dict[str
 def observability_status(authorization: str | None = Header(default=None)) -> dict[str, object]:
     _require_metrics_token(authorization)
     return {"opentelemetry": otel_status().to_dict(), "correlation_contract": "mentorflow.correlation.v1"}
+
+
+@router.post("/internal/staging-verification/probe")
+def staging_verification_probe(
+    payload: StagingVerificationProbe,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Exercise staging-only seams with synthetic metadata and a fake Provider."""
+
+    _require_staging_verification(authorization)
+    base = current_correlation() or new_correlation_context(feature="api")
+    organization_id = str(
+        os.getenv("MENTORFLOW_STAGING_VERIFY_ORGANIZATION_ID")
+        or "e1-staging-synthetic-organization"
+    )
+    workspace_id = str(
+        os.getenv("MENTORFLOW_STAGING_VERIFY_WORKSPACE_ID")
+        or "e1-staging-synthetic-workspace"
+    )
+    job_id = f"e1-verify-{base.request_id[:32]}"
+    with correlation_scope(
+        base,
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        feature="api",
+    ) as scoped:
+        if scoped.organization_id is None or scoped.workspace_id is None:
+            raise HTTPException(status_code=503, detail="synthetic tenant identifiers are invalid")
+        with observe_business_operation(
+            "database",
+            "synthetic-select",
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+        ):
+            record_db_pool(size=4, checked_in=3, checked_out=1, overflow=0)
+        record_job_queued(job_id, "document")
+        with observe_job(job_id, "document", workspace_id=workspace_id):
+            pass
+        record_document_result(
+            SimpleNamespace(
+                status="success",
+                receipts=(SimpleNamespace(status="success", stage="complete"),),
+            ),
+            elapsed_seconds=0.01,
+        )
+        record_teacher_turn(
+            route="teacher-fast",
+            status="success",
+            ttft_ms=25.0,
+            total_ms=60.0,
+        )
+        record_auth_attempt(False, denied=True)
+        record_authorization_denial("api", "role_denied")
+        record_backup_freshness("postgres", 60.0)
+        record_provider_receipt(
+            SimpleNamespace(
+                provider="fake",
+                provider_called=True,
+                request_id=base.request_id,
+                success=not payload.simulate_provider_outage,
+                prompt_tokens=7,
+                completion_tokens=3,
+                total_tokens=10,
+                prompt_cache_hit_tokens=2,
+                prompt_cache_miss_tokens=5,
+                estimated_cost_usd=None,
+                local_result_cache_hit=True,
+                local_cache_corrupt=False,
+                cache_hit_ratio=0.2,
+            )
+        )
+    return {
+        "schema_version": "mentorflow.staging-verification-probe.v1",
+        "status": "PROBED",
+        "request_id": base.request_id,
+        "trace_id": base.trace_id,
+        "job_id": job_id,
+        "organization_id": scoped.organization_id,
+        "workspace_id": scoped.workspace_id,
+        "provider_route": "fake",
+        "provider_outage_simulated": payload.simulate_provider_outage,
+    }
 
 
 def install_observability(app: FastAPI) -> None:

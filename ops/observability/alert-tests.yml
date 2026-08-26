@@ -1,0 +1,84 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: service_down
+    interval: 1m
+    input_series:
+      - series: 'up{job="mentorflow-backend"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MentorFlowServiceDown
+        exp_alerts:
+          - exp_labels:
+              job: mentorflow-backend
+              severity: critical
+            exp_annotations:
+              summary: MentorFlow backend is unavailable
+              runbook: Postgres outage or dependency-specific outage triage
+
+  - name: error_spike
+    interval: 1m
+    input_series:
+      - series: 'mentorflow_http_requests_total{status_class="5xx"}'
+        values: '0+60x20'
+      - series: 'mentorflow_http_requests_total{status_class="2xx"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: MentorFlowHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Ordinary API error rate exceeds 5 percent
+
+  - name: queue_stuck
+    interval: 1m
+    input_series:
+      - series: 'mentorflow_job_oldest_age_seconds{queue="default"}'
+        values: '700+0x10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: MentorFlowQueueStuck
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Oldest queued job is older than ten minutes
+              runbook: Job queue stuck
+
+  - name: backup_stale
+    interval: 1m
+    input_series:
+      - series: 'mentorflow_backup_freshness_seconds{component="postgres"}'
+        values: '90000+0x20'
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: MentorFlowBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: A verified enterprise backup is missing or older than 24 hours
+              runbook: Restore
+
+  - name: provider_outage
+    interval: 1m
+    input_series:
+      - series: 'mentorflow_provider_calls_total{status="failed"}'
+        values: '0+60x15'
+      - series: 'mentorflow_provider_calls_total{status="success"}'
+        values: '0+0x15'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: MentorFlowProviderOutage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Provider failure ratio exceeds 50 percent
+              runbook: Provider outage

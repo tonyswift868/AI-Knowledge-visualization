@@ -160,6 +160,7 @@ def normalize_route(path: str) -> str:
         "/health/ready",
         "/health/startup",
         "/internal/metrics",
+        "/internal/staging-verification",
         "/internal/slo",
     }
     for candidate in sorted(approved, key=len, reverse=True):

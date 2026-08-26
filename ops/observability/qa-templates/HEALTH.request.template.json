@@ -1,0 +1,17 @@
+{
+  "schema_version": "mentorflow.enterprise-staging-test-request-template.v1",
+  "request_type": "HEALTH",
+  "status": "WAITING_STAGING",
+  "source_commit": "<FEATURE_EXACT_COMMIT>",
+  "dependencies": ["E1-02", "E1-03", "E1-05"],
+  "commands": [
+    ["python", "scripts/mentorflow-enterprise-verify", "preflight"],
+    ["python", "scripts/mentorflow-enterprise-verify", "health"]
+  ],
+  "acceptance": [
+    "Linux tools and every required external service are observed",
+    "live, startup, and ready endpoints return their expected states",
+    "missing dependencies remain blocked rather than passed"
+  ],
+  "evidence_path": "<SERVER_GENERATED_EVIDENCE_PATH>"
+}

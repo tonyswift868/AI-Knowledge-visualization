@@ -1,0 +1,22 @@
+{
+  "schema_version": "mentorflow.enterprise-staging-test-request-template.v1",
+  "request_type": "INCIDENT",
+  "status": "WAITING_STAGING",
+  "source_commit": "<FEATURE_EXACT_COMMIT>",
+  "dependencies": ["E1-02", "E1-03", "E1-05"],
+  "command": [
+    "python",
+    "scripts/mentorflow-enterprise-verify",
+    "incident",
+    "--plan",
+    "<ABSOLUTE_INCIDENT_PLAN>",
+    "--allow-disruption"
+  ],
+  "required_environment_variables": ["MENTORFLOW_STAGING_INCIDENT_DRILLS"],
+  "acceptance": [
+    "PostgreSQL, object store, worker, and Keycloak seams are detected and recovered",
+    "fake Provider outage never calls an external Provider",
+    "detection time, recovery time, and post-recovery data integrity are recorded"
+  ],
+  "evidence_path": "<SERVER_GENERATED_EVIDENCE_PATH>"
+}

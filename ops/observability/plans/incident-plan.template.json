@@ -1,0 +1,28 @@
+{
+  "schema_version": "mentorflow.enterprise-incident-plan.v1",
+  "environment": "staging",
+  "environment_id": "staging-operations-001",
+  "compose_file": "/srv/mentorflow/compose.yml",
+  "approved_tool_root": "/opt/mentorflow/verification-tools",
+  "integrity_command": ["/opt/mentorflow/verification-tools/integrity-snapshot", "read"],
+  "timeout_seconds": 60,
+  "services": {
+    "postgres": {"service": "postgres", "probe_url": "http://127.0.0.1:8000/health/ready"},
+    "object_store": {"service": "object-store", "probe_url": "http://127.0.0.1:9000/minio/health/ready"},
+    "worker": {"service": "worker", "probe_url": "http://127.0.0.1:8001/health/ready"},
+    "keycloak": {"service": "keycloak", "probe_url": "http://127.0.0.1:8080/health/ready"}
+  },
+  "expected_integrity": {
+    "organizations": "<SERVER_BASELINE_COUNT>",
+    "users": "<SERVER_BASELINE_COUNT>",
+    "memberships": "<SERVER_BASELINE_COUNT>",
+    "workspaces": "<SERVER_BASELINE_COUNT>",
+    "documents": "<SERVER_BASELINE_COUNT>",
+    "knowledge_refs": "<SERVER_BASELINE_COUNT>",
+    "plans": "<SERVER_BASELINE_COUNT>",
+    "student_state": "<SERVER_BASELINE_COUNT>",
+    "audit": "<SERVER_BASELINE_COUNT>",
+    "jobs": "<SERVER_BASELINE_COUNT>",
+    "object_hashes": {}
+  }
+}
