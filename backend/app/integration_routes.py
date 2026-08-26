@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from .review_product_v1.api import router as review_product_router
 from .review_product_v1.service import ReviewProductError, ReviewProductService
 from .plan_product_api import router as plan_product_router
+from .document_import_integration import install_document_import
 
 
 def install_review_product(app: FastAPI) -> None:
@@ -34,4 +35,8 @@ def install_plan_product(app: FastAPI) -> None:
     app.include_router(plan_product_router)
 
 
-__all__ = ["install_plan_product", "install_review_product"]
+__all__ = [
+    "install_document_import",
+    "install_plan_product",
+    "install_review_product",
+]

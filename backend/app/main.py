@@ -73,7 +73,11 @@ from .teacher_voice_pack import router as teacher_voice_pack_router
 from .teacher_live_api import router as teacher_live_router
 from .knowledge.map_read_api import router as verified_knowledge_map_router
 from .cost_cache_control_api import router as cost_cache_control_router
-from .integration_routes import install_plan_product, install_review_product
+from .integration_routes import (
+    install_document_import,
+    install_plan_product,
+    install_review_product,
+)
 from .teaching.progress_read.api import router as progress_read_router
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
@@ -212,6 +216,13 @@ async def lifespan(_app):
     try:
         yield
     finally:
+        document_import_host = getattr(
+            _app.state,
+            "document_import_host",
+            None,
+        )
+        if document_import_host is not None:
+            await asyncio.to_thread(document_import_host.close)
         # The private prerelease runtime is also an app-owned Windows Job.
         # It is lazy (normally absent), but when present must be terminated as
         # part of application shutdown rather than left behind after a reload.
@@ -263,6 +274,7 @@ async def lifespan(_app):
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
 install_review_product(app)
 install_plan_product(app)
+install_document_import(app)
 app.include_router(active_teaching_router)
 app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)

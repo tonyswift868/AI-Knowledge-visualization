@@ -1,0 +1,2 @@
+backend/tests/fixtures/document_learning/*.html text eol=lf
+backend/tests/fixtures/document_learning/*.md text eol=lf

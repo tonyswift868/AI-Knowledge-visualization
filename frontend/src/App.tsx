@@ -49,6 +49,7 @@ import { VoicePackSettings } from "./features/voice/VoicePackSettings";
 import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateControl";
 import { ProgressExperience } from "./features/progress/ProgressExperience";
 import { PlanProductExperience } from "./features/plan-product/PlanProductExperience";
+import { createDocumentImportClient, DocumentImportView } from "./features/document-import";
 import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
 import {
   TEACHER_STAGE_IDLE_REACTION_MS,
@@ -151,11 +152,12 @@ function CharacterPortrait({ character, className = "" }: { character: any; clas
 
 export function App() {
   const standaloneTool = new URLSearchParams(window.location.search).get("tool");
-  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review" || standaloneTool === "plan-product";
+  const documentImportClient = useMemo(() => createDocumentImportClient(), []);
+  const providerlessStandalone = standaloneTool === "teacher-stage" || standaloneTool === "teacher-resources" || standaloneTool === "cost-cache" || standaloneTool === "review" || standaloneTool === "plan-product" || standaloneTool === "document-import";
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import"
   >(() => {
     if (/\/workspaces\/[^/]+\/progress\/?$/.test(window.location.pathname)) {
       return "progress";
@@ -176,8 +178,9 @@ export function App() {
         "cost-cache",
         "review",
         "plan-product",
+        "document-import",
       ].includes(saved || "")
-        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product"
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import"
         : "home";
     } catch {
       return "home";
@@ -566,6 +569,9 @@ export function App() {
   if (standaloneTool === "plan-product") {
     return <PlanProductExperience />;
   }
+  if (standaloneTool === "document-import") {
+    return <DocumentImportView client={documentImportClient} />;
+  }
   if (standaloneTool === "casual") {
     return <StandaloneCasualTool workspaceId={ws?.id || (workspacesLoaded ? "general-learning" : "")} />;
   }
@@ -631,6 +637,7 @@ export function App() {
             ["casual", MessageCircle, "教师闲聊"],
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
+            ["document-import", Upload, "文档导入"],
             ["review", BookOpen, "主动回忆"],
             ["plan-product", Target, "学习计划"],
             ["cost-cache", Coins, "成本与缓存"],
@@ -684,6 +691,8 @@ export function App() {
                       ? "今日学习"
                     : tab === "progress"
                         ? "进度与掌握"
+                    : tab === "document-import"
+                      ? "文档导入"
                     : tab === "active"
                       ? "学习任务"
                     : tab === "cost-cache"
@@ -778,6 +787,7 @@ export function App() {
               demo={ws?.execution_mode === "demo" || !ws}
             />
           )}{" "}
+          {tab === "document-import" && <DocumentImportView client={documentImportClient} />}
           {tab === "cost-cache" && <CostCacheDashboard />}
           {tab === "review" && <ReviewDemoApp />}
           {tab === "plan-product" && <PlanProductExperience />}
