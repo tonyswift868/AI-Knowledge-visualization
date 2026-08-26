@@ -46,6 +46,12 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert payload["policy"]["delivery_fence_only"] is True
     assert payload["policy"]["exact_commits_only"] is True
     assert payload["policy"]["branch_tip_merge_forbidden"] is True
+    assert payload["policy"]["authority_guard"] == "INTEGRATION_AUTHORITY_GUARD.json"
+    assert payload["policy"]["worker_new_task_assignment_authority"] == "ARCHITECT_ONLY"
+    assert payload["policy"]["a_direct_new_feature_dispatch"] == "DISABLED"
+    assert payload["policy"]["a_integration_review_feedback"] == "ENABLED"
+    assert payload["policy"]["a_return_to_owner_repair_guidance"] == "ENABLED"
+    assert payload["policy"]["a_periodic_worker_chat"] == "DISABLED"
     by_id = {entry["work_item"]: entry for entry in queue}
     assert by_id["E1-01"]["state"] == "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED"
     assert by_id["E1-01"]["delivery_id"] == "DLV-W01-20260826T110453Z-05"
@@ -93,6 +99,40 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
         "11d134cecb7c338e1b1e9a65195a3be0bc1d8e69",
     ]
     assert "has not been applied" in by_id["E1-07"]["notes"]
+
+
+def test_integration_authority_guard_keeps_new_tasks_with_architect_and_review_feedback_with_a() -> None:
+    payload = _read("INTEGRATION_AUTHORITY_GUARD.json")
+    authority = payload["authority"]
+    assert authority["WORKER_NEW_TASK_ASSIGNMENT_AUTHORITY"] == "ARCHITECT_ONLY"
+    assert authority["A_DIRECT_NEW_FEATURE_DISPATCH"] == "DISABLED"
+    assert authority["A_INTEGRATION_REVIEW_FEEDBACK"] == "ENABLED"
+    assert authority["A_RETURN_TO_OWNER_REPAIR_GUIDANCE"] == "ENABLED"
+    assert authority["A_PERIODIC_WORKER_CHAT"] == "DISABLED"
+    assert authority["NO_PERIODIC_AGENT_CHAT"] is True
+    assert authority["NO_WORKER_OFFICE_MUTATION_BY_A"] is True
+
+    feedback = payload["review_feedback"]
+    assert feedback["allowed_only_after_actual_delivery_review"] is True
+    assert feedback["one_way_precise_feedback_allowed"] is True
+    assert feedback["periodic_or_status_chat_forbidden"] is True
+    assert feedback["review_after_fix"] == "REQUIRED"
+    assert set(feedback["required_fields"]) == {
+        "DELIVERY_ID",
+        "WORKER_ID",
+        "AUDIT_RESULT",
+        "WHY",
+        "FIX_SCOPE",
+        "FILES",
+        "TESTS",
+        "DO_NOT_TOUCH",
+        "REVIEW_AFTER_FIX",
+    }
+
+    assert payload["return_to_owner"]["minimal_fix_scope_only"] is True
+    assert payload["return_to_owner"]["scope_expansion_forbidden"] is True
+    assert payload["out_of_scope_improvement_disposition"] == "ARCHITECT_FOLLOWUP_SUGGESTION_ONLY"
+    assert payload["merge_behavior"]["worker_message_required_on_pass"] is False
 
 
 def test_migration_ownership_names_are_unique_and_match_e1_02_objects() -> None:

@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T20:14:10+08:00",
+  "updated_at": "2026-08-26T20:25:56+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -8,7 +8,13 @@
     "exact_commits_only": true,
     "branch_tip_merge_forbidden": true,
     "mini_merge_batch_size": "1-3 compatible deliveries",
-    "failed_delivery_does_not_block_independent_items": true
+    "failed_delivery_does_not_block_independent_items": true,
+    "authority_guard": "INTEGRATION_AUTHORITY_GUARD.json",
+    "worker_new_task_assignment_authority": "ARCHITECT_ONLY",
+    "a_direct_new_feature_dispatch": "DISABLED",
+    "a_integration_review_feedback": "ENABLED",
+    "a_return_to_owner_repair_guidance": "ENABLED",
+    "a_periodic_worker_chat": "DISABLED"
   },
   "queue": [
     {
