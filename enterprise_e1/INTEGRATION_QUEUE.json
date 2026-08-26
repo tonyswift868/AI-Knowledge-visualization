@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T21:33:39+08:00",
+  "updated_at": "2026-08-26T21:38:57+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -50,7 +50,7 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_ADMIN_CONTROL_PLANE_EXACT_COMMITS_FOCUSED_GATES_PENDING",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
       "delivery_id": "DLV-W03-20260826T111731Z-03",
       "delivery_receipt_sha256": "CAEB81CCE7DF2CD8F50E9C02EB2B29AD88DB3F9AF4F2FB074A6F88C861625A82",
@@ -74,8 +74,27 @@
         "af4df71ad98cad1c33b223cbd519334ded8073e6",
         "0dfcc82f4bad7f6ca776055b5599ffef19fe07fd"
       ],
+      "admin_control_plane_delivery_id": "DLV-W03-20260826T133451Z-05",
+      "admin_control_plane_receipt_sha256": "D4E093E628C454E040721D26D43B7DB50BCF9A7249632B7AC61CA833DC51808F",
+      "admin_control_plane_source_commits": [
+        "16e6e1791e04198b380e5cfbe397cf006407f807",
+        "2061b62cbf6a005b31262e5a25d0c447e7ca75cf",
+        "159951003b36523f9d1326b76efaa7f735155f91",
+        "cf368884e44d5994e1be8019070726fc9898696e",
+        "ecb0300e0785d473bbc30060967775e19c1932ab",
+        "19b2b4e0fc9c812f2f29d093146de28746d3206d"
+      ],
+      "admin_control_plane_integration_commits": [
+        "c509290c3ca86d79a7cd4f0bc656b0d77f1a520b",
+        "c8c648db4548bec2d8a6ca29065402aeb3e5b8f5",
+        "70b42aaa3642affc3dcdd51ed098c585f6638cf8",
+        "91782c46acfe0a39ae123f1f8f31a565c2969f09",
+        "aeafea97a7296fb310c8c296fc3891519b48ea0c",
+        "02ce47d9e7c1d17c48956cdc440343132497d4b0"
+      ],
+      "admin_control_plane_mount": "STANDALONE_ONLY_PENDING_PRODUCTION_E1_02_AUTHENTICATED_RESOLVER",
       "supersedes_returned_delivery": "DLV-W03-20260826T110330Z-02",
-      "notes": "The replacement delivery is self-contained: its first exact commit has fa488048 as first parent and the range contains exactly the two listed commits. Both were applied with provenance. Completion delivery DLV-W03-20260826T124718Z-04 was audited as a strict three-commit continuation of 2af634f1, touched only governance/tests/docs owned paths, and was applied with -x provenance. Governance/contract/cost gates passed 83/83; Personal Local passed 31 with 1 platform skip; compile/import, frozen hashes, role/default-deny invariants, pip, and diff checks passed. No governance migration, PostgreSQL persistence, runtime route wiring, Provider call, or real data access is claimed."
+      "notes": "The replacement and completion deliveries remain legally integrated. Admin control-plane delivery DLV-W03-20260826T133451Z-05 was audited as an exact six-commit continuation of completion source 411f0618, touched only governance/admin UI/tests/docs/artifacts owned paths, changed no forbidden path, dependency, migration, shared contract, Provider runtime, Cost Engine, or central route, and was applied in exact receipt order with -x provenance. Its backend and frontend surfaces remain standalone because central mounting requires an E1-02 authenticated AdminContextResolver that is not yet present; no demo StaticAdminContextResolver is mounted into production. Focused governance, negative authorization, Personal Local, cost, frontend, build, benchmark, compile/import, and clean gates are pending."
     },
     {
       "work_item": "E1-05",

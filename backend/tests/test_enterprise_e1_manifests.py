@@ -75,6 +75,8 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-03"]["state"] in {
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PENDING",
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+        "INTEGRATED_ADMIN_CONTROL_PLANE_EXACT_COMMITS_FOCUSED_GATES_PENDING",
+        "INTEGRATED_ADMIN_CONTROL_PLANE_EXACT_COMMITS_FOCUSED_GATES_PASSED",
     }
     assert by_id["E1-03"]["delivery_id"] == "DLV-W03-20260826T111731Z-03"
     assert by_id["E1-03"]["source_commits"] == [
@@ -93,6 +95,25 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
         "af4df71ad98cad1c33b223cbd519334ded8073e6",
         "0dfcc82f4bad7f6ca776055b5599ffef19fe07fd",
     ]
+    assert by_id["E1-03"]["admin_control_plane_delivery_id"] == "DLV-W03-20260826T133451Z-05"
+    assert by_id["E1-03"]["admin_control_plane_receipt_sha256"] == "D4E093E628C454E040721D26D43B7DB50BCF9A7249632B7AC61CA833DC51808F"
+    assert by_id["E1-03"]["admin_control_plane_source_commits"] == [
+        "16e6e1791e04198b380e5cfbe397cf006407f807",
+        "2061b62cbf6a005b31262e5a25d0c447e7ca75cf",
+        "159951003b36523f9d1326b76efaa7f735155f91",
+        "cf368884e44d5994e1be8019070726fc9898696e",
+        "ecb0300e0785d473bbc30060967775e19c1932ab",
+        "19b2b4e0fc9c812f2f29d093146de28746d3206d",
+    ]
+    assert by_id["E1-03"]["admin_control_plane_integration_commits"] == [
+        "c509290c3ca86d79a7cd4f0bc656b0d77f1a520b",
+        "c8c648db4548bec2d8a6ca29065402aeb3e5b8f5",
+        "70b42aaa3642affc3dcdd51ed098c585f6638cf8",
+        "91782c46acfe0a39ae123f1f8f31a565c2969f09",
+        "aeafea97a7296fb310c8c296fc3891519b48ea0c",
+        "02ce47d9e7c1d17c48956cdc440343132497d4b0",
+    ]
+    assert by_id["E1-03"]["admin_control_plane_mount"] == "STANDALONE_ONLY_PENDING_PRODUCTION_E1_02_AUTHENTICATED_RESOLVER"
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "PENDING_QA_BLOCKED_ENV_REQUEUE_REQUIRED"
     assert by_id["E1-04"]["delivery_id"] == "DLV-W04-20260826T111010Z-01"
