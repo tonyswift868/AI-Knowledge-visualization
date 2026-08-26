@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T18:30:00+08:00",
+  "updated_at": "2026-08-26T18:09:02+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -14,7 +14,7 @@
     {
       "work_item": "E1-02",
       "capability": "tenant_persistence",
-      "state": "WAITING_FOR_DELIVERY",
+      "state": "IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["enterprise-context.v1"],
       "notes": "First schema owner; Worker branch started from the tagged base and must consume the frozen contract without duplicating it."
     },
@@ -28,32 +28,32 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "WAITING_FOR_DEPENDENCIES",
+      "state": "IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"]
     },
     {
       "work_item": "E1-05",
       "capability": "durable_jobs",
-      "state": "WAITING_FOR_DEPENDENCIES",
+      "state": "OFFICE_STALE_NOT_STARTED",
       "depends_on": ["E1-02", "E1-03"]
     },
     {
       "work_item": "E1-04",
       "capability": "staging_storage",
-      "state": "BLOCKED_DIRTY_WORKTREE",
+      "state": "BLOCKED_WORKTREE_DRIFT",
       "depends_on": ["E1-02", "E1-05"],
       "notes": "Provisioning found unknown-provenance reports/final_rc/RC_DOCUMENT_ACCEPTANCE.md; Integration will not delete or move it."
     },
     {
       "work_item": "E1-06",
       "capability": "observability_recovery",
-      "state": "WAITING_FOR_DEPENDENCIES",
+      "state": "IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["E1-02", "E1-03", "E1-05"]
     },
     {
       "work_item": "E1-07",
       "capability": "ci_security_load",
-      "state": "WAITING_FOR_SYSTEM_DELIVERIES",
+      "state": "IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["E1-01", "E1-02", "E1-03", "E1-04", "E1-05", "E1-06"]
     }
   ]

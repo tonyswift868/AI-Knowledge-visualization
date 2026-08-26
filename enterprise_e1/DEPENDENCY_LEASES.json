@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-dependency-leases.v1",
-  "updated_at": "2026-08-26T18:30:00+08:00",
+  "updated_at": "2026-08-26T18:09:02+08:00",
   "writer": "Core-v2 Integration Maintainer",
   "global_resource_lease": "E:/Codex/Coordination/MentorFlow-core-v2-20260824/RESOURCE_LEASES.json#DEPENDENCY_MUTATION",
   "lease_rules": {

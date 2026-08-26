@@ -10,6 +10,14 @@
     "post_mutation_checks": ["pip check", "npm install --package-lock-only consistency or npm ci", "focused import/tests"],
     "external_services_are_not_python_packages": true
   },
+  "lockfile_observations": {
+    "backend_requirements_lock": "CONSISTENT_FOR_DECLARED_BASE_REQUIREMENTS",
+    "frontend_package_lock": "MATCHES_PACKAGE_JSON_DIRECT_DEPENDENCIES",
+    "frontend_pnpm_lock": "DRIFTED_NOT_CANONICAL_FOR_THIS_GATE",
+    "frontend_pnpm_lock_details": "Missing @dagrejs/dagre and @xyflow/react; react-router-dom is 7.18.1 while package.json/package-lock use 7.18.2.",
+    "optional_cloud_requirements": "UNLOCKED",
+    "shared_node_modules": "JUNCTION_TO_MAIN_WORKTREE_NOT_ISOLATED_EVIDENCE"
+  },
   "evaluations": [
     {
       "capability": "OIDC_JWT_CLIENT",
