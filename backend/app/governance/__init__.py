@@ -40,6 +40,13 @@ from app.governance.cost_views import (
     TenantCostView,
     TenantCostViewService,
 )
+from app.governance.e2e_harness import (
+    DeterministicIdentityResolver,
+    DeterministicRequest,
+    GovernanceE2EHarness,
+    GovernanceE2EReport,
+    GovernanceE2EScenario,
+)
 from app.governance.audit_coverage import (
     AuditCoverageError,
     AuditCoverageMatrix,
@@ -214,12 +221,17 @@ __all__ = [
     "CostViewRequest",
     "CostViewScope",
     "ContextTrustSource",
+    "DeterministicIdentityResolver",
+    "DeterministicRequest",
     "EnforcementReceipt",
     "EnterpriseNavigationModel",
     "ENTERPRISE_PROTECTED_SURFACE_MANIFEST",
     "FastAPIContextResolver",
     "FastAPIRequestGuard",
     "GovernanceActorAdapter",
+    "GovernanceE2EHarness",
+    "GovernanceE2EReport",
+    "GovernanceE2EScenario",
     "GovernanceAuditEvent",
     "GovernanceEnforcementService",
     "GovernanceMutationError",
