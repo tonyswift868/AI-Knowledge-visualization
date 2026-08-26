@@ -174,6 +174,17 @@ def _reset_dbapi_context(dbapi_connection: Any) -> None:
             dbapi_connection.autocommit = previous_autocommit
 
 
+def require_clean_dbapi_checkout(dbapi_connection: Any) -> None:
+    """Reject and scrub a pooled connection that still carries tenant state."""
+
+    values = _dbapi_context_values(dbapi_connection)
+    if any(value is not None for value in values):
+        _reset_dbapi_context(dbapi_connection)
+        raise TenantContextLeakError(
+            "pooled PostgreSQL connection retained tenant context"
+        )
+
+
 def install_postgres_pool_context_safety(engine: Engine) -> None:
     """Install fail-closed checkout validation and explicit pool reset."""
 
@@ -196,12 +207,7 @@ def install_postgres_pool_context_safety(engine: Engine) -> None:
         _connection_record: Any,
         _connection_proxy: Any,
     ) -> None:
-        values = _dbapi_context_values(dbapi_connection)
-        if any(value is not None for value in values):
-            _reset_dbapi_context(dbapi_connection)
-            raise TenantContextLeakError(
-                "pooled PostgreSQL connection retained tenant context"
-            )
+        require_clean_dbapi_checkout(dbapi_connection)
 
     setattr(engine, "_mentorflow_tenant_pool_safety", True)
 
@@ -331,6 +337,7 @@ __all__ = [
     "create_enterprise_postgres_engine",
     "inspect_application_role_security",
     "install_postgres_pool_context_safety",
+    "require_clean_dbapi_checkout",
     "require_enterprise_workspace_context",
     "require_matching_actor_context",
     "require_safe_application_role",
