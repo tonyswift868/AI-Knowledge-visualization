@@ -137,9 +137,16 @@ class RelationshipContext:
     private_student_model: bool = False
     personal_resource: bool = False
     explicit_permissions: FrozenSet[str] = field(default_factory=frozenset)
+    resource_exists: bool = True
+    required_service_permission: str | None = None
 
     def __post_init__(self) -> None:
-        for name in ("resource_owner_id", "learner_id", "cohort_id"):
+        for name in (
+            "resource_owner_id",
+            "learner_id",
+            "cohort_id",
+            "required_service_permission",
+        ):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _required(name, value))
@@ -215,11 +222,18 @@ class PolicyRequest:
     trace_id: str = ""
     occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     break_glass: BreakGlassGrant | None = None
+    surface_operation_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "resource_id", _required("resource_id", self.resource_id))
         object.__setattr__(self, "trace_id", _required("trace_id", self.trace_id))
         object.__setattr__(self, "occurred_at", _utc(self.occurred_at))
+        if self.surface_operation_id is not None:
+            object.__setattr__(
+                self,
+                "surface_operation_id",
+                _required("surface_operation_id", self.surface_operation_id),
+            )
 
     @property
     def actor(self) -> ActorContext:

@@ -10,6 +10,7 @@ from uuid import uuid4
 from app.enterprise.contracts_v1 import (
     AccessDecision,
     AccessDecisionKind,
+    ActorKind,
     AuditEnvelope,
     AuditMetadataEntry,
     ResourceScope,
@@ -324,6 +325,7 @@ class AuthorizationService:
                     organization_id=request.resource_scope.organization_id,
                     policy_id=POLICY_ID,
                     role=request.subject.effective_role.value,
+                    surface_operation_id=request.surface_operation_id,
                     tenant_mode=request.tenant.mode.value,
                     workspace_id=request.resource_scope.workspace_id,
                 ),
@@ -352,8 +354,11 @@ class AuthorizationService:
                 or request.tenant != first.tenant
                 or request.action is not first.action
                 or request.resource is not first.resource
+                or request.surface_operation_id != first.surface_operation_id
             ):
-                raise ValueError("bulk authorization requires one actor, tenant, action, and resource")
+                raise ValueError(
+                    "bulk authorization requires one actor, tenant, action, resource, and surface operation"
+                )
 
         evaluated: list[tuple[PolicyRequest, AccessDecisionKind, str, bool]] = []
         for request in requests:
@@ -395,6 +400,7 @@ class AuthorizationService:
                     organization_id=first.resource_scope.organization_id,
                     policy_id=POLICY_ID,
                     role=first.subject.effective_role.value,
+                    surface_operation_id=first.surface_operation_id,
                     tenant_mode=first.tenant.mode.value,
                     workspace_id=first.resource_scope.workspace_id,
                 ),
@@ -433,6 +439,14 @@ class AuthorizationService:
         role = subject.effective_role
         if not subject.active:
             return AccessDecisionKind.DENY, "ACTOR_INACTIVE"
+        if not relationships.resource_exists:
+            return AccessDecisionKind.DENY, "RESOURCE_NOT_FOUND"
+        if (
+            actor.actor_kind is ActorKind.SERVICE
+            and relationships.required_service_permission is not None
+            and relationships.required_service_permission not in actor.service_permissions
+        ):
+            return AccessDecisionKind.DENY, "SERVICE_PERMISSION_REQUIRED"
 
         if tenant.mode is TenantMode.PERSONAL_LOCAL:
             if scope.scope_type is not ResourceScopeType.PERSONAL:
