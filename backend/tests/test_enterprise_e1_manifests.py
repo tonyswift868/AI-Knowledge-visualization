@@ -65,6 +65,8 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "READY_PENDING_BLOCKING_QA"
     assert by_id["E1-04"]["delivery_id"] == "DLV-W04-20260826T111010Z-01"
+    assert by_id["E1-04"]["qa_request"] == "TRQ-W04-20260826-195459-02"
+    assert by_id["E1-04"]["qa_request_sha256"] == "D800C0960DB3FFAAB3E57FFF21045AF06862DC8CAF7D8827176DE2701A279A5B"
     assert "No E1-04 feature commit has been applied" in by_id["E1-04"]["notes"]
     assert by_id["E1-05"]["state"] in {
         "INTEGRATED_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PENDING",

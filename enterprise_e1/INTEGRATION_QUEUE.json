@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T19:50:17+08:00",
+  "updated_at": "2026-08-26T19:57:47+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -70,7 +70,9 @@
       "depends_on": ["E1-02", "E1-05"],
       "delivery_id": "DLV-W04-20260826T111010Z-01",
       "delivery_receipt_sha256": "5100DDC1B92D26AC6C860E715899AC3E005E007A6B5F414F0CF9597DD70A34C2",
-      "notes": "A frozen Delivery Fence receipt exists, but blocking enterprise QA has not passed. Docker/Compose, cross-tenant S3, and provisioned Docling live gates remain unavailable or not run. No E1-04 feature commit has been applied."
+      "qa_request": "TRQ-W04-20260826-195459-02",
+      "qa_request_sha256": "D800C0960DB3FFAAB3E57FFF21045AF06862DC8CAF7D8827176DE2701A279A5B",
+      "notes": "A frozen Delivery Fence receipt exists and formal blocking QA request TRQ-W04-20260826-195459-02 is queued, but no PASS result exists. Docker/Compose, cross-tenant S3, and provisioned Docling live gates remain unavailable or not run. No E1-04 feature commit has been applied."
     },
     {
       "work_item": "E1-06",
