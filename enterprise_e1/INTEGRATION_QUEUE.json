@@ -99,7 +99,7 @@
     {
       "work_item": "E1-06",
       "capability": "observability_recovery",
-      "state": "INTEGRATED_HARDENING_EXACT_COMMIT_FOCUSED_GATES_PENDING",
+      "state": "INTEGRATED_HARDENING_EXACT_COMMITS_FOCUSED_GATES_PENDING",
       "depends_on": ["E1-02", "E1-03", "E1-05"],
       "delivery_id": "DLV-W06-20260826T110116Z-01",
       "delivery_receipt_sha256": "6931AB7D8E9D0A8D8252816463E431A0A7103062B211E748A76C045278276835",
