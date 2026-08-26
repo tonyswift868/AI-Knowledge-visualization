@@ -141,6 +141,18 @@ def _op(
 
 _IDENTITY_ADMIN = (
     _op(
+        "admin.health",
+        SurfaceDomain.IDENTITY_ADMIN,
+        Action.READ_METADATA,
+        ResourceType.ORGANIZATION,
+        TenantScopeRequirement.ORGANIZATION,
+        TransportCapability.GET,
+        source="standalone Enterprise Admin health endpoint",
+        policy=RequiredPolicy.CONTEXT_VALIDATION,
+        audit=AuditRequirement.NO_AUDIT,
+        sensitive=False,
+    ),
+    _op(
         "identity.context.validate",
         SurfaceDomain.IDENTITY_ADMIN,
         Action.READ_METADATA,

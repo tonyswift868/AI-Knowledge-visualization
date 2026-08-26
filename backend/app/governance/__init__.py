@@ -40,6 +40,12 @@ from app.governance.cost_views import (
     TenantCostView,
     TenantCostViewService,
 )
+from app.governance.audit_coverage import (
+    AuditCoverageError,
+    AuditCoverageMatrix,
+    AuditCoverageReport,
+    AuditCoverageVerifier,
+)
 from app.governance.control_plane import (
     CohortMembership,
     GovernanceMutationError,
@@ -101,6 +107,12 @@ from app.governance.runtime import (
     GovernanceEnforcementService,
     ResourceVisibilityFilter,
 )
+from app.governance.side_effects import (
+    GovernedSideEffectExecutor,
+    SideEffectExecutionReceipt,
+    SideEffectKind,
+    SideEffectPlan,
+)
 from app.governance.surface_enforcement import (
     AuthorizedServiceCall,
     ContextTrustSource,
@@ -124,6 +136,11 @@ from app.governance.surface_manifest import (
     TenantScopeRequirement,
     TransportCapability,
 )
+from app.governance.tenant_export import (
+    TenantAwareExportService,
+    TenantExportReceipt,
+    TenantExportRequest,
+)
 from app.governance.ui_seams import (
     AccessDeniedReadModel,
     AdminNavigationCategory,
@@ -141,6 +158,10 @@ __all__ = [
     "AdminNavigationCategory",
     "AdminNavigationEntry",
     "AuditAccessDenied",
+    "AuditCoverageError",
+    "AuditCoverageMatrix",
+    "AuditCoverageReport",
+    "AuditCoverageVerifier",
     "AuditEntryView",
     "AuditEventAction",
     "AuditIntegrityError",
@@ -185,6 +206,7 @@ __all__ = [
     "GovernanceAuditEvent",
     "GovernanceEnforcementService",
     "GovernanceMutationError",
+    "GovernedSideEffectExecutor",
     "InstructorAssignment",
     "LearnerAssignmentQuery",
     "MemberStatus",
@@ -225,12 +247,18 @@ __all__ = [
     "ResourceType",
     "Role",
     "ServiceAuthorizationReceipt",
+    "SideEffectExecutionReceipt",
+    "SideEffectKind",
+    "SideEffectPlan",
     "SQLiteAuditLog",
     "TenantCostEntry",
     "TenantCostStore",
     "TenantCostView",
     "TenantCostViewService",
     "TenantQuotaService",
+    "TenantAwareExportService",
+    "TenantExportReceipt",
+    "TenantExportRequest",
     "TenantScopeRequirement",
     "TransportCapability",
     "TrustedEnterpriseContext",

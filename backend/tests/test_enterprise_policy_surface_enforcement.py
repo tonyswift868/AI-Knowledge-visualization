@@ -126,7 +126,7 @@ def metadata(record) -> dict[str, object]:
 
 def test_protected_surface_manifest_covers_every_enterprise_domain() -> None:
     manifest = ENTERPRISE_PROTECTED_SURFACE_MANIFEST
-    assert len(manifest.operations) == 79
+    assert len(manifest.operations) == 80
     assert {operation.domain for operation in manifest.operations} == set(SurfaceDomain)
     assert all(operation.resource_type for operation in manifest.operations)
     assert all(operation.tenant_scope for operation in manifest.operations)

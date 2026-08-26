@@ -140,6 +140,7 @@ class AuthorizedQueryPolicy:
     action: Action
     resource: ResourceType
     trace_id: str
+    surface_operation_id: str | None = None
     occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __post_init__(self) -> None:
@@ -148,6 +149,12 @@ class AuthorizedQueryPolicy:
         if self.action not in {Action.READ, Action.READ_METADATA, Action.EXPORT}:
             raise ValueError("query policy supports read, metadata, or export only")
         object.__setattr__(self, "trace_id", _required("trace_id", self.trace_id))
+        if self.surface_operation_id is not None:
+            object.__setattr__(
+                self,
+                "surface_operation_id",
+                _required("surface_operation_id", self.surface_operation_id),
+            )
         object.__setattr__(self, "occurred_at", _utc(self.occurred_at))
 
 
@@ -205,6 +212,7 @@ class ResourceVisibilityFilter:
                 relationships=candidate.relationships,
                 trace_id=policy.trace_id,
                 occurred_at=policy.occurred_at,
+                surface_operation_id=policy.surface_operation_id,
             )
             for candidate in materialized
         )
