@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T21:22:33+08:00",
+  "updated_at": "2026-08-26T21:24:26+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -20,13 +20,17 @@
     {
       "work_item": "E1-02",
       "capability": "tenant_persistence",
-      "state": "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_BASE_COMPLETION_RETURNED_TO_OWNER",
       "depends_on": ["enterprise-context.v1"],
       "delivery_id": "DLV-W02-20260826T105314Z-02",
       "delivery_receipt_sha256": "18B319D959472CF3CE879F04A4B2BE1004F0FE772F82089C6F3A6939535E27AB",
       "source_commit": "b846ad3c5817f432fb5c815ebe0a66048cb5c065",
       "integration_commit": "2207d8867cedfe89a1d9be1768d16662da86abb9",
-      "notes": "Frozen exact commit was cherry-picked with provenance. The worker contract test passed (8/8). The focused enterprise, migration, Personal Local, and startup mini-batch produced 56 passed and 3 skipped with one stale registry assertion; after updating that Integration-owned assertion to distinguish implemented E1-02 resources from reserved E1-03/E1-05 resources, the contract and manifest rerun passed 12/12. Live PostgreSQL RLS execution remains unclaimed."
+      "returned_completion_delivery_id": "DLV-W02-20260826T125813Z-03",
+      "returned_completion_receipt_sha256": "C525BC787E91EB8475B109564237FCE4F1F867AC7799D234EFE4BCA429918930",
+      "returned_completion_source_commit": "a11dfc29d6653897cbfe73078901a3ab37d97297",
+      "returned_completion_result": "delivery_fence_v1/returned/DLV-W02-20260826T125813Z-03.integration-result.json",
+      "notes": "The frozen base exact commit remains legally integrated and its focused gates passed. Completion delivery DLV-W02-20260826T125813Z-03 was audited but not consumed: its migration 0030_enterprise_tenancy_completion branches directly from 0029_enterprise_tenancy_rls while canonical Integration already has E1-05 head 0030_enterprise_jobs_v1, which would create two Alembic heads. A precise original-scope RETURN_TO_OWNER repair request was sent; live PostgreSQL RLS execution remains unclaimed."
     },
     {
       "work_item": "E1-01",

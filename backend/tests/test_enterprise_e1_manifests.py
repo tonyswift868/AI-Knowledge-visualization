@@ -58,10 +58,13 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-01"]["source_commit"] == "30c7e44d8f92fdc049971e537339925d73887598"
     assert by_id["E1-01"]["integration_commit"] == "296b6592ece7450d478c0c86fd5636eafb6663bc"
     assert "DLV-W01-20260826T091553Z-04 remains unconsumed" in by_id["E1-01"]["notes"]
-    assert by_id["E1-02"]["state"] == "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED"
+    assert by_id["E1-02"]["state"] == "INTEGRATED_BASE_COMPLETION_RETURNED_TO_OWNER"
     assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
     assert by_id["E1-02"]["source_commit"] == "b846ad3c5817f432fb5c815ebe0a66048cb5c065"
     assert by_id["E1-02"]["integration_commit"] == "2207d8867cedfe89a1d9be1768d16662da86abb9"
+    assert by_id["E1-02"]["returned_completion_delivery_id"] == "DLV-W02-20260826T125813Z-03"
+    assert by_id["E1-02"]["returned_completion_receipt_sha256"] == "C525BC787E91EB8475B109564237FCE4F1F867AC7799D234EFE4BCA429918930"
+    assert by_id["E1-02"]["returned_completion_source_commit"] == "a11dfc29d6653897cbfe73078901a3ab37d97297"
     assert by_id["E1-03"]["state"] in {
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PENDING",
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
