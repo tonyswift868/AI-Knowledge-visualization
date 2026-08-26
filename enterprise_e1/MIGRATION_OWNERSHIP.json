@@ -55,6 +55,7 @@
     {
       "owner": "E1-03",
       "domain": "authorization_audit_provider_governance_quota",
+      "implementation_notes": "E1-03 currently supplies an application-layer governance foundation only. It creates no Alembic migration, PostgreSQL schema, or canonical governance tables; all reserved database resources remain RESERVED_NOT_CREATED.",
       "resources": [
         {"kind": "schema", "name": "enterprise_governance", "status": "RESERVED_NOT_CREATED"},
         {"kind": "table", "name": "enterprise_governance.authorization_policies", "status": "RESERVED_NOT_CREATED"},

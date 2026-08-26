@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T19:14:32+08:00",
+  "updated_at": "2026-08-26T19:22:46+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -36,11 +36,20 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "RETURN_TO_OWNER_INVALID_EXACT_BATCH",
+      "state": "INTEGRATED_REPAIR_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
-      "delivery_id": "DLV-W03-20260826T110330Z-02",
-      "delivery_receipt_sha256": "1CAFBD6B019D5609EBC512BA5F111DDFD1D433B60AACF008A153FCB89C44615C",
-      "notes": "Returned before apply. The first listed exact commit 27037dbf depends on excluded parent e6eff764; that parent chain contains unconsumed governance business commit 6c7ba591 adding five required governance modules and also lacks current Integration manifest files. Consuming the receipt would require illegal branch-tip or unlisted-parent content. A new self-contained exact delivery is required."
+      "delivery_id": "DLV-W03-20260826T111731Z-03",
+      "delivery_receipt_sha256": "CAEB81CCE7DF2CD8F50E9C02EB2B29AD88DB3F9AF4F2FB074A6F88C861625A82",
+      "source_commits": [
+        "cf0125f1faba87094031f8eba2d51cfd3d03778a",
+        "2af634f1fa81575be63e4fa42635b454a57c2c2b"
+      ],
+      "integration_commits": [
+        "d937f06fbd395095169d51962368242e79e545bf",
+        "288c04706f21e1bb8aa8e62a3b68a4f49927ab4d"
+      ],
+      "supersedes_returned_delivery": "DLV-W03-20260826T110330Z-02",
+      "notes": "The replacement delivery is self-contained: its first exact commit has fa488048 as first parent and the range contains exactly the two listed commits. Both were applied with provenance. Governance, frozen contract, manifest, Cost Engine, and ExecutionBudgetGate focused Integration tests passed 73/73. No governance migration, PostgreSQL persistence, runtime route wiring, Provider call, or real data access is claimed."
     },
     {
       "work_item": "E1-05",
