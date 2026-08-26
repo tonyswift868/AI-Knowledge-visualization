@@ -423,12 +423,15 @@ class TeacherLiveRuntime:
             nonlocal metric_recorded
             if metric_recorded:
                 return
-            record_teacher_turn(
-                route=str(getattr(route, "value", route)),
-                status=status,
-                ttft_ms=ttft_ms,
-                total_ms=total_ms if total_ms is not None else (time.perf_counter() - turn_started) * 1000,
-            )
+            try:
+                record_teacher_turn(
+                    route=str(getattr(route, "value", route)),
+                    status=status,
+                    ttft_ms=ttft_ms,
+                    total_ms=total_ms if total_ms is not None else (time.perf_counter() - turn_started) * 1000,
+                )
+            except Exception:
+                return
             metric_recorded = True
 
         async def emit_chunk(text: str) -> None:

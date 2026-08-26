@@ -1,0 +1,106 @@
+{
+  "schema_version": "mentorflow.e1-06-focused-evidence.v1",
+  "work_item": "E1-06",
+  "worker": "06",
+  "recorded_at": "2026-08-26T10:58:00Z",
+  "office": "E:\\Codex\\Worktrees\\MF-w1-sm",
+  "branch": "core-v2/e1-observability-recovery",
+  "contract": {
+    "version": "enterprise-context.v1",
+    "commit": "fa488048d2856d687854b50a23137a45bb020d7d",
+    "bundle_hash": "03e4f66505b6b98202a07a70a39925293876ecc7b7c72f617dbe3b76dcb8b628",
+    "hashes": "7/7 MATCHED",
+    "shared_contract_diff": "EMPTY",
+    "duplicate_shared_models": 0
+  },
+  "focused_gates": [
+    {
+      "name": "provider_trace_audit_backup_restore_failure",
+      "status": "PASS",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py"
+    },
+    {
+      "name": "affected_provider_teacher_document",
+      "status": "PASS",
+      "passed": 48,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q backend/tests/test_enterprise_observability_recovery.py backend/tests/test_provider_telemetry.py backend/tests/test_teacher_live_api.py backend/tests/test_document_ingestion_runtime.py"
+    },
+    {
+      "name": "personal_local_and_contract",
+      "status": "PASS_WITH_EXPECTED_SKIPS",
+      "passed": 28,
+      "failed": 0,
+      "skipped": 2,
+      "skip_scope": "Windows link privileges unavailable",
+      "command": "python -m pytest -q backend/tests/test_enterprise_contracts_v1.py backend/tests/test_enterprise_e1_manifests.py backend/tests/test_local_auth.py backend/tests/test_api_contract_startup.py desktop/tests/test_single_user_storage_boundary.py desktop/tests/test_local_service_startup.py"
+    },
+    {
+      "name": "frontend_production_build",
+      "status": "PASS",
+      "command": "npm run build",
+      "dependency_source": "read-only junction to existing canonical frontend/node_modules; junction removed after build"
+    }
+  ],
+  "recovery_evidence": {
+    "classification": "CONTRACT_HARNESS_PLUS_REAL_FILESYSTEM_DESTROY_RESTORE",
+    "synthetic_entities_verified": {
+      "organizations": 1,
+      "users": 1,
+      "workspaces": 1,
+      "resources": 2,
+      "audit_events": 1,
+      "jobs": 1,
+      "keycloak_realms": 1,
+      "keycloak_federated_users": 1,
+      "object_files": 6,
+      "manifest_artifacts": 9
+    },
+    "failure_cases": [
+      "PG_DUMP_FAILED retains non-ready temporary evidence",
+      "ARTIFACT_HASH_MISMATCH blocks restore before database commands",
+      "RESTORE_TARGET_NOT_EMPTY blocks destructive overwrite",
+      "audit sink missing or unavailable fails closed in ENTERPRISE_SERVER",
+      "PII and content-bearing audit metadata are rejected"
+    ],
+    "live_postgresql_restore": "NOT_RUN_TOOLS_AND_E1_02_SCHEMA_UNAVAILABLE",
+    "live_keycloak_restore": "NOT_RUN_EXTERNAL_SERVICE_UNAVAILABLE"
+  },
+  "dependency_safety": {
+    "python_dependency_diff": "EMPTY",
+    "javascript_dependency_diff": "EMPTY",
+    "otel_python_sdk_lease": "NOT_ACQUIRED",
+    "otel_javascript_sdk_lease": "NOT_ACQUIRED",
+    "collector": "EXTERNAL_CONTAINER_NOT_EMBEDDED",
+    "provider_calls": 0,
+    "real_user_data_used": false
+  },
+  "pending_cross_worker_dependencies": [
+    "E1-02 PostgreSQL schema, RLS and live backup target",
+    "E1-03 authoritative authorization audit sink",
+    "E1-05 durable jobs, outbox and dead letters"
+  ],
+  "invalidated_exploratory_gate": {
+    "status": "NOT_ACCEPTANCE_EVIDENCE",
+    "observed": "81 passed, 2 failed plus live database isolation warning",
+    "reasons": [
+      "backend cwd did not expose the desktop package for one importability assertion",
+      "legacy W6 test expected migration 0012 while the frozen E1 base is at migration 0028",
+      "command did not set explicit E1-06 runtime database roots"
+    ],
+    "ignored_local_database_observed_changed": "E:\\Codex\\Worktrees\\MF-w1-sm\\data\\mentorflow_v2.db",
+    "cleanup_action": "NOT_OVERWRITTEN_NO_PRETEST_CONTENT_COPY_AVAILABLE",
+    "replacement_gates": ["affected_provider_teacher_document", "personal_local_and_contract"]
+  },
+  "claims": {
+    "focused_feature_evidence": "PASS",
+    "personal_local_preserved": true,
+    "enterprise_server_live_acceptance": false,
+    "enterprise_ready": false,
+    "production_ready": false
+  }
+}

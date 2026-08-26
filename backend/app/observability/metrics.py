@@ -134,7 +134,10 @@ def _render_labels(labels: Iterable[tuple[str, str]]) -> str:
 def normalize_route(path: str) -> str:
     """Collapse unbounded IDs while retaining a small useful route family."""
 
-    parts = [part for part in str(path or "/").split("/") if part]
+    raw_path = "/" + "/".join(part for part in str(path or "/").split("/") if part)
+    if raw_path.startswith("/api/jobs/"):
+        return "/api/jobs/:id"
+    parts = [part for part in raw_path.split("/") if part]
     stable: list[str] = []
     for part in parts[:4]:
         if len(part) > 24 or any(character.isdigit() for character in part):
