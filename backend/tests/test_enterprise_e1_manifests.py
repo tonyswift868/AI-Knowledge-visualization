@@ -56,7 +56,9 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
     assert by_id["E1-02"]["source_commit"] == "b846ad3c5817f432fb5c815ebe0a66048cb5c065"
     assert by_id["E1-02"]["integration_commit"] == "2207d8867cedfe89a1d9be1768d16662da86abb9"
-    assert by_id["E1-03"]["state"] == "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY"
+    assert by_id["E1-03"]["state"] == "RETURN_TO_OWNER_INVALID_EXACT_BATCH"
+    assert by_id["E1-03"]["delivery_id"] == "DLV-W03-20260826T110330Z-02"
+    assert "Returned before apply" in by_id["E1-03"]["notes"]
     assert by_id["E1-04"]["state"] == "ISOLATED_WORKTREE_IN_PROGRESS_NO_DELIVERY"
     assert by_id["E1-05"]["state"] == "OFFICE_STALE_NOT_STARTED"
     assert by_id["E1-07"]["state"] == "IN_PROGRESS_DIRTY_NO_DELIVERY"

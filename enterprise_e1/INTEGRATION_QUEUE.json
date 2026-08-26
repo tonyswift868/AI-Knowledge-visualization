@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T19:11:50+08:00",
+  "updated_at": "2026-08-26T19:14:32+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -36,9 +36,11 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY",
+      "state": "RETURN_TO_OWNER_INVALID_EXACT_BATCH",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
-      "notes": "Observed head 6c7ba59 defines duplicate ActorContext, TenantContext, and AccessDecision models; replace them with frozen contract imports before delivery."
+      "delivery_id": "DLV-W03-20260826T110330Z-02",
+      "delivery_receipt_sha256": "1CAFBD6B019D5609EBC512BA5F111DDFD1D433B60AACF008A153FCB89C44615C",
+      "notes": "Returned before apply. The first listed exact commit 27037dbf depends on excluded parent e6eff764; that parent chain contains unconsumed governance business commit 6c7ba591 adding five required governance modules and also lacks current Integration manifest files. Consuming the receipt would require illegal branch-tip or unlisted-parent content. A new self-contained exact delivery is required."
     },
     {
       "work_item": "E1-05",
