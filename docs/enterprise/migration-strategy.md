@@ -59,3 +59,11 @@ default-deny/negative RLS checks, query-plan capture and one-slot pool reuse.
 
 No real PostgreSQL execution occurred on this worker. Until the package passes
 on Linux staging, `REAL_POSTGRES_RLS_GATE` remains `PENDING_STAGING`.
+
+E1-02B adds no migration revision. Its dual-mode repository, transaction,
+cache, object-reference, and job-context integration continues to use the
+single `0031_enterprise_tenancy_completion` head. The runnable fresh,
+incremental, downgrade-to-`0030_enterprise_jobs_v1`, existing-row, RLS-negative,
+and one-slot pool-reuse gate is documented in `postgres-staging-gate.md`; its
+real PostgreSQL status remains `PENDING_STAGING` until the driver lease and
+Ubuntu staging host are available.

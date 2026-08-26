@@ -18,9 +18,10 @@ The deterministic fixture contains:
 - 48 resources: one row for each of 8 resource kinds in each workspace;
 - all three resource scopes and the frozen classification values.
 
-`build_tenant_isolation_corpus()` produces 64 negative probes: each of the 8
-resource kinds is checked against foreign ID read, list, search, update,
-delete, export, background-job lookup, and cache ownership.
+`build_tenant_isolation_corpus()` produces 80 negative probes: each of the 8
+resource kinds is checked against foreign ID read, pagination, search, update,
+delete, export, background-job lookup, cache identity, object reference, and
+same-connection reuse.
 
 ```text
 UNAUTHORIZED_SUCCESS_EXPECTED = 0
@@ -38,6 +39,6 @@ UNAUTHORIZED_SUCCESS_EXPECTED = 0
 | Same physical PostgreSQL connection reused across tenant A/B | PENDING_STAGING |
 
 The staging gate fails if any tenant-scoped row is visible without context or
-if any of the 64 foreign operations succeeds. The pool gate uses a one-slot
+if any of the 80 foreign operations succeeds. The pool gate uses a one-slot
 SQLAlchemy pool, records the DBAPI connection identity, returns tenant A's
 connection, reuses it for tenant B, and requires zero visibility of A.

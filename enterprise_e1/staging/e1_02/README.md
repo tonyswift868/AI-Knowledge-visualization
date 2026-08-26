@@ -19,7 +19,7 @@ export MENTORFLOW_BACKEND_IMAGE=registry.example/mentorflow-backend@sha256:<dige
 ```
 
 The gate creates PostgreSQL 16, runs `alembic -x seed_synthetic=true upgrade
-head`, executes default-deny and 64-operation isolation probes through
+head`, executes default-deny and 80-operation isolation probes through
 `mentorflow_app`, captures real `EXPLAIN` plans, and reuses one physical DBAPI
 connection across tenants. Any unauthorized success exits non-zero.
 
