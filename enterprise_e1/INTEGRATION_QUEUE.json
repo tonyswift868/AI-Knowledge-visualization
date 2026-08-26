@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T18:09:02+08:00",
+  "updated_at": "2026-08-26T18:30:21+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -21,9 +21,9 @@
     {
       "work_item": "E1-01",
       "capability": "identity",
-      "state": "PENDING_TEACHER_V3_QA_AND_REBIND",
+      "state": "TEACHER_V3_QA_FAILED_IDENTITY_IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["E1-02", "enterprise-context.v1"],
-      "notes": "Teacher V3 QA TRQ-W01-20260826-171553-05 remains processing; do not consume DLV-W01-20260826T091553Z-04 before PASS."
+      "notes": "Teacher V3 QA TRQ-W01-20260826-171553-05 failed with TEACHER_STREAM_INVALID after one real Provider call and also failed the exact-checkout precondition. DLV-W01-20260826T091553Z-04 remains unconsumed. Enterprise identity work is on a clean separate branch, but no Enterprise Delivery Fence receipt exists."
     },
     {
       "work_item": "E1-03",
@@ -41,9 +41,9 @@
     {
       "work_item": "E1-04",
       "capability": "staging_storage",
-      "state": "BLOCKED_WORKTREE_DRIFT",
+      "state": "ISOLATED_WORKTREE_IN_PROGRESS_NO_DELIVERY",
       "depends_on": ["E1-02", "E1-05"],
-      "notes": "Provisioning found unknown-provenance reports/final_rc/RC_DOCUMENT_ACCEPTANCE.md; Integration will not delete or move it."
+      "notes": "A clean isolated worktree now carries head 30e19b2, while the original unknown-provenance reports/final_rc/RC_DOCUMENT_ACCEPTANCE.md remains untouched in the old office. No Delivery Fence receipt exists."
     },
     {
       "work_item": "E1-06",
@@ -54,8 +54,9 @@
     {
       "work_item": "E1-07",
       "capability": "ci_security_load",
-      "state": "IN_PROGRESS_NO_DELIVERY",
-      "depends_on": ["E1-01", "E1-02", "E1-03", "E1-04", "E1-05", "E1-06"]
+      "state": "IN_PROGRESS_DIRTY_NO_DELIVERY",
+      "depends_on": ["E1-01", "E1-02", "E1-03", "E1-04", "E1-05", "E1-06"],
+      "notes": "The branch remains at the E1 base with untracked Docker/CI/deploy/security work. Integration will not consume it without a clean frozen receipt."
     }
   ]
 }
