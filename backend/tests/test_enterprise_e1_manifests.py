@@ -49,8 +49,58 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     by_id = {entry["work_item"]: entry for entry in queue}
     assert by_id["E1-01"]["state"] == "TEACHER_V3_QA_FAILED_IDENTITY_IN_PROGRESS_NO_DELIVERY"
     assert "DLV-W01-20260826T091553Z-04 remains unconsumed" in by_id["E1-01"]["notes"]
-    assert by_id["E1-02"]["state"] == "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY"
+    assert by_id["E1-02"]["state"] == "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED"
+    assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
+    assert by_id["E1-02"]["source_commit"] == "b846ad3c5817f432fb5c815ebe0a66048cb5c065"
+    assert by_id["E1-02"]["integration_commit"] == "2207d8867cedfe89a1d9be1768d16662da86abb9"
     assert by_id["E1-03"]["state"] == "WAITING_CONTRACT_ADOPTION_BEFORE_DELIVERY"
     assert by_id["E1-04"]["state"] == "ISOLATED_WORKTREE_IN_PROGRESS_NO_DELIVERY"
     assert by_id["E1-05"]["state"] == "OFFICE_STALE_NOT_STARTED"
     assert by_id["E1-07"]["state"] == "IN_PROGRESS_DIRTY_NO_DELIVERY"
+
+
+def test_migration_ownership_names_are_unique_and_match_e1_02_objects() -> None:
+    payload = _read("MIGRATION_OWNERSHIP.json")
+    resources = [
+        (entry["kind"], entry["name"])
+        for owner in payload["owners"]
+        for entry in owner["resources"]
+    ]
+    assert len(resources) == len(set(resources))
+
+    by_owner = {entry["owner"]: entry for entry in payload["owners"]}
+    e1_02 = by_owner["E1-02"]
+    assert "default schema" in e1_02["implementation_notes"]
+    assert "does not create" in e1_02["implementation_notes"]
+    actual = {(entry["kind"], entry["name"]): entry for entry in e1_02["resources"]}
+    assert ("migration", "0029_enterprise_tenancy_rls") in actual
+    assert ("database_role", "mentorflow_app") in actual
+
+    tables = {
+        "organizations",
+        "organization_memberships",
+        "workspaces",
+        "workspace_role_bindings",
+        "resource_scopes",
+        "documents",
+        "evidence",
+        "knowledge_maps",
+        "plans",
+        "teacher_sessions",
+        "review_campaigns",
+        "student_events",
+        "cost_events",
+    }
+    assert {
+        name for (kind, name), entry in actual.items()
+        if kind == "table" and entry["status"] == "IMPLEMENTED_BY_0029"
+    } == tables
+    assert {
+        name.removeprefix("tenant_isolation_")
+        for (kind, name), entry in actual.items()
+        if kind == "policy" and entry["status"] == "IMPLEMENTED_BY_0029"
+    } == tables
+    assert not any(
+        name in {"enterprise_identity", "enterprise_tenant"}
+        for _, name in actual
+    )

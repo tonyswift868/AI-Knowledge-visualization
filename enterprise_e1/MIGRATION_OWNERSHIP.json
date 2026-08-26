@@ -13,21 +13,43 @@
     "workers_must_not_modify_foreign_resources": true,
     "personal_local_schema_compatibility_required": true,
     "integration_coordinates_order_only": true,
-    "reserved_resources_are_not_claims_of_implementation": true
+    "reserved_resources_are_not_claims_of_implementation": true,
+    "registry_names_match_implemented_database_objects": true
   },
   "owners": [
     {
       "owner": "E1-02",
       "domain": "identity_mirror_tenant_persistence_rls",
+      "implementation_notes": "Migration 0029 creates tenant objects in the configured PostgreSQL default schema. It does not create the previously proposed enterprise_identity or enterprise_tenant schemas.",
       "resources": [
-        {"kind": "schema", "name": "enterprise_identity", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "schema", "name": "enterprise_tenant", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_identity.subject_mirror", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_tenant.organizations", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_tenant.workspaces", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "table", "name": "enterprise_tenant.memberships", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "policy", "name": "enterprise_tenant.organization_isolation", "status": "RESERVED_NOT_CREATED"},
-        {"kind": "policy", "name": "enterprise_tenant.workspace_isolation", "status": "RESERVED_NOT_CREATED"}
+        {"kind": "migration", "name": "0029_enterprise_tenancy_rls", "status": "IMPLEMENTED"},
+        {"kind": "database_role", "name": "mentorflow_app", "status": "ENSURED_BY_0029"},
+        {"kind": "table", "name": "organizations", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "organization_memberships", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "workspaces", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "workspace_role_bindings", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "resource_scopes", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "documents", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "evidence", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "knowledge_maps", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "plans", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "teacher_sessions", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "review_campaigns", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "student_events", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "table", "name": "cost_events", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_organizations", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_organization_memberships", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_workspaces", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_workspace_role_bindings", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_resource_scopes", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_documents", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_evidence", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_knowledge_maps", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_plans", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_teacher_sessions", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_review_campaigns", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_student_events", "status": "IMPLEMENTED_BY_0029"},
+        {"kind": "policy", "name": "tenant_isolation_cost_events", "status": "IMPLEMENTED_BY_0029"}
       ]
     },
     {
