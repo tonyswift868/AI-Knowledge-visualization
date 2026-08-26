@@ -258,6 +258,26 @@ def navigation(request: Request) -> dict[str, object]:
     }
 
 
+@router.get("/bootstrap")
+def bootstrap(request: Request) -> dict[str, object]:
+    context = _context(request)
+    navigation_payload = navigation(request)
+    return {
+        "actor": {
+            "subject_id": context.subject.actor_id,
+            "role": context.subject.effective_role.value,
+            "source": "context-resolver",
+        },
+        "tenant": {
+            "organization_id": context.tenant.organization_id,
+            "workspace_id": context.tenant.workspace_id,
+            "mode": context.tenant.mode.value,
+        },
+        "navigation": navigation_payload["entries"],
+        "authorization_still_required": True,
+    }
+
+
 @router.get("/members")
 def list_members(request: Request) -> dict[str, object]:
     context = _authorize_read(
@@ -405,6 +425,41 @@ def provider_status(config_id: str, request: Request) -> dict[str, object]:
             trace_id="admin-api:provider-status",
         )
     )
+
+
+@router.get("/providers")
+def provider_statuses(request: Request) -> dict[str, object]:
+    context = _context(request)
+    services = _services(request)
+    configs = tuple(
+        services.providers.get_internal(config_id)
+        for config_id in services.providers.config_ids()
+    )
+    applicable = (
+        config
+        for config in configs
+        if config.organization_id == context.tenant.organization_id
+        and (
+            config.workspace_id is None
+            or config.workspace_id == context.tenant.workspace_id
+        )
+    )
+    return {
+        "providers": [
+            {
+                "config_id": config.config_id,
+                **dict(
+                    services.providers.api_view(
+                        config.config_id,
+                        subject=context.subject,
+                        tenant=context.tenant,
+                        trace_id="admin-api:provider-status-list",
+                    )
+                ),
+            }
+            for config in applicable
+        ]
+    }
 
 
 @router.get("/quotas/{user_id}")

@@ -1,0 +1,79 @@
+.enterprise-admin-shell {
+  min-height: 100%;
+  padding: 32px;
+  color: #17201d;
+  background: radial-gradient(circle at top right, #dceee7 0, transparent 34%), #f3f0e9;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.enterprise-admin-header,
+.enterprise-admin-selectors,
+.enterprise-admin-card-heading,
+.enterprise-admin-audit li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.enterprise-admin-header h1,
+.enterprise-admin-card h2 { margin: 0; }
+.enterprise-admin-header h1 { font: 650 clamp(2rem, 5vw, 4.5rem)/.95 Georgia, serif; }
+.enterprise-admin-eyebrow,
+.enterprise-admin-card-heading p { margin: 0 0 6px; color: #38745f; font-size: .72rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.enterprise-admin-subtitle { max-width: 620px; color: #60716a; }
+
+.enterprise-admin-actor {
+  display: grid;
+  min-width: 230px;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid #bad1c8;
+  border-radius: 16px;
+  background: #fbfaf6cc;
+}
+.enterprise-admin-actor span,
+.enterprise-admin-actor small,
+.enterprise-admin-metric small,
+.enterprise-admin-table-wrap small { color: #6c7974; }
+
+.enterprise-admin-selectors { justify-content: flex-start; margin: 28px 0 18px; }
+.enterprise-admin-selectors label { display: grid; min-width: 240px; gap: 7px; color: #5a6963; font-size: .78rem; font-weight: 700; }
+.enterprise-admin-selectors select { padding: 12px 38px 12px 13px; border: 1px solid #c8d3cd; border-radius: 10px; background: #fffefa; color: #17201d; }
+
+.enterprise-admin-permissions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.enterprise-admin-permissions span { padding: 7px 10px; border-radius: 999px; background: #e0ebe6; color: #285c4a; font-size: .72rem; font-weight: 700; }
+.enterprise-admin-permissions [data-state='DISABLED'] { background: #ebe8df; color: #756f63; }
+.enterprise-admin-permissions [data-state='HIDDEN'] { opacity: .46; }
+
+.enterprise-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.enterprise-admin-card { padding: 22px; border: 1px solid #d4d5ce; border-radius: 18px; background: #fffefa; box-shadow: 0 16px 35px #274c3f0d; }
+.enterprise-admin-card-wide { grid-column: 1 / -1; }
+.enterprise-admin-card-heading { align-items: flex-start; margin-bottom: 18px; }
+.enterprise-admin-card-heading > span { padding: 6px 9px; border-radius: 999px; background: #f0ede6; color: #6a6b64; font-size: .68rem; font-weight: 700; }
+
+.enterprise-admin-table-wrap { overflow-x: auto; }
+.enterprise-admin-table-wrap table { width: 100%; border-collapse: collapse; text-align: left; }
+.enterprise-admin-table-wrap th { color: #77827d; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+.enterprise-admin-table-wrap th,
+.enterprise-admin-table-wrap td { padding: 12px 10px; border-bottom: 1px solid #e7e5de; }
+.enterprise-admin-table-wrap td:first-child { display: grid; gap: 3px; }
+
+.enterprise-admin-metric { display: grid; gap: 5px; padding: 14px 0; border-top: 1px solid #e7e5de; }
+.enterprise-admin-metric:first-of-type { border-top: 0; }
+.enterprise-admin-audit { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.enterprise-admin-audit li { justify-content: flex-start; padding: 13px 0; border-top: 1px solid #e7e5de; }
+.enterprise-admin-audit li > span { min-width: 56px; color: #2d7259; font-size: .72rem; font-weight: 900; }
+.enterprise-admin-audit li > span[data-outcome='DENY'] { color: #a44336; }
+.enterprise-admin-audit li div { display: grid; min-width: 260px; gap: 3px; }
+.enterprise-admin-audit code { margin-left: auto; color: #6a6b64; }
+
+@media (max-width: 760px) {
+  .enterprise-admin-shell { padding: 20px; }
+  .enterprise-admin-header,
+  .enterprise-admin-selectors { align-items: stretch; flex-direction: column; }
+  .enterprise-admin-grid { grid-template-columns: 1fr; }
+  .enterprise-admin-card-wide { grid-column: auto; }
+  .enterprise-admin-audit li { align-items: flex-start; flex-wrap: wrap; }
+  .enterprise-admin-audit code { width: 100%; margin-left: 76px; }
+}

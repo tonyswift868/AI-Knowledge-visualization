@@ -76,6 +76,9 @@ def test_standalone_admin_api_mutations_and_reads_use_context_resolver(tmp_path:
         navigation = client.get("/api/enterprise-admin/navigation").json()
         assert len(navigation["entries"]) == 8
         assert navigation["authorization_still_required"] is True
+        bootstrap = client.get("/api/enterprise-admin/bootstrap").json()
+        assert bootstrap["actor"]["subject_id"] == "owner-a"
+        assert bootstrap["tenant"]["organization_id"] == "org-a"
         invited = client.post(
             "/api/enterprise-admin/members/invitations",
             json={
@@ -147,7 +150,10 @@ def test_provider_api_projection_never_contains_credential_reference(tmp_path: P
     )
     with TestClient(app) as client:
         response = client.get("/api/enterprise-admin/providers/provider-org-a")
+        collection = client.get("/api/enterprise-admin/providers")
     assert response.status_code == 200
+    assert collection.status_code == 200
+    assert collection.json()["providers"][0]["config_id"] == "provider-org-a"
     serialized = json.dumps(response.json(), sort_keys=True)
     assert reference.value not in serialized
     assert "secret_reference" not in serialized
