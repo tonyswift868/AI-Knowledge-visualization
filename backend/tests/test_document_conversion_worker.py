@@ -73,7 +73,11 @@ def test_real_markdown_worker_probes_and_shuts_down_cleanly(tmp_path: Path) -> N
     source.write_text("# Lesson\n\nQuestion: What is local?", encoding="utf-8")
     runner = DoclingConversionRunner(
         DocumentSourcePolicy(input_root=tmp_path.resolve()),
-        execution_environment=_environment(tmp_path),
+        # This case verifies a successful real-worker lifecycle, not a 2-second
+        # performance SLA. Full-suite Windows load can exceed that wall-clock
+        # bound; the dedicated 0.2-second case below still covers timeout and
+        # cleanup behavior explicitly.
+        execution_environment=_environment(tmp_path, timeout=10),
         compatibility_policy=_compatibility(),
     )
 
