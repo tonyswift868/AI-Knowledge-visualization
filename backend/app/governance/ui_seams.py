@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
+from app.enterprise.contracts_v1 import TenantContext, TenantMode
 from app.governance.authorization import ROLE_MATRIX
 from app.governance.cost_views import CostViewScope, TenantCostView
 from app.governance.models import (
@@ -108,6 +109,68 @@ class PermissionAwareNavigation:
 
 
 @dataclass(frozen=True, slots=True)
+class EnterpriseNavigationModel:
+    """Context-bound UI projection; it never substitutes for backend authorization."""
+
+    subject_id: str
+    organization_id: str
+    workspace_id: str | None
+    role: Role
+    entries: tuple[AdminNavigationEntry, ...]
+    contract_version: str = "enterprise-context.v1"
+    authorization_still_required: bool = True
+
+    @classmethod
+    def for_context(
+        cls,
+        subject: GovernanceActorAdapter,
+        tenant: TenantContext,
+    ) -> "EnterpriseNavigationModel":
+        if tenant.mode is not TenantMode.ENTERPRISE_SERVER:
+            raise ValueError("enterprise navigation requires ENTERPRISE_SERVER mode")
+        if tenant.organization_id != subject.organization_id:
+            raise ValueError("navigation actor and tenant organization must match")
+        if (
+            tenant.workspace_id is not None
+            and subject.effective_role not in {Role.OWNER, Role.ADMIN}
+            and tenant.workspace_id not in subject.workspace_memberships
+        ):
+            raise ValueError("navigation workspace must be an active actor membership")
+        navigation = PermissionAwareNavigation.for_subject(subject)
+        return cls(
+            subject_id=subject.actor_id,
+            organization_id=str(tenant.organization_id),
+            workspace_id=tenant.workspace_id,
+            role=subject.effective_role,
+            entries=navigation.admin_entries(),
+        )
+
+    @property
+    def context_key(self) -> str:
+        return f"{self.organization_id}:{self.workspace_id or '*'}:{self.role.value}"
+
+    def to_public_dict(self) -> dict[str, object]:
+        return {
+            "context_key": self.context_key,
+            "subject_id": self.subject_id,
+            "organization_id": self.organization_id,
+            "workspace_id": self.workspace_id,
+            "role": self.role.value,
+            "contract_version": self.contract_version,
+            "entries": tuple(
+                {
+                    "category": entry.category.value,
+                    "state": entry.state.value,
+                    "resource": entry.resource.value,
+                    "relationship_check_required": entry.relationship_check_required,
+                }
+                for entry in self.entries
+            ),
+            "authorization_still_required": self.authorization_still_required,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class AccessDeniedReadModel:
     policy_id: str
     reason_code: str
@@ -197,6 +260,7 @@ __all__ = [
     "AccessDeniedReadModel",
     "AdminNavigationCategory",
     "AdminNavigationEntry",
+    "EnterpriseNavigationModel",
     "NavigationPermission",
     "NavigationState",
     "OrganizationCostReadModel",

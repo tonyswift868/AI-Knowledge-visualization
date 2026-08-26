@@ -47,6 +47,14 @@ export function EnterpriseAdminControlPlane({
     () => snapshot.workspaces.filter((workspace) => workspace.organization_id === organizationId),
     [organizationId, snapshot.workspaces],
   )
+  const navigationContext = useMemo(
+    () => snapshot.navigation_contexts?.find(
+      (candidate) => candidate.organization_id === organizationId && candidate.workspace_id === workspaceId,
+    ),
+    [organizationId, snapshot.navigation_contexts, workspaceId],
+  )
+  const activeNavigation = navigationContext?.navigation ?? snapshot.navigation
+  const activeRole = navigationContext?.role ?? snapshot.actor.role
   const scopedQuotas = snapshot.quotas.filter(
     (policy) => policy.workspace_id === null || policy.workspace_id === workspaceId,
   )
@@ -71,7 +79,7 @@ export function EnterpriseAdminControlPlane({
         <div className="enterprise-admin-actor" aria-label="Authenticated actor adapter">
           <span>{snapshot.mode === 'demo' ? 'Demo actor adapter' : 'Authenticated context resolver'}</span>
           <strong>{snapshot.actor.subject_id}</strong>
-          <small>{snapshot.actor.role}</small>
+          <small aria-label="Active enterprise role">{activeRole}</small>
         </div>
       </header>
 
@@ -98,7 +106,7 @@ export function EnterpriseAdminControlPlane({
       </section>
 
       <nav className="enterprise-admin-permissions" aria-label="Permission-aware navigation">
-        {snapshot.navigation.map((entry) => (
+        {activeNavigation.map((entry) => (
           <span key={entry.category} data-state={entry.state}>{entry.category} · {entry.state}</span>
         ))}
       </nav>

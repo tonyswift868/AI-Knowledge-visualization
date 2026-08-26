@@ -51,7 +51,7 @@ from app.governance.provider_governance import (
 )
 from app.governance.quotas import QuotaSubject, TenantQuotaService
 from app.governance.runtime import GovernanceEnforcementService
-from app.governance.ui_seams import PermissionAwareNavigation
+from app.governance.ui_seams import EnterpriseNavigationModel
 
 
 class _Input(BaseModel):
@@ -262,20 +262,10 @@ def health() -> dict[str, object]:
 @router.get("/navigation")
 def navigation(request: Request) -> dict[str, object]:
     context = _context(request)
-    entries = PermissionAwareNavigation.for_subject(context.subject).admin_entries()
-    return {
-        "role": context.subject.effective_role.value,
-        "entries": [
-            {
-                "category": entry.category.value,
-                "state": entry.state.value,
-                "resource": entry.resource.value,
-                "relationship_check_required": entry.relationship_check_required,
-            }
-            for entry in entries
-        ],
-        "authorization_still_required": True,
-    }
+    return EnterpriseNavigationModel.for_context(
+        context.subject,
+        context.tenant,
+    ).to_public_dict()
 
 
 @router.get("/bootstrap")

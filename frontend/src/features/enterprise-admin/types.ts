@@ -17,6 +17,14 @@ export interface NavigationEntry {
   relationship_check_required: boolean
 }
 
+export interface NavigationContextView {
+  organization_id: string
+  workspace_id: string | null
+  role: string
+  navigation: NavigationEntry[]
+  authorization_still_required: true
+}
+
 export interface EnterpriseActorView {
   subject_id: string
   role: string
@@ -84,6 +92,7 @@ export interface EnterpriseAdminSnapshot {
   quotas: QuotaPolicyView[]
   audit: AuditEntryView[]
   navigation: NavigationEntry[]
+  navigation_contexts?: NavigationContextView[]
   authorization_still_required: true
 }
 

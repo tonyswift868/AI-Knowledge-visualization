@@ -1,5 +1,28 @@
 import type { EnterpriseAdminSnapshot } from './types'
 
+const navigationCategories: EnterpriseAdminSnapshot['navigation'][number]['category'][] = [
+  'Organization Admin',
+  'Workspace Admin',
+  'Content',
+  'Instructor',
+  'Learner',
+  'Audit',
+  'Cost',
+  'Provider Settings',
+]
+
+function navigationFor(role: string): EnterpriseAdminSnapshot['navigation'] {
+  return navigationCategories.map((category) => {
+    const contentManagerVisible = ['Content', 'Instructor'].includes(category)
+    return {
+      category,
+      state: role === 'ORGANIZATION_OWNER' || contentManagerVisible ? 'VISIBLE' : 'HIDDEN',
+      resource: category.toLowerCase().replaceAll(' ', '_'),
+      relationship_check_required: true,
+    }
+  })
+}
+
 export const ENTERPRISE_ADMIN_DEMO_FIXTURE: EnterpriseAdminSnapshot = {
   mode: 'demo',
   actor: {
@@ -89,20 +112,29 @@ export const ENTERPRISE_ADMIN_DEMO_FIXTURE: EnterpriseAdminSnapshot = {
       occurred_at: '2026-08-26T08:21:00+00:00',
     },
   ],
-  navigation: [
-    'Organization Admin',
-    'Workspace Admin',
-    'Content',
-    'Instructor',
-    'Learner',
-    'Audit',
-    'Cost',
-    'Provider Settings',
-  ].map((category) => ({
-    category: category as EnterpriseAdminSnapshot['navigation'][number]['category'],
-    state: 'VISIBLE',
-    resource: category.toLowerCase().replaceAll(' ', '_'),
-    relationship_check_required: true,
-  })),
+  navigation: navigationFor('ORGANIZATION_OWNER'),
+  navigation_contexts: [
+    {
+      organization_id: 'demo-org',
+      workspace_id: 'workspace-math',
+      role: 'ORGANIZATION_OWNER',
+      navigation: navigationFor('ORGANIZATION_OWNER'),
+      authorization_still_required: true,
+    },
+    {
+      organization_id: 'demo-org',
+      workspace_id: 'workspace-science',
+      role: 'CONTENT_MANAGER',
+      navigation: navigationFor('CONTENT_MANAGER'),
+      authorization_still_required: true,
+    },
+    {
+      organization_id: 'demo-org-labs',
+      workspace_id: 'workspace-research',
+      role: 'AUDITOR',
+      navigation: navigationFor('AUDITOR'),
+      authorization_still_required: true,
+    },
+  ],
   authorization_still_required: true,
 }

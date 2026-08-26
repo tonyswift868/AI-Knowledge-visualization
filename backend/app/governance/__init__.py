@@ -107,6 +107,12 @@ from app.governance.runtime import (
     GovernanceEnforcementService,
     ResourceVisibilityFilter,
 )
+from app.governance.secret_access import (
+    SecretAccessReport,
+    SecretAccessVerifier,
+    SecretAccessViolation,
+    SecretDomain,
+)
 from app.governance.side_effects import (
     GovernedSideEffectExecutor,
     SideEffectExecutionReceipt,
@@ -145,6 +151,7 @@ from app.governance.ui_seams import (
     AccessDeniedReadModel,
     AdminNavigationCategory,
     AdminNavigationEntry,
+    EnterpriseNavigationModel,
     NavigationPermission,
     NavigationState,
     OrganizationCostReadModel,
@@ -199,6 +206,7 @@ __all__ = [
     "CostViewScope",
     "ContextTrustSource",
     "EnforcementReceipt",
+    "EnterpriseNavigationModel",
     "ENTERPRISE_PROTECTED_SURFACE_MANIFEST",
     "FastAPIContextResolver",
     "FastAPIRequestGuard",
@@ -247,6 +255,10 @@ __all__ = [
     "ResourceType",
     "Role",
     "ServiceAuthorizationReceipt",
+    "SecretAccessReport",
+    "SecretAccessVerifier",
+    "SecretAccessViolation",
+    "SecretDomain",
     "SideEffectExecutionReceipt",
     "SideEffectKind",
     "SideEffectPlan",

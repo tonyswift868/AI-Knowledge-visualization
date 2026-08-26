@@ -32,6 +32,8 @@ describe('EnterpriseAdminControlPlane', () => {
       target: { value: 'workspace-science' },
     })
     expect(screen.getByText('CONTENT_MANAGER', { selector: 'td' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Active enterprise role')).toHaveTextContent('CONTENT_MANAGER')
+    expect(screen.getAllByText(/HIDDEN/)).toHaveLength(6)
   })
 
   it('loads a live snapshot through the context-resolver API client seam', async () => {
