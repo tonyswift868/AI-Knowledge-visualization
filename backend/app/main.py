@@ -79,6 +79,14 @@ from .integration_routes import (
     install_review_product,
 )
 from .teaching.progress_read.api import router as progress_read_router
+from .observability import (
+    configure_default_health_probes,
+    configure_open_telemetry,
+    health_registry,
+    install_observability,
+    observe_http_request,
+)
+from . import orm as orm_runtime
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -194,6 +202,7 @@ def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dic
 
 @asynccontextmanager
 async def lifespan(_app):
+    health_registry.started = False
     db.init_db()
     upgrade_orm_schema()
     init_orm()
@@ -213,9 +222,11 @@ async def lifespan(_app):
             "Qwen voice runtime registration failed closed: %s",
             (bootstrap_status.get("error") or {}).get("code", "unknown"),
         )
+    health_registry.started = True
     try:
         yield
     finally:
+        health_registry.started = False
         document_import_host = getattr(
             _app.state,
             "document_import_host",
@@ -272,6 +283,7 @@ async def lifespan(_app):
             _app.state.qwen_voice_shutdown_error = None
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
+configure_default_health_probes()
 install_review_product(app)
 install_plan_product(app)
 install_document_import(app)
@@ -286,6 +298,7 @@ app.include_router(teacher_live_router)
 app.include_router(verified_knowledge_map_router)
 app.include_router(cost_cache_control_router)
 app.include_router(progress_read_router)
+install_observability(app)
 _configured_origins = [
     item.strip().rstrip("/")
     for item in os.getenv(
@@ -300,16 +313,20 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Trace-ID", "traceparent"],
 )
+configure_open_telemetry(app, sqlalchemy_engine=orm_runtime.engine)
 
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
-    import uuid
-    request.state.request_id=uuid.uuid4().hex
-    response=await call_next(request)
-    response.headers['X-Request-ID']=request.state.request_id
-    return response
+    with observe_http_request(request) as correlation:
+        response = await call_next(request)
+        request.state.response_status_code = response.status_code
+        response.headers["X-Request-ID"] = correlation.request_id
+        response.headers["X-Trace-ID"] = correlation.trace_id
+        response.headers["traceparent"] = correlation.traceparent
+        return response
 
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):

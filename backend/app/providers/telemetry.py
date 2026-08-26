@@ -223,16 +223,21 @@ class ProviderTelemetryStore:
         with self._lock:
             self._receipts.append(receipt)
             path = _durable_jsonl_path()
-            if path is None:
-                return
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                with path.open("a", encoding="utf-8", newline="\n") as handle:
-                    handle.write(json.dumps(receipt.to_dict(), ensure_ascii=False, separators=(",", ":")))
-                    handle.write("\n")
-            except (OSError, TypeError, ValueError):
-                # Observability must never make an otherwise valid model call fail.
-                return
+            if path is not None:
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with path.open("a", encoding="utf-8", newline="\n") as handle:
+                        handle.write(json.dumps(receipt.to_dict(), ensure_ascii=False, separators=(",", ":")))
+                        handle.write("\n")
+                except (OSError, TypeError, ValueError):
+                    # Observability must never make an otherwise valid model call fail.
+                    pass
+        try:
+            from ..observability import record_provider_receipt
+            record_provider_receipt(receipt)
+        except Exception:
+            # Metrics export must never change the Provider result.
+            pass
 
     def receipts(self) -> list[ProviderUsageReceipt]:
         with self._lock:

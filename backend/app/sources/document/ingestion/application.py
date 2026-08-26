@@ -863,7 +863,7 @@ class DocumentBatchIngestion:
             else:
                 status = DocumentBatchStatus.FAILED
         bundles = tuple(bundle_by_identity.values())
-        return DocumentBatchResult(
+        result = DocumentBatchResult(
             request_id=request.request_id,
             status=status,
             receipts=receipts,
@@ -885,6 +885,14 @@ class DocumentBatchIngestion:
             platform_receipts=platform_receipts,
             exercise_candidates=self._exercise_extractor.extract_batch(bundles),
         )
+        try:
+            from ....observability import record_document_result
+            elapsed = progress[-1].elapsed_seconds if progress else sum(durations.values())
+            record_document_result(result, elapsed_seconds=elapsed)
+        except Exception:
+            # Document processing remains authoritative if metrics are unavailable.
+            pass
+        return result
 
 
 class DocumentIngestionApplication(DocumentBatchIngestion):

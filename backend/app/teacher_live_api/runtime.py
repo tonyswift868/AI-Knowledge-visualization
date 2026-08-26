@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -54,6 +55,7 @@ from .provider_adapter import (
     SelectedTeacherProvider,
     TeacherProviderSelectionPort,
 )
+from ..observability import record_teacher_turn
 
 
 _LATENCY_BUDGET = TeacherLatencyBudget(
@@ -414,6 +416,21 @@ class TeacherLiveRuntime:
         )
 
     async def _execute_turn(self, session: _LiveSession, turn: _LiveTurn) -> None:
+        turn_started = time.perf_counter()
+        metric_recorded = False
+
+        def record_terminal(status: str, *, route: object = "unknown", ttft_ms: float | None = None, total_ms: float | None = None) -> None:
+            nonlocal metric_recorded
+            if metric_recorded:
+                return
+            record_teacher_turn(
+                route=str(getattr(route, "value", route)),
+                status=status,
+                ttft_ms=ttft_ms,
+                total_ms=total_ms if total_ms is not None else (time.perf_counter() - turn_started) * 1000,
+            )
+            metric_recorded = True
+
         async def emit_chunk(text: str) -> None:
             await self._publish(
                 session,
@@ -493,6 +510,12 @@ class TeacherLiveRuntime:
                     execution.execution_trace.cached_input_metadata.status.value
                 ),
             )
+            record_terminal(
+                "success",
+                route=execution.execution_trace.mode,
+                ttft_ms=execution.execution_trace.time_to_first_chunk_ms,
+                total_ms=execution.execution_trace.total_latency_ms,
+            )
             await self._publish(
                 session,
                 turn,
@@ -514,14 +537,19 @@ class TeacherLiveRuntime:
                 },
             )
         except TeacherRuntimeCancelledError:
+            record_terminal("cancelled")
             await self._emit_error(session, turn, "TEACHER_STREAM_CANCELLED")
         except TeacherApplicationError as error:
+            record_terminal("timeout" if "TIMEOUT" in error.code else "failed")
             await self._emit_error(session, turn, error.code)
         except ClassroomSessionError as error:
+            record_terminal("failed")
             await self._emit_error(session, turn, error.code)
         except asyncio.CancelledError:
+            record_terminal("cancelled")
             await self._emit_error(session, turn, "TURN_CANCELLED")
         except Exception:
+            record_terminal("failed")
             await self._emit_error(session, turn, "PROVIDER_UNAVAILABLE")
         finally:
             turn.terminal = True
