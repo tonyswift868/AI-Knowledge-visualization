@@ -114,6 +114,10 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-06"]["completion_delivery_receipt_sha256"] == "2D47A227F7F341C6CB43B341CE173B5537558D5CE5139C29996C8A2D12C4A403"
     assert by_id["E1-06"]["completion_source_commit"] == "1b0efc921da9515b1296c127fa7e6e8a2b7c7fa4"
     assert by_id["E1-06"]["completion_integration_commit"] == "bf7eadd4ad10d944c20580e95432bd54151fabdd"
+    assert by_id["E1-06"]["hardening_delivery_id"] == "DLV-W06-20260826T130201Z-03"
+    assert by_id["E1-06"]["hardening_delivery_receipt_sha256"] == "F216C9C1E990A7ACDB8E21CC6EDCDD954204920411DFBC83765250FD6AAB7847"
+    assert by_id["E1-06"]["hardening_source_commit"] == "4a9d7da2c90bb0e8ceb69a4d7997360b6b09dae1"
+    assert by_id["E1-06"]["hardening_integration_commit"] == "23ed3583db102c640b1899663f9ee545c04ee0c7"
     assert by_id["E1-07"]["state"] == "READY_AUDITED_CHAIN_COMPLETE_BLOCKED_BY_E1_04_QA"
     assert by_id["E1-07"]["delivery_id"] == "DLV-W07-20260826T105638Z-01"
     assert by_id["E1-07"]["source_commits"] == [
