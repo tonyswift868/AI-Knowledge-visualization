@@ -1,4 +1,4 @@
-"""Offline process benchmark for E1-03B governance policy paths.
+"""Offline policy-overhead benchmark for Enterprise governance hot paths.
 
 This is deliberately not a server, database-network, or load benchmark.
 """
@@ -9,6 +9,7 @@ import argparse
 import json
 import platform
 import tempfile
+from math import ceil
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -75,6 +76,23 @@ def rate(count: int, elapsed_seconds: float) -> float:
     return round(count / elapsed_seconds, 2) if elapsed_seconds else 0.0
 
 
+def percentile(samples: list[float], percentage: int) -> float:
+    if not samples:
+        raise ValueError("percentile requires at least one sample")
+    if not 0 < percentage <= 100:
+        raise ValueError("percentage must be in 1..100")
+    ordered = sorted(samples)
+    return ordered[max(0, ceil(len(ordered) * percentage / 100) - 1)]
+
+
+def latency_summary(samples: list[float], *, scale: float = 1_000_000) -> dict[str, float | int]:
+    return {
+        "sample_count": len(samples),
+        "p50_microseconds": round(percentile(samples, 50) * scale, 3),
+        "p95_microseconds": round(percentile(samples, 95) * scale, 3),
+    }
+
+
 def run(temp_root: Path) -> dict[str, object]:
     temp_root.mkdir(parents=True, exist_ok=True)
     subject, tenant, resource_scope = fixture()
@@ -93,16 +111,24 @@ def run(temp_root: Path) -> dict[str, object]:
             trace_id="benchmark-authorization",
             occurred_at=NOW,
         )
+        authorization_samples: list[float] = []
+        allowed = 0
         started = perf_counter()
-        allowed = sum(1 for _ in range(10_000) if authorization.authorize(policy_request).allowed)
+        for _ in range(10_000):
+            sample_started = perf_counter()
+            decision = authorization.authorize(policy_request)
+            authorization_samples.append(perf_counter() - sample_started)
+            allowed += int(decision.allowed)
         authorization_seconds = perf_counter() - started
         if allowed != 10_000 or len(authorization_log.records()) != 10_000:
             raise RuntimeError("authorization benchmark cardinality mismatch")
         authorization_log.close()
 
         append_log = SQLiteAuditLog(root / "audit-append.sqlite3")
+        audit_samples: list[float] = []
         started = perf_counter()
         for index in range(10_000):
+            sample_started = perf_counter()
             append_log.append(
                 AuditEnvelope(
                     event_id="benchmark-audit-" + uuid4().hex,
@@ -117,6 +143,7 @@ def run(temp_root: Path) -> dict[str, object]:
                     trace_id="benchmark-audit-append",
                 )
             )
+            audit_samples.append(perf_counter() - sample_started)
         audit_seconds = perf_counter() - started
         if len(append_log.records()) != 10_000 or not append_log.verify_integrity().valid:
             raise RuntimeError("audit append benchmark integrity mismatch")
@@ -158,10 +185,42 @@ def run(temp_root: Path) -> dict[str, object]:
             }
             bulk_log.close()
 
+        bulk_hot_log = SQLiteAuditLog(root / "bulk-hot-path.sqlite3")
+        bulk_hot_visibility = ResourceVisibilityFilter(AuthorizationService(bulk_hot_log))
+        bulk_hot_candidates = tuple(
+            AuthorizedResourceCandidate(
+                resource_id=f"hot-document-{index}",
+                resource_scope=resource_scope,
+                payload=index,
+            )
+            for index in range(100)
+        )
+        bulk_batch_samples: list[float] = []
+        for batch in range(100):
+            sample_started = perf_counter()
+            visible = bulk_hot_visibility.list(
+                AuthorizedQueryPolicy(
+                    subject=subject,
+                    tenant=tenant,
+                    action=Action.READ,
+                    resource=ResourceType.DOCUMENT,
+                    trace_id=f"benchmark-bulk-hot-{batch}",
+                    occurred_at=NOW,
+                ),
+                bulk_hot_candidates,
+            )
+            bulk_batch_samples.append(perf_counter() - sample_started)
+            if len(visible) != 100:
+                raise RuntimeError("bulk hot-path cardinality mismatch")
+        if len(bulk_hot_log.records()) != 100:
+            raise RuntimeError("bulk hot-path audit cardinality mismatch")
+        bulk_hot_log.close()
+
     return {
-        "schema_version": "mentorflow.enterprise-governance-offline-benchmark.v1",
+        "schema_version": "mentorflow.enterprise-policy-overhead.v1",
         "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "classification": "OFFLINE_PROCESS_BENCHMARK_NOT_SERVER_LOAD",
+        "classification": "OFFLINE POLICY OVERHEAD",
+        "server_latency_claimed": False,
         "environment": {
             "python": platform.python_version(),
             "platform": platform.platform(),
@@ -171,14 +230,31 @@ def run(temp_root: Path) -> dict[str, object]:
             "audit_append_count": 10_000,
             "elapsed_seconds": round(authorization_seconds, 6),
             "decisions_per_second": rate(10_000, authorization_seconds),
+            "local_policy_overhead": latency_summary(authorization_samples),
         },
         "audit_append": {
             "count": 10_000,
             "integrity_verified": True,
             "elapsed_seconds": round(audit_seconds, 6),
             "appends_per_second": rate(10_000, audit_seconds),
+            "local_policy_overhead": latency_summary(audit_samples),
         },
         "bulk_resource_filter": bulk_results,
+        "bulk_hot_path": {
+            "candidate_count": 10_000,
+            "batch_count": 100,
+            "resources_per_batch": 100,
+            "audit_append_count": 100,
+            "batch_latency": latency_summary(bulk_batch_samples),
+            "per_resource_p50_microseconds": round(
+                percentile(bulk_batch_samples, 50) * 10_000,
+                3,
+            ),
+            "per_resource_p95_microseconds": round(
+                percentile(bulk_batch_samples, 95) * 10_000,
+                3,
+            ),
+        },
         "required_fixture_coverage": [100, 1_000, 10_000],
         "provider_calls": 0,
     }
@@ -191,8 +267,13 @@ def main() -> None:
         type=Path,
         default=Path(r"E:\Codex\Temp\MF-e1-governance\benchmark"),
     )
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    print(json.dumps(run(args.temp_root), indent=2, sort_keys=True))
+    payload = json.dumps(run(args.temp_root), indent=2, sort_keys=True) + "\n"
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(payload, encoding="utf-8")
+    print(payload, end="")
 
 
 if __name__ == "__main__":

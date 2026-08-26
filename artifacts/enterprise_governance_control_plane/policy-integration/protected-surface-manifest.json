@@ -1,0 +1,1310 @@
+{
+  "audit_requirement_counts": {
+    "AUDIT_OPTIONAL": 1,
+    "AUDIT_REQUIRED": 78,
+    "NO_AUDIT": 1
+  },
+  "domain_count": 14,
+  "evidence_schema_version": "mentorflow.enterprise-policy-integration-evidence.v1",
+  "generated_at": "2026-08-26T16:23:25.990459+00:00",
+  "operation_count": 80,
+  "operations": [
+    {
+      "action": "READ_METADATA",
+      "audit_requirement": "NO_AUDIT",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.health",
+      "required_policy": "CONTEXT_VALIDATION",
+      "resource_type": "organization",
+      "sensitive": false,
+      "source_seams": [
+        "standalone Enterprise Admin health endpoint"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ_METADATA",
+      "audit_requirement": "AUDIT_OPTIONAL",
+      "domain": "Identity/Admin",
+      "operation_id": "identity.context.validate",
+      "required_policy": "CONTEXT_VALIDATION",
+      "resource_type": "organization",
+      "sensitive": false,
+      "source_seams": [
+        "E1-02 AdminContextResolver / canonical enterprise context"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "INTERNAL"
+      ]
+    },
+    {
+      "action": "READ_METADATA",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.member.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "app.governance.admin_api:list_members"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.member.invite",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "app.governance.admin_api:invite_member"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.member.suspend",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "OrganizationGovernanceService.suspend_member"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.member.revoke",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "OrganizationGovernanceService.revoke_member"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.role.assign",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "OrganizationGovernanceService.assign_role"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.role.remove",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "membership",
+      "sensitive": true,
+      "source_seams": [
+        "OrganizationGovernanceService.remove_role"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "READ_METADATA",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.workspace.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "app.governance.admin_api:list_workspaces"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.workspace.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "WorkspaceGovernanceService.create_workspace"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.workspace.archive",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "WorkspaceGovernanceService.archive_workspace"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Identity/Admin",
+      "operation_id": "admin.workspace.membership.bind",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "WorkspaceGovernanceService.add_membership"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Document",
+      "operation_id": "document.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "document",
+      "sensitive": true,
+      "source_seams": [
+        "app.main source/material endpoints + document import integration"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Knowledge Map",
+      "operation_id": "knowledge_map.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "knowledge_map",
+      "sensitive": true,
+      "source_seams": [
+        "app.generic_knowledge_api + app.knowledge.map_read_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Question Bank",
+      "operation_id": "question_bank.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.question_bank_v1"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Plan",
+      "operation_id": "plan.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "plan",
+      "sensitive": true,
+      "source_seams": [
+        "app.plan_product_api + planning product runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "app.active_teaching + app.teacher_live_api"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.start",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "teacher application/session runtime"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "EXECUTE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.advance",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "teacher application/session runtime"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "teacher application/session runtime"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "teacher application/session runtime"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Teacher",
+      "operation_id": "teacher.session.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "teacher completion/report export"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Assessment",
+      "operation_id": "assessment.question.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "question_bank",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.assessment_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Assessment",
+      "operation_id": "assessment.attempt.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.assessment_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Assessment",
+      "operation_id": "assessment.attempt.submit",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.assessment_v2"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Assessment",
+      "operation_id": "assessment.attempt.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "teacher_session",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.assessment_v2"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Assessment",
+      "operation_id": "assessment.result.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "assessment result export seam"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.delete",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Review",
+      "operation_id": "review.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "review_campaign",
+      "sensitive": true,
+      "source_seams": [
+        "app.review_product_v1 + app.teaching.review_campaign_v2"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Student Progress",
+      "operation_id": "student_progress.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.progress_read"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Student Progress",
+      "operation_id": "student_progress.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "app.teaching.progress_read"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Student Progress",
+      "operation_id": "student_progress.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "teaching student repository"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Student Progress",
+      "operation_id": "student_progress.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "student_progress",
+      "sensitive": true,
+      "source_seams": [
+        "progress export seam"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Cost/Cache",
+      "operation_id": "cost.summary.read",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "cost",
+      "sensitive": true,
+      "source_seams": [
+        "app.cost_cache_control_api + governance cost views"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Cost/Cache",
+      "operation_id": "cost.summary.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "cost",
+      "sensitive": true,
+      "source_seams": [
+        "cost export seam"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Cost/Cache",
+      "operation_id": "quota.policy.manage",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "cost",
+      "sensitive": true,
+      "source_seams": [
+        "TenantQuotaService"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Cost/Cache",
+      "operation_id": "cache.observatory.read",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "cost",
+      "sensitive": true,
+      "source_seams": [
+        "app.cost.cache_observatory"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Cost/Cache",
+      "operation_id": "cache.entry.invalidate",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "cost",
+      "sensitive": true,
+      "source_seams": [
+        "app.cost.cache_observatory.invalidation"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "app.governance.admin_api:provider_statuses"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.detail",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "ProviderGovernanceService.api_view"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.register",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "ProviderGovernanceService.register"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.rotate",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "ProviderGovernanceService.complete_rotation"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.revoke",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "ProviderGovernanceService.revoke"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Provider Config",
+      "operation_id": "provider_config.model_policy",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "provider_config",
+      "sensitive": true,
+      "source_seams": [
+        "ProviderGovernanceService.update_model_policy"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "PATCH"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Audit",
+      "operation_id": "audit.query",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "audit",
+      "sensitive": true,
+      "source_seams": [
+        "AuditQueryService"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "EXPORT",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Audit",
+      "operation_id": "audit.export",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "audit",
+      "sensitive": true,
+      "source_seams": [
+        "AuditExportService"
+      ],
+      "tenant_scope": "ORGANIZATION",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Export",
+      "operation_id": "export.request.create",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "export",
+      "sensitive": true,
+      "source_seams": [
+        "tenant-aware export application seam"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "EXPORT",
+        "POST"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Export",
+      "operation_id": "export.request.status",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "export",
+      "sensitive": true,
+      "source_seams": [
+        "tenant-aware export application seam"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Export",
+      "operation_id": "export.request.cancel",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "export",
+      "sensitive": true,
+      "source_seams": [
+        "tenant-aware export application seam"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Export",
+      "operation_id": "export.payload.download",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "export",
+      "sensitive": true,
+      "source_seams": [
+        "tenant-aware export application seam"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "EXPORT",
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.list",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "app.job_service + durable workflow runtimes"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "READ",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.status",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "app.job_service + durable workflow runtimes"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "GET"
+      ]
+    },
+    {
+      "action": "CREATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.enqueue",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "app.job_service + durable workflow runtimes"
+      ],
+      "tenant_scope": "WORKSPACE",
+      "transports": [
+        "JOB",
+        "POST"
+      ]
+    },
+    {
+      "action": "UPDATE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.update",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "durable workflow runtimes"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "JOB",
+        "PATCH"
+      ]
+    },
+    {
+      "action": "DELETE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.cancel",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "durable workflow runtimes"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "DELETE",
+        "JOB"
+      ]
+    },
+    {
+      "action": "MANAGE",
+      "audit_requirement": "AUDIT_REQUIRED",
+      "domain": "Jobs",
+      "operation_id": "job.retry",
+      "required_policy": "AUTHORIZATION",
+      "resource_type": "workspace",
+      "sensitive": true,
+      "source_seams": [
+        "durable workflow runtimes"
+      ],
+      "tenant_scope": "RESOURCE",
+      "transports": [
+        "JOB",
+        "POST"
+      ]
+    }
+  ],
+  "schema_version": "mentorflow.protected-surface-manifest.v1"
+}
