@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-27T04:36:50+08:00",
+  "updated_at": "2026-08-27T04:50:43+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -68,7 +68,7 @@
     {
       "work_item": "E1-03",
       "capability": "authorization_governance",
-      "state": "INTEGRATED_ADMIN_CONTROL_PLANE_EXACT_COMMITS_FOCUSED_GATES_PASSED",
+      "state": "INTEGRATED_SECRET_GOVERNANCE_EXACT_COMMITS_FOCUSED_GATES_PASSED",
       "depends_on": ["E1-02", "E1-01", "enterprise-context.v1"],
       "delivery_id": "DLV-W03-20260826T111731Z-03",
       "delivery_receipt_sha256": "CAEB81CCE7DF2CD8F50E9C02EB2B29AD88DB3F9AF4F2FB074A6F88C861625A82",
@@ -111,9 +111,9 @@
         "02ce47d9e7c1d17c48956cdc440343132497d4b0"
       ],
       "admin_control_plane_mount": "STANDALONE_ONLY_PENDING_PRODUCTION_E1_02_AUTHENTICATED_RESOLVER",
-      "returned_secret_governance_delivery_id": "DLV-W03-20260826T202651Z-06",
-      "returned_secret_governance_receipt_sha256": "AD0DDF5B754733F25954CBE8BA630968B28BFD7447E3036CC929C82E97D6B074",
-      "returned_secret_governance_source_commits": [
+      "secret_governance_delivery_id": "DLV-W03-20260826T202651Z-06",
+      "secret_governance_receipt_sha256": "AD0DDF5B754733F25954CBE8BA630968B28BFD7447E3036CC929C82E97D6B074",
+      "secret_governance_source_commits": [
         "fcccf8b893978905c77ecf0c9f70584bbead9e1a",
         "beb729b2e75899e6d163aa321d10af55a47d869b",
         "924200d40c79d3081fa657a0b3617d4c0e78ca5f",
@@ -123,12 +123,26 @@
         "aabf28a03141efb0f2110103d1e2c6e54f1aca6e",
         "36cc4861605200268cf225549cd3ee8ce828c83d"
       ],
-      "returned_secret_governance_result": "delivery_fence_v1/returned/DLV-W03-20260826T202651Z-06.integration-result.json",
-      "returned_secret_governance_commits_consumed": false,
-      "returned_secret_governance_reason": "The architect-authorized repair was limited to removing the legacy direct secret read from backend/app/teacher_avatar_registry.py. The frozen final tree still calls os.getenv(\"VROID_HUB_CLIENT_SECRET\", \"\") in LegacyLocalVroidHubCompatibilityAdapter.credential_snapshot(), the receipt records this as an allowed compatibility boundary, and test_personal_local_legacy_compatibility_is_preserved requires the direct plaintext environment read. Renaming and exempting the legacy read does not remove it, so the Delivery fails its core acceptance and no exact commit was consumed.",
-      "returned_secret_governance_review_after_fix": "REQUIRED_NEW_DELIVERY_FENCE_RECEIPT",
+      "secret_governance_integration_commits": [
+        "83442ebc39ce879a1c11371258ca88c05689c3a8",
+        "a1ca8ed66719879ac8078d562290d4f4856a3980",
+        "054c4d31bb593b9057304d00c0623f344fd37987",
+        "97f28fe8512ceb1b86d1720a72a50b26e65e5fe5",
+        "1fcf3c755de824e9085eef062b8b8490e5ddd41c",
+        "7741ce2005a415dc8530e88365ee72845a653f0e",
+        "2bf64092fb3eee6a14f59e58d518a060b0fe5f25",
+        "71b1a6725663f3e0e4d2106ead66ca31e71b6354"
+      ],
+      "secret_governance_result": "delivery_fence_v1/merged/DLV-W03-20260826T202651Z-06.integration-result.json",
+      "secret_governance_personal_local_boundary": "LegacyLocalVroidHubCompatibilityAdapter only",
+      "secret_governance_enterprise_path": "EnterpriseVroidHubCredentialAdapter -> session fencing -> ProviderCredentialRef -> CredentialResolverPort/get_secret -> execution callback",
+      "secret_governance_rotation_revocation": "PASS_BEFORE_RESOLVER",
+      "secret_governance_provider_calls": 0,
+      "secret_governance_focused_gates": "ENTERPRISE_191_PASS__PERSONAL_LOCAL_73_PASS_1_SKIP__FRONTEND_3_PASS_BUILD_PASS__CONTRACTS_13_PASS__SECRET_SCAN_0_VIOLATIONS",
+      "superseded_integration_review_error_result": "delivery_fence_v1/returned/DLV-W03-20260826T202651Z-06.integration-result.json",
+      "superseded_integration_review_error": "A initially misread the authoritative Section 2A allowance for the named PERSONAL_LOCAL compatibility boundary. The feedback was withdrawn before any repair Delivery was requested; the corrected audit consumed the original exact sequence after full focused gates.",
       "supersedes_returned_delivery": "DLV-W03-20260826T110330Z-02",
-      "notes": "The replacement and completion deliveries remain legally integrated. Admin control-plane delivery DLV-W03-20260826T133451Z-05 was audited as an exact six-commit continuation of completion source 411f0618, touched only governance/admin UI/tests/docs/artifacts owned paths, changed no forbidden path, dependency, migration, shared contract, Provider runtime, Cost Engine, or central route, and was applied in exact receipt order with -x provenance. Its backend and frontend surfaces remain standalone because central mounting requires an E1-02 authenticated AdminContextResolver that is not yet present; no demo StaticAdminContextResolver is mounted into production. Governance/negative/contract gates passed 66/66; Personal Local passed 31 with 1 platform skip; Cost compatibility passed 39/39; frontend passed 3/3 and production build; offline authorization/audit benchmark integrity passed and remains explicitly not a server-load claim; compile/import, frozen hashes, JSON, pip, manifest, diff, and clean gates passed."
+      "notes": "The replacement, completion, and admin control-plane deliveries remain legally integrated. Secret-governance delivery DLV-W03-20260826T202651Z-06 was audited as eight exact commits after merged source dependency 19b2b4e0/Integration equivalent 02ce47d9. All 36 changed paths were owned, forbidden paths were zero, and no migration/shared-contract/dependency/lock/main.py mutation occurred. Section 2A explicitly permits the named LegacyLocalVroidHubCompatibilityAdapter only in PERSONAL_LOCAL; Enterprise mode never falls back to getenv and resolves ProviderCredentialRef only after session validation. Rotation and revocation reject stale/existing grants before resolver execution. Enterprise tests passed 191/191; PERSONAL_LOCAL/Avatar/Credential/Cost passed 73 with one existing platform skip; frontend passed 3/3 and build; contracts/manifests passed 13/13; AST secret scan reported zero violations, one authorized compatibility boundary, five resolver consumers, and eight evidence JSON files. Provider calls were zero. The earlier A review that treated the PERSONAL_LOCAL boundary as forbidden was corrected and preserved as superseded audit history."
     },
     {
       "work_item": "E1-05",
