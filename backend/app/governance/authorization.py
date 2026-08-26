@@ -11,7 +11,7 @@ from app.enterprise.contracts_v1 import (
     AccessDecisionKind,
     AuditEnvelope,
     AuditMetadataEntry,
-    ResourceClassification,
+    ResourceScope,
     ResourceScopeType,
     TenantContext,
     TenantMode,
@@ -19,17 +19,18 @@ from app.enterprise.contracts_v1 import (
 from app.governance.audit import SQLiteAuditLog
 from app.governance.models import (
     Action,
-    AuthorizationResult,
     BreakGlassGrant,
     GovernanceActorAdapter,
+    PolicyDecision,
     PolicyRequest,
     Resource,
+    ResourceType,
     Role,
-    resource_scope_for_tenant,
 )
 
 
 POLICY_ID = "mentorflow.enterprise.authorization.v1"
+DEFAULT_POLICY = AccessDecisionKind.DENY
 
 
 def _actions(*values: Action) -> frozenset[Action]:
@@ -55,8 +56,8 @@ _ORG_MANAGE = _actions(
 
 
 def _freeze_role_matrix(
-    value: Mapping[Role, Mapping[Resource, frozenset[Action]]],
-) -> Mapping[Role, Mapping[Resource, frozenset[Action]]]:
+    value: Mapping[Role, Mapping[ResourceType, frozenset[Action]]],
+) -> Mapping[Role, Mapping[ResourceType, frozenset[Action]]]:
     return MappingProxyType(
         {
             role: MappingProxyType(dict(resources))
@@ -68,12 +69,15 @@ def _freeze_role_matrix(
 ROLE_MATRIX = _freeze_role_matrix(
     {
         Role.OWNER: {
-            Resource.MEMBERS: _ORG_MANAGE,
+            Resource.ORGANIZATION: _ORG_MANAGE,
+            Resource.MEMBERSHIP: _ORG_MANAGE,
             Resource.WORKSPACE: _ORG_MANAGE,
-            Resource.DOCUMENTS: _CONTENT_MANAGE,
+            Resource.DOCUMENT: _CONTENT_MANAGE,
             Resource.KNOWLEDGE_MAP: _CONTENT_MANAGE,
             Resource.QUESTION_BANK: _CONTENT_MANAGE,
-            Resource.PLANS: _CONTENT_MANAGE,
+            Resource.PLAN: _CONTENT_MANAGE,
+            Resource.TEACHER_SESSION: _CONTENT_MANAGE | _actions(Action.EXECUTE),
+            Resource.REVIEW_CAMPAIGN: _CONTENT_MANAGE | _actions(Action.EXECUTE),
             Resource.STUDENT_PROGRESS: _actions(
                 Action.READ, Action.READ_METADATA, Action.UPDATE, Action.EXPORT
             ),
@@ -85,12 +89,17 @@ ROLE_MATRIX = _freeze_role_matrix(
             Resource.EXPORT: _actions(Action.CREATE, Action.READ, Action.MANAGE),
         },
         Role.ADMIN: {
-            Resource.MEMBERS: _ORG_MANAGE,
+            Resource.ORGANIZATION: _actions(
+                Action.READ, Action.READ_METADATA, Action.UPDATE, Action.MANAGE
+            ),
+            Resource.MEMBERSHIP: _ORG_MANAGE,
             Resource.WORKSPACE: _ORG_MANAGE,
-            Resource.DOCUMENTS: _CONTENT_MANAGE,
+            Resource.DOCUMENT: _CONTENT_MANAGE,
             Resource.KNOWLEDGE_MAP: _CONTENT_MANAGE,
             Resource.QUESTION_BANK: _CONTENT_MANAGE,
-            Resource.PLANS: _CONTENT_MANAGE,
+            Resource.PLAN: _CONTENT_MANAGE,
+            Resource.TEACHER_SESSION: _CONTENT_MANAGE | _actions(Action.EXECUTE),
+            Resource.REVIEW_CAMPAIGN: _CONTENT_MANAGE | _actions(Action.EXECUTE),
             Resource.STUDENT_PROGRESS: _actions(
                 Action.READ, Action.READ_METADATA, Action.UPDATE, Action.EXPORT
             ),
@@ -102,21 +111,31 @@ ROLE_MATRIX = _freeze_role_matrix(
             Resource.EXPORT: _actions(Action.CREATE, Action.READ, Action.MANAGE),
         },
         Role.CONTENT_MANAGER: {
-            Resource.MEMBERS: _actions(Action.READ_METADATA),
+            Resource.ORGANIZATION: _actions(Action.READ_METADATA),
+            Resource.MEMBERSHIP: _actions(Action.READ_METADATA),
             Resource.WORKSPACE: _actions(Action.READ_METADATA),
-            Resource.DOCUMENTS: _CONTENT_MANAGE,
+            Resource.DOCUMENT: _CONTENT_MANAGE,
             Resource.KNOWLEDGE_MAP: _CONTENT_MANAGE,
             Resource.QUESTION_BANK: _CONTENT_MANAGE,
-            Resource.PLANS: _CONTENT_MANAGE,
+            Resource.PLAN: _CONTENT_MANAGE,
+            Resource.TEACHER_SESSION: _actions(Action.READ),
+            Resource.REVIEW_CAMPAIGN: _CONTENT_MANAGE,
             Resource.EXPORT: _actions(Action.CREATE, Action.READ),
         },
         Role.INSTRUCTOR: {
-            Resource.MEMBERS: _actions(Action.READ_METADATA),
+            Resource.ORGANIZATION: _actions(Action.READ_METADATA),
+            Resource.MEMBERSHIP: _actions(Action.READ_METADATA),
             Resource.WORKSPACE: _actions(Action.READ_METADATA),
-            Resource.DOCUMENTS: _actions(Action.READ),
+            Resource.DOCUMENT: _actions(Action.READ),
             Resource.KNOWLEDGE_MAP: _actions(Action.READ),
             Resource.QUESTION_BANK: _actions(Action.READ, Action.CREATE, Action.UPDATE),
-            Resource.PLANS: _actions(Action.READ, Action.CREATE, Action.UPDATE),
+            Resource.PLAN: _actions(Action.READ, Action.CREATE, Action.UPDATE),
+            Resource.TEACHER_SESSION: _actions(
+                Action.READ, Action.CREATE, Action.UPDATE, Action.EXECUTE
+            ),
+            Resource.REVIEW_CAMPAIGN: _actions(
+                Action.READ, Action.CREATE, Action.UPDATE, Action.EXECUTE
+            ),
             Resource.STUDENT_PROGRESS: _actions(
                 Action.READ, Action.READ_METADATA, Action.UPDATE
             ),
@@ -125,16 +144,19 @@ ROLE_MATRIX = _freeze_role_matrix(
         },
         Role.LEARNER: {
             Resource.WORKSPACE: _actions(Action.READ_METADATA),
-            Resource.DOCUMENTS: _actions(Action.READ),
+            Resource.DOCUMENT: _actions(Action.READ),
             Resource.KNOWLEDGE_MAP: _actions(Action.READ),
             Resource.QUESTION_BANK: _actions(Action.READ),
-            Resource.PLANS: _actions(Action.READ),
+            Resource.PLAN: _actions(Action.READ),
+            Resource.TEACHER_SESSION: _actions(Action.READ, Action.EXECUTE),
+            Resource.REVIEW_CAMPAIGN: _actions(Action.READ, Action.EXECUTE),
             Resource.STUDENT_PROGRESS: _actions(Action.READ, Action.UPDATE),
             Resource.COST: _actions(Action.READ),
             Resource.EXPORT: _actions(Action.CREATE),
         },
         Role.AUDITOR: {
-            Resource.MEMBERS: _actions(Action.READ_METADATA),
+            Resource.ORGANIZATION: _actions(Action.READ_METADATA),
+            Resource.MEMBERSHIP: _actions(Action.READ_METADATA),
             Resource.WORKSPACE: _actions(Action.READ_METADATA),
             Resource.COST: _actions(Action.READ, Action.READ_METADATA),
             Resource.AUDIT: _actions(Action.READ, Action.READ_METADATA),
@@ -182,7 +204,7 @@ class AuthorizationService:
         self._break_glass_policy = break_glass_policy
 
     @staticmethod
-    def role_matrix() -> Mapping[Role, Mapping[Resource, frozenset[Action]]]:
+    def role_matrix() -> Mapping[Role, Mapping[ResourceType, frozenset[Action]]]:
         return ROLE_MATRIX
 
     def issue_break_glass(
@@ -193,7 +215,9 @@ class AuthorizationService:
         reason: str,
         approved_by: str,
         actions: frozenset[Action],
-        resources: frozenset[Resource],
+        resources: frozenset[ResourceType],
+        resource_ids: frozenset[str],
+        resource_scope: ResourceScope,
         trace_id: str,
         duration: timedelta = timedelta(minutes=10),
         now: datetime | None = None,
@@ -228,10 +252,8 @@ class AuthorizationService:
             expires_at=issued_at + duration,
             actions=actions,
             resources=resources,
-        )
-        scope = resource_scope_for_tenant(
-            tenant,
-            classification=ResourceClassification.RESTRICTED,
+            resource_ids=resource_ids,
+            resource_scope=resource_scope,
         )
         self._append_audit(
             AuditEnvelope(
@@ -249,13 +271,14 @@ class AuthorizationService:
                     approved_by=grant.approved_by,
                     expires_at=grant.expires_at.isoformat(),
                     grant_reason=grant.reason,
-                    resource_scope=scope.scope_type.value,
+                    resource_id_count=len(grant.resource_ids),
+                    resource_scope=grant.resource_scope.scope_type.value,
                 ),
             )
         )
         return grant
 
-    def authorize(self, request: PolicyRequest) -> AuthorizationResult:
+    def authorize(self, request: PolicyRequest) -> PolicyDecision:
         outcome, reason_code = self._base_decision(request)
         break_glass_used = False
         if outcome is AccessDecisionKind.DENY and self._valid_break_glass(request):
@@ -289,11 +312,12 @@ class AuthorizationService:
                     grant_id=grant.grant_id if grant is not None else None,
                     grant_reason=grant.reason if grant is not None else None,
                     policy_id=POLICY_ID,
+                    role=request.subject.effective_role.value,
                     tenant_mode=request.tenant.mode.value,
                 ),
             )
         )
-        return AuthorizationResult(
+        return PolicyDecision(
             decision=decision,
             audit_sequence=record.sequence,
             break_glass_used=break_glass_used,
@@ -346,12 +370,14 @@ class AuthorizationService:
         if role == Role.AUDITOR:
             if request.action not in {Action.READ, Action.READ_METADATA}:
                 return AccessDecisionKind.DENY, "AUDITOR_READ_ONLY"
-            if request.resource in {Resource.MEMBERS, Resource.WORKSPACE} and not (
+            if request.resource in {Resource.MEMBERSHIP, Resource.WORKSPACE} and not (
                 relationships.metadata_only or request.action == Action.READ_METADATA
             ):
                 return AccessDecisionKind.DENY, "AUDITOR_METADATA_ONLY"
 
         if role == Role.INSTRUCTOR and request.resource in {
+            Resource.TEACHER_SESSION,
+            Resource.REVIEW_CAMPAIGN,
             Resource.STUDENT_PROGRESS,
             Resource.COST,
             Resource.EXPORT,
@@ -363,11 +389,17 @@ class AuthorizationService:
             cohort_allowed = (
                 relationships.cohort_id is not None
                 and relationships.cohort_id in relationships.assigned_cohort_ids
+                and (
+                    relationships.learner_id is None
+                    or relationships.cohort_id in relationships.learner_cohort_ids
+                )
             )
             if not (learner_allowed or cohort_allowed):
                 return AccessDecisionKind.DENY, "INSTRUCTOR_ASSIGNMENT_REQUIRED"
 
         if role == Role.LEARNER and request.resource in {
+            Resource.TEACHER_SESSION,
+            Resource.REVIEW_CAMPAIGN,
             Resource.STUDENT_PROGRESS,
             Resource.COST,
             Resource.EXPORT,
@@ -419,6 +451,10 @@ class AuthorizationService:
             return False
         if request.action not in grant.actions or request.resource not in grant.resources:
             return False
+        if request.resource_id not in grant.resource_ids:
+            return False
+        if request.resource_scope != grant.resource_scope:
+            return False
         if grant.approved_by == subject.actor_id:
             return False
         if grant.expires_at - grant.issued_at > policy.maximum_duration:
@@ -431,6 +467,7 @@ __all__ = [
     "AuthorizationService",
     "BreakGlassDenied",
     "BreakGlassPolicy",
+    "DEFAULT_POLICY",
     "POLICY_ID",
     "ROLE_MATRIX",
 ]

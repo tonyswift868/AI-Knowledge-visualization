@@ -1,11 +1,19 @@
 """Enterprise governance adapters built on the frozen enterprise-context.v1."""
 
-from app.governance.audit import AuditIntegrityReport, AuditRecord, SQLiteAuditLog
+from app.governance.audit import (
+    AuditEventAction,
+    AuditIntegrityError,
+    AuditIntegrityReport,
+    AuditRecord,
+    GovernanceAuditEvent,
+    SQLiteAuditLog,
+)
 from app.governance.authorization import (
     AuthorizationAuditError,
     AuthorizationService,
     BreakGlassDenied,
     BreakGlassPolicy,
+    DEFAULT_POLICY,
     ROLE_MATRIX,
 )
 from app.governance.cost_views import (
@@ -22,23 +30,28 @@ from app.governance.models import (
     AuthorizationResult,
     BreakGlassGrant,
     GovernanceActorAdapter,
+    PolicyDecision,
     PolicyRequest,
     RelationshipContext,
     Resource,
+    ResourceType,
     Role,
     resource_scope_for_tenant,
 )
 from app.governance.provider_governance import (
     ProviderConfig,
     ProviderConfigStatus,
+    ProviderCredentialRef,
     ProviderGovernanceError,
     ProviderGovernanceService,
     ProviderScope,
+    ProviderSessionGrant,
     ProviderSecretReference,
 )
 from app.governance.quotas import (
     BudgetLimit,
     BudgetPeriod,
+    OrganizationBudget,
     QuotaEvaluation,
     QuotaPolicy,
     QuotaPolicyError,
@@ -46,10 +59,22 @@ from app.governance.quotas import (
     QuotaSubject,
     QuotaUsageSnapshot,
     TenantQuotaService,
+    UserBudget,
+    WorkspaceBudget,
+)
+from app.governance.ui_seams import (
+    AccessDeniedReadModel,
+    NavigationPermission,
+    OrganizationCostReadModel,
+    PermissionAwareNavigation,
+    RoleBadge,
 )
 
 __all__ = [
     "Action",
+    "AccessDeniedReadModel",
+    "AuditEventAction",
+    "AuditIntegrityError",
     "AuditIntegrityReport",
     "AuditRecord",
     "AuthorizationAuditError",
@@ -58,18 +83,27 @@ __all__ = [
     "BreakGlassDenied",
     "BreakGlassGrant",
     "BreakGlassPolicy",
+    "DEFAULT_POLICY",
     "BudgetLimit",
     "BudgetPeriod",
     "CostViewDenied",
     "CostViewRequest",
     "CostViewScope",
     "GovernanceActorAdapter",
+    "GovernanceAuditEvent",
+    "NavigationPermission",
+    "OrganizationBudget",
+    "OrganizationCostReadModel",
+    "PermissionAwareNavigation",
+    "PolicyDecision",
     "PolicyRequest",
     "ProviderConfig",
     "ProviderConfigStatus",
+    "ProviderCredentialRef",
     "ProviderGovernanceError",
     "ProviderGovernanceService",
     "ProviderScope",
+    "ProviderSessionGrant",
     "ProviderSecretReference",
     "QuotaEvaluation",
     "QuotaPolicy",
@@ -80,6 +114,7 @@ __all__ = [
     "ROLE_MATRIX",
     "RelationshipContext",
     "Resource",
+    "ResourceType",
     "Role",
     "SQLiteAuditLog",
     "TenantCostEntry",
@@ -87,5 +122,8 @@ __all__ = [
     "TenantCostView",
     "TenantCostViewService",
     "TenantQuotaService",
+    "UserBudget",
+    "WorkspaceBudget",
+    "RoleBadge",
     "resource_scope_for_tenant",
 ]

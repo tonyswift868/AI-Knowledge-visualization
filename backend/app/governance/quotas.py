@@ -146,6 +146,84 @@ class QuotaPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class OrganizationBudget:
+    policy_id: str
+    organization_id: str
+    currency: str
+    daily: BudgetLimit | None = None
+    monthly: BudgetLimit | None = None
+    model_allowlist: frozenset[str] = field(default_factory=frozenset)
+    feature_quotas: Mapping[str, int] = field(default_factory=dict)
+
+    def to_policy(self) -> QuotaPolicy:
+        return QuotaPolicy(
+            policy_id=self.policy_id,
+            organization_id=self.organization_id,
+            scope=QuotaScope.ORGANIZATION,
+            currency=self.currency,
+            daily_budget=self.daily,
+            monthly_budget=self.monthly,
+            model_allowlist=self.model_allowlist,
+            feature_quotas=self.feature_quotas,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceBudget:
+    policy_id: str
+    organization_id: str
+    workspace_id: str
+    currency: str
+    daily: BudgetLimit | None = None
+    monthly: BudgetLimit | None = None
+    model_allowlist: frozenset[str] = field(default_factory=frozenset)
+    feature_quotas: Mapping[str, int] = field(default_factory=dict)
+
+    def to_policy(self) -> QuotaPolicy:
+        return QuotaPolicy(
+            policy_id=self.policy_id,
+            organization_id=self.organization_id,
+            workspace_id=self.workspace_id,
+            scope=QuotaScope.WORKSPACE,
+            currency=self.currency,
+            daily_budget=self.daily,
+            monthly_budget=self.monthly,
+            model_allowlist=self.model_allowlist,
+            feature_quotas=self.feature_quotas,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UserBudget:
+    policy_id: str
+    user_id: str
+    currency: str
+    organization_id: str | None = None
+    workspace_id: str | None = None
+    daily: BudgetLimit | None = None
+    monthly: BudgetLimit | None = None
+    model_allowlist: frozenset[str] = field(default_factory=frozenset)
+    feature_quotas: Mapping[str, int] = field(default_factory=dict)
+
+    def to_policy(self) -> QuotaPolicy:
+        return QuotaPolicy(
+            policy_id=self.policy_id,
+            organization_id=self.organization_id,
+            workspace_id=self.workspace_id,
+            user_id=self.user_id,
+            scope=QuotaScope.USER,
+            currency=self.currency,
+            daily_budget=self.daily,
+            monthly_budget=self.monthly,
+            model_allowlist=self.model_allowlist,
+            feature_quotas=self.feature_quotas,
+        )
+
+
+BudgetDefinition = OrganizationBudget | WorkspaceBudget | UserBudget
+
+
+@dataclass(frozen=True, slots=True)
 class QuotaSubject:
     tenant: TenantContext
     user_id: str
@@ -322,6 +400,21 @@ class TenantQuotaService:
         with self._lock:
             self._policies[policy.policy_id] = policy
 
+    def set_budget(
+        self,
+        budget: BudgetDefinition,
+        *,
+        subject: GovernanceActorAdapter,
+        tenant: TenantContext,
+        trace_id: str,
+    ) -> None:
+        self.set_policy(
+            budget.to_policy(),
+            subject=subject,
+            tenant=tenant,
+            trace_id=trace_id,
+        )
+
     def policies_for(self, subject: QuotaSubject) -> tuple[QuotaPolicy, ...]:
         with self._lock:
             return tuple(
@@ -426,6 +519,8 @@ class TenantQuotaService:
 __all__ = [
     "BudgetLimit",
     "BudgetPeriod",
+    "BudgetDefinition",
+    "OrganizationBudget",
     "QuotaEvaluation",
     "QuotaPolicy",
     "QuotaPolicyError",
@@ -434,4 +529,6 @@ __all__ = [
     "QuotaUsageSnapshot",
     "ScopedBudgetReceipt",
     "TenantQuotaService",
+    "UserBudget",
+    "WorkspaceBudget",
 ]

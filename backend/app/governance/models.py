@@ -30,7 +30,8 @@ def _utc(value: datetime) -> datetime:
 
 
 class Role(str, Enum):
-    OWNER = "OWNER"
+    ORGANIZATION_OWNER = "ORGANIZATION_OWNER"
+    OWNER = "ORGANIZATION_OWNER"
     ADMIN = "ADMIN"
     CONTENT_MANAGER = "CONTENT_MANAGER"
     INSTRUCTOR = "INSTRUCTOR"
@@ -40,6 +41,8 @@ class Role(str, Enum):
     @classmethod
     def from_contract_code(cls, value: str) -> "Role":
         normalized = str(value or "").strip().upper().replace(" ", "_").replace("-", "_")
+        if normalized == "OWNER":
+            normalized = "ORGANIZATION_OWNER"
         try:
             return cls(normalized)
         except ValueError as exc:
@@ -57,18 +60,29 @@ class Action(str, Enum):
     EXECUTE = "EXECUTE"
 
 
-class Resource(str, Enum):
-    MEMBERS = "members"
+class ResourceType(str, Enum):
+    ORGANIZATION = "organization"
+    MEMBERSHIP = "membership"
+    MEMBERS = "membership"
     WORKSPACE = "workspace"
-    DOCUMENTS = "documents"
+    DOCUMENT = "document"
+    DOCUMENTS = "document"
     KNOWLEDGE_MAP = "knowledge_map"
     QUESTION_BANK = "question_bank"
-    PLANS = "plans"
+    PLAN = "plan"
+    PLANS = "plan"
+    TEACHER_SESSION = "teacher_session"
+    REVIEW_CAMPAIGN = "review_campaign"
     STUDENT_PROGRESS = "student_progress"
     PROVIDER_CONFIG = "provider_config"
     COST = "cost"
     AUDIT = "audit"
     EXPORT = "export"
+
+
+# Compatibility name for the already-published foundation.  ResourceType is the
+# frozen enterprise authorization vocabulary used by new callers.
+Resource = ResourceType
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +132,7 @@ class RelationshipContext:
     cohort_id: str | None = None
     assigned_learner_ids: FrozenSet[str] = field(default_factory=frozenset)
     assigned_cohort_ids: FrozenSet[str] = field(default_factory=frozenset)
+    learner_cohort_ids: FrozenSet[str] = field(default_factory=frozenset)
     metadata_only: bool = False
     private_student_model: bool = False
     personal_resource: bool = False
@@ -131,6 +146,7 @@ class RelationshipContext:
         for name in (
             "assigned_learner_ids",
             "assigned_cohort_ids",
+            "learner_cohort_ids",
             "explicit_permissions",
         ):
             object.__setattr__(
@@ -151,7 +167,9 @@ class BreakGlassGrant:
     issued_at: datetime
     expires_at: datetime
     actions: FrozenSet[Action]
-    resources: FrozenSet[Resource]
+    resources: FrozenSet[ResourceType]
+    resource_ids: FrozenSet[str]
+    resource_scope: ResourceScope
 
     def __post_init__(self) -> None:
         for name in ("grant_id", "actor_id", "organization_id", "approved_by"):
@@ -170,10 +188,19 @@ class BreakGlassGrant:
         object.__setattr__(self, "expires_at", _utc(self.expires_at))
         if self.expires_at <= self.issued_at:
             raise ValueError("break-glass grant must expire after it is issued")
-        if not self.actions or not self.resources:
+        if not self.actions or not self.resources or not self.resource_ids:
             raise ValueError("break-glass grant must be narrowly scoped")
         object.__setattr__(self, "actions", frozenset(self.actions))
         object.__setattr__(self, "resources", frozenset(self.resources))
+        object.__setattr__(
+            self,
+            "resource_ids",
+            frozenset(_required("resource_id", value) for value in self.resource_ids),
+        )
+        if self.resource_scope.organization_id != self.organization_id:
+            raise ValueError("break-glass scope organization must match the grant")
+        if self.resource_scope.workspace_id != self.workspace_id:
+            raise ValueError("break-glass scope workspace must match the grant")
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +208,7 @@ class PolicyRequest:
     subject: GovernanceActorAdapter
     tenant: TenantContext
     action: Action
-    resource: Resource
+    resource: ResourceType
     resource_id: str
     resource_scope: ResourceScope
     relationships: RelationshipContext = field(default_factory=RelationshipContext)
@@ -204,7 +231,7 @@ class PolicyRequest:
 
 
 @dataclass(frozen=True, slots=True)
-class AuthorizationResult:
+class PolicyDecision:
     decision: AccessDecision
     audit_sequence: int
     break_glass_used: bool = False
@@ -220,6 +247,9 @@ class AuthorizationResult:
     @property
     def reason_code(self) -> str:
         return self.decision.reason_code
+
+
+AuthorizationResult = PolicyDecision
 
 
 def resource_scope_for_tenant(
@@ -257,9 +287,11 @@ __all__ = [
     "AuthorizationResult",
     "BreakGlassGrant",
     "GovernanceActorAdapter",
+    "PolicyDecision",
     "PolicyRequest",
     "RelationshipContext",
     "Resource",
+    "ResourceType",
     "Role",
     "resource_scope_for_tenant",
 ]
