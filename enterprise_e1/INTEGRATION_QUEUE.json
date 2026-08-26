@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T21:24:26+08:00",
+  "updated_at": "2026-08-26T21:28:10+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -20,7 +20,7 @@
     {
       "work_item": "E1-02",
       "capability": "tenant_persistence",
-      "state": "INTEGRATED_BASE_COMPLETION_RETURNED_TO_OWNER",
+      "state": "INTEGRATED_COMPLETION_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PENDING",
       "depends_on": ["enterprise-context.v1"],
       "delivery_id": "DLV-W02-20260826T105314Z-02",
       "delivery_receipt_sha256": "18B319D959472CF3CE879F04A4B2BE1004F0FE772F82089C6F3A6939535E27AB",
@@ -30,7 +30,11 @@
       "returned_completion_receipt_sha256": "C525BC787E91EB8475B109564237FCE4F1F867AC7799D234EFE4BCA429918930",
       "returned_completion_source_commit": "a11dfc29d6653897cbfe73078901a3ab37d97297",
       "returned_completion_result": "delivery_fence_v1/returned/DLV-W02-20260826T125813Z-03.integration-result.json",
-      "notes": "The frozen base exact commit remains legally integrated and its focused gates passed. Completion delivery DLV-W02-20260826T125813Z-03 was audited but not consumed: its migration 0030_enterprise_tenancy_completion branches directly from 0029_enterprise_tenancy_rls while canonical Integration already has E1-05 head 0030_enterprise_jobs_v1, which would create two Alembic heads. A precise original-scope RETURN_TO_OWNER repair request was sent; live PostgreSQL RLS execution remains unclaimed."
+      "completion_repair_delivery_id": "DLV-W02-20260826T132400Z-04",
+      "completion_repair_receipt_sha256": "A9FA2B0EBF21D443CAC3AD7B51BDD23B5C6E6F1E97903A5716BE565FCDFE1A1E",
+      "completion_repair_source_commit": "27996a044c6a6f66f339f02efc1214bf488ebec9",
+      "completion_repair_integration_commit": "650a352ca6998d408c765be3dd7d352112ae952f",
+      "notes": "The frozen base exact commit remains legally integrated and its focused gates passed. Completion delivery DLV-W02-20260826T125813Z-03 was returned without consuming its colliding migration. Replacement DLV-W02-20260826T132400Z-04 was audited as an exact one-commit repair, uses unique revision 0031_enterprise_tenancy_completion after canonical 0030_enterprise_jobs_v1, changes no forbidden path, dependency, lock, shared contract, 0029 foundation migration, or 0030 jobs migration, and was applied with -x provenance. Focused migration, tenant isolation, Personal Local, contract, and manifest gates are pending; real PostgreSQL RLS execution remains unclaimed."
     },
     {
       "work_item": "E1-01",

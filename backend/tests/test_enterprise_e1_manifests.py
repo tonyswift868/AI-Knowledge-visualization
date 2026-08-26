@@ -58,13 +58,20 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert by_id["E1-01"]["source_commit"] == "30c7e44d8f92fdc049971e537339925d73887598"
     assert by_id["E1-01"]["integration_commit"] == "296b6592ece7450d478c0c86fd5636eafb6663bc"
     assert "DLV-W01-20260826T091553Z-04 remains unconsumed" in by_id["E1-01"]["notes"]
-    assert by_id["E1-02"]["state"] == "INTEGRATED_BASE_COMPLETION_RETURNED_TO_OWNER"
+    assert by_id["E1-02"]["state"] in {
+        "INTEGRATED_COMPLETION_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PENDING",
+        "INTEGRATED_COMPLETION_REPAIR_EXACT_COMMIT_FOCUSED_GATES_PASSED",
+    }
     assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
     assert by_id["E1-02"]["source_commit"] == "b846ad3c5817f432fb5c815ebe0a66048cb5c065"
     assert by_id["E1-02"]["integration_commit"] == "2207d8867cedfe89a1d9be1768d16662da86abb9"
     assert by_id["E1-02"]["returned_completion_delivery_id"] == "DLV-W02-20260826T125813Z-03"
     assert by_id["E1-02"]["returned_completion_receipt_sha256"] == "C525BC787E91EB8475B109564237FCE4F1F867AC7799D234EFE4BCA429918930"
     assert by_id["E1-02"]["returned_completion_source_commit"] == "a11dfc29d6653897cbfe73078901a3ab37d97297"
+    assert by_id["E1-02"]["completion_repair_delivery_id"] == "DLV-W02-20260826T132400Z-04"
+    assert by_id["E1-02"]["completion_repair_receipt_sha256"] == "A9FA2B0EBF21D443CAC3AD7B51BDD23B5C6E6F1E97903A5716BE565FCDFE1A1E"
+    assert by_id["E1-02"]["completion_repair_source_commit"] == "27996a044c6a6f66f339f02efc1214bf488ebec9"
+    assert by_id["E1-02"]["completion_repair_integration_commit"] == "650a352ca6998d408c765be3dd7d352112ae952f"
     assert by_id["E1-03"]["state"] in {
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PENDING",
         "INTEGRATED_COMPLETION_EXACT_COMMITS_FOCUSED_GATES_PASSED",
@@ -186,18 +193,20 @@ def test_migration_ownership_names_are_unique_and_match_e1_02_objects() -> None:
     assert "does not create" in e1_02["implementation_notes"]
     actual = {(entry["kind"], entry["name"]): entry for entry in e1_02["resources"]}
     assert ("migration", "0029_enterprise_tenancy_rls") in actual
+    assert ("migration", "0031_enterprise_tenancy_completion") in actual
     assert ("database_role", "mentorflow_app") in actual
 
     tables = {
         "organizations",
         "organization_memberships",
         "workspaces",
+        "workspace_memberships",
         "workspace_role_bindings",
         "resource_scopes",
         "documents",
         "evidence",
         "knowledge_maps",
-        "plans",
+        "learning_plans",
         "teacher_sessions",
         "review_campaigns",
         "student_events",
@@ -205,13 +214,22 @@ def test_migration_ownership_names_are_unique_and_match_e1_02_objects() -> None:
     }
     assert {
         name for (kind, name), entry in actual.items()
-        if kind == "table" and entry["status"] == "IMPLEMENTED_BY_0029"
+        if kind == "table" and entry["status"] in {
+            "IMPLEMENTED_BY_0029",
+            "IMPLEMENTED_BY_0031",
+            "RENAMED_BY_0031",
+        }
     } == tables
     assert {
         name.removeprefix("tenant_isolation_")
         for (kind, name), entry in actual.items()
-        if kind == "policy" and entry["status"] == "IMPLEMENTED_BY_0029"
+        if kind == "policy" and entry["status"] in {
+            "IMPLEMENTED_BY_0029",
+            "IMPLEMENTED_BY_0031",
+        }
     } == tables
+    assert ("table", "plans") not in actual
+    assert ("policy", "tenant_isolation_plans") not in actual
     assert not any(
         name in {"enterprise_identity", "enterprise_tenant"}
         for _, name in actual
