@@ -8,7 +8,8 @@
       "organization_required": false,
       "workspace_context_required_for_tenant_data": false,
       "canonical_persistence": "LOCAL_STORES_SUPPORTED",
-      "audit_required": false
+      "audit_required": false,
+      "actor_context_source": "LOCAL_PROCESS_SYNTHETIC_WHEN_REQUIRED"
     },
     "ENTERPRISE_SERVER": {
       "login_required": true,

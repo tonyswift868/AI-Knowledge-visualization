@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal
 
@@ -50,7 +50,7 @@ class AccessDecisionKind(str, Enum):
 def _require_aware_datetime(value: datetime, field_name: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must include a UTC offset")
-    return value
+    return value.astimezone(timezone.utc)
 
 
 def _validate_unique_codes(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
@@ -164,6 +164,28 @@ class AccessDecision(_ContractModel):
         return _require_aware_datetime(value, "evaluated_at")
 
 
+class AuditMetadataEntry(_ContractModel):
+    key: Code
+    value: JsonValue
+
+    @field_validator("key")
+    @classmethod
+    def reject_secret_bearing_key(cls, value: str) -> str:
+        forbidden_names = {
+            "api_key",
+            "authorization",
+            "credential",
+            "id_token",
+            "password",
+            "refresh_token",
+            "secret",
+            "token",
+        }
+        if value.strip().lower() in forbidden_names:
+            raise ValueError("redacted metadata must not contain secret-bearing keys")
+        return value
+
+
 class AuditEnvelope(_ContractModel):
     schema_version: ContractVersion = ENTERPRISE_CONTEXT_CONTRACT_VERSION
     event_id: Identifier
@@ -176,7 +198,7 @@ class AuditEnvelope(_ContractModel):
     occurred_at: datetime
     request_id: Identifier
     trace_id: Identifier
-    metadata_redacted: dict[str, JsonValue] = Field(default_factory=dict)
+    metadata_redacted: tuple[AuditMetadataEntry, ...] = Field(default=(), max_length=64)
 
     @field_validator("occurred_at")
     @classmethod
@@ -185,26 +207,14 @@ class AuditEnvelope(_ContractModel):
 
     @field_validator("metadata_redacted")
     @classmethod
-    def validate_redacted_metadata(cls, value: dict[str, JsonValue]) -> dict[str, JsonValue]:
-        if len(value) > 64:
-            raise ValueError("metadata_redacted must not exceed 64 top-level entries")
-        forbidden_names = {
-            "api_key",
-            "authorization",
-            "credential",
-            "id_token",
-            "password",
-            "refresh_token",
-            "secret",
-            "token",
-        }
-        for key in value:
-            normalized = str(key).strip().lower()
-            if not normalized:
-                raise ValueError("metadata_redacted keys must not be blank")
-            if normalized in forbidden_names:
-                raise ValueError("metadata_redacted must not contain secret-bearing keys")
-        return dict(value)
+    def validate_redacted_metadata(
+        cls,
+        value: tuple[AuditMetadataEntry, ...],
+    ) -> tuple[AuditMetadataEntry, ...]:
+        keys = [entry.key for entry in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("metadata_redacted must not contain duplicate keys")
+        return value
 
 
 __all__ = [
@@ -213,6 +223,7 @@ __all__ = [
     "AccessDecisionKind",
     "ActorContext",
     "ActorKind",
+    "AuditMetadataEntry",
     "AuditEnvelope",
     "ResourceClassification",
     "ResourceScope",

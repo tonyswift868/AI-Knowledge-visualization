@@ -7,7 +7,9 @@ not create parallel actor or tenant models.
 Mode boundary:
 
 - `PERSONAL_LOCAL`: no login or organization is required; current single-user
-  local stores remain supported.
+  local stores remain supported. When an internal API needs `ActorContext`, the
+  host creates a synthetic local-process actor (`issuer` such as
+  `mentorflow://personal-local`); this is context propagation, not a login.
 - `ENTERPRISE_SERVER`: OIDC authentication and organization context are
   required for tenant data; PostgreSQL is canonical persistence and auditable
   access decisions are required.
@@ -17,3 +19,7 @@ an authorization engine. Those adapters consume this contract at their own
 boundaries. `contract_hash_manifest.json` freezes canonical Pydantic JSON
 schemas; changing any model requires an explicit contract-version decision and
 manifest update by Integration.
+
+`AccessDecision` may intentionally represent a denied cross-tenant attempt.
+Actor/resource tenant equality is therefore evaluated by authorization policy,
+not rejected during parsing; the resulting `DENY` remains auditable.

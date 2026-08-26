@@ -5,9 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
-from .models import AccessDecision, ActorContext, AuditEnvelope, ResourceScope, TenantContext
+from .models import (
+    ENTERPRISE_CONTEXT_CONTRACT_VERSION,
+    AccessDecision,
+    ActorContext,
+    AuditEnvelope,
+    ResourceScope,
+    TenantContext,
+)
 
 
 CONTRACT_HASH_MANIFEST_FILENAME = "contract_hash_manifest.json"
@@ -18,6 +26,8 @@ _CONTRACT_MODELS = {
     "ResourceScope": ResourceScope,
     "TenantContext": TenantContext,
 }
+_EXPECTED_HASH_KEYS = frozenset({*_CONTRACT_MODELS, "ModeBoundary", "bundle"})
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -50,6 +60,17 @@ def load_frozen_contract_hashes() -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("contract hash manifest must be a JSON object")
+    if payload.get("manifest_version") != "enterprise-contract-hashes.v1":
+        raise ValueError("unsupported contract hash manifest version")
+    if payload.get("contract_version") != ENTERPRISE_CONTEXT_CONTRACT_VERSION:
+        raise ValueError("contract hash manifest version does not match contract")
+    if payload.get("hash_algorithm") != "sha256":
+        raise ValueError("contract hash manifest must use sha256")
+    hashes = payload.get("hashes")
+    if not isinstance(hashes, dict) or set(hashes) != _EXPECTED_HASH_KEYS:
+        raise ValueError("contract hash manifest contains an unexpected hash key set")
+    if any(not isinstance(value, str) or _SHA256_PATTERN.fullmatch(value) is None for value in hashes.values()):
+        raise ValueError("contract hash manifest contains an invalid sha256 value")
     return payload
 
 

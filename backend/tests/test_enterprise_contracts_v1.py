@@ -14,6 +14,7 @@ from app.enterprise.contracts_v1 import (
     ActorContext,
     ActorKind,
     AuditEnvelope,
+    AuditMetadataEntry,
     ResourceClassification,
     ResourceScope,
     ResourceScopeType,
@@ -26,6 +27,15 @@ from app.enterprise.contracts_v1 import (
 
 
 NOW = datetime(2026, 8, 26, 3, 0, tzinfo=timezone.utc)
+EXPECTED_CONTRACT_HASHES = {
+    "AccessDecision": "38d932726f013109d62695320108b12e409302a55be09bae82099add05de25b6",
+    "ActorContext": "369e567572dbe0249c576521d2a3ae5555164a696053da6e5c66718447dd9c19",
+    "AuditEnvelope": "35e333537ac013dd05efe9166903e774902f9358289b87df76adb108d72e563c",
+    "ModeBoundary": "0f5f6aa89a49205574a1ea77a05a8152e9a9ac823640b67d5135d4a756a34b1a",
+    "ResourceScope": "859492267812e8bbec0e058d98cc2059041529e00505c08ddc895dcee2b9c046",
+    "TenantContext": "dd3c7800c639a45467c11966d1971bc6997f8b98705448cb0fd3fa3c588a4729",
+    "bundle": "52fcf2b5006b4aa716d09e1757b04bb7e5ee61e0b368bc4852cde0db5d6943c3",
+}
 
 
 def _actor() -> ActorContext:
@@ -115,19 +125,57 @@ def test_decision_and_audit_envelopes_preserve_actor_resource_and_trace_context(
         occurred_at=NOW,
         request_id=actor.request_id,
         trace_id="trace-1",
-        metadata_redacted={"document_kind": "pdf"},
+        metadata_redacted=(AuditMetadataEntry(key="document_kind", value="pdf"),),
     )
     assert decision.decision is AccessDecisionKind.DENY
     assert audit.trace_id == "trace-1"
     with pytest.raises(ValidationError):
-        AuditEnvelope(**{**audit.model_dump(), "metadata_redacted": {"api_key": "redacted"}})
+        AuditEnvelope(
+            **{
+                **audit.model_dump(),
+                "metadata_redacted": ({"key": "api_key", "value": "redacted"},),
+            }
+        )
+    with pytest.raises(ValidationError):
+        AuditEnvelope(
+            **{
+                **audit.model_dump(),
+                "metadata_redacted": (
+                    {"key": "document_kind", "value": "pdf"},
+                    {"key": "document_kind", "value": "markdown"},
+                ),
+            }
+        )
+
+
+def test_audit_metadata_is_deeply_immutable_and_json_safe() -> None:
+    entry = AuditMetadataEntry(key="token_count", value=42)
+    audit = AuditEnvelope(
+        event_id="event-immutable",
+        actor_context=_actor(),
+        action="document.read",
+        resource_type="document",
+        resource_id="document-1",
+        outcome="ALLOW",
+        reason_code="policy_allow",
+        occurred_at=NOW,
+        request_id="request-1",
+        trace_id="trace-1",
+        metadata_redacted=(entry,),
+    )
+    with pytest.raises(ValidationError):
+        audit.metadata_redacted[0].value = 43  # type: ignore[misc]
+    assert audit.model_dump(mode="json")["metadata_redacted"] == [
+        {"key": "token_count", "value": 42}
+    ]
 
 
 def test_frozen_contract_hash_manifest_matches_canonical_schemas() -> None:
     frozen = load_frozen_contract_hashes()
     assert frozen["contract_version"] == ENTERPRISE_CONTEXT_CONTRACT_VERSION
     assert frozen["hash_algorithm"] == "sha256"
-    assert frozen["hashes"] == compute_contract_hashes()
+    assert frozen["hashes"] == EXPECTED_CONTRACT_HASHES
+    assert compute_contract_hashes() == EXPECTED_CONTRACT_HASHES
     assert verify_frozen_contract_hashes() is True
 
 
