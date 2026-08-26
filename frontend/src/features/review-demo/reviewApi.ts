@@ -73,7 +73,7 @@ export type ReviewCampaignView = {
 }
 
 const REVIEW_API_BASE = (import.meta.env.VITE_REVIEW_API_BASE as string | undefined)
-  ?? 'http://127.0.0.1:8001/api/review'
+  ?? '/api/review'
 
 async function reviewRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${REVIEW_API_BASE}${path}`, {

@@ -73,6 +73,7 @@ from .teacher_voice_pack import router as teacher_voice_pack_router
 from .teacher_live_api import router as teacher_live_router
 from .knowledge.map_read_api import router as verified_knowledge_map_router
 from .cost_cache_control_api import router as cost_cache_control_router
+from .integration_routes import install_review_product
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -259,6 +260,7 @@ async def lifespan(_app):
             _app.state.qwen_voice_shutdown_error = None
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
+install_review_product(app)
 app.include_router(active_teaching_router)
 app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)
