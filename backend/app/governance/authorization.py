@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
+from threading import RLock
 from typing import Mapping, Sequence
 from uuid import uuid4
 
@@ -159,7 +160,7 @@ ROLE_MATRIX = _freeze_role_matrix(
             Resource.MEMBERSHIP: _actions(Action.READ_METADATA),
             Resource.WORKSPACE: _actions(Action.READ_METADATA),
             Resource.COST: _actions(Action.READ, Action.READ_METADATA),
-            Resource.AUDIT: _actions(Action.READ, Action.READ_METADATA),
+            Resource.AUDIT: _actions(Action.READ, Action.READ_METADATA, Action.EXPORT),
         },
     }
 )
@@ -202,6 +203,15 @@ class AuthorizationService:
     ) -> None:
         self._audit_log = audit_log
         self._break_glass_policy = break_glass_policy
+        self._revoked_break_glass: set[str] = set()
+        self._break_glass_lock = RLock()
+
+    def revoke_break_glass(self, grant_id: str) -> None:
+        normalized = str(grant_id or "").strip()
+        if not normalized:
+            raise ValueError("grant_id must not be empty")
+        with self._break_glass_lock:
+            self._revoked_break_glass.add(normalized)
 
     @staticmethod
     def role_matrix() -> Mapping[Role, Mapping[ResourceType, frozenset[Action]]]:
@@ -311,9 +321,11 @@ class AuthorizationService:
                     break_glass_used=break_glass_used,
                     grant_id=grant.grant_id if grant is not None else None,
                     grant_reason=grant.reason if grant is not None else None,
+                    organization_id=request.resource_scope.organization_id,
                     policy_id=POLICY_ID,
                     role=request.subject.effective_role.value,
                     tenant_mode=request.tenant.mode.value,
+                    workspace_id=request.resource_scope.workspace_id,
                 ),
             )
         )
@@ -380,9 +392,11 @@ class AuthorizationService:
                     allowed_count=allowed_count,
                     candidate_count=len(evaluated),
                     denied_count=denied_count,
+                    organization_id=first.resource_scope.organization_id,
                     policy_id=POLICY_ID,
                     role=first.subject.effective_role.value,
                     tenant_mode=first.tenant.mode.value,
+                    workspace_id=first.resource_scope.workspace_id,
                 ),
             )
         )
@@ -448,7 +462,9 @@ class AuthorizationService:
             return AccessDecisionKind.DENY, "ROLE_MATRIX_DENY"
 
         if role == Role.AUDITOR:
-            if request.action not in {Action.READ, Action.READ_METADATA}:
+            if request.action not in {Action.READ, Action.READ_METADATA, Action.EXPORT}:
+                return AccessDecisionKind.DENY, "AUDITOR_READ_ONLY"
+            if request.action is Action.EXPORT and request.resource is not Resource.AUDIT:
                 return AccessDecisionKind.DENY, "AUDITOR_READ_ONLY"
             if request.resource in {Resource.MEMBERSHIP, Resource.WORKSPACE} and not (
                 relationships.metadata_only or request.action == Action.READ_METADATA
@@ -517,6 +533,9 @@ class AuthorizationService:
         subject = request.subject
         if not policy.enabled or grant is None:
             return False
+        with self._break_glass_lock:
+            if grant.grant_id in self._revoked_break_glass:
+                return False
         if request.tenant.mode is not TenantMode.ENTERPRISE_SERVER:
             return False
         if not subject.active or subject.effective_role not in {Role.OWNER, Role.ADMIN}:
