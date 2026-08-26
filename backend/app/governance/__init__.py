@@ -103,7 +103,10 @@ from app.governance.runtime import (
 )
 from app.governance.ui_seams import (
     AccessDeniedReadModel,
+    AdminNavigationCategory,
+    AdminNavigationEntry,
     NavigationPermission,
+    NavigationState,
     OrganizationCostReadModel,
     PermissionAwareNavigation,
     RoleBadge,
@@ -112,6 +115,8 @@ from app.governance.ui_seams import (
 __all__ = [
     "Action",
     "AccessDeniedReadModel",
+    "AdminNavigationCategory",
+    "AdminNavigationEntry",
     "AuditAccessDenied",
     "AuditEntryView",
     "AuditEventAction",
@@ -155,6 +160,7 @@ __all__ = [
     "LearnerAssignmentQuery",
     "MemberStatus",
     "NavigationPermission",
+    "NavigationState",
     "OrganizationBudget",
     "OrganizationCostReadModel",
     "OrganizationGovernanceService",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 
 from app.governance.authorization import ROLE_MATRIX
 from app.governance.cost_views import CostViewScope, TenantCostView
@@ -19,6 +20,31 @@ from app.governance.models import (
 class NavigationPermission:
     resource: ResourceType
     actions: tuple[Action, ...]
+    relationship_check_required: bool = True
+
+
+class NavigationState(str, Enum):
+    VISIBLE = "VISIBLE"
+    DISABLED = "DISABLED"
+    HIDDEN = "HIDDEN"
+
+
+class AdminNavigationCategory(str, Enum):
+    ORGANIZATION_ADMIN = "Organization Admin"
+    WORKSPACE_ADMIN = "Workspace Admin"
+    CONTENT = "Content"
+    INSTRUCTOR = "Instructor"
+    LEARNER = "Learner"
+    AUDIT = "Audit"
+    COST = "Cost"
+    PROVIDER_SETTINGS = "Provider Settings"
+
+
+@dataclass(frozen=True, slots=True)
+class AdminNavigationEntry:
+    category: AdminNavigationCategory
+    state: NavigationState
+    resource: ResourceType
     relationship_check_required: bool = True
 
 
@@ -49,6 +75,36 @@ class PermissionAwareNavigation:
             item.resource is resource and action in item.actions
             for item in self.permissions
         )
+
+    def admin_entries(self) -> tuple[AdminNavigationEntry, ...]:
+        """UI projection only; every displayed action still requires backend authorization."""
+
+        definitions = (
+            (AdminNavigationCategory.ORGANIZATION_ADMIN, ResourceType.ORGANIZATION, Action.READ_METADATA, Action.MANAGE),
+            (AdminNavigationCategory.WORKSPACE_ADMIN, ResourceType.WORKSPACE, Action.READ_METADATA, Action.MANAGE),
+            (AdminNavigationCategory.CONTENT, ResourceType.DOCUMENT, Action.READ, Action.UPDATE),
+            (AdminNavigationCategory.INSTRUCTOR, ResourceType.TEACHER_SESSION, Action.READ, Action.EXECUTE),
+            (AdminNavigationCategory.LEARNER, ResourceType.STUDENT_PROGRESS, Action.READ, Action.UPDATE),
+            (AdminNavigationCategory.AUDIT, ResourceType.AUDIT, Action.READ_METADATA, Action.READ),
+            (AdminNavigationCategory.COST, ResourceType.COST, Action.READ, Action.MANAGE),
+            (AdminNavigationCategory.PROVIDER_SETTINGS, ResourceType.PROVIDER_CONFIG, Action.READ, Action.UPDATE),
+        )
+        entries: list[AdminNavigationEntry] = []
+        for category, resource, visible_action, enabled_action in definitions:
+            if self.permits_candidate(resource, enabled_action):
+                state = NavigationState.VISIBLE
+            elif self.permits_candidate(resource, visible_action):
+                state = NavigationState.DISABLED
+            else:
+                state = NavigationState.HIDDEN
+            entries.append(
+                AdminNavigationEntry(
+                    category=category,
+                    state=state,
+                    resource=resource,
+                )
+            )
+        return tuple(entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +195,10 @@ class OrganizationCostReadModel:
 
 __all__ = [
     "AccessDeniedReadModel",
+    "AdminNavigationCategory",
+    "AdminNavigationEntry",
     "NavigationPermission",
+    "NavigationState",
     "OrganizationCostReadModel",
     "PermissionAwareNavigation",
     "RoleBadge",

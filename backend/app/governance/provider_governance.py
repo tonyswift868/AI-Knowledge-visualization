@@ -294,6 +294,10 @@ class ProviderGovernanceService:
             except KeyError as exc:
                 raise ProviderGovernanceError("PROVIDER_CONFIG_NOT_FOUND") from exc
 
+    def config_ids(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(sorted(self._configs))
+
     def api_view(
         self,
         config_id: str,

@@ -585,6 +585,10 @@ class WorkspaceGovernanceService:
         with self._lock:
             return tuple(sorted(self._memberships.values(), key=lambda item: (item.workspace_id, item.member_id)))
 
+    def workspaces(self) -> tuple[WorkspaceRecord, ...]:
+        with self._lock:
+            return tuple(sorted(self._workspaces.values(), key=lambda item: item.workspace_id))
+
     def cohort_memberships(self) -> tuple[CohortMembership, ...]:
         with self._lock:
             return tuple(sorted(self._cohorts.values(), key=lambda item: item.membership_id))

@@ -1,0 +1,51 @@
+{
+  "schema_version": "mentorflow.integration-manifest.v1",
+  "delivery": "E1-03B-enterprise-governance-control-plane",
+  "status": "integration_compatible_standalone",
+  "frozen_contract": {
+    "name": "enterprise-context.v1",
+    "module": "app.enterprise.contracts_v1",
+    "integration_commit": "fa488048d2856d687854b50a23137a45bb020d7d",
+    "bundle_sha256": "03e4f66505b6b98202a07a70a39925293876ecc7b7c72f617dbe3b76dcb8b628",
+    "duplicated": false
+  },
+  "backend": {
+    "app": "app.governance.admin_api:app",
+    "router": "app.governance.admin_api:router",
+    "base_path": "/api/enterprise-admin",
+    "mount_example": "uvicorn app.governance.admin_api:app --host 127.0.0.1 --port 8003",
+    "central_router_modified": false
+  },
+  "identity_tenant_dependency": {
+    "source": "E1-02",
+    "port": "app.governance.admin_api.AdminContextResolver",
+    "context": "AdminApiContext wrapping canonical ActorContext and TenantContext",
+    "default": "StaticAdminContextResolver with explicit demo fixture only",
+    "production_requirement": "Integration must bind the E1-02 authenticated resolver"
+  },
+  "frontend": {
+    "feature": "frontend/src/features/enterprise-admin",
+    "central_routes_modified": false,
+    "mounting_deferred": true,
+    "api_base_env": "VITE_ENTERPRISE_ADMIN_API_BASE"
+  },
+  "owned_paths": [
+    "backend/app/governance/**",
+    "backend/tests/test_enterprise_governance*.py",
+    "frontend/src/features/enterprise-admin/**",
+    "frontend/src/test/enterprise_admin.test.tsx",
+    "artifacts/enterprise_governance_control_plane/**",
+    "docs/enterprise/**"
+  ],
+  "forbidden_paths_unchanged": [
+    "backend/app/main.py",
+    "frontend/src/app/routes.ts"
+  ],
+  "security_invariants": {
+    "ui_state_is_authorization": false,
+    "provider_secrets_in_api": false,
+    "cross_tenant_default": "DENY_AUDITED",
+    "database_rls_replaced": false,
+    "personal_local_regression_required": true
+  }
+}
