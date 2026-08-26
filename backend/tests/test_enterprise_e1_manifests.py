@@ -114,6 +114,21 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
         "02ce47d9e7c1d17c48956cdc440343132497d4b0",
     ]
     assert by_id["E1-03"]["admin_control_plane_mount"] == "STANDALONE_ONLY_PENDING_PRODUCTION_E1_02_AUTHENTICATED_RESOLVER"
+    assert by_id["E1-03"]["returned_secret_governance_delivery_id"] == "DLV-W03-20260826T202651Z-06"
+    assert by_id["E1-03"]["returned_secret_governance_receipt_sha256"] == "AD0DDF5B754733F25954CBE8BA630968B28BFD7447E3036CC929C82E97D6B074"
+    assert by_id["E1-03"]["returned_secret_governance_source_commits"] == [
+        "fcccf8b893978905c77ecf0c9f70584bbead9e1a",
+        "beb729b2e75899e6d163aa321d10af55a47d869b",
+        "924200d40c79d3081fa657a0b3617d4c0e78ca5f",
+        "c1d39df8a4e9eee8f94f9f0e2d3b691830af9a0a",
+        "2d83d6cccd1cd7ed8027c7ab6034714163238d90",
+        "b5dfcc9236835c0a2b4cdab77c075dc1749fc6f1",
+        "aabf28a03141efb0f2110103d1e2c6e54f1aca6e",
+        "36cc4861605200268cf225549cd3ee8ce828c83d",
+    ]
+    assert by_id["E1-03"]["returned_secret_governance_commits_consumed"] is False
+    assert by_id["E1-03"]["returned_secret_governance_review_after_fix"] == "REQUIRED_NEW_DELIVERY_FENCE_RECEIPT"
+    assert "still calls os.getenv" in by_id["E1-03"]["returned_secret_governance_reason"]
     assert by_id["E1-03"]["supersedes_returned_delivery"] == "DLV-W03-20260826T110330Z-02"
     assert by_id["E1-04"]["state"] == "PENDING_QA_BLOCKED_ENV_REQUEUE_REQUIRED"
     assert by_id["E1-04"]["delivery_id"] == "DLV-W04-20260826T111010Z-01"

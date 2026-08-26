@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-27T01:27:19+08:00",
+  "updated_at": "2026-08-27T04:36:50+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -111,6 +111,22 @@
         "02ce47d9e7c1d17c48956cdc440343132497d4b0"
       ],
       "admin_control_plane_mount": "STANDALONE_ONLY_PENDING_PRODUCTION_E1_02_AUTHENTICATED_RESOLVER",
+      "returned_secret_governance_delivery_id": "DLV-W03-20260826T202651Z-06",
+      "returned_secret_governance_receipt_sha256": "AD0DDF5B754733F25954CBE8BA630968B28BFD7447E3036CC929C82E97D6B074",
+      "returned_secret_governance_source_commits": [
+        "fcccf8b893978905c77ecf0c9f70584bbead9e1a",
+        "beb729b2e75899e6d163aa321d10af55a47d869b",
+        "924200d40c79d3081fa657a0b3617d4c0e78ca5f",
+        "c1d39df8a4e9eee8f94f9f0e2d3b691830af9a0a",
+        "2d83d6cccd1cd7ed8027c7ab6034714163238d90",
+        "b5dfcc9236835c0a2b4cdab77c075dc1749fc6f1",
+        "aabf28a03141efb0f2110103d1e2c6e54f1aca6e",
+        "36cc4861605200268cf225549cd3ee8ce828c83d"
+      ],
+      "returned_secret_governance_result": "delivery_fence_v1/returned/DLV-W03-20260826T202651Z-06.integration-result.json",
+      "returned_secret_governance_commits_consumed": false,
+      "returned_secret_governance_reason": "The architect-authorized repair was limited to removing the legacy direct secret read from backend/app/teacher_avatar_registry.py. The frozen final tree still calls os.getenv(\"VROID_HUB_CLIENT_SECRET\", \"\") in LegacyLocalVroidHubCompatibilityAdapter.credential_snapshot(), the receipt records this as an allowed compatibility boundary, and test_personal_local_legacy_compatibility_is_preserved requires the direct plaintext environment read. Renaming and exempting the legacy read does not remove it, so the Delivery fails its core acceptance and no exact commit was consumed.",
+      "returned_secret_governance_review_after_fix": "REQUIRED_NEW_DELIVERY_FENCE_RECEIPT",
       "supersedes_returned_delivery": "DLV-W03-20260826T110330Z-02",
       "notes": "The replacement and completion deliveries remain legally integrated. Admin control-plane delivery DLV-W03-20260826T133451Z-05 was audited as an exact six-commit continuation of completion source 411f0618, touched only governance/admin UI/tests/docs/artifacts owned paths, changed no forbidden path, dependency, migration, shared contract, Provider runtime, Cost Engine, or central route, and was applied in exact receipt order with -x provenance. Its backend and frontend surfaces remain standalone because central mounting requires an E1-02 authenticated AdminContextResolver that is not yet present; no demo StaticAdminContextResolver is mounted into production. Governance/negative/contract gates passed 66/66; Personal Local passed 31 with 1 platform skip; Cost compatibility passed 39/39; frontend passed 3/3 and production build; offline authorization/audit benchmark integrity passed and remains explicitly not a server-load claim; compile/import, frozen hashes, JSON, pip, manifest, diff, and clean gates passed."
     },
