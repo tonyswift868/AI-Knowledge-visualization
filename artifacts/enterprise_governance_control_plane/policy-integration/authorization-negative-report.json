@@ -1063,8 +1063,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1078,8 +1078,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1093,8 +1093,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1108,8 +1108,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1123,8 +1123,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1488,8 +1488,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1503,8 +1503,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1518,8 +1518,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1533,8 +1533,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1548,8 +1548,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1913,8 +1913,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1928,8 +1928,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1943,8 +1943,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1958,8 +1958,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -1973,8 +1973,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2338,8 +2338,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2353,8 +2353,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2368,8 +2368,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2383,8 +2383,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2398,8 +2398,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2763,8 +2763,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2778,8 +2778,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2793,8 +2793,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2808,8 +2808,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -2823,8 +2823,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3118,8 +3118,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3133,8 +3133,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3148,8 +3148,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3163,8 +3163,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3178,8 +3178,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3543,8 +3543,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3558,8 +3558,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3573,8 +3573,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3588,8 +3588,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3603,8 +3603,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3828,8 +3828,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3843,8 +3843,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3858,8 +3858,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3873,8 +3873,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3888,8 +3888,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3973,8 +3973,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -3988,8 +3988,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4003,8 +4003,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4018,8 +4018,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4033,8 +4033,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4748,8 +4748,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4763,8 +4763,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4778,8 +4778,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4793,8 +4793,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4808,8 +4808,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4823,8 +4823,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4838,8 +4838,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4853,8 +4853,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4868,8 +4868,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -4883,8 +4883,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -5038,8 +5038,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "GET"
+        "GET",
+        "EXPORT"
       ]
     },
     {
@@ -5053,8 +5053,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "GET"
+        "GET",
+        "EXPORT"
       ]
     },
     {
@@ -5068,8 +5068,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "GET"
+        "GET",
+        "EXPORT"
       ]
     },
     {
@@ -5083,8 +5083,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "GET"
+        "GET",
+        "EXPORT"
       ]
     },
     {
@@ -5098,8 +5098,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "GET"
+        "GET",
+        "EXPORT"
       ]
     },
     {
@@ -5328,8 +5328,8 @@
       "scenario": "OWN_RESOURCE",
       "transport_claims_ignored": true,
       "transports": [
-        "PATCH",
-        "JOB"
+        "JOB",
+        "PATCH"
       ]
     },
     {
@@ -5343,8 +5343,8 @@
       "scenario": "FOREIGN_ORGANIZATION",
       "transport_claims_ignored": true,
       "transports": [
-        "PATCH",
-        "JOB"
+        "JOB",
+        "PATCH"
       ]
     },
     {
@@ -5358,8 +5358,8 @@
       "scenario": "FOREIGN_WORKSPACE",
       "transport_claims_ignored": true,
       "transports": [
-        "PATCH",
-        "JOB"
+        "JOB",
+        "PATCH"
       ]
     },
     {
@@ -5373,8 +5373,8 @@
       "scenario": "FORGED_IDENTIFIER",
       "transport_claims_ignored": true,
       "transports": [
-        "PATCH",
-        "JOB"
+        "JOB",
+        "PATCH"
       ]
     },
     {
@@ -5388,8 +5388,8 @@
       "scenario": "REVOKED_MEMBERSHIP",
       "transport_claims_ignored": true,
       "transports": [
-        "PATCH",
-        "JOB"
+        "JOB",
+        "PATCH"
       ]
     },
     {
@@ -5721,8 +5721,8 @@
       "scenario": "WRONG_ROLE",
       "transport_claims_ignored": true,
       "transports": [
-        "EXPORT",
-        "POST"
+        "POST",
+        "EXPORT"
       ]
     },
     {
@@ -5759,7 +5759,7 @@
     "Teacher"
   ],
   "failures": [],
-  "generated_at": "2026-08-26T16:23:25.990459+00:00",
+  "generated_at": "2026-08-26T20:19:16.907135+00:00",
   "pack_version": "mentorflow.enterprise-authorization-negative.v1",
   "scenario_counts": {
     "FOREIGN_ORGANIZATION": 78,

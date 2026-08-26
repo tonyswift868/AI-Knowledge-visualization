@@ -1,13 +1,6 @@
 {
   "backend_authorization_authoritative": true,
-  "blocking_findings": [
-    {
-      "code": "PLAINTEXT_SECRET_ENVIRONMENT_READ",
-      "path": "teacher_avatar_registry.py",
-      "resolution": "explicit Architect ownership authorization required",
-      "symbol": "VROID_HUB_CLIENT_SECRET"
-    }
-  ],
+  "blocking_findings": [],
   "central_router_modified": false,
   "endpoint_neutral_guard": "app.governance.surface_enforcement.authorize_request",
   "fastapi_adapter": "app.governance.surface_enforcement.FastAPIRequestGuard",
@@ -19,7 +12,7 @@
     "name": "enterprise-context.v1",
     "parallel_shared_contracts": 0
   },
-  "generated_at": "2026-08-26T16:23:25.990459+00:00",
+  "generated_at": "2026-08-26T20:19:16.907135+00:00",
   "live_acceptance_claimed": false,
   "provider_calls": 0,
   "real_oidc_calls": 0,
