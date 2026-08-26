@@ -1,0 +1,23 @@
+{
+  "schema_version": "enterprise-dependency-leases.v1",
+  "updated_at": "2026-08-26T18:30:00+08:00",
+  "writer": "Core-v2 Integration Maintainer",
+  "global_resource_lease": "E:/Codex/Coordination/MentorFlow-core-v2-20260824/RESOURCE_LEASES.json#DEPENDENCY_MUTATION",
+  "lease_rules": {
+    "one_active_dependency_mutation": true,
+    "owner_must_match_dependency": true,
+    "separate_commit_required": true,
+    "lock_and_manifest_consistency_required": true,
+    "lease_release_requires_clean_gate": true
+  },
+  "leases": [
+    {"capability": "OIDC_JWT_CLIENT", "owner": "E1-01", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "POSTGRESQL_DRIVER", "owner": "E1-02", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "OPENTELEMETRY_PYTHON", "owner": "E1-06", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "OPENTELEMETRY_JS", "owner": "E1-06", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "DURABLE_JOB_ENGINE_PROCRASTINATE", "owner": "E1-05", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "S3_CLIENT", "owner": "E1-04", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "K6_LOAD_TOOLING", "owner": "E1-07", "status": "NOT_ACQUIRED", "mutation_allowed": false},
+    {"capability": "SECURITY_SCANNERS", "owner": "E1-07", "status": "NOT_ACQUIRED", "mutation_allowed": false}
+  ]
+}
