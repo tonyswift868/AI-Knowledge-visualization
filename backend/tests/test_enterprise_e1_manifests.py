@@ -47,7 +47,10 @@ def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None
     assert payload["policy"]["exact_commits_only"] is True
     assert payload["policy"]["branch_tip_merge_forbidden"] is True
     by_id = {entry["work_item"]: entry for entry in queue}
-    assert by_id["E1-01"]["state"] == "TEACHER_V3_QA_FAILED_IDENTITY_IN_PROGRESS_NO_DELIVERY"
+    assert by_id["E1-01"]["state"] == "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED"
+    assert by_id["E1-01"]["delivery_id"] == "DLV-W01-20260826T110453Z-05"
+    assert by_id["E1-01"]["source_commit"] == "30c7e44d8f92fdc049971e537339925d73887598"
+    assert by_id["E1-01"]["integration_commit"] == "296b6592ece7450d478c0c86fd5636eafb6663bc"
     assert "DLV-W01-20260826T091553Z-04 remains unconsumed" in by_id["E1-01"]["notes"]
     assert by_id["E1-02"]["state"] == "INTEGRATED_EXACT_COMMIT_FOCUSED_GATES_PASSED"
     assert by_id["E1-02"]["delivery_id"] == "DLV-W02-20260826T105314Z-02"
