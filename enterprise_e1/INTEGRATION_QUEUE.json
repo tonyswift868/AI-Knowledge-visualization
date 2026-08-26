@@ -1,6 +1,6 @@
 {
   "schema_version": "enterprise-integration-queue.v1",
-  "updated_at": "2026-08-26T23:38:55+08:00",
+  "updated_at": "2026-08-27T00:52:27+08:00",
   "base_tag": "mentorflow-enterprise-e1-base-20260826",
   "shared_contract_commit": "49997a5be8515d48ed34adee0a868a91fa027034",
   "policy": {
@@ -193,8 +193,19 @@
       "completion_focused_passed": 15,
       "completion_commits_consumed": false,
       "completion_pending_reason": "E1-04 formal blocking QA remains BLOCKED_ENV under TRQ-W04-20260826-195459-02; the completed W07 chain remains dependency-blocked.",
+      "independent_delivery_id": "DLV-W07-20260826T164749Z-06",
+      "independent_delivery_receipt_sha256": "C7707DEA6EFC2CDC22CA1217C264747BF261EC7283414E7B1004A9B29DEE69C0",
+      "independent_delivery_source_commits": ["fe6ac4e4b9fcafefc6ae637ff9065fea4e6a5cb2", "754b08eb9d900db5db51e6756ae8f357006e14f6"],
+      "independent_delivery_declared_e1_04_dependency": "NO",
+      "independent_delivery_effective_e1_04_dependency": "YES_VIA_REQUIRED_PRIOR_DELIVERIES",
+      "independent_delivery_result": "delivery_fence_v1/returned/DLV-W07-20260826T164749Z-06.integration-result.json",
+      "independent_delivery_result_sha256": "69891E2D7EED113221E8BE3DA52147B96307B595D9D635851676B9AE5261D8C4",
+      "independent_delivery_result_status": "RETURN_TO_OWNER",
+      "independent_delivery_commits_consumed": false,
+      "independent_delivery_reason": "The receipt requires prior -05/-04 deliveries whose frozen dependency assumptions include E1-04. Canonical Integration contains none of the prior W07 exact commits, and the -06 incremental patch does not apply independently because .gitattributes differs and tests/load/lib/core.js is absent.",
+      "independent_review_after_fix": "REQUIRED_NEW_DELIVERY_FENCE_RECEIPT",
       "review_after_fix": "SATISFIED_THROUGH_DLV-W07-20260826T153410Z-05",
-      "notes": "The first two frozen W07 receipts remain audited successfully. Their source chain is exactly 91d8ed5a -> 4011ea38 -> 11d134ce -> 7b889bd2 -> f85bc7b8. Neither delivery has been applied because E1-04 blocking enterprise QA returned BLOCKED_ENV rather than PASS. E1-07B receipt DLV-W07-20260826T140436Z-03 was returned without consuming d8921741 or 40ff7d40 after a fresh Windows checkout exposed raw LF/CRLF SBOM hash drift. Replacement receipt DLV-W07-20260826T142210Z-04 freezes d8921741 -> 40ff7d40 -> 359b88f1 and repairs the verifier to use sha256:canonical-json-v1. Completion receipt DLV-W07-20260826T153410Z-05 extends exact 359b88f1 -> d7e7e032 -> 6c0e5ee0 and closes the original six-environment-fact acceptance gap. Root reproduced exact 6c0e5ee0 in a clean core.autocrlf=true detached checkout: release verification reported environment_not_run_facts=6, all 15 focused tests passed, the 439-component report check passed, raw SBOM SHA remained 0242a4a7 with 14187 CRLF pairs, and the worktree stayed clean. The full completed W07 chain remains unconsumed because E1-04 is an explicit dependency and its formal QA is still BLOCKED_ENV. The upstream W6 stale migration-head assertion remains a separate MAIN_FULL blocker and was not suppressed. Docker, Compose, PostgreSQL RLS, k6, containers, Linux staging, scanners, promotion, rollback, and all real gates remain NOT_RUN/PENDING_STAGING; no CI, container, security, load, staging, or production claim is made."
+      "notes": "The first two frozen W07 receipts remain audited successfully. Their source chain is exactly 91d8ed5a -> 4011ea38 -> 11d134ce -> 7b889bd2 -> f85bc7b8. Neither delivery has been applied because E1-04 blocking enterprise QA returned BLOCKED_ENV rather than PASS. E1-07B receipt DLV-W07-20260826T140436Z-03 was returned without consuming d8921741 or 40ff7d40 after a fresh Windows checkout exposed raw LF/CRLF SBOM hash drift. Replacement receipt DLV-W07-20260826T142210Z-04 freezes d8921741 -> 40ff7d40 -> 359b88f1 and repairs the verifier to use sha256:canonical-json-v1. Completion receipt DLV-W07-20260826T153410Z-05 extends exact 359b88f1 -> d7e7e032 -> 6c0e5ee0 and closes the original six-environment-fact acceptance gap. Root reproduced exact 6c0e5ee0 in a clean core.autocrlf=true detached checkout: release verification reported environment_not_run_facts=6, all 15 focused tests passed, the 439-component report check passed, raw SBOM SHA remained 0242a4a7 with 14187 CRLF pairs, and the worktree stayed clean. The full completed W07 chain remains unconsumed because E1-04 is an explicit dependency and its formal QA is still BLOCKED_ENV. E1-07C receipt DLV-W07-20260826T164749Z-06 declared E1_04_DEPENDENCY=NO but required -05 first; -05 requires -04 and both retain E1-04 as an ordered dependency. None of the prior W07 commits exists in canonical Integration, and a direct incremental apply check failed on .gitattributes and absent tests/load/lib/core.js. The -06 receipt was returned unchanged and no commit was consumed; precise original-scope feedback requires a self-contained replacement against canonical Integration. The upstream W6 stale migration-head assertion remains a separate MAIN_FULL blocker and was not suppressed. Docker, Compose, PostgreSQL RLS, k6, containers, Linux staging, scanners, promotion, rollback, and all real gates remain NOT_RUN/PENDING_STAGING; no CI, container, security, load, staging, or production claim is made."
     }
   ]
 }
