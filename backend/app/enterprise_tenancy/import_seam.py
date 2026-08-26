@@ -13,12 +13,13 @@ from typing import Any, Mapping, Protocol, Sequence
 
 from app.enterprise.contracts_v1 import TenantContext
 
-from .context import TenantConnection, require_enterprise_workspace_context
+from .context import TenantDbSession, require_enterprise_workspace_context
 from .models import (
+    EnterpriseImportPlan,
     ImportConfirmationError,
     LocalImportDescriptor,
-    LocalImportPreview,
     LocalImportResult,
+    PersonalDataImportPreview,
     TenantResourceDraft,
 )
 from .repository import TenantResourceRepository
@@ -31,8 +32,15 @@ class PersonalLocalImportSource(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class _PendingPreview:
+    preview: PersonalDataImportPreview
+    source: PersonalLocalImportSource
+    descriptors: tuple[LocalImportDescriptor, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _PendingImport:
-    preview: LocalImportPreview
+    plan: EnterpriseImportPlan
     source: PersonalLocalImportSource
     descriptors: tuple[LocalImportDescriptor, ...]
     target: TenantContext
@@ -74,67 +82,107 @@ class LocalToEnterpriseImportService:
 
     def __init__(self, repository: TenantResourceRepository) -> None:
         self._repository = repository
-        self._pending: dict[str, _PendingImport] = {}
+        self._previews: dict[str, _PendingPreview] = {}
+        self._plans: dict[str, _PendingImport] = {}
         self._lock = threading.RLock()
 
     def preview(
         self,
         source: PersonalLocalImportSource,
         *,
-        target: TenantContext,
         requested_by: str,
-    ) -> LocalImportPreview:
+    ) -> PersonalDataImportPreview:
         requester = requested_by.strip()
         if not requester:
             raise ValueError("requested_by must be non-empty")
-        organization_id, workspace_id = require_enterprise_workspace_context(target)
         descriptors = tuple(source.describe_importable())
         local_ids = tuple(item.local_id for item in descriptors)
         if len(local_ids) != len(set(local_ids)):
             raise ValueError("local import descriptors must have unique local_id values")
         preview_id = f"import-preview:{uuid.uuid4().hex}"
-        confirmation_token = secrets.token_urlsafe(32)
         counts = Counter(item.kind.value for item in descriptors)
-        preview = LocalImportPreview(
+        preview = PersonalDataImportPreview(
             preview_id=preview_id,
-            confirmation_token=confirmation_token,
-            organization_id=organization_id,
-            workspace_id=workspace_id,
             requested_by=requester,
             item_count=len(descriptors),
             counts_by_kind=dict(sorted(counts.items())),
             descriptor_digest=_descriptor_digest(descriptors),
         )
         with self._lock:
-            self._pending[preview_id] = _PendingImport(
+            self._previews[preview_id] = _PendingPreview(
                 preview=preview,
                 source=source,
                 descriptors=descriptors,
-                target=target,
             )
         return preview
 
-    def confirm(
+    def plan(
         self,
         preview_id: str,
+        *,
+        target: TenantContext,
+        planned_by: str,
+    ) -> EnterpriseImportPlan:
+        planner = planned_by.strip()
+        if not planner:
+            raise ImportConfirmationError("planned_by must be non-empty")
+        organization_id, workspace_id = require_enterprise_workspace_context(target)
+        with self._lock:
+            pending_preview = self._previews.get(preview_id)
+        if pending_preview is None:
+            raise ImportConfirmationError("personal data preview does not exist")
+        if planner != pending_preview.preview.requested_by:
+            raise ImportConfirmationError(
+                "enterprise import plan must be created by the preview requester"
+            )
+        plan = EnterpriseImportPlan(
+            plan_id=f"enterprise-import-plan:{uuid.uuid4().hex}",
+            preview_id=preview_id,
+            confirmation_token=secrets.token_urlsafe(32),
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            requested_by=planner,
+            item_count=pending_preview.preview.item_count,
+            descriptor_digest=pending_preview.preview.descriptor_digest,
+        )
+        with self._lock:
+            current = self._previews.get(preview_id)
+            if current is not pending_preview:
+                raise ImportConfirmationError("personal data preview was consumed")
+            self._previews.pop(preview_id, None)
+            self._plans[plan.plan_id] = _PendingImport(
+                plan=plan,
+                source=pending_preview.source,
+                descriptors=pending_preview.descriptors,
+                target=target,
+            )
+        return plan
+
+    def confirm(
+        self,
+        plan_id: str,
         confirmation_token: str,
         *,
         confirmed_by: str,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
     ) -> LocalImportResult:
         confirmer = confirmed_by.strip()
         if not confirmer:
             raise ImportConfirmationError("confirmed_by must be non-empty")
         with self._lock:
-            pending = self._pending.get(preview_id)
+            pending = self._plans.get(plan_id)
         if pending is None:
-            raise ImportConfirmationError("import preview does not exist or was consumed")
+            raise ImportConfirmationError("enterprise import plan does not exist")
+        if confirmer != pending.plan.requested_by:
+            raise ImportConfirmationError(
+                "enterprise import must be confirmed by the plan requester"
+            )
         if not secrets.compare_digest(
-            pending.preview.confirmation_token,
+            pending.plan.confirmation_token,
             confirmation_token,
         ):
             raise ImportConfirmationError("import confirmation token is invalid")
-        if transaction.context != pending.target:
+        if transaction.tenant != pending.target:
             raise ImportConfirmationError(
                 "import confirmation tenant does not match preview target"
             )
@@ -161,11 +209,12 @@ class LocalToEnterpriseImportService:
             )
             imported.append(resource_id)
         with self._lock:
-            current = self._pending.get(preview_id)
+            current = self._plans.get(plan_id)
             if current is pending:
-                self._pending.pop(preview_id, None)
+                self._plans.pop(plan_id, None)
         return LocalImportResult(
-            preview_id=preview_id,
+            plan_id=plan_id,
+            preview_id=pending.plan.preview_id,
             imported_count=len(imported),
             imported_resource_ids=tuple(imported),
         )

@@ -25,7 +25,7 @@ RESOURCE_TABLE_BY_KIND: dict[TenantResourceKind, str] = {
     TenantResourceKind.DOCUMENT: "documents",
     TenantResourceKind.EVIDENCE: "evidence",
     TenantResourceKind.KNOWLEDGE_MAP: "knowledge_maps",
-    TenantResourceKind.PLAN: "plans",
+    TenantResourceKind.PLAN: "learning_plans",
     TenantResourceKind.TEACHER_SESSION: "teacher_sessions",
     TenantResourceKind.REVIEW_CAMPAIGN: "review_campaigns",
     TenantResourceKind.STUDENT_EVENT: "student_events",
@@ -153,21 +153,33 @@ class LocalImportDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
-class LocalImportPreview:
+class PersonalDataImportPreview:
+    preview_id: str
+    requested_by: str
+    item_count: int
+    counts_by_kind: Mapping[str, int]
+    descriptor_digest: str
+    requires_destination_selection: bool = True
+    auto_upload_started: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EnterpriseImportPlan:
+    plan_id: str
     preview_id: str
     confirmation_token: str
     organization_id: str
     workspace_id: str
     requested_by: str
     item_count: int
-    counts_by_kind: Mapping[str, int]
     descriptor_digest: str
     requires_explicit_confirmation: bool = True
-    auto_upload_started: bool = False
+    upload_started: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class LocalImportResult:
+    plan_id: str
     preview_id: str
     imported_count: int
     imported_resource_ids: tuple[str, ...] = field(default_factory=tuple)
@@ -175,10 +187,11 @@ class LocalImportResult:
 
 __all__ = [
     "EnterprisePersistenceUnavailableError",
+    "EnterpriseImportPlan",
     "ImportConfirmationError",
     "LocalImportDescriptor",
-    "LocalImportPreview",
     "LocalImportResult",
+    "PersonalDataImportPreview",
     "RESOURCE_TABLE_BY_KIND",
     "ResourceClassification",
     "ResourceScopeType",

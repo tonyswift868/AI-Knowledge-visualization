@@ -25,7 +25,7 @@ _SET_CONTEXT = text(
     SELECT
       set_config('mentorflow.organization_id', :organization_id, true),
       set_config('mentorflow.workspace_id', :workspace_id, true),
-      set_config('mentorflow.subject_id', :subject_id, true)
+      set_config('mentorflow.actor_subject', :actor_subject, true)
     """
 )
 _READ_CONTEXT = text(
@@ -33,16 +33,54 @@ _READ_CONTEXT = text(
     SELECT
       NULLIF(current_setting('mentorflow.organization_id', true), ''),
       NULLIF(current_setting('mentorflow.workspace_id', true), ''),
-      NULLIF(current_setting('mentorflow.subject_id', true), '')
+      NULLIF(current_setting('mentorflow.actor_subject', true), '')
     """
 )
 
 
 @dataclass(frozen=True, slots=True)
-class TenantConnection:
-    connection: Connection
-    context: TenantContext
+class TenantTransactionContext:
+    """Application-local binding of the two frozen shared context contracts."""
+
+    tenant: TenantContext
     actor: ActorContext
+
+    def __post_init__(self) -> None:
+        require_matching_actor_context(self.tenant, self.actor)
+
+    @property
+    def database_values(self) -> tuple[str, str, str]:
+        return require_matching_actor_context(self.tenant, self.actor)
+
+
+@dataclass(frozen=True, slots=True)
+class TenantDbSession:
+    connection: Connection
+    transaction_context: TenantTransactionContext
+
+    @property
+    def tenant(self) -> TenantContext:
+        return self.transaction_context.tenant
+
+    @property
+    def actor(self) -> ActorContext:
+        return self.transaction_context.actor
+
+
+def TenantConnection(
+    connection: Connection,
+    context: TenantContext,
+    actor: ActorContext,
+) -> TenantDbSession:
+    """Construct the already integrated E1-02 connection shape compatibly."""
+
+    return TenantDbSession(
+        connection=connection,
+        transaction_context=TenantTransactionContext(
+            tenant=context,
+            actor=actor,
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +146,7 @@ def _dbapi_context_values(dbapi_connection: Any) -> tuple[Any, Any, Any]:
             SELECT
               NULLIF(current_setting('mentorflow.organization_id', true), ''),
               NULLIF(current_setting('mentorflow.workspace_id', true), ''),
-              NULLIF(current_setting('mentorflow.subject_id', true), '')
+              NULLIF(current_setting('mentorflow.actor_subject', true), '')
             """
         )
         values = tuple(cursor.fetchone())
@@ -199,11 +237,9 @@ class PostgresTenantTransactionManager:
     @contextmanager
     def transaction(
         self,
-        context: TenantContext,
-        *,
-        actor: ActorContext,
-    ) -> Iterator[TenantConnection]:
-        expected = require_matching_actor_context(context, actor)
+        context: TenantTransactionContext,
+    ) -> Iterator[TenantDbSession]:
+        expected = context.database_values
         with self.engine.connect() as connection:
             with connection.begin():
                 before = tuple(connection.execute(_READ_CONTEXT).one())
@@ -216,7 +252,7 @@ class PostgresTenantTransactionManager:
                     {
                         "organization_id": expected[0],
                         "workspace_id": expected[1],
-                        "subject_id": expected[2],
+                        "actor_subject": expected[2],
                     },
                 )
                 applied = tuple(connection.execute(_READ_CONTEXT).one())
@@ -224,10 +260,9 @@ class PostgresTenantTransactionManager:
                     raise TenantContextLeakError(
                         "PostgreSQL rejected transaction tenant context"
                     )
-                yield TenantConnection(
+                yield TenantDbSession(
                     connection=connection,
-                    context=context,
-                    actor=actor,
+                    transaction_context=context,
                 )
 
 
@@ -290,7 +325,9 @@ def require_safe_application_role(connection: Connection) -> None:
 __all__ = [
     "ApplicationRoleSecurity",
     "PostgresTenantTransactionManager",
+    "TenantDbSession",
     "TenantConnection",
+    "TenantTransactionContext",
     "create_enterprise_postgres_engine",
     "inspect_application_role_security",
     "install_postgres_pool_context_safety",

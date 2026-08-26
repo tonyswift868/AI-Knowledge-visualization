@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -16,8 +17,20 @@ class SyntheticOrganization:
 
 
 @dataclass(frozen=True, slots=True)
+class SyntheticResource:
+    resource_id: str
+    resource_kind: str
+    table: str
+    organization_id: str
+    workspace_id: str
+    owner_subject_id: str
+    scope_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class SyntheticTenantSeed:
     organizations: tuple[SyntheticOrganization, ...]
+    resources: tuple[SyntheticResource, ...]
 
     @property
     def organization_count(self) -> int:
@@ -31,11 +44,27 @@ class SyntheticTenantSeed:
     def user_count(self) -> int:
         return sum(len(item.subject_ids) for item in self.organizations)
 
+    @property
+    def resource_count(self) -> int:
+        return len(self.resources)
+
 
 def build_synthetic_tenant_seed() -> SyntheticTenantSeed:
     user_counts = (7, 7, 6)
     cursor = 0
     organizations: list[SyntheticOrganization] = []
+    resources: list[SyntheticResource] = []
+    table_kinds = (
+        ("documents", "DOCUMENT"),
+        ("evidence", "EVIDENCE"),
+        ("knowledge_maps", "KNOWLEDGE_MAP"),
+        ("learning_plans", "PLAN"),
+        ("teacher_sessions", "TEACHER_SESSION"),
+        ("review_campaigns", "REVIEW_CAMPAIGN"),
+        ("student_events", "STUDENT_EVENT"),
+        ("cost_events", "COST_EVENT"),
+    )
+    scope_types = ("PERSONAL", "ORGANIZATION", "WORKSPACE")
     for organization_index, user_count in enumerate(user_counts, start=1):
         subject_ids = tuple(
             f"synthetic-user-{index:02d}"
@@ -52,11 +81,35 @@ def build_synthetic_tenant_seed() -> SyntheticTenantSeed:
                 subject_ids=subject_ids,
             )
         )
-    seed = SyntheticTenantSeed(organizations=tuple(organizations))
+        organization = organizations[-1]
+        for workspace_index, workspace_id in enumerate(
+            organization.workspace_ids,
+            start=1,
+        ):
+            for resource_index, (table, kind) in enumerate(table_kinds, start=1):
+                resources.append(
+                    SyntheticResource(
+                        resource_id=(
+                            f"synthetic:{kind.lower()}:{organization_index}:"
+                            f"{workspace_index}"
+                        ),
+                        resource_kind=kind,
+                        table=table,
+                        organization_id=organization.organization_id,
+                        workspace_id=workspace_id,
+                        owner_subject_id=organization.subject_ids[0],
+                        scope_type=scope_types[(resource_index - 1) % 3],
+                    )
+                )
+    seed = SyntheticTenantSeed(
+        organizations=tuple(organizations),
+        resources=tuple(resources),
+    )
     if (
         seed.organization_count != 3
         or seed.workspace_count != 6
         or seed.user_count != 20
+        or seed.resource_count != 48
     ):
         raise AssertionError("synthetic tenant seed cardinality changed")
     return seed
@@ -149,6 +202,27 @@ def seed_synthetic_tenants(
                 connection.execute(
                     text(
                         """
+                        INSERT INTO workspace_memberships(
+                          organization_id, workspace_id, subject_id, status
+                        ) VALUES (
+                          :organization_id, :workspace_id, :subject_id, 'active'
+                        )
+                        ON CONFLICT (
+                          organization_id, workspace_id, subject_id
+                        ) DO UPDATE SET
+                          status = EXCLUDED.status,
+                          updated_at = CURRENT_TIMESTAMP
+                        """
+                    ),
+                    {
+                        "organization_id": organization.organization_id,
+                        "workspace_id": workspace_id,
+                        "subject_id": subject_id,
+                    },
+                )
+                connection.execute(
+                    text(
+                        """
                         INSERT INTO workspace_role_bindings(
                           organization_id, workspace_id, subject_id,
                           role, status
@@ -157,9 +231,8 @@ def seed_synthetic_tenants(
                           :role, 'active'
                         )
                         ON CONFLICT (
-                          organization_id, workspace_id, subject_id
+                          organization_id, workspace_id, subject_id, role
                         ) DO UPDATE SET
-                          role = EXCLUDED.role,
                           status = EXCLUDED.status,
                           updated_at = CURRENT_TIMESTAMP
                         """
@@ -171,11 +244,92 @@ def seed_synthetic_tenants(
                         "role": "ADMIN" if subject_index == 1 else "LEARNER",
                     },
                 )
+    json_value = (
+        "CAST(:payload_json AS JSONB)"
+        if connection.dialect.name == "postgresql"
+        else ":payload_json"
+    )
+    for resource in resolved.resources:
+        parameters = {
+            "scope_id": f"scope:{resource.resource_id}",
+            "resource_id": resource.resource_id,
+            "resource_kind": resource.resource_kind,
+            "scope_type": resource.scope_type,
+            "owner_subject_id": resource.owner_subject_id,
+            "organization_id": resource.organization_id,
+            "workspace_id": resource.workspace_id,
+            "classification": "INTERNAL",
+            "title": f"Synthetic {resource.resource_kind}",
+            "status": "ready",
+            "payload_json": json.dumps(
+                {"synthetic": True},
+                separators=(",", ":"),
+            ),
+            "search_text": f"synthetic {resource.resource_kind.lower()} tenant corpus",
+            "job_id": f"job:{resource.resource_id}",
+            "cache_key": f"cache:{resource.resource_id}",
+        }
+        connection.execute(
+            text(
+                """
+                INSERT INTO resource_scopes(
+                  id, resource_kind, resource_id, scope_type,
+                  owner_subject_id, organization_id, workspace_id,
+                  classification
+                ) VALUES (
+                  :scope_id, :resource_kind, :resource_id, :scope_type,
+                  :owner_subject_id, :organization_id, :workspace_id,
+                  :classification
+                )
+                ON CONFLICT (resource_kind, resource_id) DO UPDATE SET
+                  scope_type = EXCLUDED.scope_type,
+                  owner_subject_id = EXCLUDED.owner_subject_id,
+                  organization_id = EXCLUDED.organization_id,
+                  workspace_id = EXCLUDED.workspace_id,
+                  classification = EXCLUDED.classification,
+                  updated_at = CURRENT_TIMESTAMP
+                """
+            ),
+            parameters,
+        )
+        connection.execute(
+            text(
+                f"""
+                INSERT INTO {resource.table}(
+                  resource_id, resource_scope_id, resource_kind,
+                  organization_id, workspace_id, scope_type,
+                  owner_subject_id, classification, title, status,
+                  payload_json, search_text, job_id, cache_key
+                ) VALUES (
+                  :resource_id, :scope_id, :resource_kind,
+                  :organization_id, :workspace_id, :scope_type,
+                  :owner_subject_id, :classification, :title, :status,
+                  {json_value}, :search_text, :job_id, :cache_key
+                )
+                ON CONFLICT (resource_id) DO UPDATE SET
+                  resource_scope_id = EXCLUDED.resource_scope_id,
+                  organization_id = EXCLUDED.organization_id,
+                  workspace_id = EXCLUDED.workspace_id,
+                  scope_type = EXCLUDED.scope_type,
+                  owner_subject_id = EXCLUDED.owner_subject_id,
+                  classification = EXCLUDED.classification,
+                  title = EXCLUDED.title,
+                  status = EXCLUDED.status,
+                  payload_json = EXCLUDED.payload_json,
+                  search_text = EXCLUDED.search_text,
+                  job_id = EXCLUDED.job_id,
+                  cache_key = EXCLUDED.cache_key,
+                  updated_at = CURRENT_TIMESTAMP
+                """
+            ),
+            parameters,
+        )
     return resolved
 
 
 __all__ = [
     "SyntheticOrganization",
+    "SyntheticResource",
     "SyntheticTenantSeed",
     "build_synthetic_tenant_seed",
     "seed_synthetic_tenants",

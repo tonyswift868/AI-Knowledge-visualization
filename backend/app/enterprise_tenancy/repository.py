@@ -15,7 +15,7 @@ from app.enterprise.contracts_v1 import (
     TenantMode,
 )
 
-from .context import TenantConnection
+from .context import TenantDbSession
 from .models import (
     EnterprisePersistenceUnavailableError,
     RESOURCE_TABLE_BY_KIND,
@@ -28,20 +28,20 @@ from .models import (
 class TenantResourceRepository(Protocol):
     def upsert(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         draft: TenantResourceDraft,
     ) -> TenantResourceRecord: ...
 
     def get(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
     ) -> TenantResourceRecord | None: ...
 
     def list_records(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         *,
         status: str | None = None,
@@ -50,7 +50,7 @@ class TenantResourceRepository(Protocol):
 
     def search(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         query: str,
         *,
@@ -59,7 +59,7 @@ class TenantResourceRepository(Protocol):
 
     def update_payload(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
         *,
@@ -69,14 +69,14 @@ class TenantResourceRepository(Protocol):
 
     def delete(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
     ) -> bool: ...
 
     def export_records(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         *,
         limit: int = 10_000,
@@ -84,14 +84,14 @@ class TenantResourceRepository(Protocol):
 
     def read_job(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         job_id: str,
     ) -> TenantResourceRecord | None: ...
 
     def read_cache(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         cache_key: str,
     ) -> TenantResourceRecord | None: ...
@@ -113,6 +113,11 @@ class DualPersistenceSelector:
                 "ENTERPRISE_SERVER requires a configured PostgreSQL repository"
             )
         return self.enterprise_server
+
+
+# Canonical factory name; the existing selector name remains stable for the
+# already integrated E1-02 foundation.
+TenantResourceRepositoryFactory = DualPersistenceSelector
 
 
 def _scope_id(kind: TenantResourceKind, resource_id: str) -> str:
@@ -169,12 +174,12 @@ class PostgresTenantResourceRepository:
 
     def upsert(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         draft: TenantResourceDraft,
     ) -> TenantResourceRecord:
         kind = TenantResourceKind(draft.kind)
         table = self._table(kind)
-        context = transaction.context
+        context = transaction.tenant
         scope_id = _scope_id(kind, draft.resource_id)
         parameters = {
             "scope_id": scope_id,
@@ -261,7 +266,7 @@ class PostgresTenantResourceRepository:
 
     def get(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
     ) -> TenantResourceRecord | None:
@@ -275,7 +280,7 @@ class PostgresTenantResourceRepository:
 
     def list_records(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         *,
         status: str | None = None,
@@ -296,7 +301,7 @@ class PostgresTenantResourceRepository:
 
     def search(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         query: str,
         *,
@@ -322,7 +327,7 @@ class PostgresTenantResourceRepository:
 
     def update_payload(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
         *,
@@ -355,7 +360,7 @@ class PostgresTenantResourceRepository:
 
     def delete(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         resource_id: str,
     ) -> bool:
@@ -380,7 +385,7 @@ class PostgresTenantResourceRepository:
 
     def export_records(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         *,
         limit: int = 10_000,
@@ -393,7 +398,7 @@ class PostgresTenantResourceRepository:
 
     def read_job(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         job_id: str,
     ) -> TenantResourceRecord | None:
@@ -410,7 +415,7 @@ class PostgresTenantResourceRepository:
 
     def read_cache(
         self,
-        transaction: TenantConnection,
+        transaction: TenantDbSession,
         kind: TenantResourceKind,
         cache_key: str,
     ) -> TenantResourceRecord | None:
@@ -429,5 +434,6 @@ class PostgresTenantResourceRepository:
 __all__ = [
     "DualPersistenceSelector",
     "PostgresTenantResourceRepository",
+    "TenantResourceRepositoryFactory",
     "TenantResourceRepository",
 ]

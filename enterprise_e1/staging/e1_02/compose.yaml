@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: mentorflow_e1_w02_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mentorflow-e1-staging-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mentorflow_e1_w02_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "${E1_POSTGRES_PORT:-18402}:5432"
+
+  migrate:
+    image: "${MENTORFLOW_BACKEND_IMAGE:?set MENTORFLOW_BACKEND_IMAGE to a Linux backend image with the leased PostgreSQL driver}"
+    working_dir: /workspace/backend
+    volumes:
+      - ../../..:/workspace:ro
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:mentorflow-e1-staging-only@postgres:5432/mentorflow_e1_w02_test
+    command:
+      - /bin/sh
+      - -ec
+      - alembic -x seed_synthetic=true upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  rls-gate:
+    image: postgres:16-bookworm
+    volumes:
+      - ./sql:/gate:ro
+    environment:
+      PGPASSWORD: mentorflow-e1-staging-only
+    command:
+      - /bin/bash
+      - -ec
+      - >-
+        psql -v ON_ERROR_STOP=1
+        -h postgres -U postgres -d mentorflow_e1_w02_test
+        -f /gate/rls_negative.sql
+        -f /gate/pool_context.sql
+        -f /gate/query_plans.sql
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  pool-gate:
+    image: "${MENTORFLOW_BACKEND_IMAGE:?set MENTORFLOW_BACKEND_IMAGE to a Linux backend image with the leased PostgreSQL driver}"
+    working_dir: /workspace
+    volumes:
+      - ../../..:/workspace:ro
+    environment:
+      PYTHONPATH: /workspace/backend
+      E1_DATABASE_URL: postgresql+psycopg://postgres:mentorflow-e1-staging-only@postgres:5432/mentorflow_e1_w02_test
+    command:
+      - python
+      - enterprise_e1/staging/e1_02/run_pool_gate.py
+    depends_on:
+      rls-gate:
+        condition: service_completed_successfully
