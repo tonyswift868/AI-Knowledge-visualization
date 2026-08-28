@@ -143,9 +143,22 @@ jobs:
             printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
             printf '%s@%s\n' "${image%:*}" "$digest" > "artifacts/enterprise/container/${target}-image-digest.txt"
           done
+      - name: Emit RP-05 application image input
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg backend "$(cat artifacts/enterprise/container/backend-image-digest.txt)" \
+            --arg frontend "$(cat artifacts/enterprise/container/frontend-image-digest.txt)" \
+            --arg worker "$(cat artifacts/enterprise/container/worker-image-digest.txt)" \
+            '{schema_version:"mentorflow.rp05-application-images.v1",images:{MENTORFLOW_BACKEND_IMAGE:$backend,MENTORFLOW_FRONTEND_IMAGE:$frontend,MENTORFLOW_WORKER_IMAGE:$worker}}' \
+            > artifacts/enterprise/container/rp05-application-images.json
+          jq -e 'all(.images[]; test("@sha256:[0-9a-f]{64}$"))' artifacts/enterprise/container/rp05-application-images.json >/dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: container-published-digests
-          path: artifacts/enterprise/container/*-image-digest.txt
+          path: |
+            artifacts/enterprise/container/*-image-digest.txt
+            artifacts/enterprise/container/rp05-application-images.json
           if-no-files-found: error
           retention-days: 90

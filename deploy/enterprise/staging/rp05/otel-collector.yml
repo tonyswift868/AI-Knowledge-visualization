@@ -1,0 +1,22 @@
+receivers:
+  otlp:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:4317}
+      http: {endpoint: 0.0.0.0:4318}
+extensions:
+  health_check: {endpoint: 0.0.0.0:13133, path: /health}
+processors:
+  memory_limiter: {check_interval: 5s, limit_mib: 128, spike_limit_mib: 32}
+  batch: {timeout: 5s}
+exporters:
+  file/evidence:
+    path: /var/lib/mentorflow-otel/telemetry.jsonl
+    create_directory: true
+    flush_interval: 1s
+    rotation: {max_megabytes: 16, max_days: 7, max_backups: 4, localtime: false}
+service:
+  extensions: [health_check]
+  pipelines:
+    traces: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [file/evidence]}
+    metrics: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [file/evidence]}
+    logs: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [file/evidence]}
