@@ -24,9 +24,15 @@ from app.enterprise.jobs_v1.runtime import (
     read_readiness,
     verify_worker_database,
 )
+from app.observability.runtime import (
+    configure_worker_open_telemetry,
+    force_flush_open_telemetry,
+    shutdown_open_telemetry,
+)
 
 
 logger = logging.getLogger(__name__)
+OTEL_SHUTDOWN_TIMEOUT_MILLIS = 5_000
 
 
 def _integer(
@@ -169,11 +175,58 @@ def _check_connection(app: Any) -> None:
         ) from exc
 
 
+def _stop_worker_runtime(supervisor: WorkerSupervisor | None, engine: Any) -> None:
+    """Stop every runtime layer without leaking teardown exception details."""
+
+    if supervisor is not None:
+        try:
+            supervisor.stop()
+        except Exception as exc:
+            logger.error(
+                "Durable worker supervisor shutdown failed",
+                extra={
+                    "action": "durable_worker_supervisor_shutdown_failed",
+                    "error_code": type(exc).__name__[:120],
+                },
+            )
+    try:
+        force_flush_open_telemetry(OTEL_SHUTDOWN_TIMEOUT_MILLIS)
+    except Exception as exc:
+        logger.error(
+            "Durable worker telemetry flush failed",
+            extra={
+                "action": "durable_worker_telemetry_flush_failed",
+                "error_code": type(exc).__name__[:120],
+            },
+        )
+    try:
+        shutdown_open_telemetry(OTEL_SHUTDOWN_TIMEOUT_MILLIS)
+    except Exception as exc:
+        logger.error(
+            "Durable worker telemetry shutdown failed",
+            extra={
+                "action": "durable_worker_telemetry_shutdown_failed",
+                "error_code": type(exc).__name__[:120],
+            },
+        )
+    try:
+        engine.dispose()
+    except Exception as exc:
+        logger.error(
+            "Durable worker database disposal failed",
+            extra={
+                "action": "durable_worker_database_disposal_failed",
+                "error_code": type(exc).__name__[:120],
+            },
+        )
+
+
 def _run(source: Mapping[str, str]) -> int:
     config = load_config(source)
     engine = orm.configure_enterprise_orm(source)
     supervisor: WorkerSupervisor | None = None
     try:
+        configure_worker_open_telemetry(sqlalchemy_engine=engine)
         verify_worker_database(engine)
         app, task = _build_runtime(config, engine)
         _check_connection(app)
@@ -190,9 +243,7 @@ def _run(source: Mapping[str, str]) -> int:
         )
         return 0
     finally:
-        if supervisor is not None:
-            supervisor.stop()
-        engine.dispose()
+        _stop_worker_runtime(supervisor, engine)
 
 
 def _health(source: Mapping[str, str]) -> int:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 
+from app.enterprise import worker_entry
 from app.enterprise.contracts_v1 import (
     AccessDecision,
     AccessDecisionKind,
@@ -371,3 +373,130 @@ def test_worker_schema_bootstrap_preserves_canonical_alembic_head_contract() -> 
         "schema_manager.apply_schema()"
     )
     assert "mentorflow_app" not in source
+
+
+@pytest.mark.parametrize(
+    ("otel_enabled", "run_error"),
+    [
+        (True, None),
+        (True, RuntimeError("postgresql://user:password@database credential=secret")),
+        (False, None),
+    ],
+)
+def test_production_entrypoint_owns_worker_otel_lifecycle(
+    monkeypatch,
+    otel_enabled: bool,
+    run_error: RuntimeError | None,
+) -> None:
+    events: list[str] = []
+    engine = types.SimpleNamespace(dispose=lambda: events.append("dispose"))
+    config = types.SimpleNamespace(
+        policy=types.SimpleNamespace(
+            queues=("mentorflow.enterprise",),
+            concurrency=2,
+            stalled_worker_timeout_seconds=30,
+        ),
+        worker_name="worker-entrypoint-test",
+        shutdown_graceful_timeout_seconds=20.0,
+    )
+
+    class _App:
+        def run_worker(self, **kwargs):
+            events.append("run")
+            assert kwargs["wait"] is True
+            if run_error is not None:
+                raise run_error
+
+    class _Supervisor:
+        def start(self):
+            events.append("supervisor.start")
+
+        def stop(self):
+            events.append("supervisor.stop")
+
+    def configure_otel(*, sqlalchemy_engine):
+        assert sqlalchemy_engine is engine
+        events.append("otel.configure")
+
+    monkeypatch.setenv("MENTORFLOW_OTEL_ENABLED", "true" if otel_enabled else "false")
+    monkeypatch.setattr(worker_entry, "load_config", lambda source: config)
+    monkeypatch.setattr(
+        worker_entry.orm,
+        "configure_enterprise_orm",
+        lambda source: engine,
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "configure_worker_open_telemetry",
+        configure_otel,
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "verify_worker_database",
+        lambda candidate: events.append("database.verify"),
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "_build_runtime",
+        lambda config, engine: (_App(), object()),
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "_check_connection",
+        lambda app: events.append("queue.check"),
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "WorkerSupervisor",
+        lambda config, engine, task: _Supervisor(),
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "force_flush_open_telemetry",
+        lambda timeout: events.append(f"otel.flush:{timeout}"),
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "shutdown_open_telemetry",
+        lambda timeout: events.append(f"otel.shutdown:{timeout}"),
+    )
+
+    if run_error is None:
+        assert worker_entry._run(dict(os.environ)) == 0
+    else:
+        with pytest.raises(RuntimeError) as failure:
+            worker_entry._run(dict(os.environ))
+        assert failure.value is run_error
+
+    assert events == [
+        "otel.configure",
+        "database.verify",
+        "queue.check",
+        "supervisor.start",
+        "run",
+        "supervisor.stop",
+        "otel.flush:5000",
+        "otel.shutdown:5000",
+        "dispose",
+    ]
+
+
+def test_worker_entrypoint_failure_output_redacts_database_credentials(
+    monkeypatch,
+    caplog,
+    capsys,
+) -> None:
+    sensitive = "postgresql://mentorflow_app:password@database credential=secret"
+
+    def fail_run(source):
+        raise RuntimeError(sensitive)
+
+    monkeypatch.setattr(worker_entry, "_run", fail_run)
+    assert worker_entry.main(["run"]) == 1
+    captured = capsys.readouterr()
+    projection = captured.out + captured.err + caplog.text
+    assert "RuntimeError" in projection
+    assert "postgresql://" not in projection
+    assert "password" not in projection
+    assert "credential" not in projection
+    assert "secret" not in projection
