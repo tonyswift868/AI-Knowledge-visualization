@@ -27,8 +27,21 @@ def test_dependency_leases_are_unique_and_fail_closed() -> None:
     payload = _read("DEPENDENCY_LEASES.json")
     capabilities = [entry["capability"] for entry in payload["leases"]]
     assert len(capabilities) == len(set(capabilities))
-    assert all(entry["status"] == "NOT_ACQUIRED" for entry in payload["leases"])
-    assert all(entry["mutation_allowed"] is False for entry in payload["leases"])
+    active = [entry for entry in payload["leases"] if entry["status"] == "ACQUIRED"]
+    assert len(active) <= 1
+    if active:
+        assert active == [
+            {
+                "capability": "POSTGRESQL_DRIVER",
+                "owner": "E1-02",
+                "status": "ACQUIRED",
+                "mutation_allowed": True,
+            }
+        ]
+    assert all(
+        entry["mutation_allowed"] is (entry["status"] == "ACQUIRED")
+        for entry in payload["leases"]
+    )
 
 
 def test_integration_queue_is_dependency_ordered_and_exact_commit_only() -> None:
