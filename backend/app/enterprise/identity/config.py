@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.parse import urlparse
 
@@ -21,6 +21,26 @@ def _required(env: Mapping[str, str], name: str) -> str:
     value = str(env.get(name) or "").strip()
     if not value:
         raise IdentityConfigurationError(f"{name} is required in ENTERPRISE_SERVER mode")
+    return value
+
+
+def _bounded_int(
+    env: Mapping[str, str],
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = str(env.get(name) or default).strip()
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise IdentityConfigurationError(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise IdentityConfigurationError(
+            f"{name} must be between {minimum} and {maximum}"
+        )
     return value
 
 
@@ -50,6 +70,20 @@ def _validated_url(value: str, *, field: str, allow_loopback_http: bool) -> str:
     )
 
 
+def _validated_origin(value: str, *, allow_loopback_http: bool) -> str:
+    normalized = _validated_url(
+        value,
+        field="enterprise identity browser origin",
+        allow_loopback_http=allow_loopback_http,
+    )
+    parsed = urlparse(normalized)
+    if parsed.path not in {"", "/"}:
+        raise IdentityConfigurationError(
+            "enterprise identity browser origins must not contain a path"
+        )
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 @dataclass(frozen=True, slots=True)
 class KeycloakOidcConfig:
     issuer: str
@@ -57,7 +91,7 @@ class KeycloakOidcConfig:
     audience: str
     redirect_uri: str
     post_logout_redirect_uri: str | None = None
-    client_secret: str | None = None
+    client_secret: str | None = field(default=None, repr=False)
     allowed_algorithms: tuple[str, ...] = ("RS256",)
     scopes: tuple[str, ...] = ("openid", "profile", "email")
     clock_skew_seconds: int = 30
@@ -87,6 +121,10 @@ class KeycloakOidcConfig:
             )
         if not self.client_id.strip() or not self.audience.strip():
             raise IdentityConfigurationError("OIDC client_id and audience must not be blank")
+        if self.client_id.strip() == self.audience.strip():
+            raise IdentityConfigurationError(
+                "OIDC client_id and API audience must be distinct"
+            )
         if "openid" not in self.scopes or len(self.scopes) != len(set(self.scopes)):
             raise IdentityConfigurationError("OIDC scopes must be unique and include openid")
         if self.allowed_algorithms != ("RS256",):
@@ -133,10 +171,14 @@ class KeycloakOidcConfig:
 class EnterpriseIdentityConfig:
     mode: TenantMode
     keycloak: KeycloakOidcConfig | None
-    session_cookie_name: str = "mentorflow_enterprise_session"
+    session_cookie_name: str = "__Host-mentorflow_enterprise_session"
     session_cookie_secure: bool = True
     session_ttl_seconds: int = 28_800
     pending_login_ttl_seconds: int = 300
+    browser_allowed_origins: tuple[str, ...] = ()
+    default_organization_id: str | None = None
+    default_workspace_id: str | None = None
+    session_store_mode: str = "PROCESS_LOCAL_SINGLE_REPLICA"
 
     def __post_init__(self) -> None:
         if self.mode is TenantMode.PERSONAL_LOCAL and self.keycloak is not None:
@@ -145,6 +187,8 @@ class EnterpriseIdentityConfig:
             raise IdentityConfigurationError("ENTERPRISE_SERVER requires OIDC configuration")
         if not self.session_cookie_name.strip():
             raise IdentityConfigurationError("session cookie name must not be blank")
+        if self.session_cookie_name.startswith("__Host-") and not self.session_cookie_secure:
+            raise IdentityConfigurationError("__Host- session cookies must be Secure")
         if not 60 <= self.session_ttl_seconds <= 604_800:
             raise IdentityConfigurationError("session TTL must be between 60 seconds and 7 days")
         if not 30 <= self.pending_login_ttl_seconds <= 900:
@@ -160,6 +204,25 @@ class EnterpriseIdentityConfig:
                 raise IdentityConfigurationError(
                     "enterprise session cookies must be Secure outside loopback development"
                 )
+        if len(self.browser_allowed_origins) != len(set(self.browser_allowed_origins)):
+            raise IdentityConfigurationError("enterprise identity browser origins must be unique")
+        if self.mode is TenantMode.ENTERPRISE_SERVER and not self.browser_allowed_origins:
+            keycloak = self.keycloak
+            assert keycloak is not None
+            parsed_redirect = urlparse(keycloak.redirect_uri)
+            object.__setattr__(
+                self,
+                "browser_allowed_origins",
+                (f"{parsed_redirect.scheme}://{parsed_redirect.netloc}",),
+            )
+        if self.default_workspace_id and not self.default_organization_id:
+            raise IdentityConfigurationError(
+                "default enterprise workspace requires a default organization"
+            )
+        if self.session_store_mode != "PROCESS_LOCAL_SINGLE_REPLICA":
+            raise IdentityConfigurationError(
+                "E1-01 currently supports only PROCESS_LOCAL_SINGLE_REPLICA sessions"
+            )
 
     @classmethod
     def from_env(cls, source: Mapping[str, str] | None = None) -> "EnterpriseIdentityConfig":
@@ -174,7 +237,12 @@ class EnterpriseIdentityConfig:
                 "MENTORFLOW_DEPLOYMENT_MODE must be PERSONAL_LOCAL or ENTERPRISE_SERVER"
             ) from exc
         if mode is TenantMode.PERSONAL_LOCAL:
-            return cls(mode=mode, keycloak=None, session_cookie_secure=False)
+            return cls(
+                mode=mode,
+                keycloak=None,
+                session_cookie_name="mentorflow_enterprise_session",
+                session_cookie_secure=False,
+            )
 
         allow_http = _truthy(env.get("MENTORFLOW_KEYCLOAK_ALLOW_LOOPBACK_HTTP"))
         issuer = _validated_url(
@@ -204,12 +272,13 @@ class EnterpriseIdentityConfig:
         )
         if algorithms != ("RS256",):
             raise IdentityConfigurationError("E1-01 currently permits RS256 only")
-        try:
-            skew = int(env.get("MENTORFLOW_KEYCLOAK_CLOCK_SKEW_SECONDS") or "30")
-        except ValueError as exc:
-            raise IdentityConfigurationError(
-                "MENTORFLOW_KEYCLOAK_CLOCK_SKEW_SECONDS must be an integer"
-            ) from exc
+        skew = _bounded_int(
+            env,
+            "MENTORFLOW_KEYCLOAK_CLOCK_SKEW_SECONDS",
+            30,
+            minimum=0,
+            maximum=300,
+        )
         client_id = _required(env, "MENTORFLOW_KEYCLOAK_CLIENT_ID")
         client_secret = str(env.get("MENTORFLOW_KEYCLOAK_CLIENT_SECRET") or "").strip() or None
         keycloak = KeycloakOidcConfig(
@@ -222,10 +291,86 @@ class EnterpriseIdentityConfig:
             allowed_algorithms=algorithms,
             clock_skew_seconds=skew,
             introspection_enabled=_truthy(env.get("MENTORFLOW_KEYCLOAK_INTROSPECTION_ENABLED")),
+            http_timeout_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_KEYCLOAK_HTTP_TIMEOUT_SECONDS",
+                10,
+                minimum=1,
+                maximum=60,
+            ),
+            jwks_cache_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_KEYCLOAK_JWKS_CACHE_SECONDS",
+                300,
+                minimum=30,
+                maximum=3_600,
+            ),
+            logout_token_max_age_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_KEYCLOAK_LOGOUT_TOKEN_MAX_AGE_SECONDS",
+                300,
+                minimum=30,
+                maximum=900,
+            ),
+            max_token_lifetime_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS",
+                86_400,
+                minimum=60,
+                maximum=86_400,
+            ),
             allow_loopback_http=allow_http,
         )
         cookie_secure = not (allow_http and urlparse(redirect_uri).scheme == "http")
-        return cls(mode=mode, keycloak=keycloak, session_cookie_secure=cookie_secure)
+        redirect = urlparse(redirect_uri)
+        default_origin = f"{redirect.scheme}://{redirect.netloc}"
+        origin_values = tuple(
+            _validated_origin(item.strip(), allow_loopback_http=allow_http)
+            for item in str(
+                env.get("MENTORFLOW_IDENTITY_ALLOWED_ORIGINS") or default_origin
+            ).split(",")
+            if item.strip()
+        )
+        cookie_name = str(env.get("MENTORFLOW_IDENTITY_SESSION_COOKIE_NAME") or "").strip()
+        if not cookie_name:
+            cookie_name = (
+                "__Host-mentorflow_enterprise_session"
+                if cookie_secure
+                else "mentorflow_enterprise_session"
+            )
+        return cls(
+            mode=mode,
+            keycloak=keycloak,
+            session_cookie_name=cookie_name,
+            session_cookie_secure=cookie_secure,
+            session_ttl_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS",
+                28_800,
+                minimum=60,
+                maximum=604_800,
+            ),
+            pending_login_ttl_seconds=_bounded_int(
+                env,
+                "MENTORFLOW_IDENTITY_PENDING_LOGIN_TTL_SECONDS",
+                300,
+                minimum=30,
+                maximum=900,
+            ),
+            browser_allowed_origins=origin_values,
+            default_organization_id=str(
+                env.get("MENTORFLOW_ENTERPRISE_DEFAULT_ORGANIZATION_ID") or ""
+            ).strip()
+            or None,
+            default_workspace_id=str(
+                env.get("MENTORFLOW_ENTERPRISE_DEFAULT_WORKSPACE_ID") or ""
+            ).strip()
+            or None,
+            session_store_mode=str(
+                env.get("MENTORFLOW_IDENTITY_SESSION_STORE")
+                or "PROCESS_LOCAL_SINGLE_REPLICA"
+            ).strip().upper(),
+        )
 
 
 __all__ = [

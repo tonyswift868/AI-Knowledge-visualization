@@ -46,9 +46,15 @@ class SigningKeyResolver(Protocol):
 
 
 class IdentityProviderPort(Protocol):
-    async def begin_login(self) -> str: ...
+    async def begin_login(self, **kwargs: object) -> str: ...
 
-    async def complete_login(self, *, code: str, state: str) -> EnterpriseSession: ...
+    async def complete_login(
+        self,
+        *,
+        code: str,
+        state: str,
+        browser_binding: str | None = None,
+    ) -> EnterpriseSession: ...
 
     async def refresh_session(self, session_id: str) -> EnterpriseSession: ...
 
@@ -190,6 +196,7 @@ class HttpJwksSigningKeyResolver:
         self._clock = monotonic_clock
         self._keys: dict[str, rsa.RSAPublicKey] = {}
         self._expires_at = 0.0
+        self._forced_refresh_not_before = 0.0
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -220,10 +227,16 @@ class HttpJwksSigningKeyResolver:
         except ValueError as exc:
             raise IdentityError("OIDC_JWKS_INVALID", "OIDC RSA key parameters are invalid", status=503) from exc
 
-    async def _refresh(self, *, force: bool) -> None:
+    async def _refresh(self, *, force: bool, missing_key_id: str | None = None) -> None:
         async with self._lock:
-            if not force and self._keys and self._clock() < self._expires_at:
+            current = self._clock()
+            if not force and self._keys and current < self._expires_at:
                 return
+            if force:
+                if missing_key_id is not None and missing_key_id in self._keys:
+                    return
+                if current < self._forced_refresh_not_before:
+                    return
             try:
                 response = await self._http.get(
                     self._config.jwks_uri,
@@ -267,7 +280,12 @@ class HttpJwksSigningKeyResolver:
             if not keys:
                 raise IdentityError("OIDC_JWKS_INVALID", "OIDC JWKS has no acceptable signing key", status=503)
             self._keys = keys
-            self._expires_at = self._clock() + self._config.jwks_cache_seconds
+            refreshed_at = self._clock()
+            self._expires_at = refreshed_at + self._config.jwks_cache_seconds
+            self._forced_refresh_not_before = refreshed_at + min(
+                30,
+                self._config.jwks_cache_seconds,
+            )
 
     async def signing_key(
         self,
@@ -280,7 +298,7 @@ class HttpJwksSigningKeyResolver:
         await self._refresh(force=False)
         key = self._keys.get(key_id)
         if key is None:
-            await self._refresh(force=True)
+            await self._refresh(force=True, missing_key_id=key_id)
             key = self._keys.get(key_id)
         if key is None:
             raise IdentityError("OIDC_SIGNING_KEY_NOT_FOUND", "OIDC signing key was not found")
@@ -312,6 +330,7 @@ class OidcIdentityAdapter:
         required_claims: tuple[str, ...],
         require_expiry: bool,
         expected_audience: str,
+        expected_token_types: tuple[str, ...],
     ) -> Mapping[str, Any]:
         parsed = _parse_jwt(token)
         algorithm = _required_text(parsed.header, "alg", max_length=20)
@@ -320,10 +339,14 @@ class OidcIdentityAdapter:
         if parsed.header.get("crit") is not None:
             raise IdentityError("OIDC_HEADER_UNSUPPORTED", "OIDC critical headers are not supported")
         token_type = parsed.header.get("typ")
-        if token_type is not None and (
-            not isinstance(token_type, str) or not token_type.strip() or len(token_type) > 100
+        if (
+            not isinstance(token_type, str)
+            or not token_type.strip()
+            or len(token_type) > 100
+            or token_type.strip().casefold()
+            not in {value.casefold() for value in expected_token_types}
         ):
-            raise IdentityError("OIDC_HEADER_UNSUPPORTED", "OIDC token type is invalid")
+            raise IdentityError("OIDC_TOKEN_TYPE_INVALID", "OIDC token type is invalid")
         key_id = _required_text(parsed.header, "kid", max_length=300)
         key = await self._signing_keys.signing_key(key_id=key_id, algorithm=algorithm)
         if not isinstance(key, rsa.RSAPublicKey):
@@ -410,6 +433,7 @@ class OidcIdentityAdapter:
             required_claims=("iss", "aud", "exp", "iat", "jti", "sub"),
             require_expiry=True,
             expected_audience=self.config.audience,
+            expected_token_types=("JWT", "Bearer", "at+jwt"),
         )
         return self._principal(claims)
 
@@ -424,6 +448,7 @@ class OidcIdentityAdapter:
             required_claims=("iss", "aud", "exp", "iat", "jti", "sub", "nonce"),
             require_expiry=True,
             expected_audience=self.config.client_id,
+            expected_token_types=("JWT",),
         )
         if not expected_nonce or claims.get("nonce") != expected_nonce:
             raise IdentityError("OIDC_NONCE_INVALID", "OIDC login nonce is invalid")
@@ -435,6 +460,7 @@ class OidcIdentityAdapter:
             required_claims=("iss", "aud", "iat", "jti", "events"),
             require_expiry=False,
             expected_audience=self.config.client_id,
+            expected_token_types=("logout+jwt",),
         )
         events = claims.get("events")
         logout_event = events.get(_BACKCHANNEL_LOGOUT_EVENT) if isinstance(events, Mapping) else None
@@ -443,11 +469,16 @@ class OidcIdentityAdapter:
         subject = _optional_text(claims, "sub", max_length=300)
         session_id = _optional_text(claims, "sid", max_length=300)
         _required_text(claims, "jti", max_length=300)
-        if claims.get("nonce") is not None or not (session_id or subject):
+        if "nonce" in claims or not (session_id or subject):
             raise IdentityError("OIDC_LOGOUT_TOKEN_INVALID", "OIDC logout token shape is invalid")
         issued_at = _numeric_date(claims, "iat")
         assert issued_at is not None
         current = self._clock()
+        if issued_at > current:
+            raise IdentityError(
+                "OIDC_ISSUED_AT_INVALID",
+                "OIDC logout token issuance is in the future",
+            )
         max_age = timedelta(
             seconds=self.config.logout_token_max_age_seconds + self.config.clock_skew_seconds
         )

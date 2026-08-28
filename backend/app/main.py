@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
@@ -80,6 +80,7 @@ from .integration_routes import (
 )
 from .teaching.progress_read.api import router as progress_read_router
 from .observability import (
+    correlation_scope,
     configure_default_health_probes,
     configure_open_telemetry,
     emit_runtime_probe,
@@ -89,6 +90,20 @@ from .observability import (
     shutdown_open_telemetry,
 )
 from . import orm as orm_runtime
+from .enterprise.contracts_v1 import TenantMode
+from .enterprise.identity import (
+    EnterpriseIdentityConfig,
+    IdentityContextError,
+    IdentityError,
+)
+from .enterprise.identity.runtime import (
+    LOGIN_PATH as ENTERPRISE_LOGIN_PATH,
+    EnterpriseIdentityRuntime,
+    build_enterprise_identity_runtime,
+    enterprise_route_is_tenant_ready,
+    identity_error_response,
+    install_enterprise_identity,
+)
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -205,13 +220,19 @@ def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dic
 @asynccontextmanager
 async def lifespan(_app):
     health_registry.started = False
-    db.init_db()
+    identity_mode = EnterpriseIdentityConfig.from_env().mode
+    if identity_mode is TenantMode.PERSONAL_LOCAL:
+        db.init_db()
     upgrade_orm_schema()
     init_orm()
-    initialize_active_teaching_storage()
-    recover_interrupted_knowledge_map_jobs()
-    recover_interrupted_video_collection_jobs()
-    cleanup_expired_previews()
+    _app.state.enterprise_identity_runtime = build_enterprise_identity_runtime(
+        engine=orm_runtime.engine,
+    )
+    if identity_mode is TenantMode.PERSONAL_LOCAL:
+        initialize_active_teaching_storage()
+        recover_interrupted_knowledge_map_jobs()
+        recover_interrupted_video_collection_jobs()
+        cleanup_expired_previews()
     # Missing or invalid engine release material is recorded fail-closed. The
     # bootstrap accepts only the fixed registry -> root-signed policy -> leaf
     # receipt -> signed engine chain and never starts its child/model.
@@ -229,6 +250,13 @@ async def lifespan(_app):
         yield
     finally:
         health_registry.started = False
+        identity_runtime = getattr(
+            _app.state,
+            "enterprise_identity_runtime",
+            None,
+        )
+        if isinstance(identity_runtime, EnterpriseIdentityRuntime):
+            await identity_runtime.aclose()
         document_import_host = getattr(
             _app.state,
             "document_import_host",
@@ -290,6 +318,7 @@ configure_default_health_probes()
 install_review_product(app)
 install_plan_product(app)
 install_document_import(app)
+install_enterprise_identity(app)
 app.include_router(active_teaching_router)
 app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)
@@ -310,6 +339,74 @@ _configured_origins = [
     ).split(",")
     if item.strip()
 ]
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    with observe_http_request(request) as correlation:
+        runtime = getattr(request.app.state, "enterprise_identity_runtime", None)
+        try:
+            if isinstance(runtime, EnterpriseIdentityRuntime) and runtime.enterprise_enabled:
+                path = request.url.path
+                accepts_html = "text/html" in str(request.headers.get("Accept") or "")
+                public_asset = path.startswith(
+                    ("/assets/", "/teacher2d/", "/vendor/")
+                )
+                if (
+                    not path.startswith("/api")
+                    and accepts_html
+                    and not public_asset
+                    and not request.cookies.get(runtime.config.session_cookie_name)
+                ):
+                    response = RedirectResponse(
+                        f"{ENTERPRISE_LOGIN_PATH}?{urlencode({'return_to': path or '/'})}",
+                        status_code=302,
+                    )
+                elif path.startswith("/api") and not runtime.is_public_path(path):
+                    binding = await runtime.authenticate_request(request)
+                    request.state.enterprise_identity = binding
+                    request.state.actor_context = (
+                        binding.context.actor if binding.context is not None else None
+                    )
+                    request.state.tenant_context = (
+                        binding.context.tenant if binding.context is not None else None
+                    )
+                    if not enterprise_route_is_tenant_ready(path):
+                        raise IdentityError(
+                            "ENTERPRISE_ROUTE_NOT_TENANT_READY",
+                            "This API route is not yet bound to enterprise tenant persistence",
+                            status=503,
+                        )
+                    if binding.context is not None:
+                        with correlation_scope(
+                            correlation,
+                            organization_id=binding.context.tenant.organization_id,
+                            workspace_id=binding.context.tenant.workspace_id,
+                        ):
+                            response = await call_next(request)
+                    else:
+                        response = await call_next(request)
+                else:
+                    response = await call_next(request)
+            else:
+                configured_mode = str(
+                    os.getenv("MENTORFLOW_DEPLOYMENT_MODE")
+                    or TenantMode.PERSONAL_LOCAL.value
+                ).strip().upper()
+                if configured_mode != TenantMode.PERSONAL_LOCAL.value:
+                    raise IdentityError(
+                        "ENTERPRISE_IDENTITY_NOT_READY",
+                        "Enterprise identity runtime is not ready",
+                        status=503,
+                    )
+                response = await call_next(request)
+        except (IdentityError, IdentityContextError) as exc:
+            response = identity_error_response(request, exc)
+        request.state.response_status_code = response.status_code
+        response.headers["X-Request-ID"] = correlation.request_id
+        response.headers["X-Trace-ID"] = correlation.trace_id
+        response.headers["traceparent"] = correlation.traceparent
+        return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_configured_origins,
@@ -318,15 +415,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID", "X-Trace-ID", "traceparent"],
 )
-@app.middleware("http")
-async def request_context(request: Request, call_next):
-    with observe_http_request(request) as correlation:
-        response = await call_next(request)
-        request.state.response_status_code = response.status_code
-        response.headers["X-Request-ID"] = correlation.request_id
-        response.headers["X-Trace-ID"] = correlation.trace_id
-        response.headers["traceparent"] = correlation.traceparent
-        return response
 
 
 _otel_runtime_status = configure_open_telemetry(
@@ -558,8 +646,23 @@ async def call_bound_provider_tutor(
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "service": "MentorFlow", "demo_mode": True, "catalog": catalog_repository.health()}
+def health(request: Request):
+    identity_runtime = getattr(request.app.state, "enterprise_identity_runtime", None)
+    enterprise = (
+        isinstance(identity_runtime, EnterpriseIdentityRuntime)
+        and identity_runtime.enterprise_enabled
+    )
+    return {
+        "status": "ok",
+        "service": "MentorFlow",
+        "demo_mode": not enterprise,
+        "deployment_mode": (
+            TenantMode.ENTERPRISE_SERVER.value
+            if enterprise
+            else TenantMode.PERSONAL_LOCAL.value
+        ),
+        "catalog": catalog_repository.health(),
+    }
 
 
 @app.get("/api/workspaces", response_model=list[WorkspaceOut], response_model_exclude_unset=True)

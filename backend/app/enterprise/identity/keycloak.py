@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import secrets
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Any, Mapping
@@ -33,26 +34,43 @@ def _pkce_challenge(verifier: str) -> str:
 class PendingAuthorization:
     state: str
     nonce: str
-    code_verifier: str
+    code_verifier: str = field(repr=False)
     redirect_uri: str
     created_at: datetime
     expires_at: datetime
+    browser_binding_hash: str | None = field(default=None, repr=False)
+    selected_organization_id: str | None = None
+    selected_workspace_id: str | None = None
+    return_path: str = "/"
+
+
+@dataclass(frozen=True, slots=True)
+class CompletedAuthorization:
+    session: EnterpriseSession
+    return_path: str
 
 
 @dataclass(frozen=True, slots=True)
 class _StoredSession:
     public: EnterpriseSession
-    refresh_token: str | None
+    refresh_token: str | None = field(repr=False)
 
 
 class InMemoryEnterpriseSessionStore:
     """Process-local opaque sessions; only the server-side refresh token is retained."""
 
-    def __init__(self, *, max_pending: int = 4_096, max_sessions: int = 10_000) -> None:
-        if max_pending <= 0 or max_sessions <= 0:
+    def __init__(
+        self,
+        *,
+        max_pending: int = 4_096,
+        max_sessions: int = 10_000,
+        logout_replay_window_seconds: int = 300,
+    ) -> None:
+        if max_pending <= 0 or max_sessions <= 0 or logout_replay_window_seconds <= 0:
             raise ValueError("session-store capacities must be positive")
         self._max_pending = max_pending
         self._max_sessions = max_sessions
+        self._logout_replay_window_seconds = logout_replay_window_seconds
         self._pending: dict[str, PendingAuthorization] = {}
         self._sessions: dict[str, _StoredSession] = {}
         self._logout_token_ids: dict[str, datetime] = {}
@@ -62,21 +80,39 @@ class InMemoryEnterpriseSessionStore:
         with self._lock:
             self._purge_pending(now=_now())
             if len(self._pending) >= self._max_pending:
-                raise IdentityError(
-                    "ENTERPRISE_SESSION_CAPACITY_EXCEEDED",
-                    "Enterprise pending-login capacity is exhausted",
-                    status=503,
+                oldest = min(
+                    self._pending,
+                    key=lambda key: self._pending[key].created_at,
                 )
+                self._pending.pop(oldest, None)
             self._pending[pending.state] = pending
 
-    def consume_pending(self, state: str, *, now: datetime | None = None) -> PendingAuthorization:
+    def consume_pending(
+        self,
+        state: str,
+        *,
+        browser_binding: str | None = None,
+        now: datetime | None = None,
+    ) -> PendingAuthorization:
         current = now or _now()
         with self._lock:
             self._purge_pending(now=current)
-            pending = self._pending.pop(state, None)
-        if pending is None or pending.expires_at <= current:
-            raise IdentityError("OIDC_STATE_INVALID", "OIDC login state is invalid or expired")
-        return pending
+            pending = self._pending.get(state)
+            if pending is None or pending.expires_at <= current:
+                raise IdentityError("OIDC_STATE_INVALID", "OIDC login state is invalid or expired")
+            if pending.browser_binding_hash is not None:
+                supplied_hash = (
+                    hashlib.sha256(browser_binding.encode("utf-8")).hexdigest()
+                    if browser_binding
+                    else ""
+                )
+                if not secrets.compare_digest(supplied_hash, pending.browser_binding_hash):
+                    raise IdentityError(
+                        "OIDC_BROWSER_TRANSACTION_INVALID",
+                        "OIDC browser transaction is invalid",
+                    )
+            self._pending.pop(state, None)
+            return pending
 
     def _purge_pending(self, *, now: datetime) -> None:
         self._pending = {
@@ -88,6 +124,7 @@ class InMemoryEnterpriseSessionStore:
         public: EnterpriseSession,
         *,
         refresh_token: str | None,
+        expected_generation: int | None = None,
     ) -> None:
         with self._lock:
             current = _now()
@@ -96,7 +133,18 @@ class InMemoryEnterpriseSessionStore:
                 for key, value in self._sessions.items()
                 if not value.public.revoked and value.public.session_expires_at > current
             }
-            if public.session_id not in self._sessions and len(self._sessions) >= self._max_sessions:
+            existing = self._sessions.get(public.session_id)
+            if expected_generation is not None and (
+                existing is None
+                or existing.public.revoked
+                or existing.public.session_generation != expected_generation
+            ):
+                raise IdentityError(
+                    "ENTERPRISE_SESSION_FENCED",
+                    "Enterprise session changed during the operation",
+                    status=409,
+                )
+            if existing is None and len(self._sessions) >= self._max_sessions:
                 raise IdentityError(
                     "ENTERPRISE_SESSION_CAPACITY_EXCEEDED",
                     "Enterprise session capacity is exhausted",
@@ -121,6 +169,25 @@ class InMemoryEnterpriseSessionStore:
             raise IdentityError("ENTERPRISE_SESSION_INVALID", "Enterprise session is invalid")
         return stored
 
+    def get_for_refresh(
+        self,
+        session_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> _StoredSession:
+        current = now or _now()
+        stored = self.get(session_id, now=current)
+        if (
+            stored.public.refresh_token_expires_at is not None
+            and stored.public.refresh_token_expires_at <= current
+        ):
+            self.revoke(session_id)
+            raise IdentityError(
+                "ENTERPRISE_SESSION_REFRESH_EXPIRED",
+                "Enterprise refresh authority has expired",
+            )
+        return stored
+
     def get_public(self, session_id: str, *, now: datetime | None = None) -> EnterpriseSession:
         return self.get(session_id, now=now).public
 
@@ -130,7 +197,13 @@ class InMemoryEnterpriseSessionStore:
             if stored is not None:
                 self._sessions[session_id] = replace(
                     stored,
-                    public=stored.public.model_copy(update={"revoked": True}),
+                    refresh_token=None,
+                    public=stored.public.model_copy(
+                        update={
+                            "revoked": True,
+                            "session_generation": stored.public.session_generation + 1,
+                        }
+                    ),
                 )
 
     def revoke_by_subject_or_sid(self, *, subject: str | None, sid: str | None) -> int:
@@ -144,14 +217,20 @@ class InMemoryEnterpriseSessionStore:
                     if not stored.public.revoked:
                         self._sessions[key] = replace(
                             stored,
-                            public=stored.public.model_copy(update={"revoked": True}),
+                            refresh_token=None,
+                            public=stored.public.model_copy(
+                                update={
+                                    "revoked": True,
+                                    "session_generation": stored.public.session_generation + 1,
+                                }
+                            ),
                         )
                         revoked += 1
         return revoked
 
     def register_logout_token(self, token_id: str, *, now: datetime | None = None) -> bool:
         current = now or _now()
-        cutoff = current - timedelta(minutes=10)
+        cutoff = current - timedelta(seconds=self._logout_replay_window_seconds)
         with self._lock:
             self._logout_token_ids = {
                 key: timestamp
@@ -166,7 +245,7 @@ class InMemoryEnterpriseSessionStore:
             self._logout_token_ids[token_id] = current
         return True
 
-    def select_context(
+    def preview_context(
         self,
         session_id: str,
         *,
@@ -182,18 +261,54 @@ class InMemoryEnterpriseSessionStore:
                 status=403,
             )
         stored = self.get(session_id)
-        public = EnterpriseSession.model_validate(
+        return EnterpriseSession.model_validate(
             {
                 **stored.public.model_dump(),
                 "selected_organization_id": organization_id,
                 "selected_workspace_id": workspace_id,
             }
         )
-        self.put(
-            public,
-            refresh_token=stored.refresh_token,
+
+    def rotate_context(
+        self,
+        session_id: str,
+        *,
+        organization_id: str,
+        workspace_id: str | None,
+        expected_context_version: int,
+        expected_generation: int,
+    ) -> EnterpriseSession:
+        candidate = self.preview_context(
+            session_id,
+            organization_id=organization_id,
+            workspace_id=workspace_id,
         )
-        return public
+        with self._lock:
+            stored = self._sessions.get(session_id)
+            if (
+                stored is None
+                or stored.public.revoked
+                or stored.public.context_version != expected_context_version
+                or stored.public.session_generation != expected_generation
+            ):
+                raise IdentityError(
+                    "ENTERPRISE_CONTEXT_FENCED",
+                    "Enterprise context changed during the operation",
+                    status=409,
+                )
+            new_session = candidate.model_copy(
+                update={
+                    "session_id": _token_urlsafe(),
+                    "context_version": stored.public.context_version + 1,
+                    "session_generation": 0,
+                }
+            )
+            self._sessions.pop(session_id, None)
+            self._sessions[new_session.session_id] = _StoredSession(
+                public=new_session,
+                refresh_token=stored.refresh_token,
+            )
+            return new_session
 
 
 class KeycloakOidcClient(IdentityProviderPort):
@@ -216,9 +331,35 @@ class KeycloakOidcClient(IdentityProviderPort):
         self._owns_http = http_client is None
         self._owns_oidc = oidc is None
         self.oidc = oidc or OidcIdentityAdapter(self.config)
-        self.store = store or InMemoryEnterpriseSessionStore()
+        self.store = store or InMemoryEnterpriseSessionStore(
+            logout_replay_window_seconds=(
+                self.config.logout_token_max_age_seconds
+                + self.config.clock_skew_seconds
+            )
+        )
+        self._session_mutation_locks = tuple(asyncio.Lock() for _ in range(64))
 
-    async def begin_login(self) -> str:
+    def _session_mutation_lock(self, session_id: str) -> asyncio.Lock:
+        digest = hashlib.sha256(session_id.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:2], "big") % len(self._session_mutation_locks)
+        return self._session_mutation_locks[index]
+
+    async def begin_login(
+        self,
+        *,
+        browser_binding: str | None = None,
+        organization_id: str | None = None,
+        workspace_id: str | None = None,
+        return_path: str = "/",
+    ) -> str:
+        organization_id = organization_id.strip() if organization_id else None
+        workspace_id = workspace_id.strip() if workspace_id else None
+        if workspace_id and not organization_id:
+            raise IdentityError(
+                "ENTERPRISE_ORGANIZATION_REQUIRED",
+                "Enterprise workspace selection requires an organization",
+                status=403,
+            )
         state = _token_urlsafe()
         nonce = _token_urlsafe()
         verifier = _token_urlsafe(64)
@@ -232,6 +373,14 @@ class KeycloakOidcClient(IdentityProviderPort):
                 created_at=created,
                 expires_at=created
                 + timedelta(seconds=self.identity_config.pending_login_ttl_seconds),
+                browser_binding_hash=(
+                    hashlib.sha256(browser_binding.encode("utf-8")).hexdigest()
+                    if browser_binding
+                    else None
+                ),
+                selected_organization_id=organization_id,
+                selected_workspace_id=workspace_id,
+                return_path=return_path,
             )
         )
         query = urlencode(
@@ -334,6 +483,8 @@ class KeycloakOidcClient(IdentityProviderPort):
         refresh_token: str | None,
         refresh_expires_in: object,
         existing_session: EnterpriseSession | None = None,
+        selected_organization_id: str | None = None,
+        selected_workspace_id: str | None = None,
     ) -> EnterpriseSession:
         current = _now()
         refresh_expiry = existing_session.refresh_token_expires_at if existing_session else None
@@ -359,20 +510,42 @@ class KeycloakOidcClient(IdentityProviderPort):
             access_token_expires_at=principal.expires_at,
             refresh_token_expires_at=refresh_expiry,
             selected_organization_id=(
-                existing_session.selected_organization_id if existing_session else None
+                existing_session.selected_organization_id
+                if existing_session
+                else selected_organization_id
             ),
-            selected_workspace_id=(existing_session.selected_workspace_id if existing_session else None),
+            selected_workspace_id=(
+                existing_session.selected_workspace_id
+                if existing_session
+                else selected_workspace_id
+            ),
+            context_version=(existing_session.context_version if existing_session else 0),
+            session_generation=(
+                existing_session.session_generation + 1 if existing_session else 0
+            ),
         )
         self.store.put(
             session,
             refresh_token=refresh_token,
+            expected_generation=(
+                existing_session.session_generation if existing_session else None
+            ),
         )
         return session
 
-    async def complete_login(self, *, code: str, state: str) -> EnterpriseSession:
+    async def complete_login_transaction(
+        self,
+        *,
+        code: str,
+        state: str,
+        browser_binding: str | None = None,
+    ) -> CompletedAuthorization:
         if not code or not state or len(code) > 8_192 or len(state) > 1_024:
             raise IdentityError("OIDC_CALLBACK_INVALID", "OIDC callback is missing or invalid")
-        pending = self.store.consume_pending(state)
+        pending = self.store.consume_pending(
+            state,
+            browser_binding=browser_binding,
+        )
         payload = await self._post_form_json(
             self.config.token_endpoint,
             {
@@ -390,61 +563,100 @@ class KeycloakOidcClient(IdentityProviderPort):
             id_token,
             expected_nonce=pending.nonce,
         )
+        access_sid = access_principal.identity_provider_session_id
+        id_sid = id_principal.identity_provider_session_id
         if (
             access_principal.subject != id_principal.subject
             or access_principal.issuer != id_principal.issuer
-            or (
-                access_principal.identity_provider_session_id
-                and id_principal.identity_provider_session_id
-                and access_principal.identity_provider_session_id
-                != id_principal.identity_provider_session_id
-            )
+            or (access_sid and id_sid and access_sid != id_sid)
         ):
             raise IdentityError("OIDC_SUBJECT_MISMATCH", "OIDC access and ID tokens do not match")
-        return self._new_session(
+        if access_sid is None and id_sid is not None:
+            access_principal = access_principal.model_copy(
+                update={"identity_provider_session_id": id_sid}
+            )
+        session = self._new_session(
             principal=access_principal,
             refresh_token=self._optional_token(payload, "refresh_token"),
             refresh_expires_in=payload.get("refresh_expires_in"),
+            selected_organization_id=pending.selected_organization_id,
+            selected_workspace_id=pending.selected_workspace_id,
         )
+        return CompletedAuthorization(session=session, return_path=pending.return_path)
+
+    async def complete_login(
+        self,
+        *,
+        code: str,
+        state: str,
+        browser_binding: str | None = None,
+    ) -> EnterpriseSession:
+        completed = await self.complete_login_transaction(
+            code=code,
+            state=state,
+            browser_binding=browser_binding,
+        )
+        return completed.session
 
     async def refresh_session(self, session_id: str) -> EnterpriseSession:
-        stored = self.store.get(session_id)
-        if not stored.refresh_token:
-            self.store.revoke(session_id)
-            raise IdentityError(
-                "ENTERPRISE_SESSION_REFRESH_UNAVAILABLE",
-                "Enterprise session cannot be refreshed",
-            )
-        try:
-            payload = await self._post_form_json(
-                self.config.token_endpoint,
-                {
-                    **self._client_auth(),
-                    "grant_type": "refresh_token",
-                    "refresh_token": stored.refresh_token,
-                },
-            )
-        except IdentityError as exc:
-            if exc.code == "IDENTITY_DISABLED_OR_REVOKED":
+        async with self._session_mutation_lock(session_id):
+            stored = self.store.get_for_refresh(session_id)
+            if not stored.refresh_token:
                 self.store.revoke(session_id)
-            raise
-        access_token = self._required_token(payload, "access_token")
-        principal = await self.oidc.validate_access_token(access_token)
-        previous = stored.public.principal
-        if (
-            principal.subject != previous.subject
-            or principal.issuer != previous.issuer
-            or principal.actor_kind is not previous.actor_kind
-            or principal.client_id != previous.client_id
-        ):
-            self.store.revoke(session_id)
-            raise IdentityError("OIDC_SUBJECT_MISMATCH", "Refreshed OIDC identity changed")
-        return self._new_session(
-            principal=principal,
-            refresh_token=self._optional_token(payload, "refresh_token") or stored.refresh_token,
-            refresh_expires_in=payload.get("refresh_expires_in"),
-            existing_session=stored.public,
-        )
+                raise IdentityError(
+                    "ENTERPRISE_SESSION_REFRESH_UNAVAILABLE",
+                    "Enterprise session cannot be refreshed",
+                )
+            try:
+                payload = await self._post_form_json(
+                    self.config.token_endpoint,
+                    {
+                        **self._client_auth(),
+                        "grant_type": "refresh_token",
+                        "refresh_token": stored.refresh_token,
+                    },
+                )
+            except IdentityError as exc:
+                if exc.code == "IDENTITY_DISABLED_OR_REVOKED":
+                    self.store.revoke(session_id)
+                raise
+            access_token = self._required_token(payload, "access_token")
+            principal = await self.oidc.validate_access_token(access_token)
+            previous = stored.public.principal
+            if (
+                principal.subject != previous.subject
+                or principal.issuer != previous.issuer
+                or principal.actor_kind is not previous.actor_kind
+                or principal.client_id != previous.client_id
+            ):
+                self.store.revoke(session_id)
+                raise IdentityError("OIDC_SUBJECT_MISMATCH", "Refreshed OIDC identity changed")
+            return self._new_session(
+                principal=principal,
+                refresh_token=(
+                    self._optional_token(payload, "refresh_token") or stored.refresh_token
+                ),
+                refresh_expires_in=payload.get("refresh_expires_in"),
+                existing_session=stored.public,
+            )
+
+    async def rotate_context(
+        self,
+        session_id: str,
+        *,
+        organization_id: str,
+        workspace_id: str | None,
+        expected_context_version: int,
+        expected_generation: int,
+    ) -> EnterpriseSession:
+        async with self._session_mutation_lock(session_id):
+            return self.store.rotate_context(
+                session_id,
+                organization_id=organization_id,
+                workspace_id=workspace_id,
+                expected_context_version=expected_context_version,
+                expected_generation=expected_generation,
+            )
 
     async def authenticate_access_token(self, token: str) -> AuthenticatedPrincipal:
         principal = await self.oidc.validate_access_token(token)
@@ -467,19 +679,20 @@ class KeycloakOidcClient(IdentityProviderPort):
         return principal
 
     async def logout(self, session_id: str) -> str | None:
-        stored = self.store.get(session_id)
-        try:
-            if stored.refresh_token:
-                await self._post_form_no_content(
-                    self.config.revocation_endpoint,
-                    {
-                        **self._client_auth(),
-                        "token": stored.refresh_token,
-                        "token_type_hint": "refresh_token",
-                    },
-                )
-        finally:
-            self.store.revoke(session_id)
+        async with self._session_mutation_lock(session_id):
+            stored = self.store.get(session_id)
+            try:
+                if stored.refresh_token:
+                    await self._post_form_no_content(
+                        self.config.revocation_endpoint,
+                        {
+                            **self._client_auth(),
+                            "token": stored.refresh_token,
+                            "token_type_hint": "refresh_token",
+                        },
+                    )
+            finally:
+                self.store.revoke(session_id)
         query: dict[str, str] = {"client_id": self.config.client_id}
         if self.config.post_logout_redirect_uri:
             query["post_logout_redirect_uri"] = self.config.post_logout_redirect_uri
@@ -503,6 +716,7 @@ class KeycloakOidcClient(IdentityProviderPort):
 
 
 __all__ = [
+    "CompletedAuthorization",
     "InMemoryEnterpriseSessionStore",
     "KeycloakOidcClient",
     "PendingAuthorization",

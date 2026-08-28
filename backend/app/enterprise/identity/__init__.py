@@ -17,7 +17,13 @@ from .models import (
     ServiceIdentityGrant,
     ServicePermission,
 )
-from .keycloak import InMemoryEnterpriseSessionStore, KeycloakOidcClient, PendingAuthorization
+from .directory import PostgresIdentityDirectory, service_identity_grants_from_env
+from .keycloak import (
+    CompletedAuthorization,
+    InMemoryEnterpriseSessionStore,
+    KeycloakOidcClient,
+    PendingAuthorization,
+)
 from .oidc import (
     HttpJwksSigningKeyResolver,
     IdentityError,
@@ -29,6 +35,7 @@ from .oidc import (
 __all__ = [
     "AuthenticatedPrincipal",
     "BusinessRole",
+    "CompletedAuthorization",
     "EnterpriseIdentityConfig",
     "EnterpriseSession",
     "IdentityConfigurationError",
@@ -45,9 +52,11 @@ __all__ = [
     "RequestIdentityContext",
     "OidcIdentityAdapter",
     "PendingAuthorization",
+    "PostgresIdentityDirectory",
     "ServiceIdentityGrant",
     "ServicePermission",
     "SigningKeyResolver",
     "enterprise_request_context",
     "personal_request_context",
+    "service_identity_grants_from_env",
 ]

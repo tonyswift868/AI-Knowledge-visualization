@@ -22,6 +22,7 @@ class MembershipStatus(str, Enum):
 
 
 class BusinessRole(str, Enum):
+    OWNER = "OWNER"
     ORGANIZATION_OWNER = "ORGANIZATION_OWNER"
     ADMIN = "ADMIN"
     CONTENT_MANAGER = "CONTENT_MANAGER"
@@ -137,6 +138,8 @@ class EnterpriseSession(_IdentityModel):
     refresh_token_expires_at: datetime | None = None
     selected_organization_id: str | None = Field(default=None, max_length=240)
     selected_workspace_id: str | None = Field(default=None, max_length=240)
+    context_version: int = Field(default=0, ge=0)
+    session_generation: int = Field(default=0, ge=0)
     revoked: bool = False
 
     @field_validator(
