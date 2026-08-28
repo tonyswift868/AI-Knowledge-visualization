@@ -82,9 +82,11 @@ from .teaching.progress_read.api import router as progress_read_router
 from .observability import (
     configure_default_health_probes,
     configure_open_telemetry,
+    emit_runtime_probe,
     health_registry,
     install_observability,
     observe_http_request,
+    shutdown_open_telemetry,
 )
 from . import orm as orm_runtime
 from .qwen_base_clone_runtime import (
@@ -281,6 +283,7 @@ async def lifespan(_app):
             )
         else:
             _app.state.qwen_voice_shutdown_error = None
+        shutdown_open_telemetry()
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
 configure_default_health_probes()
@@ -315,9 +318,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID", "X-Trace-ID", "traceparent"],
 )
-configure_open_telemetry(app, sqlalchemy_engine=orm_runtime.engine)
-
-
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     with observe_http_request(request) as correlation:
@@ -327,6 +327,14 @@ async def request_context(request: Request, call_next):
         response.headers["X-Trace-ID"] = correlation.trace_id
         response.headers["traceparent"] = correlation.traceparent
         return response
+
+
+_otel_runtime_status = configure_open_telemetry(
+    app,
+    sqlalchemy_engine=orm_runtime.engine,
+)
+if _otel_runtime_status.enabled and _otel_runtime_status.ready:
+    emit_runtime_probe("backend")
 
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):

@@ -64,6 +64,7 @@ _ALLOWED_SPAN_FIELDS = {
     "mentorflow.trace_id",
     "mentorflow.workspace_id",
 }
+_SAFE_TELEMETRY_LOGGER = logging.getLogger("mentorflow.telemetry.safe")
 
 
 class UnsafeTelemetryField(ValueError):
@@ -118,16 +119,26 @@ def scan_telemetry_text(text: str) -> None:
         raise UnsafeTelemetryContent(f"forbidden telemetry content at offset {match.start()}")
 
 
+def safe_telemetry_logger() -> logging.Logger:
+    """Return the dedicated logger that accepts only validated event payloads."""
+
+    return _SAFE_TELEMETRY_LOGGER
+
+
 def emit_event(logger: logging.Logger, event: str, **fields: object) -> None:
     context = current_correlation()
     merged: dict[str, object] = context.log_fields() if context else {}
     merged.update(fields)
     merged["event"] = event
+    safe_fields = safe_event_fields(merged)
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        **safe_event_fields(merged),
+        **safe_fields,
     }
-    logger.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    message = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    logger.info(message)
+    if logger is not _SAFE_TELEMETRY_LOGGER:
+        _SAFE_TELEMETRY_LOGGER.info(message, extra=safe_fields)
 
 
 __all__ = [
@@ -136,5 +147,6 @@ __all__ = [
     "emit_event",
     "safe_event_fields",
     "safe_span_attributes",
+    "safe_telemetry_logger",
     "scan_telemetry_text",
 ]

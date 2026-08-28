@@ -23,7 +23,14 @@ from .instrumentation import (
     record_teacher_turn,
 )
 from .metrics import registry
-from .runtime import configure_open_telemetry, otel_status
+from .runtime import (
+    configure_open_telemetry,
+    configure_worker_open_telemetry,
+    emit_runtime_probe,
+    force_flush_open_telemetry,
+    otel_status,
+    shutdown_open_telemetry,
+)
 from .recovery import (
     BackupPlan,
     PostgresEndpoint,
@@ -47,10 +54,13 @@ __all__ = [
     "SloWindow",
     "configure_default_health_probes",
     "configure_open_telemetry",
+    "configure_worker_open_telemetry",
     "correlation_scope",
     "create_backup",
     "current_correlation",
     "error_budgets",
+    "emit_runtime_probe",
+    "force_flush_open_telemetry",
     "health_registry",
     "install_observability",
     "observe_http_request",
@@ -69,5 +79,6 @@ __all__ = [
     "record_teacher_turn",
     "restore_backup",
     "registry",
+    "shutdown_open_telemetry",
     "validate_audit_envelope",
 ]

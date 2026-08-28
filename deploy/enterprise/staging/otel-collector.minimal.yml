@@ -6,6 +6,14 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health
+    response_body:
+      healthy: '{"status":"healthy"}'
+      unhealthy: '{"status":"unhealthy"}'
+
 processors:
   memory_limiter:
     check_interval: 5s
@@ -15,15 +23,29 @@ processors:
     timeout: 5s
 
 exporters:
-  nop:
+  file/evidence:
+    path: "${env:MENTORFLOW_OTEL_EVIDENCE_PATH:-/tmp/mentorflow-otel/evidence.jsonl}"
+    create_directory: true
+    directory_permissions: "0700"
+    flush_interval: 1s
+    rotation:
+      max_megabytes: 4
+      max_days: 1
+      max_backups: 2
+      localtime: false
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [nop]
+      exporters: [file/evidence]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [nop]
+      exporters: [file/evidence]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [file/evidence]

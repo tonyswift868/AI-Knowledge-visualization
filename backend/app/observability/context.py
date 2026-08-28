@@ -49,6 +49,23 @@ def _hex_identifier(length: int) -> str:
     return secrets.token_hex(length // 2)
 
 
+def _active_otel_context() -> tuple[str, str, bool] | None:
+    """Adopt an enclosing OTel server span without requiring the SDK."""
+
+    try:
+        from opentelemetry import trace
+
+        span_context = trace.get_current_span().get_span_context()
+    except (AttributeError, ImportError):
+        return None
+    if not getattr(span_context, "is_valid", False):
+        return None
+    trace_id = f"{int(span_context.trace_id):032x}"
+    span_id = f"{int(span_context.span_id):016x}"
+    sampled = bool(getattr(getattr(span_context, "trace_flags", 0), "sampled", False))
+    return trace_id, span_id, sampled
+
+
 @dataclass(frozen=True, slots=True)
 class CorrelationContext:
     request_id: str
@@ -97,15 +114,16 @@ def new_correlation_context(
     feature: object = "unknown",
 ) -> CorrelationContext:
     parent = parse_traceparent(traceparent)
+    active = _active_otel_context() if parent is None else None
     normalized_feature = str(feature or "unknown").strip().casefold()
     if normalized_feature not in _SAFE_FEATURES:
         normalized_feature = "unknown"
     return CorrelationContext(
         request_id=_safe_identifier(request_id, fallback=None) or _hex_identifier(32),
-        trace_id=parent[0] if parent else _hex_identifier(32),
-        span_id=_hex_identifier(16),
+        trace_id=parent[0] if parent else active[0] if active else _hex_identifier(32),
+        span_id=active[1] if active else _hex_identifier(16),
         parent_span_id=parent[1] if parent else None,
-        sampled=parent[2] if parent else True,
+        sampled=parent[2] if parent else active[2] if active else True,
         feature=normalized_feature,
     )
 

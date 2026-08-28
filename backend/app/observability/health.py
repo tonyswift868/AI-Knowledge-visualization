@@ -112,6 +112,12 @@ def _worker_probe() -> tuple[bool, str]:
     return (value in {"1", "true", "yes", "ready"}, "WORKER_DEPENDENCIES_READY" if value in {"1", "true", "yes", "ready"} else "WORKER_DEPENDENCIES_NOT_READY")
 
 
+def _otel_collector_probe() -> tuple[bool, str]:
+    from .runtime import probe_collector_health
+
+    return probe_collector_health()
+
+
 def configure_default_health_probes(*, enterprise_required: bool | None = None) -> None:
     health_registry.clear()
     if enterprise_required is None:
@@ -120,6 +126,10 @@ def configure_default_health_probes(*, enterprise_required: bool | None = None) 
     health_registry.register("keycloak_discovery", _keycloak_probe, required=enterprise_required)
     health_registry.register("object_store", _object_store_probe, required=enterprise_required)
     health_registry.register("worker_dependencies", _worker_probe, required=enterprise_required)
+    from .runtime import otel_enabled
+
+    if otel_enabled():
+        health_registry.register("otel_collector", _otel_collector_probe, required=True)
 
 
 health_registry = HealthRegistry()

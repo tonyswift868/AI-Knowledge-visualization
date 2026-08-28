@@ -8,7 +8,9 @@ x-secure-service: &secure-service
 
 x-app-environment: &app-environment
   MENTORFLOW_PROVIDER_MODE: fake
+  MENTORFLOW_OTEL_ENABLED: "true"
   MENTORFLOW_OTEL_ENDPOINT: http://otel-collector:4318
+  MENTORFLOW_OTEL_HEALTH_ENDPOINT: http://otel-collector:13133/health
 
 services:
   postgres:
@@ -111,6 +113,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       keycloak: {condition: service_healthy}
+      otel-collector: {condition: service_started}
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
       interval: 15s
@@ -147,6 +150,8 @@ services:
     image: "${MENTORFLOW_WORKER_IMAGE:?MENTORFLOW_WORKER_IMAGE is required}"
     env_file: ["${MENTORFLOW_RUNTIME_ENV_FILE:?MENTORFLOW_RUNTIME_ENV_FILE is required}"]
     environment: *app-environment
+    depends_on:
+      otel-collector: {condition: service_started}
     mem_reservation: ${WORKER_MEMORY_RESERVATION:-192m}
     mem_limit: ${WORKER_MEMORY_LIMIT:-384m}
     cpus: ${WORKER_CPUS:-0.45}
@@ -158,6 +163,8 @@ services:
     profiles: [minimal, full]
     image: "${OTEL_COLLECTOR_IMAGE:?OTEL_COLLECTOR_IMAGE is required}"
     command: [--config=/etc/otelcol/config.yml]
+    environment:
+      MENTORFLOW_OTEL_EVIDENCE_PATH: /tmp/mentorflow-otel/evidence.jsonl
     volumes: [./otel-collector.minimal.yml:/etc/otelcol/config.yml:ro]
     mem_reservation: ${OTEL_COLLECTOR_MEMORY_RESERVATION:-64m}
     mem_limit: ${OTEL_COLLECTOR_MEMORY_LIMIT:-192m}
