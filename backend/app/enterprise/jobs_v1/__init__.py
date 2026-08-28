@@ -27,6 +27,7 @@ from .service import (
     OutboxPublisher,
     TenantRevalidationRejected,
     WorkflowCancellationRequested,
+    WorkflowSubmissionDenied,
     WorkflowService,
 )
 
@@ -56,5 +57,6 @@ __all__ = [
     "OutboxPublisher",
     "TenantRevalidationRejected",
     "WorkflowCancellationRequested",
+    "WorkflowSubmissionDenied",
     "WorkflowService",
 ]

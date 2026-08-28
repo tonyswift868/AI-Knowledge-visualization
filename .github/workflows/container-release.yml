@@ -7,6 +7,7 @@ on:
       backend_rollback_image: {description: Immutable prior backend image, type: string, required: true}
       frontend_rollback_image: {description: Immutable prior frontend image, type: string, required: true}
       document_worker_rollback_image: {description: Immutable prior document-worker image, type: string, required: true}
+      worker_rollback_image: {description: Immutable prior durable-worker image, type: string, required: true}
   push:
     tags: ["v*"]
 
@@ -35,7 +36,7 @@ jobs:
           echo "granted=true" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build three commit-tagged images
+    name: Build four commit-tagged images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +49,7 @@ jobs:
           BACKEND_ROLLBACK: "${{ inputs.backend_rollback_image || vars.MENTORFLOW_BACKEND_ROLLBACK_IMAGE }}"
           FRONTEND_ROLLBACK: "${{ inputs.frontend_rollback_image || vars.MENTORFLOW_FRONTEND_ROLLBACK_IMAGE }}"
           DOCUMENT_WORKER_ROLLBACK: "${{ inputs.document_worker_rollback_image || vars.MENTORFLOW_DOCUMENT_WORKER_ROLLBACK_IMAGE }}"
+          WORKER_ROLLBACK: "${{ inputs.worker_rollback_image || vars.MENTORFLOW_WORKER_ROLLBACK_IMAGE }}"
         run: |
           set -euo pipefail
           root="ghcr.io/${GITHUB_REPOSITORY,,}"
@@ -55,11 +57,13 @@ jobs:
           printf '%s\n' "${root}-backend:${GITHUB_SHA}" > artifacts/enterprise/container/backend-image.txt
           printf '%s\n' "${root}-frontend:${GITHUB_SHA}" > artifacts/enterprise/container/frontend-image.txt
           printf '%s\n' "${root}-document-worker:${GITHUB_SHA}" > artifacts/enterprise/container/document-worker-image.txt
+          printf '%s\n' "${root}-worker:${GITHUB_SHA}" > artifacts/enterprise/container/worker-image.txt
           test -n "$BACKEND_ROLLBACK" && printf '%s\n' "$BACKEND_ROLLBACK" > artifacts/enterprise/container/backend-rollback-image.txt
           test -n "$FRONTEND_ROLLBACK" && printf '%s\n' "$FRONTEND_ROLLBACK" > artifacts/enterprise/container/frontend-rollback-image.txt
           test -n "$DOCUMENT_WORKER_ROLLBACK" && printf '%s\n' "$DOCUMENT_WORKER_ROLLBACK" > artifacts/enterprise/container/document-worker-rollback-image.txt
+          test -n "$WORKER_ROLLBACK" && printf '%s\n' "$WORKER_ROLLBACK" > artifacts/enterprise/container/worker-rollback-image.txt
           immutable='(@sha256:[0-9a-f]{64}|:[0-9a-f]{40})$'
-          for target in backend frontend document-worker; do
+          for target in backend frontend document-worker worker; do
             grep -Eq "$immutable" "artifacts/enterprise/container/${target}-rollback-image.txt"
           done
       - name: Build and retain without publishing
@@ -68,7 +72,7 @@ jobs:
           set -euo pipefail
           build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           app_version=$(node -p "require('./frontend/package.json').version")
-          for target in backend frontend document-worker; do
+          for target in backend frontend document-worker worker; do
             docker build --target "${target}-image" --build-arg "VCS_REF=${GITHUB_SHA}" --build-arg "BUILD_DATE=${build_date}" --build-arg "APP_VERSION=${app_version}" --tag "$(cat artifacts/enterprise/container/${target}-image.txt)" .
             docker save "$(cat artifacts/enterprise/container/${target}-image.txt)" | gzip -1 > "artifacts/enterprise/container/${target}-image.tar.gz"
           done
@@ -82,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: {target: [backend, frontend, document-worker]}
+      matrix: {target: [backend, frontend, document-worker, worker]}
     steps:
       - uses: actions/download-artifact@v4
         with: {name: container-candidates, path: artifacts/enterprise/container}
@@ -117,20 +121,31 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish three images after quality and scan gates
+    name: Publish four images after quality and scan gates
     needs: [quality, build, scan]
     if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with: {name: container-candidates, path: artifacts/enterprise/container}
+      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
       - name: Load and push commit tags only
         shell: bash
         run: |
           set -euo pipefail
-          for target in backend frontend document-worker; do
+          for target in backend frontend document-worker worker; do
             gunzip -c "artifacts/enterprise/container/${target}-image.tar.gz" | docker load
-            docker push "$(cat artifacts/enterprise/container/${target}-image.txt)"
+            image="$(cat artifacts/enterprise/container/${target}-image.txt)"
+            docker push "$image"
+            digest="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$image" | tr -d '"')"
+            printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+            printf '%s@%s\n' "${image%:*}" "$digest" > "artifacts/enterprise/container/${target}-image-digest.txt"
           done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: container-published-digests
+          path: artifacts/enterprise/container/*-image-digest.txt
+          if-no-files-found: error
+          retention-days: 90

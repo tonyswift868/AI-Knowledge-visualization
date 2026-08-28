@@ -59,6 +59,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1"]
 
+FROM backend-base AS worker-image
+LABEL org.opencontainers.image.title="MentorFlow durable worker"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD ["python", "-m", "app.enterprise.worker_entry", "health"]
+CMD ["python", "-m", "app.enterprise.worker_entry", "run"]
+
 FROM backend-base AS document-worker-image
 USER root
 COPY --from=document-worker-wheels /wheels /wheels

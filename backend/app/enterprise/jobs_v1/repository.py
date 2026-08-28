@@ -285,19 +285,23 @@ class WorkflowRepository:
         *,
         now: datetime,
         lease_seconds: int = 60,
+        expected_dispatch_generation: int | None = None,
     ) -> JobRecord | None:
         now = require_aware(now, "now")
-        row = connection.execute(
-            sa.select(jobs)
-            .where(
-                jobs.c.job_id == job_id,
-                jobs.c.status.in_(
-                    [JobStatus.PENDING.value, JobStatus.FAILED_RETRYABLE.value]
-                ),
-                jobs.c.available_at <= now,
-                jobs.c.cancel_requested_at.is_(None),
+        predicates = [
+            jobs.c.job_id == job_id,
+            jobs.c.status.in_(
+                [JobStatus.PENDING.value, JobStatus.FAILED_RETRYABLE.value]
+            ),
+            jobs.c.available_at <= now,
+            jobs.c.cancel_requested_at.is_(None),
+        ]
+        if expected_dispatch_generation is not None:
+            predicates.append(
+                jobs.c.dispatch_generation == expected_dispatch_generation
             )
-            .with_for_update(skip_locked=True)
+        row = connection.execute(
+            sa.select(jobs).where(*predicates).with_for_update(skip_locked=True)
         ).mappings().one_or_none()
         if row is None:
             return None

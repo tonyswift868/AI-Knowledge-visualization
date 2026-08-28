@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy.engine import Connection, Engine
 
-from app.enterprise.contracts_v1 import AccessDecisionKind
+from app.enterprise.contracts_v1 import AccessDecision, AccessDecisionKind
 
 from .models import JobRecord, JobRequest, JobStatus, OutboxRecord
 from .ports import (
@@ -29,6 +29,10 @@ class WorkflowCancellationRequested(RuntimeError):
     pass
 
 
+class WorkflowSubmissionDenied(PermissionError):
+    pass
+
+
 class WorkflowService:
     def __init__(
         self,
@@ -39,6 +43,29 @@ class WorkflowService:
         self.retry_policy = retry_policy or RetryPolicy()
 
     def submit(self, connection: Connection, request: JobRequest):
+        return self.repository.submit(connection, request)
+
+    def submit_authorized(
+        self,
+        connection: Connection,
+        request: JobRequest,
+        *,
+        authorization: AccessDecision,
+    ):
+        """Persist a privileged job only after a matching frozen ALLOW decision."""
+
+        resource = authorization.resource
+        matches_scope = (
+            resource.organization_id == request.tenant_context.organization_id
+            and resource.workspace_id == request.tenant_context.workspace_id
+        )
+        if (
+            authorization.decision is not AccessDecisionKind.ALLOW
+            or authorization.action != "enterprise_jobs.enqueue"
+            or authorization.actor != request.actor_context
+            or not matches_scope
+        ):
+            raise WorkflowSubmissionDenied("workflow enqueue authorization denied")
         return self.repository.submit(connection, request)
 
     def get(self, connection: Connection, job_id: str) -> JobRecord | None:
@@ -52,12 +79,14 @@ class WorkflowService:
         revalidator: TenantContextRevalidatorPort,
         now: datetime,
         lease_seconds: int = 60,
+        expected_dispatch_generation: int | None = None,
     ) -> JobRecord | None:
         job = self.repository.claim_job(
             connection,
             job_id,
             now=now,
             lease_seconds=lease_seconds,
+            expected_dispatch_generation=expected_dispatch_generation,
         )
         if job is None:
             return None
@@ -245,5 +274,6 @@ __all__ = [
     "OutboxPublisher",
     "TenantRevalidationRejected",
     "WorkflowCancellationRequested",
+    "WorkflowSubmissionDenied",
     "WorkflowService",
 ]

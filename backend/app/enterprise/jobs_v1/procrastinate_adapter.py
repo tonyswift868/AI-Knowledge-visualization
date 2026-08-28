@@ -1,9 +1,9 @@
-"""Dependency-free seam for the leased future Procrastinate runtime.
+"""Procrastinate adapter for the canonical transactional outbox.
 
-Procrastinate is deliberately *not* imported here.  E1 dependency coordination
-marks both Procrastinate and a PostgreSQL driver unleased.  The adapter accepts
-an official-shape Task object and uses the 3.8+ external-connection API so the
-queue INSERT and outbox acknowledgement share one transaction.
+The application uses SQLAlchemy with psycopg 3 while Procrastinate's external
+connection API expects the underlying ``psycopg.Connection``.  Unwrapping is
+therefore explicit and fail-closed: a SQLite connection, another DBAPI driver,
+or a connection outside a transaction can never become a production defer.
 """
 
 from __future__ import annotations
@@ -42,6 +42,21 @@ class ProcrastinateWorkerPolicy:
             raise ValueError("stalled worker timeout must be at least 10 seconds")
 
 
+def unwrap_psycopg_connection(connection: Connection) -> Any:
+    """Return the transaction-owning psycopg 3 connection used by SQLAlchemy."""
+
+    if connection.dialect.name != "postgresql" or not connection.in_transaction():
+        raise RuntimeError(
+            "Procrastinate defer requires an active PostgreSQL transaction"
+        )
+    proxied = getattr(connection, "connection", None)
+    raw = getattr(proxied, "driver_connection", None)
+    module_name = type(raw).__module__.split(".", 1)[0]
+    if raw is None or module_name != "psycopg":
+        raise RuntimeError("Procrastinate defer requires the psycopg 3 driver")
+    return raw
+
+
 class ProcrastinateOutboxDispatcher:
     """Atomically defer one redacted outbox event through Procrastinate."""
 
@@ -50,13 +65,15 @@ class ProcrastinateOutboxDispatcher:
         task: ProcrastinateTaskPort,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        connection_unwrapper: Callable[[Connection], Any] = unwrap_psycopg_connection,
     ) -> None:
         self.task = task
         self.clock = clock
+        self.connection_unwrapper = connection_unwrapper
 
     def dispatch(self, connection: Connection, event: OutboxRecord) -> str:
         options: dict[str, Any] = {
-            "connection": connection,
+            "connection": self.connection_unwrapper(connection),
             "queue": event.queue,
             "lock": event.lock_key,
             "queueing_lock": f"mentorflow:{event.job_id}:{event.dispatch_generation}",
@@ -80,4 +97,5 @@ __all__ = [
     "ProcrastinateOutboxDispatcher",
     "ProcrastinateTaskPort",
     "ProcrastinateWorkerPolicy",
+    "unwrap_psycopg_connection",
 ]
