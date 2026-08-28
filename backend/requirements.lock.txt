@@ -12,6 +12,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 antlr4-python3-runtime==4.9.3
 anyio==4.14.2
+asgiref==3.12.1
 attrs==26.1.0
 beautifulsoup4==4.15.0
 brotli==1.2.0
@@ -33,6 +34,7 @@ flatbuffers==25.12.19
 frozenlist==1.8.0
 fsrs==6.3.2
 greenlet==3.5.4
+googleapis-common-protos==1.75.2
 h11==0.16.0
 h2==4.4.0
 hpack==4.2.0
@@ -65,6 +67,18 @@ omegaconf==2.3.1
 onnxruntime==1.28.0
 openai==2.54.0
 opencv-python==5.0.0.93
+opentelemetry-api==1.44.0
+opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-instrumentation==0.65b0
+opentelemetry-instrumentation-asgi==0.65b0
+opentelemetry-instrumentation-fastapi==0.65b0
+opentelemetry-instrumentation-httpx==0.65b0
+opentelemetry-instrumentation-sqlalchemy==0.65b0
+opentelemetry-proto==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-semantic-conventions==0.65b0
+opentelemetry-util-http==0.65b0
 ortools==9.15.6755
 packaging==26.2
 pandas==3.0.5
@@ -112,5 +126,6 @@ urllib3==2.7.0
 uvicorn==0.51.0
 watchfiles==1.2.0
 websockets==16.1.1
+wrapt==2.3.0
 yarl==1.24.5
 yt-dlp==2026.8.19
