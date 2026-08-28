@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections.abc import Mapping
 from datetime import datetime, date, timezone
 from typing import Any
 from pathlib import Path
@@ -6,17 +7,153 @@ import os
 import sys
 from threading import Lock
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, create_engine, inspect, text
+from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+
+from .enterprise.contracts_v1 import TenantMode
 
 ROOT=Path(__file__).resolve().parents[2]; DATA=ROOT/'data'
 ORM_DB=Path(os.getenv("MENTORFLOW_ORM_DB", str(DATA/'mentorflow_v2.db'))).expanduser().resolve()
+APPLICATION_DATABASE_ROLE = "mentorflow_app"
+RUNTIME_DATABASE_URL_ENV = "MENTORFLOW_DATABASE_URL"
+MIGRATION_DATABASE_URL_ENV = "MENTORFLOW_MIGRATION_DATABASE_URL"
+DEPLOYMENT_MODE_ENV = "MENTORFLOW_DEPLOYMENT_MODE"
 
-def _create_engine(database_path: Path):
-    return create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False})
+
+class DatabaseRuntimeConfigurationError(RuntimeError):
+    """Fail-closed database configuration error without echoing credentials."""
+
+
+def _deployment_mode(source: Mapping[str, str] | None = None) -> TenantMode:
+    env = os.environ if source is None else source
+    raw = str(env.get(DEPLOYMENT_MODE_ENV) or TenantMode.PERSONAL_LOCAL.value)
+    try:
+        return TenantMode(raw.strip().upper())
+    except ValueError as exc:
+        raise DatabaseRuntimeConfigurationError(
+            f"{DEPLOYMENT_MODE_ENV} must be PERSONAL_LOCAL or ENTERPRISE_SERVER"
+        ) from exc
+
+
+def _parsed_database_url(value: str, *, variable: str) -> URL:
+    try:
+        return make_url(value)
+    except Exception as exc:
+        raise DatabaseRuntimeConfigurationError(
+            f"{variable} must be a valid SQLAlchemy database URL"
+        ) from exc
+
+
+def _require_sqlite_url(url: URL, *, variable: str) -> URL:
+    if url.get_backend_name() != "sqlite":
+        raise DatabaseRuntimeConfigurationError(
+            f"{variable} must use SQLite in PERSONAL_LOCAL mode"
+        )
+    return url
+
+
+def _require_postgresql_psycopg_url(url: URL, *, variable: str) -> URL:
+    if url.drivername != "postgresql+psycopg":
+        raise DatabaseRuntimeConfigurationError(
+            f"{variable} must use the explicit postgresql+psycopg dialect"
+        )
+    if not url.username:
+        raise DatabaseRuntimeConfigurationError(
+            f"{variable} must identify a database role"
+        )
+    return url
+
+
+def resolve_runtime_database_url(
+    source: Mapping[str, str] | None = None,
+    *,
+    personal_database_path: str | Path | None = None,
+) -> URL:
+    """Resolve the application database without exposing a URL in errors."""
+
+    env = os.environ if source is None else source
+    mode = _deployment_mode(env)
+    raw = str(env.get(RUNTIME_DATABASE_URL_ENV) or "").strip()
+    if mode is TenantMode.PERSONAL_LOCAL:
+        if raw:
+            return _require_sqlite_url(
+                _parsed_database_url(raw, variable=RUNTIME_DATABASE_URL_ENV),
+                variable=RUNTIME_DATABASE_URL_ENV,
+            )
+        path = Path(personal_database_path or ORM_DB).expanduser().resolve()
+        return make_url(f"sqlite:///{path.as_posix()}")
+    if not raw:
+        raise DatabaseRuntimeConfigurationError(
+            f"{RUNTIME_DATABASE_URL_ENV} is required in ENTERPRISE_SERVER mode"
+        )
+    url = _require_postgresql_psycopg_url(
+        _parsed_database_url(raw, variable=RUNTIME_DATABASE_URL_ENV),
+        variable=RUNTIME_DATABASE_URL_ENV,
+    )
+    if url.username != APPLICATION_DATABASE_ROLE:
+        raise DatabaseRuntimeConfigurationError(
+            f"{RUNTIME_DATABASE_URL_ENV} must use the non-owner "
+            f"{APPLICATION_DATABASE_ROLE} role"
+        )
+    return url
+
+
+def resolve_migration_database_url(
+    configured_url: str,
+    source: Mapping[str, str] | None = None,
+) -> URL:
+    """Resolve Alembic's dedicated owner URL and prove role separation."""
+
+    env = os.environ if source is None else source
+    if _deployment_mode(env) is TenantMode.PERSONAL_LOCAL:
+        raw = str(env.get(MIGRATION_DATABASE_URL_ENV) or configured_url).strip()
+        return _require_sqlite_url(
+            _parsed_database_url(raw, variable=MIGRATION_DATABASE_URL_ENV),
+            variable=MIGRATION_DATABASE_URL_ENV,
+        )
+    runtime_url = resolve_runtime_database_url(env)
+    raw = str(env.get(MIGRATION_DATABASE_URL_ENV) or "").strip()
+    if not raw:
+        raise DatabaseRuntimeConfigurationError(
+            f"{MIGRATION_DATABASE_URL_ENV} is required in ENTERPRISE_SERVER mode"
+        )
+    migration_url = _require_postgresql_psycopg_url(
+        _parsed_database_url(raw, variable=MIGRATION_DATABASE_URL_ENV),
+        variable=MIGRATION_DATABASE_URL_ENV,
+    )
+    if migration_url.username in {APPLICATION_DATABASE_ROLE, runtime_url.username}:
+        raise DatabaseRuntimeConfigurationError(
+            "migration owner and application database roles must be different"
+        )
+    return migration_url
+
+
+def _create_engine_from_url(database_url: URL) -> Engine:
+    if database_url.get_backend_name() == "sqlite":
+        return create_engine(
+            database_url,
+            connect_args={"check_same_thread": False},
+            future=True,
+        )
+    from .enterprise_tenancy.context import create_enterprise_postgres_engine
+
+    return create_enterprise_postgres_engine(
+        database_url.render_as_string(hide_password=False)
+    )
+
+
+def _create_engine(database_path: Path) -> Engine:
+    path = Path(database_path).expanduser().resolve()
+    return _create_engine_from_url(make_url(f"sqlite:///{path.as_posix()}"))
 
 engine=_create_engine(ORM_DB)
 _session_factory=sessionmaker(engine,expire_on_commit=False)
 _migration_lock = Lock()
+DATABASE_MODE = TenantMode.PERSONAL_LOCAL
+DATABASE_URL = resolve_runtime_database_url(
+    {DEPLOYMENT_MODE_ENV: TenantMode.PERSONAL_LOCAL.value},
+    personal_database_path=ORM_DB,
+)
 
 def SessionLocal(*args, **kwargs):
     """Return a session from the currently configured ORM database.
@@ -28,19 +165,82 @@ def SessionLocal(*args, **kwargs):
 
 def configure_orm(database_path: str | Path):
     """Switch the process-local ORM database without touching the old file."""
-    global ORM_DB, engine, _session_factory
+    global DATABASE_MODE, DATABASE_URL, ORM_DB, engine, _session_factory
+    if _deployment_mode() is TenantMode.ENTERPRISE_SERVER:
+        raise DatabaseRuntimeConfigurationError(
+            "configure_orm cannot switch ENTERPRISE_SERVER to a local database"
+        )
     next_path=Path(database_path).expanduser().resolve()
     next_path.parent.mkdir(parents=True, exist_ok=True)
     previous_engine=engine
     ORM_DB=next_path
+    DATABASE_MODE=TenantMode.PERSONAL_LOCAL
+    DATABASE_URL=resolve_runtime_database_url(
+        {DEPLOYMENT_MODE_ENV: TenantMode.PERSONAL_LOCAL.value},
+        personal_database_path=next_path,
+    )
     engine=_create_engine(next_path)
     _session_factory=sessionmaker(engine,expire_on_commit=False)
     previous_engine.dispose()
     return engine
 
 
+def configure_enterprise_orm(
+    source: Mapping[str, str] | None = None,
+) -> Engine:
+    """Bind the application session factory to the non-owner PostgreSQL role."""
+
+    global DATABASE_MODE, DATABASE_URL, engine, _session_factory
+    env = os.environ if source is None else source
+    if _deployment_mode(env) is not TenantMode.ENTERPRISE_SERVER:
+        raise DatabaseRuntimeConfigurationError(
+            "configure_enterprise_orm requires ENTERPRISE_SERVER mode"
+        )
+    next_url = resolve_runtime_database_url(env)
+    next_engine = _create_engine_from_url(next_url)
+    previous_engine = engine
+    DATABASE_MODE = TenantMode.ENTERPRISE_SERVER
+    DATABASE_URL = next_url
+    engine = next_engine
+    _session_factory = sessionmaker(engine, expire_on_commit=False)
+    previous_engine.dispose()
+    return engine
+
+
+def verify_enterprise_runtime_schema() -> None:
+    """Require the canonical head and the safe application role before startup."""
+
+    from .enterprise_tenancy.context import require_safe_application_role
+    from .enterprise_tenancy.schema import (
+        ENTERPRISE_MIGRATION_REVISION,
+        detect_enterprise_schema_version,
+    )
+
+    try:
+        with engine.connect() as connection:
+            require_safe_application_role(connection)
+            revision = detect_enterprise_schema_version(connection)
+    except Exception as exc:
+        raise DatabaseRuntimeConfigurationError(
+            "enterprise PostgreSQL role or schema readiness check failed"
+        ) from exc
+    if revision != ENTERPRISE_MIGRATION_REVISION:
+        raise DatabaseRuntimeConfigurationError(
+            "enterprise PostgreSQL is not at the canonical migration head"
+        )
+
+
 def upgrade_orm_schema(revision: str = "head") -> None:
     """Run explicit Alembic migrations at process startup, never per request."""
+
+    if _deployment_mode() is TenantMode.ENTERPRISE_SERVER:
+        if revision != "head":
+            raise DatabaseRuntimeConfigurationError(
+                "enterprise application startup only accepts the canonical head"
+            )
+        configure_enterprise_orm()
+        verify_enterprise_runtime_schema()
+        return
 
     from alembic import command
     from alembic.config import Config
@@ -726,6 +926,9 @@ MapJobORM = KnowledgeMapJobORM
 KnowledgeMaterialDispositionORM = MaterialDispositionORM
 KnowledgeReviewCandidateORM = ReviewCandidateORM
 def init_orm():
+    if DATABASE_MODE is TenantMode.ENTERPRISE_SERVER:
+        # Enterprise schema changes belong exclusively to the migration owner.
+        return
     DATA.mkdir(parents=True, exist_ok=True)
     # Register the optional global expedition models before creating tables.
     # Importing here avoids a module cycle while preserving the existing ORM.
