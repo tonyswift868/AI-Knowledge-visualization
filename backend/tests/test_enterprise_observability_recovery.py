@@ -536,7 +536,7 @@ def test_collector_dashboards_alerts_and_runbooks_are_versioned() -> None:
         assert title in runbooks
 
 
-def test_no_direct_opentelemetry_dependency_or_embedded_collector_was_added() -> None:
+def test_approved_python_opentelemetry_runtime_keeps_collector_external() -> None:
     root = Path(__file__).parents[2]
     dependency_text = "\n".join(
         path.read_text(encoding="utf-8")
@@ -546,9 +546,20 @@ def test_no_direct_opentelemetry_dependency_or_embedded_collector_was_added() ->
             root / "frontend" / "package.json",
         )
     ).casefold()
-    assert "opentelemetry" not in dependency_text
+    for package in (
+        "opentelemetry-api==1.44.0",
+        "opentelemetry-exporter-otlp-proto-http==1.44.0",
+        "opentelemetry-instrumentation-fastapi==0.65b0",
+        "opentelemetry-instrumentation-httpx==0.65b0",
+        "opentelemetry-instrumentation-sqlalchemy==0.65b0",
+        "opentelemetry-sdk==1.44.0",
+    ):
+        assert package in dependency_text
+    frontend_dependencies = (root / "frontend" / "package.json").read_text(encoding="utf-8").casefold()
+    assert "opentelemetry" not in frontend_dependencies
     runtime = (root / "backend" / "app" / "observability" / "runtime.py").read_text(encoding="utf-8")
-    assert "otel_exporter_otlp_endpoint" in runtime.casefold()
+    assert "mentorflow_otel_endpoint" in runtime.casefold()
+    assert "proto.http" in runtime.casefold()
     assert "subprocess" not in runtime
     main = (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
     assert "docker compose" not in main.casefold()

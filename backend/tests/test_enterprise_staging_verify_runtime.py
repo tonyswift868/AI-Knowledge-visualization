@@ -679,9 +679,10 @@ def test_alert_fixture_names_all_five_failure_scenarios() -> None:
         assert f"name: {scenario}" in text
 
 
-def test_no_otel_dependency_was_added_and_collector_remains_external() -> None:
+def test_python_otel_dependency_is_leased_and_collector_remains_external() -> None:
     requirements = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8").casefold()
-    assert "opentelemetry" not in requirements
+    assert "opentelemetry-sdk==1.44.0" in requirements
+    assert "opentelemetry-exporter-otlp-proto-http==1.44.0" in requirements
     compose = (ROOT / "ops" / "observability" / "docker-compose.staging.yml").read_text(encoding="utf-8")
     assert "otel-collector:" in compose
     assert "127.0.0.1:13133:13133" in compose
