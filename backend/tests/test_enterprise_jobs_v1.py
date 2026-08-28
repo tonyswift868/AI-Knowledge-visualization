@@ -263,7 +263,11 @@ def test_procrastinate_adapter_uses_external_connection_queue_locks_and_schedule
     engine = _engine()
     repository = WorkflowRepository()
     task = _Task()
-    dispatcher = ProcrastinateOutboxDispatcher(task, clock=lambda: NOW)
+    dispatcher = ProcrastinateOutboxDispatcher(
+        task,
+        clock=lambda: NOW,
+        connection_unwrapper=lambda connection: connection,
+    )
     publisher = OutboxPublisher(repository)
     scheduled = NOW + timedelta(minutes=5)
     with engine.begin() as connection:
@@ -315,7 +319,11 @@ def test_procrastinate_insert_and_outbox_ack_commit_or_rollback_together() -> No
     with engine.begin() as connection:
         queue_table.create(connection)
         receipt = repository.submit(connection, _request(idempotency_key="idem-atomic-defer-0001"))
-    dispatcher = ProcrastinateOutboxDispatcher(_Task(queue_table), clock=lambda: NOW)
+    dispatcher = ProcrastinateOutboxDispatcher(
+        _Task(queue_table),
+        clock=lambda: NOW,
+        connection_unwrapper=lambda connection: connection,
+    )
     publisher = OutboxPublisher(repository)
 
     with pytest.raises(RuntimeError, match="publisher crash"):

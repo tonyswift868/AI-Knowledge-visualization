@@ -54,11 +54,14 @@ def test_postgresql_offline_ddl_owns_exactly_jobs_outbox_and_dead_letters() -> N
     assert "enterprise_governance" not in sql
 
 
-def test_dependency_manifests_keep_jobs_engine_unmodified_and_pin_postgres_driver() -> None:
+def test_dependency_manifests_pin_evaluated_jobs_engine_and_postgres_driver() -> None:
     requirements = (REPO_ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
     lock = (REPO_ROOT / "backend" / "requirements.lock.txt").read_text(encoding="utf-8")
-    assert "procrastinate" not in requirements.casefold()
-    assert "procrastinate" not in lock.casefold()
+    assert requirements.splitlines().count("procrastinate==3.9.0") == 1
+    assert lock.splitlines().count("procrastinate==3.9.0") == 1
+    assert lock.splitlines().count("asgiref==3.12.1") == 1
+    assert lock.splitlines().count("croniter==6.2.4") == 1
+    assert lock.splitlines().count("psycopg-pool==3.3.1") == 1
     assert requirements.splitlines().count("psycopg[binary]==3.3.4") == 1
     assert lock.splitlines().count("psycopg==3.3.4") == 1
     assert lock.splitlines().count("psycopg-binary==3.3.4") == 1
