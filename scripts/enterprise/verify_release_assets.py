@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -9,6 +10,11 @@ from pathlib import Path
 import yaml
 
 from generate_dependency_risk_report import CANONICAL_JSON_HASH_ALGORITHM, canonical_json_sha256
+from generate_readiness_snapshot import (
+    generate_from_git as generate_readiness_from_git,
+    verify_remote_reachability,
+    verify_snapshot_file,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -186,7 +192,12 @@ def _verify_sbom_and_risk(root: Path) -> tuple[int, int]:
     return len(components), len(risk["components"])
 
 
-def _verify_readiness(root: Path) -> tuple[int, int]:
+def _verify_readiness(
+    root: Path,
+    *,
+    provenance_remote: str | None = None,
+    provenance_refs: tuple[str, ...] = (),
+) -> tuple[int, int]:
     evidence = _json(root / "reports" / "enterprise" / "readiness-evidence.json")
     if evidence.get("schema") != "mentorflow.enterprise-readiness-evidence.v1" or "score" in evidence:
         raise RuntimeError("readiness evidence schema/score rule invalid")
@@ -214,24 +225,31 @@ def _verify_readiness(root: Path) -> tuple[int, int]:
     source_tree = str(snapshot.get("source_tree", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", source_commit) or not re.fullmatch(r"[0-9a-f]{40}", source_tree):
         raise RuntimeError("readiness snapshot source identity is not exact")
-    try:
-        resolved_tree = subprocess.check_output(
-            ["git", "rev-parse", f"{source_commit}^{{tree}}"], cwd=root, text=True, encoding="utf-8"
-        ).strip()
-        source_parent = subprocess.check_output(
-            ["git", "rev-parse", f"{source_commit}^"], cwd=root, text=True, encoding="utf-8"
-        ).strip()
-        compatible_lineage = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", source_parent, "HEAD"], cwd=root, check=False
-        ).returncode == 0
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise RuntimeError("readiness snapshot source commit cannot be resolved") from exc
-    if resolved_tree != source_tree or not compatible_lineage:
-        raise RuntimeError("readiness snapshot source tree or canonical lineage is incompatible")
+    regenerated = generate_readiness_from_git(
+        root,
+        root / "reports" / "enterprise" / "readiness-evidence.json",
+        source_commit=source_commit,
+        source_tree=source_tree,
+    )
+    verify_snapshot_file(snapshot_path, regenerated)
+    if bool(provenance_remote) != bool(provenance_refs):
+        raise RuntimeError("readiness provenance remote and approved refs must be supplied together")
+    if provenance_remote:
+        verify_remote_reachability(
+            root,
+            source_commit=source_commit,
+            remote=provenance_remote,
+            refs=provenance_refs,
+        )
     return len(domains), 1
 
 
-def verify(root: Path = ROOT) -> dict[str, object]:
+def verify(
+    root: Path = ROOT,
+    *,
+    provenance_remote: str | None = None,
+    provenance_refs: tuple[str, ...] = (),
+) -> dict[str, object]:
     required_files = [
         root / ".dockerignore", root / ".gitleaks.toml", root / "Dockerfile",
         root / ".github" / "enterprise-context.lock.json", root / ".github" / "enterprise-security-waivers.json",
@@ -391,7 +409,11 @@ def verify(root: Path = ROOT) -> dict[str, object]:
 
     load_profiles, tenant_orgs, tenant_users = _verify_load(root)
     sbom_components, risk_components = _verify_sbom_and_risk(root)
-    readiness_domains, readiness_snapshot = _verify_readiness(root)
+    readiness_domains, readiness_snapshot = _verify_readiness(
+        root,
+        provenance_remote=provenance_remote,
+        provenance_refs=provenance_refs,
+    )
     environment = _json(root / "reports" / "enterprise" / "machine" / "environment-truth.json")
     expected_environment_truth = {name: "NOT_RUN" for name in ENVIRONMENT_NOT_RUN_FACTS}
     if environment.get("gates") != expected_environment_truth:
@@ -434,8 +456,15 @@ def verify(root: Path = ROOT) -> dict[str, object]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Verify E1 release and readiness assets.")
+    parser.add_argument("--provenance-remote")
+    parser.add_argument("--provenance-ref", action="append", default=[])
+    args = parser.parse_args()
     try:
-        result = verify()
+        result = verify(
+            provenance_remote=args.provenance_remote,
+            provenance_refs=tuple(args.provenance_ref),
+        )
     except (KeyError, OSError, ValueError, RuntimeError, yaml.YAMLError) as exc:
         print(f"E1_RELEASE_ASSET_GATE_FAILED: {exc}")
         return 1

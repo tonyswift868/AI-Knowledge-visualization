@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -15,7 +16,15 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts" / "enterprise"
 sys.path.insert(0, str(SCRIPTS))
 
-from generate_readiness_snapshot import generate as generate_readiness  # noqa: E402
+import generate_readiness_snapshot as readiness_module  # noqa: E402
+from generate_readiness_snapshot import (  # noqa: E402
+    canonical_json_sha256 as readiness_canonical_json_sha256,
+    generate as generate_readiness,
+    generate_from_git as generate_readiness_from_git,
+    resolve_source_identity,
+    verify_remote_reachability,
+    verify_snapshot_file,
+)
 from generate_dependency_risk_report import (  # noqa: E402
     CANONICAL_JSON_HASH_ALGORITHM,
     canonical_json_sha256,
@@ -173,6 +182,101 @@ def test_readiness_snapshot_has_exact_domains_and_cannot_hide_blockers(tmp_path:
     invalid.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(RuntimeError, match="cannot PASS"):
         generate_readiness(invalid, source_commit="1" * 40, source_tree="2" * 40)
+
+
+def test_readiness_provenance_is_regenerated_from_current_canonical_git_truth() -> None:
+    source_commit = "8599e8fbbc13f08e35dba761d31eaa3fb988ca3f"
+    source_tree = "0b7a47303784d6d7d8fb142823e279e8b137e0c7"
+    expected_sha256 = "d8fc494e827a000f74ab6ed74aa46b65e297903a65c16890cd7b4472e039067a"
+    source = ROOT / "reports" / "enterprise" / "readiness-evidence.json"
+    snapshot_path = ROOT / "reports" / "enterprise" / "machine" / "readiness-snapshot.json"
+
+    regenerated = generate_readiness_from_git(
+        ROOT,
+        source,
+        source_commit=source_commit,
+        source_tree=source_tree,
+    )
+    assert regenerated["source_commit"] == source_commit
+    assert regenerated["source_tree"] == source_tree
+    assert regenerated["overall_status"] == "PARTIAL"
+    assert regenerated["score"] is None
+    assert verify_snapshot_file(
+        snapshot_path,
+        regenerated,
+        expected_sha256=expected_sha256,
+    ) == expected_sha256
+    assert readiness_canonical_json_sha256(regenerated) == expected_sha256
+
+    workflow = (ROOT / ".github" / "workflows" / "enterprise-ci.yml").read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in workflow
+    assert "--provenance-remote origin" in workflow
+    assert "--provenance-ref refs/heads/checkpoint/mentorflow-e1s1-20260829" in workflow
+    assert '--provenance-ref "refs/tags/mentorflow-e1s1-checkpoint-20260829^{}"' in workflow
+    assert f"--expected-snapshot-sha256 {expected_sha256}" in workflow
+    assert "ls-remote" in (SCRIPTS / "generate_readiness_snapshot.py").read_text(encoding="utf-8")
+
+
+def test_readiness_provenance_rejects_wrong_commit_and_tree() -> None:
+    source_commit = "8599e8fbbc13f08e35dba761d31eaa3fb988ca3f"
+    source_tree = "0b7a47303784d6d7d8fb142823e279e8b137e0c7"
+    with pytest.raises(RuntimeError, match="source tree mismatch"):
+        resolve_source_identity(ROOT, source_commit=source_commit, source_tree="0" * 40)
+    with pytest.raises(RuntimeError, match="git cat-file"):
+        resolve_source_identity(ROOT, source_commit="0" * 40, source_tree=source_tree)
+
+
+def test_readiness_provenance_rejects_semantic_and_hash_tamper(tmp_path: Path) -> None:
+    snapshot = json.loads(
+        (ROOT / "reports" / "enterprise" / "machine" / "readiness-snapshot.json").read_text(encoding="utf-8")
+    )
+    tampered = json.loads(json.dumps(snapshot))
+    tampered["domains"]["RELEASE"]["blockers"] = []
+    path = tmp_path / "readiness-snapshot.json"
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="semantically tampered"):
+        verify_snapshot_file(path, snapshot)
+
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="canonical hash mismatch"):
+        verify_snapshot_file(path, snapshot, expected_sha256="0" * 64)
+
+
+def test_readiness_provenance_rejects_old_unreachable_ref_and_stale_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = "8599e8fbbc13f08e35dba761d31eaa3fb988ca3f"
+    old = "4d61b3547a8d0865a53634abd549be004c904ce1"
+    branch = "refs/heads/checkpoint/mentorflow-e1s1-20260829"
+    tag = "refs/tags/mentorflow-e1s1-checkpoint-20260829^{}"
+    monkeypatch.setattr(
+        readiness_module,
+        "_git_output",
+        lambda _root, *_args: f"{current}\t{branch}\n{current}\t{tag}",
+    )
+    with pytest.raises(RuntimeError, match="not exact-reachable"):
+        verify_remote_reachability(
+            ROOT,
+            source_commit=old,
+            remote="github",
+            refs=(branch, tag),
+        )
+
+    monkeypatch.undo()
+    real_run = readiness_module.subprocess.run
+
+    def reject_lineage(command: list[str], *args: object, **kwargs: object) -> object:
+        if command[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return SimpleNamespace(returncode=1)
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(readiness_module.subprocess, "run", reject_lineage)
+    with pytest.raises(RuntimeError, match="not an ancestor"):
+        resolve_source_identity(
+            ROOT,
+            source_commit=current,
+            source_tree="0b7a47303784d6d7d8fb142823e279e8b137e0c7",
+        )
 
 
 def test_environment_truth_preserves_six_explicit_not_run_facts() -> None:

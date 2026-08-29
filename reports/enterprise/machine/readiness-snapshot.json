@@ -201,6 +201,6 @@
   "overall_status": "PARTIAL",
   "schema": "mentorflow.enterprise-readiness-snapshot.v1",
   "score": null,
-  "source_commit": "4d61b3547a8d0865a53634abd549be004c904ce1",
-  "source_tree": "f423e124708aa22adcb55ac94d685328fe908d26"
+  "source_commit": "8599e8fbbc13f08e35dba761d31eaa3fb988ca3f",
+  "source_tree": "0b7a47303784d6d7d8fb142823e279e8b137e0c7"
 }

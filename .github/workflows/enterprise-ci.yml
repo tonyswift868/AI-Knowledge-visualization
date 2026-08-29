@@ -35,6 +35,30 @@ jobs:
       - shell: bash
         run: test "${{ inputs.lane }}" = "PR_FAST" || test "${{ inputs.lane }}" = "MAIN_FULL"
 
+  readiness-provenance:
+    name: ${{ inputs.lane }} / GitHub-reachable readiness provenance
+    needs: lane-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Regenerate and verify exact canonical readiness lineage
+        run: >-
+          python scripts/enterprise/generate_readiness_snapshot.py
+          --source reports/enterprise/readiness-evidence.json
+          --source-commit 8599e8fbbc13f08e35dba761d31eaa3fb988ca3f
+          --source-tree 0b7a47303784d6d7d8fb142823e279e8b137e0c7
+          --output reports/enterprise/machine/readiness-snapshot.json
+          --check
+          --expected-snapshot-sha256 d8fc494e827a000f74ab6ed74aa46b65e297903a65c16890cd7b4472e039067a
+          --provenance-remote origin
+          --provenance-ref refs/heads/checkpoint/mentorflow-e1s1-20260829
+          --provenance-ref "refs/tags/mentorflow-e1s1-checkpoint-20260829^{}"
+
   backend-fast:
     name: PR_FAST / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}
     if: inputs.lane == 'PR_FAST'
