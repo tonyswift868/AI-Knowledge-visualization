@@ -1,0 +1,3 @@
+# Keep the production runtime compatible with requirements-documents.txt.
+uvicorn==0.51.0
+websockets==16.1

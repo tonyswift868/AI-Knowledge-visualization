@@ -1,7 +1,8 @@
 # Frozen lock resolver: uv==0.11.32
 # Frozen lock target: CPython 3.11 on x86_64-pc-windows-msvc
+# Frozen lock inputs: requirements.txt + requirements.constraints.txt
 # Frozen lock index: https://pypi.org/simple through 2026-08-29T15:58:02Z
-# Frozen lock command: uvx --from uv==0.11.32 uv --no-config pip compile requirements.txt --python-version 3.11 --python-platform x86_64-pc-windows-msvc --default-index https://pypi.org/simple --index-strategy first-index --resolution highest --exclude-newer 2026-08-29T15:58:02Z --upgrade --no-annotate --no-cache --no-header --output-file requirements.lock.txt
+# Frozen lock command: uvx --from uv==0.11.32 uv --no-config pip compile requirements.txt --constraint requirements.constraints.txt --python-version 3.11 --python-platform x86_64-pc-windows-msvc --default-index https://pypi.org/simple --index-strategy first-index --resolution highest --exclude-newer 2026-08-29T15:58:02Z --upgrade --no-annotate --no-cache --no-header --output-file requirements.lock.txt
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2.8,<3
