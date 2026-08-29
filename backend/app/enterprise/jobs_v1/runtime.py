@@ -55,7 +55,27 @@ class DurableWorkerDependencies:
 
     @property
     def missing_workflow_kinds(self) -> tuple[WorkflowKind, ...]:
-        return tuple(kind for kind in WorkflowKind if kind not in self.handlers)
+        registered = {
+            kind
+            for kind in self.handlers
+            if type(kind) is WorkflowKind
+        }
+        return tuple(kind for kind in WorkflowKind if kind not in registered)
+
+    @property
+    def unsupported_workflow_kinds(self) -> tuple[object, ...]:
+        return tuple(
+            kind for kind in self.handlers if type(kind) is not WorkflowKind
+        )
+
+    @property
+    def invalid_workflow_handlers(self) -> tuple[WorkflowKind, ...]:
+        return tuple(
+            kind
+            for kind, handler in self.handlers.items()
+            if type(kind) is WorkflowKind
+            and not callable(getattr(handler, "execute", None))
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +151,22 @@ def load_worker_dependencies(
     if not isinstance(dependencies, DurableWorkerDependencies):
         raise WorkerConfigurationError(
             "worker runtime factory returned an invalid dependency bundle"
+        )
+    if not isinstance(dependencies.handlers, Mapping):
+        raise WorkerConfigurationError(
+            "worker runtime factory returned an invalid handler registry"
+        )
+    if not callable(getattr(dependencies.revalidator, "revalidate", None)):
+        raise WorkerConfigurationError(
+            "worker runtime factory returned an invalid tenant revalidator"
+        )
+    if dependencies.unsupported_workflow_kinds:
+        raise WorkerConfigurationError(
+            "worker runtime factory registered an unknown workflow kind"
+        )
+    if dependencies.invalid_workflow_handlers:
+        raise WorkerConfigurationError(
+            "worker runtime factory registered an invalid workflow handler"
         )
     if require_complete and dependencies.missing_workflow_kinds:
         raise WorkerConfigurationError(
