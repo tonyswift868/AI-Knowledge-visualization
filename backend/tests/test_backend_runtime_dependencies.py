@@ -18,8 +18,13 @@ PYTHON_VERSION = "3.11"
 PYTHON_PLATFORM = "x86_64-pc-windows-msvc"
 PACKAGE_INDEX = "https://pypi.org/simple"
 PACKAGE_INDEX_CUTOFF = "2026-08-29T15:58:02Z"
-EXPECTED_LOCK_SHA256 = "74c2c672e62fedb9db9b4f79fcfe0f814ddd0bf40f874bdcc11e1a45457c10d9"
+EXPECTED_LOCK_SHA256 = "a1ddecffd842756049e5ab4bbb054b555c926c14f860d4e301bbc7fb7797a553"
 EXPECTED_LOCK_PIN_COUNT = 136
+EXPECTED_CONSTRAINTS = (
+    "# Keep the production runtime compatible with requirements-documents.txt.",
+    "uvicorn==0.51.0",
+    "websockets==16.1",
+)
 FROZEN_RELOCK_COMMAND = (
     "uvx",
     "--from",
@@ -29,6 +34,8 @@ FROZEN_RELOCK_COMMAND = (
     "pip",
     "compile",
     "requirements.txt",
+    "--constraint",
+    "requirements.constraints.txt",
     "--python-version",
     PYTHON_VERSION,
     "--python-platform",
@@ -51,6 +58,7 @@ FROZEN_RELOCK_COMMAND = (
 FROZEN_LOCK_METADATA = (
     f"# Frozen lock resolver: uv=={UV_VERSION}",
     f"# Frozen lock target: CPython {PYTHON_VERSION} on {PYTHON_PLATFORM}",
+    "# Frozen lock inputs: requirements.txt + requirements.constraints.txt",
     f"# Frozen lock index: {PACKAGE_INDEX} through {PACKAGE_INDEX_CUTOFF}",
     "# Frozen lock command: " + " ".join(FROZEN_RELOCK_COMMAND),
 )
@@ -80,6 +88,10 @@ def _canonical_lf_bytes(path: Path) -> bytes:
 def _run_frozen_relock(root: Path, uvx: str) -> bytes:
     root.mkdir()
     shutil.copyfile(BACKEND_ROOT / "requirements.txt", root / "requirements.txt")
+    shutil.copyfile(
+        BACKEND_ROOT / "requirements.constraints.txt",
+        root / "requirements.constraints.txt",
+    )
     command = (uvx, *FROZEN_RELOCK_COMMAND[1:])
     result = subprocess.run(
         command,
@@ -95,11 +107,15 @@ def _run_frozen_relock(root: Path, uvx: str) -> bytes:
 
 def test_manifest_and_lock_share_one_canonical_runtime_contract() -> None:
     manifest_lines = (BACKEND_ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+    constraint_lines = (BACKEND_ROOT / "requirements.constraints.txt").read_text(
+        encoding="utf-8"
+    ).splitlines()
     lock_lines = (BACKEND_ROOT / "requirements.lock.txt").read_text(encoding="utf-8").splitlines()
     direct = _requirement_names(manifest_lines)
     locked = _requirement_names(lock_lines)
 
-    assert tuple(manifest_lines[:4]) == FROZEN_LOCK_METADATA
+    assert tuple(manifest_lines[:5]) == FROZEN_LOCK_METADATA
+    assert tuple(constraint_lines) == EXPECTED_CONSTRAINTS
     assert len(direct) == len(set(direct))
     assert len(locked) == len(set(locked))
     assert set(direct) <= set(locked)
