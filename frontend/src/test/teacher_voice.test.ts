@@ -71,6 +71,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+function portableAudioBody(text: string) {
+  return new TextEncoder().encode(text)
+}
+
 function voiceStatus(
   active: boolean,
   fallbackPolicy: "off" | "system_voice" = "off",
@@ -172,7 +176,7 @@ describe("teacher voice", () => {
       const url = String(input)
       if (url.endsWith("/api/teacher-voice/status")) return jsonResponse(voiceStatus(true))
       if (url.endsWith("/api/casual-chat/voice/synthesize")) {
-        return new Response(new Blob(["voice"], { type: "audio/wav" }), {
+        return new Response(portableAudioBody("voice"), {
           status: 200,
           headers: { "Content-Type": "audio/wav" },
         })
@@ -321,7 +325,7 @@ describe("teacher voice", () => {
       if (url.endsWith("/api/casual-chat/voice/synthesize")) {
         expect(init?.headers).toEqual({ "Content-Type": "application/json" })
         expect(String(init?.body)).not.toMatch(/api[_-]?key|Bearer/i)
-        return new Response(new Blob(["ID3-cloud-voice"], { type: "audio/mpeg" }), {
+        return new Response(portableAudioBody("ID3-cloud-voice"), {
           status: 200,
           headers: { "Content-Type": "audio/mpeg" },
         })
@@ -379,7 +383,7 @@ describe("teacher voice", () => {
       const url = String(input)
       if (url.endsWith("/api/teacher-voice/status")) return jsonResponse(voiceStatus(true))
       if (url.endsWith("/api/casual-chat/voice/synthesize")) {
-        return new Response(new Blob(["RIFF-voice"], { type: "audio/wav" }), {
+        return new Response(portableAudioBody("RIFF-voice"), {
           status: 200,
           headers: { "Content-Type": "audio/wav" },
         })
@@ -423,7 +427,7 @@ describe("teacher voice", () => {
       const url = String(input)
       if (url.endsWith("/api/teacher-voice/status")) return jsonResponse(voiceStatus(true))
       if (url.endsWith("/api/casual-chat/voice/synthesize")) {
-        return new Response(new Blob(["RIFF-voice"], { type: "audio/wav" }), {
+        return new Response(portableAudioBody("RIFF-voice"), {
           status: 200,
           headers: { "Content-Type": "audio/wav" },
         })
