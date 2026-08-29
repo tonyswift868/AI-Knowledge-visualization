@@ -284,7 +284,8 @@ class DocumentSourcePreflight:
                 estimate=estimate,
             )
         candidate = DocumentSourceCandidate(
-            source_id=f"docsrc_{sha256_bytes(('v1\0' + source_sha256).encode('ascii'))[:32]}",
+            source_id="docsrc_"
+            + sha256_bytes(("v1\0" + source_sha256).encode("ascii"))[:32],
             source_file=source_file,
             source_sha256=source_sha256,
             format=format_,
