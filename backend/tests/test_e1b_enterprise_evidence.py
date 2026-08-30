@@ -169,6 +169,16 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "enterprise-ci.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger = workflow.get("on", workflow.get(True))
+    assert set(trigger) == {"push", "workflow_call", "workflow_dispatch"}
+    assert trigger["push"] == {
+        "branches": ["codex/e1s1-shadow-repair-e107-ci-windows"],
+        "paths": [
+            ".github/workflows/enterprise-ci.yml",
+            "backend/tests/test_e1b_enterprise_evidence.py",
+            "scripts/enterprise/pytest_windows_diagnostics.py",
+            "scripts/enterprise/run_windows_pytest_diagnostic.ps1",
+        ],
+    }
     dispatch_inputs = trigger["workflow_dispatch"]["inputs"]
     call_inputs = trigger["workflow_call"]["inputs"]
     assert set(dispatch_inputs) == {"lane", "expected_source_sha"}
@@ -185,9 +195,21 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     lane_run = _named_run(jobs["lane-contract"], "Validate lane and exact focused source")
     assert "PR_FAST|MAIN_FULL|SHADOW_REPAIR_E107" in lane_run
     assert 'test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"' in lane_run
+    assert jobs["lane-contract"]["steps"][0]["env"]["EXPECTED_SOURCE_SHA"] == (
+        "${{ inputs.expected_source_sha || github.event.after }}"
+    )
 
     windows = jobs["backend-full-windows"]
-    assert windows["if"] == "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107'"
+    focused_job_if = (
+        "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || "
+        "(github.event_name == 'push' && "
+        "github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+    )
+    focused_only_if = (
+        "inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && "
+        "github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+    )
+    assert windows["if"] == focused_job_if
     assert windows["needs"] == "lane-contract"
     assert windows["runs-on"] == "windows-latest"
     assert windows["timeout-minutes"] == 120
@@ -218,7 +240,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert upload["with"]["if-no-files-found"] == "error"
 
     security = jobs["enterprise-security-corpus"]
-    assert security["if"] == windows["if"]
+    assert security["if"] == focused_job_if
     security_step = next(
         step for step in security["steps"]
         if step.get("name") == "File, path, provider, URL, and redaction regression"
@@ -228,7 +250,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert security_step["env"]["MENTORFLOW_ORM_DB"].startswith("${{ runner.temp }}")
 
     migrations = jobs["migrations"]
-    assert migrations["if"] == windows["if"]
+    assert migrations["if"] == focused_job_if
     assert any(
         step.get("run") == "sudo apt-get update && sudo apt-get install --yes libegl1"
         for step in migrations["steps"]
@@ -242,7 +264,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert migration_test["env"]["MENTORFLOW_ORM_DB"].startswith("${{ runner.temp }}")
 
     focused = jobs["shadow-repair-contract"]
-    assert focused["if"] == "inputs.lane == 'SHADOW_REPAIR_E107'"
+    assert focused["if"] == focused_only_if
     assert focused["runs-on"] == "windows-latest"
     assert focused["timeout-minutes"] == 20
     watchdog = next(
@@ -255,7 +277,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert "processes-timeout.json" in watchdog["run"]
 
     gate = jobs["shadow-required-gate"]
-    assert gate["if"] == "always() && inputs.lane == 'SHADOW_REPAIR_E107'"
+    assert gate["if"] == f"always() && ({focused_only_if})"
     assert set(gate["needs"]) == {
         "lane-contract",
         "backend-full-windows",
@@ -269,9 +291,12 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     )
     assert 'test "$result" = "success"' in gate_run
     assert 'test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"' in gate_run
+    assert gate["steps"][0]["env"]["EXPECTED_SOURCE_SHA"] == (
+        "${{ inputs.expected_source_sha || github.event.after }}"
+    )
 
     for job_name in ("readiness-provenance", "frontend", "enterprise-contract"):
-        assert jobs[job_name]["if"] == "inputs.lane != 'SHADOW_REPAIR_E107'"
+        assert jobs[job_name]["if"] == "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
 
     for job_name, job in jobs.items():
         rendered = json.dumps(job)
