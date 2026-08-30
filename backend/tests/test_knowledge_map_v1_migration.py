@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 
 from app import active_teaching
@@ -24,6 +25,12 @@ def _alembic_config(database: Path) -> Config:
     # standalone Alembic CLI retains its normal logging configuration.
     config.attributes["configure_logger"] = False
     return config
+
+
+def _canonical_head(config: Config) -> str:
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
 
 
 def test_in_process_migration_supports_backend_package_from_repository_root(
@@ -59,7 +66,7 @@ def test_in_process_migration_supports_backend_package_from_repository_root(
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0028_video_collection_v1",)
+        ).fetchone() == (_canonical_head(_alembic_config(database)),)
 
 
 def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: Path):
@@ -115,7 +122,7 @@ def test_knowledge_map_teacher_v1_migration_is_additive_and_explicit(tmp_path: P
         ).fetchone() == ("Preserve this row",)
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == ("0028_video_collection_v1",)
+        ).fetchone() == (_canonical_head(config),)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
     unique_constraints = {

@@ -11,6 +11,7 @@ import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app import db, expedition_service, learning_run, orm, provider_service
 from app.database_convergence import audit_database_convergence, compatibility_write
@@ -88,7 +89,9 @@ def test_empty_orm_database_migrates_to_head_twice(tmp_path: Path):
         revision = connection.execute(
             "SELECT version_num FROM alembic_version"
         ).fetchone()[0]
-    assert revision == "0012_knowledge_map_foundation"
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
+    assert expected_head is not None
+    assert revision == expected_head
     assert first.table_counts == second.table_counts
     assert second.foreign_key_violations == 0
 

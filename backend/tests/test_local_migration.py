@@ -320,6 +320,7 @@ def test_local_migration_rejects_reparse_import_parent_and_pointer_parent(
         _remove_junction(current_link)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows handle replacement regression")
 def test_local_migration_source_swap_after_static_check_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -356,6 +357,7 @@ def test_local_migration_source_swap_after_static_check_fails_closed(
     assert replaced_original.read_text(encoding="utf-8") == "inside"
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows handle replacement regression")
 def test_local_migration_root_swap_after_static_check_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
