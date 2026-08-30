@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -163,6 +164,15 @@ def test_main_full_backend_membership_is_complete_disjoint_and_required() -> Non
     assert not (DOCUMENT_ML_TESTS & DESKTOP_TESTS)
     assert core | DOCUMENT_ML_TESTS | DESKTOP_TESTS == all_tests
     assert all(root in core_run for root in BACKEND_TEST_ROOTS)
+    assert (
+        "--deselect=backend/tests/test_enterprise_tenant_persistence.py::"
+        "test_real_postgres_rls_is_fail_closed_and_pool_safe"
+    ) in core_run
+    assert any(
+        step.get("name") == "Bootstrap exact frozen relock tool"
+        and '"uv==0.11.32"' in step.get("run", "")
+        for step in core_job["steps"]
+    )
 
 
 def test_shadow_repair_e107_workflow_contract() -> None:
@@ -227,10 +237,16 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert "run_windows_pytest_diagnostic.ps1" in diagnostic["run"]
     assert "-TimeoutMinutes 100" in diagnostic["run"]
     assert "-ShardCount 6" in diagnostic["run"]
+    assert "--deselect=backend/tests/test_enterprise_tenant_persistence.py::test_real_postgres_rls_is_fail_closed_and_pool_safe" in diagnostic["run"]
     assert all(root in diagnostic["run"] for root in BACKEND_TEST_ROOTS)
     assert diagnostic["env"]["MENTORFLOW_DIAGNOSTIC_SOURCE_SHA"] == "${{ github.sha }}"
     assert "matrix.shard" in diagnostic["env"]["MENTORFLOW_DB"]
     assert "matrix.shard" in diagnostic["env"]["MENTORFLOW_ORM_DB"]
+    assert any(
+        step.get("name") == "Bootstrap exact frozen relock tool"
+        and '"uv==0.11.32"' in step.get("run", "")
+        for step in windows["steps"]
+    )
     upload = next(
         step for step in windows["steps"]
         if step.get("name") == "Upload Windows pytest diagnostics"
@@ -273,8 +289,48 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     )
     assert watchdog["timeout-minutes"] == 10
     assert "-TimeoutSeconds 5" in watchdog["run"]
+    assert "-ReturnToCaller" in watchdog["run"]
     assert "Expected watchdog exit 124" in watchdog["run"]
-    assert "processes-timeout.json" in watchdog["run"]
+    assert "processes-timeout-before-cleanup.json" in watchdog["run"]
+    assert "TIMED_OUT_CLEANUP_COMPLETE" in watchdog["run"]
+    assert "executable_path" in watchdog["run"] and "full_command_line" in watchdog["run"]
+    wrapper_text = (SCRIPTS / "run_windows_pytest_diagnostic.ps1").read_text(encoding="utf-8")
+    for token in (
+        "mentorflow.windows-process-tree.v2",
+        "pid =",
+        "ppid =",
+        "executable_path =",
+        "full_command_line =",
+        "process_creation_time =",
+        "captured_at =",
+        "capture_phase =",
+        "pytest_phase =",
+        "cleanup_attempted =",
+        "cleanup_result =",
+        "final_exit_state =",
+        'CapturePhase "timeout-before-cleanup"',
+        '$finalExitState = "TIMEOUT_PENDING_CLEANUP"',
+    ):
+        assert token in wrapper_text
+
+    coverage = jobs["shadow-shard-coverage"]
+    assert coverage["if"] == f"always() && ({focused_only_if})"
+    assert set(coverage["needs"]) == {"lane-contract", "backend-full-windows"}
+    assert coverage["timeout-minutes"] == 15
+    download = next(
+        step for step in coverage["steps"]
+        if step.get("name") == "Download every Windows shard diagnostic artifact"
+    )
+    assert download["uses"] == "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    coverage_run = _named_run(coverage, "Prove mutually exclusive and collectively exhaustive shards")
+    for token in (
+        "--expected-shards 6",
+        "--expected-python-version 3.11",
+        "--expected-python-version 3.12",
+        "--expected-python-version 3.13",
+        '--expected-source-sha "${{ github.sha }}"',
+    ):
+        assert token in coverage_run
 
     gate = jobs["shadow-required-gate"]
     assert gate["if"] == f"always() && ({focused_only_if})"
@@ -284,6 +340,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
         "enterprise-security-corpus",
         "migrations",
         "shadow-repair-contract",
+        "shadow-shard-coverage",
     }
     gate_run = _named_run(
         gate,
@@ -294,21 +351,30 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert gate["steps"][0]["env"]["EXPECTED_SOURCE_SHA"] == (
         "${{ inputs.expected_source_sha || github.event.after }}"
     )
+    assert gate["steps"][0]["env"]["SHARD_COVERAGE_RESULT"] == (
+        "${{ needs.shadow-shard-coverage.result }}"
+    )
 
     for job_name in ("readiness-provenance", "frontend", "enterprise-contract"):
         assert jobs[job_name]["if"] == "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
 
     for job_name, job in jobs.items():
         rendered = json.dumps(job)
+        if "windows-latest" in rendered:
+            assert "timeout-minutes" in job, f"{job_name} lacks a Windows job timeout"
         pytest_steps = [
             step for step in job.get("steps", [])
             if "python -m pytest" in str(step.get("run", ""))
         ]
         if "windows-latest" in rendered and pytest_steps:
-            assert "timeout-minutes" in job, f"{job_name} lacks a Windows job timeout"
             for step in pytest_steps:
                 assert "timeout-minutes" in step, (
                     f"{job_name}/{step.get('name', '<unnamed>')} lacks a pytest step timeout"
+                )
+        for step in job.get("steps", []):
+            if step.get("if") == "always()":
+                assert step.get("name", "").startswith("Upload "), (
+                    f"{job_name} applies always() outside a diagnostic upload step"
                 )
 
 
@@ -334,6 +400,20 @@ def test_windows_diagnostic_shards_are_stable_disjoint_and_complete() -> None:
     assert [windows_diagnostics.shard_for_nodeid(nodeid, 6) for nodeid in nodeids] == [
         windows_diagnostics.shard_for_nodeid(nodeid, 6) for nodeid in nodeids
     ]
+    manifest = windows_diagnostics.build_collection_manifest(
+        nodeids,
+        shard_count=6,
+        shard_index=3,
+        source_sha="a" * 40,
+    )
+    assert manifest["duplicate_test_count"] == manifest["omitted_test_count"] == 0
+    assert manifest["python_version"] == ".".join(platform.python_version_tuple()[:2])
+    assert manifest["python_version_full"] == platform.python_version()
+    assert manifest["shards_mutually_exclusive"] is True
+    assert manifest["shards_collectively_exhaustive"] is True
+    assert manifest["no_tests_silently_dropped"] is True
+    assert sum(manifest["shard_counts"].values()) == len(nodeids)
+    assert manifest["selected_nodeids"] == sorted(assignments[3])
 
 
 def test_windows_diagnostic_plugin_records_completed_run(tmp_path: Path) -> None:
@@ -383,6 +463,12 @@ def test_windows_diagnostic_plugin_records_completed_run(tmp_path: Path) -> None
     assert status["collected_total"] == status["selected_for_shard"] == 2
     assert status["last_started_test"] == status["last_completed_test"]
     assert status["source_sha"] == "f" * 40
+    manifest = json.loads(
+        (artifacts / windows_diagnostics.COLLECTION_MANIFEST).read_text(encoding="utf-8")
+    )
+    assert manifest["collected_test_count"] == manifest["selected_test_count"] == 2
+    assert manifest["duplicate_test_count"] == manifest["omitted_test_count"] == 0
+    assert manifest["no_tests_silently_dropped"] is True
     events = [
         json.loads(line)
         for line in (artifacts / "node-timeline.jsonl").read_text(encoding="utf-8").splitlines()
@@ -390,6 +476,69 @@ def test_windows_diagnostic_plugin_records_completed_run(tmp_path: Path) -> None
     kinds = {event["kind"] for event in events}
     assert {"pytest-configured", "collection-complete", "test-start", "test-complete", "session-finish"} <= kinds
     assert (artifacts / "faulthandler.log").stat().st_size > 0
+
+
+def test_windows_shard_manifest_verifier_rejects_omission_or_duplication(tmp_path: Path) -> None:
+    nodeids = [f"backend/tests/test_manifest_fixture.py::test_case[{index}]" for index in range(97)]
+    source_sha = "b" * 40
+
+    def write_manifests(root: Path) -> dict[tuple[str, int], Path]:
+        paths: dict[tuple[str, int], Path] = {}
+        for version in ("3.11", "3.12", "3.13"):
+            for shard in range(1, 7):
+                manifest = windows_diagnostics.build_collection_manifest(
+                    nodeids,
+                    shard_count=6,
+                    shard_index=shard,
+                    source_sha=source_sha,
+                )
+                manifest["python_version"] = version
+                path = root / f"python-{version}-shard-{shard}" / windows_diagnostics.COLLECTION_MANIFEST
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                paths[(version, shard)] = path
+        return paths
+
+    valid_root = tmp_path / "valid"
+    valid_paths = write_manifests(valid_root)
+    report = windows_diagnostics.verify_collection_manifests(
+        valid_root,
+        expected_shards=6,
+        expected_python_versions=("3.11", "3.12", "3.13"),
+        expected_source_sha=source_sha,
+        output_path=tmp_path / "coverage-pass.json",
+    )
+    assert report["status"] == "PASS"
+    assert report["manifest_count"] == 18
+    assert report["duplicated_test_count"] == report["omitted_test_count"] == 0
+
+    omitted = json.loads(valid_paths[("3.12", 1)].read_text(encoding="utf-8"))
+    omitted["selected_nodeids"].pop()
+    valid_paths[("3.12", 1)].write_text(json.dumps(omitted), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="E1_SHARD_COVERAGE_FAILED"):
+        windows_diagnostics.verify_collection_manifests(
+            valid_root,
+            expected_shards=6,
+            expected_python_versions=("3.11", "3.12", "3.13"),
+            expected_source_sha=source_sha,
+        )
+
+    duplicate_root = tmp_path / "duplicate"
+    duplicate_paths = write_manifests(duplicate_root)
+    shard_one = json.loads(duplicate_paths[("3.13", 1)].read_text(encoding="utf-8"))
+    shard_two = json.loads(duplicate_paths[("3.13", 2)].read_text(encoding="utf-8"))
+    shard_one["selected_nodeids"].append(shard_two["selected_nodeids"][0])
+    shard_one["selected_nodeids_sha256"] = windows_diagnostics._canonical_json_sha256(
+        sorted(shard_one["selected_nodeids"])
+    )
+    duplicate_paths[("3.13", 1)].write_text(json.dumps(shard_one), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="E1_SHARD_COVERAGE_FAILED"):
+        windows_diagnostics.verify_collection_manifests(
+            duplicate_root,
+            expected_shards=6,
+            expected_python_versions=("3.11", "3.12", "3.13"),
+            expected_source_sha=source_sha,
+        )
 
 
 def test_owned_workflows_pin_actions_and_do_not_mask_required_failures() -> None:

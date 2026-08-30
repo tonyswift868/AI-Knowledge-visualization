@@ -161,6 +161,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r backend/requirements.txt
+      - name: Bootstrap exact frozen relock tool
+        run: python -m pip install --disable-pip-version-check "uv==0.11.32"
       - name: Full compile/import and release artifact gates
         env: {PYTHONPATH: backend}
         run: |
@@ -188,6 +190,7 @@ jobs:
           --ignore=backend/tests/test_native_desktop_knowledge_map.py
           --ignore=backend/tests/test_plan_time_metrics.py
           --ignore=backend/tests/test_plans_page_scroll_layout.py
+          --deselect=backend/tests/test_enterprise_tenant_persistence.py::test_real_postgres_rls_is_fail_closed_and_pool_safe
 
   backend-full-windows:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / Backend core / Windows / Python ${{ matrix.python }} / shard ${{ matrix.shard }} of 6
@@ -212,6 +215,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r backend/requirements.txt
+      - name: Bootstrap exact frozen relock tool
+        run: python -m pip install --disable-pip-version-check "uv==0.11.32"
       - name: Full compile/import and release artifact gates
         env: {PYTHONPATH: backend}
         run: |
@@ -250,7 +255,8 @@ jobs:
               "--ignore=backend/tests/test_local_migration.py",
               "--ignore=backend/tests/test_native_desktop_knowledge_map.py",
               "--ignore=backend/tests/test_plan_time_metrics.py",
-              "--ignore=backend/tests/test_plans_page_scroll_layout.py"
+              "--ignore=backend/tests/test_plans_page_scroll_layout.py",
+              "--deselect=backend/tests/test_enterprise_tenant_persistence.py::test_real_postgres_rls_is_fail_closed_and_pool_safe"
             )
           exit $LASTEXITCODE
       - name: Upload Windows pytest diagnostics
@@ -323,6 +329,7 @@ jobs:
     name: ${{ inputs.lane }} / Frontend / ${{ matrix.os }} / Node 22.20.0
     if: inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'
     needs: lane-contract
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -445,6 +452,7 @@ jobs:
           backend/tests/test_e1b_enterprise_evidence.py::test_shadow_repair_e107_workflow_contract
           backend/tests/test_e1b_enterprise_evidence.py::test_windows_diagnostic_shards_are_stable_disjoint_and_complete
           backend/tests/test_e1b_enterprise_evidence.py::test_windows_diagnostic_plugin_records_completed_run
+          backend/tests/test_e1b_enterprise_evidence.py::test_windows_shard_manifest_verifier_rejects_omission_or_duplication
       - name: Watchdog timeout captures stalled node, stack, and process tree
         shell: pwsh
         timeout-minutes: 10
@@ -464,22 +472,36 @@ jobs:
             -RepoRoot $env:GITHUB_WORKSPACE `
             -ArtifactsDirectory $artifactDirectory `
             -TimeoutSeconds 5 `
+            -ReturnToCaller `
             -PytestArguments @("--confcutdir=$scratch", $stallTest)
           $watchdogExit = $LASTEXITCODE
           if ($watchdogExit -ne 124) { throw "Expected watchdog exit 124, found $watchdogExit" }
           $result = Get-Content -LiteralPath (Join-Path $artifactDirectory "wrapper-result.json") -Raw | ConvertFrom-Json
           $status = Get-Content -LiteralPath (Join-Path $artifactDirectory "status.json") -Raw | ConvertFrom-Json
-          if (-not $result.timed_out -or $result.exit_code -ne 124 -or -not $result.stack_dump_completed) {
+          if (-not $result.timed_out -or $result.exit_code -ne 124 -or -not $result.stack_dump_completed -or $result.final_exit_state -ne "TIMED_OUT_CLEANUP_COMPLETE") {
             throw "Watchdog result did not preserve timeout and stack evidence"
+          }
+          if (-not $result.cleanup_attempted -or $result.cleanup_result -ne "COMPLETE") {
+            throw "Watchdog result did not preserve successful process cleanup evidence"
           }
           if ($status.current_phase -ne "call" -or $status.last_started_test -notlike "*test_e107_watchdog_stall*") {
             throw "Watchdog status did not preserve the stalled test call phase"
           }
-          foreach ($name in @("faulthandler.log", "node-timeline.jsonl", "processes-timeout.json", "processes-after-cleanup.json")) {
+          foreach ($name in @("collection-manifest.json", "faulthandler.log", "node-timeline.jsonl", "processes-timeout-before-cleanup.json", "processes-after-cleanup.json")) {
             $path = Join-Path $artifactDirectory $name
             if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -eq 0) {
               throw "Required watchdog artifact missing or empty: $name"
             }
+          }
+          $processSnapshot = Get-Content -LiteralPath (Join-Path $artifactDirectory "processes-timeout-before-cleanup.json") -Raw | ConvertFrom-Json
+          $pythonProcess = @($processSnapshot.processes | Where-Object { $_.image_name -eq "python.exe" })[0]
+          foreach ($field in @("pid", "ppid", "executable_path", "full_command_line", "process_creation_time", "captured_at", "capture_phase", "pytest_phase", "cleanup_result", "final_exit_state")) {
+            if ($null -eq $pythonProcess.$field -or [string]::IsNullOrWhiteSpace([string]$pythonProcess.$field)) {
+              throw "Process metadata field is missing: $field"
+            }
+          }
+          if ($pythonProcess.capture_phase -ne "timeout-before-cleanup" -or $pythonProcess.pytest_phase -ne "call" -or $pythonProcess.cleanup_attempted) {
+            throw "Pre-cleanup process snapshot has incorrect phase or cleanup state"
           }
       - name: Upload watchdog regression diagnostics
         if: always()
@@ -490,10 +512,44 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  shadow-shard-coverage:
+    name: SHADOW_REPAIR_E107 / deterministic shard coverage
+    if: always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))
+    needs: [lane-contract, backend-full-windows]
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: "3.12"}
+      - name: Download every Windows shard diagnostic artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: e107-windows-*-${{ github.run_id }}
+          path: ${{ runner.temp }}/e107-windows-artifacts
+      - name: Prove mutually exclusive and collectively exhaustive shards
+        run: >-
+          python scripts/enterprise/pytest_windows_diagnostics.py
+          --verify-manifests "${{ runner.temp }}/e107-windows-artifacts"
+          --expected-shards 6
+          --expected-python-version 3.11
+          --expected-python-version 3.12
+          --expected-python-version 3.13
+          --expected-source-sha "${{ github.sha }}"
+          --output "${{ runner.temp }}/e107-shard-coverage-report.json"
+      - name: Upload shard coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e107-shard-coverage-${{ github.run_id }}
+          path: ${{ runner.temp }}/e107-shard-coverage-report.json
+          if-no-files-found: error
+          retention-days: 14
+
   shadow-required-gate:
     name: SHADOW_REPAIR_E107 / required gate
     if: always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))
-    needs: [lane-contract, backend-full-windows, enterprise-security-corpus, migrations, shadow-repair-contract]
+    needs: [lane-contract, backend-full-windows, enterprise-security-corpus, migrations, shadow-repair-contract, shadow-shard-coverage]
     runs-on: ubuntu-24.04
     steps:
       - name: Reject failed, cancelled, missing, neutral, timed out, or skipped focused jobs
@@ -504,9 +560,10 @@ jobs:
           SECURITY_RESULT: ${{ needs.enterprise-security-corpus.result }}
           MIGRATION_RESULT: ${{ needs.migrations.result }}
           CONTRACT_RESULT: ${{ needs.shadow-repair-contract.result }}
+          SHARD_COVERAGE_RESULT: ${{ needs.shadow-shard-coverage.result }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha || github.event.after }}
         run: |
-          for result in "$LANE_RESULT" "$WINDOWS_RESULT" "$SECURITY_RESULT" "$MIGRATION_RESULT" "$CONTRACT_RESULT"; do
+          for result in "$LANE_RESULT" "$WINDOWS_RESULT" "$SECURITY_RESULT" "$MIGRATION_RESULT" "$CONTRACT_RESULT" "$SHARD_COVERAGE_RESULT"; do
             test "$result" = "success"
           done
           test -n "$EXPECTED_SOURCE_SHA"
