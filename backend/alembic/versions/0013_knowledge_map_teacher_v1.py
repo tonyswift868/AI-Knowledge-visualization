@@ -120,7 +120,7 @@ def _create_tables(bind) -> None:
             sa.Column("previous_plan_id", sa.String(length=64), nullable=True),
             sa.Column("plan_revision", sa.Integer(), nullable=False, server_default=sa.text("0")),
             sa.Column("status", sa.String(length=24), nullable=False, server_default=sa.text("'draft'")),
-            sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("plan_snapshot", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
             sa.Column("reason", sa.Text(), nullable=False, server_default=sa.text("''")),
             sa.Column("idempotency_key", sa.String(length=160), nullable=True),
