@@ -874,6 +874,11 @@ def test_file_presets_reject_symlink_escape(client, tmp_path, monkeypatch):
 
 
 def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
+    if os.name != "nt":
+        pytest.skip(
+            "Windows junction fixture is not applicable on this platform; "
+            "the symlink escape contract is covered separately"
+        )
     from app import main as main_module
     data_root = tmp_path / "data"
     data_root.mkdir()
@@ -881,12 +886,29 @@ def test_file_presets_reject_junction_escape(client, tmp_path, monkeypatch):
     outside = tmp_path / "junction-outside"
     outside.mkdir()
     junction = data_root / "junction-presets"
-    result = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(outside)], capture_output=True, text=True)
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
     if result.returncode != 0:
-        pytest.fail(f"Windows junction escape fixture could not be created: {result.stdout} {result.stderr}")
-    response = client.post("/api/presets", json={"name": "junction-escape", "directory": str(junction), "form": {}})
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+        pytest.fail(
+            "Windows junction escape fixture could not be created: "
+            f"{result.stdout} {result.stderr}"
+        )
+    try:
+        response = client.post(
+            "/api/presets",
+            json={"name": "junction-escape", "directory": str(junction), "form": {}},
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "PRESET_DIRECTORY_NOT_ALLOWED"
+        assert list(outside.iterdir()) == []
+    finally:
+        if junction.exists():
+            junction.rmdir()
 
 
 def test_legacy_auth_switch_does_not_isolate_local_preset_directories(client, tmp_path, monkeypatch):

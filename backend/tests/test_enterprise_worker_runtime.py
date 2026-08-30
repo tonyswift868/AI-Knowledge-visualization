@@ -354,7 +354,10 @@ def test_worker_image_and_release_workflow_are_digest_capable() -> None:
     assert '"app.enterprise.worker_entry", "health"' in dockerfile
     assert '"app.enterprise.worker_entry", "run"' in dockerfile
     assert "backend frontend document-worker worker" in workflow
-    assert "container-published-digests" in workflow
+    assert "final-image-evidence.json" in workflow
+    assert "final-image-digest-lock.json" in workflow
+    assert "rp05-application-images.json" in workflow
+    assert 'digest_source:"docker buildx imagetools inspect"' in workflow
     assert "sha256:[0-9a-f]{64}" in workflow
 
 

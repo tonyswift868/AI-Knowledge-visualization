@@ -129,7 +129,22 @@ def _frozen_base_lock() -> bytes:
     return result.stdout.replace(b"\r\n", b"\n")
 
 
-def _run_frozen_relock(root: Path, uvx: str, initial_lock: bytes | None = None) -> bytes:
+def _frozen_uv_command_prefix() -> tuple[str, ...]:
+    uv = shutil.which("uv")
+    if uv is not None:
+        return (uv, "tool", "run")
+    uvx = shutil.which("uvx")
+    assert uvx is not None, (
+        "uv or uvx is required to execute the frozen production relock"
+    )
+    return (uvx,)
+
+
+def _run_frozen_relock(
+    root: Path,
+    command_prefix: tuple[str, ...],
+    initial_lock: bytes | None = None,
+) -> bytes:
     root.mkdir()
     shutil.copyfile(BACKEND_ROOT / "requirements.txt", root / "requirements.txt")
     shutil.copyfile(
@@ -138,7 +153,7 @@ def _run_frozen_relock(root: Path, uvx: str, initial_lock: bytes | None = None) 
     )
     if initial_lock is not None:
         (root / "requirements.lock.txt").write_bytes(initial_lock)
-    command = (uvx, *FROZEN_RELOCK_COMMAND[1:])
+    command = (*command_prefix, *FROZEN_RELOCK_COMMAND[1:])
     result = subprocess.run(
         command,
         cwd=root,
@@ -177,11 +192,10 @@ def test_manifest_and_lock_share_one_canonical_runtime_contract() -> None:
 
 
 def test_frozen_relock_reproduces_the_canonical_lock_twice(tmp_path: Path) -> None:
-    uvx = shutil.which("uvx")
-    assert uvx is not None, "uvx is required to execute the frozen production relock"
+    command_prefix = _frozen_uv_command_prefix()
 
     version_result = subprocess.run(
-        (uvx, "--from", f"uv=={UV_VERSION}", "uv", "--version"),
+        (*command_prefix, "--from", f"uv=={UV_VERSION}", "uv", "--version"),
         capture_output=True,
         text=True,
         timeout=60,
@@ -192,9 +206,13 @@ def test_frozen_relock_reproduces_the_canonical_lock_twice(tmp_path: Path) -> No
 
     checked_lock = _canonical_lf_bytes(BACKEND_ROOT / "requirements.lock.txt")
     base_lock = _frozen_base_lock()
-    first = _run_frozen_relock(tmp_path / "first", uvx)
-    second = _run_frozen_relock(tmp_path / "second", uvx)
-    overwrite = _run_frozen_relock(tmp_path / "overwrite", uvx, base_lock)
+    first = _run_frozen_relock(tmp_path / "first", command_prefix)
+    second = _run_frozen_relock(tmp_path / "second", command_prefix)
+    overwrite = _run_frozen_relock(
+        tmp_path / "overwrite",
+        command_prefix,
+        base_lock,
+    )
 
     assert first == second == overwrite == checked_lock
     assert hashlib.sha256(base_lock).hexdigest() == BASE_LOCK_SHA256

@@ -135,15 +135,16 @@ def test_production_factory_imports_and_constructs_exact_authoritative_coverage(
 ) -> None:
     engine = _postgres_engine()
     source = _source()
-    for name, value in source.items():
-        monkeypatch.setenv(name, value)
-    try:
-        dependencies = load_worker_dependencies(
-            PRODUCTION_FACTORY_DOTTED_PATH,
-            engine=engine,
-        )
-    finally:
-        engine.dispose()
+    with monkeypatch.context() as test_state:
+        for name, value in source.items():
+            test_state.setenv(name, value)
+        try:
+            dependencies = load_worker_dependencies(
+                PRODUCTION_FACTORY_DOTTED_PATH,
+                engine=engine,
+            )
+        finally:
+            engine.dispose()
 
     assert PRODUCTION_FACTORY_DOTTED_PATH == "app.enterprise.jobs_v1.production:build"
     assert tuple(WorkflowKind) == supported_workflow_kinds()
@@ -399,44 +400,49 @@ def test_worker_health_constructs_the_real_factory_before_reporting_ready(
             "MENTORFLOW_WORKER_READINESS_PATH": "/run/mentorflow/readiness.json",
         }
     )
-    for name, value in source.items():
-        monkeypatch.setenv(name, value)
     engine = _postgres_engine()
     events: list[str] = []
 
     class _App:
         pass
 
-    monkeypatch.setattr(
-        worker_entry.orm,
-        "configure_enterprise_orm",
-        lambda candidate: engine,
-    )
-    monkeypatch.setattr(
-        worker_entry,
-        "verify_worker_database",
-        lambda candidate: events.append("database"),
-    )
-    monkeypatch.setattr(
-        worker_entry,
-        "build_procrastinate_app",
-        lambda config, executor: (_App(), object()),
-    )
-    monkeypatch.setattr(
-        worker_entry,
-        "_check_connection",
-        lambda app: events.append("queue"),
-    )
-    monkeypatch.setattr(
-        worker_entry,
-        "read_readiness",
-        lambda path, maximum_age_seconds: events.append("readiness") or {"status": "READY"},
-    )
+    with monkeypatch.context() as test_state:
+        for name, value in source.items():
+            test_state.setenv(name, value)
+        test_state.setattr(
+            worker_entry.orm,
+            "configure_enterprise_orm",
+            lambda candidate: engine,
+        )
+        test_state.setattr(
+            worker_entry,
+            "verify_worker_database",
+            lambda candidate: events.append("database"),
+        )
+        test_state.setattr(
+            worker_entry,
+            "build_procrastinate_app",
+            lambda config, executor: (_App(), object()),
+        )
+        test_state.setattr(
+            worker_entry,
+            "_check_connection",
+            lambda app: events.append("queue"),
+        )
+        test_state.setattr(
+            worker_entry,
+            "read_readiness",
+            lambda path, maximum_age_seconds: events.append("readiness")
+            or {"status": "READY"},
+        )
 
-    assert worker_entry._health(source) == 0
-    output = json.loads(capsys.readouterr().out)
-    assert output["status"] == "READY"
-    assert events == ["database", "queue", "readiness"]
+        try:
+            assert worker_entry._health(source) == 0
+            output = json.loads(capsys.readouterr().out)
+            assert output["status"] == "READY"
+            assert events == ["database", "queue", "readiness"]
+        finally:
+            engine.dispose()
 
 
 def test_worker_health_rejects_a_live_process_with_incomplete_factory(
@@ -450,27 +456,38 @@ def test_worker_health_rejects_a_live_process_with_incomplete_factory(
     source["MENTORFLOW_DATABASE_URL"] = (
         "postgresql+psycopg://mentorflow_app:password@database/mentorflow"
     )
-    for name, value in source.items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.delenv(missing, raising=False)
     engine = _postgres_engine()
-    monkeypatch.setattr(
-        worker_entry.orm,
-        "configure_enterprise_orm",
-        lambda candidate: engine,
-    )
-    monkeypatch.setattr(worker_entry, "verify_worker_database", lambda candidate: None)
-    monkeypatch.setattr(
-        worker_entry,
-        "read_readiness",
-        lambda *args, **kwargs: pytest.fail(
-            "process evidence must not override an incomplete production factory"
-        ),
-    )
+    with monkeypatch.context() as test_state:
+        for name, value in source.items():
+            test_state.setenv(name, value)
+        test_state.delenv(missing, raising=False)
+        test_state.setattr(
+            worker_entry.orm,
+            "configure_enterprise_orm",
+            lambda candidate: engine,
+        )
+        test_state.setattr(
+            worker_entry,
+            "verify_worker_database",
+            lambda candidate: None,
+        )
+        test_state.setattr(
+            worker_entry,
+            "read_readiness",
+            lambda *args, **kwargs: pytest.fail(
+                "process evidence must not override an incomplete production factory"
+            ),
+        )
 
-    with pytest.raises(WorkerConfigurationError, match=f"{missing} is required"):
-        worker_entry._health(source)
-    assert capsys.readouterr().out == ""
+        try:
+            with pytest.raises(
+                WorkerConfigurationError,
+                match=f"{missing} is required",
+            ):
+                worker_entry._health(source)
+            assert capsys.readouterr().out == ""
+        finally:
+            engine.dispose()
 
 
 def test_factory_validation_errors_never_expose_database_credentials(

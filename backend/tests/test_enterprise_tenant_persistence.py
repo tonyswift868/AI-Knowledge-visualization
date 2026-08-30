@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, cast
 
@@ -173,10 +174,20 @@ def _real_rls_context(
 @pytest.mark.rls
 def test_real_postgres_rls_is_fail_closed_and_pool_safe(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     raw_dsn = os.environ.get("MENTORFLOW_RLS_DSN", "").strip()
     if not raw_dsn:
-        pytest.fail("MENTORFLOW_RLS_DSN is required for the real PostgreSQL RLS gate")
+        marker_expression = str(request.config.getoption("markexpr") or "")
+        dedicated_gate = re.search(
+            r"(?<![A-Za-z0-9_])rls(?![A-Za-z0-9_])",
+            marker_expression,
+        )
+        if dedicated_gate:
+            pytest.fail("MENTORFLOW_RLS_DSN is required for the real PostgreSQL RLS gate")
+        pytest.skip(
+            "real PostgreSQL RLS runs only in the dedicated -m rls DSN-aware gate"
+        )
     try:
         migration_url = make_url(raw_dsn)
     except Exception:

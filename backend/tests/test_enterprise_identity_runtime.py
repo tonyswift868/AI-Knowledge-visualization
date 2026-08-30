@@ -440,7 +440,6 @@ def test_main_enterprise_mode_fails_closed_without_lifespan_and_preserves_cors(
     )
     if previous_runtime is not marker:
         delattr(main_module.app.state, "enterprise_identity_runtime")
-    monkeypatch.setenv("MENTORFLOW_DEPLOYMENT_MODE", "ENTERPRISE_SERVER")
     assert main_module._configured_origins
     origin = main_module._configured_origins[0]
 
@@ -467,14 +466,16 @@ def test_main_enterprise_mode_fails_closed_without_lifespan_and_preserves_cors(
             )
             return denied, preflight
 
-    try:
-        denied, preflight = asyncio.run(scenario())
-    finally:
-        if previous_runtime is marker:
-            if hasattr(main_module.app.state, "enterprise_identity_runtime"):
-                delattr(main_module.app.state, "enterprise_identity_runtime")
-        else:
-            main_module.app.state.enterprise_identity_runtime = previous_runtime
+    with monkeypatch.context() as test_state:
+        test_state.setenv("MENTORFLOW_DEPLOYMENT_MODE", "ENTERPRISE_SERVER")
+        try:
+            denied, preflight = asyncio.run(scenario())
+        finally:
+            if previous_runtime is marker:
+                if hasattr(main_module.app.state, "enterprise_identity_runtime"):
+                    delattr(main_module.app.state, "enterprise_identity_runtime")
+            else:
+                main_module.app.state.enterprise_identity_runtime = previous_runtime
 
     assert denied.status_code == 503
     assert denied.json()["error"]["code"] == "ENTERPRISE_IDENTITY_NOT_READY"

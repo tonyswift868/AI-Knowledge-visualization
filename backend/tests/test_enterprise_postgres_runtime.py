@@ -187,15 +187,16 @@ def test_configure_orm_cannot_downgrade_enterprise_to_sqlite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(
-        orm.DEPLOYMENT_MODE_ENV,
-        TenantMode.ENTERPRISE_SERVER.value,
-    )
-    with pytest.raises(
-        orm.DatabaseRuntimeConfigurationError,
-        match="cannot switch",
-    ):
-        orm.configure_orm(tmp_path / "forbidden.db")
+    with monkeypatch.context() as test_state:
+        test_state.setenv(
+            orm.DEPLOYMENT_MODE_ENV,
+            TenantMode.ENTERPRISE_SERVER.value,
+        )
+        with pytest.raises(
+            orm.DatabaseRuntimeConfigurationError,
+            match="cannot switch",
+        ):
+            orm.configure_orm(tmp_path / "forbidden.db")
     assert not (tmp_path / "forbidden.db").exists()
 
 
@@ -203,27 +204,28 @@ def test_enterprise_startup_verifies_head_without_running_migrations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    monkeypatch.setenv(
-        orm.DEPLOYMENT_MODE_ENV,
-        TenantMode.ENTERPRISE_SERVER.value,
-    )
-    monkeypatch.setattr(
-        orm,
-        "configure_enterprise_orm",
-        lambda: calls.append("configure"),
-    )
-    monkeypatch.setattr(
-        orm,
-        "verify_enterprise_runtime_schema",
-        lambda: calls.append("verify"),
-    )
-    orm.upgrade_orm_schema()
-    assert calls == ["configure", "verify"]
-    with pytest.raises(
-        orm.DatabaseRuntimeConfigurationError,
-        match="canonical head",
-    ):
-        orm.upgrade_orm_schema("0030_enterprise_jobs_v1")
+    with monkeypatch.context() as test_state:
+        test_state.setenv(
+            orm.DEPLOYMENT_MODE_ENV,
+            TenantMode.ENTERPRISE_SERVER.value,
+        )
+        test_state.setattr(
+            orm,
+            "configure_enterprise_orm",
+            lambda: calls.append("configure"),
+        )
+        test_state.setattr(
+            orm,
+            "verify_enterprise_runtime_schema",
+            lambda: calls.append("verify"),
+        )
+        orm.upgrade_orm_schema()
+        assert calls == ["configure", "verify"]
+        with pytest.raises(
+            orm.DatabaseRuntimeConfigurationError,
+            match="canonical head",
+        ):
+            orm.upgrade_orm_schema("0030_enterprise_jobs_v1")
 
 
 def test_enterprise_runtime_schema_check_requires_role_and_exact_head(
@@ -246,30 +248,31 @@ def test_enterprise_runtime_schema_check_requires_role_and_exact_head(
         def connect(self) -> ConnectionContext:
             return ConnectionContext()
 
-    monkeypatch.setattr(orm, "engine", Engine())
-    monkeypatch.setattr(
-        context_module,
-        "require_safe_application_role",
-        lambda item: role_checks.append(item),
-    )
-    monkeypatch.setattr(
-        schema_module,
-        "detect_enterprise_schema_version",
-        lambda _connection: ENTERPRISE_MIGRATION_REVISION,
-    )
-    orm.verify_enterprise_runtime_schema()
-    assert role_checks == [connection]
-
-    monkeypatch.setattr(
-        schema_module,
-        "detect_enterprise_schema_version",
-        lambda _connection: "0030_enterprise_jobs_v1",
-    )
-    with pytest.raises(
-        orm.DatabaseRuntimeConfigurationError,
-        match="canonical migration head",
-    ):
+    with monkeypatch.context() as test_state:
+        test_state.setattr(orm, "engine", Engine())
+        test_state.setattr(
+            context_module,
+            "require_safe_application_role",
+            lambda item: role_checks.append(item),
+        )
+        test_state.setattr(
+            schema_module,
+            "detect_enterprise_schema_version",
+            lambda _connection: ENTERPRISE_MIGRATION_REVISION,
+        )
         orm.verify_enterprise_runtime_schema()
+        assert role_checks == [connection]
+
+        test_state.setattr(
+            schema_module,
+            "detect_enterprise_schema_version",
+            lambda _connection: "0030_enterprise_jobs_v1",
+        )
+        with pytest.raises(
+            orm.DatabaseRuntimeConfigurationError,
+            match="canonical migration head",
+        ):
+            orm.verify_enterprise_runtime_schema()
 
 
 def test_application_role_privilege_expectations_are_fail_closed() -> None:
