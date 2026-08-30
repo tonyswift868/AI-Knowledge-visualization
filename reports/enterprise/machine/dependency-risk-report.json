@@ -5157,6 +5157,21 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
+      "package": "asgiref",
+      "purl": "pkg:pypi/asgiref@3.12.1",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "3.12.1",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
       "package": "attrs",
       "purl": "pkg:pypi/attrs@26.1.0",
       "risk_flags": [
@@ -5164,6 +5179,21 @@
       ],
       "source": "backend/requirements.lock.txt",
       "version": "26.1.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "backports-tarfile",
+      "purl": "pkg:pypi/backports-tarfile@1.2.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.2.0",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -5288,6 +5318,21 @@
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "croniter",
+      "purl": "pkg:pypi/croniter@6.2.4",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "6.2.4",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
       "dependency_scope": "direct-runtime",
       "ecosystem": "python",
       "known_vulnerabilities": null,
@@ -5356,7 +5401,38 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "docstring_parser",
+      "package": "doclang",
+      "purl": "pkg:pypi/doclang@0.7.3",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.7.3",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "docling-core",
+      "purl": "pkg:pypi/docling-core@2.91.0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "2.91.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "docstring-parser",
       "purl": "pkg:pypi/docstring-parser@0.18.0",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5456,6 +5532,21 @@
       ],
       "source": "backend/requirements.lock.txt",
       "version": "6.3.2",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "googleapis-common-protos",
+      "purl": "pkg:pypi/googleapis-common-protos@1.75.2",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.75.2",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -5615,6 +5706,21 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
+      "package": "importlib-metadata",
+      "purl": "pkg:pypi/importlib-metadata@9.0.1",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "9.0.1",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
       "package": "iniconfig",
       "purl": "pkg:pypi/iniconfig@2.3.0",
       "risk_flags": [
@@ -5646,7 +5752,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "jaraco.classes",
+      "package": "jaraco-classes",
       "purl": "pkg:pypi/jaraco-classes@3.4.0",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5661,7 +5767,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "jaraco.context",
+      "package": "jaraco-context",
       "purl": "pkg:pypi/jaraco-context@6.1.2",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5676,7 +5782,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "jaraco.functools",
+      "package": "jaraco-functools",
       "purl": "pkg:pypi/jaraco-functools@4.6.0",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5707,7 +5813,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "Jinja2",
+      "package": "jinja2",
       "purl": "pkg:pypi/jinja2@3.1.6",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5732,6 +5838,51 @@
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "jsonref",
+      "purl": "pkg:pypi/jsonref@1.1.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.1.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "jsonschema-specifications",
+      "purl": "pkg:pypi/jsonschema-specifications@2025.9.1",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "2025.9.1",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "jsonschema",
+      "purl": "pkg:pypi/jsonschema@4.26.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "4.26.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
       "dependency_scope": "direct-runtime",
       "ecosystem": "python",
       "known_vulnerabilities": null,
@@ -5745,6 +5896,21 @@
       ],
       "source": "backend/requirements.lock.txt",
       "version": "25.7.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "latex2mathml",
+      "purl": "pkg:pypi/latex2mathml@3.81.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "3.81.0",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -5768,7 +5934,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "Mako",
+      "package": "mako",
       "purl": "pkg:pypi/mako@1.3.12",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5798,7 +5964,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "MarkupSafe",
+      "package": "markupsafe",
       "purl": "pkg:pypi/markupsafe@3.0.3",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -5838,7 +6004,7 @@
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
-      "dependency_scope": "transitive-runtime",
+      "dependency_scope": "direct-runtime",
       "ecosystem": "python",
       "known_vulnerabilities": null,
       "licenses": [],
@@ -5846,6 +6012,7 @@
       "package": "msgpack",
       "purl": "pkg:pypi/msgpack@1.2.1",
       "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
         "UNKNOWN_LICENSE"
       ],
       "source": "backend/requirements.lock.txt",
@@ -5890,12 +6057,12 @@
       "licenses": [],
       "maintenance_status": "UNKNOWN",
       "package": "numpy",
-      "purl": "pkg:pypi/numpy@2.5.1",
+      "purl": "pkg:pypi/numpy@2.4.6",
       "risk_flags": [
         "UNKNOWN_LICENSE"
       ],
       "source": "backend/requirements.lock.txt",
-      "version": "2.5.1",
+      "version": "2.4.6",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -5957,6 +6124,192 @@
       ],
       "source": "backend/requirements.lock.txt",
       "version": "5.0.0.93",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-api",
+      "purl": "pkg:pypi/opentelemetry-api@1.44.0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.44.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-exporter-otlp-proto-common",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.44.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.44.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-exporter-otlp-proto-http",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.44.0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.44.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-instrumentation-asgi",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-asgi@0.65b0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-instrumentation-fastapi",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-fastapi@0.65b0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-instrumentation-httpx",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-httpx@0.65b0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-instrumentation-sqlalchemy",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-sqlalchemy@0.65b0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-instrumentation",
+      "purl": "pkg:pypi/opentelemetry-instrumentation@0.65b0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-proto",
+      "purl": "pkg:pypi/opentelemetry-proto@1.44.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.44.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-sdk",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.44.0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "1.44.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-semantic-conventions",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.65b0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "opentelemetry-util-http",
+      "purl": "pkg:pypi/opentelemetry-util-http@0.65b0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.65b0",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -6052,6 +6405,22 @@
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "procrastinate",
+      "purl": "pkg:pypi/procrastinate@3.9.0",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "3.9.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
       "dependency_scope": "transitive-runtime",
       "ecosystem": "python",
       "known_vulnerabilities": null,
@@ -6087,13 +6456,44 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "psd-tools",
-      "purl": "pkg:pypi/psd-tools@1.17.4",
+      "package": "psycopg-binary",
+      "purl": "pkg:pypi/psycopg-binary@3.3.4",
       "risk_flags": [
         "UNKNOWN_LICENSE"
       ],
       "source": "backend/requirements.lock.txt",
-      "version": "1.17.4",
+      "version": "3.3.4",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "psycopg-pool",
+      "purl": "pkg:pypi/psycopg-pool@3.3.1",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "3.3.1",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "direct-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "psycopg",
+      "purl": "pkg:pypi/psycopg@3.3.4",
+      "risk_flags": [
+        "CRITICAL_RUNTIME_DEPENDENCY",
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "3.3.4",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -6132,13 +6532,28 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "pydantic_core",
+      "package": "pydantic-core",
       "purl": "pkg:pypi/pydantic-core@2.46.4",
       "risk_flags": [
         "UNKNOWN_LICENSE"
       ],
       "source": "backend/requirements.lock.txt",
       "version": "2.46.4",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "pydantic-settings",
+      "purl": "pkg:pypi/pydantic-settings@2.15.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "2.15.0",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -6163,7 +6578,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "Pygments",
+      "package": "pygments",
       "purl": "pkg:pypi/pygments@2.20.0",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -6287,7 +6702,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "PyYAML",
+      "package": "pyyaml",
       "purl": "pkg:pypi/pyyaml@6.0.3",
       "risk_flags": [
         "CRITICAL_RUNTIME_DEPENDENCY",
@@ -6335,6 +6750,21 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
+      "package": "referencing",
+      "purl": "pkg:pypi/referencing@0.37.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "0.37.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
       "package": "requests",
       "purl": "pkg:pypi/requests@2.34.2",
       "risk_flags": [
@@ -6357,6 +6787,21 @@
       ],
       "source": "backend/requirements.lock.txt",
       "version": "14.3.4",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "rpds-py",
+      "purl": "pkg:pypi/rpds-py@2026.6.3",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "2026.6.3",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -6455,7 +6900,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "SQLAlchemy",
+      "package": "sqlalchemy",
       "purl": "pkg:pypi/sqlalchemy@2.0.51",
       "risk_flags": [
         "CRITICAL_RUNTIME_DEPENDENCY",
@@ -6532,12 +6977,12 @@
       "licenses": [],
       "maintenance_status": "UNKNOWN",
       "package": "typer",
-      "purl": "pkg:pypi/typer@0.27.1",
+      "purl": "pkg:pypi/typer@0.26.8",
       "risk_flags": [
         "UNKNOWN_LICENSE"
       ],
       "source": "backend/requirements.lock.txt",
-      "version": "0.27.1",
+      "version": "0.26.8",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
     },
     {
@@ -6546,7 +6991,7 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
-      "package": "typing_extensions",
+      "package": "typing-extensions",
       "purl": "pkg:pypi/typing-extensions@4.16.0",
       "risk_flags": [
         "UNKNOWN_LICENSE"
@@ -6652,6 +7097,21 @@
       "known_vulnerabilities": null,
       "licenses": [],
       "maintenance_status": "UNKNOWN",
+      "package": "wrapt",
+      "purl": "pkg:pypi/wrapt@2.3.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "2.3.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
       "package": "yarl",
       "purl": "pkg:pypi/yarl@1.24.5",
       "risk_flags": [
@@ -6676,6 +7136,21 @@
       "source": "backend/requirements.lock.txt",
       "version": "2026.8.19",
       "vulnerability_status": "PENDING_SECURITY_SCAN"
+    },
+    {
+      "dependency_scope": "transitive-runtime",
+      "ecosystem": "python",
+      "known_vulnerabilities": null,
+      "licenses": [],
+      "maintenance_status": "UNKNOWN",
+      "package": "zipp",
+      "purl": "pkg:pypi/zipp@4.1.0",
+      "risk_flags": [
+        "UNKNOWN_LICENSE"
+      ],
+      "source": "backend/requirements.lock.txt",
+      "version": "4.1.0",
+      "vulnerability_status": "PENDING_SECURITY_SCAN"
     }
   ],
   "legal_audit": false,
@@ -6688,14 +7163,14 @@
   ],
   "schema": "mentorflow.enterprise-dependency-risk-report.v1",
   "source_sbom_hash_algorithm": "sha256:canonical-json-v1",
-  "source_sbom_sha256": "fa8e4cea3897f62e377a0a545e0cb6b67729a0c0cbe5d7a51ddd9f03d88ad4ab",
+  "source_sbom_sha256": "4c12e4784f1f75df8135b541e189e02840e0e7f3fda35d5fb08f371244751fb7",
   "status": "PARTIAL",
   "summary": {
-    "components": 439,
+    "components": 470,
     "copyleft_review_candidates": 12,
-    "critical_runtime_dependencies": 48,
+    "critical_runtime_dependencies": 58,
     "deprecated_declared": 0,
-    "unknown_license": 111
+    "unknown_license": 142
   },
   "vulnerability_gate": "PENDING_SECURITY_SCAN"
 }

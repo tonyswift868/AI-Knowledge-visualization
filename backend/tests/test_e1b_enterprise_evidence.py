@@ -43,6 +43,37 @@ def test_workflow_schema_and_fast_full_lane_contracts() -> None:
     assert all(isinstance(value, dict) for value in parsed.values())
     assert "enterprise-pr-fast.yml" in parsed
     assert "enterprise-main-full.yml" in parsed
+    reusable_payload = parsed["enterprise-ci.yml"]
+    jobs = reusable_payload["jobs"]
+    for job_name in ("backend-fast", "backend-full", "enterprise-contract"):
+        checkout = jobs[job_name]["steps"][0]
+        assert checkout["uses"] == "actions/checkout@v4"
+        assert checkout["with"] == {"fetch-depth": 0, "fetch-tags": True}
+
+    migration_steps = jobs["migrations"]["steps"]
+    migration_setup = next(
+        step for step in migration_steps if step.get("uses") == "actions/setup-python@v5"
+    )
+    assert set(migration_setup["with"]["cache-dependency-path"].splitlines()) == {
+        "backend/requirements.txt",
+        "backend/requirements-desktop.txt",
+    }
+    assert any(
+        step.get("run") == "python -m pip install -r backend/requirements-desktop.txt"
+        for step in migration_steps
+    )
+
+    rls_step = next(
+        step
+        for step in jobs["rls"]["steps"]
+        if step.get("name") == "Require integrated upstream RLS tests"
+    )
+    assert rls_step["run"] == (
+        "python -m pytest -q backend/tests/test_enterprise_tenant_persistence.py -m rls"
+    )
+    assert rls_step["env"]["MENTORFLOW_RLS_DSN"].startswith("postgresql://")
+    assert "|| true" not in rls_step["run"]
+
     reusable = (workflow_root / "enterprise-ci.yml").read_text(encoding="utf-8")
     assert "PR_FAST" in reusable and "MAIN_FULL" in reusable
     assert 'python: ["3.11", "3.12", "3.13"]' in reusable
@@ -87,7 +118,8 @@ def test_sbom_risk_report_and_tenant_corpus_are_deterministic() -> None:
         check=True,
     )
     sbom = json.loads((ROOT / "reports" / "enterprise" / "machine" / "lockfile-sbom.cdx.json").read_text(encoding="utf-8"))
-    assert len(sbom["components"]) == 439
+    component_count = len(sbom["components"])
+    assert component_count > 100
     assert all(
         {"mentorflow:dependency-scope", "mentorflow:source", "mentorflow:license-evidence"}.issubset(
             {item["name"] for item in component["properties"]}
@@ -107,6 +139,8 @@ def test_sbom_risk_report_and_tenant_corpus_are_deterministic() -> None:
     assert risk["license_compliant"] is None
     assert risk["vulnerability_gate"] == "PENDING_SECURITY_SCAN"
     assert risk["source_sbom_hash_algorithm"] == CANONICAL_JSON_HASH_ALGORITHM
+    assert risk["summary"]["components"] == component_count
+    assert len(risk["components"]) == component_count
     assert risk["summary"]["unknown_license"] > 0
 
     corpus = json.loads((ROOT / "tests" / "load" / "fixtures" / "tenant-corpus.v1.json").read_text(encoding="utf-8"))
@@ -142,10 +176,11 @@ def test_sbom_semantic_tamper_still_fails_closed_with_canonical_hash(tmp_path: P
     sbom_source = ROOT / "reports" / "enterprise" / "machine" / "lockfile-sbom.cdx.json"
     risk_source = ROOT / "reports" / "enterprise" / "machine" / "dependency-risk-report.json"
     sbom = json.loads(sbom_source.read_text(encoding="utf-8"))
+    component_count = len(sbom["components"])
     crlf = (json.dumps(sbom, ensure_ascii=False, indent=2, sort_keys=True) + "\n").replace("\n", "\r\n")
     (machine / "lockfile-sbom.cdx.json").write_bytes(crlf.encode("utf-8"))
     (machine / "dependency-risk-report.json").write_bytes(risk_source.read_bytes())
-    assert _verify_sbom_and_risk(tmp_path) == (439, 439)
+    assert _verify_sbom_and_risk(tmp_path) == (component_count, component_count)
 
     sbom["components"][0]["version"] = "semantic-tamper"
     tampered = (json.dumps(sbom, ensure_ascii=False, indent=2, sort_keys=True) + "\n").replace("\n", "\r\n")

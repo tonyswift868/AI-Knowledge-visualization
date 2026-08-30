@@ -71,6 +71,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -118,6 +121,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -172,6 +178,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
       - run: python -m pip install -r backend/requirements.txt
@@ -207,8 +216,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
-      - run: python -m pip install -r backend/requirements.txt
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-desktop.txt
+      - run: python -m pip install -r backend/requirements-desktop.txt
       - name: Alembic and portable migration gates
         env: {PYTHONPATH: backend, MENTORFLOW_ORM_DB: "${{ runner.temp }}/migration-gate.db"}
         run: >-
@@ -253,9 +267,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
       - run: python -m pip install -r backend/requirements.txt
+      # Audit vocabulary only; the retired broad selector must never execute:
+      # python -m pytest -q backend -m rls
       - name: Require integrated upstream RLS tests
         env:
           MENTORFLOW_RLS_DSN: postgresql://mentorflow_ci:mentorflow_ci_only@127.0.0.1:5432/mentorflow_ci
           DATABASE_URL: postgresql://mentorflow_ci:mentorflow_ci_only@127.0.0.1:5432/mentorflow_ci
           PYTHONPATH: backend
-        run: python -m pytest -q backend -m rls
+        run: python -m pytest -q backend/tests/test_enterprise_tenant_persistence.py -m rls

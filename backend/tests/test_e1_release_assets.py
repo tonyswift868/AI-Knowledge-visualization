@@ -20,7 +20,21 @@ import release_rollback as release_module  # noqa: E402
 
 def test_release_assets_are_static_provider_zero_and_lease_gated() -> None:
     result = verify_assets(ROOT)
-    assert result == {
+    sbom = json.loads(
+        (ROOT / "reports" / "enterprise" / "machine" / "lockfile-sbom.cdx.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    component_count = len(sbom["components"])
+    assert component_count > 100
+    assert result["sbom_components"] == component_count
+    assert result["dependency_risk_components"] == component_count
+    stable_result = {
+        key: value
+        for key, value in result.items()
+        if key not in {"sbom_components", "dependency_risk_components"}
+    }
+    assert stable_result == {
         "status": "PASS",
         "workflows": 7,
         "ci_lanes": 2,
@@ -32,12 +46,10 @@ def test_release_assets_are_static_provider_zero_and_lease_gated() -> None:
         "tenant_organizations": 3,
         "tenant_users": 21,
         "tenant_resource_types": 7,
-        "sbom_components": 439,
-        "dependency_risk_components": 439,
-            "readiness_domains": 12,
-            "readiness_snapshot": 1,
-            "environment_not_run_facts": 6,
-            "pending_machine_reports": 6,
+        "readiness_domains": 12,
+        "readiness_snapshot": 1,
+        "environment_not_run_facts": 6,
+        "pending_machine_reports": 6,
         "security_waivers": 0,
         "provider_calls": 0,
         "shared_contract_paths_owned": 0,
