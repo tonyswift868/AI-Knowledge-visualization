@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
 import sqlite3
 from typing import Any, cast
@@ -10,8 +12,8 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 import pytest
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import Connection
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Connection, make_url
 
 import app.enterprise_tenancy as tenancy
 from app.enterprise.contracts_v1 import (
@@ -24,11 +26,15 @@ from app.enterprise.contracts_v1 import (
     verify_frozen_contract_hashes,
 )
 from app.enterprise_tenancy.context import (
+    PostgresTenantTransactionManager,
     TenantConnection,
     TenantDbSession,
     TenantTransactionContext,
     _dbapi_context_values,
     _reset_dbapi_context,
+    create_enterprise_postgres_engine,
+    inspect_application_role_security,
+    require_safe_application_role,
 )
 from app.enterprise_tenancy.import_seam import LocalToEnterpriseImportService
 from app.enterprise_tenancy.isolation_corpus import (
@@ -39,13 +45,16 @@ from app.enterprise_tenancy.models import (
     ImportConfirmationError,
     LocalImportDescriptor,
     TenantContextRequiredError,
+    TenantResourceDraft,
     TenantResourceKind,
 )
 from app.enterprise_tenancy.repository import (
     DualPersistenceSelector,
+    PostgresTenantResourceRepository,
     TenantResourceRepositoryFactory,
 )
 from app.enterprise_tenancy.schema import (
+    APPLICATION_DATABASE_ROLE,
     ENTERPRISE_MIGRATION_REVISION,
     FORCE_RLS_TABLES,
     detect_enterprise_schema_version,
@@ -132,6 +141,231 @@ def _version(database: Path) -> str:
         return str(
             connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
         )
+
+
+def _real_rls_context(
+    organization_id: str,
+    workspace_id: str,
+    subject_id: str,
+) -> TenantTransactionContext:
+    tenant = TenantContext(
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        mode=TenantMode.ENTERPRISE_SERVER,
+    )
+    actor = ActorContext(
+        subject_id=subject_id,
+        actor_kind=ActorKind.HUMAN,
+        issuer="real-postgres-rls-test",
+        token_id=f"token:{organization_id}:{subject_id}",
+        session_id=f"session:{organization_id}:{subject_id}",
+        request_id=f"request:{organization_id}:{subject_id}",
+        authentication_time=datetime(2026, 8, 30, tzinfo=timezone.utc),
+        authentication_strength="integration-test",
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        membership_id=f"membership:{organization_id}:{subject_id}",
+        roles=("MEMBER",),
+    )
+    return TenantTransactionContext(tenant=tenant, actor=actor)
+
+
+@pytest.mark.rls
+def test_real_postgres_rls_is_fail_closed_and_pool_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dsn = os.environ.get("MENTORFLOW_RLS_DSN", "").strip()
+    if not raw_dsn:
+        pytest.fail("MENTORFLOW_RLS_DSN is required for the real PostgreSQL RLS gate")
+    try:
+        migration_url = make_url(raw_dsn)
+    except Exception:
+        pytest.fail("MENTORFLOW_RLS_DSN must be a valid SQLAlchemy URL", pytrace=False)
+    if migration_url.get_backend_name() != "postgresql":
+        pytest.fail("MENTORFLOW_RLS_DSN must target PostgreSQL", pytrace=False)
+    migration_url = migration_url.set(drivername="postgresql+psycopg")
+    if migration_url.username == APPLICATION_DATABASE_ROLE:
+        pytest.fail("MENTORFLOW_RLS_DSN must use the distinct migration owner", pytrace=False)
+
+    migration_engine = create_engine(migration_url, future=True, pool_pre_ping=True)
+    tenant_engine = None
+    try:
+        with migration_engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"""
+                    DO $role$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles
+                        WHERE rolname = '{APPLICATION_DATABASE_ROLE}'
+                      ) THEN
+                        CREATE ROLE {APPLICATION_DATABASE_ROLE}
+                          NOLOGIN NOSUPERUSER NOBYPASSRLS;
+                      END IF;
+                    END
+                    $role$
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    f"ALTER ROLE {APPLICATION_DATABASE_ROLE} "
+                    "NOLOGIN NOSUPERUSER NOBYPASSRLS"
+                )
+            )
+
+        runtime_url = migration_url.set(
+            username=APPLICATION_DATABASE_ROLE,
+            password="role-switch-only",
+        )
+        config = Config(str(BACKEND_ROOT / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
+        config.attributes["configure_logger"] = False
+        with monkeypatch.context() as environment:
+            environment.setenv("MENTORFLOW_DEPLOYMENT_MODE", "ENTERPRISE_SERVER")
+            environment.setenv(
+                "MENTORFLOW_DATABASE_URL",
+                runtime_url.render_as_string(hide_password=False),
+            )
+            environment.setenv(
+                "MENTORFLOW_MIGRATION_DATABASE_URL",
+                migration_url.render_as_string(hide_password=False),
+            )
+            command.upgrade(config, "head")
+
+        with migration_engine.begin() as connection:
+            assert detect_enterprise_schema_version(connection) == MIGRATION_REVISION
+            postgres_version = str(connection.execute(text("SHOW server_version")).scalar_one())
+            seed = seed_synthetic_tenants(connection)
+            assert seed.organization_count == 3
+            rls_rows = connection.execute(
+                text(
+                    """
+                    SELECT class.relname, class.relrowsecurity, class.relforcerowsecurity
+                    FROM pg_class AS class
+                    JOIN pg_namespace AS namespace
+                      ON namespace.oid = class.relnamespace
+                    WHERE namespace.nspname = current_schema()
+                      AND class.relname = ANY(:tables)
+                    """
+                ),
+                {"tables": list(FORCE_RLS_TABLES)},
+            ).all()
+            assert {str(row[0]) for row in rls_rows} == set(FORCE_RLS_TABLES)
+            assert all(bool(row[1]) and bool(row[2]) for row in rls_rows)
+
+        tenant_engine = create_enterprise_postgres_engine(
+            migration_url.render_as_string(hide_password=False),
+            pool_size=1,
+            max_overflow=0,
+        )
+        manager = PostgresTenantTransactionManager(tenant_engine)
+        repository = PostgresTenantResourceRepository()
+        connection_ids: list[int] = []
+
+        with tenant_engine.connect() as connection:
+            with connection.begin():
+                connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
+                security = inspect_application_role_security(connection)
+                assert security.safe is True
+                assert security.current_user == APPLICATION_DATABASE_ROLE
+                assert security.is_superuser is False
+                assert security.bypasses_rls is False
+                assert security.owned_tenant_table_count == 0
+                assert security.forced_rls_table_count == len(FORCE_RLS_TABLES)
+                assert int(
+                    connection.execute(text("SELECT count(*) FROM documents")).scalar_one()
+                ) == 0
+
+        tenant_a = _real_rls_context(
+            "synthetic-org-1",
+            "synthetic-org-1-workspace-1",
+            "synthetic-user-01",
+        )
+        tenant_b = _real_rls_context(
+            "synthetic-org-2",
+            "synthetic-org-2-workspace-1",
+            "synthetic-user-08",
+        )
+        resource_id = "real-rls-contract-document-a"
+        with manager.transaction(tenant_a) as session:
+            session.connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
+            require_safe_application_role(session.connection)
+            connection_ids.append(id(session.connection.connection.driver_connection))
+            own = repository.upsert(
+                session,
+                TenantResourceDraft(
+                    resource_id=resource_id,
+                    kind=TenantResourceKind.DOCUMENT,
+                    scope_type=ResourceScopeType.WORKSPACE,
+                    owner_subject_id=tenant_a.actor.subject_id,
+                    classification=ResourceClassification.INTERNAL,
+                    title="Real RLS tenant A document",
+                    status="ready",
+                    payload={"tenant": "A", "version": 1},
+                    search_text="real postgres rls tenant a",
+                    job_id="rls-job-a",
+                    cache_key="rls-cache-a",
+                ),
+            )
+            assert own.organization_id == tenant_a.tenant.organization_id
+            assert repository.get(session, TenantResourceKind.DOCUMENT, resource_id) is not None
+
+        with manager.transaction(tenant_b) as session:
+            session.connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
+            require_safe_application_role(session.connection)
+            connection_ids.append(id(session.connection.connection.driver_connection))
+            assert repository.get(session, TenantResourceKind.DOCUMENT, resource_id) is None
+            assert all(
+                record.resource_id != resource_id
+                for record in repository.list_records(
+                    session,
+                    TenantResourceKind.DOCUMENT,
+                    limit=10_000,
+                )
+            )
+            assert repository.update_payload(
+                session,
+                TenantResourceKind.DOCUMENT,
+                resource_id,
+                payload={"tenant": "B", "unauthorized": True},
+                status="intrusion",
+            ) is False
+            assert repository.delete(
+                session,
+                TenantResourceKind.DOCUMENT,
+                resource_id,
+            ) is False
+
+        with manager.transaction(tenant_a) as session:
+            session.connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
+            require_safe_application_role(session.connection)
+            connection_ids.append(id(session.connection.connection.driver_connection))
+            preserved = repository.get(session, TenantResourceKind.DOCUMENT, resource_id)
+            assert preserved is not None
+            assert preserved.status == "ready"
+            assert preserved.payload == {"tenant": "A", "version": 1}
+
+        assert len(set(connection_ids)) == 1
+        print(
+            json.dumps(
+                {
+                    "app_db_role": APPLICATION_DATABASE_ROLE,
+                    "app_db_role_bypassrls": False,
+                    "migration_head": MIGRATION_REVISION,
+                    "pooled_connection_reused": True,
+                    "postgres_version": postgres_version,
+                    "rls_fail_closed": True,
+                    "unauthorized_success": 0,
+                },
+                sort_keys=True,
+            )
+        )
+    finally:
+        if tenant_engine is not None:
+            tenant_engine.dispose()
+        migration_engine.dispose()
 
 
 def test_frozen_contract_is_the_only_tenant_and_actor_contract() -> None:
