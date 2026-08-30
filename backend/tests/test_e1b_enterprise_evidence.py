@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,7 @@ from verify_release_assets import (  # noqa: E402
     _verify_sbom_and_risk,
 )
 from verify_security_waivers import evaluate as evaluate_security, load_waivers  # noqa: E402
+import pytest_windows_diagnostics as windows_diagnostics  # noqa: E402
 
 
 def test_workflow_schema_and_fast_full_lane_contracts() -> None:
@@ -161,6 +163,208 @@ def test_main_full_backend_membership_is_complete_disjoint_and_required() -> Non
     assert not (DOCUMENT_ML_TESTS & DESKTOP_TESTS)
     assert core | DOCUMENT_ML_TESTS | DESKTOP_TESTS == all_tests
     assert all(root in core_run for root in BACKEND_TEST_ROOTS)
+
+
+def test_shadow_repair_e107_workflow_contract() -> None:
+    workflow_path = ROOT / ".github" / "workflows" / "enterprise-ci.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger = workflow.get("on", workflow.get(True))
+    dispatch_inputs = trigger["workflow_dispatch"]["inputs"]
+    call_inputs = trigger["workflow_call"]["inputs"]
+    assert set(dispatch_inputs) == {"lane", "expected_source_sha"}
+    assert set(call_inputs) == {"lane", "expected_source_sha"}
+    assert dispatch_inputs["lane"]["options"] == [
+        "PR_FAST",
+        "MAIN_FULL",
+        "SHADOW_REPAIR_E107",
+    ]
+    assert dispatch_inputs["expected_source_sha"]["default"] == ""
+    assert call_inputs["expected_source_sha"]["default"] == ""
+
+    jobs = workflow["jobs"]
+    lane_run = _named_run(jobs["lane-contract"], "Validate lane and exact focused source")
+    assert "PR_FAST|MAIN_FULL|SHADOW_REPAIR_E107" in lane_run
+    assert 'test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"' in lane_run
+
+    windows = jobs["backend-full-windows"]
+    assert windows["if"] == "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107'"
+    assert windows["needs"] == "lane-contract"
+    assert windows["runs-on"] == "windows-latest"
+    assert windows["timeout-minutes"] == 120
+    assert windows["strategy"]["fail-fast"] is False
+    assert windows["strategy"]["matrix"] == {
+        "python": ["3.11", "3.12", "3.13"],
+        "shard": [1, 2, 3, 4, 5, 6],
+    }
+    diagnostic = next(
+        step for step in windows["steps"]
+        if step.get("name") == "Bounded diagnostic core backend shard"
+    )
+    assert diagnostic["shell"] == "pwsh"
+    assert diagnostic["timeout-minutes"] == 105
+    assert "run_windows_pytest_diagnostic.ps1" in diagnostic["run"]
+    assert "-TimeoutMinutes 100" in diagnostic["run"]
+    assert "-ShardCount 6" in diagnostic["run"]
+    assert all(root in diagnostic["run"] for root in BACKEND_TEST_ROOTS)
+    assert diagnostic["env"]["MENTORFLOW_DIAGNOSTIC_SOURCE_SHA"] == "${{ github.sha }}"
+    assert "matrix.shard" in diagnostic["env"]["MENTORFLOW_DB"]
+    assert "matrix.shard" in diagnostic["env"]["MENTORFLOW_ORM_DB"]
+    upload = next(
+        step for step in windows["steps"]
+        if step.get("name") == "Upload Windows pytest diagnostics"
+    )
+    assert upload["if"] == "always()"
+    assert upload["uses"] == "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+    assert upload["with"]["if-no-files-found"] == "error"
+
+    security = jobs["enterprise-security-corpus"]
+    assert security["if"] == windows["if"]
+    security_step = next(
+        step for step in security["steps"]
+        if step.get("name") == "File, path, provider, URL, and redaction regression"
+    )
+    assert security_step["env"]["MENTORFLOW_PROVIDER_MODE"] == "fake"
+    assert security_step["env"]["MENTORFLOW_DB"].startswith("${{ runner.temp }}")
+    assert security_step["env"]["MENTORFLOW_ORM_DB"].startswith("${{ runner.temp }}")
+
+    migrations = jobs["migrations"]
+    assert migrations["if"] == windows["if"]
+    assert any(
+        step.get("run") == "sudo apt-get update && sudo apt-get install --yes libegl1"
+        for step in migrations["steps"]
+    )
+    migration_test = next(
+        step for step in migrations["steps"]
+        if step.get("name") == "Alembic and portable migration gates"
+    )
+    assert migration_test["env"]["QT_QPA_PLATFORM"] == "offscreen"
+    assert migration_test["env"]["MENTORFLOW_DB"].startswith("${{ runner.temp }}")
+    assert migration_test["env"]["MENTORFLOW_ORM_DB"].startswith("${{ runner.temp }}")
+
+    focused = jobs["shadow-repair-contract"]
+    assert focused["if"] == "inputs.lane == 'SHADOW_REPAIR_E107'"
+    assert focused["runs-on"] == "windows-latest"
+    assert focused["timeout-minutes"] == 20
+    watchdog = next(
+        step for step in focused["steps"]
+        if step.get("name") == "Watchdog timeout captures stalled node, stack, and process tree"
+    )
+    assert watchdog["timeout-minutes"] == 10
+    assert "-TimeoutSeconds 5" in watchdog["run"]
+    assert "Expected watchdog exit 124" in watchdog["run"]
+    assert "processes-timeout.json" in watchdog["run"]
+
+    gate = jobs["shadow-required-gate"]
+    assert gate["if"] == "always() && inputs.lane == 'SHADOW_REPAIR_E107'"
+    assert set(gate["needs"]) == {
+        "lane-contract",
+        "backend-full-windows",
+        "enterprise-security-corpus",
+        "migrations",
+        "shadow-repair-contract",
+    }
+    gate_run = _named_run(
+        gate,
+        "Reject failed, cancelled, missing, neutral, timed out, or skipped focused jobs",
+    )
+    assert 'test "$result" = "success"' in gate_run
+    assert 'test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"' in gate_run
+
+    for job_name in ("readiness-provenance", "frontend", "enterprise-contract"):
+        assert jobs[job_name]["if"] == "inputs.lane != 'SHADOW_REPAIR_E107'"
+
+    for job_name, job in jobs.items():
+        rendered = json.dumps(job)
+        pytest_steps = [
+            step for step in job.get("steps", [])
+            if "python -m pytest" in str(step.get("run", ""))
+        ]
+        if "windows-latest" in rendered and pytest_steps:
+            assert "timeout-minutes" in job, f"{job_name} lacks a Windows job timeout"
+            for step in pytest_steps:
+                assert "timeout-minutes" in step, (
+                    f"{job_name}/{step.get('name', '<unnamed>')} lacks a pytest step timeout"
+                )
+
+
+def test_windows_diagnostic_shards_are_stable_disjoint_and_complete() -> None:
+    nodeids = [f"backend/tests/test_shard_fixture.py::test_case[{index}]" for index in range(257)]
+    assignments = {
+        shard: {
+            nodeid
+            for nodeid in nodeids
+            if windows_diagnostics.shard_for_nodeid(nodeid, 6) == shard
+        }
+        for shard in range(1, 7)
+    }
+    assert all(assignments.values())
+    assert set().union(*assignments.values()) == set(nodeids)
+    assert sum(len(values) for values in assignments.values()) == len(nodeids)
+    assert all(
+        not (assignments[left] & assignments[right])
+        for left in assignments
+        for right in assignments
+        if left < right
+    )
+    assert [windows_diagnostics.shard_for_nodeid(nodeid, 6) for nodeid in nodeids] == [
+        windows_diagnostics.shard_for_nodeid(nodeid, 6) for nodeid in nodeids
+    ]
+
+
+def test_windows_diagnostic_plugin_records_completed_run(tmp_path: Path) -> None:
+    fixture = tmp_path / "test_diagnostic_fixture.py"
+    fixture.write_text(
+        "def test_first():\n    assert True\n\ndef test_second():\n    assert 2 + 2 == 4\n",
+        encoding="utf-8",
+    )
+    artifacts = tmp_path / "artifacts"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(SCRIPTS), environment.get("PYTHONPATH", ""))
+        if value
+    )
+    environment[windows_diagnostics.ARTIFACT_ENV] = str(artifacts)
+    environment[windows_diagnostics.STACK_INTERVAL_ENV] = "0"
+    environment[windows_diagnostics.SOURCE_SHA_ENV] = "f" * 40
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "faulthandler",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "pytest_windows_diagnostics",
+            "--mentorflow-shard-index",
+            "1",
+            "--mentorflow-shard-count",
+            "1",
+            f"--confcutdir={tmp_path}",
+            str(fixture),
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    status = json.loads((artifacts / "status.json").read_text(encoding="utf-8"))
+    assert status["exit_state"] == "COMPLETED"
+    assert status["pytest_exit_code"] == 0
+    assert status["current_phase"] == "process-exit"
+    assert status["collected_total"] == status["selected_for_shard"] == 2
+    assert status["last_started_test"] == status["last_completed_test"]
+    assert status["source_sha"] == "f" * 40
+    events = [
+        json.loads(line)
+        for line in (artifacts / "node-timeline.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    kinds = {event["kind"] for event in events}
+    assert {"pytest-configured", "collection-complete", "test-start", "test-complete", "session-finish"} <= kinds
+    assert (artifacts / "faulthandler.log").stat().st_size > 0
 
 
 def test_owned_workflows_pin_actions_and_do_not_mask_required_failures() -> None:

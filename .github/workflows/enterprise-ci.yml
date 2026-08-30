@@ -4,17 +4,27 @@ on:
   workflow_call:
     inputs:
       lane:
-        description: PR_FAST or MAIN_FULL
+        description: PR_FAST, MAIN_FULL, or SHADOW_REPAIR_E107
         required: true
         type: string
+      expected_source_sha:
+        description: Exact source SHA required by focused Shadow repair validation
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       lane:
         description: CI lane
         required: true
         type: choice
-        options: [PR_FAST, MAIN_FULL]
+        options: [PR_FAST, MAIN_FULL, SHADOW_REPAIR_E107]
         default: PR_FAST
+      expected_source_sha:
+        description: Exact source SHA required by focused Shadow repair validation
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -32,11 +42,24 @@ jobs:
     name: ${{ inputs.lane }} / lane contract
     runs-on: ubuntu-24.04
     steps:
-      - shell: bash
-        run: test "${{ inputs.lane }}" = "PR_FAST" || test "${{ inputs.lane }}" = "MAIN_FULL"
+      - name: Validate lane and exact focused source
+        shell: bash
+        env:
+          LANE: ${{ inputs.lane }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          case "$LANE" in
+            PR_FAST|MAIN_FULL|SHADOW_REPAIR_E107) ;;
+            *) echo "Unsupported Enterprise CI lane: $LANE" >&2; exit 1 ;;
+          esac
+          if [ "$LANE" = "SHADOW_REPAIR_E107" ]; then
+            test -n "$EXPECTED_SOURCE_SHA"
+            test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+          fi
 
   readiness-provenance:
     name: ${{ inputs.lane }} / GitHub-reachable readiness provenance
+    if: inputs.lane != 'SHADOW_REPAIR_E107'
     needs: lane-contract
     runs-on: ubuntu-24.04
     steps:
@@ -63,6 +86,7 @@ jobs:
     name: PR_FAST / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}
     if: inputs.lane == 'PR_FAST'
     needs: lane-contract
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +118,7 @@ jobs:
           python scripts/enterprise/generate_tenant_load_corpus.py --check
           python scripts/enterprise/verify_release_assets.py
       - name: Focused, Personal Local, authorization-negative, tenant-fixture, and fake-migration tests
+        timeout-minutes: 45
         env:
           PYTHONPATH: backend
           MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-fast-app.db
@@ -109,15 +134,14 @@ jobs:
           backend/tests/test_knowledge_map_v1_migration.py
 
   backend-full:
-    name: MAIN_FULL / Backend core / ${{ matrix.os }} / Python ${{ matrix.python }}
+    name: MAIN_FULL / Backend core / Ubuntu 24.04 / Python ${{ matrix.python }}
     if: inputs.lane == 'MAIN_FULL'
     needs: lane-contract
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
         python: ["3.11", "3.12", "3.13"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -158,6 +182,79 @@ jobs:
           --ignore=backend/tests/test_plan_time_metrics.py
           --ignore=backend/tests/test_plans_page_scroll_layout.py
 
+  backend-full-windows:
+    name: ${{ inputs.lane }} / Backend core / Windows / Python ${{ matrix.python }} / shard ${{ matrix.shard }} of 6
+    if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107'
+    needs: lane-contract
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+        shard: [1, 2, 3, 4, 5, 6]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Full compile/import and release artifact gates
+        env: {PYTHONPATH: backend}
+        run: |
+          python -m pip check
+          python -m compileall -q backend/app scripts/enterprise
+          python -c "import app.main"
+          python scripts/enterprise/verify_release_assets.py
+      - name: Bounded diagnostic core backend shard
+        shell: pwsh
+        timeout-minutes: 105
+        env:
+          MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-windows-app-${{ matrix.python }}-${{ matrix.shard }}.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/mentorflow-windows-orm-${{ matrix.python }}-${{ matrix.shard }}.db
+          MENTORFLOW_DIAGNOSTIC_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          $artifactDirectory = Join-Path $env:RUNNER_TEMP "e107-windows-py${{ matrix.python }}-shard-${{ matrix.shard }}"
+          & ./scripts/enterprise/run_windows_pytest_diagnostic.ps1 `
+            -RepoRoot $env:GITHUB_WORKSPACE `
+            -ArtifactsDirectory $artifactDirectory `
+            -TimeoutMinutes 100 `
+            -ShardIndex ${{ matrix.shard }} `
+            -ShardCount 6 `
+            -PytestArguments @(
+              "backend/tests",
+              "backend/tests_w2",
+              "backend/tests_w6",
+              "--ignore=backend/tests/test_chunked_adamw.py",
+              "--ignore=backend/tests/test_document_ingestion_windows_compat.py",
+              "--ignore=backend/tests/test_document_source_v1.py",
+              "--ignore=backend/tests/test_qwen3_tts_warm_start.py",
+              "--ignore=backend/tests/test_streaming_safetensors.py",
+              "--ignore=backend/tests/test_classroom_plan_landing.py",
+              "--ignore=backend/tests/test_classroom_visual.py",
+              "--ignore=backend/tests/test_knowledge_map_progress.py",
+              "--ignore=backend/tests/test_life_analogy_prefetch_buffer.py",
+              "--ignore=backend/tests/test_local_migration.py",
+              "--ignore=backend/tests/test_native_desktop_knowledge_map.py",
+              "--ignore=backend/tests/test_plan_time_metrics.py",
+              "--ignore=backend/tests/test_plans_page_scroll_layout.py"
+            )
+          exit $LASTEXITCODE
+      - name: Upload Windows pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e107-windows-py${{ matrix.python }}-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/e107-windows-py${{ matrix.python }}-shard-${{ matrix.shard }}
+          if-no-files-found: error
+          retention-days: 14
+
   backend-document-ml:
     name: MAIN_FULL / Backend document and ML / Ubuntu 24.04 / Python 3.11
     if: inputs.lane == 'MAIN_FULL'
@@ -187,6 +284,7 @@ jobs:
     name: MAIN_FULL / Backend desktop / Windows / Python 3.11
     if: inputs.lane == 'MAIN_FULL'
     needs: lane-contract
+    timeout-minutes: 120
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -199,6 +297,7 @@ jobs:
             backend/requirements-desktop.txt
       - run: python -m pip install -r backend/requirements-desktop.txt
       - name: Required desktop suite
+        timeout-minutes: 105
         env:
           PYTHONPATH: backend
           QT_QPA_PLATFORM: offscreen
@@ -215,6 +314,7 @@ jobs:
 
   frontend:
     name: ${{ inputs.lane }} / Frontend / ${{ matrix.os }} / Node 22.20.0
+    if: inputs.lane != 'SHADOW_REPAIR_E107'
     needs: lane-contract
     strategy:
       fail-fast: false
@@ -242,6 +342,7 @@ jobs:
 
   enterprise-contract:
     name: ${{ inputs.lane }} / frozen enterprise contract and tenant fixtures
+    if: inputs.lane != 'SHADOW_REPAIR_E107'
     needs: lane-contract
     runs-on: ubuntu-24.04
     steps:
@@ -256,8 +357,8 @@ jobs:
       - run: python -m pytest -q backend/tests/test_enterprise_contracts_v1.py backend/tests/test_e1b_enterprise_evidence.py
 
   enterprise-security-corpus:
-    name: MAIN_FULL / enterprise security corpus
-    if: inputs.lane == 'MAIN_FULL'
+    name: ${{ inputs.lane }} / enterprise security corpus
+    if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107'
     needs: lane-contract
     runs-on: ubuntu-24.04
     steps:
@@ -266,7 +367,11 @@ jobs:
         with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt}
       - run: python -m pip install -r backend/requirements.txt
       - name: File, path, provider, URL, and redaction regression
-        env: {PYTHONPATH: backend, MENTORFLOW_PROVIDER_MODE: fake}
+        env:
+          PYTHONPATH: backend
+          MENTORFLOW_PROVIDER_MODE: fake
+          MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-security-app.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/mentorflow-security-orm.db
         run: >-
           python -m pytest -q
           backend/tests/test_archive_import_security.py
@@ -277,8 +382,8 @@ jobs:
           backend/tests_w6/test_data_security_recovery.py
 
   migrations:
-    name: MAIN_FULL / migration round trip
-    if: inputs.lane == 'MAIN_FULL'
+    name: ${{ inputs.lane }} / migration round trip
+    if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107'
     needs: lane-contract
     runs-on: ubuntu-24.04
     steps:
@@ -290,14 +395,115 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements-desktop.txt
+      - name: Install Linux Qt runtime for desktop migration imports
+        run: sudo apt-get update && sudo apt-get install --yes libegl1
       - run: python -m pip install -r backend/requirements-desktop.txt
       - name: Alembic and portable migration gates
-        env: {PYTHONPATH: backend, MENTORFLOW_ORM_DB: "${{ runner.temp }}/migration-gate.db"}
+        env:
+          PYTHONPATH: backend
+          QT_QPA_PLATFORM: offscreen
+          MENTORFLOW_DB: ${{ runner.temp }}/migration-app.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/migration-orm.db
         run: >-
           python -m pytest -q
           backend/tests/test_local_migration.py
           backend/tests/test_knowledge_map_v1_migration.py
           backend/tests/test_api_contract_startup.py
+
+  shadow-repair-contract:
+    name: SHADOW_REPAIR_E107 / workflow and watchdog contract
+    if: inputs.lane == 'SHADOW_REPAIR_E107'
+    needs: lane-contract
+    timeout-minutes: 20
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Focused E1-07 workflow and diagnostic contracts
+        timeout-minutes: 10
+        env:
+          PYTHONPATH: backend
+          MENTORFLOW_DB: ${{ runner.temp }}/mentorflow-contract-app.db
+          MENTORFLOW_ORM_DB: ${{ runner.temp }}/mentorflow-contract-orm.db
+        run: >-
+          python -m pytest -q
+          backend/tests/test_e1b_enterprise_evidence.py::test_shadow_repair_e107_workflow_contract
+          backend/tests/test_e1b_enterprise_evidence.py::test_windows_diagnostic_shards_are_stable_disjoint_and_complete
+          backend/tests/test_e1b_enterprise_evidence.py::test_windows_diagnostic_plugin_records_completed_run
+      - name: Watchdog timeout captures stalled node, stack, and process tree
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          MENTORFLOW_DIAGNOSTIC_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          $scratch = Join-Path $env:RUNNER_TEMP "e107-watchdog-fixture"
+          [void](New-Item -ItemType Directory -Path $scratch -Force)
+          $stallTest = Join-Path $scratch "test_e107_watchdog_stall.py"
+          [System.IO.File]::WriteAllText(
+            $stallTest,
+            "import time`n`ndef test_e107_watchdog_stall():`n    time.sleep(300)`n",
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          $artifactDirectory = Join-Path $env:RUNNER_TEMP "e107-watchdog-regression"
+          & ./scripts/enterprise/run_windows_pytest_diagnostic.ps1 `
+            -RepoRoot $env:GITHUB_WORKSPACE `
+            -ArtifactsDirectory $artifactDirectory `
+            -TimeoutSeconds 5 `
+            -PytestArguments @("--confcutdir=$scratch", $stallTest)
+          $watchdogExit = $LASTEXITCODE
+          if ($watchdogExit -ne 124) { throw "Expected watchdog exit 124, found $watchdogExit" }
+          $result = Get-Content -LiteralPath (Join-Path $artifactDirectory "wrapper-result.json") -Raw | ConvertFrom-Json
+          $status = Get-Content -LiteralPath (Join-Path $artifactDirectory "status.json") -Raw | ConvertFrom-Json
+          if (-not $result.timed_out -or $result.exit_code -ne 124 -or -not $result.stack_dump_completed) {
+            throw "Watchdog result did not preserve timeout and stack evidence"
+          }
+          if ($status.current_phase -ne "call" -or $status.last_started_test -notlike "*test_e107_watchdog_stall*") {
+            throw "Watchdog status did not preserve the stalled test call phase"
+          }
+          foreach ($name in @("faulthandler.log", "node-timeline.jsonl", "processes-timeout.json", "processes-after-cleanup.json")) {
+            $path = Join-Path $artifactDirectory $name
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -eq 0) {
+              throw "Required watchdog artifact missing or empty: $name"
+            }
+          }
+      - name: Upload watchdog regression diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e107-watchdog-regression-${{ github.run_id }}
+          path: ${{ runner.temp }}/e107-watchdog-regression
+          if-no-files-found: error
+          retention-days: 14
+
+  shadow-required-gate:
+    name: SHADOW_REPAIR_E107 / required gate
+    if: always() && inputs.lane == 'SHADOW_REPAIR_E107'
+    needs: [lane-contract, backend-full-windows, enterprise-security-corpus, migrations, shadow-repair-contract]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Reject failed, cancelled, missing, neutral, timed out, or skipped focused jobs
+        shell: bash
+        env:
+          LANE_RESULT: ${{ needs.lane-contract.result }}
+          WINDOWS_RESULT: ${{ needs.backend-full-windows.result }}
+          SECURITY_RESULT: ${{ needs.enterprise-security-corpus.result }}
+          MIGRATION_RESULT: ${{ needs.migrations.result }}
+          CONTRACT_RESULT: ${{ needs.shadow-repair-contract.result }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          for result in "$LANE_RESULT" "$WINDOWS_RESULT" "$SECURITY_RESULT" "$MIGRATION_RESULT" "$CONTRACT_RESULT"; do
+            test "$result" = "success"
+          done
+          test -n "$EXPECTED_SOURCE_SHA"
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
 
   database-lease:
     name: MAIN_FULL / enterprise database dependency lease
