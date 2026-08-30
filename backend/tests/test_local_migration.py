@@ -5,6 +5,7 @@ import hashlib
 import os
 import sqlite3
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -438,6 +439,45 @@ def test_local_migration_import_stages_on_target_volume(
 ) -> None:
     """Publication must remain an atomic same-volume rename even with a foreign temp root."""
 
+    monkeypatch.setenv("MENTORFLOW_TEMP_ROOT", str(tmp_path / "export-temp"))
+    source = tmp_path / "source"
+    (source / "data").mkdir(parents=True)
+    (source / "data" / "note.txt").write_text("inside", encoding="utf-8")
+    archive = tmp_path / "portable.zip"
+    export_migration_archive(source, archive)
+
+    repository_root = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(
+        prefix=".mentorflow-target-volume-",
+        dir=repository_root,
+    ) as target_parent_value:
+        target_parent = Path(target_parent_value)
+        target = target_parent / "imported"
+        foreign_temp = tmp_path / "foreign-temp"
+        captured: dict[str, Path] = {}
+        native_mkdtemp = local_migration_module.tempfile.mkdtemp
+
+        def capture_staging(*args, **kwargs):
+            directory = kwargs.get("dir")
+            if directory is not None:
+                captured["dir"] = Path(directory)
+            return native_mkdtemp(*args, **kwargs)
+
+        monkeypatch.setenv("MENTORFLOW_TEMP_ROOT", str(foreign_temp))
+        monkeypatch.setattr(local_migration_module.tempfile, "mkdtemp", capture_staging)
+        imported = import_migration_archive(archive, target)
+
+        assert imported["target"] == target
+        assert captured["dir"] == target.parent
+        assert captured["dir"] != foreign_temp
+        assert (target / "data" / "note.txt").read_text(encoding="utf-8") == "inside"
+
+
+def test_local_migration_vanished_target_volume_staging_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MENTORFLOW_TEMP_ROOT", str(tmp_path / "temp"))
     source = tmp_path / "source"
     (source / "data").mkdir(parents=True)
     (source / "data" / "note.txt").write_text("inside", encoding="utf-8")
@@ -447,24 +487,22 @@ def test_local_migration_import_stages_on_target_volume(
     target_parent = tmp_path / "target-parent"
     target_parent.mkdir()
     target = target_parent / "imported"
-    foreign_temp = Path(r"C:\Codex\Temp\mentorflow-import-test")
-    captured: dict[str, Path] = {}
     native_mkdtemp = local_migration_module.tempfile.mkdtemp
 
-    def capture_staging(*args, **kwargs):
-        directory = kwargs.get("dir")
-        if directory is not None:
-            captured["dir"] = Path(directory)
-        return native_mkdtemp(*args, **kwargs)
+    def remove_staging_before_validation(*args, **kwargs):
+        staging = Path(native_mkdtemp(*args, **kwargs))
+        staging.rmdir()
+        return str(staging)
 
-    monkeypatch.setenv("MENTORFLOW_TEMP_ROOT", str(foreign_temp))
-    monkeypatch.setattr(local_migration_module.tempfile, "mkdtemp", capture_staging)
+    monkeypatch.setattr(
+        local_migration_module.tempfile,
+        "mkdtemp",
+        remove_staging_before_validation,
+    )
 
-    imported = import_migration_archive(archive, target)
-
-    assert imported["target"] == target
-    assert captured["dir"] == target.parent
-    assert (target / "data" / "note.txt").read_text(encoding="utf-8") == "inside"
+    with pytest.raises(MigrationError, match="迁移暂存不存在"):
+        import_migration_archive(archive, target)
+    assert not target.exists()
 
 
 def test_next_launch_pointer_swap_is_rejected_before_target_selection(
