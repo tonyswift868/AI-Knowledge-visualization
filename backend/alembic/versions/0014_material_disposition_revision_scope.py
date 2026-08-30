@@ -24,6 +24,14 @@ def upgrade() -> None:
     """Preserve every row while allowing a disposition per map revision."""
 
     bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            existing_type=sa.String(length=32),
+            type_=sa.String(length=64),
+            existing_nullable=False,
+        )
     inspector = sa.inspect(bind)
     tables = set(inspector.get_table_names())
     if "orm_material_dispositions" not in tables:

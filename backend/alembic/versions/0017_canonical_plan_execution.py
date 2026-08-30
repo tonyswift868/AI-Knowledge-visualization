@@ -82,7 +82,7 @@ def upgrade() -> None:
             sa.Column("evidence_hash", sa.String(length=128), nullable=False),
             sa.Column("event_type", sa.String(length=40), nullable=False),
             sa.Column("score", sa.Float(), nullable=False, server_default="0"),
-            sa.Column("passed", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("passed", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("payload", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
             sa.Column("idempotency_key", sa.String(length=160), nullable=False),
             sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),

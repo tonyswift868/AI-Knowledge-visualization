@@ -24,11 +24,11 @@ def upgrade() -> None:
     bind.execute(
         sa.text(
             "UPDATE orm_knowledge_map_revisions "
-            "SET status='legacy_unverified', is_current=0 "
-            "WHERE provider_used=0 "
+            "SET status='legacy_unverified', is_current=:false_value "
+            "WHERE provider_used=:false_value "
             "OR generation_mode IN "
             "('deterministic_fallback','structural_fallback','legacy_unverified')"
-        )
+        ).bindparams(sa.bindparam("false_value", value=False, type_=sa.Boolean()))
     )
 
 

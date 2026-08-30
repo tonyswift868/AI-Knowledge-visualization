@@ -21,6 +21,74 @@ def _tables(bind) -> set[str]:
 def upgrade() -> None:
     bind = op.get_bind()
     tables = _tables(bind)
+    if "active_materials" not in tables:
+        op.create_table(
+            "active_materials",
+            sa.Column("id", sa.Text(), primary_key=True),
+            sa.Column("workspace_id", sa.Text(), nullable=False),
+            sa.Column("original_filename", sa.Text(), nullable=False),
+            sa.Column("media_type", sa.Text(), nullable=False),
+            sa.Column("size_bytes", sa.Integer(), nullable=False),
+            sa.Column("sha256", sa.Text(), nullable=False),
+            sa.Column("uploaded_at", sa.Text(), nullable=False),
+            sa.Column("stored_path", sa.Text(), nullable=False),
+            sa.Column("status", sa.Text(), nullable=False),
+            sa.Column(
+                "parse_error",
+                sa.Text(),
+                nullable=False,
+                server_default=sa.text("''"),
+            ),
+            sa.Column(
+                "page_count",
+                sa.Integer(),
+                nullable=False,
+                server_default=sa.text("0"),
+            ),
+            sa.Column("parser_name", sa.Text(), nullable=False),
+            sa.UniqueConstraint(
+                "workspace_id",
+                "sha256",
+                name="uq_active_material_workspace_sha256",
+            ),
+        )
+    if "active_knowledge_points" not in tables:
+        op.create_table(
+            "active_knowledge_points",
+            sa.Column("id", sa.Text(), primary_key=True),
+            sa.Column("workspace_id", sa.Text(), nullable=False),
+            sa.Column("material_id", sa.Text(), nullable=False),
+            sa.Column("normalized_name", sa.Text(), nullable=False),
+            sa.Column("name", sa.Text(), nullable=False),
+            sa.Column("explanation", sa.Text(), nullable=False),
+            sa.Column("difficulty", sa.Text(), nullable=False),
+            sa.Column("estimated_task_minutes", sa.Integer(), nullable=False),
+            sa.Column(
+                "mastery",
+                sa.Float(),
+                nullable=False,
+                server_default=sa.text("0"),
+            ),
+            sa.Column("acceptance_method", sa.Text(), nullable=False),
+            sa.Column("source_evidence", sa.Text(), nullable=False),
+            sa.Column(
+                "isolated",
+                sa.Integer(),
+                nullable=False,
+                server_default=sa.text("0"),
+            ),
+            sa.Column("created_at", sa.Text(), nullable=False),
+            sa.ForeignKeyConstraint(
+                ["material_id"],
+                ["active_materials.id"],
+                ondelete="CASCADE",
+            ),
+            sa.UniqueConstraint(
+                "workspace_id",
+                "normalized_name",
+                name="uq_active_knowledge_point_workspace_name",
+            ),
+        )
     if "active_extraction_runs" not in tables:
         op.create_table(
             "active_extraction_runs",
