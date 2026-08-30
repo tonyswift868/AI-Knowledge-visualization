@@ -56,6 +56,27 @@ ASVS_ROW = re.compile(
     r"^\| (V\d+\.\d+\.\d+) \| (.+) \| (IMPLEMENTED|TESTED|PARTIAL|NOT_APPLICABLE|PLANNED|BLOCKED) \| (.*) \| (.*) \| (.*) \| (.*) \|$"
 )
 THREAT_ROW = re.compile(r"^\| (TM-\d{2}) \|")
+PINNED_ACTION = re.compile(r"[^@\s]+@[0-9a-f]{40}")
+BACKEND_TEST_ROOTS = ("backend/tests", "backend/tests_w2", "backend/tests_w6")
+DOCUMENT_ML_TESTS = {
+    "backend/tests/test_chunked_adamw.py",
+    "backend/tests/test_document_ingestion_windows_compat.py",
+    "backend/tests/test_document_source_v1.py",
+    "backend/tests/test_qwen3_tts_warm_start.py",
+    "backend/tests/test_streaming_safetensors.py",
+}
+DESKTOP_TESTS = {
+    "backend/tests/test_classroom_plan_landing.py",
+    "backend/tests/test_classroom_visual.py",
+    "backend/tests/test_knowledge_map_progress.py",
+    "backend/tests/test_life_analogy_prefetch_buffer.py",
+    "backend/tests/test_local_migration.py",
+    "backend/tests/test_native_desktop_knowledge_map.py",
+    "backend/tests/test_plan_time_metrics.py",
+    "backend/tests/test_plans_page_scroll_layout.py",
+}
+RELEASE_IMAGE_ROLES = ("backend", "frontend", "document-worker", "worker")
+RELEASE_REQUIRED_JOBS = ("source-contract", "quality", "scanner-lease", "build", "scan", "publish")
 
 
 def _require(text: str, values: tuple[str, ...], source: str) -> None:
@@ -69,6 +90,203 @@ def _json(path: Path) -> dict[str, object]:
     if not isinstance(value, dict):
         raise RuntimeError(f"JSON root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def _job_needs(job: dict[str, object]) -> set[str]:
+    value = job.get("needs", [])
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return set(value)
+    raise RuntimeError("workflow job needs must be a string or list of strings")
+
+
+def _steps(job: dict[str, object], source: str) -> list[dict[str, object]]:
+    value = job.get("steps")
+    if not isinstance(value, list) or not all(isinstance(step, dict) for step in value):
+        raise RuntimeError(f"{source} must declare structured steps")
+    return value
+
+
+def _verify_action_pins(workflow: dict[str, object], source: str) -> None:
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict):
+        raise RuntimeError(f"{source} must declare jobs")
+    for job_name, raw_job in jobs.items():
+        if not isinstance(raw_job, dict):
+            raise RuntimeError(f"{source} job is not a mapping: {job_name}")
+        uses_values = [raw_job.get("uses")]
+        raw_steps = raw_job.get("steps", [])
+        if not isinstance(raw_steps, list):
+            raise RuntimeError(f"{source} steps are not a list: {job_name}")
+        uses_values.extend(step.get("uses") for step in raw_steps if isinstance(step, dict))
+        for uses in uses_values:
+            if uses is None or (isinstance(uses, str) and uses.startswith("./")):
+                continue
+            if not isinstance(uses, str) or not PINNED_ACTION.fullmatch(uses):
+                raise RuntimeError(f"{source} has an unpinned external action in {job_name}: {uses}")
+
+
+def _run_for_named_step(job: dict[str, object], name: str, source: str) -> str:
+    matches = [step.get("run") for step in _steps(job, source) if step.get("name") == name]
+    if len(matches) != 1 or not isinstance(matches[0], str):
+        raise RuntimeError(f"{source} must declare exactly one executable step named {name}")
+    return matches[0]
+
+
+def _test_paths(command: str) -> set[str]:
+    return set(re.findall(r"backend/(?:tests|tests_w2|tests_w6)/test_[A-Za-z0-9_]+\.py", command))
+
+
+def _verify_backend_suite_membership(root: Path, workflow: dict[str, object]) -> None:
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict):
+        raise RuntimeError("enterprise-ci.yml jobs are missing")
+    names = ("backend-full", "backend-document-ml", "backend-desktop")
+    if any(name not in jobs or not isinstance(jobs[name], dict) for name in names):
+        raise RuntimeError("MAIN_FULL must declare required core, document/ML, and desktop jobs")
+    core_job = jobs["backend-full"]
+    document_job = jobs["backend-document-ml"]
+    desktop_job = jobs["backend-desktop"]
+    for name, job in (("backend-full", core_job), ("backend-document-ml", document_job), ("backend-desktop", desktop_job)):
+        if job.get("if") != "inputs.lane == 'MAIN_FULL'" or _job_needs(job) != {"lane-contract"}:
+            raise RuntimeError(f"{name} must be a required MAIN_FULL job behind only the lane contract")
+        if job.get("continue-on-error") is not None:
+            raise RuntimeError(f"{name} must not mask a required suite result")
+
+    core_run = _run_for_named_step(
+        core_job, "Complete core backend regression excluding explicit optional suites", "backend-full"
+    )
+    document_run = _run_for_named_step(document_job, "Required document and ML suite", "backend-document-ml")
+    desktop_run = _run_for_named_step(desktop_job, "Required desktop suite", "backend-desktop")
+    if not all(root_name in core_run for root_name in BACKEND_TEST_ROOTS):
+        raise RuntimeError("core backend suite must start from all three canonical test roots")
+    ignored = set(re.findall(r"--ignore=(backend/(?:tests|tests_w2|tests_w6)/test_[A-Za-z0-9_]+\.py)", core_run))
+    if ignored != DOCUMENT_ML_TESTS | DESKTOP_TESTS:
+        raise RuntimeError("core suite exclusions must exactly match the two required optional suites")
+    if _test_paths(document_run) != DOCUMENT_ML_TESTS:
+        raise RuntimeError("document/ML suite membership is incomplete or ambiguous")
+    if _test_paths(desktop_run) != DESKTOP_TESTS:
+        raise RuntimeError("desktop suite membership is incomplete or ambiguous")
+    if "backend/requirements-documents.txt" not in str(document_job):
+        raise RuntimeError("document/ML suite must install its canonical optional manifest")
+    if "backend/requirements-desktop.txt" not in str(desktop_job) or desktop_job.get("runs-on") != "windows-latest":
+        raise RuntimeError("desktop suite must install its canonical manifest on Windows")
+
+    all_tests = {
+        path.relative_to(root).as_posix()
+        for root_name in BACKEND_TEST_ROOTS
+        for path in (root / root_name).rglob("test_*.py")
+    }
+    optional = DOCUMENT_ML_TESTS | DESKTOP_TESTS
+    if not DOCUMENT_ML_TESTS or not DESKTOP_TESTS or DOCUMENT_ML_TESTS & DESKTOP_TESTS:
+        raise RuntimeError("optional suite definitions must be non-empty and pairwise disjoint")
+    if not optional.issubset(all_tests):
+        raise RuntimeError("optional suite definition points outside the current backend test universe")
+    core_tests = all_tests - ignored
+    if not core_tests or core_tests & optional or core_tests | optional != all_tests:
+        raise RuntimeError("backend test membership is not complete, disjoint, and exactly-once")
+
+
+def _verify_required_failure_semantics(workflow: dict[str, object], source: str) -> None:
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict):
+        raise RuntimeError(f"{source} jobs are missing")
+    for job_name, raw_job in jobs.items():
+        if not isinstance(raw_job, dict):
+            raise RuntimeError(f"{source} job is malformed: {job_name}")
+        if raw_job.get("continue-on-error") is not None:
+            raise RuntimeError(f"{source} job masks failure: {job_name}")
+        for step in raw_job.get("steps", []):
+            if not isinstance(step, dict):
+                raise RuntimeError(f"{source} step is malformed: {job_name}")
+            if step.get("continue-on-error") is not None:
+                raise RuntimeError(f"{source} step masks failure: {job_name}")
+            run = step.get("run")
+            if isinstance(run, str) and ("|| true" in run or re.search(r";\s*exit\s+0(?:\s|$)", run)):
+                raise RuntimeError(f"{source} shell masks failure: {job_name}")
+
+
+def _verify_container_release(workflow: dict[str, object], text: str) -> None:
+    trigger = workflow.get("on", workflow.get(True))
+    if not isinstance(trigger, dict) or set(trigger) != {"workflow_dispatch"}:
+        raise RuntimeError("container release must be an explicit workflow_dispatch-only final release")
+    dispatch = trigger["workflow_dispatch"]
+    if not isinstance(dispatch, dict) or not isinstance(dispatch.get("inputs"), dict):
+        raise RuntimeError("container release dispatch inputs are missing")
+    expected_inputs = {
+        "expected_source_sha",
+        "expected_source_tree",
+        *(f"{role.replace('-', '_')}_rollback_image" for role in RELEASE_IMAGE_ROLES),
+    }
+    if set(dispatch["inputs"]) != expected_inputs:
+        raise RuntimeError("container release dispatch must require exact source/tree and four rollback digests")
+
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict) or set(RELEASE_REQUIRED_JOBS) | {"required-gate"} != set(jobs):
+        raise RuntimeError("container release required job set is incomplete or ambiguous")
+    expected_needs = {
+        "source-contract": set(),
+        "quality": {"source-contract"},
+        "scanner-lease": {"quality"},
+        "build": {"source-contract", "quality", "scanner-lease"},
+        "scan": {"build", "scanner-lease"},
+        "publish": set(RELEASE_REQUIRED_JOBS) - {"publish"},
+        "required-gate": set(RELEASE_REQUIRED_JOBS),
+    }
+    for name, needs in expected_needs.items():
+        job = jobs[name]
+        if not isinstance(job, dict) or _job_needs(job) != needs:
+            raise RuntimeError(f"container release needs graph is not fail-closed for {name}")
+        runner = job.get("runs-on")
+        if runner is not None and runner != "ubuntu-24.04":
+            raise RuntimeError(f"container release runner is not pinned to Ubuntu 24.04: {name}")
+    required_gate = jobs["required-gate"]
+    if not isinstance(required_gate, dict) or required_gate.get("if") != "always()":
+        raise RuntimeError("container release aggregate must inspect every required result even after failure")
+    gate_run = "\n".join(
+        str(step.get("run", "")) for step in _steps(required_gate, "required-gate")
+    )
+    if gate_run.count('test "$result" = "success"') != 1:
+        raise RuntimeError("container release aggregate must reject skipped, neutral, cancelled, and failed jobs")
+
+    _require(
+        text,
+        (
+            "refs/heads/core-v2/integration",
+            "git rev-parse 'HEAD^{tree}'",
+            "git ls-remote origin",
+            "ENTERPRISE_SECURITY_SCANNER_LEASE",
+            "docker buildx imagetools inspect",
+            "docker buildx build",
+            "--metadata-file",
+            "--provenance=mode=max",
+            "base-image-digests.json",
+            "NODE_BASE_IMAGE=",
+            "PYTHON_BASE_IMAGE=",
+            "NGINX_BASE_IMAGE=",
+            "containerimage.digest",
+            "image-sbom.cdx.json",
+            "trivy.sarif",
+            "repository_digest",
+            "final-image-evidence.json",
+            "FINAL_RELEASE_VERIFIED",
+            "final-release-manifest.json",
+            "final-image-digest-lock.json",
+            "rp05-application-images.json",
+        ),
+        "container-release.yml",
+    )
+    if re.search(r"\bdocker\s+build(?!x)\b", text):
+        raise RuntimeError("container release must use Buildx, not legacy docker build")
+    if "ubuntu-latest" in text or "continue-on-error" in text:
+        raise RuntimeError("container release contains floating runner or failure masking")
+    if text.count("for target in backend frontend document-worker worker") < 3:
+        raise RuntimeError("build, publish, and rollback contracts must cover all four images")
+    if "digest_ref_re='^.+@sha256:[0-9a-f]{64}$'" not in text:
+        raise RuntimeError("rollback validation must reject mutable tags and accept only resolved digests")
+    _verify_action_pins(workflow, "container-release.yml")
+    _verify_required_failure_semantics(workflow, "container-release.yml")
 
 
 def _verify_asvs(path: Path) -> Counter[str]:
@@ -278,10 +496,13 @@ def verify(
     if missing:
         raise RuntimeError(f"required E1-07B assets missing: {missing}")
 
+    parsed_workflows: dict[str, dict[str, object]] = {}
     for name in WORKFLOWS:
         path = root / ".github" / "workflows" / name
-        if not isinstance(yaml.safe_load(path.read_text(encoding="utf-8")), dict):
+        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(parsed, dict):
             raise RuntimeError(f"workflow does not parse as a mapping: {name}")
+        parsed_workflows[name] = parsed
     for path in (root / ".github" / "dependabot.yml", root / "deploy" / "enterprise" / "compose.staging.yml"):
         if not isinstance(yaml.safe_load(path.read_text(encoding="utf-8")), dict):
             raise RuntimeError(f"YAML does not parse as a mapping: {path.relative_to(root)}")
@@ -290,14 +511,20 @@ def verify(
     _require(
         ci,
         (
-            "PR_FAST", "MAIN_FULL", "ubuntu-latest", "windows-latest", 'python: ["3.11", "3.12", "3.13"]',
+            "PR_FAST", "MAIN_FULL", "ubuntu-24.04", "windows-latest", 'python: ["3.11", "3.12", "3.13"]',
             'python: ["3.12"]', 'node-version: "22.20.0"', "python -m compileall", 'python -c "import app.main"',
             "python -m tabnanny", "npm test", "npm run build", "verify_enterprise_context.py", "test_enterprise_contracts_v1.py",
             "test_local_auth.py", "test_planning_resource_authorization.py", "test_e1b_enterprise_evidence.py",
-            "test_local_migration.py", "test_archive_import_security.py", "python -m pytest -q backend -m rls",
+            "test_local_migration.py", "test_archive_import_security.py", "backend-document-ml", "backend-desktop",
+            "backend/requirements-documents.txt", "backend/requirements-desktop.txt",
         ),
         "enterprise-ci.yml",
     )
+    if "ubuntu-latest" in ci:
+        raise RuntimeError("enterprise-ci.yml must use the canonical Ubuntu 24.04 runner")
+    _verify_action_pins(parsed_workflows["enterprise-ci.yml"], "enterprise-ci.yml")
+    _verify_required_failure_semantics(parsed_workflows["enterprise-ci.yml"], "enterprise-ci.yml")
+    _verify_backend_suite_membership(root, parsed_workflows["enterprise-ci.yml"])
     pr = (root / ".github" / "workflows" / "enterprise-pr-fast.yml").read_text(encoding="utf-8")
     _require(
         pr,
@@ -333,21 +560,15 @@ def verify(
     _require(
         dockerfile,
         (
-            "AS backend-image", "AS frontend-image", "AS document-worker-image", "APP_VERSION",
+            "AS backend-image", "AS frontend-image", "AS document-worker-image", "AS worker-image", "APP_VERSION",
+            "ARG NODE_BASE_IMAGE", "ARG PYTHON_BASE_IMAGE", "ARG NGINX_BASE_IMAGE",
+            "FROM ${NODE_BASE_IMAGE}", "FROM ${PYTHON_BASE_IMAGE}", "FROM ${NGINX_BASE_IMAGE}",
             "org.opencontainers.image.version", "MENTORFLOW_PROVIDER_MODE=fake", "USER 10001:10001", "USER 101:101",
         ),
         "Dockerfile",
     )
     container = (root / ".github" / "workflows" / "container-release.yml").read_text(encoding="utf-8")
-    _require(
-        container,
-        (
-            "lane: MAIN_FULL", "target in backend frontend document-worker", "APP_VERSION", "${GITHUB_SHA}",
-            "backend-rollback-image.txt", "frontend-rollback-image.txt", "document-worker-rollback-image.txt",
-            "aquasecurity/trivy-action", "image-sbom.cdx.json", "needs: [quality, build, scan]", "docker push",
-        ),
-        "container-release.yml",
-    )
+    _verify_container_release(parsed_workflows["container-release.yml"], container)
 
     release_schema = _json(root / "contracts" / "enterprise" / "release-contracts.schema.json")
     definitions = release_schema.get("$defs", {})
@@ -362,7 +583,17 @@ def verify(
     if not required_manifest_fields.issubset(manifest_required):
         raise RuntimeError("EnterpriseReleaseManifest schema is missing required traceability fields")
     release_generator = (root / "scripts" / "enterprise" / "generate_release_manifest.py").read_text(encoding="utf-8")
-    _require(release_generator, ("source_tree", "semantic_version", "migration_version", "sbom_refs", "security_report_refs", "pending_staging_gates", "real_provider_calls"), "generate_release_manifest.py")
+    _require(
+        release_generator,
+        (
+            "source_tree", "semantic_version", "migration_version", "sbom_refs", "security_report_refs",
+            "pending_staging_gates", "real_provider_calls", "sha256:git-blob-bytes-v1",
+            "sha256:artifact-bytes-v1", "sha256:canonical-json-v1",
+            "mentorflow.enterprise-final-release-manifest.v1", "mentorflow.enterprise-final-digest-lock.v1",
+            "docker buildx imagetools inspect", "obviously synthetic digest",
+        ),
+        "generate_release_manifest.py",
+    )
     release = (root / "scripts" / "enterprise" / "release_rollback.py").read_text(encoding="utf-8")
     _require(release, ("tests\" / \"load\" / \"smoke", "migration_and_deploy", "promote_three_images", "rollback_promotion_tags", "rollback_health", "post_rollback_smoke"), "release_rollback.py")
     release_doc = (root / "docs" / "enterprise" / "release-rollback.md").read_text(encoding="utf-8")
@@ -434,7 +665,7 @@ def verify(
         "status": "PASS",
         "workflows": len(WORKFLOWS),
         "ci_lanes": 2,
-        "container_images": 3,
+        "container_images": len(RELEASE_IMAGE_ROLES),
         "evidence_documents": len(EVIDENCE_DOCS),
         "asvs_controls": sum(asvs_counts.values()),
         "threat_classes": threat_count,

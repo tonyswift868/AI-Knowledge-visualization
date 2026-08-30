@@ -30,7 +30,16 @@ from generate_dependency_risk_report import (  # noqa: E402
     canonical_json_sha256,
     render as render_dependency_risk,
 )
-from verify_release_assets import ENVIRONMENT_NOT_RUN_FACTS, _verify_sbom_and_risk  # noqa: E402
+from verify_release_assets import (  # noqa: E402
+    BACKEND_TEST_ROOTS,
+    DESKTOP_TESTS,
+    DOCUMENT_ML_TESTS,
+    ENVIRONMENT_NOT_RUN_FACTS,
+    PINNED_ACTION,
+    RELEASE_IMAGE_ROLES,
+    RELEASE_REQUIRED_JOBS,
+    _verify_sbom_and_risk,
+)
 from verify_security_waivers import evaluate as evaluate_security, load_waivers  # noqa: E402
 
 
@@ -47,12 +56,14 @@ def test_workflow_schema_and_fast_full_lane_contracts() -> None:
     jobs = reusable_payload["jobs"]
     for job_name in ("backend-fast", "backend-full", "enterprise-contract"):
         checkout = jobs[job_name]["steps"][0]
-        assert checkout["uses"] == "actions/checkout@v4"
+        assert checkout["uses"] == "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
         assert checkout["with"] == {"fetch-depth": 0, "fetch-tags": True}
 
     migration_steps = jobs["migrations"]["steps"]
     migration_setup = next(
-        step for step in migration_steps if step.get("uses") == "actions/setup-python@v5"
+        step
+        for step in migration_steps
+        if step.get("uses") == "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
     )
     assert set(migration_setup["with"]["cache-dependency-path"].splitlines()) == {
         "backend/requirements.txt",
@@ -82,6 +93,153 @@ def test_workflow_schema_and_fast_full_lane_contracts() -> None:
     pr_fast = (workflow_root / "enterprise-pr-fast.yml").read_text(encoding="utf-8")
     assert "ENTERPRISE_SECURITY_SCANNER_LEASE" in pr_fast
     assert "gitleaks/gitleaks-action@v3" in pr_fast
+
+
+def _external_uses(workflow: dict[str, object]) -> list[str]:
+    result: list[str] = []
+    for job in workflow["jobs"].values():
+        if "uses" in job and not job["uses"].startswith("./"):
+            result.append(job["uses"])
+        result.extend(
+            step["uses"]
+            for step in job.get("steps", [])
+            if "uses" in step and not step["uses"].startswith("./")
+        )
+    return result
+
+
+def _named_run(job: dict[str, object], name: str) -> str:
+    return next(step["run"] for step in job["steps"] if step.get("name") == name)
+
+
+def _test_paths(command: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"backend/(?:tests|tests_w2|tests_w6)/test_[A-Za-z0-9_]+\.py", command))
+
+
+def test_main_full_backend_membership_is_complete_disjoint_and_required() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "enterprise-ci.yml").read_text(encoding="utf-8")
+    )
+    jobs = workflow["jobs"]
+    core_job = jobs["backend-full"]
+    document_job = jobs["backend-document-ml"]
+    desktop_job = jobs["backend-desktop"]
+    for job in (core_job, document_job, desktop_job):
+        assert job["if"] == "inputs.lane == 'MAIN_FULL'"
+        assert job["needs"] == "lane-contract"
+        assert "continue-on-error" not in job
+        assert all("continue-on-error" not in step for step in job["steps"])
+
+    core_run = _named_run(core_job, "Complete core backend regression excluding explicit optional suites")
+    document_run = _named_run(document_job, "Required document and ML suite")
+    desktop_run = _named_run(desktop_job, "Required desktop suite")
+    ignored = {
+        value.removeprefix("--ignore=")
+        for value in core_run.split()
+        if value.startswith("--ignore=")
+    }
+    assert ignored == DOCUMENT_ML_TESTS | DESKTOP_TESTS
+    assert _test_paths(document_run) == DOCUMENT_ML_TESTS
+    assert _test_paths(desktop_run) == DESKTOP_TESTS
+    assert "backend/requirements-documents.txt" in str(document_job)
+    assert "backend/requirements-desktop.txt" in str(desktop_job)
+    assert desktop_job["runs-on"] == "windows-latest"
+
+    all_tests = {
+        path.relative_to(ROOT).as_posix()
+        for test_root in BACKEND_TEST_ROOTS
+        for path in (ROOT / test_root).rglob("test_*.py")
+    }
+    core = all_tests - ignored
+    assert core
+    assert DOCUMENT_ML_TESTS
+    assert DESKTOP_TESTS
+    assert not (core & DOCUMENT_ML_TESTS)
+    assert not (core & DESKTOP_TESTS)
+    assert not (DOCUMENT_ML_TESTS & DESKTOP_TESTS)
+    assert core | DOCUMENT_ML_TESTS | DESKTOP_TESTS == all_tests
+    assert all(root in core_run for root in BACKEND_TEST_ROOTS)
+
+
+def test_owned_workflows_pin_actions_and_do_not_mask_required_failures() -> None:
+    for name in ("enterprise-ci.yml", "container-release.yml"):
+        path = ROOT / ".github" / "workflows" / name
+        text = path.read_text(encoding="utf-8")
+        workflow = yaml.safe_load(text)
+        uses = _external_uses(workflow)
+        assert uses and all(PINNED_ACTION.fullmatch(value) for value in uses)
+        assert "continue-on-error" not in text
+        assert "|| true" not in text
+        assert "; exit 0" not in text
+        assert "ubuntu-latest" not in text
+
+
+def test_final_release_workflow_is_source_bound_four_image_and_fail_closed() -> None:
+    path = ROOT / ".github" / "workflows" / "container-release.yml"
+    text = path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+    trigger = workflow.get("on", workflow.get(True))
+    assert set(trigger) == {"workflow_dispatch"}
+    inputs = trigger["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {
+        "expected_source_sha",
+        "expected_source_tree",
+        *(f"{role.replace('-', '_')}_rollback_image" for role in RELEASE_IMAGE_ROLES),
+    }
+    jobs = workflow["jobs"]
+    assert set(jobs) == set(RELEASE_REQUIRED_JOBS) | {"required-gate"}
+    assert jobs["quality"]["needs"] == "source-contract"
+    assert set(jobs["build"]["needs"]) == {"source-contract", "quality", "scanner-lease"}
+    assert set(jobs["scan"]["needs"]) == {"build", "scanner-lease"}
+    assert set(jobs["publish"]["needs"]) == set(RELEASE_REQUIRED_JOBS) - {"publish"}
+    assert set(jobs["required-gate"]["needs"]) == set(RELEASE_REQUIRED_JOBS)
+    assert jobs["required-gate"]["if"] == "always()"
+    assert all(
+        job.get("runs-on") in {None, "ubuntu-24.04"}
+        for job in jobs.values()
+    )
+    assert 'test "$result" = "success"' in _named_run(
+        jobs["required-gate"], "Reject failed, cancelled, missing, neutral or skipped required jobs"
+    )
+
+    for token in (
+        "test \"$GITHUB_SHA\" = \"$EXPECTED_SOURCE_SHA\"",
+        "git rev-parse 'HEAD^{tree}'",
+        "refs/heads/core-v2/integration",
+        "docker buildx build",
+        "--metadata-file",
+        "--provenance=mode=max",
+        "for target in backend frontend document-worker worker",
+        "docker buildx imagetools inspect",
+        "base-image-digests.json",
+        "repository_digest",
+        "build_metadata",
+        "image_archive",
+        "sbom_path",
+        "security_path",
+        "FINAL_RELEASE_VERIFIED",
+        "final-release-manifest.json",
+        "final-image-digest-lock.json",
+        "rp05-application-images.json",
+    ):
+        assert token in text
+    assert "docker build " not in text
+    assert "digest_ref_re='^.+@sha256:[0-9a-f]{64}$'" in text
+    assert "permissions:\n  contents: read\n  packages: write\n  security-events: write" in text
+
+
+def test_dockerfile_base_images_are_resolver_overridable_and_all_targets_exist() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "ARG NODE_BASE_IMAGE=node:${NODE_VERSION}-bookworm-slim" in dockerfile
+    assert "ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}-slim-bookworm" in dockerfile
+    assert "ARG NGINX_BASE_IMAGE=nginx:${NGINX_VERSION}-alpine" in dockerfile
+    assert dockerfile.count("FROM ${PYTHON_BASE_IMAGE}") >= 3
+    assert "FROM ${NODE_BASE_IMAGE} AS frontend-build" in dockerfile
+    assert "FROM ${NGINX_BASE_IMAGE} AS frontend-image" in dockerfile
+    for role in RELEASE_IMAGE_ROLES:
+        assert f"AS {role}-image" in dockerfile
 
 
 def test_asvs_and_threat_model_are_field_complete() -> None:

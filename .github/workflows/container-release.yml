@@ -3,31 +3,84 @@ name: Container Build Scan Publish
 on:
   workflow_dispatch:
     inputs:
-      publish: {description: Push all commit-tagged images after every gate passes, type: boolean, required: true, default: false}
-      backend_rollback_image: {description: Immutable prior backend image, type: string, required: true}
-      frontend_rollback_image: {description: Immutable prior frontend image, type: string, required: true}
-      document_worker_rollback_image: {description: Immutable prior document-worker image, type: string, required: true}
-      worker_rollback_image: {description: Immutable prior durable-worker image, type: string, required: true}
-  push:
-    tags: ["v*"]
+      expected_source_sha:
+        description: Exact promoted canonical commit to release
+        type: string
+        required: true
+      expected_source_tree:
+        description: Exact promoted canonical tree to release
+        type: string
+        required: true
+      backend_rollback_image:
+        description: Prior backend image resolved as repository@sha256
+        type: string
+        required: true
+      frontend_rollback_image:
+        description: Prior frontend image resolved as repository@sha256
+        type: string
+        required: true
+      document_worker_rollback_image:
+        description: Prior document-worker image resolved as repository@sha256
+        type: string
+        required: true
+      worker_rollback_image:
+        description: Prior durable-worker image resolved as repository@sha256
+        type: string
+        required: true
 
-permissions: {contents: read, packages: write, security-events: write}
+permissions:
+  contents: read
+  packages: write
+  security-events: write
 
 jobs:
+  source-contract:
+    name: Bind final release to the exact promoted canonical source
+    runs-on: ubuntu-24.04
+    outputs:
+      source_tree: ${{ steps.source.outputs.tree }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+      - id: source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ inputs.expected_source_tree }}
+        run: |
+          set -euo pipefail
+          commit_re='^[0-9a-f]{40}$'
+          [[ "$EXPECTED_SOURCE_SHA" =~ $commit_re ]]
+          [[ "$EXPECTED_SOURCE_TREE" =~ $commit_re ]]
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_SOURCE_TREE"
+          test "$(git ls-remote origin refs/heads/core-v2/integration | cut -f1)" = "$EXPECTED_SOURCE_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" HEAD
+          echo "tree=$EXPECTED_SOURCE_TREE" >> "$GITHUB_OUTPUT"
+
   quality:
+    needs: source-contract
     uses: ./.github/workflows/enterprise-ci.yml
     with:
       lane: MAIN_FULL
 
   scanner-lease:
     name: Container scanner dependency lease
-    runs-on: ubuntu-latest
-    outputs: {granted: "${{ steps.gate.outputs.granted }}"}
+    needs: quality
+    runs-on: ubuntu-24.04
+    outputs:
+      granted: ${{ steps.gate.outputs.granted }}
     steps:
       - id: gate
         shell: bash
-        env: {ENTERPRISE_SECURITY_SCANNER_LEASE: "${{ vars.ENTERPRISE_SECURITY_SCANNER_LEASE }}"}
+        env:
+          ENTERPRISE_SECURITY_SCANNER_LEASE: ${{ vars.ENTERPRISE_SECURITY_SCANNER_LEASE }}
         run: |
+          set -euo pipefail
           if [ "$ENTERPRISE_SECURITY_SCANNER_LEASE" != "GRANTED" ]; then
             echo "granted=false" >> "$GITHUB_OUTPUT"
             echo "Container scan is fail-closed until the scanner lease is granted" >&2
@@ -36,82 +89,142 @@ jobs:
           echo "granted=true" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build four commit-tagged images
-    runs-on: ubuntu-latest
+    name: Build four source-bound image candidates with Buildx
+    needs: [source-contract, quality, scanner-lease]
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-node@v4
-        with: {node-version: "22.20.0"}
-      - name: Resolve immutable image and rollback references
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.20.0"
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve digest-only rollback and base-image provenance
         shell: bash
         env:
-          BACKEND_ROLLBACK: "${{ inputs.backend_rollback_image || vars.MENTORFLOW_BACKEND_ROLLBACK_IMAGE }}"
-          FRONTEND_ROLLBACK: "${{ inputs.frontend_rollback_image || vars.MENTORFLOW_FRONTEND_ROLLBACK_IMAGE }}"
-          DOCUMENT_WORKER_ROLLBACK: "${{ inputs.document_worker_rollback_image || vars.MENTORFLOW_DOCUMENT_WORKER_ROLLBACK_IMAGE }}"
-          WORKER_ROLLBACK: "${{ inputs.worker_rollback_image || vars.MENTORFLOW_WORKER_ROLLBACK_IMAGE }}"
+          BACKEND_ROLLBACK: ${{ inputs.backend_rollback_image }}
+          FRONTEND_ROLLBACK: ${{ inputs.frontend_rollback_image }}
+          DOCUMENT_WORKER_ROLLBACK: ${{ inputs.document_worker_rollback_image }}
+          WORKER_ROLLBACK: ${{ inputs.worker_rollback_image }}
         run: |
           set -euo pipefail
-          root="ghcr.io/${GITHUB_REPOSITORY,,}"
           mkdir -p artifacts/enterprise/container
-          printf '%s\n' "${root}-backend:${GITHUB_SHA}" > artifacts/enterprise/container/backend-image.txt
-          printf '%s\n' "${root}-frontend:${GITHUB_SHA}" > artifacts/enterprise/container/frontend-image.txt
-          printf '%s\n' "${root}-document-worker:${GITHUB_SHA}" > artifacts/enterprise/container/document-worker-image.txt
-          printf '%s\n' "${root}-worker:${GITHUB_SHA}" > artifacts/enterprise/container/worker-image.txt
-          test -n "$BACKEND_ROLLBACK" && printf '%s\n' "$BACKEND_ROLLBACK" > artifacts/enterprise/container/backend-rollback-image.txt
-          test -n "$FRONTEND_ROLLBACK" && printf '%s\n' "$FRONTEND_ROLLBACK" > artifacts/enterprise/container/frontend-rollback-image.txt
-          test -n "$DOCUMENT_WORKER_ROLLBACK" && printf '%s\n' "$DOCUMENT_WORKER_ROLLBACK" > artifacts/enterprise/container/document-worker-rollback-image.txt
-          test -n "$WORKER_ROLLBACK" && printf '%s\n' "$WORKER_ROLLBACK" > artifacts/enterprise/container/worker-rollback-image.txt
-          immutable='(@sha256:[0-9a-f]{64}|:[0-9a-f]{40})$'
+          digest_ref_re='^.+@sha256:[0-9a-f]{64}$'
           for target in backend frontend document-worker worker; do
-            grep -Eq "$immutable" "artifacts/enterprise/container/${target}-rollback-image.txt"
+            variable="${target^^}_ROLLBACK"
+            variable="${variable//-/_}"
+            value="${!variable}"
+            [[ "$value" =~ $digest_ref_re ]]
+            docker buildx imagetools inspect "$value" >/dev/null
+            printf '%s\n' "$value" > "artifacts/enterprise/container/${target}-rollback-image.txt"
           done
-      - name: Build and retain without publishing
+
+          node_tag='docker.io/library/node:22.20.0-bookworm-slim'
+          python_tag='docker.io/library/python:3.12.10-slim-bookworm'
+          nginx_tag='docker.io/library/nginx:1.28.0-alpine'
+          for name in node python nginx; do
+            tag_variable="${name}_tag"
+            tag="${!tag_variable}"
+            digest="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$tag" | tr -d '"')"
+            printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+            resolved="${tag%:*}@${digest}"
+            docker buildx imagetools inspect "$resolved" >/dev/null
+            printf -v "${name}_resolved" '%s' "$resolved"
+          done
+          jq -n \
+            --arg resolver "docker buildx imagetools inspect" \
+            --arg node "$node_resolved" \
+            --arg python "$python_resolved" \
+            --arg nginx "$nginx_resolved" \
+            '{schema:"mentorflow.base-image-provenance.v1",resolver:$resolver,images:{node:$node,python:$python,nginx:$nginx}}' \
+            > artifacts/enterprise/container/base-image-digests.json
+          jq -e 'all(.images[]; test("@sha256:[0-9a-f]{64}$"))' artifacts/enterprise/container/base-image-digests.json >/dev/null
+      - name: Build four images with retained Buildx metadata
         shell: bash
         run: |
           set -euo pipefail
-          build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          app_version=$(node -p "require('./frontend/package.json').version")
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          app_version="$(node -p "require('./frontend/package.json').version")"
+          root="ghcr.io/${GITHUB_REPOSITORY,,}"
+          node_base="$(jq -r '.images.node' artifacts/enterprise/container/base-image-digests.json)"
+          python_base="$(jq -r '.images.python' artifacts/enterprise/container/base-image-digests.json)"
+          nginx_base="$(jq -r '.images.nginx' artifacts/enterprise/container/base-image-digests.json)"
           for target in backend frontend document-worker worker; do
-            docker build --target "${target}-image" --build-arg "VCS_REF=${GITHUB_SHA}" --build-arg "BUILD_DATE=${build_date}" --build-arg "APP_VERSION=${app_version}" --tag "$(cat artifacts/enterprise/container/${target}-image.txt)" .
-            docker save "$(cat artifacts/enterprise/container/${target}-image.txt)" | gzip -1 > "artifacts/enterprise/container/${target}-image.tar.gz"
+            image="${root}-${target}:${GITHUB_SHA}"
+            printf '%s\n' "$image" > "artifacts/enterprise/container/${target}-image.txt"
+            docker buildx build \
+              --platform linux/amd64 \
+              --target "${target}-image" \
+              --build-arg "NODE_BASE_IMAGE=${node_base}" \
+              --build-arg "PYTHON_BASE_IMAGE=${python_base}" \
+              --build-arg "NGINX_BASE_IMAGE=${nginx_base}" \
+              --build-arg "VCS_REF=${GITHUB_SHA}" \
+              --build-arg "BUILD_DATE=${build_date}" \
+              --build-arg "APP_VERSION=${app_version}" \
+              --metadata-file "artifacts/enterprise/container/${target}-build-metadata.json" \
+              --provenance=mode=max \
+              --load \
+              --tag "$image" \
+              .
+            jq -e '."containerimage.digest" | test("^sha256:[0-9a-f]{64}$")' "artifacts/enterprise/container/${target}-build-metadata.json" >/dev/null
+            docker save "$image" | gzip -1 -n > "artifacts/enterprise/container/${target}-image.tar.gz"
           done
-      - uses: actions/upload-artifact@v4
-        with: {name: container-candidates, path: artifacts/enterprise/container, retention-days: 30}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: container-candidates
+          path: artifacts/enterprise/container
+          retention-days: 30
+          if-no-files-found: error
 
   scan:
     name: Scan and SBOM / ${{ matrix.target }}
     needs: [build, scanner-lease]
-    if: needs.scanner-lease.outputs.granted == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix: {target: [backend, frontend, document-worker, worker]}
+      matrix:
+        target: [backend, frontend, document-worker, worker]
     steps:
-      - uses: actions/download-artifact@v4
-        with: {name: container-candidates, path: artifacts/enterprise/container}
-      - run: gunzip -c "artifacts/enterprise/container/${{ matrix.target }}-image.tar.gz" | docker load
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: container-candidates
+          path: artifacts/enterprise/container
+      - name: Load exact candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          gunzip -c "artifacts/enterprise/container/${{ matrix.target }}-image.tar.gz" | docker load
+          image="$(cat artifacts/enterprise/container/${{ matrix.target }}-image.txt)"
+          test -n "$(docker image inspect --format '{{.Id}}' "$image")"
       - id: image
         shell: bash
         run: echo "value=$(cat artifacts/enterprise/container/${{ matrix.target }}-image.txt)" >> "$GITHUB_OUTPUT"
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
-          image-ref: "${{ steps.image.outputs.value }}"
+          image-ref: ${{ steps.image.outputs.value }}
           format: sarif
           output: artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d # v3
         if: always()
-        with: {sarif_file: "artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif"}
-      - uses: anchore/sbom-action@v0.20.6
         with:
-          image: "${{ steps.image.outputs.value }}"
+          sarif_file: artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif
+      - uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          image: ${{ steps.image.outputs.value }}
           format: cyclonedx-json
           output-file: artifacts/enterprise/container/${{ matrix.target }}-image-sbom.cdx.json
           upload-artifact: false
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: container-scan-${{ matrix.target }}
@@ -119,46 +232,149 @@ jobs:
             artifacts/enterprise/container/${{ matrix.target }}-trivy.sarif
             artifacts/enterprise/container/${{ matrix.target }}-image-sbom.cdx.json
           if-no-files-found: error
+          retention-days: 90
 
   publish:
-    name: Publish four images after quality and scan gates
-    needs: [quality, build, scan]
-    if: github.event_name == 'push' || inputs.publish
-    runs-on: ubuntu-latest
+    name: Publish four verified images and immutable release package
+    needs: [source-contract, quality, scanner-lease, build, scan]
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
-        with: {name: container-candidates, path: artifacts/enterprise/container}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
-      - name: Load and push commit tags only
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: container-candidates
+          path: artifacts/enterprise/container
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: container-scan-*
+          path: artifacts/enterprise/container
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push and resolve final registry RepoDigests
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           for target in backend frontend document-worker worker; do
             gunzip -c "artifacts/enterprise/container/${target}-image.tar.gz" | docker load
             image="$(cat artifacts/enterprise/container/${target}-image.txt)"
             docker push "$image"
             digest="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$image" | tr -d '"')"
             printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
-            printf '%s@%s\n' "${image%:*}" "$digest" > "artifacts/enterprise/container/${target}-image-digest.txt"
+            resolved="${image%:*}@${digest}"
+            docker buildx imagetools inspect "$resolved" >/dev/null
+            printf '%s\n' "$resolved" > "artifacts/enterprise/container/${target}-image-digest.txt"
           done
-      - name: Emit RP-05 application image input
+      - name: Bind scan, SBOM, build, base and source evidence to final digests
         shell: bash
+        env:
+          EXPECTED_SOURCE_TREE: ${{ inputs.expected_source_tree }}
         run: |
           set -euo pipefail
+          base_path='artifacts/enterprise/container/base-image-digests.json'
+          base_sha="$(sha256sum "$base_path" | cut -d' ' -f1)"
+          for target in backend frontend document-worker worker; do
+            digest_ref="$(cat "artifacts/enterprise/container/${target}-image-digest.txt")"
+            build_path="artifacts/enterprise/container/${target}-build-metadata.json"
+            archive_path="artifacts/enterprise/container/${target}-image.tar.gz"
+            sbom_path="artifacts/enterprise/container/${target}-image-sbom.cdx.json"
+            security_path="artifacts/enterprise/container/${target}-trivy.sarif"
+            jq -n \
+              --arg role "$target" \
+              --arg repository_digest "$digest_ref" \
+              --arg digest_source "docker buildx imagetools inspect" \
+              --arg build_path "$build_path" \
+              --arg build_sha "$(sha256sum "$build_path" | cut -d' ' -f1)" \
+              --arg archive_path "$archive_path" \
+              --arg archive_sha "$(sha256sum "$archive_path" | cut -d' ' -f1)" \
+              --arg sbom_path "$sbom_path" \
+              --arg sbom_sha "$(sha256sum "$sbom_path" | cut -d' ' -f1)" \
+              --arg security_path "$security_path" \
+              --arg security_sha "$(sha256sum "$security_path" | cut -d' ' -f1)" \
+              '{role:$role,repository_digest:$repository_digest,digest_source:$digest_source,artifacts:{build_metadata:{path:$build_path,sha256:$build_sha},image_archive:{path:$archive_path,sha256:$archive_sha},sbom:{path:$sbom_path,sha256:$sbom_sha},security_report:{path:$security_path,sha256:$security_sha}}}' \
+              > "artifacts/enterprise/container/${target}-final-evidence.json"
+          done
+          jq -n \
+            --arg source_commit "$GITHUB_SHA" \
+            --arg source_tree "$EXPECTED_SOURCE_TREE" \
+            --arg base_path "$base_path" \
+            --arg base_sha "$base_sha" \
+            --slurpfile bases "$base_path" \
+            --slurpfile backend artifacts/enterprise/container/backend-final-evidence.json \
+            --slurpfile frontend artifacts/enterprise/container/frontend-final-evidence.json \
+            --slurpfile document_worker artifacts/enterprise/container/document-worker-final-evidence.json \
+            --slurpfile worker artifacts/enterprise/container/worker-final-evidence.json \
+            '{schema:"mentorflow.enterprise-final-image-evidence.v1",source_commit:$source_commit,source_tree:$source_tree,digest_source:"docker buildx imagetools inspect",base_images:$bases[0].images,base_provenance:{path:$base_path,sha256:$base_sha},images:[$backend[0],$frontend[0],$document_worker[0],$worker[0]]}' \
+            > artifacts/enterprise/container/final-image-evidence.json
+          jq -e '.images | length == 4 and all(.[]; .repository_digest | test("@sha256:[0-9a-f]{64}$"))' artifacts/enterprise/container/final-image-evidence.json >/dev/null
+      - name: Generate four-image release manifest and digest lock
+        shell: bash
+        env:
+          EXPECTED_SOURCE_TREE: ${{ inputs.expected_source_tree }}
+        run: |
+          set -euo pipefail
+          app_version="$(python -c "import json; print(json.load(open('frontend/package.json', encoding='utf-8'))['version'])")"
+          python scripts/enterprise/generate_release_manifest.py \
+            --commit "$GITHUB_SHA" \
+            --source-tree "$EXPECTED_SOURCE_TREE" \
+            --app-version "$app_version" \
+            --status FINAL_RELEASE_VERIFIED \
+            --published \
+            --final-evidence artifacts/enterprise/container/final-image-evidence.json \
+            --digest-lock-output artifacts/enterprise/container/final-image-digest-lock.json \
+            --output artifacts/enterprise/container/final-release-manifest.json
           jq -n \
             --arg backend "$(cat artifacts/enterprise/container/backend-image-digest.txt)" \
             --arg frontend "$(cat artifacts/enterprise/container/frontend-image-digest.txt)" \
+            --arg document_worker "$(cat artifacts/enterprise/container/document-worker-image-digest.txt)" \
             --arg worker "$(cat artifacts/enterprise/container/worker-image-digest.txt)" \
-            '{schema_version:"mentorflow.rp05-application-images.v1",images:{MENTORFLOW_BACKEND_IMAGE:$backend,MENTORFLOW_FRONTEND_IMAGE:$frontend,MENTORFLOW_WORKER_IMAGE:$worker}}' \
+            '{schema_version:"mentorflow.rp05-application-images.v2",images:{MENTORFLOW_BACKEND_IMAGE:$backend,MENTORFLOW_FRONTEND_IMAGE:$frontend,MENTORFLOW_DOCUMENT_WORKER_IMAGE:$document_worker,MENTORFLOW_WORKER_IMAGE:$worker}}' \
             > artifacts/enterprise/container/rp05-application-images.json
-          jq -e 'all(.images[]; test("@sha256:[0-9a-f]{64}$"))' artifacts/enterprise/container/rp05-application-images.json >/dev/null
-      - uses: actions/upload-artifact@v4
+          jq -e '.images | length == 4 and all(.[]; test("@sha256:[0-9a-f]{64}$"))' artifacts/enterprise/container/rp05-application-images.json >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: container-published-digests
+          name: immutable-final-release-package
           path: |
             artifacts/enterprise/container/*-image-digest.txt
+            artifacts/enterprise/container/*-build-metadata.json
+            artifacts/enterprise/container/*-trivy.sarif
+            artifacts/enterprise/container/*-image-sbom.cdx.json
+            artifacts/enterprise/container/base-image-digests.json
+            artifacts/enterprise/container/final-image-evidence.json
+            artifacts/enterprise/container/final-release-manifest.json
+            artifacts/enterprise/container/final-image-digest-lock.json
             artifacts/enterprise/container/rp05-application-images.json
           if-no-files-found: error
           retention-days: 90
+
+  required-gate:
+    name: Require every final-release gate and publication result
+    if: always()
+    needs: [source-contract, quality, scanner-lease, build, scan, publish]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Reject failed, cancelled, missing, neutral or skipped required jobs
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          LEASE_RESULT: ${{ needs.scanner-lease.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          SCAN_RESULT: ${{ needs.scan.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          set -euo pipefail
+          for result in "$SOURCE_RESULT" "$QUALITY_RESULT" "$LEASE_RESULT" "$BUILD_RESULT" "$SCAN_RESULT" "$PUBLISH_RESULT"; do
+            test "$result" = "success"
+          done

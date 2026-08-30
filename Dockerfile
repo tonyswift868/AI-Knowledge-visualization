@@ -3,27 +3,30 @@
 ARG NODE_VERSION=22.20.0
 ARG PYTHON_VERSION=3.12.10
 ARG NGINX_VERSION=1.28.0
+ARG NODE_BASE_IMAGE=node:${NODE_VERSION}-bookworm-slim
+ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}-slim-bookworm
+ARG NGINX_BASE_IMAGE=nginx:${NGINX_VERSION}-alpine
 
-FROM node:${NODE_VERSION}-bookworm-slim AS frontend-build
+FROM ${NODE_BASE_IMAGE} AS frontend-build
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:${PYTHON_VERSION}-slim-bookworm AS backend-wheels
+FROM ${PYTHON_BASE_IMAGE} AS backend-wheels
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 WORKDIR /build
 COPY backend/requirements.txt ./requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip wheel --wheel-dir /wheels -r requirements.txt
 
-FROM python:${PYTHON_VERSION}-slim-bookworm AS document-worker-wheels
+FROM ${PYTHON_BASE_IMAGE} AS document-worker-wheels
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 WORKDIR /build
 COPY backend/requirements.txt backend/requirements-documents.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip wheel --wheel-dir /wheels -r requirements.txt -r requirements-documents.txt
 
-FROM python:${PYTHON_VERSION}-slim-bookworm AS backend-base
+FROM ${PYTHON_BASE_IMAGE} AS backend-base
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
 ARG APP_VERSION=0.0.0
@@ -74,7 +77,7 @@ USER 10001:10001
 LABEL org.opencontainers.image.title="MentorFlow document worker"
 CMD ["python", "-X", "utf8", "-m", "app.sources.document.ingestion.worker", "--serve", "--config", "/run/mentorflow/document-worker-config.json"]
 
-FROM nginx:${NGINX_VERSION}-alpine AS frontend-image
+FROM ${NGINX_BASE_IMAGE} AS frontend-image
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
 ARG APP_VERSION=0.0.0
