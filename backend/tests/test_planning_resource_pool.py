@@ -7,10 +7,17 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import select
 
 from app.planning_resource_pool import PlanningPoolError, PlanningResourcePool
 from app import orm
+
+
+def _canonical_head(config: Config) -> str:
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
 
 
 def _candidate(index: int, *, url: str | None = None, direct: bool = False) -> dict[str, object]:
@@ -300,7 +307,7 @@ def test_partial_pool_migration_repairs_tables_and_indexes(tmp_path: Path):
     command.upgrade(config, "head")
     with sqlite3.connect(database) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0028_video_collection_v1",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (_canonical_head(config),)
         columns = {row[1] for row in connection.execute("PRAGMA table_info(orm_planning_resource_candidates)")}
         assert {"stable_id", "selection_state", "retained", "direct_user_reference"} <= columns
         indexes = {row[1] for row in connection.execute("PRAGMA index_list(orm_planning_resource_candidates)")}

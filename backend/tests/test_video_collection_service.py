@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -16,6 +17,12 @@ from app.video_collection import (
     VideoCollectionError,
     VideoCollectionService,
 )
+
+
+def _canonical_head(config: Config) -> str:
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
 
 
 VIDEO_TABLES = [
@@ -269,7 +276,7 @@ def test_0028_upgrade_twice_creates_expected_constraints(tmp_path: Path):
     command.upgrade(config, "head")
     with sqlite3.connect(database) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0028_video_collection_v1",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (_canonical_head(config),)
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {
             "orm_video_collections",
