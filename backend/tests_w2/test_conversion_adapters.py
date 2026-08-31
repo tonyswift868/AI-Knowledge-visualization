@@ -73,11 +73,14 @@ def test_registry_converts_text_markdown_and_html_with_metadata() -> None:
     assert [result.metadata.adapter for result in results] == [
         "native-text",
         "native-markdown",
-        "native-html",
+        "docling-document",
     ]
     assert results[1].parts[0].heading == "Graphs"
-    assert results[2].parts[0].heading == "Trees"
-    assert "ignore()" not in results[2].parts[0].text
+    html_text = "\n".join(part.text for part in results[2].parts)
+    assert "Trees" in html_text
+    assert "Root and child nodes." in html_text
+    assert "ignore()" not in html_text
+    assert "converter:docling" in results[2].metadata.warnings
     assert all(result.metadata.source_sha256 for result in results)
     assert all(result.failure is None for result in results)
 
@@ -93,15 +96,18 @@ def test_pdf_and_docx_use_the_same_result_contract() -> None:
     )
 
     assert pdf.status == "ready"
-    assert pdf.metadata.adapter == "native-pdf"
+    assert pdf.metadata.adapter == "docling-document"
     assert pdf.metadata.page_count == 1
-    assert pdf.parts[0].page_start == 1
-    assert "PDF evidence" in pdf.parts[0].text
+    assert any(part.page_start == 1 for part in pdf.parts)
+    assert "PDF evidence" in "\n".join(part.text for part in pdf.parts)
+    assert "converter:docling" in pdf.metadata.warnings
 
     assert docx.status == "ready"
-    assert docx.metadata.adapter == "native-docx"
-    assert docx.parts[0].heading == "DOCX heading"
-    assert "DOCX evidence" in docx.parts[0].text
+    assert docx.metadata.adapter == "docling-document"
+    docx_text = "\n".join(part.text for part in docx.parts)
+    assert "DOCX heading" in docx_text
+    assert "DOCX evidence" in docx_text
+    assert "converter:docling" in docx.metadata.warnings
 
 
 def test_input_and_output_budgets_fail_explicitly() -> None:
@@ -157,9 +163,11 @@ def test_cancellation_disabled_adapter_and_unsupported_format_are_explicit() -> 
         ConversionSource(name="notes.md", data=b"# Evidence")
     )
     assert disabled.status == "failed"
-    assert disabled.failure.code == "ADAPTER_DISABLED"
+    assert disabled.failure.code == "ADAPTER_UNAVAILABLE"
     assert disabled.failure.adapter == "native-markdown"
-    assert disabled.failure.details["adapter"] == "native-markdown"
+    assert disabled.failure.details["adapters"] == [
+        {"adapter": "native-markdown", "reason": "disabled"}
+    ]
 
     unsupported = ConversionRegistry().convert_safe(
         ConversionSource(name="book.pages", data=b"not supported")
@@ -173,6 +181,6 @@ def test_declared_document_with_invalid_bytes_returns_structured_failure() -> No
         ConversionSource(name="broken.docx", data=b"not-a-docx")
     )
     assert result.status == "failed"
-    assert result.failure.adapter == "native-docx"
-    assert result.failure.code == "SOURCE_FORMAT_INVALID"
+    assert result.failure.adapter == "docling-document"
+    assert result.failure.code == "DOCX_PARSE_FAILED"
     assert result.parts == ()

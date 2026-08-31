@@ -27,8 +27,14 @@ def test_runtime_capability_is_derived_from_observed_artifacts(tmp_path: Path):
     manifest.write_text('{"schema_version":"test","pipeline_fingerprint":"p1"}', encoding="utf-8")
     state = runtime_readiness(manifest_path=manifest)
     assert state["available"] is False
-    assert state["status"] == "partial"
-    assert state["code"] == "KKS_RUNTIME_PARTIAL"
+    assert state["status"] == "unavailable"
+    assert state["code"] == "KKS_RUNTIME_UNAVAILABLE"
+    assert state["manifest"]["existing_artifacts"] == []
+    assert state["manifest"]["missing_artifacts"] == [
+        "base_model",
+        "card_index",
+        "zipmod_index",
+    ]
     assert state["operations"]["inspect_card"] is False
     assert runtime_capability(manifest_path=manifest)["runtime_version_hash"]
 

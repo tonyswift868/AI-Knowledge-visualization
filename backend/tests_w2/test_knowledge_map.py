@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
+import app.knowledge_map as knowledge_map_module
 from app.knowledge_map import (
     KnowledgeChunk,
+    KnowledgeMap,
+    KnowledgeMapQuality,
+    KnowledgeNode,
     SourceDocument,
     build_knowledge_map,
 )
@@ -43,87 +49,112 @@ def _document(
     )
 
 
-def test_deterministic_fallback_builds_sourced_nodes_and_prerequisites() -> None:
-    result = build_knowledge_map("workspace-a", [_document()])
-
-    assert result.generation_mode == "deterministic_fallback"
-    assert result.provider_used is False
-    assert result.revision == 1
-    assert result.quality.node_count == 2
-    assert result.quality.edge_count == 1
-    assert result.quality.sourced_node_ratio == 1
-    assert result.quality.chunk_coverage_ratio == 1
-    assert result.quality.invalid_prerequisite_count == 0
-    assert result.quality.orphan_count == 0
-    assert result.edges[0].relation == "prerequisite"
-    assert {reference.page_start for reference in result.edges[0].source_refs} == {1, 2}
-    assert all(node.source_refs[0].source_id == "source-a" for node in result.nodes)
-
-
-def test_stable_ids_are_source_scoped() -> None:
-    first = build_knowledge_map("workspace-a", [_document("source-a")])
-    second = build_knowledge_map("workspace-a", [_document("source-b")])
-
-    first_labels = {node.label: node.node_id for node in first.nodes}
-    second_labels = {node.label: node.node_id for node in second.nodes}
-    assert first_labels.keys() == second_labels.keys()
-    assert all(first_labels[label] != second_labels[label] for label in first_labels)
-
-
-def test_repeated_import_is_idempotent() -> None:
-    first = build_knowledge_map("workspace-a", [_document()])
-    repeated = build_knowledge_map("workspace-a", [_document()], previous=first)
-
-    assert repeated == first
-    assert repeated.revision == 1
-    assert repeated.fingerprint == first.fingerprint
-    assert [node.node_id for node in repeated.nodes] == [node.node_id for node in first.nodes]
-
-
-def test_small_edit_preserves_semantic_identity_and_records_revision_history() -> None:
-    first = build_knowledge_map("workspace-a", [_document()])
-    edited = build_knowledge_map(
-        "workspace-a",
-        [
-            _document(
-                revision=2,
-                first_text="A graph is a set of vertices and directed or undirected edges.",
-            )
-        ],
-        previous=first,
+def _nodes(document: SourceDocument) -> tuple[KnowledgeNode, ...]:
+    return tuple(
+        knowledge_map_module._node_for_chunk(document, chunk)
+        for chunk in document.chunks
     )
 
-    before = next(node for node in first.nodes if node.label == "Graph model")
-    after = next(node for node in edited.nodes if node.label == "Graph model")
-    unchanged_before = next(node for node in first.nodes if node.label == "Breadth first search")
-    unchanged_after = next(node for node in edited.nodes if node.label == "Breadth first search")
 
-    assert edited.revision == 2
+def _persisted_map(nodes: tuple[KnowledgeNode, ...]) -> KnowledgeMap:
+    active = tuple(node for node in nodes if node.status == "active")
+    return KnowledgeMap(
+        map_id="km_provider_verified",
+        workspace_id="workspace-a",
+        revision=1,
+        generation_mode="provider_verified",
+        provider_used=True,
+        source_revisions=tuple(sorted({(node.source_id, 1) for node in nodes})),
+        nodes=nodes,
+        edges=(),
+        quality=KnowledgeMapQuality(
+            node_count=len(active),
+            edge_count=0,
+            sourced_node_ratio=1.0,
+            chunk_coverage_ratio=1.0,
+            duplicate_node_ratio=0.0,
+            orphan_count=max(0, len(active) - 1),
+            invalid_prerequisite_count=0,
+            superseded_node_count=sum(node.status == "superseded" for node in nodes),
+        ),
+        fingerprint="provider-verified-fingerprint",
+    )
+
+
+def test_provider_free_builder_fails_closed_even_with_persisted_previous_map() -> None:
+    document = _document()
+    previous = _persisted_map(_nodes(document))
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"^PROVIDER_VERIFICATION_REQUIRED: use the canonical knowledge-map jobs API$",
+    ):
+        build_knowledge_map("workspace-a", [document], previous=previous)
+
+
+def test_stable_node_ids_are_deterministic_and_source_scoped() -> None:
+    first_document = _document("source-a")
+    second_document = _document("source-b")
+    first = _nodes(first_document)
+    repeated = _nodes(first_document)
+    second = _nodes(second_document)
+
+    assert [node.node_id for node in first] == [node.node_id for node in repeated]
+    assert all(left.node_id != right.node_id for left, right in zip(first, second))
+    assert all(reference.source_id == "source-a" for node in first for reference in node.source_refs)
+
+
+def test_repeated_import_preserves_node_revisions_and_fingerprint_inputs() -> None:
+    document = _document()
+    first = tuple(knowledge_map_module._merge_same_semantic(_nodes(document))[0])
+    repeated = tuple(
+        knowledge_map_module._apply_previous(
+            knowledge_map_module._merge_same_semantic(_nodes(document))[0],
+            _persisted_map(first),
+        )
+    )
+    first_edges = knowledge_map_module._prerequisite_edges([document], first)
+    repeated_edges = knowledge_map_module._prerequisite_edges([document], repeated)
+
+    assert repeated == first
+    assert knowledge_map_module._fingerprint(
+        "workspace-a", [document], first, first_edges
+    ) == knowledge_map_module._fingerprint(
+        "workspace-a", [document], repeated, repeated_edges
+    )
+
+
+def test_small_edit_preserves_identity_and_records_revision_history() -> None:
+    before = _nodes(_document())[0]
+    edited_document = _document(
+        revision=2,
+        first_text="A graph is a set of vertices and directed or undirected edges.",
+    )
+    candidate = _nodes(edited_document)[0]
+    after = knowledge_map_module._apply_previous(
+        [candidate], _persisted_map((before,))
+    )[0]
+
     assert before.node_id == after.node_id
     assert after.revision == before.revision + 1
-    assert before.content_hash in after.prior_content_hashes
-    assert before.summary in after.prior_summaries
-    assert unchanged_after.node_id == unchanged_before.node_id
-    assert unchanged_after.revision == unchanged_before.revision
+    assert after.prior_content_hashes == (before.content_hash,)
+    assert after.prior_summaries == (before.summary,)
 
 
 def test_removed_semantic_node_is_preserved_as_superseded() -> None:
-    first = build_knowledge_map("workspace-a", [_document()])
-    reduced = build_knowledge_map(
-        "workspace-a",
-        [_document(revision=2, include_second=False)],
-        previous=first,
+    previous_nodes = _nodes(_document())
+    reduced_nodes = _nodes(_document(revision=2, include_second=False))
+    reconciled = knowledge_map_module._apply_previous(
+        reduced_nodes, _persisted_map(previous_nodes)
     )
 
-    removed = next(node for node in reduced.nodes if node.label == "Breadth first search")
+    removed = next(node for node in reconciled if node.label == "Breadth first search")
     assert removed.status == "superseded"
     assert removed.revision == 2
-    assert reduced.quality.node_count == 1
-    assert reduced.quality.superseded_node_count == 1
-    assert reduced.quality.invalid_prerequisite_count == 0
+    assert sum(node.status == "active" for node in reconciled) == 1
 
 
-def test_repeated_heading_merges_deterministically_and_reports_quality() -> None:
+def test_repeated_heading_merge_is_deterministic_and_keeps_all_evidence() -> None:
     document = SourceDocument(
         source_id="source-a",
         title="Repeated notes",
@@ -143,30 +174,50 @@ def test_repeated_heading_merges_deterministically_and_reports_quality() -> None
             ),
         ),
     )
-    result = build_knowledge_map("workspace-a", [document])
+    merged, duplicate_count = knowledge_map_module._merge_same_semantic(_nodes(document))
+    quality = knowledge_map_module._quality([document], merged, (), duplicate_count)
 
-    assert result.quality.node_count == 1
-    assert result.quality.duplicate_node_ratio == 0.5
-    assert result.quality.chunk_coverage_ratio == 1
-    assert len(result.nodes[0].source_refs) == 2
-    assert "Repeated semantic headings" in result.warnings[0]
+    assert duplicate_count == 1
+    assert len(merged) == 1
+    assert [reference.chunk_id for reference in merged[0].source_refs] == [
+        "chunk-1",
+        "chunk-2",
+    ]
+    assert quality.node_count == 1
+    assert quality.duplicate_node_ratio == 0.5
+    assert quality.chunk_coverage_ratio == 1.0
 
 
-def test_unheaded_chunk_uses_stable_upstream_chunk_identity() -> None:
-    first_doc = SourceDocument(
+def test_prerequisite_edges_keep_page_evidence_and_stable_ids() -> None:
+    document = _document()
+    nodes = _nodes(document)
+    first = knowledge_map_module._prerequisite_edges([document], nodes)
+    repeated = knowledge_map_module._prerequisite_edges([document], nodes)
+
+    assert first == repeated
+    assert len(first) == 1
+    assert first[0].relation == "prerequisite"
+    assert {reference.page_start for reference in first[0].source_refs} == {1, 2}
+
+
+def test_unheaded_chunk_uses_stable_upstream_identity_across_edits() -> None:
+    first_document = SourceDocument(
         source_id="source-a",
         title="Plain notes",
         revision=1,
         chunks=(KnowledgeChunk(chunk_id="stable-chunk", ordinal=1, text="Original wording."),),
     )
-    second_doc = SourceDocument(
+    second_document = SourceDocument(
         source_id="source-a",
         title="Plain notes",
         revision=2,
         chunks=(KnowledgeChunk(chunk_id="stable-chunk", ordinal=1, text="Slightly edited wording."),),
     )
-    first = build_knowledge_map("workspace-a", [first_doc])
-    second = build_knowledge_map("workspace-a", [second_doc], previous=first)
+    before = _nodes(first_document)[0]
+    candidate = _nodes(second_document)[0]
+    after = knowledge_map_module._apply_previous(
+        [candidate], _persisted_map((before,))
+    )[0]
 
-    assert second.nodes[0].node_id == first.nodes[0].node_id
-    assert second.nodes[0].revision == 2
+    assert after.node_id == before.node_id
+    assert after.revision == 2
