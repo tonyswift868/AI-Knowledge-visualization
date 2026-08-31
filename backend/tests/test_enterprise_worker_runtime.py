@@ -540,11 +540,13 @@ def test_worker_schema_grants_exact_current_procrastinate_objects_without_versio
         "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.procrastinate_events"
         in granted_sql
     )
-    assert "sequence_class.relkind = 'S'" in granted_sql
-    assert "JOIN pg_catalog.pg_depend AS dependency" in granted_sql
-    assert "dependency.deptype IN ('a', 'i')" in granted_sql
-    assert "owning_table.relname LIKE 'procrastinate!_%' ESCAPE '!'" in granted_sql
+    assert "pg_get_serial_sequence(" in granted_sql
+    for table_name in postgres_schema.PROCRASTINATE_REQUIRED_TABLES:
+        assert f"'{table_name}'" in granted_sql
+    assert "pg_catalog.pg_depend" not in granted_sql
     assert "information_schema.sequences" not in granted_sql
+    assert "sequence_name LIKE 'procrastinate_%'" not in granted_sql
+    assert "owning_table.relname LIKE" not in granted_sql
     assert "function.proname LIKE 'procrastinate_%'" in granted_sql
     assert "public.procrastinate_version" not in granted_sql
     assert "ON ALL TABLES IN SCHEMA" not in granted_sql

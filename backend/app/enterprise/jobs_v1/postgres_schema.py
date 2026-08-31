@@ -133,6 +133,9 @@ def _require_procrastinate_runtime_objects(connection: sa.Connection) -> None:
 
 def _grant_runtime_objects(connection: sa.Connection) -> tuple[str, ...]:
     _require_procrastinate_runtime_objects(connection)
+    sequence_owner_tables = ", ".join(
+        f"'{table_name}'" for table_name in PROCRASTINATE_REQUIRED_TABLES
+    )
     connection.execute(
         sa.text(f"GRANT USAGE ON SCHEMA enterprise_jobs TO {APPLICATION_DATABASE_ROLE}")
     )
@@ -156,31 +159,21 @@ def _grant_runtime_objects(connection: sa.Connection) -> tuple[str, ...]:
         sa.text(
             f"""
             DO $grant_sequences$
-            DECLARE object_name text;
+            DECLARE
+              table_name text;
+              object_name text;
             BEGIN
-              FOR object_name IN
-                SELECT DISTINCT format(
-                  '%I.%I', sequence_namespace.nspname, sequence_class.relname
-                )
-                FROM pg_catalog.pg_class AS sequence_class
-                JOIN pg_catalog.pg_namespace AS sequence_namespace
-                  ON sequence_namespace.oid = sequence_class.relnamespace
-                JOIN pg_catalog.pg_depend AS dependency
-                  ON dependency.classid = 'pg_catalog.pg_class'::regclass
-                 AND dependency.objid = sequence_class.oid
-                 AND dependency.objsubid = 0
-                 AND dependency.refclassid = 'pg_catalog.pg_class'::regclass
-                 AND dependency.deptype IN ('a', 'i')
-                JOIN pg_catalog.pg_class AS owning_table
-                  ON owning_table.oid = dependency.refobjid
-                JOIN pg_catalog.pg_namespace AS table_namespace
-                  ON table_namespace.oid = owning_table.relnamespace
-                WHERE sequence_class.relkind = 'S'
-                  AND sequence_namespace.nspname = 'public'
-                  AND table_namespace.nspname = 'public'
-                  AND owning_table.relname LIKE 'procrastinate!_%' ESCAPE '!'
-                ORDER BY 1
+              FOREACH table_name IN ARRAY ARRAY[{sequence_owner_tables}]
               LOOP
+                object_name := pg_get_serial_sequence(
+                  format('%I.%I', 'public', table_name),
+                  'id'
+                );
+                IF object_name IS NULL THEN
+                  RAISE EXCEPTION
+                    'required Procrastinate id sequence missing for public.%',
+                    table_name;
+                END IF;
                 EXECUTE 'GRANT USAGE, SELECT ON SEQUENCE ' || object_name ||
                         ' TO {APPLICATION_DATABASE_ROLE}';
               END LOOP;
