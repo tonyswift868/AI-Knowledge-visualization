@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 
 from sqlalchemy import select
 
-from app import asr_supervisor, conversion_adapters, credential_store
+from app import active_teaching, conversion_adapters, credential_store
 from app import generic_knowledge_api as generic_api
 from app.conversion_adapters import ConversionRegistry, ConvertedPart
 from app.orm import (
@@ -247,28 +247,25 @@ def _media_type(suffix: str) -> str:
     return explicit.get(suffix) or mimetypes.guess_type(f"material{suffix}")[0] or "application/octet-stream"
 
 
-def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
+def _active_material_count(workspace_id: str) -> int:
+    with active_teaching._connect() as connection:
+        row = connection.execute(
+            "SELECT COUNT(*) FROM active_materials WHERE workspace_id=?",
+            (workspace_id,),
+        ).fetchone()
+    return int(row[0])
+
+
+def _tree_snapshot(path) -> set[str]:
+    if not path.exists():
+        return set()
+    return {str(item.relative_to(path)) for item in path.rglob("*")}
+
+
+def test_every_runtime_registered_planning_format_uploads_converts_and_reaches_the_map(
     client,
     monkeypatch,
-    tmp_path,
 ):
-    monkeypatch.setattr(asr_supervisor, "assets_ready", lambda: True)
-    monkeypatch.setattr(asr_supervisor, "upload_root", lambda: tmp_path / "asr")
-    monkeypatch.setattr(
-        asr_supervisor,
-        "transcribe",
-        lambda path, **_kwargs: {
-            "ok": True,
-            "text": f"Audio evidence {path.suffix}",
-            "segments": [
-                {
-                    "start_ms": 0,
-                    "end_ms": 100,
-                    "text": f"Audio evidence {path.suffix}",
-                }
-            ],
-        },
-    )
     monkeypatch.setattr(
         conversion_adapters,
         "_ocr_parts",
@@ -285,7 +282,7 @@ def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
     capability_response = client.get("/api/active-teaching/material-capabilities")
     assert capability_response.status_code == 200, capability_response.text
     capabilities = capability_response.json()["registry"]["capabilities"]
-    accepted_suffixes = sorted(
+    registry_available_suffixes = sorted(
         {
             suffix
             for capability in capabilities
@@ -293,7 +290,7 @@ def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
             for suffix in capability["suffixes"]
         }
     )
-    assert accepted_suffixes
+    assert registry_available_suffixes
     registry_suffixes = sorted(
         {
             suffix
@@ -302,11 +299,32 @@ def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
             for suffix in capability.suffixes
         }
     )
-    assert accepted_suffixes == registry_suffixes
+    assert registry_available_suffixes == registry_suffixes
+    audio_suffixes = {
+        suffix
+        for capability in ConversionRegistry().capabilities()
+        if capability.adapter == "sensevoice-audio"
+        for suffix in capability.suffixes
+    }
+    planning_suffixes = [
+        suffix
+        for suffix in registry_available_suffixes
+        if suffix not in audio_suffixes
+        and not active_teaching._video_upload_hint(
+            f"material{suffix}",
+            _media_type(suffix),
+            b"",
+        )
+        and not active_teaching._audio_or_subtitle_upload_hint(
+            f"material{suffix}",
+            _media_type(suffix),
+        )
+    ]
+    assert planning_suffixes
 
     material_ids: list[str] = []
     uploaded_by_suffix: dict[str, dict] = {}
-    for index, suffix in enumerate(accepted_suffixes, start=1):
+    for index, suffix in enumerate(planning_suffixes, start=1):
         sentinel = f"MATRIX-{index:03d}-{suffix.removeprefix('.').upper()}"
         response = client.post(
             f"/api/active-teaching/workspaces/{WORKSPACE_ID}/materials",
@@ -325,7 +343,7 @@ def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
         material_ids.append(material["id"])
         uploaded_by_suffix[suffix] = material
 
-    assert len(material_ids) == len(accepted_suffixes)
+    assert len(material_ids) == len(planning_suffixes)
     assert len(material_ids) == len(set(material_ids))
     with SessionLocal() as session:
         revisions = session.scalars(
@@ -453,18 +471,29 @@ def test_every_runtime_registered_format_uploads_converts_and_reaches_the_map(
 def test_every_registered_video_suffix_is_explicitly_rejected(client):
     capability_response = client.get("/api/active-teaching/material-capabilities")
     assert capability_response.status_code == 200
-    rejected_suffixes = sorted(
-        {
-            suffix
-            for capability in capability_response.json()["registry"]["capabilities"]
-            if capability["rejected"]
-            for suffix in capability["suffixes"]
-        }
-    )
+    capabilities = capability_response.json()["registry"]["capabilities"]
+    all_suffixes = {
+        suffix
+        for capability in capabilities
+        for suffix in capability["suffixes"]
+    }
+    rejected_suffixes = sorted({
+        suffix
+        for suffix in all_suffixes
+        if active_teaching._video_upload_hint(
+            f"material{suffix}",
+            _media_type(suffix),
+            b"",
+        )
+    })
     assert rejected_suffixes
     for index, suffix in enumerate(rejected_suffixes, start=1):
+        workspace_id = f"rejected-video-matrix-{index}"
+        target_dir = active_teaching.UPLOAD_ROOT / workspace_id
+        before_files = _tree_snapshot(target_dir)
+        before_rows = _active_material_count(workspace_id)
         response = client.post(
-            "/api/active-teaching/workspaces/rejected-matrix/materials",
+            f"/api/active-teaching/workspaces/{workspace_id}/materials",
             files={
                 "file": (
                     f"unsupported-{index}{suffix}",
@@ -474,4 +503,50 @@ def test_every_registered_video_suffix_is_explicitly_rejected(client):
             },
         )
         assert response.status_code == 415, f"{suffix}: {response.text}"
-        assert response.json()["error"]["code"] == "VIDEO_UNSUPPORTED_IN_V1"
+        assert response.json()["error"]["code"] == "VIDEO_MATERIAL_DISABLED"
+        assert _active_material_count(workspace_id) == before_rows
+        assert _tree_snapshot(target_dir) == before_files
+
+
+def test_every_registered_audio_suffix_is_explicitly_rejected_without_mutation(client):
+    audio_suffixes = sorted(
+        {
+            suffix
+            for capability in ConversionRegistry().capabilities()
+            if capability.adapter == "sensevoice-audio"
+            for suffix in capability.suffixes
+            if not active_teaching._video_upload_hint(
+                f"material{suffix}",
+                _media_type(suffix),
+                b"",
+            )
+        }
+    )
+    assert audio_suffixes
+    for index, suffix in enumerate(audio_suffixes, start=1):
+        workspace_id = f"rejected-audio-matrix-{index}"
+        target_dir = active_teaching.UPLOAD_ROOT / workspace_id
+        before_files = _tree_snapshot(target_dir)
+        before_rows = _active_material_count(workspace_id)
+        filename = f"unsupported-{index}{suffix}"
+        payload = _audio_payload(suffix, f"audio-{index}")
+        media_type = _media_type(suffix)
+        response = client.post(
+            f"/api/active-teaching/workspaces/{workspace_id}/materials",
+            files={
+                "file": (
+                    filename,
+                    payload,
+                    media_type,
+                )
+            },
+        )
+        assert response.status_code == 415, f"{suffix}: {response.text}"
+        expected_code = (
+            "VIDEO_MATERIAL_DISABLED"
+            if active_teaching._video_upload_hint(filename, media_type, payload)
+            else "AUDIO_MATERIAL_DISABLED"
+        )
+        assert response.json()["error"]["code"] == expected_code, suffix
+        assert _active_material_count(workspace_id) == before_rows
+        assert _tree_snapshot(target_dir) == before_files

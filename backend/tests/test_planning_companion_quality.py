@@ -10,8 +10,18 @@ from app import generic_knowledge_api as planner
 
 def _anchor() -> dict[str, object]:
     return {
-        "url": "https://anchor.example/resource/BV1ib411t7YR",
-        "title": "Linear Algebra Complete Course",
+        "url": "https://anchor.example/resource/linear-algebra-notes.pdf",
+        "title": "Linear Algebra Selected Notes",
+        "direct_identifier": {"kind": "https_url", "value": "linear-algebra-notes.pdf"},
+        "direct_user_reference": True,
+        "media_kind": "document",
+    }
+
+
+def _video_anchor() -> dict[str, object]:
+    return {
+        "url": "https://video.example/watch/BV1ib411t7YR",
+        "title": "Linear Algebra Selected Video",
         "direct_identifier": {"kind": "opaque", "value": "BV1ib411t7YR"},
         "direct_user_reference": True,
         "media_kind": "video",
@@ -186,7 +196,7 @@ def test_replenishment_uses_good_rows_after_echoes_and_reports_truthful_page(cli
         "search_queries": [],
     })
     calls = 0
-    anchor_url = "https://www.bilibili.com/video/BV1ib411t7YR/"
+    anchor_url = "https://notes.example/linear-algebra/selected-anchor.pdf"
 
     async def fake_search(_query: str, *, max_results: int):
         nonlocal calls
@@ -218,7 +228,7 @@ def test_replenishment_uses_good_rows_after_echoes_and_reports_truthful_page(cli
     response = client.post(
         "/api/active-teaching/workspaces/quality-replenishment/planning-assistant",
         json={
-            "message": f"请找线性代数笔记并保留这个视频 {anchor_url}，补充配套资料。",
+            "message": f"请找线性代数笔记并保留这个文档 {anchor_url}，补充配套资料。",
             "goal": "学习线性代数",
             "resource_search_authorized": True,
             "page_size": 3,
@@ -244,7 +254,7 @@ def test_search_subject_removes_transport_noise_without_topic_hardcoding(raw, ex
     assert planner._planning_search_subject(raw) == expected
 
 
-def test_policy_recheck_counts_direct_card_in_complete_page_geometry():
+def test_policy_recheck_counts_eligible_direct_document_in_complete_page_geometry():
     page = planner._planning_recheck_pool_page({
         "page_size": 3,
         "total_count": 3,
@@ -289,6 +299,52 @@ def test_policy_recheck_counts_direct_card_in_complete_page_geometry():
     assert page["page_complete"] is True
 
 
+def test_policy_recheck_excludes_direct_video_before_selection_and_page_geometry():
+    page = planner._planning_recheck_pool_page({
+        "page_size": 3,
+        "total_count": 3,
+        "qualified_candidate_count": 3,
+        "selected_count": 1,
+        "new_candidate_count": 2,
+        "items": [
+            {
+                **_video_anchor(),
+                "candidate_id": "blocked-direct-video",
+                "stable_id": "blocked-direct-video",
+                "selection_state": "selected",
+            },
+            {
+                "candidate_id": "note-a",
+                "stable_id": "note-a",
+                "url": "https://notes.example/linear-algebra/a.pdf",
+                "title": "Linear Algebra Definitions and Examples A",
+                "snippet": "Definitions, formulas, worked examples, and exercises.",
+                "query": "linear algebra notes",
+                "media_kind": "document",
+                "qualification_status": "qualified",
+            },
+            {
+                "candidate_id": "note-b",
+                "stable_id": "note-b",
+                "url": "https://notes.example/linear-algebra/b.pdf",
+                "title": "Linear Algebra Definitions and Examples B",
+                "snippet": "Definitions, formulas, worked examples, and exercises.",
+                "query": "linear algebra notes",
+                "media_kind": "document",
+                "qualification_status": "qualified",
+            },
+        ],
+    })
+
+    assert [item["candidate_id"] for item in page["items"]] == ["note-a", "note-b"]
+    assert page["qualified_candidate_count"] == 2
+    assert page["total_count"] == 2
+    assert page["page_shortfall_count"] == 1
+    assert page["page_complete"] is False
+    assert page["blocked_items"][0]["candidate_id"] == "blocked-direct-video"
+    assert page["blocked_items"][0]["block_reason"] == "notes_only_media_contract"
+
+
 def test_companion_discovery_keeps_provider_topic_queries_and_diversifies_until_full(client, monkeypatch):
     provider = _FakeProvider({
         "known_facts": {"objective": "Master Aurora Protocol", "named_materials": []},
@@ -298,7 +354,7 @@ def test_companion_discovery_keeps_provider_topic_queries_and_diversifies_until_
         ],
     })
     calls: list[str] = []
-    anchor_url = "https://video.example/watch/BV1ib411t7YR"
+    anchor_url = "https://notes.example/aurora/selected-anchor.pdf"
 
     async def fake_search(query: str, *, max_results: int):
         calls.append(query)
@@ -330,7 +386,7 @@ def test_companion_discovery_keeps_provider_topic_queries_and_diversifies_until_
     response = client.post(
         "/api/active-teaching/workspaces/topic-diversification/planning-assistant",
         json={
-            "message": f"保留这个视频 {anchor_url}，再找点配套笔记。",
+            "message": f"保留这个文档 {anchor_url}，再找点配套笔记。",
             "goal": "Master Aurora Protocol",
             "resource_search_authorized": True,
             "page_size": 3,
@@ -348,4 +404,4 @@ def test_companion_discovery_keeps_provider_topic_queries_and_diversifies_until_
     assert any("大学课程讲义" in query or "开放教材" in query for query in calls)
     # Exact source transport metadata is retained in the candidate pool, never
     # copied into public retrieval queries. Diversified topic lanes remain.
-    assert all("BV1ib411t7YR" not in query and anchor_url not in query for query in calls)
+    assert all("selected-anchor.pdf" not in query and anchor_url not in query for query in calls)

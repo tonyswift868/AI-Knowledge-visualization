@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 
+import pytest
+
 from app import active_teaching
 from app.video_transcript import SubtitleSegment, _extract_sync, _subtitle_entries, assess_subtitle, classify_video_url, parse_subtitle_payload, source_family_id
 
@@ -119,25 +121,94 @@ def test_bilibili_danmaku_track_is_never_used_as_course_subtitle():
     ]
 
 
-def test_video_url_asks_for_supplementary_choice_before_extraction(client, monkeypatch):
-    called = False
+def test_canonical_video_url_material_is_disabled_before_fetch_or_extraction(client, monkeypatch):
+    extraction_called = False
+    fetch_called = False
 
     async def fail_extract(*args, **kwargs):
-        nonlocal called
-        called = True
-        raise AssertionError("choice must precede subtitle extraction")
+        nonlocal extraction_called
+        extraction_called = True
+        raise AssertionError("canonical material route must reject before subtitle extraction")
+
+    async def fail_fetch(*args, **kwargs):
+        nonlocal fetch_called
+        fetch_called = True
+        raise AssertionError("canonical material route must reject before media fetch")
 
     monkeypatch.setattr(active_teaching, "extract_video_transcript", fail_extract)
+    monkeypatch.setattr(active_teaching, "fetch_safe", fail_fetch)
+    workspace_id = "video-choice"
+    target_dir = active_teaching.UPLOAD_ROOT / workspace_id
+    before_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
+    )
+    with active_teaching._connect() as connection:
+        before_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()[0]
+        )
     response = client.post(
-        "/api/active-teaching/workspaces/video-choice/materials/url",
+        f"/api/active-teaching/workspaces/{workspace_id}/materials/url",
         json={"url": "https://www.bilibili.com/video/BV1xx411c7mD"},
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "awaiting_supplementary_choice"
-    assert body["supplementary_material_choice"]["required"] is True
-    assert body["ingested"] is False
-    assert called is False
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "VIDEO_MATERIAL_DISABLED"
+    with active_teaching._connect() as connection:
+        after_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()[0]
+        )
+    after_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
+    )
+    assert after_rows == before_rows
+    assert after_files == before_files
+    assert extraction_called is False
+    assert fetch_called is False
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "media_type", "filename"),
+    [
+        ("audio", "audio/wav", "lesson.wav"),
+        ("audio_transcript", "text/plain", "audio-transcript.txt"),
+        ("subtitle", "text/vtt", "lesson.vtt"),
+        ("caption", "application/x-subrip", "lesson.srt"),
+        ("video", "video/mp4", "lesson.mp4"),
+        ("video_transcript", "text/plain", "video-transcript.txt"),
+        ("video_collection", "text/plain", "collection.txt"),
+    ],
+)
+def test_media_materials_are_excluded_from_canonical_planning_and_map_handoff(
+    source_kind,
+    media_type,
+    filename,
+):
+    assert active_teaching._planning_material_is_blocked(
+        {
+            "source_kind": source_kind,
+            "media_type": media_type,
+            "original_filename": filename,
+        }
+    ) is True
+
+
+def test_document_material_remains_eligible_for_canonical_handoff():
+    assert active_teaching._planning_material_is_blocked(
+        {
+            "source_kind": "uploaded_file",
+            "media_type": "application/pdf",
+            "original_filename": "notes.pdf",
+        }
+    ) is False
 
 
 def test_accepted_search_returns_candidates_without_ingesting(client, monkeypatch):

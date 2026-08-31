@@ -41,6 +41,15 @@ def _direct_video(topic: str) -> dict[str, Any]:
     }
 
 
+def _direct_document(topic: str) -> dict[str, Any]:
+    return {
+        "url": f"https://materials.synthetic.edu/{_topic_slug(topic)}/learner-anchor.pdf",
+        "title": f"{topic} exact learner notes",
+        "media_kind": "document",
+        "direct_user_reference": True,
+    }
+
+
 def _complete_note(topic: str, suffix: str, *, short: bool = False) -> dict[str, Any]:
     body = (
         "Definitions, examples, exercises."
@@ -153,8 +162,8 @@ def test_cjk_topic_core_allows_a_course_note_but_not_a_shared_short_tail():
 
 
 @pytest.mark.parametrize("topic", ["Nebula Cartography", "Quartz Weaving"])
-def test_direct_video_plus_two_independent_notes_publishes_one_complete_page(topic, monkeypatch):
-    direct = _direct_video(topic)
+def test_direct_document_plus_two_independent_notes_publishes_one_complete_page(topic, monkeypatch):
+    direct = _direct_document(topic)
     notes = [_complete_note(topic, "course-a"), _complete_note(topic, "course-b")]
     calls: list[str] = []
 
@@ -169,7 +178,7 @@ def test_direct_video_plus_two_independent_notes_publishes_one_complete_page(top
             object(),
             {
                 "message": (
-                    f"保留这个精确视频 {direct['url']} 请为 {topic} 找配套文字笔记。"
+                    f"保留这个精确文档：\n{direct['url']}\n请为 {topic} 找两份配套文字笔记。"
                 ),
                 "goal": f"Learn {topic}",
                 "search_anchor": topic,
@@ -187,13 +196,12 @@ def test_direct_video_plus_two_independent_notes_publishes_one_complete_page(top
     assert page["page_shortfall_count"] == 0
     assert {item["url"] for item in items} == {direct["url"], notes[0]["url"], notes[1]["url"]}
     assert sum(item.get("direct_user_reference") is True for item in items) == 1
-    assert all(item.get("media_kind") in {"video", "notes", "document"} for item in items)
-    assert all(item.get("media_kind") != "video" for item in items if not item.get("direct_user_reference"))
+    assert all(item.get("media_kind") in {"notes", "document"} for item in items)
 
 
 def test_reject_then_refill_uses_two_novel_candidates_and_never_reactivates_rejected_identity(monkeypatch):
     topic = "Nebula Cartography"
-    direct = _direct_video(topic)
+    direct = _direct_document(topic)
     first_notes = [_complete_note(topic, "first-a"), _complete_note(topic, "first-b")]
     replacement_notes = [_complete_note(topic, "replacement-a"), _complete_note(topic, "replacement-b")]
     calls = 0
@@ -220,7 +228,7 @@ def test_reject_then_refill_uses_two_novel_candidates_and_never_reactivates_reje
             workspace_id,
             object(),
             {
-                "message": f"保留 {direct['url']} 为 {topic} 找配套文字笔记。",
+                "message": f"保留文档：\n{direct['url']}\n为 {topic} 找配套文字笔记。",
                 "goal": f"Learn {topic}",
                 "search_anchor": topic,
                 "resource_search_authorized": True,
@@ -344,8 +352,8 @@ def test_unsafe_off_topic_mirror_low_confidence_and_video_rows_do_not_fill(monke
 
 def test_duplicate_only_exhausted_search_reports_honest_shortfall(client, monkeypatch):
     topic = "Quartz Weaving"
-    direct = _direct_video(topic)
-    duplicate = {**direct, "direct_user_reference": False, "title": f"Duplicate {topic} video"}
+    direct = _direct_document(topic)
+    duplicate = {**direct, "direct_user_reference": False, "title": f"Duplicate {topic} notes"}
     calls = 0
 
     async def duplicate_search(_query: str, *, max_results: int):
@@ -357,7 +365,7 @@ def test_duplicate_only_exhausted_search_reports_honest_shortfall(client, monkey
     response = client.post(
         "/api/active-teaching/workspaces/duplicate-only-recall/planning-assistant",
         json={
-            "message": f"保留 {direct['url']} 为 {topic} 找配套文字笔记。",
+            "message": f"保留文档：\n{direct['url']}\n为 {topic} 找配套文字笔记。",
             "goal": f"Learn {topic}",
             "search_anchor": topic,
             "resource_search_authorized": True,

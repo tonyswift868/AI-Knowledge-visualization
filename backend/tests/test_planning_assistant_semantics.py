@@ -44,6 +44,15 @@ def _comprehensive_note(url: str, topic: str = "线性代数", *, index: object 
     }
 
 
+def _direct_document(index: object) -> dict[str, object]:
+    return {
+        "url": f"https://materials.example/linear-algebra-{index}.pdf",
+        "title": f"线性代数用户指定讲义 {index}",
+        "media_kind": "document",
+        "direct_user_reference": True,
+    }
+
+
 def test_search_position_is_not_misreported_as_popularity():
     candidate = planner._planning_normalize_resource(
         {
@@ -142,7 +151,7 @@ def test_bilibili_bvid_becomes_exact_direct_candidate():
     assert candidate["popularity_status"] == "unknown"
 
 
-def test_planner_keeps_exact_identifier_ahead_of_approximate_search(monkeypatch):
+def test_direct_video_is_annotated_but_never_enters_planning_page(monkeypatch):
     provider = _FakeProvider(
         {
             "known_facts": {
@@ -183,9 +192,17 @@ def test_planner_keeps_exact_identifier_ahead_of_approximate_search(monkeypatch)
         )
     )
 
-    assert result["resources"][0]["url"] == "https://www.bilibili.com/video/BV1ib411t7YR/"
-    assert result["resources"][0]["direct_user_reference"] is True
-    assert result["resources"][0]["authority_status"] == "unknown"
+    annotation = result["resources"][0]
+    assert annotation["url"] == "https://www.bilibili.com/video/BV1ib411t7YR/"
+    assert annotation["direct_user_reference"] is True
+    assert annotation["reference_retained"] is True
+    assert annotation["blocked"] is True
+    assert annotation["selectable"] is False
+    assert annotation["block_reason"] == "notes_only_media_contract"
+    assert result["candidate_page"]["items"] == []
+    assert result["candidate_page"]["total_count"] == 0
+    assert result["candidate_page"]["qualified_candidate_count"] == 0
+    assert result["candidate_page"]["selected_count"] == 0
     assert result["mutated"] is False
 
 
@@ -276,14 +293,21 @@ def test_exact_reference_without_companion_request_skips_generic_search(monkeypa
     )
     assert searched is False
     assert result["queries"] == []
-    assert result["resources"][0]["url"] == "https://www.bilibili.com/video/BV1ib411t7YR/"
+    annotation = result["resources"][0]
+    assert annotation["url"] == "https://www.bilibili.com/video/BV1ib411t7YR/"
+    assert annotation["reference_retained"] is True
+    assert annotation["blocked"] is True
+    assert annotation["selectable"] is False
+    assert result["candidate_page"]["items"] == []
+    assert result["candidate_page"]["selected_count"] == 0
 
 
-def test_direct_duplicate_triggers_bounded_supplement_and_reports_published_new_count(monkeypatch):
+def test_direct_document_duplicate_triggers_bounded_supplement_and_reports_published_new_count(monkeypatch):
     workspace_id = "direct-duplicate-supplement"
+    direct = _direct_document("duplicate")
     provider = _FakeProvider(
         {
-            "known_facts": {"objective": "学习线性代数", "named_materials": ["BV1ib411t7YR"]},
+            "known_facts": {"objective": "学习线性代数", "named_materials": [direct["url"]]},
             "search_queries": [],
         }
     )
@@ -295,9 +319,9 @@ def test_direct_duplicate_triggers_bounded_supplement_and_reports_published_new_
             return {
                 "results": [
                     {
-                        "url": "https://www.bilibili.com/video/BV1ib411t7YR/",
-                        "title": "搜索再次返回线性代数用户指定视频",
-                        "media_kind": "video",
+                        "url": direct["url"],
+                        "title": "搜索再次返回线性代数用户指定讲义",
+                        "media_kind": "document",
                         "snippet": "duplicate direct reference",
                     },
                     {
@@ -324,7 +348,7 @@ def test_direct_duplicate_triggers_bounded_supplement_and_reports_published_new_
             workspace_id,
             object(),
             {
-                "message": "使用 BV1ib411t7YR 学习线性代数，请继续找补充资料",
+                "message": f"使用文档 {direct['url']} 学习线性代数，请继续找配套文字讲义",
                 "resource_search_authorized": True,
                 "page_size": 3,
             },
@@ -339,11 +363,12 @@ def test_direct_duplicate_triggers_bounded_supplement_and_reports_published_new_
     assert "2 份新的" in result["reply"]
 
 
-def test_explicit_video_count_is_satisfied_before_flexible_page_fill(monkeypatch):
-    workspace_id = "explicit-video-count-priority"
+def test_provider_videos_cannot_fill_an_explicit_document_page(monkeypatch):
+    workspace_id = "explicit-document-count-priority"
+    direct = _direct_document("policy")
     provider = _FakeProvider(
         {
-            "known_facts": {"objective": "学习线性代数", "named_materials": ["BV1ib411t7YR"]},
+            "known_facts": {"objective": "学习线性代数", "named_materials": [direct["url"]]},
             "search_queries": [],
         }
     )
@@ -354,9 +379,9 @@ def test_explicit_video_count_is_satisfied_before_flexible_page_fill(monkeypatch
         if len(calls) == 1:
             results = [
                 {
-                    "url": "https://www.bilibili.com/video/BV1ib411t7YR/",
-                    "title": "搜索再次返回线性代数用户指定视频",
-                    "media_kind": "video",
+                    "url": direct["url"],
+                    "title": "搜索再次返回线性代数用户指定讲义",
+                    "media_kind": "document",
                     "snippet": "duplicate direct reference",
                 }
             ]
@@ -387,7 +412,7 @@ def test_explicit_video_count_is_satisfied_before_flexible_page_fill(monkeypatch
             workspace_id,
             object(),
             {
-                "message": "使用 BV1ib411t7YR 学习线性代数，再给我找三个视频",
+                "message": f"使用文档 {direct['url']} 学习线性代数，再给我找三份配套文字讲义",
                 "resource_search_authorized": True,
                 "page_size": 3,
             },
@@ -406,31 +431,40 @@ def test_explicit_video_count_is_satisfied_before_flexible_page_fill(monkeypatch
     assert len(items) == 3
     assert page["new_candidate_count"] == 2
     assert sum(item.get("direct_user_reference") is True for item in items) == 1
-    assert sum(item.get("media_kind") == "video" for item in items if not item.get("direct_user_reference")) == 0
+    assert all(item.get("media_kind") in {"notes", "document"} for item in items)
     assert page["total_count"] == 3
     assert "2 份新的资料候选" in result["reply"]
-    assert "配套视频/课程" not in result["reply"]
+    assert "视频/课程" not in result["reply"]
 
 
 @pytest.mark.parametrize(
     ("workspace_id", "references", "expected_fresh", "expected_total"),
     [
-        ("auto-companion-one", ["BV1ib411t7YR"], 2, 3),
+        ("auto-companion-one", ["https://materials.example/algebra-1.pdf"], 2, 3),
         (
             "auto-companion-three",
-            ["BV1ib411t7YR", "BV1Q541167Qg", "BV1mK4y1C7Bz"],
+            [
+                "https://materials.example/algebra-1.pdf",
+                "https://materials.example/algebra-2.pdf",
+                "https://materials.example/algebra-3.pdf",
+            ],
             3,
             6,
         ),
         (
             "auto-companion-four",
-            ["BV1ib411t7YR", "BV1Q541167Qg", "BV1mK4y1C7Bz", "BV1sS4y1u7Nn"],
+            [
+                "https://materials.example/algebra-1.pdf",
+                "https://materials.example/algebra-2.pdf",
+                "https://materials.example/algebra-3.pdf",
+                "https://materials.example/algebra-4.pdf",
+            ],
             2,
             6,
         ),
     ],
 )
-def test_explicit_discovery_fills_three_card_pages_without_fixed_media_recipe(
+def test_explicit_document_discovery_fills_three_card_pages_without_media_recipe(
     monkeypatch,
     workspace_id,
     references,
@@ -439,7 +473,7 @@ def test_explicit_discovery_fills_three_card_pages_without_fixed_media_recipe(
 ):
     provider = _FakeProvider(
         {
-            "known_facts": {"objective": "按指定视频系统学习线性代数", "named_materials": references},
+            "known_facts": {"objective": "按指定文档系统学习线性代数", "named_materials": references},
             "search_queries": [],
         }
     )
@@ -466,7 +500,7 @@ def test_explicit_discovery_fills_three_card_pages_without_fixed_media_recipe(
             workspace_id,
             object(),
             {
-                "message": "请按这些视频开始整理线性代数资料：" + " ".join(references),
+                "message": "请按这些文档开始整理线性代数资料，并继续找配套讲义：" + " ".join(references),
                 "resource_search_authorized": True,
                 "auto_companion_resources": True,
                 "page_size": 3,
@@ -503,11 +537,15 @@ def test_explicit_discovery_fills_three_card_pages_without_fixed_media_recipe(
         assert sum(item.get("direct_user_reference") is True for item in items[3:6]) == 1
 
 
-def test_rejected_initial_companion_keeps_exact_references_and_adds_four_fresh_choices(monkeypatch):
+def test_rejected_initial_companion_keeps_exact_documents_and_adds_fresh_choices(monkeypatch):
     workspace_id = "auto-companion-reject-and-expand"
+    references = [
+        "https://materials.example/linear-algebra-a.pdf",
+        "https://materials.example/linear-algebra-b.pdf",
+    ]
     provider = _FakeProvider(
         {
-            "known_facts": {"objective": "按指定视频系统学习线性代数", "named_materials": []},
+            "known_facts": {"objective": "按指定文档系统学习线性代数", "named_materials": references},
             "search_queries": [],
         }
     )
@@ -538,7 +576,7 @@ def test_rejected_initial_companion_keeps_exact_references_and_adds_four_fresh_c
             workspace_id,
             object(),
             {
-                "message": "请使用 BV1ib411t7YR 和 BV1Q541167Qg 学习线性代数",
+                "message": "请使用这些文档学习线性代数，并继续找配套讲义：" + " ".join(references),
                 "resource_search_authorized": True,
                 "auto_companion_resources": True,
                 "page_size": 3,
@@ -584,9 +622,9 @@ def test_replacement_batch_uses_multi_page_free_capacity(
     workspace_id = f"capacity-replacement-{selected_count}"
     seed = [
         {
-            "url": f"https://videos.example/{index}",
-            "title": f"线性代数视频资料 {index}",
-            "media_kind": "video",
+            "url": f"https://materials.example/linear-algebra-{index}.pdf",
+            "title": f"线性代数文档资料 {index}",
+            "media_kind": "document",
             "direct_user_reference": True,
         }
         for index in range(6)
@@ -657,7 +695,7 @@ def test_replacement_batch_uses_multi_page_free_capacity(
     assert result["candidate_page"]["page_capacity"] % 3 == 0
 
 
-def test_selected_video_refinement_finds_notes_and_drops_unselected_old_cards(monkeypatch):
+def test_selected_document_refinement_finds_notes_and_drops_unselected_old_cards(monkeypatch):
     provider = _FakeProvider(
         {
             "known_facts": {
@@ -687,21 +725,21 @@ def test_selected_video_refinement_finds_notes_and_drops_unselected_old_cards(mo
         }
 
     selected = {
-        "url": "https://www.bilibili.com/video/BV1selected/",
-        "title": "已选线性代数视频",
-        "media_kind": "video",
+        "url": "https://materials.example/linear-algebra-selected.pdf",
+        "title": "已选线性代数文档",
+        "media_kind": "document",
         "direct_user_reference": True,
     }
     unselected = [
         {
-            "url": "https://www.bilibili.com/video/BV1oldA/",
+            "url": "https://materials.example/linear-algebra-old-a.pdf",
             "title": "旧候选 A",
-            "media_kind": "video",
+            "media_kind": "document",
         },
         {
-            "url": "https://www.bilibili.com/video/BV1oldB/",
+            "url": "https://materials.example/linear-algebra-old-b.pdf",
             "title": "旧候选 B",
-            "media_kind": "video",
+            "media_kind": "document",
         },
     ]
     monkeypatch.setattr(planner, "_v1_provider_session", lambda *_: _session())
@@ -711,9 +749,9 @@ def test_selected_video_refinement_finds_notes_and_drops_unselected_old_cards(mo
     monkeypatch.setattr(planner, "_planning_search_cache_read", lambda _query: None)
     monkeypatch.setattr(planner, "_planning_search_cache_write", lambda *_args, **_kwargs: None)
 
-    message = "好了我已经选择了一份视频资料，那文字笔记资料呢"
+    message = "好了我已经选择了一份文档资料，再找配套文字笔记"
     assert planner._planning_requests_companion_search(message) is True
-    assert planner._planning_requests_companion_search("我已经选择了一份视频资料") is False
+    assert planner._planning_requests_companion_search("我已经选择了一份文档资料") is False
 
     result = asyncio.run(
         planner.planning_assistant(
@@ -772,9 +810,9 @@ def test_companion_notes_request_does_not_fill_candidates_with_more_videos(monke
         }
 
     selected = {
-        "url": "https://video.example/selected",
-        "title": "已选线性代数视频",
-        "media_kind": "video",
+        "url": "https://materials.example/selected.pdf",
+        "title": "已选线性代数文档",
+        "media_kind": "document",
         "direct_user_reference": True,
     }
     monkeypatch.setattr(planner, "_v1_provider_session", lambda *_: _session())
@@ -789,7 +827,7 @@ def test_companion_notes_request_does_not_fill_candidates_with_more_videos(monke
             "arbitrary-workspace",
             object(),
             {
-                "message": "视频选好了，那配套文字笔记呢",
+                "message": "文档选好了，再找配套文字笔记",
                 "goal": "学习线性代数",
                 "resource_search_authorized": True,
                 "retained_candidates": [selected],
@@ -806,9 +844,9 @@ def test_companion_notes_request_does_not_fill_candidates_with_more_videos(monke
 def test_companion_refinement_replaces_unselected_pool_rows_and_bypasses_stale_cache(monkeypatch):
     workspace_id = "fresh-companion-replacement"
     selected = {
-        "url": "https://video.example/selected",
-        "title": "已选线性代数视频",
-        "media_kind": "video",
+        "url": "https://materials.example/selected.pdf",
+        "title": "已选线性代数文档",
+        "media_kind": "document",
         "planning_selection_intent": "selected",
         "direct_user_reference": True,
     }
@@ -860,7 +898,7 @@ def test_companion_refinement_replaces_unselected_pool_rows_and_bypasses_stale_c
             workspace_id,
             object(),
             {
-                "message": "视频选好了，再找配套文字笔记",
+                "message": "文档选好了，再找配套文字笔记",
                 "goal": "学习线性代数",
                 "resource_search_authorized": True,
                 "selected_resources": [selected],

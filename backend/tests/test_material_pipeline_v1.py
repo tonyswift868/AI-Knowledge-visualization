@@ -47,40 +47,75 @@ def test_pretty_json_upload_persists_revision_manifest_and_path_chunks(client):
     assert manifest.metadata_json["part_count"] >= 1
 
 
-def test_audio_is_a_formal_material_with_time_evidence(client, monkeypatch):
-    monkeypatch.setattr(asr_supervisor, "assets_ready", lambda: True)
-    monkeypatch.setattr(asr_supervisor, "upload_root", lambda: asr_supervisor.project_root() / "runtime" / "test-asr")
-    monkeypatch.setattr(
-        asr_supervisor,
-        "transcribe",
-        lambda *_args, **_kwargs: {"ok": True, "text": "AUDIO-MAP-271"},
+def test_audio_upload_is_disabled_without_database_or_filesystem_mutation(client):
+    workspace_id = "audio-disabled-boundary"
+    target_dir = active_teaching.UPLOAD_ROOT / workspace_id
+    before_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
     )
-
+    with active_teaching._connect() as connection:
+        before_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()[0]
+        )
     response = client.post(
-        "/api/active-teaching/workspaces/audio-domain/materials",
+        f"/api/active-teaching/workspaces/{workspace_id}/materials",
         files={"file": ("spoken.wav", _wav_bytes(), "audio/wav")},
     )
-
-    assert response.status_code == 200, response.text
-    material = response.json()
-    assert material["chunks"][0]["text"] == "AUDIO-MAP-271"
-    with SessionLocal() as session:
-        revision = session.scalar(select(SourceRevisionORM).where(SourceRevisionORM.source_id == material["id"]))
-        manifest = session.scalar(
-            select(ConversionManifestORM).where(ConversionManifestORM.source_revision_id == revision.id)
+    assert response.status_code == 415, response.text
+    assert response.json()["error"]["code"] == "AUDIO_MATERIAL_DISABLED"
+    with active_teaching._connect() as connection:
+        after_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()[0]
         )
-    locator = manifest.metadata_json["parts"][0]
-    assert locator["audio_start_ms"] == 0
-    assert locator["audio_end_ms"] == 250
+    after_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
+    )
+    assert after_rows == before_rows
+    assert after_files == before_files
 
 
 def test_video_rejection_and_provider_precondition_are_explicit(client):
+    target_dir = active_teaching.UPLOAD_ROOT / "boundary"
+    before_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
+    )
+    with active_teaching._connect() as connection:
+        before_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id='boundary'"
+            ).fetchone()[0]
+        )
     rejected = client.post(
         "/api/active-teaching/workspaces/boundary/materials",
         files={"file": ("lesson.mp4", b"video", "video/mp4")},
     )
     assert rejected.status_code == 415
-    assert rejected.json()["error"]["code"] == "VIDEO_UNSUPPORTED_IN_V1"
+    assert rejected.json()["error"]["code"] == "VIDEO_MATERIAL_DISABLED"
+    with active_teaching._connect() as connection:
+        after_rows = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM active_materials WHERE workspace_id='boundary'"
+            ).fetchone()[0]
+        )
+    after_files = (
+        {str(item.relative_to(target_dir)) for item in target_dir.rglob("*")}
+        if target_dir.exists()
+        else set()
+    )
+    assert after_rows == before_rows
+    assert after_files == before_files
 
     uploaded = client.post(
         "/api/active-teaching/workspaces/boundary/materials",

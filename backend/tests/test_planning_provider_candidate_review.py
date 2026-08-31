@@ -51,9 +51,9 @@ def _initial_provider_payload(topic: str) -> dict[str, Any]:
 
 def _direct_anchor(topic: str) -> dict[str, Any]:
     return {
-        "url": f"https://media.synthetic.example/{_slug(topic)}-course.mp4",
+        "url": f"https://materials.synthetic.edu/{_slug(topic)}/learner-anchor.pdf",
         "title": f"{topic} exact learner anchor",
-        "media_kind": "video",
+        "media_kind": "document",
         "direct_user_reference": True,
     }
 
@@ -436,6 +436,9 @@ def test_model_cannot_override_safety_media_url_or_low_confidence_source_gates(c
     assert "stackoverflow.com" not in " ".join(urls)
     assert "csdn.net" not in " ".join(urls)
     assert payload["candidate_page"]["page_shortfall_count"] >= 1
+    review_payload, review_serialized = _review_request(provider)
+    assert _candidate_list(review_payload)
+    assert "video.synthetic.example" not in review_serialized
 
 
 @pytest.mark.parametrize("failure", ["timeout", "exception", "invalid_json"])
@@ -505,14 +508,14 @@ def test_provider_cache_identity_changes_with_selected_and_exact_sources():
     first = planner._planning_provider_cache_identity(
         session,
         **common,
-        selected_resources=[{"title": "Source A", "url": "https://example.test/a", "media_kind": "video"}],
-        exact_user_references=[{"url": "https://example.test/a", "direct_identifier": "A"}],
+        selected_resources=[{"title": "Source A", "url": "https://example.test/a.pdf", "media_kind": "document"}],
+        exact_user_references=[{"url": "https://example.test/a.pdf", "direct_identifier": "A"}],
     )
     second = planner._planning_provider_cache_identity(
         session,
         **common,
-        selected_resources=[{"title": "Source B", "url": "https://example.test/b", "media_kind": "video"}],
-        exact_user_references=[{"url": "https://example.test/b", "direct_identifier": "B"}],
+        selected_resources=[{"title": "Source B", "url": "https://example.test/b.pdf", "media_kind": "document"}],
+        exact_user_references=[{"url": "https://example.test/b.pdf", "direct_identifier": "B"}],
     )
     assert first[0] != second[0]
     assert first[2] != second[2]

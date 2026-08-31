@@ -365,7 +365,7 @@ def test_pool_action_refresh_is_read_only_and_skips_provider_and_search(client, 
     assert after_rows == before_rows
 
 
-def test_refresh_rechecks_held_rows_and_repaginates_without_mutation(client, monkeypatch):
+def test_refresh_rechecks_held_rows_without_mutation_and_reports_audit_shortfall(client, monkeypatch):
     workspace_id = "replenishment-refresh-held-policy-row"
     pool = PlanningResourcePool()
     created = pool.upsert(
@@ -402,10 +402,15 @@ def test_refresh_rechecks_held_rows_and_repaginates_without_mutation(client, mon
     payload = response.json()["candidate_page"]
     assert len(payload["items"]) == 3
     assert payload["total_count"] == 3
-    assert payload["qualified_candidate_count"] == 3
+    # The durable qualified count remains an audit total; blocked_count is the
+    # explicit subtraction.  Visible page geometry is derived from total_count
+    # and items, both of which exclude the held policy row.
+    assert payload["qualified_candidate_count"] == 4
     assert payload["blocked_count"] == 1
+    assert payload["qualified_candidate_count"] - payload["blocked_count"] == payload["total_count"]
     assert payload["blocked_items"][0]["title"] == "Unrelated entertainment directory"
-    assert payload["held_incomplete_count"] == 0
-    assert payload["page_complete"] is True
+    assert payload["held_incomplete_count"] == 1
+    assert payload["page_shortfall_count"] == 2
+    assert payload["page_complete"] is False
     assert payload["has_more"] is False
     assert pool.candidates(workspace_id, session_id, include_inactive=True) == before_rows
