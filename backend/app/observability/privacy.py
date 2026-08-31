@@ -49,12 +49,16 @@ _FORBIDDEN_TELEMETRY_TEXT = re.compile(
     r"gh[pousr]_[A-Za-z0-9]{20,})",
     re.IGNORECASE,
 )
+_DISPATCH_GENERATION_SPAN_FIELD = "mentorflow.dispatch_generation"
+_DISPATCH_GENERATION_MINIMUM = 0
+_DISPATCH_GENERATION_MAXIMUM = 2**63 - 1
 _ALLOWED_SPAN_FIELDS = {
     "db.operation.name",
     "http.request.method",
     "http.route",
     "job.id",
     "job.queue",
+    _DISPATCH_GENERATION_SPAN_FIELD,
     "mentorflow.feature",
     "mentorflow.job_id",
     "mentorflow.operation",
@@ -102,11 +106,22 @@ def safe_span_attributes(fields: Mapping[str, object]) -> dict[str, object]:
         key = str(raw_key)
         if key not in _ALLOWED_SPAN_FIELDS:
             raise UnsafeTelemetryField(f"span attribute is not allowed: {key}")
-        if not isinstance(raw_value, (str, int, float, bool)):
+        if key == _DISPATCH_GENERATION_SPAN_FIELD:
+            if type(raw_value) is not int:
+                raise UnsafeTelemetryField(
+                    f"span attribute must be an exact int: {key}"
+                )
+        elif not isinstance(raw_value, (str, int, float, bool)):
             raise UnsafeTelemetryField(f"span attribute must be scalar: {key}")
         value = str(raw_value)
         if len(value) > 160 or _SENSITIVE_VALUE.search(value):
             raise UnsafeTelemetryField(f"span attribute is sensitive or unbounded: {key}")
+        if key == _DISPATCH_GENERATION_SPAN_FIELD and not (
+            _DISPATCH_GENERATION_MINIMUM
+            <= raw_value
+            <= _DISPATCH_GENERATION_MAXIMUM
+        ):
+            raise UnsafeTelemetryField(f"span attribute is out of range: {key}")
         result[key] = raw_value
     return result
 

@@ -112,6 +112,8 @@ jobs:
             backend/tests/test_enterprise_worker_runtime.py \
             backend/app/enterprise/jobs_v1/repository.py \
             backend/app/enterprise/worker_entry.py \
+            backend/app/observability/privacy.py \
+            backend/tests/test_enterprise_observability_recovery.py \
             | sort > /tmp/e102-allowed.txt
           comm -23 /tmp/e102-changed.txt /tmp/e102-allowed.txt > /tmp/e102-unauthorized.txt
           test ! -s /tmp/e102-unauthorized.txt

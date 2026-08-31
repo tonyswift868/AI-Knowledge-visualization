@@ -238,6 +238,38 @@ def test_privacy_gate_rejects_prompts_answers_keys_and_emails() -> None:
             safe_event_fields({"error_class": secret})
 
 
+def test_dispatch_generation_span_attribute_requires_bounded_exact_int() -> None:
+    field = "mentorflow.dispatch_generation"
+    for value in (0, 1, 2**63 - 1):
+        accepted = safe_span_attributes({field: value})
+        assert accepted == {field: value}
+        assert type(accepted[field]) is int
+
+    rejected_values = (
+        "1",
+        1.0,
+        True,
+        None,
+        [],
+        {},
+        (),
+        set(),
+        -1,
+        2**63,
+        int("9" * 161),
+        "private@example.test",
+        "Bearer abc.def.ghi",
+        "raw_prompt=private lesson",
+        "sk-1234567890abcdefghijklmnop",
+    )
+    for value in rejected_values:
+        with pytest.raises(UnsafeTelemetryField):
+            safe_span_attributes({field: value})
+
+    with pytest.raises(UnsafeTelemetryField):
+        safe_span_attributes({"mentorflow.dispatch_generation_raw": 1})
+
+
 def test_provider_receipt_exports_bounded_correlated_telemetry_without_content(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
