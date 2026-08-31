@@ -142,8 +142,9 @@ def _insert_do_nothing(
         )
     else:
         statement = table.insert().values(**values)
-    result = connection.execute(statement)
-    return result.rowcount == 1
+    primary_key = next(iter(table.primary_key.columns))
+    inserted_key = connection.execute(statement.returning(primary_key)).scalar_one_or_none()
+    return inserted_key is not None
 
 
 class WorkflowRepository:

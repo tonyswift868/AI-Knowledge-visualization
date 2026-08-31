@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -9,6 +10,7 @@ import re
 import signal
 import subprocess
 import sys
+from threading import Barrier
 import time
 
 from alembic import command
@@ -46,6 +48,8 @@ from app.enterprise.jobs_v1.production import (
 )
 from app.enterprise.jobs_v1.repository import WorkflowRepository
 from app.enterprise.jobs_v1.runtime import verify_worker_database
+from app.enterprise.jobs_v1.schema import jobs as jobs_table
+from app.enterprise.jobs_v1.schema import outbox as outbox_table
 from app.enterprise_tenancy.context import (
     create_enterprise_postgres_engine,
     inspect_application_role_security,
@@ -197,6 +201,7 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
         "enterprise_e1/staging/e1_02/run.sh",
         "backend/app/enterprise/jobs_v1/postgres_schema.py",
         "backend/tests/test_enterprise_worker_runtime.py",
+        "backend/app/enterprise/jobs_v1/repository.py",
     ]
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job
@@ -461,21 +466,95 @@ def test_real_postgres17_worker_process_consumes_durable_job(
             roles=("OWNER", "ADMIN"),
         )
         repository = WorkflowRepository()
+
+        def job_request(idempotency_key: str) -> JobRequest:
+            return JobRequest(
+                workflow_kind=WorkflowKind.DOCUMENT_INGESTION,
+                payload={"gate": "postgres17-real-worker"},
+                actor_context=actor,
+                tenant_context=tenant,
+                request_id=request_id,
+                trace_id="e102-real-worker-trace",
+                idempotency_key=idempotency_key,
+            )
+
+        def repository_totals(connection: sa.Connection) -> tuple[int, int]:
+            job_count = int(
+                connection.scalar(sa.select(sa.func.count()).select_from(jobs_table))
+                or 0
+            )
+            outbox_count = int(
+                connection.scalar(sa.select(sa.func.count()).select_from(outbox_table))
+                or 0
+            )
+            return job_count, outbox_count
+
         with runtime_engine.begin() as connection:
             receipt = repository.submit(
                 connection,
-                JobRequest(
-                    workflow_kind=WorkflowKind.DOCUMENT_INGESTION,
-                    payload={"gate": "postgres17-real-worker"},
-                    actor_context=actor,
-                    tenant_context=tenant,
-                    request_id=request_id,
-                    trace_id="e102-real-worker-trace",
-                    idempotency_key="e102-real-worker-idempotency",
-                ),
+                job_request("e102-real-worker-idempotency"),
             )
             assert receipt.status is JobStatus.PENDING
             assert receipt.duplicate is False
+            assert repository_totals(connection) == (1, 1)
+
+        with runtime_engine.begin() as connection:
+            duplicate_receipt = repository.submit(
+                connection,
+                job_request("e102-real-worker-idempotency"),
+            )
+            assert duplicate_receipt.job_id == receipt.job_id
+            assert duplicate_receipt.duplicate is True
+            assert repository_totals(connection) == (1, 1)
+
+        with runtime_engine.begin() as connection:
+            distinct_receipt = repository.submit(
+                connection,
+                job_request("e102-real-worker-distinct-idempotency"),
+            )
+            assert distinct_receipt.job_id != receipt.job_id
+            assert distinct_receipt.duplicate is False
+            assert repository_totals(connection) == (2, 2)
+
+        concurrent_key = "e102-real-worker-concurrent-idempotency"
+        concurrent_barrier = Barrier(2)
+
+        def submit_concurrently():
+            with runtime_engine.begin() as connection:
+                concurrent_barrier.wait(timeout=10)
+                return repository.submit(connection, job_request(concurrent_key))
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit_concurrently) for _ in range(2)]
+            concurrent_receipts = [future.result(timeout=30) for future in futures]
+
+        assert len({item.job_id for item in concurrent_receipts}) == 1
+        assert sorted(item.duplicate for item in concurrent_receipts) == [False, True]
+        with runtime_engine.begin() as connection:
+            assert repository_totals(connection) == (3, 3)
+            concurrent_job_count = int(
+                connection.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.idempotency_key == concurrent_key)
+                )
+                or 0
+            )
+            concurrent_outbox_count = int(
+                connection.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(
+                        outbox_table.join(
+                            jobs_table,
+                            outbox_table.c.job_id == jobs_table.c.job_id,
+                        )
+                    )
+                    .where(jobs_table.c.idempotency_key == concurrent_key)
+                )
+                or 0
+            )
+        assert concurrent_job_count == 1
+        assert concurrent_outbox_count == 1
 
         handler_module = tmp_path / "mentorflow_e102_real_handler.py"
         handler_module.write_text(
@@ -579,6 +658,13 @@ def test_real_postgres17_worker_process_consumes_durable_job(
                     "postgres_version": postgres_version,
                     "procrastinate_jobs": queue_rows,
                     "procrastinate_version_required": False,
+                    "repository_concurrent_fresh_inserts": sum(
+                        not item.duplicate for item in concurrent_receipts
+                    ),
+                    "repository_first_insert_duplicate": receipt.duplicate,
+                    "repository_jobs": 3,
+                    "repository_outbox": 3,
+                    "repository_same_key_duplicate": duplicate_receipt.duplicate,
                     "required_objects_missing": [],
                     "optional_legacy_objects_skipped": list(
                         PROCRASTINATE_RETIRED_TABLES

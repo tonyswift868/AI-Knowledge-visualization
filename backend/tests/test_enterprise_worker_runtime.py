@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.pool import StaticPool
 
 from app.enterprise import worker_entry
@@ -31,7 +32,7 @@ from app.enterprise.jobs_v1.models import (
     WorkflowKind,
 )
 from app.enterprise.jobs_v1.procrastinate_adapter import unwrap_psycopg_connection
-from app.enterprise.jobs_v1.repository import WorkflowRepository
+from app.enterprise.jobs_v1.repository import WorkflowRepository, _insert_do_nothing
 from app.enterprise.jobs_v1.retry import RetryPolicy
 from app.enterprise.jobs_v1.runtime import (
     DurableJobExecutor,
@@ -229,6 +230,70 @@ def test_runtime_executes_with_frozen_tenant_context_and_blocks_duplicate_delive
     assert handler.seen_partition == "ENTERPRISE_SERVER:org-1:ws-1"
     assert revalidator.seen == [("org-1", "ws-1")]
     assert first.checkpoint["processed"]["source_id"] == "source-1"
+
+
+@pytest.mark.parametrize(
+    ("inserted_key", "expected_created"),
+    [("job_inserted", True), (None, False)],
+)
+def test_postgresql_insert_conflict_uses_returning_primary_key(
+    inserted_key: str | None,
+    expected_created: bool,
+) -> None:
+    class _Result:
+        def scalar_one_or_none(self) -> str | None:
+            return inserted_key
+
+    class _Connection:
+        dialect = postgresql.dialect()
+        statement: sa.Executable | None = None
+
+        def execute(self, statement: sa.Executable) -> _Result:
+            self.statement = statement
+            return _Result()
+
+    connection = _Connection()
+    created = _insert_do_nothing(
+        connection,  # type: ignore[arg-type]
+        jobs,
+        {"job_id": "job_inserted"},
+        index_elements=(
+            jobs.c.tenant_partition,
+            jobs.c.workflow_kind,
+            jobs.c.idempotency_key,
+        ),
+    )
+
+    assert connection.statement is not None
+    compiled = str(connection.statement.compile(dialect=connection.dialect))
+    assert "ON CONFLICT (tenant_partition, workflow_kind, idempotency_key) DO NOTHING" in compiled
+    assert "RETURNING enterprise_jobs.jobs.job_id" in compiled
+    assert created is expected_created
+
+
+def test_repository_submission_creates_one_job_and_outbox_per_new_key() -> None:
+    engine = _engine()
+    repository = WorkflowRepository()
+
+    with engine.begin() as connection:
+        first = repository.submit(connection, _request("idem-repository-first"))
+        assert first.duplicate is False
+        assert connection.scalar(sa.select(sa.func.count()).select_from(jobs)) == 1
+        assert connection.scalar(sa.select(sa.func.count()).select_from(outbox)) == 1
+
+    with engine.begin() as connection:
+        duplicate = repository.submit(connection, _request("idem-repository-first"))
+        assert duplicate.job_id == first.job_id
+        assert duplicate.duplicate is True
+        assert connection.scalar(sa.select(sa.func.count()).select_from(jobs)) == 1
+        assert connection.scalar(sa.select(sa.func.count()).select_from(outbox)) == 1
+
+    with engine.begin() as connection:
+        distinct = repository.submit(connection, _request("idem-repository-distinct"))
+        assert distinct.job_id != first.job_id
+        assert distinct.duplicate is False
+        assert connection.scalar(sa.select(sa.func.count()).select_from(jobs)) == 2
+        assert connection.scalar(sa.select(sa.func.count()).select_from(outbox)) == 2
 
 
 def test_runtime_retries_with_new_generation_then_replays_to_success(caplog) -> None:
