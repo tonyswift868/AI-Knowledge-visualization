@@ -40,6 +40,8 @@ def _runtime_environment(*, migration: bool = False) -> dict[str, str]:
         env["MENTORFLOW_MIGRATION_DATABASE_URL"] = _database_url(
             "mentorflow_migrator", "postgres_migrator_password"
         )
+    else:
+        env.pop("MENTORFLOW_MIGRATION_DATABASE_URL", None)
     return env
 
 
@@ -48,38 +50,61 @@ def _exec(argv: list[str], env: dict[str, str]) -> int:
     return 127
 
 
-def _verify() -> int:
-    env = _runtime_environment(migration=True)
-    code = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "current", "--check-heads"],
+def _run_command(
+    argv: list[str],
+    env: dict[str, str],
+    *,
+    quiet: bool = False,
+) -> int:
+    streams = (
+        {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+        if quiet
+        else {}
+    )
+    return subprocess.run(
+        argv,
         cwd="/app/backend",
         env=env,
         check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        **streams,
     ).returncode
+
+
+def _verify() -> int:
+    migration_env = _runtime_environment(migration=True)
+    code = _run_command(
+        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "current", "--check-heads"],
+        migration_env,
+        quiet=True,
+    )
     if code:
         return code
-    import psycopg
 
-    app_url = env["MENTORFLOW_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://", 1)
-    with psycopg.connect(app_url, connect_timeout=5) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT version_num FROM alembic_version")
-            if cursor.fetchone() != (HEAD,):
-                raise SystemExit("canonical Alembic head is not active")
-            cursor.execute(
-                "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
-            )
-            if cursor.fetchone() != (False, False):
-                raise SystemExit("application role is privileged")
-            cursor.execute(
-                "SELECT count(*) FROM pg_class c JOIN pg_roles r ON r.oid=c.relowner "
-                "WHERE r.rolname=current_user AND c.relkind IN ('r','p')"
-            )
-            if cursor.fetchone() != (0,):
-                raise SystemExit("application role owns tables")
-    print('{"schema_version":"mentorflow.rp05-migration-ready.v1","status":"PASS"}')
+    code = _run_command(
+        [
+            sys.executable,
+            "-m",
+            "app.enterprise.worker_entry",
+            "schema-apply",
+        ],
+        migration_env,
+    )
+    if code:
+        return code
+
+    from app import orm
+    from app.enterprise.jobs_v1.runtime import verify_worker_database
+
+    app_env = _runtime_environment()
+    engine = orm.configure_enterprise_orm(app_env)
+    try:
+        verify_worker_database(engine)
+    finally:
+        engine.dispose()
+    print(
+        '{"schema_version":"mentorflow.rp05-migration-ready.v1",'
+        '"status":"PASS","procrastinate_schema":"PASS"}'
+    )
     return 0
 
 

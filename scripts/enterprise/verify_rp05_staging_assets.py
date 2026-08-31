@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +21,102 @@ EXPECTED_SECRETS = {
     "keycloak_db_password", "keycloak_admin_password", "bff_client_secret",
     "worker_client_secret", "tls_certificate", "tls_private_key",
 }
+
+
+_RUNTIME_BOOTSTRAP_HARNESS = r"""
+import importlib.util
+import json
+import sys
+import types
+
+runtime_path, mode, repetitions = sys.argv[1], sys.argv[2], int(sys.argv[3])
+events = []
+spec = importlib.util.spec_from_file_location("rp05_runtime_entrypoint", runtime_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("runtime entrypoint could not be loaded")
+runtime_entrypoint = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runtime_entrypoint)
+runtime_entrypoint._secret = lambda _name: "offline-test-secret"
+
+
+def run_command(argv, env, *, quiet=False):
+    del quiet
+    app_url = env.get("MENTORFLOW_DATABASE_URL", "")
+    migration_url = env.get("MENTORFLOW_MIGRATION_DATABASE_URL", "")
+    if not app_url.startswith("postgresql+psycopg://mentorflow_app:"):
+        return 81
+    step = "schema-apply" if argv[-1] == "schema-apply" else "alembic-current"
+    if step == "schema-apply" and not migration_url.startswith(
+        "postgresql+psycopg://mentorflow_migrator:"
+    ):
+        return 82
+    events.append(step)
+    if mode == "apply-failure" and step == "schema-apply":
+        return 23
+    return 0
+
+
+runtime_entrypoint._run_command = run_command
+runtime_entrypoint._exec = lambda _argv, _env: events.append("runtime-exec") or 97
+
+app_module = types.ModuleType("app")
+app_module.__path__ = []
+orm_module = types.ModuleType("app.orm")
+
+
+class Engine:
+    def dispose(self):
+        events.append("engine-dispose")
+
+
+def configure_enterprise_orm(env):
+    if not env.get("MENTORFLOW_DATABASE_URL", "").startswith(
+        "postgresql+psycopg://mentorflow_app:"
+    ) or "MENTORFLOW_MIGRATION_DATABASE_URL" in env:
+        raise RuntimeError("application role binding failed")
+    events.append("app-engine")
+    return Engine()
+
+
+orm_module.configure_enterprise_orm = configure_enterprise_orm
+app_module.orm = orm_module
+enterprise_module = types.ModuleType("app.enterprise")
+enterprise_module.__path__ = []
+jobs_module = types.ModuleType("app.enterprise.jobs_v1")
+jobs_module.__path__ = []
+worker_runtime_module = types.ModuleType("app.enterprise.jobs_v1.runtime")
+
+
+def verify_worker_database(_engine):
+    events.append("schema-verify")
+    if mode == "verify-failure":
+        raise RuntimeError("offline verify failure")
+
+
+worker_runtime_module.verify_worker_database = verify_worker_database
+sys.modules.update(
+    {
+        "app": app_module,
+        "app.orm": orm_module,
+        "app.enterprise": enterprise_module,
+        "app.enterprise.jobs_v1": jobs_module,
+        "app.enterprise.jobs_v1.runtime": worker_runtime_module,
+    }
+)
+
+codes = []
+sys.argv = [runtime_path, "verify"]
+for _ in range(repetitions):
+    try:
+        codes.append(runtime_entrypoint.main())
+    except Exception as exc:
+        events.append(f"exception:{type(exc).__name__}")
+        codes.append(31)
+        break
+
+print(json.dumps({"codes": codes, "events": events}, sort_keys=True))
+raise SystemExit(next((code for code in codes if code), 0))
+"""
 
 
 def _yaml(path: Path) -> dict:
@@ -54,6 +151,38 @@ def _condition(compose: dict, service: str, dependency: str) -> str:
     return value.get("condition") if isinstance(value, dict) else ""
 
 
+def _runtime_bootstrap_probe(
+    runtime_path: Path,
+    mode: str,
+    *,
+    repetitions: int = 1,
+) -> tuple[int, dict[str, object], str]:
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                _RUNTIME_BOOTSTRAP_HARNESS,
+                str(runtime_path),
+                mode,
+                str(repetitions),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 124, {}, f"{type(exc).__name__}: {exc}"
+    lines = [line for line in completed.stdout.splitlines() if line.strip()]
+    try:
+        payload = json.loads(lines[-1]) if lines else {}
+    except json.JSONDecodeError:
+        payload = {}
+    detail = completed.stderr.strip() or completed.stdout.strip()
+    return completed.returncode, payload, detail[-800:]
+
+
 def verify(root: Path) -> dict:
     asset_root = root / "deploy" / "enterprise" / "staging" / "rp05"
     compose_path = asset_root / "compose.minimal.yml"
@@ -81,9 +210,42 @@ def verify(root: Path) -> dict:
 
     provision = (asset_root / "postgres-provision.sh").read_text(encoding="utf-8")
     gate("postgres_role_separation", all(token in provision for token in ("mentorflow_migrator", "mentorflow_app", "mentorflow_keycloak", "NOSUPERUSER", "NOBYPASSRLS", "ALTER DATABASE mentorflow OWNER TO mentorflow_migrator")), "role separation is incomplete")
-    runtime = (asset_root / "runtime-entrypoint.py").read_text(encoding="utf-8")
+    runtime_path = asset_root / "runtime-entrypoint.py"
+    runtime = runtime_path.read_text(encoding="utf-8")
     gate("canonical_migration_head", "0031_enterprise_tenancy_completion" in runtime and "--check-heads" in runtime, "canonical migration check missing")
-    gate("app_role_fail_closed", "rolsuper, rolbypassrls" in runtime and "application role owns tables" in runtime, "application-role checks missing")
+    gate("worker_schema_bootstrap_wired", all(token in runtime for token in ("schema-apply", "verify_worker_database", "mentorflow_migrator", "mentorflow_app")), "Procrastinate apply/verify is not wired to the migration-ready gate")
+    gate("app_role_fail_closed", "verify_worker_database(engine)" in runtime and "orm.configure_enterprise_orm(app_env)" in runtime, "application-role verification contract missing")
+
+    worker_entry = (root / "backend" / "app" / "enterprise" / "worker_entry.py").read_text(encoding="utf-8")
+    worker_schema = (root / "backend" / "app" / "enterprise" / "jobs_v1" / "postgres_schema.py").read_text(encoding="utf-8")
+    gate("existing_idempotent_schema_apply_contract", "schema-apply" in worker_entry and "apply_worker_schema" in worker_entry and ".schema_manager.apply_schema()" in worker_schema, "existing idempotent worker schema contract is not reused")
+
+    success_code, success_payload, success_detail = _runtime_bootstrap_probe(
+        runtime_path, "success", repetitions=2
+    )
+    expected_success_events = [
+        "alembic-current",
+        "schema-apply",
+        "app-engine",
+        "schema-verify",
+        "engine-dispose",
+    ] * 2
+    gate("schema_bootstrap_order", success_code == 0 and success_payload.get("events") == expected_success_events, f"bootstrap order mismatch: {success_detail}")
+    gate("schema_apply_idempotent_repeated_startup", success_payload.get("codes") == [0, 0] and success_payload.get("events", []).count("schema-apply") == 2, f"repeated startup was not safe: {success_detail}")
+
+    apply_code, apply_payload, apply_detail = _runtime_bootstrap_probe(
+        runtime_path, "apply-failure"
+    )
+    gate("schema_apply_failure_fail_closed", apply_code == 23 and apply_payload.get("events") == ["alembic-current", "schema-apply"], f"schema apply failure did not stop bootstrap: {apply_detail}")
+
+    verify_code, verify_payload, verify_detail = _runtime_bootstrap_probe(
+        runtime_path, "verify-failure"
+    )
+    verify_events = verify_payload.get("events", [])
+    expected_verify_failure_events = expected_success_events[:5] + [
+        "exception:RuntimeError"
+    ]
+    gate("schema_verify_failure_fail_closed", verify_code == 31 and verify_events == expected_verify_failure_events and "runtime-exec" not in verify_events, f"schema verify failure did not stop bootstrap: {verify_detail}")
 
     keycloak_command = str(services["keycloak"].get("command", ""))
     gate("keycloak_production_start", "kc.sh start --import-realm" in keycloak_command and "start-dev" not in compose_text, "Keycloak is not production/import mode")
@@ -91,6 +253,7 @@ def verify(root: Path) -> dict:
     clients = {item["clientId"]: item for item in realm.get("clients", [])}
     gate("keycloak_realm_clients", {"mentorflow-api", "mentorflow-web", "mentorflow-bff", "mentorflow-worker"} <= clients.keys() and clients["mentorflow-web"].get("publicClient") is True, "realm/client contract incomplete")
 
+    gate("database_reachable_before_migration", _condition(compose, "postgres-provision", "postgres") == "service_healthy", "database health does not gate provisioning")
     gate("migration_dependency_graph", _condition(compose, "migrate", "postgres-provision") == "service_completed_successfully" and _condition(compose, "migration-ready", "migrate") == "service_completed_successfully", "migration gates are unordered")
     for service in ("backend", "worker"):
         gate(f"{service}_dependency_graph", all(_condition(compose, service, dependency) == "service_completed_successfully" for dependency in ("migration-ready", "keycloak-ready", "otel-ready")), f"{service} does not wait for all gates")
