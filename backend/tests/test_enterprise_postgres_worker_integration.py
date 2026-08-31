@@ -156,6 +156,10 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     lane_contract = workflow[lane_start:lane_end]
     parsed_workflow = yaml.safe_load(workflow)
     jobs = parsed_workflow["jobs"]
+    parsed_compose = yaml.safe_load(compose)
+    runner_environment = parsed_compose["services"]["one-shot-test-runner"][
+        "environment"
+    ]
 
     assert f'      - "{REAL_GATE_BRANCH}"' in workflow
     assert "github.event_name == 'push'" in job
@@ -164,6 +168,7 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     assert EXPECTED_RUNNER in job
     assert EXPECTED_SOURCE_HEAD in job
     assert EXPECTED_SOURCE_TREE in job
+    assert 'git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "2"' in job
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job
     assert "windows-latest" not in job
@@ -199,6 +204,9 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
             assert REAL_GATE_BRANCH not in expression
     assert "if: always()" in job
     assert LOCKED_POSTGRES_IMAGE in compose
+    assert runner_environment["E1_POSTGRES_PASSWORD"] == (
+        "${E1_POSTGRES_PASSWORD:?E1_POSTGRES_PASSWORD is required}"
+    )
     assert compose.count("\n    volumes:\n") == 2
     assert "ports:" not in compose
     assert "postgres migrate rls-gate pool-gate" not in runner

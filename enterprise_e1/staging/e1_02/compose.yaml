@@ -28,6 +28,7 @@ services:
     environment:
       E1_EXPECTED_POSTGRES_VERSION: "17.6"
       E1_REAL_GATE_REQUIRED: "1"
+      E1_POSTGRES_PASSWORD: "${E1_POSTGRES_PASSWORD:?E1_POSTGRES_PASSWORD is required}"
       E1_POSTGRES_ADMIN_DSN: "postgresql+psycopg://postgres:${E1_POSTGRES_PASSWORD}@postgres:5432/postgres"
       E1_WORKER_DATABASE: "${E1_WORKER_DATABASE:?E1_WORKER_DATABASE is required}"
       E1_WORKER_MIGRATION_DSN: "postgresql+psycopg://postgres:${E1_POSTGRES_PASSWORD}@postgres:5432/${E1_WORKER_DATABASE}"
