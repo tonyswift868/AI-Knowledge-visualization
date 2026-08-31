@@ -511,6 +511,85 @@ def test_worker_schema_bootstrap_owns_procrastinate_app_lifecycle(
     }
 
 
+class _GrantConnection:
+    def __init__(self, *, missing: set[str] | None = None) -> None:
+        self.missing = missing or set()
+        self.lookups: list[tuple[str, str]] = []
+        self.statements: list[str] = []
+
+    def scalar(self, statement, parameters: dict[str, str]) -> str | None:
+        object_name = parameters["object_name"]
+        self.lookups.append((str(statement), object_name))
+        if object_name in self.missing:
+            return None
+        return object_name
+
+    def execute(self, statement) -> None:
+        self.statements.append(str(statement))
+
+
+def test_worker_schema_grants_exact_current_procrastinate_objects_without_version(
+) -> None:
+    connection = _GrantConnection()
+
+    skipped = postgres_schema._grant_runtime_objects(connection)
+
+    assert skipped == ("procrastinate_version",)
+    granted_sql = "\n".join(connection.statements)
+    assert (
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.procrastinate_events"
+        in granted_sql
+    )
+    assert "sequence_name LIKE 'procrastinate_%'" in granted_sql
+    assert "function.proname LIKE 'procrastinate_%'" in granted_sql
+    assert "public.procrastinate_version" not in granted_sql
+    assert "ON ALL TABLES IN SCHEMA" not in granted_sql
+    assert "SUPERUSER" not in granted_sql
+    assert "BYPASSRLS" not in granted_sql
+    looked_up = {object_name for _, object_name in connection.lookups}
+    assert "public.procrastinate_job_event_type" in looked_up
+    assert (
+        "public.procrastinate_defer_jobs_v1("
+        "public.procrastinate_job_to_defer_v1[])"
+    ) in looked_up
+    assert "public.procrastinate_version" not in looked_up
+
+
+def test_worker_schema_never_grants_retired_procrastinate_version() -> None:
+    connection = _GrantConnection()
+
+    skipped = postgres_schema._grant_runtime_objects(connection)
+
+    assert skipped == ("procrastinate_version",)
+    assert all(
+        "public.procrastinate_version" not in statement
+        for statement in connection.statements
+    )
+
+
+@pytest.mark.parametrize(
+    "missing_object",
+    [
+        "public.procrastinate_jobs",
+        "public.procrastinate_jobs_id_seq",
+        "public.procrastinate_job_status",
+        "public.procrastinate_fetch_job_v2(character varying[],bigint)",
+    ],
+)
+def test_worker_schema_fails_closed_when_required_procrastinate_object_is_missing(
+    missing_object: str,
+) -> None:
+    connection = _GrantConnection(missing={missing_object})
+
+    with pytest.raises(
+        postgres_schema.WorkerSchemaError,
+        match="required Procrastinate runtime objects missing",
+    ):
+        postgres_schema._grant_runtime_objects(connection)
+
+    assert connection.statements == []
+
+
 @pytest.mark.parametrize(
     ("otel_enabled", "run_error"),
     [

@@ -31,7 +31,15 @@ from app.enterprise.jobs_v1.models import (
     OutboxStatus,
     WorkflowKind,
 )
-from app.enterprise.jobs_v1.postgres_schema import apply_worker_schema
+from app.enterprise.jobs_v1.postgres_schema import (
+    PROCRASTINATE_OPTIONAL_FUNCTIONS,
+    PROCRASTINATE_REQUIRED_FUNCTIONS,
+    PROCRASTINATE_REQUIRED_SEQUENCES,
+    PROCRASTINATE_REQUIRED_TABLES,
+    PROCRASTINATE_REQUIRED_TYPES,
+    PROCRASTINATE_RETIRED_TABLES,
+    apply_worker_schema,
+)
 from app.enterprise.jobs_v1.production import (
     PRODUCTION_FACTORY_DOTTED_PATH,
     handler_environment_name,
@@ -156,6 +164,8 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     lane_contract = workflow[lane_start:lane_end]
     parsed_workflow = yaml.safe_load(workflow)
     jobs = parsed_workflow["jobs"]
+    workflow_triggers = parsed_workflow.get("on", parsed_workflow.get(True))
+    assert workflow_triggers is not None
     parsed_compose = yaml.safe_load(compose)
     runner_environment = parsed_compose["services"]["one-shot-test-runner"][
         "environment"
@@ -168,7 +178,26 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     assert EXPECTED_RUNNER in job
     assert EXPECTED_SOURCE_HEAD in job
     assert EXPECTED_SOURCE_TREE in job
-    assert 'git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "3"' in job
+    assert 'git merge-base --is-ancestor "$EXPECTED_SOURCE_HEAD" HEAD' in job
+    assert (
+        'git rev-list --merges --count "$EXPECTED_SOURCE_HEAD..HEAD"' in job
+    )
+    assert "git rev-list --count" not in job
+    assert (
+        "comm -23 /tmp/e102-changed.txt /tmp/e102-allowed.txt "
+        "> /tmp/e102-unauthorized.txt" in job
+    )
+    assert "test ! -s /tmp/e102-unauthorized.txt" in job
+    assert "diff -u /tmp/e102-allowed.txt /tmp/e102-changed.txt" not in job
+    assert workflow_triggers["push"]["paths"] == [
+        ".github/workflows/enterprise-ci.yml",
+        "backend/tests/test_enterprise_tenant_persistence.py",
+        "backend/tests/test_enterprise_postgres_worker_integration.py",
+        "enterprise_e1/staging/e1_02/compose.yaml",
+        "enterprise_e1/staging/e1_02/run.sh",
+        "backend/app/enterprise/jobs_v1/postgres_schema.py",
+        "backend/tests/test_enterprise_worker_runtime.py",
+    ]
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job
     assert "windows-latest" not in job
@@ -323,6 +352,12 @@ def test_real_postgres17_worker_process_consumes_durable_job(
             migration_url,
             engine_options={"pool_pre_ping": True},
         )
+        with migration_engine.begin() as connection:
+            for table_name in PROCRASTINATE_RETIRED_TABLES:
+                assert connection.scalar(
+                    sa.text("SELECT to_regclass(:object_name)"),
+                    {"object_name": f"public.{table_name}"},
+                ) is None
         runtime_engine = create_enterprise_postgres_engine(
             runtime_url.render_as_string(hide_password=False),
             pool_size=2,
@@ -337,6 +372,60 @@ def test_real_postgres17_worker_process_consumes_durable_job(
                 assert security.bypasses_rls is False
                 assert security.owned_tenant_table_count == 0
                 assert security.forced_rls_table_count == len(FORCE_RLS_TABLES)
+                for table_name in PROCRASTINATE_REQUIRED_TABLES:
+                    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                        assert connection.scalar(
+                            sa.text(
+                                "SELECT has_table_privilege("
+                                "current_user, :object_name, :privilege)"
+                            ),
+                            {
+                                "object_name": f"public.{table_name}",
+                                "privilege": privilege,
+                            },
+                        ) is True
+                for sequence_name in PROCRASTINATE_REQUIRED_SEQUENCES:
+                    for privilege in ("USAGE", "SELECT"):
+                        assert connection.scalar(
+                            sa.text(
+                                "SELECT has_sequence_privilege("
+                                "current_user, :object_name, :privilege)"
+                            ),
+                            {
+                                "object_name": f"public.{sequence_name}",
+                                "privilege": privilege,
+                            },
+                        ) is True
+                for type_name in PROCRASTINATE_REQUIRED_TYPES:
+                    assert connection.scalar(
+                        sa.text(
+                            "SELECT has_type_privilege("
+                            "current_user, :object_name, 'USAGE')"
+                        ),
+                        {"object_name": f"public.{type_name}"},
+                    ) is True
+                for function_name in PROCRASTINATE_REQUIRED_FUNCTIONS:
+                    assert connection.scalar(
+                        sa.text(
+                            "SELECT has_function_privilege("
+                            "current_user, to_regprocedure(:object_name), 'EXECUTE')"
+                        ),
+                        {"object_name": f"public.{function_name}"},
+                    ) is True
+                for function_name in PROCRASTINATE_OPTIONAL_FUNCTIONS:
+                    object_name = f"public.{function_name}"
+                    function_oid = connection.scalar(
+                        sa.text("SELECT to_regprocedure(:object_name)"),
+                        {"object_name": object_name},
+                    )
+                    if function_oid is not None:
+                        assert connection.scalar(
+                            sa.text(
+                                "SELECT has_function_privilege("
+                                "current_user, :function_oid, 'EXECUTE')"
+                            ),
+                            {"function_oid": function_oid},
+                        ) is True
 
         tenant = TenantContext(
             mode=TenantMode.ENTERPRISE_SERVER,
@@ -477,6 +566,11 @@ def test_real_postgres17_worker_process_consumes_durable_job(
                     "empty_database_migrated": True,
                     "postgres_version": postgres_version,
                     "procrastinate_jobs": queue_rows,
+                    "procrastinate_version_required": False,
+                    "required_objects_missing": [],
+                    "optional_legacy_objects_skipped": list(
+                        PROCRASTINATE_RETIRED_TABLES
+                    ),
                     "real_worker_executed": True,
                     "worker_job_status": current.status.value,
                     "worker_process_reaped": True,

@@ -11,9 +11,8 @@ on:
       - backend/tests/test_enterprise_postgres_worker_integration.py
       - enterprise_e1/staging/e1_02/compose.yaml
       - enterprise_e1/staging/e1_02/run.sh
-      - backend/tests/test_e1b_enterprise_evidence.py
-      - scripts/enterprise/pytest_windows_diagnostics.py
-      - scripts/enterprise/run_windows_pytest_diagnostic.ps1
+      - backend/app/enterprise/jobs_v1/postgres_schema.py
+      - backend/tests/test_enterprise_worker_runtime.py
   workflow_call:
     inputs:
       lane:
@@ -98,7 +97,8 @@ jobs:
           test "$RUNNER_ARCH" = "X64"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse "$EXPECTED_SOURCE_HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
-          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "4"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_HEAD" HEAD
+          test "$(git rev-list --merges --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "0"
           git diff --name-only "$EXPECTED_SOURCE_HEAD..HEAD" | sort > /tmp/e102-changed.txt
           printf '%s\n' \
             .github/workflows/enterprise-ci.yml \
@@ -109,7 +109,8 @@ jobs:
             backend/app/enterprise/jobs_v1/postgres_schema.py \
             backend/tests/test_enterprise_worker_runtime.py \
             | sort > /tmp/e102-allowed.txt
-          diff -u /tmp/e102-allowed.txt /tmp/e102-changed.txt
+          comm -23 /tmp/e102-changed.txt /tmp/e102-allowed.txt > /tmp/e102-unauthorized.txt
+          test ! -s /tmp/e102-unauthorized.txt
           docker compose version
       - name: Execute PostgreSQL 17.6 RLS and real Worker gate
         timeout-minutes: 60

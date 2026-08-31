@@ -21,13 +21,55 @@ from app.enterprise_tenancy.schema import (
 )
 
 
-PROCRASTINATE_TABLES = (
+PROCRASTINATE_REQUIRED_TABLES = (
     "procrastinate_events",
     "procrastinate_jobs",
     "procrastinate_periodic_defers",
-    "procrastinate_version",
     "procrastinate_workers",
 )
+PROCRASTINATE_REQUIRED_SEQUENCES = (
+    "procrastinate_events_id_seq",
+    "procrastinate_jobs_id_seq",
+    "procrastinate_periodic_defers_id_seq",
+    "procrastinate_workers_id_seq",
+)
+PROCRASTINATE_REQUIRED_TYPES = (
+    "procrastinate_job_event_type",
+    "procrastinate_job_status",
+    "procrastinate_job_to_defer_v1",
+)
+PROCRASTINATE_REQUIRED_FUNCTIONS = (
+    "procrastinate_defer_jobs_v1(public.procrastinate_job_to_defer_v1[])",
+    (
+        "procrastinate_defer_periodic_job_v2(character varying,character varying,"
+        "character varying,character varying,integer,character varying,bigint,jsonb)"
+    ),
+    "procrastinate_fetch_job_v2(character varying[],bigint)",
+    "procrastinate_finish_job_v1(bigint,public.procrastinate_job_status,boolean)",
+    "procrastinate_cancel_job_v1(bigint,boolean,boolean)",
+    (
+        "procrastinate_retry_job_v2(bigint,timestamp with time zone,integer,"
+        "character varying,character varying)"
+    ),
+    "procrastinate_notify_queue_job_inserted_v1()",
+    "procrastinate_notify_queue_abort_job_v1()",
+    "procrastinate_trigger_function_status_events_insert_v1()",
+    "procrastinate_trigger_function_status_events_update_v1()",
+    "procrastinate_trigger_function_scheduled_events_v1()",
+    "procrastinate_trigger_abort_requested_events_procedure_v1()",
+    "procrastinate_unlink_periodic_defers_v1()",
+    "procrastinate_register_worker_v1()",
+    "procrastinate_unregister_worker_v1(bigint)",
+    "procrastinate_update_heartbeat_v1(bigint)",
+    "procrastinate_prune_stalled_workers_v1(double precision)",
+)
+PROCRASTINATE_OPTIONAL_FUNCTIONS = (
+    (
+        "procrastinate_retry_job_v1(bigint,timestamp with time zone,integer,"
+        "character varying,character varying)"
+    ),
+)
+PROCRASTINATE_RETIRED_TABLES = ("procrastinate_version",)
 ENTERPRISE_JOB_TABLES = (
     "enterprise_jobs.jobs",
     "enterprise_jobs.outbox",
@@ -54,7 +96,43 @@ def _require_migration_owner(database_url: URL) -> None:
         )
 
 
-def _grant_runtime_objects(connection: sa.Connection) -> None:
+def _require_procrastinate_runtime_objects(connection: sa.Connection) -> None:
+    requirements = (
+        (
+            "table",
+            "to_regclass",
+            tuple(f"public.{name}" for name in PROCRASTINATE_REQUIRED_TABLES),
+        ),
+        (
+            "sequence",
+            "to_regclass",
+            tuple(f"public.{name}" for name in PROCRASTINATE_REQUIRED_SEQUENCES),
+        ),
+        (
+            "type",
+            "to_regtype",
+            tuple(f"public.{name}" for name in PROCRASTINATE_REQUIRED_TYPES),
+        ),
+        (
+            "function",
+            "to_regprocedure",
+            tuple(f"public.{name}" for name in PROCRASTINATE_REQUIRED_FUNCTIONS),
+        ),
+    )
+    missing: list[str] = []
+    for object_kind, resolver, object_names in requirements:
+        lookup = sa.text(f"SELECT {resolver}(:object_name)")
+        for object_name in object_names:
+            if connection.scalar(lookup, {"object_name": object_name}) is None:
+                missing.append(f"{object_kind}:{object_name}")
+    if missing:
+        raise WorkerSchemaError(
+            "required Procrastinate runtime objects missing: " + ", ".join(missing)
+        )
+
+
+def _grant_runtime_objects(connection: sa.Connection) -> tuple[str, ...]:
+    _require_procrastinate_runtime_objects(connection)
     connection.execute(
         sa.text(f"GRANT USAGE ON SCHEMA enterprise_jobs TO {APPLICATION_DATABASE_ROLE}")
     )
@@ -68,7 +146,9 @@ def _grant_runtime_objects(connection: sa.Connection) -> None:
     connection.execute(
         sa.text(
             "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "
-            + ", ".join(f"public.{name}" for name in PROCRASTINATE_TABLES)
+            + ", ".join(
+                f"public.{name}" for name in PROCRASTINATE_REQUIRED_TABLES
+            )
             + f" TO {APPLICATION_DATABASE_ROLE}"
         )
     )
@@ -113,6 +193,7 @@ def _grant_runtime_objects(connection: sa.Connection) -> None:
             """
         )
     )
+    return PROCRASTINATE_RETIRED_TABLES
 
 
 def apply_worker_schema(
@@ -154,7 +235,12 @@ def apply_worker_schema(
 
 __all__ = [
     "ENTERPRISE_JOB_TABLES",
-    "PROCRASTINATE_TABLES",
+    "PROCRASTINATE_OPTIONAL_FUNCTIONS",
+    "PROCRASTINATE_REQUIRED_FUNCTIONS",
+    "PROCRASTINATE_REQUIRED_SEQUENCES",
+    "PROCRASTINATE_REQUIRED_TABLES",
+    "PROCRASTINATE_REQUIRED_TYPES",
+    "PROCRASTINATE_RETIRED_TABLES",
     "WorkerSchemaError",
     "apply_worker_schema",
 ]
