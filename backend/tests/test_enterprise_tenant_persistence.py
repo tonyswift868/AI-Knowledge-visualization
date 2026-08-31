@@ -15,6 +15,7 @@ from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection, make_url
+import yaml
 
 import app.enterprise_tenancy as tenancy
 from app.enterprise.contracts_v1 import (
@@ -233,6 +234,9 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
         config = Config(str(BACKEND_ROOT / "alembic.ini"))
         config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
         config.attributes["configure_logger"] = False
+        assert ScriptDirectory.from_config(config).get_heads() == [MIGRATION_REVISION]
+        with migration_engine.connect() as connection:
+            assert "alembic_version" not in inspect(connection).get_table_names()
         with monkeypatch.context() as environment:
             environment.setenv("MENTORFLOW_DEPLOYMENT_MODE", "ENTERPRISE_SERVER")
             environment.setenv(
@@ -248,6 +252,10 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
         with migration_engine.begin() as connection:
             assert detect_enterprise_schema_version(connection) == MIGRATION_REVISION
             postgres_version = str(connection.execute(text("SHOW server_version")).scalar_one())
+            assert postgres_version.split()[0] == os.environ.get(
+                "E1_EXPECTED_POSTGRES_VERSION",
+                "17.6",
+            )
             seed = seed_synthetic_tenants(connection)
             assert seed.organization_count == 3
             rls_rows = connection.execute(
@@ -327,7 +335,36 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
             session.connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
             require_safe_application_role(session.connection)
             connection_ids.append(id(session.connection.connection.driver_connection))
-            assert repository.get(session, TenantResourceKind.DOCUMENT, resource_id) is None
+            unauthorized_read_count = int(
+                repository.get(session, TenantResourceKind.DOCUMENT, resource_id)
+                is not None
+            )
+            unauthorized_read_count += sum(
+                record.resource_id == resource_id
+                for record in repository.list_records(
+                    session,
+                    TenantResourceKind.DOCUMENT,
+                    limit=10_000,
+                )
+            )
+            assert unauthorized_read_count == 0
+            unauthorized_write_count = int(
+                repository.update_payload(
+                    session,
+                    TenantResourceKind.DOCUMENT,
+                    resource_id,
+                    payload={"tenant": "B", "unauthorized": True},
+                    status="intrusion",
+                )
+            )
+            unauthorized_write_count += int(
+                repository.delete(
+                    session,
+                    TenantResourceKind.DOCUMENT,
+                    resource_id,
+                )
+            )
+            assert unauthorized_write_count == 0
             assert all(
                 record.resource_id != resource_id
                 for record in repository.list_records(
@@ -336,19 +373,6 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
                     limit=10_000,
                 )
             )
-            assert repository.update_payload(
-                session,
-                TenantResourceKind.DOCUMENT,
-                resource_id,
-                payload={"tenant": "B", "unauthorized": True},
-                status="intrusion",
-            ) is False
-            assert repository.delete(
-                session,
-                TenantResourceKind.DOCUMENT,
-                resource_id,
-            ) is False
-
         with manager.transaction(tenant_a) as session:
             session.connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
             require_safe_application_role(session.connection)
@@ -359,16 +383,35 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
             assert preserved.payload == {"tenant": "A", "version": 1}
 
         assert len(set(connection_ids)) == 1
+        with tenant_engine.connect() as connection:
+            with connection.begin():
+                connection.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
+                pooled_context = tuple(
+                    connection.execute(
+                        text(
+                            """
+                            SELECT
+                              NULLIF(current_setting('mentorflow.organization_id', true), ''),
+                              NULLIF(current_setting('mentorflow.workspace_id', true), ''),
+                              NULLIF(current_setting('mentorflow.actor_subject', true), '')
+                            """
+                        )
+                    ).one()
+                )
+                assert pooled_context == (None, None, None)
         print(
             json.dumps(
                 {
                     "app_db_role": APPLICATION_DATABASE_ROLE,
                     "app_db_role_bypassrls": False,
                     "migration_head": MIGRATION_REVISION,
+                    "pool_tenant_state_leak": 0,
                     "pooled_connection_reused": True,
                     "postgres_version": postgres_version,
                     "rls_fail_closed": True,
+                    "unauthorized_read": unauthorized_read_count,
                     "unauthorized_success": 0,
+                    "unauthorized_write": unauthorized_write_count,
                 },
                 sort_keys=True,
             )
@@ -795,29 +838,36 @@ def test_0031_preserves_existing_0029_membership_and_plan_rows(tmp_path: Path) -
 
 def test_staging_package_is_executable_without_declaring_a_driver() -> None:
     root = BACKEND_ROOT.parent / "enterprise_e1" / "staging" / "e1_02"
-    readme = (root / "README.md").read_text(encoding="utf-8")
     compose = (root / "compose.yaml").read_text(encoding="utf-8")
     runner = (root / "run.sh").read_text(encoding="utf-8")
-    pool_gate = (root / "run_pool_gate.py").read_text(encoding="utf-8")
-    rls_gate = (root / "sql" / "rls_negative.sql").read_text(encoding="utf-8")
-    pool_sql = (root / "sql" / "pool_context.sql").read_text(encoding="utf-8")
-    plans = (root / "sql" / "query_plans.sql").read_text(encoding="utf-8")
+    parsed = yaml.safe_load(compose)
 
-    assert "postgres:16-bookworm" in compose
-    assert "0030_enterprise_jobs_v1" in readme
-    assert MIGRATION_REVISION in readme
-    assert "MENTORFLOW_BACKEND_IMAGE" in compose
-    assert "alembic -x seed_synthetic=true upgrade head" in compose
+    assert set(parsed["services"]) == {"postgres", "one-shot-test-runner"}
+    assert compose.count("\n    volumes:\n") == 2
+    assert parsed["services"]["postgres"]["image"] == (
+        "docker.io/library/postgres:17.6-bookworm@"
+        "sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3"
+    )
+    assert "ports" not in parsed["services"]["postgres"]
+    assert parsed["services"]["one-shot-test-runner"]["build"]["target"] == (
+        "backend-base"
+    )
+    assert "test_real_postgres_rls_is_fail_closed_and_pool_safe" in compose
+    assert "test_real_postgres17_worker_process_consumes_durable_job" in compose
     assert "pip install" not in compose
-    assert "docker compose up" in runner
-    assert "pool_size=1" in pool_gate
-    assert "same_dbapi_connection_reused" in pool_gate
-    assert "UNAUTHORIZED_SUCCESS=0" in rls_gate
-    assert "foreign ID read" in rls_gate
-    assert "background job and cache ownership" in rls_gate
-    assert "transaction-local tenant context leaked" in pool_sql
-    assert "EXPLAIN (COSTS ON, VERBOSE OFF)" in plans
-    assert "EXPLAIN ANALYZE" not in plans
+    assert "GITHUB_RUN_ID" in runner
+    assert "GITHUB_RUN_ATTEMPT" in runner
+    assert 'compose_project="mf-e102-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' in runner
+    assert 'trap cleanup EXIT' in runner
+    assert (
+        'docker compose -p "$compose_project" down --volumes --remove-orphans'
+        in runner
+    )
+    assert "com.docker.compose.project=$compose_project" in runner
+    assert "docker system prune" not in runner
+    assert "docker container prune" not in runner
+    assert "docker volume prune" not in runner
+    assert "docker network prune" not in runner
 
 
 def test_enterprise_evidence_documents_keep_real_postgres_pending() -> None:

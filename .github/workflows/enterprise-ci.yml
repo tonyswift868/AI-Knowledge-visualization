@@ -2,9 +2,15 @@ name: Enterprise reusable CI lanes
 
 on:
   push:
-    branches: ["codex/e1s1-shadow-repair-e107-ci-windows"]
+    branches:
+      - "codex/e1s1-shadow-repair-e107-ci-windows"
+      - "codex/e1-postgres17-real-gate-r1"
     paths:
       - .github/workflows/enterprise-ci.yml
+      - backend/tests/test_enterprise_tenant_persistence.py
+      - backend/tests/test_enterprise_postgres_worker_integration.py
+      - enterprise_e1/staging/e1_02/compose.yaml
+      - enterprise_e1/staging/e1_02/run.sh
       - backend/tests/test_e1b_enterprise_evidence.py
       - scripts/enterprise/pytest_windows_diagnostics.py
       - scripts/enterprise/run_windows_pytest_diagnostic.ps1
@@ -47,6 +53,7 @@ env:
 jobs:
   lane-contract:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / lane contract
+    if: github.ref != 'refs/heads/codex/e1-postgres17-real-gate-r1'
     runs-on: ubuntu-24.04
     steps:
       - name: Validate lane and exact focused source
@@ -63,6 +70,69 @@ jobs:
             test -n "$EXPECTED_SOURCE_SHA"
             test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
           fi
+
+  postgres17-rls-worker-real-gate:
+    name: E1-02 / PostgreSQL 17.6 RLS and Worker real gate
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/e1-postgres17-real-gate-r1'
+    timeout-minutes: 70
+    runs-on: [self-hosted, linux, x64, mentorflow-e1, turkey-ci]
+    steps:
+      - name: Checkout exact trusted branch commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Validate exact trigger, runner, source, and changed-path fence
+        shell: bash
+        env:
+          EXPECTED_RUNNER_NAME: mentorflow-e1-turkey-01
+          EXPECTED_SOURCE_HEAD: 6e3eaafd36a2a42351d236473a8ae72a2c70aefd
+          EXPECTED_SOURCE_TREE: 375f3bcdedf1985f992d464e9fc05516ce838825
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/codex/e1-postgres17-real-gate-r1"
+          test "$RUNNER_NAME" = "$EXPECTED_RUNNER_NAME"
+          test "$RUNNER_OS" = "Linux"
+          test "$RUNNER_ARCH" = "X64"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse "$EXPECTED_SOURCE_HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
+          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "1"
+          git diff --name-only "$EXPECTED_SOURCE_HEAD..HEAD" | sort > /tmp/e102-changed.txt
+          printf '%s\n' \
+            .github/workflows/enterprise-ci.yml \
+            backend/tests/test_enterprise_postgres_worker_integration.py \
+            backend/tests/test_enterprise_tenant_persistence.py \
+            enterprise_e1/staging/e1_02/compose.yaml \
+            enterprise_e1/staging/e1_02/run.sh \
+            | sort > /tmp/e102-allowed.txt
+          diff -u /tmp/e102-allowed.txt /tmp/e102-changed.txt
+          docker compose version
+      - name: Execute PostgreSQL 17.6 RLS and real Worker gate
+        timeout-minutes: 60
+        working-directory: enterprise_e1/staging/e1_02
+        shell: bash
+        run: ./run.sh
+      - name: Always remove only the exact compose project and verify zero residue
+        if: always()
+        working-directory: enterprise_e1/staging/e1_02
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose_project="mf-e102-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export E1_RLS_DATABASE="e102_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_rls"
+          export E1_WORKER_DATABASE="e102_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_worker"
+          export E1_POSTGRES_PASSWORD="e102-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-only"
+          export E1_APP_PASSWORD="e102-app-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-only"
+          docker compose -p "$compose_project" down --volumes --remove-orphans
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$compose_project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$compose_project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$compose_project")"
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
+          printf '{"compose_project":"%s","post_cleanup_containers":0,"post_cleanup_networks":0,"post_cleanup_volumes":0}\n' "$compose_project"
 
   readiness-provenance:
     name: ${{ inputs.lane }} / GitHub-reachable readiness provenance
