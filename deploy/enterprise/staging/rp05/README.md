@@ -12,17 +12,20 @@ areas: `releases`, `current`, `config`, `secrets`, `data`, `backups`, `evidence`
 and `logs`. Secrets and certificates are never generated into or copied from the
 Git tree. Required secret filenames are listed by `rp05_staging.py preflight`.
 
-The durable worker factory is a required current-product integration input. The
-current repository has the production `app.enterprise.worker_entry` but no
-complete default business-handler factory, so the package fails closed until
-`MENTORFLOW_WORKER_RUNTIME_FACTORY=module:callable` is supplied.
+The durable worker uses `app.enterprise.jobs_v1.production:build`. Engineering
+Preview binds the real Document Ingestion, Knowledge Pipeline, and Plan Creation
+product adapters. Export and Account Deletion have no Preview callback or
+environment key: they fail closed without blocking factory or worker startup.
+Document uploads are shared read-only with the worker under
+`/var/lib/mentorflow/document-import`.
 
 ## Reproducible sequence
 
 1. Copy `runtime-images.template.json` and replace every image with an exact
    `name@sha256:<64 lowercase hex>` reference.
-2. Copy `compose.env.example` and set the public HTTPS origin, hostname, worker
-   factory, and project name. Do not put secrets in this file.
+2. Copy `compose.env.example` and set the public HTTPS origin, hostname, and
+   project name. Keep the production factory and three supported handler paths
+   unchanged. Do not put secrets in this file.
 3. Create the nine external secret files under `/opt/mentorflow/secrets`.
 4. Build a release with `build_rp05_staging_release.py`; transfer the resulting
    directory without changing its manifest-covered files.

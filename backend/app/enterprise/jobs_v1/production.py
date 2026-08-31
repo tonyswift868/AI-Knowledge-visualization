@@ -1,10 +1,10 @@
 """Production dependency factory for the Enterprise durable worker.
 
-The factory is intentionally application-neutral: product workflow modules
-provide one in-image callback for each authoritative ``WorkflowKind`` while
-this module owns validation, tenant revalidation, and the durable runtime
-adapter.  Missing or unknown kinds fail worker startup instead of falling back
-to a test fixture or a no-op handler.
+Engineering Preview loads real product callbacks for the learning-chain
+workflows.  Workflow kinds that are not implemented for Preview remain present
+in the authoritative enum and worker registry, but execute through an explicit
+non-retryable fail-closed handler.  They never require a fake callback and never
+prevent the factory or worker from starting.
 """
 
 from __future__ import annotations
@@ -50,6 +50,15 @@ from .runtime import DurableWorkerDependencies, WorkerConfigurationError
 
 PRODUCTION_FACTORY_DOTTED_PATH = "app.enterprise.jobs_v1.production:build"
 HANDLER_ENV_PREFIX = "MENTORFLOW_WORKER_HANDLER_"
+PREVIEW_SUPPORTED_WORKFLOW_KINDS = (
+    WorkflowKind.DOCUMENT_INGESTION,
+    WorkflowKind.KNOWLEDGE_PIPELINE,
+    WorkflowKind.PLAN_CREATION,
+)
+PREVIEW_UNSUPPORTED_WORKFLOW_KINDS = (
+    WorkflowKind.EXPORT,
+    WorkflowKind.ACCOUNT_DELETION,
+)
 _CALLBACK_ARGUMENTS = {
     "engine": object(),
     "job": object(),
@@ -65,11 +74,17 @@ def handler_environment_name(kind: WorkflowKind) -> str:
 
 
 def required_handler_environment_names() -> tuple[str, ...]:
-    return tuple(handler_environment_name(kind) for kind in WorkflowKind)
+    return tuple(
+        handler_environment_name(kind) for kind in PREVIEW_SUPPORTED_WORKFLOW_KINDS
+    )
 
 
 def supported_workflow_kinds() -> tuple[WorkflowKind, ...]:
-    return tuple(WorkflowKind)
+    return PREVIEW_SUPPORTED_WORKFLOW_KINDS
+
+
+def unsupported_workflow_kinds() -> tuple[WorkflowKind, ...]:
+    return PREVIEW_UNSUPPORTED_WORKFLOW_KINDS
 
 
 def _required(source: Mapping[str, str], name: str) -> str:
@@ -170,6 +185,33 @@ class ProductionWorkflowHandler:
                 "Workflow handler returned an invalid result",
             ) from exc
         return normalized
+
+
+@dataclass(frozen=True, slots=True)
+class UnsupportedWorkflowHandler:
+    """Terminal Preview policy for a product workflow that does not exist yet."""
+
+    workflow_kind: WorkflowKind
+
+    def execute(
+        self,
+        *,
+        job: JobRecord,
+        checkpoint: Callable[[str, dict[str, Any]], None],
+        ensure_not_cancelled: Callable[[], None],
+    ) -> dict[str, Any]:
+        del checkpoint, ensure_not_cancelled
+        if job.workflow_kind is not self.workflow_kind:
+            raise WorkflowFailure(
+                FailureClass.NON_RETRYABLE,
+                "WORKFLOW_KIND_MISMATCH",
+                "Workflow handler kind does not match the durable job",
+            )
+        raise WorkflowFailure(
+            FailureClass.NON_RETRYABLE,
+            "WORKFLOW_UNSUPPORTED_IN_ENGINEERING_PREVIEW",
+            "Workflow is not supported in Engineering Preview",
+        )
 
 
 class ProductionTenantContextRevalidator:
@@ -337,8 +379,10 @@ def build(
             "production worker factory received an unknown workflow kind"
         )
 
-    handlers: dict[WorkflowKind, ProductionWorkflowHandler] = {}
-    for kind in WorkflowKind:
+    handlers: dict[
+        WorkflowKind, ProductionWorkflowHandler | UnsupportedWorkflowHandler
+    ] = {}
+    for kind in PREVIEW_SUPPORTED_WORKFLOW_KINDS:
         field = handler_environment_name(kind)
         dotted_path = _required(env, field)
         handlers[kind] = ProductionWorkflowHandler(
@@ -347,6 +391,12 @@ def build(
             callback=_load_callback(dotted_path, field=field),
             engine=engine,
         )
+    handlers.update(
+        {
+            kind: UnsupportedWorkflowHandler(workflow_kind=kind)
+            for kind in PREVIEW_UNSUPPORTED_WORKFLOW_KINDS
+        }
+    )
 
     issuer = _required(env, "MENTORFLOW_KEYCLOAK_ISSUER")
     service_grants = service_identity_grants_from_env(env)
@@ -368,11 +418,15 @@ def build(
 
 __all__ = [
     "HANDLER_ENV_PREFIX",
+    "PREVIEW_SUPPORTED_WORKFLOW_KINDS",
+    "PREVIEW_UNSUPPORTED_WORKFLOW_KINDS",
     "PRODUCTION_FACTORY_DOTTED_PATH",
     "ProductionTenantContextRevalidator",
     "ProductionWorkflowHandler",
+    "UnsupportedWorkflowHandler",
     "build",
     "handler_environment_name",
     "required_handler_environment_names",
     "supported_workflow_kinds",
+    "unsupported_workflow_kinds",
 ]

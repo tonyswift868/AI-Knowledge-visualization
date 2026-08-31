@@ -30,7 +30,22 @@ PUBLIC_KEYS = {
     "MENTORFLOW_PUBLIC_ORIGIN",
     "MENTORFLOW_PUBLIC_HOSTNAME",
     "MENTORFLOW_WORKER_RUNTIME_FACTORY",
+    "MENTORFLOW_WORKER_HANDLER_DOCUMENT_INGESTION",
+    "MENTORFLOW_WORKER_HANDLER_KNOWLEDGE_PIPELINE",
+    "MENTORFLOW_WORKER_HANDLER_PLAN_CREATION",
     "MENTORFLOW_WORKER_CONCURRENCY",
+}
+PRODUCTION_FACTORY = "app.enterprise.jobs_v1.production:build"
+PRODUCTION_HANDLERS = {
+    "MENTORFLOW_WORKER_HANDLER_DOCUMENT_INGESTION": (
+        "app.enterprise.jobs_v1.product_handlers:document_ingestion"
+    ),
+    "MENTORFLOW_WORKER_HANDLER_KNOWLEDGE_PIPELINE": (
+        "app.enterprise.jobs_v1.product_handlers:knowledge_pipeline"
+    ),
+    "MENTORFLOW_WORKER_HANDLER_PLAN_CREATION": (
+        "app.enterprise.jobs_v1.product_handlers:plan_creation"
+    ),
 }
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9._/:@-]*@sha256:[0-9a-f]{64}$")
 PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]{2,62}$")
@@ -84,6 +99,11 @@ def _env(path: Path) -> dict[str, str]:
         raise ValueError("public hostname must match public origin")
     if not FACTORY.fullmatch(values["MENTORFLOW_WORKER_RUNTIME_FACTORY"]):
         raise ValueError("worker runtime factory must be module:callable")
+    if values["MENTORFLOW_WORKER_RUNTIME_FACTORY"] != PRODUCTION_FACTORY:
+        raise ValueError("worker runtime factory must use the production factory")
+    for key, expected in PRODUCTION_HANDLERS.items():
+        if values[key] != expected:
+            raise ValueError(f"{key} must use the production product adapter")
     concurrency = int(values["MENTORFLOW_WORKER_CONCURRENCY"])
     if not 1 <= concurrency <= 64:
         raise ValueError("worker concurrency must be between 1 and 64")

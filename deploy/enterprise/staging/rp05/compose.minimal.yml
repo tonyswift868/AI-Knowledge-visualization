@@ -17,6 +17,7 @@ x-backend-environment: &backend-environment
   MENTORFLOW_KEYCLOAK_CLIENT_ID: mentorflow-web
   MENTORFLOW_KEYCLOAK_AUDIENCE: mentorflow-api
   MENTORFLOW_IDENTITY_ALLOWED_ORIGINS: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+  MENTORFLOW_DOCUMENT_IMPORT_ROOT: /var/lib/mentorflow/document-import
   MENTORFLOW_OTEL_ENABLED: "true"
   MENTORFLOW_OTEL_ENDPOINT: http://otel-collector:4318
   MENTORFLOW_OTEL_HEALTH_ENDPOINT: http://otel-collector:13133/health
@@ -193,6 +194,7 @@ services:
     secrets: [postgres_app_password]
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - "${MENTORFLOW_DATA_DIR:?MENTORFLOW_DATA_DIR is required}/document-import:/var/lib/mentorflow/document-import"
     depends_on:
       migration-ready: {condition: service_completed_successfully}
       keycloak-ready: {condition: service_completed_successfully}
@@ -214,6 +216,9 @@ services:
     environment:
       <<: *backend-environment
       MENTORFLOW_WORKER_RUNTIME_FACTORY: "${MENTORFLOW_WORKER_RUNTIME_FACTORY:?MENTORFLOW_WORKER_RUNTIME_FACTORY is required}"
+      MENTORFLOW_WORKER_HANDLER_DOCUMENT_INGESTION: "${MENTORFLOW_WORKER_HANDLER_DOCUMENT_INGESTION:?MENTORFLOW_WORKER_HANDLER_DOCUMENT_INGESTION is required}"
+      MENTORFLOW_WORKER_HANDLER_KNOWLEDGE_PIPELINE: "${MENTORFLOW_WORKER_HANDLER_KNOWLEDGE_PIPELINE:?MENTORFLOW_WORKER_HANDLER_KNOWLEDGE_PIPELINE is required}"
+      MENTORFLOW_WORKER_HANDLER_PLAN_CREATION: "${MENTORFLOW_WORKER_HANDLER_PLAN_CREATION:?MENTORFLOW_WORKER_HANDLER_PLAN_CREATION is required}"
       MENTORFLOW_WORKER_CONCURRENCY: "${MENTORFLOW_WORKER_CONCURRENCY:-4}"
       MENTORFLOW_WORKER_QUEUES: mentorflow.enterprise
       MENTORFLOW_WORKER_NAME: mentorflow-rp05-worker
@@ -221,6 +226,7 @@ services:
     secrets: [postgres_app_password]
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - "${MENTORFLOW_DATA_DIR:?MENTORFLOW_DATA_DIR is required}/document-import:/var/lib/mentorflow/document-import:ro"
     depends_on:
       migration-ready: {condition: service_completed_successfully}
       keycloak-ready: {condition: service_completed_successfully}
