@@ -159,10 +159,27 @@ def _grant_runtime_objects(connection: sa.Connection) -> tuple[str, ...]:
             DECLARE object_name text;
             BEGIN
               FOR object_name IN
-                SELECT quote_ident(sequence_schema) || '.' || quote_ident(sequence_name)
-                FROM information_schema.sequences
-                WHERE sequence_schema = 'public'
-                  AND sequence_name LIKE 'procrastinate_%'
+                SELECT DISTINCT format(
+                  '%I.%I', sequence_namespace.nspname, sequence_class.relname
+                )
+                FROM pg_catalog.pg_class AS sequence_class
+                JOIN pg_catalog.pg_namespace AS sequence_namespace
+                  ON sequence_namespace.oid = sequence_class.relnamespace
+                JOIN pg_catalog.pg_depend AS dependency
+                  ON dependency.classid = 'pg_catalog.pg_class'::regclass
+                 AND dependency.objid = sequence_class.oid
+                 AND dependency.objsubid = 0
+                 AND dependency.refclassid = 'pg_catalog.pg_class'::regclass
+                 AND dependency.deptype IN ('a', 'i')
+                JOIN pg_catalog.pg_class AS owning_table
+                  ON owning_table.oid = dependency.refobjid
+                JOIN pg_catalog.pg_namespace AS table_namespace
+                  ON table_namespace.oid = owning_table.relnamespace
+                WHERE sequence_class.relkind = 'S'
+                  AND sequence_namespace.nspname = 'public'
+                  AND table_namespace.nspname = 'public'
+                  AND owning_table.relname LIKE 'procrastinate!_%' ESCAPE '!'
+                ORDER BY 1
               LOOP
                 EXECUTE 'GRANT USAGE, SELECT ON SEQUENCE ' || object_name ||
                         ' TO {APPLICATION_DATABASE_ROLE}';

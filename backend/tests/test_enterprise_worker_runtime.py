@@ -540,10 +540,15 @@ def test_worker_schema_grants_exact_current_procrastinate_objects_without_versio
         "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.procrastinate_events"
         in granted_sql
     )
-    assert "sequence_name LIKE 'procrastinate_%'" in granted_sql
+    assert "sequence_class.relkind = 'S'" in granted_sql
+    assert "JOIN pg_catalog.pg_depend AS dependency" in granted_sql
+    assert "dependency.deptype IN ('a', 'i')" in granted_sql
+    assert "owning_table.relname LIKE 'procrastinate!_%' ESCAPE '!'" in granted_sql
+    assert "information_schema.sequences" not in granted_sql
     assert "function.proname LIKE 'procrastinate_%'" in granted_sql
     assert "public.procrastinate_version" not in granted_sql
     assert "ON ALL TABLES IN SCHEMA" not in granted_sql
+    assert "ON ALL SEQUENCES IN SCHEMA" not in granted_sql
     assert "SUPERUSER" not in granted_sql
     assert "BYPASSRLS" not in granted_sql
     looked_up = {object_name for _, object_name in connection.lookups}
@@ -553,6 +558,24 @@ def test_worker_schema_grants_exact_current_procrastinate_objects_without_versio
         "public.procrastinate_job_to_defer_v1[])"
     ) in looked_up
     assert "public.procrastinate_version" not in looked_up
+
+
+def test_worker_schema_requires_all_current_serial_and_identity_sequences() -> None:
+    connection = _GrantConnection()
+
+    postgres_schema._grant_runtime_objects(connection)
+
+    assert postgres_schema.PROCRASTINATE_REQUIRED_SEQUENCES == (
+        "procrastinate_events_id_seq",
+        "procrastinate_jobs_id_seq",
+        "procrastinate_periodic_defers_id_seq",
+        "procrastinate_workers_id_seq",
+    )
+    looked_up = {object_name for _, object_name in connection.lookups}
+    assert {
+        f"public.{sequence_name}"
+        for sequence_name in postgres_schema.PROCRASTINATE_REQUIRED_SEQUENCES
+    } <= looked_up
 
 
 def test_worker_schema_never_grants_retired_procrastinate_version() -> None:

@@ -347,6 +347,9 @@ def test_real_postgres17_worker_process_consumes_durable_job(
             assert postgres_version.split()[0] == expected_version
             seed = seed_synthetic_tenants(connection)
             assert seed.organization_count == 3
+            connection.execute(
+                sa.text("CREATE SEQUENCE public.mentorflow_unrelated_sequence")
+            )
 
         apply_worker_schema(
             migration_url,
@@ -396,6 +399,15 @@ def test_real_postgres17_worker_process_consumes_durable_job(
                                 "privilege": privilege,
                             },
                         ) is True
+                for privilege in ("USAGE", "SELECT"):
+                    assert connection.scalar(
+                        sa.text(
+                            "SELECT has_sequence_privilege("
+                            "current_user, 'public.mentorflow_unrelated_sequence', "
+                            ":privilege)"
+                        ),
+                        {"privilege": privilege},
+                    ) is False
                 for type_name in PROCRASTINATE_REQUIRED_TYPES:
                     assert connection.scalar(
                         sa.text(
