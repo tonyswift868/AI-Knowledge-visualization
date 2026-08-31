@@ -233,7 +233,7 @@ def _run(source: Mapping[str, str]) -> int:
         supervisor = WorkerSupervisor(config, engine, task)
         supervisor.start()
         app.run_worker(
-            queues=config.policy.queues,
+            queues=list(config.policy.queues),
             name=config.worker_name,
             concurrency=config.policy.concurrency,
             wait=True,

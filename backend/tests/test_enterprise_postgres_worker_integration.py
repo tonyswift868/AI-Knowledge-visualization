@@ -202,6 +202,7 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
         "backend/app/enterprise/jobs_v1/postgres_schema.py",
         "backend/tests/test_enterprise_worker_runtime.py",
         "backend/app/enterprise/jobs_v1/repository.py",
+        "backend/app/enterprise/worker_entry.py",
     ]
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job

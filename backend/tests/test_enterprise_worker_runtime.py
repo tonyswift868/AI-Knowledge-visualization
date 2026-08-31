@@ -708,6 +708,8 @@ def test_production_entrypoint_owns_worker_otel_lifecycle(
     class _App:
         def run_worker(self, **kwargs):
             events.append("run")
+            assert kwargs["queues"] == ["mentorflow.enterprise"]
+            assert type(kwargs["queues"]) is list
             assert kwargs["wait"] is True
             if run_error is not None:
                 raise run_error
