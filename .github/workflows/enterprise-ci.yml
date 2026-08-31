@@ -98,14 +98,16 @@ jobs:
           test "$RUNNER_ARCH" = "X64"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse "$EXPECTED_SOURCE_HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
-          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "3"
+          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "4"
           git diff --name-only "$EXPECTED_SOURCE_HEAD..HEAD" | sort > /tmp/e102-changed.txt
           printf '%s\n' \
             .github/workflows/enterprise-ci.yml \
-            backend/tests/test_enterprise_postgres_worker_integration.py \
             backend/tests/test_enterprise_tenant_persistence.py \
+            backend/tests/test_enterprise_postgres_worker_integration.py \
             enterprise_e1/staging/e1_02/compose.yaml \
             enterprise_e1/staging/e1_02/run.sh \
+            backend/app/enterprise/jobs_v1/postgres_schema.py \
+            backend/tests/test_enterprise_worker_runtime.py \
             | sort > /tmp/e102-allowed.txt
           diff -u /tmp/e102-allowed.txt /tmp/e102-changed.txt
           docker compose version
