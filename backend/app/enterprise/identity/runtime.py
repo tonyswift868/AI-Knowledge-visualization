@@ -374,6 +374,61 @@ class EnterpriseIdentityRuntime:
             session=session,
         )
 
+    async def revalidate_product_identity(self, request: Request) -> IdentityBinding:
+        """Re-resolve the signed subject and active membership for product work.
+
+        The outer middleware authenticates every Enterprise API request.  Product
+        routes deliberately perform a second directory-backed resolution at the
+        last authorization boundary so a membership revoked while the request was
+        entering the application cannot reach a product handler.
+        """
+
+        current = _binding(request)
+        refreshed = await self.authenticate_request(request)
+
+        def membership_identity(binding: IdentityBinding) -> tuple[str, str, str, str]:
+            context = binding.context
+            actor = context.actor if context is not None else None
+            tenant = context.tenant if context is not None else None
+            if (
+                actor is None
+                or tenant is None
+                or not actor.subject_id
+                or not actor.membership_id
+                or not tenant.organization_id
+                or not tenant.workspace_id
+                or actor.organization_id != tenant.organization_id
+                or actor.workspace_id != tenant.workspace_id
+            ):
+                raise IdentityError(
+                    "ENTERPRISE_MEMBERSHIP_REQUIRED",
+                    "An active workspace membership is required for Enterprise product routes",
+                    status=403,
+                )
+            return (
+                actor.subject_id,
+                actor.membership_id,
+                tenant.organization_id,
+                tenant.workspace_id,
+            )
+
+        if (
+            current.authentication_mode != refreshed.authentication_mode
+            or membership_identity(current) != membership_identity(refreshed)
+        ):
+            raise IdentityError(
+                "ENTERPRISE_IDENTITY_CONTEXT_CHANGED",
+                "Enterprise identity context changed during authorization",
+                status=409,
+            )
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            if refreshed.authentication_mode == "COOKIE":
+                self.require_csrf_origin(request)
+        request.state.enterprise_identity = refreshed
+        request.state.actor_context = refreshed.context.actor
+        request.state.tenant_context = refreshed.context.tenant
+        return refreshed
+
     def response_payload(
         self,
         binding: IdentityBinding,
@@ -687,6 +742,11 @@ async def backchannel_logout(request: Request) -> Response:
 
 def install_enterprise_identity(app: FastAPI) -> None:
     app.include_router(router)
+    # Imported lazily to keep the identity runtime independent from product
+    # modules while installing the exact tenant-safe facade alongside it.
+    from app.enterprise.product_bridge import install_enterprise_product_bridge
+
+    install_enterprise_product_bridge(app)
 
     async def _identity_error_handler(
         request: Request,
