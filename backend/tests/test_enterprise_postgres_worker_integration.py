@@ -168,7 +168,7 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     assert EXPECTED_RUNNER in job
     assert EXPECTED_SOURCE_HEAD in job
     assert EXPECTED_SOURCE_TREE in job
-    assert 'git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "2"' in job
+    assert 'git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "3"' in job
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job
     assert "windows-latest" not in job

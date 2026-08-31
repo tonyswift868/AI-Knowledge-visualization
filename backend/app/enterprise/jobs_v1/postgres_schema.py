@@ -137,7 +137,9 @@ def apply_worker_schema(
         connector = procrastinate.PsycopgConnector(
             conninfo=_conninfo(migration_database_url), min_size=1, max_size=1
         )
-        procrastinate.App(connector=connector).schema_manager.apply_schema()
+        app = procrastinate.App(connector=connector)
+        with app.open():
+            app.schema_manager.apply_schema()
 
         with engine.begin() as connection:
             revision = connection.scalar(sa.text("SELECT version_num FROM alembic_version"))

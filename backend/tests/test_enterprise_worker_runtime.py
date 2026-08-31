@@ -23,6 +23,7 @@ from app.enterprise.contracts_v1 import (
     TenantContext,
     TenantMode,
 )
+from app.enterprise.jobs_v1 import postgres_schema
 from app.enterprise.jobs_v1.models import (
     JobRequest,
     JobStatus,
@@ -371,11 +372,143 @@ def test_worker_schema_bootstrap_preserves_canonical_alembic_head_contract() -> 
         / "postgres_schema.py"
     ).read_text(encoding="utf-8")
     assert "ENTERPRISE_MIGRATION_REVISION" in source
+    assert "with app.open():" in source
     assert "schema_manager.apply_schema()" in source
     assert source.index("SELECT version_num FROM alembic_version") < source.index(
+        "with app.open():"
+    ) < source.index(
         "schema_manager.apply_schema()"
     )
     assert "mentorflow_app" not in source
+
+
+@pytest.mark.parametrize("schema_fails", [False, True])
+def test_worker_schema_bootstrap_owns_procrastinate_app_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+    schema_fails: bool,
+) -> None:
+    events: list[str] = []
+
+    class _Connection:
+        def __init__(self, phase: str) -> None:
+            self.phase = phase
+
+        def scalar(self, statement) -> str:
+            assert "alembic_version" in str(statement)
+            events.append(f"revision.{self.phase}")
+            return postgres_schema.ENTERPRISE_MIGRATION_REVISION
+
+    class _ConnectionContext:
+        def __init__(self, phase: str) -> None:
+            self.connection = _Connection(phase)
+
+        def __enter__(self) -> _Connection:
+            return self.connection
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            return None
+
+    class _Engine:
+        def connect(self) -> _ConnectionContext:
+            return _ConnectionContext("before")
+
+        def begin(self) -> _ConnectionContext:
+            return _ConnectionContext("after")
+
+        def dispose(self) -> None:
+            events.append("engine.dispose")
+
+    class _SchemaManager:
+        def apply_schema(self) -> None:
+            events.append("schema.apply")
+            if schema_fails:
+                raise RuntimeError("schema-apply-failed")
+
+    schema_manager = _SchemaManager()
+
+    class _App:
+        def __init__(self, *, connector) -> None:
+            assert connector == "connector"
+            self.opened = False
+            events.append("app.create")
+
+        def open(self) -> "_App":
+            assert self.opened is False
+            self.opened = True
+            events.append("app.open")
+            return self
+
+        def __enter__(self) -> "_App":
+            assert self.opened is True
+            events.append("app.enter")
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            events.append("app.exit")
+            self.close()
+
+        def close(self) -> None:
+            assert self.opened is True
+            self.opened = False
+            events.append("app.close")
+
+        @property
+        def schema_manager(self) -> _SchemaManager:
+            assert self.opened is True
+            return schema_manager
+
+    connector_options: dict[str, object] = {}
+
+    def _connector(**options):
+        connector_options.update(options)
+        events.append("connector.create")
+        return "connector"
+
+    engine = _Engine()
+    monkeypatch.setattr(
+        postgres_schema.sa,
+        "create_engine",
+        lambda *args, **kwargs: engine,
+    )
+    monkeypatch.setattr(postgres_schema.procrastinate, "PsycopgConnector", _connector)
+    monkeypatch.setattr(postgres_schema.procrastinate, "App", _App)
+    monkeypatch.setattr(
+        postgres_schema,
+        "_grant_runtime_objects",
+        lambda connection: events.append("grants.apply"),
+    )
+    database_url = sa.make_url(
+        "postgresql+psycopg://migration_owner:test-password@database/mentorflow"
+    )
+
+    if schema_fails:
+        with pytest.raises(RuntimeError, match="schema-apply-failed"):
+            postgres_schema.apply_worker_schema(database_url)
+    else:
+        postgres_schema.apply_worker_schema(database_url)
+
+    expected = [
+        "revision.before",
+        "connector.create",
+        "app.create",
+        "app.open",
+        "app.enter",
+        "schema.apply",
+        "app.exit",
+        "app.close",
+    ]
+    if schema_fails:
+        expected.append("engine.dispose")
+    else:
+        expected.extend(["revision.after", "grants.apply", "engine.dispose"])
+    assert events == expected
+    assert connector_options == {
+        "conninfo": (
+            "postgresql://migration_owner:test-password@database/mentorflow"
+        ),
+        "min_size": 1,
+        "max_size": 1,
+    }
 
 
 @pytest.mark.parametrize(

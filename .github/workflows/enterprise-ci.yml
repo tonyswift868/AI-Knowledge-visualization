@@ -98,7 +98,7 @@ jobs:
           test "$RUNNER_ARCH" = "X64"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse "$EXPECTED_SOURCE_HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
-          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "2"
+          test "$(git rev-list --count "$EXPECTED_SOURCE_HEAD..HEAD")" = "3"
           git diff --name-only "$EXPECTED_SOURCE_HEAD..HEAD" | sort > /tmp/e102-changed.txt
           printf '%s\n' \
             .github/workflows/enterprise-ci.yml \
