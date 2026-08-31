@@ -279,6 +279,32 @@ class WorkflowRepository:
         ).mappings().one_or_none()
         return _job_record(row) if row else None
 
+    def list_learning_run_jobs(
+        self,
+        connection: Connection,
+        *,
+        tenant_partition: str,
+        trace_id: str,
+        subject_id: str,
+    ) -> list[JobRecord]:
+        """Reconstruct one owner-bound run solely from canonical ledger rows."""
+
+        rows = connection.execute(
+            sa.select(jobs)
+            .where(
+                jobs.c.tenant_partition == tenant_partition,
+                jobs.c.trace_id == trace_id,
+            )
+            .order_by(jobs.c.created_at.asc(), jobs.c.job_id.asc())
+        ).mappings()
+        records = [_job_record(row) for row in rows]
+        return [
+            record
+            for record in records
+            if record.actor_context.subject_id == subject_id
+            and isinstance(record.payload.get("learning_run"), Mapping)
+        ]
+
     def claim_job(
         self,
         connection: Connection,
@@ -473,6 +499,51 @@ class WorkflowRepository:
         if updated.rowcount != 1:
             raise RuntimeError("job success transition lost optimistic lock")
         return self.get(connection, job_id)  # type: ignore[return-value]
+
+    def mark_succeeded_and_submit_next(
+        self,
+        connection: Connection,
+        job_id: str,
+        claim_token: str,
+        *,
+        result: dict[str, Any],
+        next_request: JobRequest,
+        now: datetime,
+    ) -> tuple[JobRecord, JobReceipt]:
+        """Atomically finish a stage and create its one idempotent successor."""
+
+        current = self._locked_running(connection, job_id, claim_token)
+        if (
+            current["trace_id"] != next_request.trace_id
+            or current["tenant_partition"] != next_request.tenant_partition
+            or current["request_id"] != next_request.request_id
+        ):
+            raise RuntimeError("next stage is not bound to the current job lineage")
+        current_actor = ActorContext.model_validate(current["actor_context_json"])
+        if current_actor != next_request.actor_context:
+            raise RuntimeError("next stage does not preserve the current job actor")
+        receipt = self.submit(connection, next_request)
+        successor = self.get(connection, receipt.job_id)
+        if (
+            successor is None
+            or successor.trace_id != next_request.trace_id
+            or successor.tenant_partition != next_request.tenant_partition
+            or successor.actor_context != next_request.actor_context
+            or successor.workflow_kind is not next_request.workflow_kind
+        ):
+            raise RuntimeError("idempotent successor conflicts with learning-run lineage")
+        completed = self.mark_succeeded(
+            connection,
+            job_id,
+            claim_token,
+            result={
+                **result,
+                "next_stage": next_request.workflow_kind.value,
+                "next_stage_job_id": receipt.job_id,
+            },
+            now=now,
+        )
+        return completed, receipt
 
     def mark_failed(
         self,

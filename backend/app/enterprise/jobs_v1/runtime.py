@@ -23,6 +23,7 @@ from app.observability.runtime import business_span
 from app.enterprise_tenancy.context import require_safe_application_role
 from app.enterprise_tenancy.schema import ENTERPRISE_MIGRATION_REVISION
 
+from .learning_runs import LearningRunOrchestrator
 from .models import FailureClass, JobRecord, JobStatus, WorkflowKind
 from .ports import TenantContextRevalidatorPort, WorkflowHandlerPort
 from .procrastinate_adapter import (
@@ -266,6 +267,7 @@ class DurableJobExecutor:
         *,
         repository: WorkflowRepository | None = None,
         service: WorkflowService | None = None,
+        learning_run_orchestrator: LearningRunOrchestrator | None = None,
         job_lease_seconds: int = 60,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -273,6 +275,10 @@ class DurableJobExecutor:
         self.dependencies = dependencies
         self.repository = repository or WorkflowRepository()
         self.service = service or WorkflowService(repository=self.repository)
+        self.learning_run_orchestrator = (
+            learning_run_orchestrator
+            or LearningRunOrchestrator(repository=self.repository)
+        )
         self.job_lease_seconds = job_lease_seconds
         self.clock = clock
 
@@ -362,6 +368,13 @@ class DurableJobExecutor:
             )
             ensure_not_cancelled()
             with self.engine.begin() as connection:
+                if self.learning_run_orchestrator.manages(job):
+                    return self.learning_run_orchestrator.complete_stage(
+                        connection,
+                        job,
+                        result=result,
+                        now=self.clock(),
+                    )
                 return self.repository.mark_succeeded(
                     connection,
                     job.job_id,

@@ -104,6 +104,9 @@ from .enterprise.identity.runtime import (
     identity_error_response,
     install_enterprise_identity,
 )
+from .enterprise.jobs_v1.learning_runs_api import (
+    router as enterprise_learning_runs_router,
+)
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -319,6 +322,7 @@ install_review_product(app)
 install_plan_product(app)
 install_document_import(app)
 install_enterprise_identity(app)
+app.include_router(enterprise_learning_runs_router)
 app.include_router(active_teaching_router)
 app.include_router(focus_monitoring_router)
 app.include_router(generic_knowledge_router)

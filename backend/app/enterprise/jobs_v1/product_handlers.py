@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,8 @@ from sqlalchemy.engine import Engine
 from app.document_import_integration import DOCUMENT_IMPORT_MAX_FILES
 from app.enterprise.contracts_v1 import ActorKind, TenantMode
 from app.knowledge.inventory.models import SourceMetadata
+from app.knowledge.map_v2.compiler import KnowledgeMapCompiler
+from app.knowledge.map_v2.models import KnowledgeMapStatus
 from app.knowledge.pipeline_v2.models import KnowledgePipelineResult
 from app.knowledge.pipeline_v2.pipeline import KnowledgePipelineV2
 from app.knowledge.pipeline_v2.progress import PipelineStatus
@@ -26,6 +31,7 @@ from app.sources.document.ingestion.contracts import (
     DocumentBatchStatus,
 )
 from app.sources.video.transcript_evidence import (
+    TRANSCRIPT_EVIDENCE_SCHEMA,
     SelectedTrackEvidence,
     TranscriptEvidenceBundle,
     TranscriptPartEvidence,
@@ -253,6 +259,247 @@ def _transcript_bundle(value: object) -> TranscriptEvidenceBundle:
     return TranscriptEvidenceBundle(**payload)
 
 
+def _sha256_json(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _document_handoffs_bundle(
+    job: JobRecord,
+    payload: Mapping[str, Any],
+) -> tuple[TranscriptEvidenceBundle, SourceMetadata, dict[str, Any]]:
+    """Project real document evidence into the existing pipeline's legacy range shape."""
+
+    handoffs = tuple(
+        _mapping(item, "payload.document_handoffs")
+        for item in _items(
+            payload.get("document_handoffs"), "payload.document_handoffs"
+        )
+    )
+    if not handoffs:
+        raise _invalid(
+            "DOCUMENT_KNOWLEDGE_HANDOFF_REQUIRED",
+            "Knowledge pipeline requires at least one document handoff",
+        )
+    metadata = _mapping(payload.get("learning_run"), "payload.learning_run")
+    if metadata.get("schema") != "mentorflow.enterprise-learning-run.v1":
+        raise _invalid(
+            "DOCUMENT_KNOWLEDGE_LINEAGE_INVALID",
+            "Document handoff is not bound to a learning run",
+        )
+    expected_handoff_ids = tuple(
+        str(item)
+        for item in _items(
+            metadata.get("expected_handoff_ids"),
+            "payload.learning_run.expected_handoff_ids",
+        )
+    )
+    observed_handoff_ids = tuple(str(item.get("handoff_id") or "") for item in handoffs)
+    if (
+        not expected_handoff_ids
+        or observed_handoff_ids != expected_handoff_ids
+        or any(not value for value in observed_handoff_ids)
+    ):
+        raise _invalid(
+            "DOCUMENT_KNOWLEDGE_LINEAGE_INVALID",
+            "Document handoff identities do not match the learning run",
+        )
+
+    source_identity = "document-batch-" + _sha256_json(
+        {
+            "handoff_ids": observed_handoff_ids,
+            "tenant_partition": job.tenant_partition,
+            "trace_id": job.trace_id,
+        }
+    )[:40]
+    source_revision = _sha256_json(
+        [
+            {
+                "bundle_hash": _mapping(
+                    item.get("evidence_bundle"), "handoff.evidence_bundle"
+                ).get("bundle_hash"),
+                "handoff_id": item.get("handoff_id"),
+                "source_revision": item.get("source_revision"),
+            }
+            for item in handoffs
+        ]
+    )
+    source_reference = "document-selection:" + str(metadata.get("selection_id") or "")
+    language = str(metadata.get("source_language") or "und").strip() or "und"
+    title = str(metadata.get("source_title") or metadata.get("selection_id") or "").strip()
+    if not title:
+        raise _invalid(
+            "DOCUMENT_KNOWLEDGE_METADATA_INVALID",
+            "Document source title is required",
+        )
+
+    parts: list[TranscriptPartEvidence] = []
+    segments: list[TranscriptSegment] = []
+    warnings: list[str] = ["document_offsets_projected_to_legacy_pipeline_range"]
+    seen_segment_ids: set[str] = set()
+    for part_index, handoff in enumerate(handoffs, start=1):
+        if handoff.get("schema") != "mentorflow.document-pipeline-handoff.v1":
+            raise _invalid(
+                "DOCUMENT_KNOWLEDGE_HANDOFF_INVALID",
+                "Document handoff schema is invalid",
+            )
+        source_id = str(handoff.get("source_id") or "").strip()
+        revision = str(handoff.get("source_revision") or "").strip()
+        bundle = _mapping(handoff.get("evidence_bundle"), "handoff.evidence_bundle")
+        if (
+            not source_id
+            or not re.fullmatch(r"[0-9a-f]{64}", revision)
+            or bundle.get("source_id") != source_id
+            or bundle.get("source_sha256") != revision
+        ):
+            raise _invalid(
+                "DOCUMENT_KNOWLEDGE_EVIDENCE_INVALID",
+                "Document evidence does not match its handoff lineage",
+            )
+        generic = tuple(
+            _mapping(item, "handoff.generic_evidence")
+            for item in _items(handoff.get("generic_evidence"), "handoff.generic_evidence")
+        )
+        if not generic:
+            raise _invalid(
+                "DOCUMENT_KNOWLEDGE_EVIDENCE_EMPTY",
+                "Document handoff contains no evidence",
+            )
+        part_segment_ids: list[str] = []
+        maximum_end = 0
+        for ordinal, evidence in enumerate(generic):
+            segment_id = str(evidence.get("chunk_id") or "").strip()
+            text = str(evidence.get("quote") or "").strip()
+            if not segment_id or segment_id in seen_segment_ids or not text:
+                raise _invalid(
+                    "DOCUMENT_KNOWLEDGE_EVIDENCE_INVALID",
+                    "Document evidence identity or content is invalid",
+                )
+            if (
+                str(evidence.get("source_id") or "") != source_id
+                or str(evidence.get("source_revision_id") or "") != revision
+            ):
+                raise _invalid(
+                    "DOCUMENT_KNOWLEDGE_EVIDENCE_STALE",
+                    "Document evidence source lineage is stale",
+                )
+            start = max(0, int(evidence.get("char_start") or 0))
+            end = max(start + 1, int(evidence.get("char_end") or start + len(text)))
+            content_hash = str(evidence.get("content_hash") or "").strip()
+            if not re.fullmatch(r"[0-9a-f]{64}", content_hash):
+                content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            segments.append(
+                TranscriptSegment(
+                    stable_segment_id=segment_id,
+                    ordinal=ordinal,
+                    part_index=part_index,
+                    part_cid=source_id,
+                    start_ms=start,
+                    end_ms=end,
+                    original_text=text,
+                    language=language,
+                    subtitle_kind="document-evidence",
+                    source_reference=source_reference,
+                    segment_hash=content_hash,
+                )
+            )
+            maximum_end = max(maximum_end, end)
+            seen_segment_ids.add(segment_id)
+            part_segment_ids.append(segment_id)
+        bundle_hash = str(bundle.get("bundle_hash") or "").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", bundle_hash):
+            raise _invalid(
+                "DOCUMENT_KNOWLEDGE_EVIDENCE_INVALID",
+                "Document evidence bundle identity is invalid",
+            )
+        document_name = str(bundle.get("document_name") or source_id).strip()
+        track = SelectedTrackEvidence(
+            track_identity=str(handoff.get("handoff_id")),
+            payload_source_identity=bundle_hash,
+            language=language,
+            kind="document-evidence",
+            extension=Path(document_name).suffix.lstrip(".") or "document",
+            source="document-ingestion",
+            name=document_name,
+        )
+        part_warnings = tuple(
+            str(value)
+            for value in _items(
+                handoff.get("limitations") or (), "handoff.limitations"
+            )
+        )
+        warnings.extend(part_warnings)
+        parts.append(
+            TranscriptPartEvidence(
+                part_index=part_index,
+                cid=source_id,
+                title=document_name,
+                duration_seconds=maximum_end / 1000.0,
+                subtitle_identity=str(handoff.get("handoff_id")),
+                selected_track=track,
+                raw_payload_hash=bundle_hash,
+                segment_ids=tuple(part_segment_ids),
+                warnings=part_warnings,
+            )
+        )
+
+    identity = {
+        "handoff_ids": observed_handoff_ids,
+        "segment_ids": [item.segment_id for item in segments],
+        "source_identity": source_identity,
+        "source_revision": source_revision,
+    }
+    bundle_hash = _sha256_json(identity)
+    transcript = TranscriptEvidenceBundle(
+        schema=TRANSCRIPT_EVIDENCE_SCHEMA,
+        parser_version="mentorflow.document-evidence-adapter.v1",
+        bundle_id="document-evidence-" + bundle_hash[:40],
+        bundle_hash=bundle_hash,
+        source_reference=source_reference,
+        platform="document",
+        bvid=source_identity,
+        source_identity=source_identity,
+        source_revision=source_revision,
+        part_count=len(parts),
+        subtitle_language=language,
+        subtitle_kind="document-evidence",
+        fetched_at=job.created_at.isoformat(),
+        raw_payload_hash=_sha256_json(
+            [part.raw_payload_hash for part in parts]
+        ),
+        normalized_timeline_hash=_sha256_json(
+            [segment.segment_hash for segment in segments]
+        ),
+        parts=tuple(parts),
+        segments=tuple(segments),
+        warnings=tuple(dict.fromkeys(warnings)),
+    )
+    source_metadata = SourceMetadata(
+        source_identity=source_identity,
+        source_revision=source_revision,
+        source_reference=source_reference,
+        platform="document",
+        title=title,
+        language=language,
+    )
+    adapter = {
+        "schema": "mentorflow.document-evidence-adapter.v1",
+        "handoff_ids": list(observed_handoff_ids),
+        "bundle_id": transcript.bundle_id,
+        "bundle_hash": transcript.bundle_hash,
+        "source_identity": source_identity,
+        "source_revision": source_revision,
+        "segment_count": len(segments),
+    }
+    return transcript, source_metadata, adapter
+
+
 def _glossary(value: object) -> TerminologyGlossary:
     payload = _mapping(value, "payload.glossary")
     terms = tuple(
@@ -311,17 +558,23 @@ def knowledge_pipeline(
             "KNOWLEDGE_PROVIDER_SESSION_REQUIRED",
             "Knowledge pipeline requires a verified Provider session",
         )
+    document_adapter: dict[str, Any] | None = None
     try:
         session = require_provider_session(
             session_id,
             owner_user_id=job.actor_context.subject_id,
         )
         provider = provider_for_session(session)
-        bundle = _transcript_bundle(payload.get("bundle"))
+        if "document_handoffs" in payload:
+            bundle, source_metadata, document_adapter = _document_handoffs_bundle(
+                job, payload
+            )
+        else:
+            bundle = _transcript_bundle(payload.get("bundle"))
+            source_metadata = SourceMetadata(
+                **dict(_mapping(payload.get("source_metadata"), "payload.source_metadata"))
+            )
         glossary = _glossary(payload.get("glossary") or {})
-        source_metadata = SourceMetadata(
-            **dict(_mapping(payload.get("source_metadata"), "payload.source_metadata"))
-        )
         ensure_not_cancelled()
         result = _run_knowledge_pipeline(
             KnowledgePipelineV2(
@@ -355,7 +608,45 @@ def knowledge_pipeline(
             "KNOWLEDGE_PIPELINE_FAILED",
             "Knowledge pipeline did not produce a verified result",
         )
-    return result.to_dict()
+    payload_result = result.to_dict()
+    if document_adapter is None:
+        return payload_result
+
+    try:
+        ensure_not_cancelled()
+
+        def map_progress(value: Any) -> None:
+            ensure_not_cancelled()
+            checkpoint("knowledge_map", value.to_dict())
+
+        knowledge_map = KnowledgeMapCompiler().compile(
+            result.verified_bundle,
+            handoff=result.map_handoff,
+            progress_sink=map_progress,
+        )
+        ensure_not_cancelled()
+    except WorkflowFailure:
+        raise
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _invalid(
+            "KNOWLEDGE_MAP_INPUT_INVALID",
+            "Verified knowledge cannot form a Knowledge Map",
+        ) from exc
+    except Exception as exc:
+        raise WorkflowFailure(
+            FailureClass.RETRYABLE,
+            "KNOWLEDGE_MAP_COMPILATION_FAILED",
+            "Knowledge Map compilation did not complete",
+        ) from exc
+    if knowledge_map.status is KnowledgeMapStatus.FAILED:
+        raise WorkflowFailure(
+            FailureClass.NON_RETRYABLE,
+            "KNOWLEDGE_MAP_VERIFICATION_FAILED",
+            "Verified knowledge did not produce a usable Knowledge Map",
+        )
+    payload_result["document_adapter"] = document_adapter
+    payload_result["knowledge_map"] = knowledge_map.to_dict()
+    return payload_result
 
 
 def plan_creation(
