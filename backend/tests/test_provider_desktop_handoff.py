@@ -69,25 +69,76 @@ def test_provider_current_and_planning_handoff_are_key_safe(client, monkeypatch)
             return {
                 "reply": "我已把目标整理成可核对的资料搜索。",
                 "goal_summary": "掌握可验证的学习目标",
-                "search_queries": [{"query": "官方学习资料", "reason": "先找原始资料"}],
+                "known_facts": {
+                    "objective": "掌握可验证的学习目标",
+                    "purpose": "",
+                    "timeframe": "",
+                    "named_materials": [],
+                    "mastery_criteria": "",
+                    "practice_requirements": [],
+                },
+                "resource_search_authorized": True,
+                "search_queries": [
+                    {
+                        "query": "可验证学习目标完整课程讲义",
+                        "reason": "先找结构化的原始资料",
+                    }
+                ],
                 "next_step": "show_resources",
             }
 
+        async def compact_json(self, messages, *, max_tokens, temperature):
+            review_request = json.loads(messages[-1]["content"])
+            if "candidates" not in review_request:
+                return await self.json(messages)
+            assert max_tokens == 1600
+            assert temperature == 0.0
+            seen["review_messages"] = messages
+            return {
+                "reviews": [
+                    {
+                        "candidate_id": item["candidate_id"],
+                        "decision": "qualified",
+                        "relevance_score": 0.95,
+                        "completeness_score": 0.95,
+                        "companion": True,
+                        "reason": "候选是主题匹配且结构完整的课程讲义。",
+                        "rank": index,
+                    }
+                    for index, item in enumerate(
+                        review_request["candidates"], start=1
+                    )
+                ]
+            }
+
     async def search_web(_query, *, max_results):
-        assert max_results == 5
+        assert max_results == 9
         return {
             "results": [
                 {
-                    "url": "https://example.com/official",
-                    "title": "官方资料候选",
-                    "snippet": "仅用于验收的公开候选。",
+                    "url": f"https://example.com/official-{index}",
+                    "title": f"可验证学习目标完整课程讲义 {index}",
+                    "snippet": (
+                        "可验证学习目标：章节大纲、定义、推导、公式、"
+                        "例题、练习与复习清单。"
+                    ),
+                    "media_kind": "document",
+                    "comprehensive": True,
+                    "sections": ["基础", "应用", "练习"],
                 }
+                for index in range(1, 4)
             ]
         }
 
     monkeypatch.setattr(generic_api, "require_provider_session", require_session)
     monkeypatch.setattr(generic_api, "provider_for_session", lambda _session: PlanningProvider())
     monkeypatch.setattr(generic_api, "search_web", search_web)
+    monkeypatch.setattr(generic_api, "_planning_search_cache_read", lambda _query: None)
+    monkeypatch.setattr(
+        generic_api,
+        "_planning_search_cache_write",
+        lambda _query, _payload: None,
+    )
 
     response = client.post(
         "/api/active-teaching/workspaces/acceptance/planning-assistant",
@@ -95,6 +146,7 @@ def test_provider_current_and_planning_handoff_are_key_safe(client, monkeypatch)
             "provider_session_id": session.id,
             "goal": "把资料变成可执行计划",
             "message": "请帮我找权威资料并整理下一步",
+            "resource_search_authorized": True,
             "conversation": [{"role": "user", "content": "我想系统学习"}],
         },
     )
@@ -104,7 +156,13 @@ def test_provider_current_and_planning_handoff_are_key_safe(client, monkeypatch)
     assert payload["provider"]["provider_session_id"] == session.id
     assert payload["provider"]["mode"] == "real"
     assert payload["mutated"] is False
-    assert payload["resources"][0]["url"] == "https://example.com/official"
+    assert [item["url"] for item in payload["resources"]] == [
+        "https://example.com/official-1",
+        "https://example.com/official-2",
+        "https://example.com/official-3",
+    ]
+    assert payload["candidate_page"]["held_incomplete_count"] == 0
+    assert payload["resource_search_authorized"] is True
     assert "api_key" not in response.text
     assert "把资料变成可执行计划" in json.dumps(seen["messages"], ensure_ascii=False)
 

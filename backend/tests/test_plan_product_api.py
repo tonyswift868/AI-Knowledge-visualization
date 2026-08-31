@@ -23,7 +23,7 @@ from app.planning.runtime_v2 import Weekday
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN_SHA256 = "432ddf17ca1adac7dafa18421f1fc17ddb9857f619c38997af67001bdf256a8e"
+MAIN_SHA256 = "4dfd85c44ef9c6a32faa43cf571743dc944b842488747f2239f97c8c7b2d994e"
 
 
 def creation_payload(
