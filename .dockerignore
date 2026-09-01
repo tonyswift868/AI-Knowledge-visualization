@@ -17,7 +17,14 @@ release
 backups
 docs
 installer
-legacy
+legacy/**
+!legacy/koikatsu-3d/
+!legacy/koikatsu-3d/resources/
+!legacy/koikatsu-3d/resources/web/
+!legacy/koikatsu-3d/resources/web/kks-body-shape-driver.json
+!legacy/koikatsu-3d/resources/web/kks-head-shape-driver-0.json
+!legacy/koikatsu-3d/resources/web/kks-head-shape-driver-200.json
+!legacy/koikatsu-3d/resources/web/kks-head-shape-driver-201.json
 desktop
 demo
 tools

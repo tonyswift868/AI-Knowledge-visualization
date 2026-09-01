@@ -12,6 +12,11 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 COPY frontend/ ./
+COPY legacy/koikatsu-3d/resources/web/kks-body-shape-driver.json \
+     legacy/koikatsu-3d/resources/web/kks-head-shape-driver-0.json \
+     legacy/koikatsu-3d/resources/web/kks-head-shape-driver-200.json \
+     legacy/koikatsu-3d/resources/web/kks-head-shape-driver-201.json \
+     /build/legacy/koikatsu-3d/resources/web/
 RUN npm run build
 
 FROM ${PYTHON_BASE_IMAGE} AS backend-wheels
