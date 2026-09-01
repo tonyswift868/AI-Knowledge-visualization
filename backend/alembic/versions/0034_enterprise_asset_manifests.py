@@ -18,6 +18,19 @@ depends_on = None
 
 
 APPLICATION_ROLE = "mentorflow_app"
+APPLICATION_ROLE_SECURITY_ERROR = (
+    "ENTERPRISE_APP_ROLE_SECURITY_CONTRACT_VIOLATION"
+)
+EXPECTED_APPLICATION_ROLE_SECURITY_CONTRACT = (
+    "NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOBYPASSRLS"
+)
+UNSAFE_APPLICATION_ROLE_ATTRIBUTES = (
+    "rolsuper",
+    "rolcreatedb",
+    "rolcreaterole",
+    "rolreplication",
+    "rolbypassrls",
+)
 ASSET_TABLES = ("asset_manifests", "asset_revisions")
 ENTERPRISE_JOBS_SCHEMA = "enterprise_jobs"
 JOB_SUBMISSION_TABLES = ("jobs", "outbox")
@@ -55,6 +68,37 @@ def _tenant_owner_predicate() -> str:
         "subject_id = NULLIF("
         "current_setting('mentorflow.actor_subject', true), '')"
     )
+
+
+def _assert_application_role_security(bind) -> None:
+    role = bind.execute(
+        sa.text(
+            "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, "
+            "rolbypassrls FROM pg_roles WHERE rolname = :role"
+        ),
+        {"role": APPLICATION_ROLE},
+    ).one_or_none()
+    if role is None:
+        raise RuntimeError(
+            f"{APPLICATION_ROLE_SECURITY_ERROR}: "
+            f"required role {APPLICATION_ROLE} does not exist; expected "
+            f"{EXPECTED_APPLICATION_ROLE_SECURITY_CONTRACT}"
+        )
+    unsafe = tuple(
+        attribute
+        for attribute, enabled in zip(
+            UNSAFE_APPLICATION_ROLE_ATTRIBUTES,
+            role,
+            strict=True,
+        )
+        if bool(enabled)
+    )
+    if unsafe:
+        raise RuntimeError(
+            f"{APPLICATION_ROLE_SECURITY_ERROR}: "
+            f"{APPLICATION_ROLE} has unsafe attributes: {', '.join(unsafe)}; "
+            f"expected {EXPECTED_APPLICATION_ROLE_SECURITY_CONTRACT}"
+        )
 
 
 def _create_manifest_table() -> None:
@@ -240,12 +284,7 @@ def _apply_postgresql_security(bind) -> None:
     current_user = str(bind.execute(sa.text("SELECT current_user")).scalar_one())
     if current_user == APPLICATION_ROLE:
         raise RuntimeError("mentorflow_app must not run or own migrations")
-    op.execute(
-        sa.text(
-            f"ALTER ROLE {APPLICATION_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE "
-            "NOREPLICATION NOBYPASSRLS"
-        )
-    )
+    _assert_application_role_security(bind)
     predicate = _tenant_owner_predicate()
     for table in ASSET_TABLES:
         policy = f"tenant_isolation_{table}"
@@ -332,14 +371,6 @@ def _apply_postgresql_security(bind) -> None:
         raise RuntimeError(
             "mentorflow_app must be able to submit enterprise jobs and outbox rows"
         )
-    role = bind.execute(
-        sa.text(
-            "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = :role"
-        ),
-        {"role": APPLICATION_ROLE},
-    ).one()
-    if bool(role[0]) or bool(role[1]):
-        raise RuntimeError("mentorflow_app must remain NOSUPERUSER and NOBYPASSRLS")
     owned = int(
         bind.execute(
             sa.text(
