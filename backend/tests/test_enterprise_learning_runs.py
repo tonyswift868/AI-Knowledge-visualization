@@ -427,6 +427,23 @@ def test_create_route_uses_enterprise_context_and_enqueues_only_document(
         engine.dispose()
 
 
+def test_postgresql_learning_run_fails_closed_without_canonical_selection_resolver(
+) -> None:
+    actor, tenant = _context()
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _PostgresqlEngine:
+        dialect = _Dialect()
+
+    service = LearningRunService(_PostgresqlEngine())  # type: ignore[arg-type]
+    with pytest.raises(LearningRunError) as failure:
+        service.create(actor=actor, tenant=tenant, body=_body())
+    assert failure.value.code == "DOCUMENT_SELECTION_PERSISTENCE_REQUIRED"
+    assert failure.value.status == 503
+
+
 def test_three_real_contract_stages_chain_once_and_return_final_references(
     tmp_path: Path,
 ) -> None:

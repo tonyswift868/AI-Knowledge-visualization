@@ -72,13 +72,17 @@ from app.enterprise_tenancy.synthetic import (
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 TENANCY_ROOT = BACKEND_ROOT / "app" / "enterprise_tenancy"
 JOBS_MIGRATION_REVISION = "0030_enterprise_jobs_v1"
-MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
+COMPLETION_MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
+PROVIDER_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
+MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
 CANONICAL_TABLES = {
     "organizations",
     "organization_memberships",
     "workspaces",
     "workspace_memberships",
     "workspace_role_bindings",
+    "workspace_profiles",
+    "workspace_goals",
     "resource_scopes",
     "documents",
     "evidence",
@@ -645,8 +649,13 @@ def test_synthetic_fixture_and_isolation_corpus_cover_every_resource_and_operati
     assert corpus.unauthorized_success_expected == 0
 
 
-def test_0031_migration_is_the_only_head_after_canonical_0030_jobs() -> None:
-    completion_path = BACKEND_ROOT / "alembic" / "versions" / f"{MIGRATION_REVISION}.py"
+def test_canonical_migrations_form_one_linear_head_through_0033() -> None:
+    completion_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / f"{COMPLETION_MIGRATION_REVISION}.py"
+    )
     source = completion_path.read_text(encoding="utf-8")
     module = ast.parse(source)
     assignments = {
@@ -658,7 +667,7 @@ def test_0031_migration_is_the_only_head_after_canonical_0030_jobs() -> None:
         and node.targets[0].id in {"revision", "down_revision"}
     }
     assert assignments == {
-        "revision": MIGRATION_REVISION,
+        "revision": COMPLETION_MIGRATION_REVISION,
         "down_revision": JOBS_MIGRATION_REVISION,
     }
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
@@ -684,6 +693,14 @@ def test_0031_migration_is_the_only_head_after_canonical_0030_jobs() -> None:
         "revision": JOBS_MIGRATION_REVISION,
         "down_revision": "0029_enterprise_tenancy_rls",
     }
+    provider = ScriptDirectory.from_config(config).get_revision(
+        PROVIDER_MIGRATION_REVISION
+    )
+    head = ScriptDirectory.from_config(config).get_revision(MIGRATION_REVISION)
+    assert provider is not None
+    assert provider.down_revision == COMPLETION_MIGRATION_REVISION
+    assert head is not None
+    assert head.down_revision == PROVIDER_MIGRATION_REVISION
     assert ENTERPRISE_MIGRATION_REVISION == MIGRATION_REVISION
     assert "workspace_memberships" in source
     assert "learning_plans" in source
@@ -701,7 +718,7 @@ def test_0031_migration_is_the_only_head_after_canonical_0030_jobs() -> None:
     assert "workspace_memberships" not in foundation
 
 
-def test_0031_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
+def test_0033_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "enterprise-migration.db"

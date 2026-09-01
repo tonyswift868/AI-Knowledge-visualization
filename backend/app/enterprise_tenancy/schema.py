@@ -9,7 +9,7 @@ from .models import RESOURCE_TABLE_BY_KIND
 
 
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
-ENTERPRISE_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
+ENTERPRISE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
 TENANT_CONTEXT_SETTINGS = (
     "mentorflow.organization_id",
     "mentorflow.workspace_id",
@@ -23,9 +23,18 @@ IDENTITY_TABLES = (
     "workspace_memberships",
     "workspace_role_bindings",
 )
+WORKSPACE_PERSISTENCE_TABLES = (
+    "workspace_profiles",
+    "workspace_goals",
+)
 RESOURCE_SCOPE_TABLE = "resource_scopes"
 RESOURCE_TABLES = tuple(RESOURCE_TABLE_BY_KIND.values())
-TENANT_SCOPED_TABLES = (*IDENTITY_TABLES, RESOURCE_SCOPE_TABLE, *RESOURCE_TABLES)
+TENANT_SCOPED_TABLES = (
+    *IDENTITY_TABLES,
+    *WORKSPACE_PERSISTENCE_TABLES,
+    RESOURCE_SCOPE_TABLE,
+    *RESOURCE_TABLES,
+)
 FORCE_RLS_TABLES = TENANT_SCOPED_TABLES
 
 
@@ -65,7 +74,11 @@ def rls_predicate_for(table: str) -> str:
         return organization_predicate()
     if table == "workspaces":
         return workspace_predicate().replace("workspace_id =", "id =", 1)
-    if table in {"workspace_memberships", "workspace_role_bindings"}:
+    if table in {
+        "workspace_memberships",
+        "workspace_role_bindings",
+        *WORKSPACE_PERSISTENCE_TABLES,
+    }:
         return workspace_predicate()
     if table == RESOURCE_SCOPE_TABLE or table in RESOURCE_TABLES:
         return resource_scope_predicate()
@@ -109,6 +122,7 @@ __all__ = [
     "RESOURCE_TABLES",
     "TENANT_CONTEXT_SETTINGS",
     "TENANT_SCOPED_TABLES",
+    "WORKSPACE_PERSISTENCE_TABLES",
     "detect_enterprise_schema_version",
     "organization_predicate",
     "postgres_rls_statements",

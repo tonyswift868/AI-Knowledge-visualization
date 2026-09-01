@@ -138,6 +138,30 @@ def require_matching_actor_context(
     return organization_id, workspace_id, actor.subject_id
 
 
+def target_workspace_transaction_context(
+    tenant: TenantContext,
+    actor: ActorContext,
+    workspace_id: str,
+) -> TenantTransactionContext:
+    """Bind a server-selected workspace id to the frozen shared contracts."""
+
+    organization_id, _current_workspace_id, _subject_id = (
+        require_matching_actor_context(tenant, actor)
+    )
+    target_workspace_id = str(workspace_id or "").strip()
+    if not target_workspace_id or len(target_workspace_id) > 96:
+        raise TenantContextRequiredError("target workspace_id is invalid")
+    return TenantTransactionContext(
+        tenant=tenant.model_copy(update={"workspace_id": target_workspace_id}),
+        actor=actor.model_copy(
+            update={
+                "organization_id": organization_id,
+                "workspace_id": target_workspace_id,
+            }
+        ),
+    )
+
+
 def _dbapi_context_values(dbapi_connection: Any) -> tuple[Any, Any, Any]:
     cursor = dbapi_connection.cursor()
     try:
@@ -341,4 +365,5 @@ __all__ = [
     "require_enterprise_workspace_context",
     "require_matching_actor_context",
     "require_safe_application_role",
+    "target_workspace_transaction_context",
 ]

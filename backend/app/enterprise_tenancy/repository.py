@@ -225,6 +225,11 @@ class PostgresTenantResourceRepository:
             ),
             parameters,
         )
+        payload_expression = (
+            "CAST(:payload_json AS JSONB)"
+            if transaction.connection.dialect.name == "postgresql"
+            else ":payload_json"
+        )
         row = transaction.connection.execute(
             text(
                 f"""
@@ -237,7 +242,7 @@ class PostgresTenantResourceRepository:
                   :resource_id, :scope_id, :organization_id,
                   :workspace_id, :scope_type, :owner_subject_id,
                   :classification, :title, :status,
-                  CAST(:payload_json AS JSONB), :search_text,
+                  {payload_expression}, :search_text,
                   :job_id, :cache_key
                 )
                 ON CONFLICT (resource_id) DO UPDATE SET
@@ -335,11 +340,16 @@ class PostgresTenantResourceRepository:
         status: str,
     ) -> bool:
         table = self._table(TenantResourceKind(kind))
+        payload_expression = (
+            "CAST(:payload_json AS JSONB)"
+            if transaction.connection.dialect.name == "postgresql"
+            else ":payload_json"
+        )
         result = transaction.connection.execute(
             text(
                 f"""
                 UPDATE {table}
-                SET payload_json = CAST(:payload_json AS JSONB),
+                SET payload_json = {payload_expression},
                     status = :status,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE resource_id = :resource_id

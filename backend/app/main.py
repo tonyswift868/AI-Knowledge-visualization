@@ -107,6 +107,10 @@ from .enterprise.identity.runtime import (
 from .enterprise.jobs_v1.learning_runs_api import (
     router as enterprise_learning_runs_router,
 )
+from .enterprise.jobs_v1.learning_runs import LearningRunService
+from .enterprise_tenancy.document_import import EnterpriseDocumentImportService
+from .enterprise_tenancy.teaching import EnterpriseTeachingService
+from .enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
     shutdown_production_qwen_base_clone_runtimes,
@@ -224,10 +228,28 @@ def _analyze_task_profile_safe(workspace_id: str, *, force: bool = False) -> dic
 async def lifespan(_app):
     health_registry.started = False
     identity_mode = EnterpriseIdentityConfig.from_env().mode
+    enterprise_engine = None
     if identity_mode is TenantMode.PERSONAL_LOCAL:
         db.init_db()
-    upgrade_orm_schema()
-    init_orm()
+        upgrade_orm_schema()
+        init_orm()
+    else:
+        enterprise_engine = orm_runtime.configure_enterprise_orm()
+        orm_runtime.verify_enterprise_runtime_schema()
+        document_service = EnterpriseDocumentImportService(enterprise_engine)
+        learning_run_service = LearningRunService(
+            enterprise_engine,
+            document_selection_resolver=document_service.resolve_selection_paths,
+        )
+        _app.state.enterprise_workspace_service = EnterpriseWorkspaceService(
+            enterprise_engine
+        )
+        _app.state.enterprise_document_import_service = document_service
+        _app.state.enterprise_learning_run_service = learning_run_service
+        _app.state.enterprise_teaching_service = EnterpriseTeachingService(
+            enterprise_engine,
+            learning_runs=learning_run_service,
+        )
     _app.state.enterprise_identity_runtime = build_enterprise_identity_runtime(
         engine=orm_runtime.engine,
     )
@@ -260,6 +282,8 @@ async def lifespan(_app):
         )
         if isinstance(identity_runtime, EnterpriseIdentityRuntime):
             await identity_runtime.aclose()
+        if enterprise_engine is not None:
+            await asyncio.to_thread(enterprise_engine.dispose)
         document_import_host = getattr(
             _app.state,
             "document_import_host",

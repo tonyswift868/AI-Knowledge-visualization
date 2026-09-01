@@ -49,6 +49,16 @@ class EnterprisePersistenceUnavailableError(TenantPersistenceError):
     pass
 
 
+class EnterprisePersistenceRequestError(TenantPersistenceError):
+    """Safe business error projected by the Enterprise HTTP facade."""
+
+    def __init__(self, code: str, message: str, *, status: int) -> None:
+        super().__init__(message)
+        self.code = _required_identifier(code, "code", limit=160)
+        self.message = message
+        self.status = status
+
+
 class ImportConfirmationError(TenantPersistenceError):
     pass
 
@@ -186,6 +196,7 @@ class LocalImportResult:
 
 
 __all__ = [
+    "EnterprisePersistenceRequestError",
     "EnterprisePersistenceUnavailableError",
     "EnterpriseImportPlan",
     "ImportConfirmationError",

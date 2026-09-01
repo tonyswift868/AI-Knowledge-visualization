@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy.engine import Connection, Engine
 
 from app.enterprise.contracts_v1 import ActorContext, ActorKind, TenantContext, TenantMode
+from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
 from app.planning.effort import (
     Difficulty,
     EffortFeatures,
@@ -785,11 +786,13 @@ class LearningRunService:
         *,
         repository: WorkflowRepository | None = None,
         document_import_root: Path | None = None,
+        document_selection_resolver: Callable[..., tuple[str, ...]] | None = None,
         clock=lambda: datetime.now(timezone.utc),
     ) -> None:
         self.engine = engine
         self.repository = repository or WorkflowRepository()
         self.document_import_root = document_import_root
+        self.document_selection_resolver = document_selection_resolver
         self.clock = clock
 
     def create(
@@ -817,13 +820,30 @@ class LearningRunService:
                 "document_ids must be a collection",
                 status=422,
             )
-        selected_documents = _owned_document_paths(
-            _document_import_root(self.document_import_root),
-            actor=actor,
-            tenant=tenant,
-            selection_id=selection_id,
-            document_ids=document_ids,
-        )
+        try:
+            if self.document_selection_resolver is not None:
+                selected_documents = self.document_selection_resolver(
+                    actor=actor,
+                    tenant=tenant,
+                    selection_id=selection_id,
+                    document_ids=document_ids,
+                )
+            elif self.engine.dialect.name == "postgresql":
+                raise LearningRunError(
+                    "DOCUMENT_SELECTION_PERSISTENCE_REQUIRED",
+                    "Enterprise learning runs require canonical document persistence",
+                    status=503,
+                )
+            else:
+                selected_documents = _owned_document_paths(
+                    _document_import_root(self.document_import_root),
+                    actor=actor,
+                    tenant=tenant,
+                    selection_id=selection_id,
+                    document_ids=document_ids,
+                )
+        except EnterprisePersistenceRequestError as exc:
+            raise LearningRunError(exc.code, exc.message, status=exc.status) from exc
         idempotency_key = str(body.get("idempotency_key") or "").strip()
         if not 8 <= len(idempotency_key) <= 160:
             raise LearningRunError(

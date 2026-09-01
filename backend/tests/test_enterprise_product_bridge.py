@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import threading
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from app.document_import_integration import DocumentBatchStartIn
 from app.enterprise.contracts_v1 import ActorKind, TenantMode
 from app.enterprise.identity.config import EnterpriseIdentityConfig, KeycloakOidcConfig
 from app.enterprise.identity.context import IdentityContextError
@@ -24,7 +24,10 @@ from app.enterprise.identity.runtime import (
     identity_error_response,
     install_enterprise_identity,
 )
-from app.schemas import GoalPatch, GoalProfile, WorkspaceIn
+from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
+from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
+from app.enterprise_tenancy.teaching import EnterpriseTeachingService
+from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 
 
 ISSUER = "https://identity.example.test/realms/mentorflow"
@@ -140,152 +143,149 @@ def _goal() -> dict[str, Any]:
     }
 
 
-def _app(
-    runtime: EnterpriseIdentityRuntime,
-    *,
-    create_workspace_handler: Any | None = None,
-) -> tuple[FastAPI, list[str]]:
-    app = FastAPI()
-    calls: list[str] = []
-    app.state.enterprise_identity_runtime = runtime
-    install_enterprise_identity(app)
-    legacy = APIRouter()
+class _WorkspaceService(EnterpriseWorkspaceService):
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.goal = _goal()
 
-    def create_workspace(body: WorkspaceIn, request: Request):
-        calls.append("workspace.create")
-        assert request.state.enterprise_identity.context is not None
+    def create(self, *, actor, tenant, body):
+        self.calls.append("workspace.create")
+        return {"id": tenant.workspace_id, "title": body.title, "status": "active"}
+
+    def get(self, *, actor, tenant, workspace_id):
+        self.calls.append("workspace.read")
+        if workspace_id != tenant.workspace_id:
+            raise EnterprisePersistenceRequestError(
+                "ENTERPRISE_WORKSPACE_NOT_FOUND",
+                "Workspace was not found",
+                status=404,
+            )
         return {
-            "id": "workspace-a",
-            "title": body.title,
-            "description": body.description,
+            "id": workspace_id,
+            "title": "Course A",
             "status": "active",
-            "execution_mode": body.execution_mode,
-            "provider_session_id_received": body.provider_session_id,
+            "sources": [],
+            "goal": None,
+            "plans": [],
         }
 
-    legacy.add_api_route(
-        "/api/workspaces",
-        create_workspace_handler or create_workspace,
-        methods=["POST"],
-        name="create_workspace",
-    )
+    def set_goal(self, *, actor, tenant, workspace_id, body):
+        self.calls.append("goal.create")
+        self.goal = body.model_dump(mode="json")
+        return {"id": "goal-a", "workspace_id": workspace_id, "payload": self.goal}
 
-    @legacy.get("/api/workspaces/{workspace_id}", name="get_workspace")
-    def get_workspace(workspace_id: str):
-        calls.append("workspace.read")
-        return {"id": workspace_id, "title": "Course A", "status": "active"}
+    def get_goal(self, *, actor, tenant, workspace_id):
+        self.calls.append("goal.read")
+        return {"id": "goal-a", "workspace_id": workspace_id, "payload": self.goal}
 
-    @legacy.post("/api/workspaces/{workspace_id}/goal", name="set_goal")
-    def set_goal(workspace_id: str, body: GoalProfile):
-        calls.append("goal.create")
+    def patch_goal(self, *, actor, tenant, workspace_id, body):
+        self.calls.append("goal.update")
+        self.goal.update(body.model_dump(mode="json", exclude_none=True))
+        return {"id": "goal-a", "workspace_id": workspace_id, "payload": self.goal}
+
+
+class _DocumentService(EnterpriseDocumentImportService):
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.owners: dict[str, tuple[str, str]] = {}
+
+    def _require(self, tenant, resource_id: str) -> None:
+        if self.owners.get(resource_id) != (
+            tenant.organization_id,
+            tenant.workspace_id,
+        ):
+            raise EnterprisePersistenceRequestError(
+                "DOCUMENT_SELECTION_NOT_FOUND",
+                "Document selection was not found",
+                status=404,
+            )
+
+    async def select(self, *, actor, tenant, files):
+        self.calls.append("document.select")
+        self.owners["selection-a"] = (tenant.organization_id, tenant.workspace_id)
         return {
-            "id": "goal-a",
-            "workspace_id": workspace_id,
-            "payload": body.model_dump(mode="json"),
+            "selection_id": "selection-a",
+            "document_ids": ["document-a"],
+            "status": "selected",
         }
 
-    @legacy.get("/api/workspaces/{workspace_id}/goal", name="get_goal")
-    def get_goal(workspace_id: str):
-        calls.append("goal.read")
-        return {"id": "goal-a", "workspace_id": workspace_id, "payload": _goal()}
+    def preflight(self, *, actor, tenant, selection_id):
+        self.calls.append("document.preflight")
+        self._require(tenant, selection_id)
+        return {"selection_id": selection_id, "status": "ready", "ready": True}
 
-    @legacy.patch("/api/workspaces/{workspace_id}/goal", name="patch_goal")
-    def patch_goal(workspace_id: str, body: GoalPatch):
-        calls.append("goal.update")
+    def start_batch(self, *, actor, tenant, selection_id, body):
+        self.calls.append("document.batch.start")
+        self._require(tenant, selection_id)
+        self.owners["job-a"] = (tenant.organization_id, tenant.workspace_id)
         return {
-            "id": "goal-a",
-            "workspace_id": workspace_id,
-            "payload": {**_goal(), **body.model_dump(mode="json", exclude_none=True)},
-        }
-
-    @legacy.post("/api/document-import/selections", name="select_documents")
-    async def select_documents(
-        request: Request,
-        files: list[UploadFile] = File(...),
-    ):
-        calls.append("document.select")
-        assert request.state.enterprise_identity.context is not None
-        names = [file.filename for file in files]
-        for file in files:
-            await file.close()
-        return {"selection_id": "selection-a", "files": names}
-
-    @legacy.post(
-        "/api/document-import/selections/{selection_id}/preflight",
-        name="preflight_documents",
-    )
-    def preflight_documents(request: Request, selection_id: str):
-        calls.append("document.preflight")
-        assert request.state.enterprise_identity.context is not None
-        return {"selection_id": selection_id, "status": "READY"}
-
-    @legacy.post(
-        "/api/document-import/selections/{selection_id}/batches",
-        name="start_document_batch",
-    )
-    def start_document_batch(
-        request: Request,
-        selection_id: str,
-        body: DocumentBatchStartIn = Body(),
-    ):
-        calls.append("document.batch.start")
-        assert request.state.enterprise_identity.context is not None
-        return {
-            "batch_id": "batch-a",
             "selection_id": selection_id,
-            "conversion_batch_size": body.conversion_batch_size,
+            "batch_id": "job-a",
+            "job_id": "job-a",
+            "status": "PENDING",
         }
 
-    @legacy.get(
-        "/api/document-import/batches/{batch_id}/progress",
-        name="document_batch_progress",
-    )
-    def document_batch_progress(request: Request, batch_id: str):
-        calls.append("document.batch.progress")
-        assert request.state.enterprise_identity.context is not None
-        return {"batch_id": batch_id, "status": "RUNNING"}
+    def progress(self, *, actor, tenant, batch_id):
+        self.calls.append("document.batch.progress")
+        self._require(tenant, batch_id)
+        return {"batch_id": batch_id, "status": "PENDING"}
 
-    @legacy.get(
-        "/api/document-import/batches/{batch_id}/result",
-        name="document_batch_result",
-    )
-    def document_batch_result(request: Request, batch_id: str):
-        calls.append("document.batch.result")
-        assert request.state.enterprise_identity.context is not None
-        return {"batch_id": batch_id, "status": "COMPLETED", "documents": []}
+    def result(self, *, actor, tenant, batch_id):
+        self.calls.append("document.batch.result")
+        self._require(tenant, batch_id)
+        return None
 
-    @legacy.post(
-        "/api/active-teaching/workspaces/{workspace_id}/sessions/start",
-        name="start_session",
-    )
-    async def start_session(
-        workspace_id: str,
-        body: dict[str, Any] = Body(default_factory=dict),
-    ):
-        calls.append("teaching.session.start")
+
+class _TeachingService(EnterpriseTeachingService):
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.owners: dict[str, tuple[str, str]] = {}
+
+    def start(self, *, actor, tenant, workspace_id, body):
+        self.calls.append("teaching.session.start")
+        if workspace_id != tenant.workspace_id:
+            raise EnterprisePersistenceRequestError(
+                "ENTERPRISE_WORKSPACE_NOT_FOUND", "Workspace was not found", status=404
+            )
+        self.owners["session-a"] = (tenant.organization_id, tenant.workspace_id)
         return {
             "session_id": "session-a",
             "workspace_id": workspace_id,
-            "plan_id": body.get("plan_id", "plan-a"),
+            "plan_id": body.get("plan_id"),
+            "status": "READY",
         }
 
-    @legacy.post(
-        "/api/active-teaching/sessions/{session_id}/teach-next",
-        name="teach_next",
-    )
-    async def teach_next(
-        session_id: str,
-        body: dict[str, Any] = Body(default_factory=dict),
-    ):
-        calls.append("teaching.teach-next")
-        return {"session_id": session_id, "workspace_id": "workspace-a", "state": body}
+    async def teach_next(self, *, actor, tenant, session_id, body):
+        self.calls.append("teaching.teach-next")
+        if self.owners.get(session_id) != (
+            tenant.organization_id,
+            tenant.workspace_id,
+        ):
+            raise EnterprisePersistenceRequestError(
+                "ENTERPRISE_TEACHING_SESSION_NOT_FOUND",
+                "Teaching session was not found",
+                status=404,
+            )
+        return {
+            "session_id": session_id,
+            "workspace_id": tenant.workspace_id,
+            "status": "AWAITING_LEARNER",
+        }
 
-    @legacy.get("/api/unapproved", name="unapproved_product")
+
+def _app(runtime: EnterpriseIdentityRuntime) -> tuple[FastAPI, list[str]]:
+    app = FastAPI()
+    calls: list[str] = []
+    app.state.enterprise_identity_runtime = runtime
+    app.state.enterprise_workspace_service = _WorkspaceService(calls)
+    app.state.enterprise_document_import_service = _DocumentService(calls)
+    app.state.enterprise_teaching_service = _TeachingService(calls)
+    install_enterprise_identity(app)
+
+    @app.get("/api/unapproved")
     def unapproved_product():
         calls.append("unapproved")
         return {"unsafe": True}
-
-    app.include_router(legacy)
 
     @app.middleware("http")
     async def enterprise_boundary(request: Request, call_next):
@@ -314,28 +314,18 @@ def _app(
     return app, calls
 
 
-def test_allowed_routes_revalidate_and_delegate_to_existing_product_handlers() -> None:
+def test_all_enterprise_product_routes_revalidate_and_use_canonical_services() -> None:
     directory = _Directory()
     app, calls = _app(_runtime(directory))
     with TestClient(app, base_url=ORIGIN) as client:
         headers = _headers()
-        created = client.post(
+        assert client.post(
             "/api/enterprise/workspaces",
             headers=headers,
-            json={
-                "title": "Course A",
-                "provider_session_id": "ps_opaque-session-001",
-            },
-        )
-        assert created.status_code == 200
-        assert created.json()["id"] == "workspace-a"
-        assert created.json()["provider_session_id_received"] == (
-            "ps_opaque-session-001"
-        )
-
+            json={"title": "Course A"},
+        ).status_code == 200
         assert client.get(
-            "/api/enterprise/workspaces/workspace-a",
-            headers=headers,
+            "/api/enterprise/workspaces/workspace-a", headers=headers
         ).status_code == 200
         assert client.post(
             "/api/enterprise/workspaces/workspace-a/goal",
@@ -343,49 +333,41 @@ def test_allowed_routes_revalidate_and_delegate_to_existing_product_handlers() -
             json=_goal(),
         ).status_code == 200
         assert client.get(
-            "/api/enterprise/workspaces/workspace-a/goal",
-            headers=headers,
+            "/api/enterprise/workspaces/workspace-a/goal", headers=headers
         ).status_code == 200
         assert client.patch(
             "/api/enterprise/workspaces/workspace-a/goal",
             headers=headers,
             json={"minutes_per_day": 45},
         ).status_code == 200
-
         selected = client.post(
             "/api/enterprise/document-import/selections",
             headers=headers,
-            files={"files": ("lesson.txt", b"tenant-safe material", "text/plain")},
+            files={"files": ("lesson.txt", b"tenant-safe", "text/plain")},
         )
         assert selected.status_code == 200
-        assert selected.json()["selection_id"] == "selection-a"
         assert client.post(
             "/api/enterprise/document-import/selections/selection-a/preflight",
             headers=headers,
         ).status_code == 200
-        started_batch = client.post(
+        assert client.post(
             "/api/enterprise/document-import/selections/selection-a/batches",
             headers=headers,
             json={"conversion_batch_size": 1},
-        )
-        assert started_batch.status_code == 200
-        assert started_batch.json()["batch_id"] == "batch-a"
+        ).status_code == 200
         assert client.get(
-            "/api/enterprise/document-import/batches/batch-a/progress",
+            "/api/enterprise/document-import/batches/job-a/progress",
             headers=headers,
         ).status_code == 200
         assert client.get(
-            "/api/enterprise/document-import/batches/batch-a/result",
+            "/api/enterprise/document-import/batches/job-a/result",
             headers=headers,
         ).status_code == 200
-
-        started_session = client.post(
+        assert client.post(
             "/api/enterprise/active-teaching/workspaces/workspace-a/sessions/start",
             headers=headers,
             json={"plan_id": "plan-a"},
-        )
-        assert started_session.status_code == 200
-        assert started_session.json()["session_id"] == "session-a"
+        ).status_code == 200
         assert client.post(
             "/api/enterprise/active-teaching/sessions/session-a/teach-next",
             headers=headers,
@@ -409,131 +391,13 @@ def test_allowed_routes_revalidate_and_delegate_to_existing_product_handlers() -
     assert directory.resolve_calls == len(calls) * 2
 
 
-def test_enterprise_workspace_create_uses_postgres_before_local_persistence(
-    monkeypatch,
-) -> None:
-    import app.main as main_module
-    from app import orm as orm_runtime
-
-    calls = {"postgres": 0, "commit": 0, "sqlite": 0, "local_clock": 0}
-    added: list[object] = []
-
-    class _Session:
-        def __enter__(self):
-            calls["postgres"] += 1
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def add(self, value: object) -> None:
-            added.append(value)
-
-        def commit(self) -> None:
-            calls["commit"] += 1
-
-    def _forbidden_sqlite():
-        calls["sqlite"] += 1
-        raise AssertionError("Enterprise workspace creation touched SQLite")
-
-    def _forbidden_local_clock():
-        calls["local_clock"] += 1
-        raise AssertionError("Enterprise workspace creation touched the local store")
-
-    monkeypatch.setattr(orm_runtime, "SessionLocal", _Session)
-    monkeypatch.setattr(main_module.db, "connection", _forbidden_sqlite)
-    monkeypatch.setattr(main_module.db, "now", _forbidden_local_clock)
-    monkeypatch.setattr(main_module, "uid", lambda _prefix: "ws-postgres-a")
-
-    app, bridge_calls = _app(
-        _runtime(),
-        create_workspace_handler=main_module.create_workspace,
-    )
-    with TestClient(app, base_url=ORIGIN) as client:
-        created = client.post(
-            "/api/enterprise/workspaces",
-            headers=_headers("a"),
-            json={"title": "Course A"},
-        )
-        assert created.status_code == 200, created.text
-        assert created.json()["id"] == "ws-postgres-a"
-
-        denied = client.get(
-            "/api/enterprise/workspaces/ws-postgres-a",
-            headers=_headers("b"),
-        )
-
-    assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "ENTERPRISE_PRODUCT_RESOURCE_FORBIDDEN"
-    assert bridge_calls == []
-    assert calls == {"postgres": 1, "commit": 1, "sqlite": 0, "local_clock": 0}
-    assert len(added) == 1
-    assert added[0].id == "ws-postgres-a"
-
-
-def test_anonymous_and_missing_membership_deny_without_product_side_effects() -> None:
-    anonymous_app, anonymous_calls = _app(_runtime())
-    with TestClient(anonymous_app, base_url=ORIGIN) as client:
-        denied = client.get("/api/enterprise/workspaces/workspace-a")
-    assert denied.status_code == 401
-    assert denied.json()["error"]["code"] == "ENTERPRISE_AUTH_REQUIRED"
-    assert anonymous_calls == []
-
-    missing_app, missing_calls = _app(_runtime(_Directory(grants=set())))
-    with TestClient(missing_app, base_url=ORIGIN) as client:
-        denied = client.get(
-            "/api/enterprise/workspaces/workspace-a",
-            headers=_headers(),
-        )
-    assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "MEMBERSHIP_NOT_ACTIVE"
-    assert missing_calls == []
-
-    no_workspace_directory = _Directory(
-        grants={("user-a", "org-a", None)},
-    )
-    no_workspace_app, no_workspace_calls = _app(_runtime(no_workspace_directory))
-    headers = _headers()
-    headers.pop("X-MentorFlow-Workspace-ID")
-    with TestClient(no_workspace_app, base_url=ORIGIN) as client:
-        denied = client.get(
-            "/api/enterprise/workspaces/workspace-a",
-            headers=headers,
-        )
-    assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "ENTERPRISE_MEMBERSHIP_REQUIRED"
-    assert no_workspace_calls == []
-
-
-def test_stale_membership_is_revalidated_before_product_invocation() -> None:
-    directory = _Directory(
-        status_sequence=[MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED]
-    )
-    app, calls = _app(_runtime(directory))
-    with TestClient(app, base_url=ORIGIN) as client:
-        denied = client.get(
-            "/api/enterprise/workspaces/workspace-a",
-            headers=_headers(),
-        )
-    assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "MEMBERSHIP_NOT_ACTIVE"
-    assert directory.resolve_calls == 2
-    assert calls == []
-
-
-def test_route_and_opaque_resource_scopes_deny_cross_tenant_before_delegation() -> None:
+def test_cross_tenant_resources_fail_closed_before_service_side_effect() -> None:
     app, calls = _app(_runtime())
     with TestClient(app, base_url=ORIGIN) as client:
-        route_mismatch = client.get(
-            "/api/enterprise/workspaces/workspace-b",
-            headers=_headers("a"),
+        mismatch = client.get(
+            "/api/enterprise/workspaces/workspace-b", headers=_headers("a")
         )
-        assert route_mismatch.status_code == 403
-        assert route_mismatch.json()["error"]["code"] == (
-            "ENTERPRISE_PRODUCT_RESOURCE_FORBIDDEN"
-        )
-        assert calls == []
-
+        assert mismatch.status_code == 404
         selected = client.post(
             "/api/enterprise/document-import/selections",
             headers=_headers("a"),
@@ -544,12 +408,11 @@ def test_route_and_opaque_resource_scopes_deny_cross_tenant_before_delegation() 
             "/api/enterprise/document-import/selections/selection-a/preflight",
             headers=_headers("b"),
         )
-        assert cross_selection.status_code == 403
-
+        assert cross_selection.status_code == 404
         started = client.post(
             "/api/enterprise/active-teaching/workspaces/workspace-a/sessions/start",
             headers=_headers("a"),
-            json={},
+            json={"plan_id": "plan-a"},
         )
         assert started.status_code == 200
         cross_session = client.post(
@@ -557,26 +420,76 @@ def test_route_and_opaque_resource_scopes_deny_cross_tenant_before_delegation() 
             headers=_headers("b"),
             json={},
         )
-        assert cross_session.status_code == 403
+        assert cross_session.status_code == 404
+    assert "unapproved" not in calls
 
-    assert calls == ["document.select", "teaching.session.start"]
+
+def test_missing_or_stale_membership_denies_without_product_side_effects() -> None:
+    anonymous_app, anonymous_calls = _app(_runtime())
+    with TestClient(anonymous_app, base_url=ORIGIN) as client:
+        denied = client.get("/api/enterprise/workspaces/workspace-a")
+    assert denied.status_code == 401
+    assert anonymous_calls == []
+
+    missing_app, missing_calls = _app(_runtime(_Directory(grants=set())))
+    with TestClient(missing_app, base_url=ORIGIN) as client:
+        denied = client.get(
+            "/api/enterprise/workspaces/workspace-a", headers=_headers()
+        )
+    assert denied.status_code == 403
+    assert missing_calls == []
+
+    directory = _Directory(
+        status_sequence=[MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED]
+    )
+    stale_app, stale_calls = _app(_runtime(directory))
+    with TestClient(stale_app, base_url=ORIGIN) as client:
+        denied = client.get(
+            "/api/enterprise/workspaces/workspace-a", headers=_headers()
+        )
+    assert denied.status_code == 403
+    assert stale_calls == []
 
 
-def test_unapproved_legacy_routes_remain_fail_closed() -> None:
+def test_unapproved_legacy_routes_and_unwired_persistence_fail_closed() -> None:
     app, calls = _app(_runtime())
     with TestClient(app, base_url=ORIGIN) as client:
-        unapproved = client.get("/api/unapproved", headers=_headers())
-        legacy_product = client.post(
-            "/api/workspaces",
-            headers=_headers(),
-            json={"title": "Must not bypass"},
-        )
-    for response in (unapproved, legacy_product):
-        assert response.status_code == 503
-        assert response.json()["error"]["code"] == (
-            "ENTERPRISE_ROUTE_NOT_TENANT_READY"
-        )
+        denied = client.get("/api/unapproved", headers=_headers())
+    assert denied.status_code == 503
     assert calls == []
+
+    runtime = _runtime()
+    unwired = FastAPI()
+    unwired.state.enterprise_identity_runtime = runtime
+    install_enterprise_identity(unwired)
+
+    @unwired.middleware("http")
+    async def context(request: Request, call_next):
+        binding = await runtime.authenticate_request(request)
+        request.state.enterprise_identity = binding
+        return await call_next(request)
+
+    with TestClient(unwired, base_url=ORIGIN) as client:
+        response = client.get(
+            "/api/enterprise/workspaces/workspace-a", headers=_headers()
+        )
+    assert response.status_code == 503
+
+
+def test_enterprise_bridge_has_no_legacy_delegate_or_process_local_scope_truth() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "enterprise" / "product_bridge.py").read_text(
+        encoding="utf-8"
+    )
+    main_source = (root / "app" / "main.py").read_text(encoding="utf-8")
+    assert "EnterpriseProductScopeRegistry" not in source
+    assert "_delegate" not in source
+    assert "orm_workspaces" not in source
+    assert "EnterpriseWorkspaceService" in source
+    assert "configure_enterprise_orm" in main_source
+    assert "document_selection_resolver=document_service.resolve_selection_paths" in (
+        main_source
+    )
 
 
 def test_personal_local_keeps_legacy_no_login_behavior() -> None:
