@@ -9,7 +9,7 @@ from .models import RESOURCE_TABLE_BY_KIND
 
 
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
-ENTERPRISE_MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
+ENTERPRISE_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
 TENANT_CONTEXT_SETTINGS = (
     "mentorflow.organization_id",
     "mentorflow.workspace_id",
