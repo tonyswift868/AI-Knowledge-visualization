@@ -675,8 +675,18 @@ def list_workspaces():
     return sorted(items, key=lambda item: str(item.get("created_at") or ""), reverse=True)
 
 
+def _enterprise_workspace_request(request: Request) -> bool:
+    """Select Enterprise persistence before touching the Personal Local store."""
+
+    binding = getattr(request.state, "enterprise_identity", None)
+    context = getattr(binding, "context", None)
+    tenant = getattr(context, "tenant", None)
+    return getattr(tenant, "mode", None) == TenantMode.ENTERPRISE_SERVER
+
+
 @app.post("/api/workspaces", response_model=WorkspaceOut, response_model_exclude_unset=True)
 def create_workspace(body: WorkspaceIn, request: Request):
+    enterprise_request = _enterprise_workspace_request(request)
     provider_name, provider_model = ("fake", "fake") if body.execution_mode == "demo" else ("", "")
     if body.provider_session_id:
         try:
@@ -689,7 +699,17 @@ def create_workspace(body: WorkspaceIn, request: Request):
             if provider_session.provider == "fake":
                 fail("PROVIDER_SESSION_REAL_REQUIRED", "真实 Workspace 不能使用 Fake Provider")
             provider_name, provider_model = provider_session.provider, provider_session.model
-    item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "persona_prompt": body.persona_prompt.strip(), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": db.now(), "updated_at": db.now()}
+    created_at = (
+        datetime.now(timezone.utc).isoformat()
+        if enterprise_request
+        else db.now()
+    )
+    item = {"id": uid("ws"), "title": body.title, "description": body.description, "status": "active", "character_id": body.character_id, "allow_external_knowledge": int(body.allow_external_knowledge), "persona_prompt": body.persona_prompt.strip(), "execution_mode": body.execution_mode, "provider_name": provider_name, "provider_model": provider_model, "created_at": created_at, "updated_at": created_at}
+    if enterprise_request:
+        from .orm import SessionLocal, WorkspaceORM
+        with SessionLocal() as session:
+            session.add(WorkspaceORM(id=item["id"],title=item["title"],description=item["description"],character_id=item["character_id"],allow_external_knowledge=bool(item["allow_external_knowledge"]),execution_mode=item["execution_mode"],provider_name=item["provider_name"],provider_model=item["provider_model"])); session.commit()
+        return item
     try:
         with db.connection() as conn: conn.execute("INSERT INTO workspaces (id,title,description,status,character_id,allow_external_knowledge,persona_prompt,execution_mode,provider_name,provider_model,created_at,updated_at) VALUES (:id,:title,:description,:status,:character_id,:allow_external_knowledge,:persona_prompt,:execution_mode,:provider_name,:provider_model,:created_at,:updated_at)", item)
     except Exception:

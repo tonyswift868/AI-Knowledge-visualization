@@ -142,6 +142,8 @@ def _goal() -> dict[str, Any]:
 
 def _app(
     runtime: EnterpriseIdentityRuntime,
+    *,
+    create_workspace_handler: Any | None = None,
 ) -> tuple[FastAPI, list[str]]:
     app = FastAPI()
     calls: list[str] = []
@@ -149,7 +151,6 @@ def _app(
     install_enterprise_identity(app)
     legacy = APIRouter()
 
-    @legacy.post("/api/workspaces", name="create_workspace")
     def create_workspace(body: WorkspaceIn, request: Request):
         calls.append("workspace.create")
         assert request.state.enterprise_identity.context is not None
@@ -161,6 +162,13 @@ def _app(
             "execution_mode": body.execution_mode,
             "provider_session_id_received": body.provider_session_id,
         }
+
+    legacy.add_api_route(
+        "/api/workspaces",
+        create_workspace_handler or create_workspace,
+        methods=["POST"],
+        name="create_workspace",
+    )
 
     @legacy.get("/api/workspaces/{workspace_id}", name="get_workspace")
     def get_workspace(workspace_id: str):
@@ -399,6 +407,68 @@ def test_allowed_routes_revalidate_and_delegate_to_existing_product_handlers() -
         "teaching.teach-next",
     ]
     assert directory.resolve_calls == len(calls) * 2
+
+
+def test_enterprise_workspace_create_uses_postgres_before_local_persistence(
+    monkeypatch,
+) -> None:
+    import app.main as main_module
+    from app import orm as orm_runtime
+
+    calls = {"postgres": 0, "commit": 0, "sqlite": 0, "local_clock": 0}
+    added: list[object] = []
+
+    class _Session:
+        def __enter__(self):
+            calls["postgres"] += 1
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def add(self, value: object) -> None:
+            added.append(value)
+
+        def commit(self) -> None:
+            calls["commit"] += 1
+
+    def _forbidden_sqlite():
+        calls["sqlite"] += 1
+        raise AssertionError("Enterprise workspace creation touched SQLite")
+
+    def _forbidden_local_clock():
+        calls["local_clock"] += 1
+        raise AssertionError("Enterprise workspace creation touched the local store")
+
+    monkeypatch.setattr(orm_runtime, "SessionLocal", _Session)
+    monkeypatch.setattr(main_module.db, "connection", _forbidden_sqlite)
+    monkeypatch.setattr(main_module.db, "now", _forbidden_local_clock)
+    monkeypatch.setattr(main_module, "uid", lambda _prefix: "ws-postgres-a")
+
+    app, bridge_calls = _app(
+        _runtime(),
+        create_workspace_handler=main_module.create_workspace,
+    )
+    with TestClient(app, base_url=ORIGIN) as client:
+        created = client.post(
+            "/api/enterprise/workspaces",
+            headers=_headers("a"),
+            json={"title": "Course A"},
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["id"] == "ws-postgres-a"
+
+        denied = client.get(
+            "/api/enterprise/workspaces/ws-postgres-a",
+            headers=_headers("b"),
+        )
+
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "ENTERPRISE_PRODUCT_RESOURCE_FORBIDDEN"
+    assert bridge_calls == []
+    assert calls == {"postgres": 1, "commit": 1, "sqlite": 0, "local_clock": 0}
+    assert len(added) == 1
+    assert added[0].id == "ws-postgres-a"
 
 
 def test_anonymous_and_missing_membership_deny_without_product_side_effects() -> None:
