@@ -9,12 +9,16 @@ import pytest
 
 
 # Importing desktop.main configures its storage defaults. Keep that import
-# explicitly inside the disposable E: test area rather than touching a user's
+# explicitly inside the disposable D: scratch area rather than touching a user's
 # normal data directory.
 pytest.importorskip("PySide6")
 os.environ.setdefault(
     "MENTORFLOW_USER_DATA_ROOT",
-    str(Path(r"E:\Codex\Temp\desktop-storage-boundary-import")),
+    str(
+        Path(
+            r"D:\CodexScratch\E1-R36-03-account-vault\single-user-boundary-import"
+        )
+    ),
 )
 os.environ.setdefault("MENTORFLOW_LOCAL_DATA_MODE", "1")
 
@@ -22,7 +26,7 @@ from desktop.main import _copy_missing_tree  # noqa: E402
 import desktop.local_migration as local_migration_module  # noqa: E402
 
 
-TEST_ROOT = Path(r"E:\Codex\Temp")
+TEST_ROOT = Path(r"D:\CodexScratch\E1-R36-03-account-vault\single-user-boundary")
 
 
 def _make_junction(link: Path, target: Path) -> None:

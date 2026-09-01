@@ -5,6 +5,7 @@ import hashlib
 import os
 import math
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 from concurrent.futures import Future, ThreadPoolExecutor
 
@@ -45,6 +46,15 @@ from PySide6.QtWidgets import (
 )
 
 from .api import ApiError, DesktopApi
+from .account_identity import (
+    AccountCredentialVault,
+    AccountIdentity,
+    AccountPreferenceStore,
+    AccountProfile,
+    ProfileMode,
+)
+from .account_settings_page import AccountSettingsPage
+from .account_vault import AccountVaultManager, VaultLayout
 from .knowledge_map_view import KnowledgeMapView
 from .materials_page import MaterialsPage
 from .plans_page import PlanCalendar, PlansPage, flattened_tasks
@@ -53,6 +63,11 @@ from .system_page import SystemPage
 from .official_feed import OfficialFeedService, OfficialUpdate
 from .version import version_display
 from .web_links import install_external_link_handler
+from .runtime import (
+    AccountSwitchCoordinator,
+    active_local_service,
+    relaunch_current_desktop,
+)
 from backend.app.credential_store import CredentialStoreError, store_secret
 
 
@@ -425,6 +440,19 @@ class MainWindow(QMainWindow):
         self.user = user
         self.origin = origin
         self.settings = QSettings("MentorFlow", "MentorFlow")
+        self.account_preferences = AccountPreferenceStore(self.settings)
+        try:
+            self.account_profile = self.account_preferences.load()
+        except ValueError:
+            self.account_preferences.clear()
+            self.account_profile = AccountProfile.personal_local()
+        vault_root = Path(
+            os.getenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData")
+        )
+        self.account_vault_manager = AccountVaultManager(VaultLayout(vault_root))
+        self.account_vault_manager.mount(self.account_profile)
+        self.account_credential_vault = AccountCredentialVault()
+        self._account_switch_in_progress = False
         analogy_policy_version = "v12"
         if str(self.settings.value("analogy/generation_policy", "") or "") != analogy_policy_version:
             # Old accepted cards may predate arithmetic and meme-safety gates.
@@ -498,7 +526,6 @@ class MainWindow(QMainWindow):
         side.addWidget(logo)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        local_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {"1", "true", "yes"}
         settings_label = "设置"
         navigation_items = (
             ("概览", 0),
@@ -508,7 +535,8 @@ class MainWindow(QMainWindow):
             ("创建计划", 6),
             ("模型连接", 8),
             (settings_label, 9),
-            ("更多工具", 10),
+            ("账号与数据", 10),
+            ("更多工具", 11),
         )
         self._navigation_page_indices = [page_index for _label, page_index in navigation_items]
         for label, _page_index in navigation_items:
@@ -516,9 +544,9 @@ class MainWindow(QMainWindow):
         self.navigation.currentRowChanged.connect(self._navigate)
         side.addWidget(self.navigation, 1)
         account = QLabel(
-            "本地学习空间\n数据自动识别"
-            if local_mode
-            else f"{user['display_name']}\n@{user['username']}"
+            "Personal Local\n本机独立数据"
+            if self.account_profile.mode is ProfileMode.PERSONAL_LOCAL
+            else f"Enterprise Account\n{self.account_profile.safe_account_label}"
         )
         account.setObjectName("accountBadge")
         side.addWidget(account)
@@ -556,6 +584,14 @@ class MainWindow(QMainWindow):
             self.classroom_page.apply_theme,
         )
         self.pages.addWidget(self.system_page)
+        self.account_settings_page = AccountSettingsPage(
+            profile=self.account_profile,
+            vault_manager=self.account_vault_manager,
+            credential_vault=self.account_credential_vault,
+            switch_account=self._switch_enterprise_account,
+            logout_account=self._logout_enterprise_account,
+        )
+        self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
         layout.addWidget(self.pages, 1)
         self.navigation.setCurrentRow(0)
@@ -592,9 +628,8 @@ class MainWindow(QMainWindow):
         elif section == "resources":
             self.navigation.setCurrentRow(2)
         elif section == "data":
-            # Data and backup controls live on the settings page itself; keep
-            # this explicit so the action never falls through to an unrelated
-            # destination as navigation entries evolve.
+            # Preserve the existing System settings callback contract.  The
+            # account Vault page has its own explicit sidebar destination.
             self.navigation.setCurrentRow(6)
         else:
             self.navigation.setCurrentRow(6)
@@ -664,11 +699,124 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._sync_overview_geometry)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        self._official_executor.shutdown(wait=False, cancel_futures=True)
-        self._analogy_executor.shutdown(wait=False, cancel_futures=True)
-        self._provider_executor.shutdown(wait=False, cancel_futures=True)
-        self._workspace_executor.shutdown(wait=False, cancel_futures=True)
+        self._close_current_account_handles()
+        self.account_vault_manager.unmount()
         super().closeEvent(event)
+
+    def _stop_current_account_tasks(self) -> None:
+        service = active_local_service()
+        if service is not None:
+            service.stop()
+
+    def _close_current_account_handles(self) -> None:
+        for name in (
+            "_official_executor",
+            "_analogy_executor",
+            "_provider_executor",
+            "_workspace_executor",
+        ):
+            executor = getattr(self, name, None)
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
+        for view in self.findChildren(QWebEngineView):
+            view.stop()
+        for profile in self.findChildren(QWebEngineProfile):
+            try:
+                profile.cookieStore().deleteAllCookies()
+                profile.clearHttpCache()
+            except RuntimeError:
+                pass
+        try:
+            self.api.close()
+        except RuntimeError:
+            pass
+
+    def _clear_account_ui_and_runtime_cache(self) -> None:
+        self.provider_session_id = ""
+        for name in (
+            "_workspace_cache",
+            "_official_updates",
+            "_analogy_prefetch_queue",
+            "_analogy_recent_cards",
+            "_analogy_card_library",
+        ):
+            value = getattr(self, name, None)
+            if hasattr(value, "clear"):
+                value.clear()
+        self._analogy_prefetched = {}
+        self._analogy_prefetch_context = ""
+        self._workspace_refresh_token += 1
+        self._overview_workspace_token += 1
+        for key in (
+            "provider/credential_ref",
+            "provider/base_url",
+            "provider/model",
+            "analogy/latest_card",
+            "analogy/prefetched_card",
+            "analogy/card_library",
+            "news/interests",
+            "news/blocked",
+            "development/teacher_action_reviews_v1",
+        ):
+            self.settings.remove(key)
+        self.settings.sync()
+        for widget_type in (QListWidget, QTableWidget):
+            for widget in self.findChildren(widget_type):
+                widget.clearSelection()
+        for dialog in self.findChildren(QDialog):
+            dialog.close()
+
+    def _current_account_handles_closed(self) -> bool:
+        service = active_local_service()
+        service_closed = service is None or service.wait_until_stopped()
+        api_closed = bool(getattr(self.api.client, "is_closed", False))
+        return service_closed and api_closed and self.account_vault_manager.current is None
+
+    def _quit_for_account_switch(self) -> None:
+        self.close()
+        application = QApplication.instance()
+        if application is not None:
+            application.quit()
+
+    def _account_switch_coordinator(self) -> AccountSwitchCoordinator:
+        return AccountSwitchCoordinator(
+            vault_manager=self.account_vault_manager,
+            preferences=self.account_preferences,
+            stop_current_tasks=self._stop_current_account_tasks,
+            close_current_handles=self._close_current_account_handles,
+            clear_ui_and_runtime_cache=self._clear_account_ui_and_runtime_cache,
+            quit_current_window=self._quit_for_account_switch,
+            wait_for_handles_closed=self._current_account_handles_closed,
+            relaunch_desktop=relaunch_current_desktop,
+        )
+
+    def _switch_enterprise_account(self, identity: AccountIdentity):
+        if self._account_switch_in_progress:
+            raise RuntimeError("account switch already in progress")
+        self._account_switch_in_progress = True
+        try:
+            return self._account_switch_coordinator().switch(identity)
+        except Exception:
+            self._account_switch_in_progress = False
+            raise
+
+    def _logout_enterprise_account(self) -> None:
+        if self.account_profile.mode is ProfileMode.PERSONAL_LOCAL:
+            return
+        try:
+            self.account_credential_vault.logout(self.account_profile)
+            self._account_switch_in_progress = True
+            self._account_switch_coordinator().switch_to_profile(
+                AccountProfile.personal_local(),
+                initial_event="logout_current_enterprise_account",
+            )
+        except (CredentialStoreError, OSError, RuntimeError, ValueError):
+            self._account_switch_in_progress = False
+            QMessageBox.warning(
+                self,
+                "无法安全退出",
+                "当前账号的安全凭据或本机句柄未能完整清除。",
+            )
 
     def _next_fact(self) -> None:
         keywords = str(
@@ -3180,6 +3328,9 @@ class MainWindow(QMainWindow):
         )
 
     def _logout(self) -> None:
+        if self.account_profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
+            self._logout_enterprise_account()
+            return
         try:
             self.api.logout()
         finally:
