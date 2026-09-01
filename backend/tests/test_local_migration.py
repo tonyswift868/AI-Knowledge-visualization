@@ -16,6 +16,8 @@ from desktop.local_migration import (
     MigrationError,
     export_migration_archive,
     import_migration_archive,
+    sanitize_account_portable_sqlite,
+    scan_account_portable_sqlite,
     write_next_launch_data_root_pointer,
 )
 
@@ -907,6 +909,88 @@ def test_local_migration_redacts_staged_sqlite_sessions_without_mutating_source(
         key not in json.dumps(imported_plan)
         for key in ("provider_session_id", "api_key", "credential_ref")
     )
+
+
+def test_account_portable_sqlite_keeps_structured_rows_but_exports_zero_sessions(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "live.db"
+    with sqlite3.connect(source) as connection:
+        connection.execute(
+            "CREATE TABLE provider_sessions (id TEXT PRIMARY KEY, provider_secret TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO provider_sessions VALUES ('ps_live_12345678', 'sk-live-123456789012')"
+        )
+        connection.execute(
+            """
+            CREATE TABLE plans (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                archived INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                local_path TEXT,
+                provider_session_id TEXT,
+                credential_ref TEXT
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO plans VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "Keep structured plan",
+                1,
+                json.dumps(
+                    {
+                        "progress": {"completed": 3, "total": 5},
+                        "legacy_device_path": r"C:\Users\old-device\MentorFlowData",
+                        "verified_url": "https://downloads.example.test/lesson.pdf",
+                        "provider_session_id": "ps_json_12345678",
+                        "api_key": "sk-json-123456789012",
+                    }
+                ),
+                r"E:\MentorFlowData\managed\lesson.pdf",
+                "ps_column_12345678",
+                "mfcred_column_12345678",
+            ),
+        )
+        connection.commit()
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    staged = tmp_path / "staged.db"
+    staged.write_bytes(source.read_bytes())
+
+    sanitize_account_portable_sqlite(staged)
+    scan_account_portable_sqlite(staged)
+
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
+    with sqlite3.connect(source) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM provider_sessions").fetchone()[0] == 1
+    with sqlite3.connect(staged) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM provider_sessions").fetchone()[0] == 0
+        row = connection.execute(
+            "SELECT title, archived, payload, local_path, provider_session_id, credential_ref FROM plans"
+        ).fetchone()
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert row[:2] == ("Keep structured plan", 1)
+    assert row[3:] == (None, None, None)
+    assert json.loads(row[2]) == {
+        "progress": {"completed": 3, "total": 5},
+        "legacy_device_path": None,
+        "verified_url": "https://downloads.example.test/lesson.pdf",
+    }
+    staged_bytes = staged.read_bytes()
+    for forbidden in (
+        b"ps_live_12345678",
+        b"sk-live-123456789012",
+        b"ps_json_12345678",
+        b"sk-json-123456789012",
+        b"ps_column_12345678",
+        b"mfcred_column_12345678",
+        b"C:\\Users\\old-device\\MentorFlowData",
+        b"E:\\MentorFlowData\\managed\\lesson.pdf",
+    ):
+        assert forbidden not in staged_bytes
 
 
 def test_local_migration_rejects_unparseable_sqlite_secret_and_non_nullable_secret_column(

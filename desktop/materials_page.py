@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
-    QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -26,6 +25,82 @@ from PySide6.QtWidgets import (
 )
 
 from .api import ApiError, DesktopApi
+
+
+_RECOVERY_STATE_ALIASES = {
+    "MISSING_RESTORE_FROM_PACK": "RESTORABLE_FROM_PACKAGE",
+    "MISSING_REDOWNLOAD_VERIFIED_URL": "REDOWNLOAD_AVAILABLE",
+    "MISSING_RELINK_REQUIRED": "LINKED_FILE_MISSING",
+    "LINKED_NONPORTABLE": "LINKED_FILE_MISSING",
+}
+_RECOVERY_PRESENTATION = {
+    "MISSING_ON_DEVICE": (
+        "此设备缺少原始资料",
+        ("relink",),
+        "结构化数据和证据引用仍然保留；可重新关联文件，或导入包含原文件的 Full Package。",
+    ),
+    "RESTORABLE_FROM_PACKAGE": (
+        "可从恢复包还原",
+        ("restore",),
+        "资料身份和 Evidence revision 会保持不变，只恢复当前设备的本地文件。",
+    ),
+    "REDOWNLOAD_AVAILABLE": (
+        "可安全重新下载",
+        ("redownload", "relink"),
+        "可从已验证的 HTTPS 来源重新下载，或重新关联本机文件。",
+    ),
+    "LINKED_FILE_MISSING": (
+        "关联文件已丢失",
+        ("relink",),
+        "Linked 资料不会进入便携包；请选择原文件重新关联。",
+    ),
+}
+_RECOVERY_ACTION_LABELS = {
+    "restore": "从恢复包还原",
+    "redownload": "重新下载",
+    "relink": "重新关联",
+}
+
+
+def material_recovery_view(item: dict) -> dict[str, object]:
+    """Project product/portable states into stable, readable desktop actions."""
+
+    raw_state = str(
+        item.get("availability")
+        or item.get("recovery_state")
+        or item.get("local_availability")
+        or ""
+    ).strip().upper()
+    state = _RECOVERY_STATE_ALIASES.get(raw_state, raw_state)
+    if state not in _RECOVERY_PRESENTATION:
+        return {"state": "", "label": "", "actions": (), "message": ""}
+    label, actions, message = _RECOVERY_PRESENTATION[state]
+    return {
+        "state": state,
+        "label": label,
+        "actions": actions,
+        "message": message,
+    }
+
+
+def material_error_message(error: ApiError | BaseException) -> str:
+    """Never expose a raw 404/Not Found payload for a missing local asset."""
+
+    if isinstance(error, ApiError):
+        combined = f"{error.code} {error.message}".casefold()
+        if error.status == 404 or "not found" in combined:
+            return (
+                "资料文件在此设备上不可用。结构化记录仍保留；"
+                "请从恢复包还原、使用已验证来源重新下载，或重新关联原文件。"
+            )
+        return f"{error.code}：{error.message}"
+    text = str(error).strip()
+    if "not found" in text.casefold() or '{"detail"' in text.casefold():
+        return (
+            "资料文件在此设备上不可用。结构化记录仍保留；"
+            "请从恢复包还原、重新下载或重新关联。"
+        )
+    return text or "资料操作未完成。"
 
 
 def human_size(size_bytes: object) -> str:
@@ -113,7 +188,7 @@ class MaterialsPage(QWidget):
         for column in (1, 2, 3, 4, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(6, 250)
+        self.table.setColumnWidth(6, 390)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setDefaultSectionSize(48)
@@ -192,7 +267,7 @@ class MaterialsPage(QWidget):
         try:
             items = future.result()
         except ApiError as exc:
-            self.status.setText(f"读取资料失败：{exc.code}：{exc.message}")
+            self.status.setText("读取资料失败：" + material_error_message(exc))
             return
         self._materials_cache[(workspace_id, include_archived)] = items
         self._set_materials(items)
@@ -209,9 +284,14 @@ class MaterialsPage(QWidget):
         for row, item in enumerate(items):
             material_id = str(item.get("id") or "")
             archived = bool(item.get("archived")) or str(item.get("status") or "").casefold() == "archived"
+            recovery = material_recovery_view(item)
+            status_text = str(recovery.get("label") or "") or status_labels.get(
+                str(item.get("status") or "").casefold(),
+                str(item.get("status") or "未知"),
+            )
             values = (
                 item.get("original_filename") or "未命名资料",
-                status_labels.get(str(item.get("status") or "").casefold(), str(item.get("status") or "未知")),
+                status_text,
                 item.get("media_type") or "文件",
                 human_size(item.get("size_bytes")),
                 item.get("chunk_count") if item.get("chunk_count") is not None else "—",
@@ -225,6 +305,21 @@ class MaterialsPage(QWidget):
             action_layout = QHBoxLayout(actions)
             action_layout.setContentsMargins(6, 5, 6, 5)
             action_layout.setSpacing(8)
+            recovery_actions = tuple(recovery.get("actions") or ())
+            if recovery_actions:
+                for action in recovery_actions:
+                    button = QPushButton(_RECOVERY_ACTION_LABELS[str(action)])
+                    button.setMinimumHeight(34)
+                    button.setToolTip(str(recovery.get("message") or ""))
+                    button.clicked.connect(
+                        lambda _checked=False, selected=material_id, selected_action=str(action): self._recover_material(
+                            selected, selected_action
+                        )
+                    )
+                    action_layout.addWidget(button)
+                actions.setProperty("workspace_id", str(self.workspace.currentData() or ""))
+                self.table.setCellWidget(row, 6, actions)
+                continue
             archive = QPushButton("恢复" if archived else "归档")
             archive.setMinimumHeight(34)
             archive.setToolTip("归档不会删除资料；恢复后可以再次加入计划。")
@@ -241,6 +336,42 @@ class MaterialsPage(QWidget):
             action_layout.addWidget(delete)
             actions.setProperty("workspace_id", str(self.workspace.currentData() or ""))
             self.table.setCellWidget(row, 6, actions)
+
+    def _recover_material(self, material_id: str, action: str) -> None:
+        if not material_id or action not in _RECOVERY_ACTION_LABELS:
+            return
+        workspace_id = str(self.workspace.currentData() or "")
+        relink_path: Path | None = None
+        if action == "relink":
+            selected, _ = QFileDialog.getOpenFileName(self, "选择要重新关联的原文件")
+            if not selected:
+                self.status.setText("已取消重新关联，资料身份和 Evidence revision 未改变。")
+                return
+            relink_path = Path(selected)
+        method_name = {
+            "restore": "restore_material_from_package",
+            "redownload": "redownload_material",
+            "relink": "relink_material",
+        }[action]
+        method = getattr(self.api, method_name, None)
+        if not callable(method):
+            self.status.setText(
+                "当前版本尚未连接此恢复动作；资料记录仍安全保留，可先导入 Full Package 或重新添加原文件。"
+            )
+            return
+
+        def work() -> object:
+            if action == "relink":
+                assert relink_path is not None
+                return method(workspace_id, material_id, relink_path)
+            return method(workspace_id, material_id)
+
+        self.status.setText(f"正在{_RECOVERY_ACTION_LABELS[action]}，校验失败不会改变资料身份……")
+        self._start_operation(
+            f"recovery:{action}",
+            work,
+            {"material_id": material_id, "action": action},
+        )
 
     def _archive_material(self, material_id: str, archived: bool) -> None:
         if not material_id:
@@ -362,7 +493,7 @@ class MaterialsPage(QWidget):
             result = future.result()
         except (ApiError, OSError, RuntimeError) as exc:
             action = "归档/恢复" if kind == "archive" else "永久删除" if kind == "delete" else "资料处理"
-            detail = f"{exc.code}：{exc.message}" if isinstance(exc, ApiError) else str(exc)
+            detail = material_error_message(exc)
             self.status.setText(f"{action}失败：{detail}")
             button = context.get("button")
             if isinstance(button, QPushButton):
@@ -372,7 +503,12 @@ class MaterialsPage(QWidget):
                 self.upload_button.setEnabled(True)
                 self.upload_button.setText("添加资料")
             return
-        if kind == "archive":
+        if kind.startswith("recovery:"):
+            action = kind.partition(":")[2]
+            self.status.setText(
+                f"{_RECOVERY_ACTION_LABELS.get(action, '资料恢复')}已完成；资料身份和 Evidence revision 保持不变。"
+            )
+        elif kind == "archive":
             archived = bool(context.get("archived"))
             self.status.setText(f"资料已{'归档' if archived else '恢复'}；计划不会被静默激活。")
         elif kind == "delete":

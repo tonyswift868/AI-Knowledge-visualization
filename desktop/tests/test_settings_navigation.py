@@ -12,9 +12,21 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QSettings, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QComboBox, QFrame, QListWidget, QPushButton, QStackedWidget, QWidget  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QWidget,
+)
 
 from desktop.main_window import MainWindow  # noqa: E402
+from desktop.account_portability import PackageMode  # noqa: E402
 from desktop.system_page import SystemPage  # noqa: E402
 
 
@@ -136,6 +148,161 @@ def test_settings_sidebar_row_still_uses_settings_page(
     navigation.setCurrentRow(6)
     qapp.processEvents()
     assert pages.currentIndex() == 9
+
+
+def test_settings_portable_data_section_exposes_quick_full_import_and_exclusions(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    monkeypatch.setattr("desktop.system_page.diagnostics_text", lambda *_args, **_kwargs: "ok")
+    page = SystemPage(
+        {
+            "issuer": "https://identity.example.test/realms/mentorflow",
+            "subject": "learner-1",
+        },
+        "http://127.0.0.1:0",
+        lambda: None,
+        object(),
+    )
+    try:
+        button_texts = {button.text() for button in page.findChildren(QPushButton)}
+        assert {
+            "Quick Account Export",
+            "Full Portable Export",
+            "在干净账号 Vault 导入",
+        } <= button_texts
+        labels = "\n".join(label.text() for label in page.findChildren(QLabel))
+        for visible_exclusion in (
+            "模型权重",
+            "access/refresh token",
+            "Provider 密钥",
+            "绝对路径",
+            "其他账号 Vault",
+            "Linked 文件",
+        ):
+            assert visible_exclusion in labels
+        personal = next(
+            checkbox
+            for checkbox in page.findChildren(QCheckBox)
+            if "Personal Local" in checkbox.text()
+        )
+        assert personal.isChecked() is False
+        assert page.data_root == tmp_path.resolve()
+    finally:
+        page.close()
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_settings_portable_actions_bind_current_account_without_switching_vault(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "current-vault"
+    root.mkdir()
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(root))
+    monkeypatch.setattr("desktop.system_page.diagnostics_text", lambda *_args, **_kwargs: "ok")
+    identity = {
+        "issuer": "https://identity.example.test/realms/mentorflow",
+        "subject": "learner-1",
+    }
+    page = SystemPage(identity, "http://127.0.0.1:0", lambda: None, object())
+    calls: list[tuple[str, dict]] = []
+
+    def fake_start(kind, work):
+        calls.append((kind, work()))
+        return True
+
+    page._start_data_action = fake_start  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "desktop.system_page.discover_portability_catalogs",
+        lambda _root: {
+            "structured_snapshot": {"plans": []},
+            "asset_manifests": [],
+            "model_manifests": [],
+        },
+    )
+    export_calls: list[dict] = []
+
+    def fake_export(_root, destination, **kwargs):
+        export_calls.append({"root": _root, "destination": destination, **kwargs})
+        return {
+            "archive": destination,
+            "package_format_version": 1,
+            "members": 6,
+            "raw_assets": 0,
+        }
+
+    monkeypatch.setattr("desktop.system_page.export_account_package", fake_export)
+    destinations = iter(
+        [
+            str(tmp_path / "quick.mentorflowpack"),
+            str(tmp_path / "full.mentorflowpack"),
+        ]
+    )
+    monkeypatch.setattr(
+        "desktop.system_page.QFileDialog.getSaveFileName",
+        lambda *_args, **_kwargs: (next(destinations), ""),
+    )
+    try:
+        page.export_migration()
+        page.export_full_portable()
+        assert [call["mode"] for call in export_calls] == [
+            PackageMode.QUICK,
+            PackageMode.FULL,
+        ]
+        assert all(call["root"] == root.resolve() for call in export_calls)
+        assert all(call["account_identity"] == identity for call in export_calls)
+        assert [kind for kind, _result in calls] == ["quick_export", "full_export"]
+
+        package = tmp_path / "quick.mentorflowpack"
+        package.write_bytes(b"test package selection")
+        target = tmp_path / "new-vault"
+        target.mkdir()
+        import_calls: list[dict] = []
+
+        def fake_import(archive, target_root, **kwargs):
+            import_calls.append(
+                {"archive": archive, "target": target_root, **kwargs}
+            )
+            return {
+                "target": target_root,
+                "package_mode": "QUICK_ACCOUNT_EXPORT",
+                "raw_assets_restored": 0,
+                "duplicate": False,
+            }
+
+        monkeypatch.setattr("desktop.system_page.import_account_package", fake_import)
+        monkeypatch.setattr(
+            "desktop.system_page.QFileDialog.getOpenFileName",
+            lambda *_args, **_kwargs: (str(package), ""),
+        )
+        monkeypatch.setattr(
+            "desktop.system_page.QFileDialog.getExistingDirectory",
+            lambda *_args, **_kwargs: str(target),
+        )
+        monkeypatch.setattr(
+            "desktop.system_page.QMessageBox.question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        )
+        page.import_migration()
+        assert calls[-1][0] == "portable_import"
+        assert import_calls == [
+            {
+                "archive": package,
+                "target": target,
+                "expected_account_identity": identity,
+                "allow_personal_local": False,
+            }
+        ]
+        assert "Vault 未切换" not in page.migration_status.text()
+    finally:
+        page.close()
+        page.deleteLater()
+        qapp.processEvents()
 
 
 @pytest.mark.parametrize(

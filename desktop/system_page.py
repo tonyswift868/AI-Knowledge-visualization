@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QScrollArea,
     QGridLayout,
@@ -35,6 +34,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .account_portability import (
+    PACKAGE_EXTENSION,
+    AccountPortabilityError,
+    PackageMode,
+    discover_portability_catalogs,
+    export_account_package,
+    import_account_package,
+)
 from .classroom_theme import (
     DEFAULT_CLASSROOM_THEME,
     classroom_theme,
@@ -42,12 +49,7 @@ from .classroom_theme import (
     featured_classroom_theme_options,
     normalize_classroom_theme,
 )
-from .local_migration import (
-    MigrationError,
-    export_migration_archive,
-    import_migration_archive,
-    write_next_launch_data_root_pointer,
-)
+from .local_migration import MigrationError
 from .version import VERSION_MANIFEST
 from .update_service import (
     UpdateError,
@@ -277,6 +279,7 @@ class SystemPage(QWidget):
         super().__init__()
         self.origin = origin
         self.api = api
+        self.account_identity = dict(_legacy_user or {})
         self.open_section = open_section
         self.restart_tutorial_callback = restart_tutorial
         self.set_online_updates_callback = set_online_updates
@@ -585,35 +588,44 @@ class SystemPage(QWidget):
         local_card.setObjectName("explanationCard")
         local_layout = QVBoxLayout(local_card)
         local_layout.setSpacing(10)
-        local_layout.addWidget(QLabel("换设备：导出或导入本地数据"))
+        local_layout.addWidget(QLabel("便携数据：账号导出、导入与新设备恢复"))
         # Use the same resolved root used by export/import.  Reporting the
         # raw environment value here used to make a review copy appear to
         # point at E:\\MentorFlowData even when its databases lived elsewhere.
         local_layout.addWidget(QLabel("当前数据目录：" + str(self.data_root)))
         package_note = QLabel(
-            "软件安装包和用户数据包是两件东西：安装包可以发给任何人，迁移压缩包只属于当前本地学习空间。"
+            "Quick Account Export 保存结构化账号状态与 manifests，不含原始资料；"
+            "Full Portable Export 额外保存当前账号 Managed Vault 的原始资料与必需派生物。"
         )
         package_note.setObjectName("inlineStatus")
         package_note.setWordWrap(True)
         local_layout.addWidget(package_note)
         migration_help = QLabel(
-            "换设备：①点击导出并选择保存位置；②在新设备单独安装软件；③首次打开后选择压缩包和一个空目录导入。"
-            "导入不会覆盖当前正在使用的数据，也不会把别人的学习内容混进来；API Key、Credential Locker 引用和 Provider 会话不会写入普通 ZIP。"
+            "始终排除模型权重、access/refresh token、Provider 密钥、Credential 引用、Provider 会话、"
+            "临时缓存、绝对路径和其他账号 Vault；Linked 文件只保留可重新关联的 manifest。\n"
+            "导入只允许新的或空的账号 Vault；先校验全部 SHA-256，再一次性发布，且不会切换当前 Vault。"
         )
         migration_help.setWordWrap(True)
         local_layout.addWidget(migration_help)
         migration_actions = QHBoxLayout()
-        export_button = QPushButton("导出我的数据包")
+        export_button = QPushButton("Quick Account Export")
         export_button.setObjectName("primaryButton")
         self.export_button = export_button
         export_button.clicked.connect(self.export_migration)
         migration_actions.addWidget(export_button)
-        import_button = QPushButton("在新设备导入数据包")
+        full_export_button = QPushButton("Full Portable Export")
+        self.full_export_button = full_export_button
+        full_export_button.clicked.connect(self.export_full_portable)
+        migration_actions.addWidget(full_export_button)
+        import_button = QPushButton("在干净账号 Vault 导入")
         self.import_button = import_button
         import_button.clicked.connect(self.import_migration)
         migration_actions.addWidget(import_button)
         migration_actions.addStretch()
         local_layout.addLayout(migration_actions)
+        self.personal_local_export = QCheckBox("明确包含当前 Personal Local 数据（默认不包含）")
+        self.personal_local_export.setChecked(False)
+        local_layout.addWidget(self.personal_local_export)
         self.migration_status = QLabel("尚未进行导入或导出。")
         self.migration_status.setObjectName("inlineStatus")
         self.migration_status.setWordWrap(True)
@@ -975,49 +987,75 @@ class SystemPage(QWidget):
         self.diagnostics_status.setText("诊断信息已复制到剪贴板。")
 
     def export_migration(self) -> None:
-        default_name = f"MentorFlow-迁移-{datetime.now().astimezone().strftime('%Y%m%d-%H%M%S')}.zip"
+        self._export_portable(PackageMode.QUICK)
+
+    def export_full_portable(self) -> None:
+        self._export_portable(PackageMode.FULL)
+
+    def _export_portable(self, mode: PackageMode) -> None:
+        label = "Quick" if mode is PackageMode.QUICK else "Full"
+        default_name = (
+            f"MentorFlow-{label}-{datetime.now().astimezone().strftime('%Y%m%d-%H%M%S')}"
+            f"{PACKAGE_EXTENSION}"
+        )
         destination, _ = QFileDialog.getSaveFileName(
             self,
-            "保存 MentorFlow 迁移压缩包",
+            f"保存 MentorFlow {label} 便携包",
             str(self.data_root.parent / default_name),
-            "MentorFlow 迁移包 (*.zip)",
+            f"MentorFlow 便携包 (*{PACKAGE_EXTENSION})",
         )
         if not destination:
             self.migration_status.setText("已取消导出，没有创建文件。")
             return
         output = Path(destination)
-        if output.suffix.casefold() != ".zip":
-            output = output.with_suffix(".zip")
-        self.export_button.setEnabled(False)
-        self.export_button.setText("正在导出……")
+        if output.suffix.casefold() != PACKAGE_EXTENSION:
+            output = output.with_suffix(PACKAGE_EXTENSION)
+        button = self.export_button if mode is PackageMode.QUICK else self.full_export_button
+        button.setEnabled(False)
+        button.setText("正在生成并校验……")
         self.migration_status.setText(f"正在导出到：{output}")
-        self.report.appendPlainText(f"\n正在导出迁移压缩包：{output}")
+        self.report.appendPlainText(f"\n正在生成 {label} 便携包：{output}")
+        try:
+            catalogs = discover_portability_catalogs(self.data_root)
+        except AccountPortabilityError as exc:
+            button.setEnabled(True)
+            button.setText("Quick Account Export" if mode is PackageMode.QUICK else "Full Portable Export")
+            self.migration_status.setText(f"导出失败：{exc}")
+            return
+        personal_local = bool(self.personal_local_export.isChecked())
         if not self._start_data_action(
-            "export",
-            lambda: export_migration_archive(
+            "quick_export" if mode is PackageMode.QUICK else "full_export",
+            lambda: export_account_package(
                 self.data_root,
                 output,
-                safe_settings=_safe_qsettings_snapshot(),
+                account_identity=self.account_identity,
+                mode=mode,
+                structured_snapshot=catalogs["structured_snapshot"],
+                preferences=_safe_qsettings_snapshot(),
+                asset_manifests=catalogs["asset_manifests"],
+                model_manifests=catalogs["model_manifests"],
+                personal_local=personal_local,
+                allow_personal_local=personal_local,
             ),
         ):
-            self.export_button.setEnabled(True)
-            self.export_button.setText("导出我的数据包")
+            button.setEnabled(True)
+            button.setText("Quick Account Export" if mode is PackageMode.QUICK else "Full Portable Export")
             return
 
     def import_migration(self) -> None:
         archive_name, _ = QFileDialog.getOpenFileName(
             self,
-            "选择 MentorFlow 迁移压缩包",
+            "选择 MentorFlow 便携包",
             str(self.data_root.parent),
-            "MentorFlow 迁移包 (*.zip)",
+            f"MentorFlow 便携包 (*{PACKAGE_EXTENSION})",
         )
         if not archive_name:
             self.migration_status.setText("已取消导入，没有读取文件。")
             return
         target = QFileDialog.getExistingDirectory(
             self,
-            "选择导入后的本地数据目录（必须是新目录或空目录）",
-            str(Path(r"E:\MentorFlowData")),
+            "选择新的或空的账号 Vault 目录",
+            str(Path(r"D:\CodexScratch")),
         )
         if not target:
             self.migration_status.setText("已取消导入，没有选择目标目录。")
@@ -1027,27 +1065,32 @@ class SystemPage(QWidget):
             QMessageBox.warning(
                 self,
                 "不能导入到当前目录",
-                "当前数据目录正在使用中。请选择一个新目录或空目录，导入完成后再用该目录启动 MentorFlow。",
+                "当前账号 Vault 正在使用中。请选择一个新的或空的账号 Vault；导入不会切换当前 Vault。",
             )
             return
         if QMessageBox.question(
             self,
             "确认导入",
-            f"将把迁移包导入到：\n{target_path}\n\n目标目录必须为空，是否继续？",
+            f"将先完整校验便携包，再导入到：\n{target_path}\n\n目标必须为空；当前账号 Vault 不会被切换，是否继续？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         ) != QMessageBox.StandardButton.Yes:
             return
-        self.report.appendPlainText(f"\n正在验证并导入迁移压缩包：{archive_name}")
+        self.report.appendPlainText(f"\n正在验证并导入便携包：{archive_name}")
         self.import_button.setEnabled(False)
         self.import_button.setText("正在验证并导入……")
         self.migration_status.setText("正在验证压缩包完整性并导入到新目录……")
         if not self._start_data_action(
-            "import",
-            lambda: import_migration_archive(Path(archive_name), target_path),
+            "portable_import",
+            lambda: import_account_package(
+                Path(archive_name),
+                target_path,
+                expected_account_identity=self.account_identity,
+                allow_personal_local=bool(self.personal_local_export.isChecked()),
+            ),
         ):
             self.import_button.setEnabled(True)
-            self.import_button.setText("在新设备导入数据包")
+            self.import_button.setText("在干净账号 Vault 导入")
             return
 
     def _start_data_action(self, kind: str, work: Callable[[], Any]) -> bool:
@@ -1072,60 +1115,71 @@ class SystemPage(QWidget):
         self._data_action = ""
         try:
             result = future.result()
-        except (MigrationError, OSError, sqlite3.Error, ValueError, RuntimeError) as exc:
+        except (
+            AccountPortabilityError,
+            MigrationError,
+            OSError,
+            sqlite3.Error,
+            ValueError,
+            RuntimeError,
+        ) as exc:
             if action == "backup":
                 self.backup_button.setEnabled(True)
                 self.backup_button.setText("创建安全备份")
                 self.diagnostics_status.setText(f"备份失败：{exc}")
                 QMessageBox.critical(self, "备份失败", str(exc))
             else:
-                button = self.export_button if action == "export" else self.import_button
+                button = (
+                    self.export_button
+                    if action == "quick_export"
+                    else self.full_export_button
+                    if action == "full_export"
+                    else self.import_button
+                )
                 button.setEnabled(True)
-                button.setText("导出我的数据包" if action == "export" else "在新设备导入数据包")
-                self.migration_status.setText(f"{'导出' if action == 'export' else '导入'}失败：{exc}")
-                QMessageBox.critical(self, f"{'导出' if action == 'export' else '导入'}失败", str(exc))
+                button.setText(
+                    "Quick Account Export"
+                    if action == "quick_export"
+                    else "Full Portable Export"
+                    if action == "full_export"
+                    else "在干净账号 Vault 导入"
+                )
+                operation = "导出" if action in {"quick_export", "full_export"} else "导入"
+                self.migration_status.setText(f"{operation}失败：{exc}")
+                QMessageBox.critical(self, f"{operation}失败", str(exc))
             return
-        if action == "export":
-            self.export_button.setEnabled(True)
-            self.export_button.setText("导出我的数据包")
+        if action in {"quick_export", "full_export"}:
+            button = self.export_button if action == "quick_export" else self.full_export_button
+            button.setEnabled(True)
+            button.setText("Quick Account Export" if action == "quick_export" else "Full Portable Export")
             self.report.appendPlainText(
                 f"导出完成：{result['archive']}\n"
-                f"已打包 {result['files']} 个文件；这是普通 ZIP，不包含 API Key、Credential Locker 引用或 Provider 会话。"
+                f"格式版本 {result['package_format_version']}；成员 {result['members']}；"
+                f"原始资料 {result['raw_assets']}；必需派生物 {result.get('derived_artifacts', 0)}。"
+                "密钥、token、模型二进制和绝对路径均未导出。"
             )
             self.migration_status.setText(f"导出完成：{result['archive']}")
             QMessageBox.information(
                 self,
-                "迁移包已生成",
-                f"迁移压缩包已保存到：\n{result['archive']}\n\n换设备时在此页面选择“导入迁移压缩包”。",
+                "便携包已生成",
+                f"便携包已保存到：\n{result['archive']}\n\n换设备时选择“在干净账号 Vault 导入”。",
             )
-        elif action == "import":
+        elif action == "portable_import":
             self.import_button.setEnabled(True)
-            self.import_button.setText("在新设备导入数据包")
+            self.import_button.setText("在干净账号 Vault 导入")
             target = Path(result["target"])
-            try:
-                pointer = write_next_launch_data_root_pointer(self.data_root, target)
-            except MigrationError as exc:
-                self.report.appendPlainText(
-                    f"导入完成：{target}（{result['files']} 个文件），但下一次启动指针保存失败：{exc}"
-                )
-                self.migration_status.setText(f"导入完成：{target}；指针保存失败：{exc}")
-                QMessageBox.warning(
-                    self,
-                    "迁移包已导入，但需要手动指定目录",
-                    f"数据已导入到：\n{target}\n\n下一次启动时请手动将本地数据目录指向该目录。",
-                )
-                return
             self.report.appendPlainText(
-                f"导入完成：{target}（{result['files']} 个文件）\n"
-                f"下一次启动数据目录指针：{pointer}"
+                f"导入完成：{target}；模式 {result['package_mode']}；"
+                f"恢复原始资料 {result['raw_assets_restored']}；"
+                f"恢复派生物 {result.get('derived_artifacts_restored', 0)}；"
+                f"重复导入={result['duplicate']}。"
             )
-            self.migration_status.setText(f"导入完成：{target}；下一次启动将使用该目录。")
+            self.migration_status.setText(f"导入完成：{target}；当前账号 Vault 未切换。")
             QMessageBox.information(
                 self,
-                "迁移包已导入",
-                f"数据已导入到：\n{target}\n\n"
-                f"已保存下一次启动数据目录指针：\n{pointer}\n\n"
-                "请退出软件后重新启动 MentorFlow；当前运行中的数据目录不会被切换或覆盖。",
+                "便携包已导入",
+                f"账号资料已恢复到：\n{target}\n\n"
+                "当前运行中的账号 Vault 未切换；账号生命周期将在下次登录/启动时选择对应 Vault。",
             )
         elif action == "backup":
             self.last_backup = Path(result)

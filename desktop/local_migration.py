@@ -917,7 +917,81 @@ def _sqlite_identifier(value: object) -> str:
     return '"' + str(value).replace('"', '""') + '"'
 
 
-def _sanitize_sqlite_snapshot(path: Path) -> None:
+def _sqlite_neutral_value(declared_type: object) -> Any:
+    normalized = str(declared_type or "").casefold()
+    if any(marker in normalized for marker in ("int", "real", "float", "double", "numeric", "decimal")):
+        return 0
+    if "blob" in normalized:
+        return b""
+    return ""
+
+
+_WINDOWS_DEVICE_PATH_RE = re.compile(r"(?i)^[a-z]:[\\/]")
+
+
+def _is_absolute_device_path(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    parsed = urlsplit(text)
+    if parsed.scheme.casefold() in {"http", "https"} and parsed.hostname:
+        return False
+    return bool(
+        _WINDOWS_DEVICE_PATH_RE.match(text)
+        or text.startswith(("\\\\", "//", "/"))
+    )
+
+
+def _redact_account_local_paths(value: Any) -> tuple[Any, bool]:
+    """Remove device-bound absolute paths from account-portable DB values."""
+
+    if isinstance(value, str):
+        stripped = value.lstrip()
+        if stripped.startswith(("{", "[")):
+            try:
+                parsed = json.loads(value)
+            except (TypeError, json.JSONDecodeError):
+                if _is_absolute_device_path(value):
+                    return None, True
+                return value, False
+            cleaned, changed = _redact_account_local_paths(parsed)
+            if changed:
+                return json.dumps(cleaned, ensure_ascii=False, separators=(",", ":")), True
+            return value, False
+        if _is_absolute_device_path(value):
+            return None, True
+        return value, False
+    if isinstance(value, bytes):
+        try:
+            decoded = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value, False
+        cleaned, changed = _redact_account_local_paths(decoded)
+        if not changed:
+            return value, False
+        if cleaned is None:
+            return None, True
+        return str(cleaned).encode("utf-8"), True
+    if isinstance(value, list):
+        output: list[Any] = []
+        changed = False
+        for item in value:
+            cleaned, item_changed = _redact_account_local_paths(item)
+            output.append(cleaned)
+            changed = changed or item_changed
+        return output, changed
+    if isinstance(value, dict):
+        output: dict[Any, Any] = {}
+        changed = False
+        for key, item in value.items():
+            cleaned, item_changed = _redact_account_local_paths(item)
+            output[key] = cleaned
+            changed = changed or item_changed
+        return output, changed
+    return value, False
+
+
+def _sanitize_sqlite_snapshot(path: Path, *, account_portable: bool = False) -> None:
     """Redact secret fields in a staged SQLite backup only.
 
     The source database is never opened for writes.  Sensitive columns are
@@ -940,7 +1014,10 @@ def _sanitize_sqlite_snapshot(path: Path) -> None:
         for table_row in table_rows:
             table_name = str(table_row[0])
             if _SECRET_COLUMN_RE.search(table_name):
-                raise MigrationError(f"便携数据库包含不支持的凭据表：{path.name}")
+                if not account_portable:
+                    raise MigrationError(f"便携数据库包含不支持的凭据表：{path.name}")
+                connection.execute(f"DELETE FROM {_sqlite_identifier(table_name)}")
+                continue
             quoted_table = _sqlite_identifier(table_name)
             columns = connection.execute(f"PRAGMA table_info({quoted_table})").fetchall()
             if not columns:
@@ -959,7 +1036,7 @@ def _sanitize_sqlite_snapshot(path: Path) -> None:
                         f"SELECT {quoted_table}.{_sqlite_identifier(names[index])} FROM {quoted_table} "
                         f"WHERE {quoted_table}.{_sqlite_identifier(names[index])} IS NOT NULL LIMIT 1"
                     ).fetchone()
-                    if values is not None:
+                    if values is not None and not account_portable:
                         raise MigrationError(
                             f"便携数据库包含无法清理的非空凭据字段：{table_name}.{names[index]}"
                         )
@@ -981,13 +1058,23 @@ def _sanitize_sqlite_snapshot(path: Path) -> None:
                 for index, value in enumerate(values):
                     if index in sensitive_indexes:
                         if value is not None:
-                            updates[index] = None
+                            updates[index] = (
+                                _sqlite_neutral_value(columns[index][2])
+                                if account_portable
+                                and (bool(columns[index][3]) or bool(columns[index][5]))
+                                else None
+                            )
                         continue
                     if isinstance(value, (str, bytes)):
                         cleaned, changed = _redact_sqlite_value(
                             value,
                             path=f"{path.name}:{table_name}.{names[index]}",
                         )
+                        if account_portable:
+                            cleaned, path_changed = _redact_account_local_paths(cleaned)
+                            changed = changed or path_changed
+                            if cleaned is None and (bool(columns[index][3]) or bool(columns[index][5])):
+                                cleaned = _sqlite_neutral_value(columns[index][2])
                         if changed:
                             updates[index] = cleaned
                 if not updates:
@@ -1028,6 +1115,60 @@ def _sanitize_sqlite_snapshot(path: Path) -> None:
         raise MigrationError(f"无法清理便携数据库：{path.name}") from exc
     finally:
         connection.close()
+
+
+def scan_account_portable_sqlite(path: Path) -> None:
+    """Verify that an account snapshot contains no usable secret/session rows."""
+
+    try:
+        with _open_verified_file(path, role="账号便携数据库扫描") as stream:
+            decoded = stream.read().decode("utf-8", errors="ignore")
+        _secret_scan_text(decoded, path=path.name)
+        connection = sqlite3.connect(path)
+        try:
+            tables = [
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+            ]
+            for table in tables:
+                quoted_table = _sqlite_identifier(table)
+                if _SECRET_COLUMN_RE.search(table):
+                    if connection.execute(f"SELECT 1 FROM {quoted_table} LIMIT 1").fetchone():
+                        raise MigrationError(f"账号便携数据库包含 Provider/凭据会话：{path.name}")
+                    continue
+                for column in connection.execute(f"PRAGMA table_info({quoted_table})"):
+                    name = str(column[1])
+                    if not _is_sensitive_sqlite_name(name):
+                        continue
+                    quoted_column = _sqlite_identifier(name)
+                    populated = connection.execute(
+                        f"SELECT 1 FROM {quoted_table} "
+                        f"WHERE {quoted_column} IS NOT NULL "
+                        f"AND TRIM(CAST({quoted_column} AS TEXT)) NOT IN ('', '0') LIMIT 1"
+                    ).fetchone()
+                    if populated is not None:
+                        raise MigrationError(f"账号便携数据库包含 Provider/凭据字段：{path.name}")
+                for values in connection.execute(f"SELECT * FROM {quoted_table}"):
+                    for value in values:
+                        if isinstance(value, (str, bytes)):
+                            _cleaned, path_changed = _redact_account_local_paths(value)
+                            if path_changed:
+                                raise MigrationError(
+                                    f"账号便携数据库包含设备绝对路径：{path.name}"
+                                )
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise MigrationError(f"账号便携数据库无法校验：{path.name}") from exc
+
+
+def sanitize_account_portable_sqlite(path: Path) -> None:
+    """Remove account secrets from an owned staged DB, never the live source."""
+
+    _sanitize_sqlite_snapshot(path, account_portable=True)
+    scan_account_portable_sqlite(path)
 
 
 def _scan_portable_secret(path: Path, *, relative: str) -> None:
