@@ -200,12 +200,13 @@ class _DocumentService(EnterpriseDocumentImportService):
                 status=404,
             )
 
-    async def select(self, *, actor, tenant, files):
+    async def select(self, *, actor, tenant, body):
         self.calls.append("document.select")
+        assert body.assets[0].local_asset_id == "local-asset-a"
         self.owners["selection-a"] = (tenant.organization_id, tenant.workspace_id)
         return {
             "selection_id": "selection-a",
-            "document_ids": ["document-a"],
+            "document_ids": ["assetrev-a"],
             "status": "selected",
         }
 
@@ -314,6 +315,22 @@ def _app(runtime: EnterpriseIdentityRuntime) -> tuple[FastAPI, list[str]]:
     return app, calls
 
 
+def _asset_selection() -> dict[str, object]:
+    return {
+        "assets": [
+            {
+                "local_asset_id": "local-asset-a",
+                "filename": "lesson.txt",
+                "mime_type": "text/plain",
+                "size_bytes": 11,
+                "sha256": "a" * 64,
+                "import_mode": "MANAGED",
+                "portability": "PORTABLE",
+            }
+        ]
+    }
+
+
 def test_all_enterprise_product_routes_revalidate_and_use_canonical_services() -> None:
     directory = _Directory()
     app, calls = _app(_runtime(directory))
@@ -343,7 +360,7 @@ def test_all_enterprise_product_routes_revalidate_and_use_canonical_services() -
         selected = client.post(
             "/api/enterprise/document-import/selections",
             headers=headers,
-            files={"files": ("lesson.txt", b"tenant-safe", "text/plain")},
+            json=_asset_selection(),
         )
         assert selected.status_code == 200
         assert client.post(
@@ -401,7 +418,7 @@ def test_cross_tenant_resources_fail_closed_before_service_side_effect() -> None
         selected = client.post(
             "/api/enterprise/document-import/selections",
             headers=_headers("a"),
-            files={"files": ("lesson.txt", b"material", "text/plain")},
+            json=_asset_selection(),
         )
         assert selected.status_code == 200
         cross_selection = client.post(
@@ -422,6 +439,26 @@ def test_cross_tenant_resources_fail_closed_before_service_side_effect() -> None
         )
         assert cross_session.status_code == 404
     assert "unapproved" not in calls
+
+
+def test_enterprise_manifest_selection_rejects_raw_uploads_and_forged_ownership() -> None:
+    app, calls = _app(_runtime())
+    with TestClient(app, base_url=ORIGIN) as client:
+        raw_upload = client.post(
+            "/api/enterprise/document-import/selections",
+            headers=_headers("a"),
+            files={"files": ("lesson.txt", b"must-stay-local", "text/plain")},
+        )
+        forged = _asset_selection()
+        forged["organization_id"] = "org-b"
+        forged_owner = client.post(
+            "/api/enterprise/document-import/selections",
+            headers=_headers("a"),
+            json=forged,
+        )
+    assert raw_upload.status_code == 422
+    assert forged_owner.status_code == 422
+    assert "document.select" not in calls
 
 
 def test_missing_or_stale_membership_denies_without_product_side_effects() -> None:
@@ -487,9 +524,8 @@ def test_enterprise_bridge_has_no_legacy_delegate_or_process_local_scope_truth()
     assert "orm_workspaces" not in source
     assert "EnterpriseWorkspaceService" in source
     assert "configure_enterprise_orm" in main_source
-    assert "document_selection_resolver=document_service.resolve_selection_paths" in (
-        main_source
-    )
+    assert "document_selection_resolver=(" in main_source
+    assert "document_service.resolve_selection_references" in main_source
 
 
 def test_personal_local_keeps_legacy_no_login_behavior() -> None:

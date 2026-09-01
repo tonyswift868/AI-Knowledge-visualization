@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy.engine import Connection, Engine
 
 from app.enterprise.contracts_v1 import ActorContext, ActorKind, TenantContext, TenantMode
+from app.enterprise_tenancy.asset_manifests import validate_asset_references
 from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
 from app.planning.effort import (
     Difficulty,
@@ -129,85 +128,6 @@ def _safe_component(value: object, field: str) -> str:
             status=422,
         )
     return text
-
-
-def _document_import_root(configured: Path | None = None) -> Path:
-    candidate = configured
-    if candidate is None:
-        raw = str(os.getenv("MENTORFLOW_DOCUMENT_IMPORT_ROOT") or "").strip()
-        if not raw:
-            raise LearningRunError(
-                "DOCUMENT_IMPORT_ROOT_REQUIRED",
-                "Document import storage is not configured",
-                status=503,
-            )
-        candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        raise LearningRunError(
-            "DOCUMENT_IMPORT_ROOT_INVALID",
-            "Document import storage must be absolute",
-            status=503,
-        )
-    return candidate.resolve()
-
-
-def tenant_document_selection_root(
-    document_import_root: Path,
-    *,
-    actor: ActorContext,
-    tenant: TenantContext,
-    selection_id: str,
-) -> Path:
-    """Derive ownership from trusted context; the request never supplies a tenant path."""
-
-    _require_enterprise_owner(actor, tenant)
-    selection = _safe_component(selection_id, "selection_id")
-    owner_key = hashlib.sha256(
-        f"{_tenant_partition(tenant)}\x1f{actor.subject_id}".encode("utf-8")
-    ).hexdigest()[:32]
-    uploads = (_document_import_root(document_import_root) / "uploads").resolve()
-    return (uploads / "enterprise" / owner_key / "selections" / selection).resolve()
-
-
-def _owned_document_paths(
-    document_import_root: Path,
-    *,
-    actor: ActorContext,
-    tenant: TenantContext,
-    selection_id: str,
-    document_ids: Sequence[object],
-) -> tuple[str, ...]:
-    if not document_ids or len(document_ids) > 20:
-        raise LearningRunError(
-            "DOCUMENT_SELECTION_INVALID",
-            "Document selection must contain between 1 and 20 documents",
-            status=422,
-        )
-    normalized = tuple(_safe_component(value, "document_id") for value in document_ids)
-    if len(normalized) != len(set(normalized)):
-        raise LearningRunError(
-            "DOCUMENT_SELECTION_INVALID",
-            "Document selection contains duplicate identifiers",
-            status=422,
-        )
-    root = tenant_document_selection_root(
-        document_import_root,
-        actor=actor,
-        tenant=tenant,
-        selection_id=selection_id,
-    )
-    uploads = (_document_import_root(document_import_root) / "uploads").resolve()
-    selected: list[str] = []
-    for document_id in normalized:
-        path = (root / document_id).resolve()
-        if root not in path.parents or not path.is_file():
-            raise LearningRunError(
-                "DOCUMENT_SELECTION_NOT_OWNED",
-                "Document selection is unavailable in the authenticated owner scope",
-                status=404,
-            )
-        selected.append(path.relative_to(uploads).as_posix())
-    return tuple(selected)
 
 
 def _learning_run_id(
@@ -785,13 +705,12 @@ class LearningRunService:
         engine: Engine,
         *,
         repository: WorkflowRepository | None = None,
-        document_import_root: Path | None = None,
-        document_selection_resolver: Callable[..., tuple[str, ...]] | None = None,
+        document_selection_resolver: Callable[..., Sequence[Mapping[str, Any]]]
+        | None = None,
         clock=lambda: datetime.now(timezone.utc),
     ) -> None:
         self.engine = engine
         self.repository = repository or WorkflowRepository()
-        self.document_import_root = document_import_root
         self.document_selection_resolver = document_selection_resolver
         self.clock = clock
 
@@ -821,29 +740,28 @@ class LearningRunService:
                 status=422,
             )
         try:
-            if self.document_selection_resolver is not None:
-                selected_documents = self.document_selection_resolver(
-                    actor=actor,
-                    tenant=tenant,
-                    selection_id=selection_id,
-                    document_ids=document_ids,
-                )
-            elif self.engine.dialect.name == "postgresql":
+            if self.document_selection_resolver is None:
                 raise LearningRunError(
                     "DOCUMENT_SELECTION_PERSISTENCE_REQUIRED",
-                    "Enterprise learning runs require canonical document persistence",
+                    "Enterprise learning runs require canonical asset-manifest persistence",
                     status=503,
                 )
-            else:
-                selected_documents = _owned_document_paths(
-                    _document_import_root(self.document_import_root),
+            asset_references = validate_asset_references(
+                self.document_selection_resolver(
                     actor=actor,
                     tenant=tenant,
                     selection_id=selection_id,
                     document_ids=document_ids,
                 )
+            )
         except EnterprisePersistenceRequestError as exc:
             raise LearningRunError(exc.code, exc.message, status=exc.status) from exc
+        except ValueError as exc:
+            raise LearningRunError(
+                "DOCUMENT_SELECTION_INVALID",
+                "Document selection contains invalid asset-manifest references",
+                status=422,
+            ) from exc
         idempotency_key = str(body.get("idempotency_key") or "").strip()
         if not 8 <= len(idempotency_key) <= 160:
             raise LearningRunError(
@@ -902,7 +820,7 @@ class LearningRunService:
             "plan": dict(plan),
             "request": {
                 "request_id": actor.request_id,
-                "selected_documents": list(selected_documents),
+                "asset_manifest_references": [dict(item) for item in asset_references],
                 "conversion_config_identity": str(
                     selection.get("conversion_config_identity")
                     or "enterprise-learning-run-v1"
@@ -1096,5 +1014,4 @@ __all__ = [
     "LearningRunError",
     "LearningRunOrchestrator",
     "LearningRunService",
-    "tenant_document_selection_root",
 ]

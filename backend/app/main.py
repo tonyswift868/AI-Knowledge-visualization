@@ -239,7 +239,9 @@ async def lifespan(_app):
         document_service = EnterpriseDocumentImportService(enterprise_engine)
         learning_run_service = LearningRunService(
             enterprise_engine,
-            document_selection_resolver=document_service.resolve_selection_paths,
+            document_selection_resolver=(
+                document_service.resolve_selection_references
+            ),
         )
         _app.state.enterprise_workspace_service = EnterpriseWorkspaceService(
             enterprise_engine

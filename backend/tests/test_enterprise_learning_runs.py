@@ -27,7 +27,6 @@ from app.enterprise.jobs_v1.learning_runs import (
     LearningRunError,
     LearningRunOrchestrator,
     LearningRunService,
-    tenant_document_selection_root,
 )
 from app.enterprise.jobs_v1.learning_runs_api import router
 from app.enterprise.jobs_v1.models import (
@@ -48,10 +47,12 @@ from app.enterprise.jobs_v1.schema import (
     metadata,
     outbox,
 )
+from app.enterprise_tenancy.asset_manifests import LOCAL_ASSET_REFERENCE_CONTRACT
 from app.planning.product_runtime import PlanCreationRequest, PlanCreationService
 
 
 NOW = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+DOCUMENT_REVISION_ID = "assetrev_" + "1" * 48
 
 
 def _engine(path: Path | None = None) -> sa.Engine:
@@ -106,7 +107,7 @@ def _body() -> dict[str, object]:
         "idempotency_key": "learning-run-idempotency-0001",
         "document_selection": {
             "selection_id": "selection-1",
-            "document_ids": ["lesson.md"],
+            "document_ids": [DOCUMENT_REVISION_ID],
             "title": "Enterprise Lesson",
             "language": "en",
             "conversion_config_identity": "document-preview-v1",
@@ -130,25 +131,24 @@ def _body() -> dict[str, object]:
     }
 
 
-def _stage_owned_document(
-    root: Path,
-    *,
-    actor: ActorContext,
-    tenant: TenantContext,
-) -> Path:
-    selection = tenant_document_selection_root(
-        root,
-        actor=actor,
-        tenant=tenant,
-        selection_id="selection-1",
-    )
-    selection.mkdir(parents=True)
-    document = selection / "lesson.md"
-    document.write_text(
-        "# Durable learning\n\nEvidence drives verified knowledge and a plan.\n",
-        encoding="utf-8",
-    )
-    return document
+def _manifest_reference() -> dict[str, object]:
+    return {
+        "schema_version": LOCAL_ASSET_REFERENCE_CONTRACT,
+        "asset_id": "asset_" + "2" * 48,
+        "asset_revision_id": DOCUMENT_REVISION_ID,
+        "local_asset_id": "local-asset-1",
+        "device_id": "device-1",
+        "sha256": "3" * 64,
+        "size_bytes": 72,
+        "mime_type": "text/markdown",
+        "availability": "AVAILABLE",
+    }
+
+
+def _manifest_resolver(*, selection_id: str, document_ids, **_context):
+    assert selection_id == "selection-1"
+    assert list(document_ids) == [DOCUMENT_REVISION_ID]
+    return (_manifest_reference(),)
 
 
 def _service(
@@ -160,7 +160,7 @@ def _service(
     return LearningRunService(
         engine,
         repository=repository,
-        document_import_root=root,
+        document_selection_resolver=_manifest_resolver,
         clock=lambda: NOW,
     )
 
@@ -349,7 +349,6 @@ def _create_run(
     repository: WorkflowRepository | None = None,
 ) -> tuple[dict[str, object], ActorContext, TenantContext, WorkflowRepository]:
     actor, tenant = _context()
-    _stage_owned_document(root, actor=actor, tenant=tenant)
     resolved_repository = repository or WorkflowRepository()
     created = _service(
         engine, root, repository=resolved_repository
@@ -363,7 +362,6 @@ def test_create_route_uses_enterprise_context_and_enqueues_only_document(
     engine = _engine()
     root = tmp_path / "document-import"
     actor, tenant = _context()
-    _stage_owned_document(root, actor=actor, tenant=tenant)
     service = _service(engine, root)
     app = FastAPI()
     app.state.enterprise_learning_run_service = service
@@ -416,6 +414,10 @@ def test_create_route_uses_enterprise_context_and_enqueues_only_document(
         ]
         assert records[0].actor_context == actor
         assert records[0].tenant_context == tenant
+        assert records[0].payload["request"]["asset_manifest_references"] == [
+            _manifest_reference()
+        ]
+        assert "selected_documents" not in records[0].payload["request"]
         assert "organization_id" not in _body()
         assert "workspace_id" not in _body()
         assert {route.path for route in router.routes} >= {
@@ -427,21 +429,17 @@ def test_create_route_uses_enterprise_context_and_enqueues_only_document(
         engine.dispose()
 
 
-def test_postgresql_learning_run_fails_closed_without_canonical_selection_resolver(
-) -> None:
+def test_learning_run_fails_closed_without_canonical_selection_resolver() -> None:
     actor, tenant = _context()
-
-    class _Dialect:
-        name = "postgresql"
-
-    class _PostgresqlEngine:
-        dialect = _Dialect()
-
-    service = LearningRunService(_PostgresqlEngine())  # type: ignore[arg-type]
-    with pytest.raises(LearningRunError) as failure:
-        service.create(actor=actor, tenant=tenant, body=_body())
-    assert failure.value.code == "DOCUMENT_SELECTION_PERSISTENCE_REQUIRED"
-    assert failure.value.status == 503
+    engine = _engine()
+    try:
+        service = LearningRunService(engine)
+        with pytest.raises(LearningRunError) as failure:
+            service.create(actor=actor, tenant=tenant, body=_body())
+        assert failure.value.code == "DOCUMENT_SELECTION_PERSISTENCE_REQUIRED"
+        assert failure.value.status == 503
+    finally:
+        engine.dispose()
 
 
 def test_three_real_contract_stages_chain_once_and_return_final_references(
@@ -501,7 +499,7 @@ def test_three_real_contract_stages_chain_once_and_return_final_references(
         reloaded = LearningRunService(
             engine,
             repository=WorkflowRepository(),
-            document_import_root=root,
+            document_selection_resolver=_manifest_resolver,
             clock=lambda: NOW,
         )
         status = reloaded.status(run_id, actor=actor, tenant=tenant)

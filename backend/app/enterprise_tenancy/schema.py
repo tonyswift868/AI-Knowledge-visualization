@@ -9,7 +9,7 @@ from .models import RESOURCE_TABLE_BY_KIND
 
 
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
-ENTERPRISE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
+ENTERPRISE_MIGRATION_REVISION = "0034_enterprise_asset_manifests"
 TENANT_CONTEXT_SETTINGS = (
     "mentorflow.organization_id",
     "mentorflow.workspace_id",
@@ -27,11 +27,16 @@ WORKSPACE_PERSISTENCE_TABLES = (
     "workspace_profiles",
     "workspace_goals",
 )
+ASSET_MANIFEST_TABLES = (
+    "asset_manifests",
+    "asset_revisions",
+)
 RESOURCE_SCOPE_TABLE = "resource_scopes"
 RESOURCE_TABLES = tuple(RESOURCE_TABLE_BY_KIND.values())
 TENANT_SCOPED_TABLES = (
     *IDENTITY_TABLES,
     *WORKSPACE_PERSISTENCE_TABLES,
+    *ASSET_MANIFEST_TABLES,
     RESOURCE_SCOPE_TABLE,
     *RESOURCE_TABLES,
 )
@@ -80,6 +85,14 @@ def rls_predicate_for(table: str) -> str:
         *WORKSPACE_PERSISTENCE_TABLES,
     }:
         return workspace_predicate()
+    if table in ASSET_MANIFEST_TABLES:
+        return (
+            "issuer = NULLIF("
+            "current_setting('mentorflow.actor_issuer', true), '') AND "
+            f"{workspace_predicate()} AND "
+            "subject_id = NULLIF("
+            "current_setting('mentorflow.actor_subject', true), '')"
+        )
     if table == RESOURCE_SCOPE_TABLE or table in RESOURCE_TABLES:
         return resource_scope_predicate()
     raise KeyError(f"unknown tenant-scoped table: {table}")
@@ -115,6 +128,7 @@ def detect_enterprise_schema_version(connection: Connection) -> str | None:
 
 __all__ = [
     "APPLICATION_DATABASE_ROLE",
+    "ASSET_MANIFEST_TABLES",
     "ENTERPRISE_MIGRATION_REVISION",
     "FORCE_RLS_TABLES",
     "IDENTITY_TABLES",

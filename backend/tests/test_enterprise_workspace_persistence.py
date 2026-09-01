@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -9,7 +8,6 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from fastapi import UploadFile
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
@@ -24,6 +22,11 @@ from app.enterprise.contracts_v1 import (
 )
 from app.enterprise.jobs_v1.learning_runs import LearningRunService
 from app.enterprise.jobs_v1.schema import metadata as jobs_metadata
+from app.enterprise_tenancy.asset_manifests import (
+    AssetManifestRegistrationIn,
+    AssetManifestSelectionIn,
+    LOCAL_ASSET_REFERENCE_CONTRACT,
+)
 from app.enterprise_tenancy.context import TenantDbSession, TenantTransactionContext
 from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from app.enterprise_tenancy.models import (
@@ -177,7 +180,7 @@ def test_0033_fresh_incremental_upgrade_and_downgrade_preserve_canonical_rows(
     tmp_path: Path,
 ) -> None:
     fresh = tmp_path / "fresh.sqlite3"
-    command.upgrade(_config(fresh), "head")
+    command.upgrade(_config(fresh), MIGRATION_REVISION)
     with sqlite3.connect(fresh) as connection:
         tables = {
             row[0]
@@ -203,7 +206,7 @@ def test_0033_fresh_incremental_upgrade_and_downgrade_preserve_canonical_rows(
             "VALUES ('workspace-old', 'org-old', 'workspace-old', 'Old', 'active')"
         )
         connection.commit()
-    command.upgrade(config, "head")
+    command.upgrade(config, MIGRATION_REVISION)
     with sqlite3.connect(incremental) as connection:
         assert connection.execute(
             "SELECT name FROM workspaces WHERE id = 'workspace-old'"
@@ -304,43 +307,52 @@ def test_document_selection_restart_batch_and_learning_run_use_canonical_ownersh
 ) -> None:
     _path, engine, transactions = _database(tmp_path)
     actor, tenant = _context()
-    root = (tmp_path / "enterprise-document-root").resolve()
     service = EnterpriseDocumentImportService(
         transaction_manager=transactions,
-        runtime_root=root,
     )
     selected = asyncio.run(
         service.select(
             actor=actor,
             tenant=tenant,
-            files=[
-                UploadFile(
-                    filename="lesson.txt",
-                    file=io.BytesIO(b"Durable tenant-owned evidence"),
+            body=AssetManifestSelectionIn(
+                assets=(
+                    AssetManifestRegistrationIn(
+                        local_asset_id="local-asset-lesson",
+                        filename="lesson.txt",
+                        mime_type="text/plain",
+                        size_bytes=29,
+                        sha256="a" * 64,
+                        import_mode="MANAGED",
+                        portability="PORTABLE",
+                        derived_artifact_manifest={
+                            "evidence_manifest_id": "evidence-1"
+                        },
+                    ),
                 )
-            ],
+            ),
         )
     )
     selection_id = str(selected["selection_id"])
     document_id = str(selected["document_ids"][0])
     restarted = EnterpriseDocumentImportService(
         transaction_manager=transactions,
-        runtime_root=root,
     )
     assert restarted.preflight(
         actor=actor,
         tenant=tenant,
         selection_id=selection_id,
     )["ready"] is True
-    resolved = restarted.resolve_selection_paths(
+    resolved = restarted.resolve_selection_references(
         actor=actor,
         tenant=tenant,
         selection_id=selection_id,
         document_ids=[document_id],
     )
     assert len(resolved) == 1
-    assert Path(resolved[0]).is_file()
-    assert "/app/data" not in Path(resolved[0]).as_posix().casefold()
+    assert resolved[0]["schema_version"] == LOCAL_ASSET_REFERENCE_CONTRACT
+    assert resolved[0]["local_asset_id"] == "local-asset-lesson"
+    assert resolved[0]["sha256"] == "a" * 64
+    assert all("path" not in key.casefold() for key in resolved[0])
 
     first = restarted.start_batch(
         actor=actor,
@@ -373,13 +385,16 @@ def test_document_selection_restart_batch_and_learning_run_use_canonical_ownersh
         assert connection.scalar(text("SELECT count(*) FROM documents")) == 2
         assert connection.scalar(text("SELECT count(*) FROM jobs")) == 1
         assert connection.scalar(text("SELECT count(*) FROM outbox")) == 1
+        request_payload = connection.execute(
+            text("SELECT payload_json FROM jobs WHERE job_id = :id"),
+            {"id": first["job_id"]},
+        ).scalar_one()
+        assert "asset_manifest_references" in str(request_payload)
+        assert "selected_documents" not in str(request_payload)
 
-    # API submission authenticates the canonical selection but does not probe
-    # Worker-local content availability. The durable Worker owns that check.
-    Path(resolved[0]).unlink()
     learning_runs = LearningRunService(
         engine,
-        document_selection_resolver=restarted.resolve_selection_paths,
+        document_selection_resolver=restarted.resolve_selection_references,
         clock=lambda: datetime(2026, 9, 1, tzinfo=timezone.utc),
     )
     learning = learning_runs.create(

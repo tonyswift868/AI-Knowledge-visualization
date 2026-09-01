@@ -1,17 +1,11 @@
-"""Tenant-partitioned Enterprise document selection and durable batch facade."""
+"""Manifest-only Enterprise document selection and durable batch facade."""
 
 from __future__ import annotations
 
 import hashlib
-import os
-import re
-import shutil
 import uuid
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
-
-from fastapi import UploadFile
 
 from app.document_import_integration import (
     DOCUMENT_IMPORT_MAX_FILES,
@@ -25,8 +19,14 @@ from app.enterprise.contracts_v1 import (
 )
 from app.enterprise.jobs_v1.models import JobRequest, JobStatus, WorkflowKind
 from app.enterprise.jobs_v1.repository import WorkflowRepository
-from app.knowledge_policy import CONVERSION_POLICY
 
+from .asset_manifests import (
+    ASSET_MANIFEST_CREATE_CONTRACT,
+    ASSET_MANIFEST_SCHEMA_VERSION,
+    AssetManifestRecord,
+    AssetManifestRepository,
+    AssetManifestSelectionIn,
+)
 from .context import PostgresTenantTransactionManager, TenantTransactionContext
 from .models import (
     EnterprisePersistenceRequestError,
@@ -40,68 +40,21 @@ def _error(code: str, message: str, status: int) -> EnterprisePersistenceRequest
     return EnterprisePersistenceRequestError(code, message, status=status)
 
 
-def _runtime_root(configured: Path | None = None) -> Path:
-    candidate = configured
-    if candidate is None:
-        raw = str(os.getenv("MENTORFLOW_DOCUMENT_IMPORT_ROOT") or "").strip()
-        if not raw:
-            raise _error(
-                "DOCUMENT_IMPORT_ROOT_REQUIRED",
-                "Enterprise document import storage is not configured",
-                503,
-            )
-        candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        raise _error(
-            "DOCUMENT_IMPORT_ROOT_INVALID",
-            "Enterprise document import storage must be absolute",
-            503,
-        )
-    resolved = candidate.resolve()
-    normalized = resolved.as_posix().casefold().rstrip("/")
-    if normalized == "/app/data" or normalized.startswith("/app/data/"):
-        raise _error(
-            "DOCUMENT_IMPORT_ROOT_INVALID",
-            "Enterprise document import storage must not use /app/data",
-            503,
-        )
-    return resolved
-
-
-def _tenant_partition(tenant: TenantContext) -> str:
-    digest = hashlib.sha256(
-        f"{tenant.organization_id}\0{tenant.workspace_id}".encode("utf-8")
-    ).hexdigest()
-    return f"tenant-{digest[:32]}"
-
-
 def _selection_id() -> str:
     return f"selection_{uuid.uuid4().hex}"
 
 
-def _document_id() -> str:
-    return f"document_{uuid.uuid4().hex}"
-
-
-def _safe_suffix(filename: str) -> str:
-    suffix = Path(Path(filename.replace("\\", "/")).name).suffix.casefold()
-    return suffix if re.fullmatch(r"\.[a-z0-9]{1,12}", suffix) else ""
-
-
-def _ensure_descendant(path: Path, parent: Path) -> None:
-    if path == parent or parent not in path.parents:
-        raise RuntimeError("document storage path escaped the tenant partition")
-
-
 class EnterpriseDocumentImportService:
+    """Registers Desktop vault manifests without receiving or storing raw bytes."""
+
     def __init__(
         self,
         engine=None,
         *,
         transaction_manager=None,
         resource_repository: PostgresTenantResourceRepository | None = None,
+        asset_repository: AssetManifestRepository | None = None,
         workflow_repository: WorkflowRepository | None = None,
-        runtime_root: Path | None = None,
     ) -> None:
         if transaction_manager is None:
             if engine is None:
@@ -109,123 +62,92 @@ class EnterpriseDocumentImportService:
             transaction_manager = PostgresTenantTransactionManager(engine)
         self.transactions = transaction_manager
         self.resources = resource_repository or PostgresTenantResourceRepository()
+        self.assets = asset_repository or AssetManifestRepository()
         self.workflows = workflow_repository or WorkflowRepository()
-        self.root = _runtime_root(runtime_root)
-        self.upload_root = (self.root / "uploads").resolve()
-        _ensure_descendant(self.upload_root, self.root)
 
     @staticmethod
     def _context(actor: ActorContext, tenant: TenantContext) -> TenantTransactionContext:
         return TenantTransactionContext(tenant=tenant, actor=actor)
 
-    def _selection_root(self, tenant: TenantContext, selection_id: str) -> Path:
-        tenant_root = (self.upload_root / _tenant_partition(tenant)).resolve()
-        _ensure_descendant(tenant_root, self.upload_root)
-        selected = (tenant_root / selection_id).resolve()
-        _ensure_descendant(selected, tenant_root)
-        return selected
+    @staticmethod
+    def _projection(record: AssetManifestRecord, selection_id: str) -> dict[str, Any]:
+        return {
+            "schema_version": ASSET_MANIFEST_SCHEMA_VERSION,
+            "record_type": "asset_manifest_projection",
+            "selection_id": selection_id,
+            "asset_id": record.asset_id,
+            "asset_revision_id": record.asset_revision_id,
+            "local_asset_id": record.local_asset_id,
+            "device_id": record.device_id,
+            "filename": record.filename,
+            "mime_type": record.mime_type,
+            "size_bytes": record.size_bytes,
+            "sha256": record.sha256,
+            "source_kind": record.source_kind,
+            "import_mode": record.import_mode,
+            "portability": record.portability,
+            "verified_source_url": record.verified_source_url,
+            "availability": record.availability,
+            "derived_artifact_manifest": dict(record.derived_artifact_manifest),
+        }
 
     async def select(
         self,
         *,
         actor: ActorContext,
         tenant: TenantContext,
-        files: list[UploadFile],
+        body: AssetManifestSelectionIn,
     ) -> dict[str, Any]:
-        context = self._context(actor, tenant)
-        if not files or len(files) > DOCUMENT_IMPORT_MAX_FILES:
-            raise _error(
-                "DOCUMENT_SELECTION_SIZE_INVALID",
-                f"Select between 1 and {DOCUMENT_IMPORT_MAX_FILES} documents",
-                422,
-            )
         selection_id = _selection_id()
-        selection_root = self._selection_root(tenant, selection_id)
-        selection_root.mkdir(parents=True, exist_ok=False)
-        staged: list[dict[str, Any]] = []
-        try:
-            for upload in files:
-                data = await upload.read(CONVERSION_POLICY.maximum_input_bytes + 1)
-                if not data:
-                    raise _error(
-                        "DOCUMENT_EMPTY",
-                        "Uploaded documents must not be empty",
-                        422,
-                    )
-                if len(data) > CONVERSION_POLICY.maximum_input_bytes:
-                    raise _error(
-                        "DOCUMENT_TOO_LARGE",
-                        "Uploaded document exceeds the configured size limit",
-                        413,
-                    )
-                document_id = _document_id()
-                filename = Path(str(upload.filename or "document").replace("\\", "/")).name
-                target = (selection_root / f"{document_id}{_safe_suffix(filename)}").resolve()
-                _ensure_descendant(target, selection_root)
-                target.write_bytes(data)
-                staged.append(
-                    {
-                        "document_id": document_id,
-                        "filename": filename[:320] or document_id,
-                        "media_type": str(upload.content_type or "application/octet-stream")[:160],
-                        "size_bytes": len(data),
-                        "sha256": hashlib.sha256(data).hexdigest(),
-                        "storage_relative_path": target.relative_to(
-                            self.upload_root
-                        ).as_posix(),
-                    }
-                )
-            with self.transactions.transaction(context) as transaction:
-                for item in staged:
-                    self.resources.upsert(
-                        transaction,
-                        TenantResourceDraft(
-                            resource_id=item["document_id"],
-                            kind=TenantResourceKind.DOCUMENT,
-                            scope_type=ResourceScopeType.WORKSPACE,
-                            owner_subject_id=actor.subject_id,
-                            classification=ResourceClassification.CONFIDENTIAL,
-                            title=item["filename"],
-                            status="SELECTED",
-                            payload={
-                                "record_type": "document",
-                                "selection_id": selection_id,
-                                **item,
-                            },
-                        ),
-                    )
+        context = self._context(actor, tenant)
+        with self.transactions.transaction(context) as transaction:
+            records: list[AssetManifestRecord] = []
+            for manifest in body.assets:
+                record = self.assets.upsert(transaction, manifest)
+                records.append(record)
                 self.resources.upsert(
                     transaction,
                     TenantResourceDraft(
-                        resource_id=selection_id,
+                        resource_id=record.asset_id,
                         kind=TenantResourceKind.DOCUMENT,
-                        scope_type=ResourceScopeType.WORKSPACE,
+                        scope_type=ResourceScopeType.PERSONAL,
                         owner_subject_id=actor.subject_id,
                         classification=ResourceClassification.CONFIDENTIAL,
-                        title=f"Document selection ({len(staged)})",
-                        status="SELECTED",
-                        payload={
-                            "record_type": "selection",
-                            "document_ids": [item["document_id"] for item in staged],
-                        },
+                        title=record.filename,
+                        status=record.availability,
+                        payload=self._projection(record, selection_id),
+                        search_text=f"{record.filename} {record.mime_type}",
                     ),
                 )
-        except BaseException:
-            if selection_root.exists() and self.upload_root in selection_root.parents:
-                shutil.rmtree(selection_root)
-            raise
+            asset_ids = [record.asset_id for record in records]
+            revision_ids = [record.asset_revision_id for record in records]
+            self.resources.upsert(
+                transaction,
+                TenantResourceDraft(
+                    resource_id=selection_id,
+                    kind=TenantResourceKind.DOCUMENT,
+                    scope_type=ResourceScopeType.PERSONAL,
+                    owner_subject_id=actor.subject_id,
+                    classification=ResourceClassification.CONFIDENTIAL,
+                    title=f"Asset manifest selection ({len(records)})",
+                    status="SELECTED",
+                    payload={
+                        "schema_version": ASSET_MANIFEST_CREATE_CONTRACT,
+                        "record_type": "asset_manifest_selection",
+                        "asset_ids": asset_ids,
+                        "asset_revision_ids": revision_ids,
+                    },
+                ),
+            )
         return {
+            "schema_version": ASSET_MANIFEST_CREATE_CONTRACT,
             "selection_id": selection_id,
-            "document_ids": [item["document_id"] for item in staged],
-            "files": [
-                {
-                    "file_id": item["document_id"],
-                    "name": item["filename"],
-                    "size_bytes": item["size_bytes"],
-                    "media_type": item["media_type"],
-                }
-                for item in staged
-            ],
+            "asset_ids": asset_ids,
+            "asset_revision_ids": revision_ids,
+            # The durable learning API still names this collection document_ids;
+            # its values are opaque asset revision ids, never paths.
+            "document_ids": revision_ids,
+            "assets": [record.public_contract() for record in records],
             "status": "selected",
         }
 
@@ -237,7 +159,8 @@ class EnterpriseDocumentImportService:
             selection is None
             or selection.organization_id != transaction.tenant.organization_id
             or selection.workspace_id != transaction.tenant.workspace_id
-            or selection.payload.get("record_type") != "selection"
+            or selection.owner_subject_id != transaction.actor.subject_id
+            or selection.payload.get("record_type") != "asset_manifest_selection"
         ):
             raise _error(
                 "DOCUMENT_SELECTION_NOT_FOUND",
@@ -246,62 +169,39 @@ class EnterpriseDocumentImportService:
             )
         return selection
 
-    def _document_records(
+    def _records(
         self,
         transaction,
         *,
         selection_id: str,
-        document_ids: Sequence[object],
-    ):
-        normalized = tuple(str(value or "").strip() for value in document_ids)
+        revision_ids: Sequence[object],
+    ) -> tuple[AssetManifestRecord, ...]:
+        normalized = tuple(str(value or "").strip() for value in revision_ids)
+        selection = self._selection(transaction, selection_id)
+        selected = tuple(selection.payload.get("asset_revision_ids") or ())
         if (
             not normalized
             or len(normalized) > DOCUMENT_IMPORT_MAX_FILES
             or any(not value for value in normalized)
             or len(set(normalized)) != len(normalized)
+            or any(value not in selected for value in normalized)
         ):
             raise _error(
                 "DOCUMENT_SELECTION_INVALID",
-                "Document identifiers must be a unique non-empty collection",
+                "Asset revision identifiers must be a selected unique collection",
                 422,
             )
-        records = []
-        for document_id in normalized:
-            record = self.resources.get(
-                transaction, TenantResourceKind.DOCUMENT, document_id
-            )
-            if (
-                record is None
-                or record.organization_id != transaction.tenant.organization_id
-                or record.workspace_id != transaction.tenant.workspace_id
-                or record.payload.get("record_type") != "document"
-                or record.payload.get("selection_id") != selection_id
-            ):
+        records: list[AssetManifestRecord] = []
+        for revision_id in normalized:
+            record = self.assets.get_current_revision(transaction, revision_id)
+            if record is None or record.availability == "DELETED":
                 raise _error(
                     "DOCUMENT_SELECTION_NOT_FOUND",
-                    "A selected document is unavailable in the tenant context",
+                    "A selected asset revision is unavailable in the tenant context",
                     404,
                 )
             records.append(record)
         return tuple(records)
-
-    def _absolute_path(self, record, *, require_exists: bool = True) -> Path:
-        relative = Path(str(record.payload.get("storage_relative_path") or ""))
-        if relative.is_absolute():
-            raise _error(
-                "DOCUMENT_STORAGE_INVALID",
-                "Persisted document storage metadata is invalid",
-                409,
-            )
-        resolved = (self.upload_root / relative).resolve()
-        _ensure_descendant(resolved, self.upload_root)
-        if require_exists and not resolved.is_file():
-            raise _error(
-                "DOCUMENT_CONTENT_NOT_FOUND",
-                "Persisted document content is unavailable",
-                409,
-            )
-        return resolved
 
     def preflight(
         self,
@@ -313,52 +213,52 @@ class EnterpriseDocumentImportService:
         context = self._context(actor, tenant)
         with self.transactions.transaction(context) as transaction:
             selection = self._selection(transaction, selection_id)
-            records = self._document_records(
+            records = self._records(
                 transaction,
                 selection_id=selection_id,
-                document_ids=selection.payload.get("document_ids") or (),
+                revision_ids=selection.payload.get("asset_revision_ids") or (),
             )
-            documents = [
-                {
-                    "file_id": record.resource_id,
-                    "name": record.title,
-                    "size_bytes": int(record.payload.get("size_bytes") or 0),
-                    "media_type": record.payload.get("media_type"),
-                    "ready": self._absolute_path(record).is_file(),
-                }
-                for record in records
-            ]
+            assets = [record.public_contract() for record in records]
+            ready = all(record.availability == "AVAILABLE" for record in records)
         return {
             "selection_id": selection_id,
-            "status": "ready",
-            "ready": True,
-            "documents": documents,
-            "warnings": [],
+            "status": "ready" if ready else "missing_assets",
+            "ready": ready,
+            "assets": assets,
+            "warnings": (
+                []
+                if ready
+                else ["One or more local account-vault assets are unavailable"]
+            ),
         }
 
-    def resolve_selection_paths(
+    def resolve_selection_references(
         self,
         *,
         actor: ActorContext,
         tenant: TenantContext,
         selection_id: str,
         document_ids: Sequence[object],
-    ) -> tuple[str, ...]:
+    ) -> tuple[dict[str, Any], ...]:
         context = self._context(actor, tenant)
         with self.transactions.transaction(context) as transaction:
-            self._selection(transaction, selection_id)
-            records = self._document_records(
+            records = self._records(
                 transaction,
                 selection_id=selection_id,
-                document_ids=document_ids,
+                revision_ids=document_ids,
             )
-            # Learning-run creation validates ownership from canonical rows only.
-            # The durable Worker owns content availability checks when it consumes
-            # this persisted path after the API transaction has committed.
-            return tuple(
-                str(self._absolute_path(record, require_exists=False))
+            missing = [
+                record.asset_revision_id
                 for record in records
-            )
+                if record.availability != "AVAILABLE"
+            ]
+            if missing:
+                raise _error(
+                    "LOCAL_ASSET_MISSING",
+                    "A selected local asset is unavailable; metadata was preserved",
+                    409,
+                )
+            return tuple(record.local_reference() for record in records)
 
     def start_batch(
         self,
@@ -372,18 +272,34 @@ class EnterpriseDocumentImportService:
         with self.transactions.transaction(context) as transaction:
             selection = self._selection(transaction, selection_id)
             selected_ids = body.selected_file_ids or list(
-                selection.payload.get("document_ids") or ()
+                selection.payload.get("asset_revision_ids") or ()
             )
-            records = self._document_records(
+            records = self._records(
                 transaction,
                 selection_id=selection_id,
-                document_ids=selected_ids,
+                revision_ids=selected_ids,
             )
-            paths = tuple(str(self._absolute_path(record)) for record in records)
-            fingerprint = hashlib.sha256(
-                ("\0".join((*selected_ids, str(body.conversion_batch_size)))).encode(
-                    "utf-8"
+            missing = [
+                record.asset_revision_id
+                for record in records
+                if record.availability != "AVAILABLE"
+            ]
+            if missing:
+                raise _error(
+                    "LOCAL_ASSET_MISSING",
+                    "A selected local asset is unavailable; metadata was preserved",
+                    409,
                 )
+            references = [record.local_reference() for record in records]
+            fingerprint = hashlib.sha256(
+                (
+                    "\0".join(
+                        (
+                            *[record.asset_revision_id for record in records],
+                            str(body.conversion_batch_size),
+                        )
+                    )
+                ).encode("utf-8")
             ).hexdigest()
             trace_id = f"document-batch:{fingerprint}"
             request = JobRequest(
@@ -393,14 +309,18 @@ class EnterpriseDocumentImportService:
                     "workspace_id": tenant.workspace_id,
                     "document_batch": {
                         "selection_id": selection_id,
-                        "document_ids": list(selected_ids),
+                        "asset_revision_ids": [
+                            record.asset_revision_id for record in records
+                        ],
                     },
                     "request": {
                         "request_id": actor.request_id,
-                        "selected_documents": list(paths),
-                        "conversion_config_identity": "enterprise-document-batch-v1",
+                        "asset_manifest_references": references,
+                        "conversion_config_identity": (
+                            "enterprise-asset-manifest-batch-v1"
+                        ),
                         "conversion_batch_size": body.conversion_batch_size,
-                        "metadata_by_path": {},
+                        "metadata_by_asset_revision": {},
                     },
                 },
                 actor_context=actor,
@@ -432,6 +352,7 @@ class EnterpriseDocumentImportService:
             != transaction.tenant.organization_id
             or job.tenant_context.workspace_id != transaction.tenant.workspace_id
             or job.actor_context.subject_id != transaction.actor.subject_id
+            or job.actor_context.issuer != transaction.actor.issuer
             or not isinstance(document_batch, dict)
         ):
             raise _error(

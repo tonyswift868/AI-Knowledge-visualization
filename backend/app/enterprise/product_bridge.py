@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
-from fastapi import APIRouter, Body, FastAPI, File, Request, UploadFile
+from fastapi import APIRouter, Body, FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.document_import_integration import DocumentBatchStartIn
 from app.enterprise.identity.oidc import IdentityError
 from app.enterprise.identity.runtime import EnterpriseIdentityRuntime, IdentityBinding
+from app.enterprise_tenancy.asset_manifests import AssetManifestSelectionIn
 from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
 from app.enterprise_tenancy.teaching import EnterpriseTeachingService
@@ -203,14 +204,14 @@ async def enterprise_patch_goal(
 @router.post("/document-import/selections")
 async def enterprise_select_documents(
     request: Request,
-    files: list[UploadFile] = File(...),
+    body: AssetManifestSelectionIn = Body(),
 ) -> dict[str, Any]:
     actor, tenant = _context(await _identity(request))
     try:
         return await _document_service(request).select(
             actor=actor,
             tenant=tenant,
-            files=files,
+            body=body,
         )
     except EnterprisePersistenceRequestError as exc:
         raise IdentityError(exc.code, exc.message, status=exc.status) from exc
