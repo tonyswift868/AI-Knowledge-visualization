@@ -50,6 +50,7 @@ import { VoicePlaybackRateControl } from "./features/voice/VoicePlaybackRateCont
 import { ProgressExperience } from "./features/progress/ProgressExperience";
 import { PlanProductExperience } from "./features/plan-product/PlanProductExperience";
 import { createDocumentImportClient, DocumentImportView } from "./features/document-import";
+import { LocalAssetLifecycleView } from "./features/local-assets/LocalAssetLifecycleView";
 import type { TeacherPresentationState } from "./features/teachers/presentation/teacherPresentationTypes";
 import {
   TEACHER_STAGE_IDLE_REACTION_MS,
@@ -157,7 +158,7 @@ export function App() {
   const providerState = useMentorStore();
   const narrative = useNarrativeStore();
   const [tab, setTab] = useState<
-    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import"
+    "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import" | "local-assets"
   >(() => {
     if (/\/workspaces\/[^/]+\/progress\/?$/.test(window.location.pathname)) {
       return "progress";
@@ -179,8 +180,9 @@ export function App() {
         "review",
         "plan-product",
         "document-import",
+        "local-assets",
       ].includes(saved || "")
-        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import"
+        ? saved as "home" | "story" | "catalog" | "learn" | "progress" | "settings" | "expedition" | "teachers" | "active" | "casual" | "cost-cache" | "review" | "plan-product" | "document-import" | "local-assets"
         : "home";
     } catch {
       return "home";
@@ -638,6 +640,7 @@ export function App() {
             ["teachers", UserRoundCog, "AI教师角色库"],
             ["progress", Brain, "进度与掌握"],
             ["document-import", Upload, "文档导入"],
+            ["local-assets", FileText, "本地资料"],
             ["review", BookOpen, "主动回忆"],
             ["plan-product", Target, "学习计划"],
             ["cost-cache", Coins, "成本与缓存"],
@@ -693,6 +696,8 @@ export function App() {
                         ? "进度与掌握"
                     : tab === "document-import"
                       ? "文档导入"
+                    : tab === "local-assets"
+                      ? "本地资料"
                     : tab === "active"
                       ? "学习任务"
                     : tab === "cost-cache"
@@ -788,6 +793,7 @@ export function App() {
             />
           )}{" "}
           {tab === "document-import" && <DocumentImportView client={documentImportClient} />}
+          {tab === "local-assets" && <LocalAssetLifecycleView />}
           {tab === "cost-cache" && <CostCacheDashboard />}
           {tab === "review" && <ReviewDemoApp />}
           {tab === "plan-product" && <PlanProductExperience />}

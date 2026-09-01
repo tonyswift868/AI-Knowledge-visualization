@@ -55,6 +55,8 @@ from .account_identity import (
 )
 from .account_settings_page import AccountSettingsPage
 from .account_vault import AccountVaultManager, VaultLayout
+from .local_asset_lifecycle import LocalAssetLifecycle
+from .local_asset_page import LocalAssetPage
 from .knowledge_map_view import KnowledgeMapView
 from .materials_page import MaterialsPage
 from .plans_page import PlanCalendar, PlansPage, flattened_tasks
@@ -451,6 +453,10 @@ class MainWindow(QMainWindow):
         )
         self.account_vault_manager = AccountVaultManager(VaultLayout(vault_root))
         self.account_vault_manager.mount(self.account_profile)
+        self.local_asset_lifecycle = LocalAssetLifecycle(
+            self.account_vault_manager.current,
+            account_identity=self.user,
+        )
         self.account_credential_vault = AccountCredentialVault()
         self._account_switch_in_progress = False
         analogy_policy_version = "v12"
@@ -531,6 +537,7 @@ class MainWindow(QMainWindow):
             ("概览", 0),
             ("我的计划", 1),
             ("资料管理", 3),
+            ("本地资料", 12),
             ("原生课堂", 5),
             ("创建计划", 6),
             ("模型连接", 8),
@@ -593,6 +600,8 @@ class MainWindow(QMainWindow):
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
+        self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle)
+        self.pages.addWidget(self.local_asset_page)
         layout.addWidget(self.pages, 1)
         self.navigation.setCurrentRow(0)
         QTimer.singleShot(0, self._refresh_overview)
