@@ -12,6 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 from backend.app.credential_store import (
     CredentialStoreError,
     delete_account_secret,
+    get_account_secret,
     store_account_secret,
 )
 
@@ -179,7 +180,7 @@ class AccountPreferenceStore:
         )
         if mode != ProfileMode.ENTERPRISE_ACCOUNT.value:
             return AccountProfile.personal_local()
-        return AccountProfile(
+        profile = AccountProfile(
             mode=ProfileMode.ENTERPRISE_ACCOUNT,
             display_name=str(
                 self.settings.value("account/display_name", "Enterprise Account")
@@ -188,6 +189,13 @@ class AccountPreferenceStore:
             issuer_hash=str(self.settings.value("account/issuer_hash", "") or ""),
             subject_hash=str(self.settings.value("account/subject_hash", "") or ""),
         )
+        # A configured Enterprise Desktop must prove that its Locker session
+        # and server identity still bind to this profile before main_window
+        # mounts the account Vault.  Personal Local and unconfigured unit
+        # lifecycles keep the original login-free behavior.
+        from .runtime import restore_enterprise_profile_for_startup
+
+        return restore_enterprise_profile_for_startup(profile)
 
     def clear(self) -> None:
         for key in NONSECRET_ACCOUNT_PREFERENCE_KEYS:
@@ -217,27 +225,77 @@ class AccountCredentialVault:
         access_token: str,
         refresh_token: str,
     ) -> dict[str, str]:
-        references: dict[str, str] = {}
-        if access_token:
-            references["access_token_ref"] = store_account_secret(
-                access_token,
-                issuer_hash=identity.issuer_hash,
-                subject_hash=identity.subject_hash,
-                purpose=self.ACCESS_TOKEN_PURPOSE,
-            )
-        if refresh_token:
-            references["refresh_token_ref"] = store_account_secret(
-                refresh_token,
-                issuer_hash=identity.issuer_hash,
-                subject_hash=identity.subject_hash,
-                purpose=self.REFRESH_TOKEN_PURPOSE,
-            )
-        if not references:
+        access = str(access_token or "")
+        refresh = str(refresh_token or "")
+        if not access or not refresh:
             raise CredentialStoreError(
                 "CREDENTIAL_REQUIRED",
-                "OAuth token material is required",
+                "OAuth access and refresh token material is required",
             )
+        previous: dict[str, str] = {}
+        for purpose in (self.ACCESS_TOKEN_PURPOSE, self.REFRESH_TOKEN_PURPOSE):
+            try:
+                previous[purpose] = get_account_secret(
+                    issuer_hash=identity.issuer_hash,
+                    subject_hash=identity.subject_hash,
+                    purpose=purpose,
+                )
+            except CredentialStoreError as exc:
+                if exc.code != "CREDENTIAL_NOT_FOUND":
+                    raise
+        references: dict[str, str] = {}
+        written: list[str] = []
+        values = (
+            (self.ACCESS_TOKEN_PURPOSE, access, "access_token_ref"),
+            (self.REFRESH_TOKEN_PURPOSE, refresh, "refresh_token_ref"),
+        )
+        try:
+            for purpose, secret, result_key in values:
+                references[result_key] = store_account_secret(
+                    secret,
+                    issuer_hash=identity.issuer_hash,
+                    subject_hash=identity.subject_hash,
+                    purpose=purpose,
+                )
+                written.append(purpose)
+        except BaseException:
+            for purpose in reversed(written):
+                try:
+                    if purpose in previous:
+                        store_account_secret(
+                            previous[purpose],
+                            issuer_hash=identity.issuer_hash,
+                            subject_hash=identity.subject_hash,
+                            purpose=purpose,
+                        )
+                    else:
+                        delete_account_secret(
+                            issuer_hash=identity.issuer_hash,
+                            subject_hash=identity.subject_hash,
+                            purpose=purpose,
+                        )
+                except CredentialStoreError:
+                    pass
+            raise
         return references
+
+    def load_oauth_tokens(self, profile: AccountProfile) -> tuple[str, str]:
+        if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
+            raise CredentialStoreError(
+                "CREDENTIAL_NAMESPACE_INVALID",
+                "Enterprise Account profile is required",
+            )
+        assert profile.issuer_hash is not None and profile.subject_hash is not None
+        values: list[str] = []
+        for purpose in (self.ACCESS_TOKEN_PURPOSE, self.REFRESH_TOKEN_PURPOSE):
+            values.append(
+                get_account_secret(
+                    issuer_hash=profile.issuer_hash,
+                    subject_hash=profile.subject_hash,
+                    purpose=purpose,
+                )
+            )
+        return values[0], values[1]
 
     def logout(self, profile: AccountProfile) -> None:
         if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
@@ -253,6 +311,12 @@ class AccountCredentialVault:
             except CredentialStoreError as exc:
                 if exc.code != "CREDENTIAL_NOT_FOUND":
                     raise
+        try:
+            from .runtime import clear_enterprise_account_session
+
+            clear_enterprise_account_session(profile)
+        except ImportError:
+            pass
 
 
 def open_system_browser_oauth(authorization_url: str) -> bool:

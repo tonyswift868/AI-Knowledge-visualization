@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -25,12 +25,20 @@ from .account_identity import (
     AccountIdentity,
     AccountProfile,
     ProfileMode,
-    open_system_browser_oauth,
 )
 from .account_vault import (
     AccountVaultManager,
     AssetAvailability,
     AssetRecord,
+)
+from .enterprise_oidc import (
+    EnterpriseOidcLoginResult,
+    login_enterprise_account_from_env,
+)
+from .runtime import (
+    enterprise_account_server_state,
+    record_enterprise_account_session,
+    startup_restore_failure,
 )
 
 
@@ -46,6 +54,9 @@ AVAILABILITY_TEXT = {
 
 
 class AccountSettingsPage(QWidget):
+    _oidc_succeeded = Signal(object)
+    _oidc_failed = Signal(str)
+
     def __init__(
         self,
         *,
@@ -54,6 +65,7 @@ class AccountSettingsPage(QWidget):
         credential_vault: AccountCredentialVault,
         switch_account: Callable[[AccountIdentity], object],
         logout_account: Callable[[], None],
+        oidc_login: Callable[[], EnterpriseOidcLoginResult] | None = None,
     ) -> None:
         super().__init__()
         self.profile = profile
@@ -61,6 +73,10 @@ class AccountSettingsPage(QWidget):
         self.credential_vault = credential_vault
         self.switch_account = switch_account
         self.logout_account = logout_account
+        self.oidc_login = oidc_login or login_enterprise_account_from_env
+        self._oidc_thread: threading.Thread | None = None
+        self._oidc_succeeded.connect(self._finish_external_oauth)
+        self._oidc_failed.connect(self._external_oauth_failed)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(38, 32, 38, 32)
@@ -114,14 +130,14 @@ class AccountSettingsPage(QWidget):
         layout.addWidget(self.assets, 1)
 
         account_actions = QHBoxLayout()
-        oauth = QPushButton("使用系统浏览器登录或切换企业账号")
-        oauth.setObjectName("externalBrowserOAuthButton")
-        oauth.clicked.connect(self._begin_external_oauth)
-        account_actions.addWidget(oauth)
-        logout = QPushButton("退出当前企业账号")
-        logout.setObjectName("accountLogoutButton")
-        logout.clicked.connect(self.logout_account)
-        account_actions.addWidget(logout)
+        self.oauth_button = QPushButton("使用系统浏览器登录或切换企业账号")
+        self.oauth_button.setObjectName("externalBrowserOAuthButton")
+        self.oauth_button.clicked.connect(self._begin_external_oauth)
+        account_actions.addWidget(self.oauth_button)
+        self.logout_button = QPushButton("退出当前企业账号")
+        self.logout_button.setObjectName("accountLogoutButton")
+        self.logout_button.clicked.connect(self.logout_account)
+        account_actions.addWidget(self.logout_button)
         account_actions.addStretch()
         layout.addLayout(account_actions)
 
@@ -155,7 +171,10 @@ class AccountSettingsPage(QWidget):
         current = self.vault_manager.current
         if current is None or current.profile != self.profile:
             self.assets.setRowCount(0)
-            self.status.setText("Vault 尚未挂载；导入资料时会安全挂载当前账号目录。")
+            self.status.setText(
+                startup_restore_failure()
+                or "Vault 尚未挂载；导入资料时会安全挂载当前账号目录。"
+            )
             return
         self._render_assets(current.list_assets())
 
@@ -180,9 +199,21 @@ class AccountSettingsPage(QWidget):
                 3,
                 QTableWidgetItem(" / ".join(asset.portability_labels) or "VAULT_MANAGED"),
             )
-        self.status.setText(
-            "当前列表仅来自已挂载账号的本机 Vault；不会枚举其他账号目录。"
-        )
+        message = "当前列表仅来自已挂载账号的本机 Vault；不会枚举其他账号目录。"
+        restore_failure = startup_restore_failure()
+        if restore_failure:
+            message = f"{restore_failure} {message}"
+        server_state = enterprise_account_server_state(self.profile)
+        context = server_state.get("context")
+        if self.profile.mode is ProfileMode.ENTERPRISE_ACCOUNT and isinstance(
+            context,
+            Mapping,
+        ):
+            organization = str(context.get("organization_id") or "").strip()
+            workspace = str(context.get("workspace_id") or "").strip()
+            if organization and workspace:
+                message += f" 服务器账号状态已刷新：{organization} / {workspace}。"
+        self.status.setText(message)
 
     def _vault(self):
         current = self.vault_manager.current
@@ -213,24 +244,47 @@ class AccountSettingsPage(QWidget):
         self.refresh()
 
     def _begin_external_oauth(self) -> None:
-        authorization_url = os.getenv(
-            "MENTORFLOW_OAUTH_AUTHORIZATION_URL",
-            "",
-        ).strip()
-        if not authorization_url:
-            self.status.setText(
-                "尚未配置企业 OAuth 授权地址；MentorFlow 不会在应用内收集账号密码。"
-            )
+        if self._oidc_thread is not None and self._oidc_thread.is_alive():
+            return
+        self.oauth_button.setEnabled(False)
+        self.logout_button.setEnabled(False)
+        self.status.setText(
+            "正在系统默认浏览器中打开企业登录；完成授权后会自动返回 MentorFlow。"
+        )
+
+        def run() -> None:
+            try:
+                self._oidc_succeeded.emit(self.oidc_login())
+            except Exception:
+                self._oidc_failed.emit("企业登录未能安全完成，请检查配置后重试。")
+
+        self._oidc_thread = threading.Thread(
+            target=run,
+            name="mentorflow-enterprise-oidc",
+            daemon=True,
+        )
+        self._oidc_thread.start()
+
+    def _finish_external_oauth(self, result: object) -> None:
+        self.oauth_button.setEnabled(True)
+        self.logout_button.setEnabled(True)
+        if not isinstance(result, EnterpriseOidcLoginResult):
+            self._external_oauth_failed("企业登录返回了无效结果。")
             return
         try:
-            opened = open_system_browser_oauth(authorization_url)
-        except ValueError:
-            opened = False
-        self.status.setText(
-            "已在系统浏览器中打开登录；完成授权后请返回 MentorFlow。"
-            if opened
-            else "无法安全打开企业登录页面。"
-        )
+            self.complete_external_oauth(
+                result.identity,
+                access_token=result.access_token,
+                refresh_token=result.refresh_token,
+                server_state=result.server_state,
+            )
+        except Exception:
+            self._external_oauth_failed("企业账号切换未能安全完成。")
+
+    def _external_oauth_failed(self, message: str) -> None:
+        self.oauth_button.setEnabled(True)
+        self.logout_button.setEnabled(True)
+        self.status.setText(str(message or "企业登录未能安全完成。"))
 
     def complete_external_oauth(
         self,
@@ -238,13 +292,20 @@ class AccountSettingsPage(QWidget):
         *,
         access_token: str,
         refresh_token: str,
+        server_state: Mapping[str, object] | None = None,
     ) -> object:
         self.credential_vault.store_oauth_tokens(
             identity,
             access_token=access_token,
             refresh_token=refresh_token,
         )
-        return self.switch_account(identity)
+        if server_state is not None:
+            record_enterprise_account_session(identity.profile(), server_state)
+        try:
+            return self.switch_account(identity)
+        except BaseException:
+            self.credential_vault.logout(identity.profile())
+            raise
 
 
 __all__ = ["AVAILABILITY_TEXT", "AccountSettingsPage"]

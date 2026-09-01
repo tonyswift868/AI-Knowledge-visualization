@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
+from backend.app.credential_store import CredentialStoreError  # noqa: E402
 
 from desktop.account_identity import (  # noqa: E402
     AccountCredentialVault,
@@ -85,6 +86,7 @@ def _coordinator(
         state["ui_selection"] = None
         state["cache"] = {}
         state["memory"] = {}
+        state["provider_state"] = None
 
     def quit_window() -> None:
         state["window_closed"] = True
@@ -134,6 +136,7 @@ def test_a_to_b_to_a_closes_handles_clears_state_and_never_cross_enumerates(
         "ui_selection": "A-selection",
         "cache": {"A": "private"},
         "memory": {"A": "private"},
+        "provider_state": {"A": "private-provider"},
     }
 
     receipt_ab = _coordinator(
@@ -149,6 +152,7 @@ def test_a_to_b_to_a_closes_handles_clears_state_and_never_cross_enumerates(
     assert state["ui_selection"] is None
     assert state["cache"] == {}
     assert state["memory"] == {}
+    assert state["provider_state"] is None
     assert state["relaunched"] is True
     assert receipt_ab.events.index("stop_current_account_local_tasks") < receipt_ab.events.index(
         "close_current_sqlite_file_watcher_and_http_handles"
@@ -275,7 +279,18 @@ def test_oauth_tokens_stay_in_secure_boundary_and_logout_deletes_both_refs(
         deleted.append(purpose)
         return True
 
+    def fake_get(
+        *,
+        issuer_hash: str,
+        subject_hash: str,
+        purpose: str,
+    ) -> str:
+        assert issuer_hash == identity.issuer_hash
+        assert subject_hash == identity.subject_hash
+        raise CredentialStoreError("CREDENTIAL_NOT_FOUND", "not found")
+
     monkeypatch.setattr("desktop.account_identity.store_account_secret", fake_store)
+    monkeypatch.setattr("desktop.account_identity.get_account_secret", fake_get)
     monkeypatch.setattr("desktop.account_identity.delete_account_secret", fake_delete)
     settings = _Settings()
     preferences = AccountPreferenceStore(settings)

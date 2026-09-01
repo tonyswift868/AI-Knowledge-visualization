@@ -13,14 +13,240 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import QObject, QProcess, QSettings, Signal
 
-from .account_identity import AccountIdentity, AccountPreferenceStore, AccountProfile
-from .account_vault import AccountVaultManager
+from .account_identity import (
+    AccountCredentialVault,
+    AccountIdentity,
+    AccountPreferenceStore,
+    AccountProfile,
+    ProfileMode,
+)
+from .account_vault import AccountVaultManager, VaultLayout
 from .local_migration import write_next_launch_data_root_pointer
 
 
 _active_local_service: "LocalService | None" = None
+_restored_enterprise_profiles: set[tuple[str, str]] = set()
+_enterprise_server_state: dict[tuple[str, str], dict[str, object]] = {}
+_startup_restore_failure = ""
+
+
+def _profile_key(profile: AccountProfile) -> tuple[str, str]:
+    if (
+        profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT
+        or profile.issuer_hash is None
+        or profile.subject_hash is None
+    ):
+        raise ValueError("Enterprise Account profile is required")
+    return profile.issuer_hash, profile.subject_hash
+
+
+def _safe_server_state(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    context = value.get("context")
+    account = value.get("account")
+    safe_context: dict[str, object] = {}
+    if isinstance(context, dict):
+        for name in (
+            "contract_version",
+            "organization_id",
+            "workspace_id",
+            "roles",
+            "service_permissions",
+            "context_version",
+        ):
+            candidate = context.get(name)
+            if isinstance(candidate, (str, int, list, tuple)):
+                safe_context[name] = list(candidate) if isinstance(candidate, tuple) else candidate
+    safe_account: dict[str, object] = {}
+    if isinstance(account, dict):
+        for name in ("display_name", "preferred_username", "email"):
+            candidate = account.get(name)
+            if candidate is None or isinstance(candidate, str):
+                safe_account[name] = candidate
+    return {
+        "schema_version": str(value.get("schema_version") or ""),
+        "authenticated": value.get("authenticated") is True,
+        "account": safe_account,
+        "context": safe_context,
+    }
+
+
+def record_enterprise_account_session(profile: AccountProfile, server_state: object) -> None:
+    global _startup_restore_failure
+    key = _profile_key(profile)
+    _restored_enterprise_profiles.add(key)
+    _enterprise_server_state.clear()
+    _enterprise_server_state[key] = _safe_server_state(server_state)
+    _startup_restore_failure = ""
+
+
+def enterprise_account_server_state(profile: AccountProfile) -> dict[str, object]:
+    if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
+        return {}
+    return dict(_enterprise_server_state.get(_profile_key(profile), {}))
+
+
+def startup_restore_failure() -> str:
+    return _startup_restore_failure
+
+
+def clear_enterprise_account_session(profile: AccountProfile | None = None) -> None:
+    global _startup_restore_failure
+    if profile is None:
+        _restored_enterprise_profiles.clear()
+        _enterprise_server_state.clear()
+    elif profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
+        key = _profile_key(profile)
+        _restored_enterprise_profiles.discard(key)
+        _enterprise_server_state.pop(key, None)
+    _startup_restore_failure = ""
+
+
+def restore_enterprise_profile_for_startup(profile: AccountProfile) -> AccountProfile:
+    """Validate Locker tokens and server binding before a saved Vault is mounted."""
+
+    global _startup_restore_failure
+    if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
+        return profile
+    from .enterprise_oidc import (
+        DesktopOidcConfig,
+        EnterpriseOidcError,
+        restore_enterprise_account_from_env,
+    )
+
+    if not DesktopOidcConfig.is_configured():
+        return profile
+    key = _profile_key(profile)
+    if key in _restored_enterprise_profiles:
+        return profile
+    credentials = AccountCredentialVault()
+    try:
+        result = restore_enterprise_account_from_env(profile, credentials)
+        restored_profile = result.identity.profile()
+        if (
+            restored_profile.issuer_hash != profile.issuer_hash
+            or restored_profile.subject_hash != profile.subject_hash
+        ):
+            raise EnterpriseOidcError(
+                "ENTERPRISE_ACCOUNT_RESTORE_MISMATCH",
+                "Restored session belongs to another Enterprise Account",
+            )
+    except Exception as exc:
+        try:
+            credentials.logout(profile)
+        except Exception:
+            pass
+        _startup_restore_failure = "企业会话无法安全恢复，请重新登录。"
+        raise ValueError(_startup_restore_failure) from exc
+    record_enterprise_account_session(restored_profile, result.server_state)
+    return restored_profile
+
+
+def _bind_desktop_profile_data_root(
+    profile: AccountProfile,
+    *,
+    source: dict[str, str] | os._Environ[str],
+) -> Path:
+    vault_root = Path(source.get("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData"))
+    manager = AccountVaultManager(VaultLayout(vault_root))
+    account_root = manager.prepare_profile(profile)
+    data_root = account_root / "data"
+    bindings = {
+        "MENTORFLOW_USER_DATA_ROOT": account_root,
+        "MENTORFLOW_DB": data_root / "app.db",
+        "MENTORFLOW_ORM_DB": data_root / "mentorflow_v2.db",
+        "MENTORFLOW_ACTIVE_UPLOAD_ROOT": data_root / "active_teaching" / "uploads",
+        "MENTORFLOW_CLASSROOM_ASR_UPLOAD_ROOT": data_root / "classroom" / "uploads",
+        "MENTORFLOW_DOCUMENT_CACHE_ROOT": data_root / "runtime-cache" / "documents",
+        "MENTORFLOW_VOICE_CACHE_ROOT": data_root / "runtime-cache" / "voice",
+        "MENTORFLOW_BACKUP_ROOT": account_root / "backups",
+        "MENTORFLOW_SMS_CONFIG_PATH": account_root / "sms_gateway.json",
+        "MENTORFLOW_PRESET_ROOT": account_root / "presets",
+        "MENTORFLOW_PRESET_SETTINGS_FILE": account_root / "preset_settings.json",
+        "MENTORFLOW_VOICE_PACK_ROOT": account_root / "teacher-assets" / "voice-packs",
+        "MENTORFLOW_PRIVATE_TEACHER_ASSET_ROOT": (
+            account_root / "teacher-assets" / "tsubaki-live2d"
+        ),
+    }
+    for name, path in bindings.items():
+        source[name] = str(path)
+    return account_root
+
+
+def preflight_desktop_account_storage(
+    *,
+    settings: object | None = None,
+    source: dict[str, str] | os._Environ[str] | None = None,
+) -> AccountProfile:
+    """Resolve and validate the profile before the local backend opens a DB."""
+
+    global _startup_restore_failure
+    env = os.environ if source is None else source
+    from .enterprise_oidc import DesktopOidcConfig
+
+    target_settings = settings or QSettings("MentorFlow", "MentorFlow")
+    preferences = AccountPreferenceStore(target_settings)
+    configured = DesktopOidcConfig.is_configured(env)
+    layout = VaultLayout(
+        Path(env.get("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData"))
+    )
+    selected_root_raw = str(env.get("MENTORFLOW_USER_DATA_ROOT") or "").strip()
+    selected_account_root = False
+    if selected_root_raw:
+        try:
+            selected_account_root = os.path.commonpath(
+                (
+                    os.path.normcase(str(layout.accounts_root)),
+                    os.path.normcase(str(Path(selected_root_raw).absolute())),
+                )
+            ) == os.path.normcase(str(layout.accounts_root))
+        except ValueError:
+            selected_account_root = False
+    stored_mode = str(
+        target_settings.value(
+            "account/profile_mode",
+            ProfileMode.PERSONAL_LOCAL.value,
+        )
+        or ProfileMode.PERSONAL_LOCAL.value
+    )
+    if (
+        not configured
+        and stored_mode != ProfileMode.ENTERPRISE_ACCOUNT.value
+        and not selected_account_root
+    ):
+        return AccountProfile.personal_local()
+    try:
+        profile = preferences.load()
+        if profile.mode is ProfileMode.ENTERPRISE_ACCOUNT and not configured:
+            try:
+                AccountCredentialVault().logout(profile)
+            except Exception:
+                pass
+            raise ValueError("Enterprise OIDC configuration is unavailable")
+        if selected_account_root and not configured:
+            raise ValueError("Enterprise account data root requires OIDC configuration")
+        if profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
+            preferences.save_target(
+                profile,
+                sync_cursor=str(
+                    target_settings.value("account/sync_cursor", "") or ""
+                ),
+                model_selection=str(
+                    target_settings.value("account/model_selection", "") or ""
+                ),
+            )
+    except ValueError:
+        keys = getattr(target_settings, "allKeys", lambda: [])()
+        for key in tuple(keys):
+            target_settings.remove(key)
+        preferences.clear()
+        profile = AccountProfile.personal_local()
+        _startup_restore_failure = "企业会话无法安全恢复，请重新登录。"
+    _bind_desktop_profile_data_root(profile, source=env)
+    return profile
 
 
 class LocalService(QObject):
@@ -61,6 +287,11 @@ class LocalService(QObject):
             raise
 
     def start(self) -> None:
+        # Validate a persisted Enterprise session before importing app.main;
+        # importing it opens the SQLite/ORM files selected by the previous
+        # next-launch pointer.  A failed restore is rebound to Personal Local
+        # first, so the prior account database is never opened in this process.
+        preflight_desktop_account_storage()
         # The backend's canonical import root is ``app`` (its own modules use
         # that name for shared enterprise contracts).  Loading it once as
         # ``backend.app`` creates duplicate Enum/contract classes and makes a
