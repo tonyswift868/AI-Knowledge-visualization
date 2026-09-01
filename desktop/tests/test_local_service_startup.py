@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 import socket
 import time
+import zipfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -10,6 +13,10 @@ pytest.importorskip("PySide6")
 pytest.importorskip("uvicorn")
 
 from desktop.runtime import LocalService  # noqa: E402
+from desktop.main import (  # noqa: E402
+    _bind_local_teacher_asset_vault,
+    _prepare_desktop_frontend,
+)
 
 
 class _HealthResponse:
@@ -67,3 +74,92 @@ def test_start_and_stop_are_deterministic() -> None:
     assert service.thread is not None and not service.thread.is_alive()
     assert service.health_thread is not None and not service.health_thread.is_alive()
     assert service._listener is None
+
+
+def _write_frontend_bundle(path: Path, *, traversal: bool = False) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "index.html",
+            '<html><head><link rel="stylesheet" href="/assets/app.css"></head>'
+            '<body><script type="module" src="/assets/app.js"></script></body></html>',
+        )
+        archive.writestr("assets/app.css", "body{margin:0}")
+        archive.writestr("assets/app.js", "document.body.dataset.ready='true'")
+        archive.writestr("teacher2d/catalog.json", "{}")
+        archive.writestr("vendor/live2d/live2dcubismcore.min.js", "void 0")
+        if traversal:
+            archive.writestr("../escaped.txt", "forbidden")
+
+
+def test_source_desktop_materializes_frontend_bundle_before_backend_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "runtime-source"
+    bundle = tmp_path / "frontend-dist.zip"
+    _write_frontend_bundle(bundle)
+    monkeypatch.setenv("MENTORFLOW_DESKTOP_FRONTEND_BUNDLE", str(bundle))
+
+    dist = _prepare_desktop_frontend(project_root)
+
+    assert dist == project_root / "frontend" / "dist"
+    assert (dist / "index.html").is_file()
+    assert (dist / "assets" / "app.js").is_file()
+    assert _prepare_desktop_frontend(project_root) == dist
+
+
+def test_source_desktop_fails_with_human_diagnostic_when_bundle_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MENTORFLOW_DESKTOP_FRONTEND_BUNDLE", raising=False)
+
+    with pytest.raises(RuntimeError, match="DESKTOP_FRONTEND_ASSETS_MISSING") as error:
+        _prepare_desktop_frontend(tmp_path / "runtime-source")
+
+    assert "创建计划、教师舞台和教师资源页无法启动" in str(error.value)
+    assert '{"detail":"Not Found"}' not in str(error.value)
+
+
+def test_source_desktop_rejects_frontend_bundle_path_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "runtime-source"
+    bundle = tmp_path / "frontend-dist.zip"
+    _write_frontend_bundle(bundle, traversal=True)
+    monkeypatch.setenv("MENTORFLOW_DESKTOP_FRONTEND_BUNDLE", str(bundle))
+
+    with pytest.raises(RuntimeError, match="不安全路径"):
+        _prepare_desktop_frontend(project_root)
+
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (project_root / "frontend" / "dist").exists()
+
+
+def test_local_teacher_assets_are_bound_to_current_data_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other_account = tmp_path / "accounts" / "other"
+    current_account = tmp_path / "accounts" / "current"
+    monkeypatch.setenv(
+        "MENTORFLOW_VOICE_PACK_ROOT",
+        str(other_account / "teacher-assets" / "voice-packs"),
+    )
+    monkeypatch.setenv(
+        "MENTORFLOW_PRIVATE_TEACHER_ASSET_ROOT",
+        str(other_account / "teacher-assets" / "tsubaki-live2d"),
+    )
+
+    bindings = _bind_local_teacher_asset_vault(current_account)
+
+    expected_vault = current_account / "teacher-assets"
+    assert bindings == {
+        "MENTORFLOW_VOICE_PACK_ROOT": expected_vault / "voice-packs",
+        "MENTORFLOW_PRIVATE_TEACHER_ASSET_ROOT": expected_vault / "tsubaki-live2d",
+    }
+    for name, expected in bindings.items():
+        actual = Path(os.environ[name])
+        assert actual == expected
+        assert other_account not in actual.parents

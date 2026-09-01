@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import shutil
 import sqlite3
 import stat
 import sys
 import uuid
+import zipfile
 from contextlib import ExitStack
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QSplashScreen
@@ -42,6 +44,131 @@ from .local_migration import (
 PROJECT_ROOT = _lexical_path(Path(__file__)).parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+_FRONTEND_BUNDLE_ENV = "MENTORFLOW_DESKTOP_FRONTEND_BUNDLE"
+_FRONTEND_BUNDLE_MAX_FILES = 20_000
+_FRONTEND_BUNDLE_MAX_BYTES = 1024 * 1024 * 1024
+_FRONTEND_INDEX_MAX_BYTES = 1024 * 1024
+
+
+def _frontend_dist_error(detail: str) -> RuntimeError:
+    return RuntimeError(
+        "DESKTOP_FRONTEND_ASSETS_MISSING: "
+        "Desktop 前端资源不可用，创建计划、教师舞台和教师资源页无法启动。"
+        f"{detail}请使用完整安装包或带前端资源包的 Personal Local 启动器。"
+    )
+
+
+def _validate_desktop_frontend_dist(dist_root: Path) -> Path:
+    """Require a complete SPA shell before the loopback backend is imported."""
+
+    index = dist_root / "index.html"
+    if not index.is_file():
+        raise _frontend_dist_error("缺少 frontend/dist/index.html；")
+    if index.stat().st_size > _FRONTEND_INDEX_MAX_BYTES:
+        raise _frontend_dist_error("frontend/dist/index.html 超出安全大小限制；")
+    try:
+        html = index.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise _frontend_dist_error("frontend/dist/index.html 无法读取；") from exc
+    references = {
+        match.group(1).split("?", 1)[0].split("#", 1)[0]
+        for match in re.finditer(r"(?:src|href)=[\"']/([^\"']+)[\"']", html)
+        if match.group(1).startswith("assets/")
+    }
+    if not references:
+        raise _frontend_dist_error("frontend/dist/index.html 未引用构建后的 assets；")
+    missing = [value for value in sorted(references) if not (dist_root / value).is_file()]
+    if missing:
+        raise _frontend_dist_error(f"缺少构建资源 {missing[0]}；")
+    for required in (
+        dist_root / "teacher2d" / "catalog.json",
+        dist_root / "vendor" / "live2d" / "live2dcubismcore.min.js",
+    ):
+        if not required.is_file():
+            raise _frontend_dist_error(f"缺少教师舞台资源 {required.relative_to(dist_root)}；")
+    return dist_root
+
+
+def _prepare_desktop_frontend(project_root: Path = PROJECT_ROOT) -> Path:
+    """Materialize an exact Desktop SPA bundle before FastAPI registers routes.
+
+    Normal installers already contain ``frontend/dist``. Source-only Personal
+    Local launchers may provide one immutable zip through the environment; the
+    bundle is expanded into their disposable runtime source tree. No endpoint
+    fallback is registered when assets are absent or incomplete.
+    """
+
+    project_root = _lexical_path(project_root)
+    frontend_root = project_root / "frontend"
+    dist_root = frontend_root / "dist"
+    if dist_root.exists():
+        return _validate_desktop_frontend_dist(dist_root)
+
+    bundle_value = os.getenv(_FRONTEND_BUNDLE_ENV, "").strip()
+    if not bundle_value:
+        raise _frontend_dist_error(f"未设置 {_FRONTEND_BUNDLE_ENV}；")
+    bundle = _lexical_path(Path(bundle_value))
+    if not bundle.is_file():
+        raise _frontend_dist_error(f"前端资源包不存在：{bundle}；")
+
+    frontend_root.mkdir(parents=True, exist_ok=True)
+    staging = frontend_root / f".dist-staging-{uuid.uuid4().hex}"
+    staging.mkdir(exist_ok=False)
+    file_count = 0
+    total_bytes = 0
+    try:
+        with zipfile.ZipFile(bundle, "r") as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                relative = PurePosixPath(info.filename)
+                mode = (info.external_attr >> 16) & 0o170000
+                if (
+                    relative.is_absolute()
+                    or not relative.parts
+                    or any(part in {"", ".", ".."} or ":" in part for part in relative.parts)
+                    or mode == stat.S_IFLNK
+                ):
+                    raise _frontend_dist_error("前端资源包包含不安全路径；")
+                file_count += 1
+                total_bytes += max(0, int(info.file_size))
+                if (
+                    file_count > _FRONTEND_BUNDLE_MAX_FILES
+                    or total_bytes > _FRONTEND_BUNDLE_MAX_BYTES
+                ):
+                    raise _frontend_dist_error("前端资源包超出安全大小限制；")
+                destination = staging.joinpath(*relative.parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(info, "r") as source, destination.open("xb") as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+        _validate_desktop_frontend_dist(staging)
+        if dist_root.exists():
+            raise _frontend_dist_error("frontend/dist 在准备期间被其他进程创建；")
+        os.replace(staging, dist_root)
+        return _validate_desktop_frontend_dist(dist_root)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise _frontend_dist_error("前端资源包无法安全展开；") from exc
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def _bind_local_teacher_asset_vault(app_root: Path) -> dict[str, Path]:
+    """Bind private Teacher assets to the selected local account root."""
+
+    vault = _lexical_path(app_root) / "teacher-assets"
+    bindings = {
+        "MENTORFLOW_VOICE_PACK_ROOT": vault / "voice-packs",
+        "MENTORFLOW_PRIVATE_TEACHER_ASSET_ROOT": vault / "tsubaki-live2d",
+    }
+    for name, path in bindings.items():
+        # The selected Personal Local root is authoritative. In particular, a
+        # stale environment value from another local account must never expose
+        # that account's private Teacher assets in this process.
+        os.environ[name] = str(path)
+    return bindings
 
 
 _NEXT_LAUNCH_TARGET: tuple[Path, tuple[int, int]] | None = None
@@ -423,6 +550,7 @@ def _configure_frozen_user_storage() -> None:
     assert current_data_info is not None
     if initial_data_info is not None and not _same_file_identity(current_data_info, initial_data_info):
         raise RuntimeError("本地数据目录在启动前发生变化。")
+    _bind_local_teacher_asset_vault(app_root)
     defaults = {
         "MENTORFLOW_DB": data_root / "app.db",
         "MENTORFLOW_ORM_DB": data_root / "mentorflow_v2.db",
@@ -902,6 +1030,7 @@ class MentorFlowApplication:
         self._startup_cancelled = False
         self._startup_failed = False
         try:
+            _prepare_desktop_frontend()
             _prepare_desktop_storage()
         except StartupCancelled:
             self._startup_cancelled = True
