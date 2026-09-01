@@ -500,6 +500,11 @@ def test_server_boundary_and_postgresql_rls_contract_are_exact() -> None:
     assert 'GRANT {privileges} ON TABLE "{table}"' in migration
     assert '"SELECT, INSERT, UPDATE"' in migration
     assert 'else "SELECT, INSERT"' in migration
+    assert "ENTERPRISE_JOBS_SCHEMA = \"enterprise_jobs\"" in migration
+    assert "JOB_SUBMISSION_TABLES = (\"jobs\", \"outbox\")" in migration
+    assert "GRANT USAGE ON SCHEMA {ENTERPRISE_JOBS_SCHEMA}" in migration
+    assert "GRANT SELECT, INSERT ON TABLE {submission_tables}" in migration
+    assert "enterprise_jobs.dead_letters" not in migration
     assert "GRANT SELECT, INSERT, UPDATE, DELETE" not in migration
     assert "GRANT ON ALL" not in migration
     assert "GRANT ALL" not in migration

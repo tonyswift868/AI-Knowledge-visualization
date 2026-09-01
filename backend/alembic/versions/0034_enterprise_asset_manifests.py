@@ -19,6 +19,8 @@ depends_on = None
 
 APPLICATION_ROLE = "mentorflow_app"
 ASSET_TABLES = ("asset_manifests", "asset_revisions")
+ENTERPRISE_JOBS_SCHEMA = "enterprise_jobs"
+JOB_SUBMISSION_TABLES = ("jobs", "outbox")
 
 
 def _json_type() -> sa.types.TypeEngine:
@@ -266,6 +268,70 @@ def _apply_postgresql_security(bind) -> None:
                 f'GRANT {privileges} ON TABLE "{table}" TO {APPLICATION_ROLE}'
             )
         )
+    job_schema_exists = bool(
+        bind.execute(
+            sa.text(
+                "SELECT EXISTS ("
+                "SELECT 1 FROM pg_namespace WHERE nspname = :schema_name"
+                ")"
+            ),
+            {"schema_name": ENTERPRISE_JOBS_SCHEMA},
+        ).scalar_one()
+    )
+    if not job_schema_exists:
+        raise RuntimeError("enterprise_jobs schema must exist before asset manifests")
+    op.execute(
+        sa.text(
+            f"GRANT USAGE ON SCHEMA {ENTERPRISE_JOBS_SCHEMA} "
+            f"TO {APPLICATION_ROLE}"
+        )
+    )
+    submission_tables = ", ".join(
+        f"{ENTERPRISE_JOBS_SCHEMA}.{table}" for table in JOB_SUBMISSION_TABLES
+    )
+    op.execute(
+        sa.text(
+            f"GRANT SELECT, INSERT ON TABLE {submission_tables} "
+            f"TO {APPLICATION_ROLE}"
+        )
+    )
+    schema_usage = bool(
+        bind.execute(
+            sa.text("SELECT has_schema_privilege(:role, :schema_name, 'USAGE')"),
+            {
+                "role": APPLICATION_ROLE,
+                "schema_name": ENTERPRISE_JOBS_SCHEMA,
+            },
+        ).scalar_one()
+    )
+    submission_grants = {
+        (str(row[0]), str(row[1]))
+        for row in bind.execute(
+            sa.text(
+                """
+                SELECT table_name, privilege_type
+                FROM information_schema.role_table_grants
+                WHERE grantee = :role
+                  AND table_schema = :schema_name
+                  AND table_name = ANY(:tables)
+                """
+            ),
+            {
+                "role": APPLICATION_ROLE,
+                "schema_name": ENTERPRISE_JOBS_SCHEMA,
+                "tables": list(JOB_SUBMISSION_TABLES),
+            },
+        )
+    }
+    expected_submission_grants = {
+        (table, privilege)
+        for table in JOB_SUBMISSION_TABLES
+        for privilege in ("SELECT", "INSERT")
+    }
+    if not schema_usage or not expected_submission_grants <= submission_grants:
+        raise RuntimeError(
+            "mentorflow_app must be able to submit enterprise jobs and outbox rows"
+        )
     role = bind.execute(
         sa.text(
             "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = :role"
@@ -307,6 +373,9 @@ def downgrade() -> None:
     bind = op.get_bind()
     tables = {str(name) for name in sa.inspect(bind).get_table_names()}
     if bind.dialect.name == "postgresql":
+        # The worker-schema bootstrap independently owns the shared job runtime
+        # grants.  Revoking them here could break pre-0034 job producers after
+        # an asset-manifest downgrade, so this migration only drops its tables.
         for table in reversed(ASSET_TABLES):
             if table in tables:
                 op.execute(
