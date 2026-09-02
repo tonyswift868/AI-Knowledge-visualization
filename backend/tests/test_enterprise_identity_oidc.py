@@ -214,6 +214,42 @@ def test_http_jwks_resolver_accepts_only_bounded_rs256_signing_keys(signing_keys
     assert requests == 1
 
 
+def test_http_jwks_resolver_uses_public_issuer_and_default_tls_verification(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Client:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("app.enterprise.identity.oidc.httpx.AsyncClient", _Client)
+    config = _config(issuer="https://localhost:18080/realms/mentorflow")
+
+    HttpJwksSigningKeyResolver(config)
+
+    assert config.jwks_uri == (
+        "https://localhost:18080/realms/mentorflow/protocol/openid-connect/certs"
+    )
+    assert captured["follow_redirects"] is False
+    assert captured.get("verify", True) is not False
+
+
+def test_http_jwks_unavailable_fails_closed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline JWKS fixture", request=request)
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            resolver = HttpJwksSigningKeyResolver(_config(), http_client=http)
+            with pytest.raises(IdentityError) as caught:
+                await resolver.signing_key(key_id="kid-001", algorithm="RS256")
+            assert caught.value.code == "OIDC_JWKS_UNAVAILABLE"
+            assert caught.value.status == 503
+
+    asyncio.run(scenario())
+
+
 def test_http_jwks_unknown_kids_share_a_bounded_forced_refresh_backoff(signing_keys) -> None:
     trusted, _ = signing_keys
     numbers = trusted.public_key().public_numbers()

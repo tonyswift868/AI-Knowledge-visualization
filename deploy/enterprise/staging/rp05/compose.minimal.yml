@@ -210,6 +210,30 @@ services:
     cpus: 0.75
     <<: *locked-service
 
+  oidc-loopback-proxy:
+    image: "${MENTORFLOW_FRONTEND_IMAGE:?MENTORFLOW_FRONTEND_IMAGE is required}"
+    command: [nginx, -g, daemon off;]
+    network_mode: service:backend
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    secrets: [tls_certificate, tls_private_key]
+    volumes:
+      - ./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: [CMD, nc, -z, 127.0.0.1, "18080"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.1
+
   worker:
     image: "${MENTORFLOW_WORKER_IMAGE:?MENTORFLOW_WORKER_IMAGE is required}"
     command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, worker]
@@ -270,6 +294,7 @@ services:
     depends_on:
       frontend: {condition: service_healthy}
       keycloak-ready: {condition: service_completed_successfully}
+      oidc-loopback-proxy: {condition: service_healthy}
       worker: {condition: service_healthy}
     healthcheck:
       test: [CMD, wget, -q, --no-check-certificate, -O, /dev/null, https://127.0.0.1:8443/health/startup]

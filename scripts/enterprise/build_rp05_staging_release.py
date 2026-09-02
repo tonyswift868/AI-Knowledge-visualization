@@ -156,6 +156,7 @@ def build(source_root: Path, images_path: Path, env_path: Path, output: Path) ->
     copies = {
         source_assets / "compose.minimal.yml": "compose.minimal.yml",
         source_assets / "edge-https.conf": "edge-https.conf",
+        source_assets / "oidc-loopback-proxy.conf": "oidc-loopback-proxy.conf",
         source_assets / "keycloak-ready.sh": "keycloak-ready.sh",
         source_assets / "otel-collector.yml": "otel-collector.yml",
         source_assets / "postgres-provision.sh": "postgres-provision.sh",

@@ -13,7 +13,16 @@ from pathlib import Path
 import yaml
 
 
-RESIDENT = {"postgres", "keycloak", "otel-collector", "backend", "worker", "frontend", "edge"}
+RESIDENT = {
+    "postgres",
+    "keycloak",
+    "otel-collector",
+    "backend",
+    "oidc-loopback-proxy",
+    "worker",
+    "frontend",
+    "edge",
+}
 ONESHOT = {"postgres-provision", "keycloak-ready", "migrate", "migration-ready", "otel-ready"}
 BANNED = {"seaweedfs", "docling", "prometheus", "grafana", "tempo", "loki", "k6", "object-store"}
 EXPECTED_SECRETS = {
@@ -252,6 +261,11 @@ def verify(root: Path) -> dict:
     realm = json.loads((root / "deploy" / "enterprise" / "config" / "keycloak-realm.json").read_text(encoding="utf-8"))
     clients = {item["clientId"]: item for item in realm.get("clients", [])}
     gate("keycloak_realm_clients", {"mentorflow-api", "mentorflow-web", "mentorflow-bff", "mentorflow-worker"} <= clients.keys() and clients["mentorflow-web"].get("publicClient") is True, "realm/client contract incomplete")
+    gate(
+        "direct_access_grants_disabled",
+        all(client.get("directAccessGrantsEnabled") is False for client in clients.values()),
+        "Direct Access Grants must remain disabled for every Keycloak client",
+    )
 
     gate("database_reachable_before_migration", _condition(compose, "postgres-provision", "postgres") == "service_healthy", "database health does not gate provisioning")
     gate("migration_dependency_graph", _condition(compose, "migrate", "postgres-provision") == "service_completed_successfully" and _condition(compose, "migration-ready", "migrate") == "service_completed_successfully", "migration gates are unordered")
@@ -316,6 +330,83 @@ def verify(root: Path) -> dict:
         dynamic_backend_resolution,
         "edge must use Docker DNS and an upstream resolve server for backend without a fixed container IP",
     )
+    oidc_proxy_path = asset_root / "oidc-loopback-proxy.conf"
+    oidc_proxy = oidc_proxy_path.read_text(encoding="utf-8")
+    oidc_service = services.get("oidc-loopback-proxy", {})
+    oidc_upstream = re.search(
+        r"upstream\s+mentorflow_keycloak\s*\{(?P<body>.*?)\}",
+        oidc_proxy,
+        re.DOTALL,
+    )
+    oidc_upstream_body = oidc_upstream.group("body") if oidc_upstream else ""
+    hardcoded_oidc_ip = re.search(
+        r"(?:proxy_pass\s+https?://|server\s+)(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?",
+        oidc_proxy,
+    )
+    backend_dependency = oidc_service.get("depends_on", {}).get("backend", {})
+    oidc_lifecycle_bound = (
+        isinstance(backend_dependency, dict)
+        and backend_dependency.get("condition") == "service_healthy"
+        and backend_dependency.get("restart") is True
+        and oidc_service.get("network_mode") == "service:backend"
+        and "networks" not in oidc_service
+        and "ports" not in oidc_service
+        and _condition(compose, "edge", "oidc-loopback-proxy") == "service_healthy"
+    )
+    gate(
+        "OIDC_PUBLIC_ISSUER_PRESERVED",
+        services.get("backend", {}).get("environment", {}).get(
+            "MENTORFLOW_KEYCLOAK_ISSUER"
+        )
+        == "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}/realms/mentorflow",
+        "backend public issuer must remain derived from the operator-approved public origin",
+    )
+    gate(
+        "OIDC_LOOPBACK_PROXY_LIFECYCLE_CONTRACT",
+        oidc_lifecycle_bound,
+        "OIDC bridge must share the backend namespace, restart after backend replacement, and gate edge startup",
+    )
+    gate(
+        "OIDC_LOOPBACK_PROXY_TLS_CONTRACT",
+        all(
+            token in oidc_proxy
+            for token in (
+                "listen 127.0.0.1:18080 ssl",
+                "ssl_certificate /run/secrets/tls_certificate",
+                "ssl_certificate_key /run/secrets/tls_private_key",
+                "ssl_protocols TLSv1.2 TLSv1.3",
+            )
+        )
+        and set(oidc_service.get("secrets", []))
+        == {"tls_certificate", "tls_private_key"},
+        "OIDC bridge must expose only the verified TLS loopback listener",
+    )
+    gate(
+        "OIDC_KEYCLOAK_DYNAMIC_RESOLUTION_CONTRACT",
+        all(
+            (
+                nginx_dynamic_resolver_capable,
+                oidc_upstream is not None,
+                re.search(
+                    r"\bzone\s+mentorflow_keycloak\s+\d+[kKmM]?\s*;",
+                    oidc_upstream_body,
+                )
+                is not None,
+                re.search(
+                    r"\bresolver\s+127\.0\.0\.11\s+valid=\d+[smh]\s+ipv6=off\s*;",
+                    oidc_upstream_body,
+                )
+                is not None,
+                re.search(r"\bresolver_timeout\s+\d+[smh]\s*;", oidc_upstream_body)
+                is not None,
+                re.search(r"\bserver\s+keycloak:8080\s+resolve\s*;", oidc_upstream_body)
+                is not None,
+                "proxy_pass http://mentorflow_keycloak;" in oidc_proxy,
+                hardcoded_oidc_ip is None,
+            )
+        ),
+        "OIDC bridge must re-resolve the Keycloak service name without a fixed container IP",
+    )
     orchestrator = (root / "scripts" / "enterprise" / "rp05_staging.py").read_text(encoding="utf-8")
     gate("host_layout", all(f'"{name}"' in orchestrator for name in ("releases", "config", "secrets", "data", "backups", "evidence", "logs")), "host layout incomplete")
     gate("atomic_activation_rollback", all(token in orchestrator for token in ("symlink_to", "os.replace", "rollback", '"stop"')), "activation/rollback contract missing")
@@ -323,6 +414,12 @@ def verify(root: Path) -> dict:
 
     builder = (root / "scripts" / "enterprise" / "build_rp05_staging_release.py").read_text(encoding="utf-8")
     gate("immutable_images", "@sha256:" in builder and "DIGEST.fullmatch" in builder and "source checkout must be clean" in builder, "image/source immutability checks missing")
+    gate(
+        "oidc_loopback_proxy_release_asset",
+        'source_assets / "oidc-loopback-proxy.conf": "oidc-loopback-proxy.conf"'
+        in builder,
+        "OIDC loopback proxy configuration is missing from immutable release assets",
+    )
     workflow = (root / ".github" / "workflows" / "container-release.yml").read_text(encoding="utf-8")
     gate("container_release_digest_input", "rp05-application-images.json" in workflow and "all(.images[]; test" in workflow and all(key in workflow for key in ("MENTORFLOW_BACKEND_IMAGE", "MENTORFLOW_FRONTEND_IMAGE", "MENTORFLOW_WORKER_IMAGE")), "container release does not emit the RP-05 application digest input")
     scan_paths = [path for path in asset_root.rglob("*") if path.is_file()] + [

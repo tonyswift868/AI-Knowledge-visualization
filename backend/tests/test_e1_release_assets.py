@@ -16,11 +16,77 @@ sys.path.insert(0, str(SCRIPTS))
 
 from verify_enterprise_context import verify as verify_context  # noqa: E402
 from verify_release_assets import verify as verify_assets  # noqa: E402
+from verify_rp05_staging_assets import verify as verify_rp05_assets  # noqa: E402
+import build_rp05_staging_release as rp05_builder  # noqa: E402
 import generate_release_manifest as manifest_module  # noqa: E402
 import release_rollback as release_module  # noqa: E402
 
 
 IMAGE_ROLES = ("backend", "frontend", "document-worker", "worker")
+
+
+def test_rp05_oidc_loopback_bridge_is_lifecycle_and_dns_bound() -> None:
+    result = verify_rp05_assets(ROOT)
+
+    assert result["status"] == "PASS", result["failures"]
+    for check in (
+        "OIDC_PUBLIC_ISSUER_PRESERVED",
+        "OIDC_LOOPBACK_PROXY_LIFECYCLE_CONTRACT",
+        "OIDC_LOOPBACK_PROXY_TLS_CONTRACT",
+        "OIDC_KEYCLOAK_DYNAMIC_RESOLUTION_CONTRACT",
+        "EDGE_BACKEND_DYNAMIC_RESOLUTION_CONTRACT",
+        "direct_access_grants_disabled",
+        "only_edge_publishes_ports",
+        "public_surface_http_https_only",
+        "oidc_loopback_proxy_release_asset",
+    ):
+        assert result["checks"][check] == "PASS"
+
+
+def test_rp05_release_includes_the_oidc_loopback_proxy_asset(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    images = tmp_path / "images.json"
+    images.write_text(
+        json.dumps(
+            {
+                "schema_version": "mentorflow.rp05-runtime-images.v1",
+                "images": {
+                    key: f"registry.example/{key.casefold()}@sha256:{'1' * 64}"
+                    for key in rp05_builder.IMAGE_KEYS
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    public_env = tmp_path / "public.env"
+    public_env.write_text(
+        "\n".join(
+            (
+                "MENTORFLOW_COMPOSE_PROJECT=mentorflow-r52",
+                "MENTORFLOW_PUBLIC_ORIGIN=https://mentorflow.example.test",
+                "MENTORFLOW_PUBLIC_HOSTNAME=mentorflow.example.test",
+                f"MENTORFLOW_WORKER_RUNTIME_FACTORY={rp05_builder.PRODUCTION_FACTORY}",
+                *(
+                    f"{key}={value}"
+                    for key, value in sorted(rp05_builder.PRODUCTION_HANDLERS.items())
+                ),
+                "MENTORFLOW_WORKER_CONCURRENCY=4",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    git_values = iter(("", "codex/e1-r52-fixture", "a" * 40, "b" * 40))
+    monkeypatch.setattr(rp05_builder, "_git", lambda *_args: next(git_values))
+    output = tmp_path / "release"
+    manifest = rp05_builder.build(ROOT, images, public_env, output)
+
+    proxy = output / "oidc-loopback-proxy.conf"
+    assert proxy.is_file()
+    assert manifest["files"][proxy.name] == _sha256(proxy)
 
 
 def _sha256(path: Path) -> str:

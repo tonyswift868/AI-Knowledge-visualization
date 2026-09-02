@@ -148,6 +148,27 @@ def test_enterprise_configuration_is_fail_closed() -> None:
         )
 
 
+def test_enterprise_public_issuer_remains_the_jwks_trust_authority() -> None:
+    issuer = "https://localhost:18080/realms/mentorflow"
+    config = EnterpriseIdentityConfig.from_env(
+        {
+            "MENTORFLOW_DEPLOYMENT_MODE": "ENTERPRISE_SERVER",
+            "MENTORFLOW_KEYCLOAK_ISSUER": issuer,
+            "MENTORFLOW_KEYCLOAK_CLIENT_ID": "mentorflow-web",
+            "MENTORFLOW_KEYCLOAK_AUDIENCE": "mentorflow-api",
+            "MENTORFLOW_KEYCLOAK_REDIRECT_URI": (
+                "https://localhost:18080/api/enterprise/auth/callback"
+            ),
+        }
+    )
+
+    assert config.keycloak is not None
+    assert config.keycloak.issuer == issuer
+    assert config.keycloak.jwks_uri == (
+        issuer + "/protocol/openid-connect/certs"
+    )
+
+
 def test_human_membership_builds_only_frozen_actor_and_tenant_models() -> None:
     context = enterprise_request_context(
         session=_session(),
