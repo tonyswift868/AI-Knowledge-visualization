@@ -266,6 +266,56 @@ def verify(root: Path) -> dict:
 
     edge = (asset_root / "edge-https.conf").read_text(encoding="utf-8")
     gate("tls_ingress", all(token in edge for token in ("listen 8443 ssl", "tls_certificate", "tls_private_key", "Strict-Transport-Security", "proxy_buffering off")), "TLS/reverse-proxy seam incomplete")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    nginx_version_match = re.search(
+        r"^ARG NGINX_VERSION=(\d+)\.(\d+)\.(\d+)\s*$", dockerfile, re.MULTILINE
+    )
+    nginx_version = (
+        tuple(int(value) for value in nginx_version_match.groups())
+        if nginx_version_match
+        else ()
+    )
+    nginx_dynamic_resolver_capable = nginx_version >= (1, 27, 3)
+    gate(
+        "edge_nginx_dynamic_resolver_capability",
+        nginx_dynamic_resolver_capable,
+        "frontend/edge NGINX must be 1.27.3 or newer for upstream resolve support",
+    )
+    backend_upstream = re.search(
+        r"upstream\s+mentorflow_backend\s*\{(?P<body>.*?)\}", edge, re.DOTALL
+    )
+    api_location = re.search(r"location\s+/api/\s*\{(?P<body>.*?)\}", edge, re.DOTALL)
+    upstream_body = backend_upstream.group("body") if backend_upstream else ""
+    api_body = api_location.group("body") if api_location else ""
+    hardcoded_proxy_ip = re.search(
+        r"proxy_pass\s+https?://(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?", edge
+    )
+    dynamic_backend_resolution = all(
+        (
+            backend_upstream is not None,
+            re.search(r"\bzone\s+mentorflow_backend\s+\d+[kKmM]?\s*;", upstream_body)
+            is not None,
+            re.search(
+                r"\bresolver\s+127\.0\.0\.11\s+valid=\d+[smh]\s+ipv6=off\s*;",
+                upstream_body,
+            )
+            is not None,
+            re.search(r"\bresolver_timeout\s+\d+[smh]\s*;", upstream_body)
+            is not None,
+            re.search(r"\bserver\s+backend:8000\s+resolve\s*;", upstream_body)
+            is not None,
+            re.search(r"\bproxy_pass\s+http://mentorflow_backend\s*;", api_body)
+            is not None,
+            "proxy_pass http://backend:8000" not in edge,
+            hardcoded_proxy_ip is None,
+            nginx_dynamic_resolver_capable,
+        )
+    )
+    gate(
+        "EDGE_BACKEND_DYNAMIC_RESOLUTION_CONTRACT",
+        dynamic_backend_resolution,
+        "edge must use Docker DNS and an upstream resolve server for backend without a fixed container IP",
+    )
     orchestrator = (root / "scripts" / "enterprise" / "rp05_staging.py").read_text(encoding="utf-8")
     gate("host_layout", all(f'"{name}"' in orchestrator for name in ("releases", "config", "secrets", "data", "backups", "evidence", "logs")), "host layout incomplete")
     gate("atomic_activation_rollback", all(token in orchestrator for token in ("symlink_to", "os.replace", "rollback", '"stop"')), "activation/rollback contract missing")
