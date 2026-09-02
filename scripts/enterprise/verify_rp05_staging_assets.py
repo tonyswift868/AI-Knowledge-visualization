@@ -30,6 +30,11 @@ EXPECTED_SECRETS = {
     "keycloak_db_password", "keycloak_admin_password", "bff_client_secret",
     "worker_client_secret", "tls_certificate", "tls_private_key",
 }
+OIDC_NGINX_REQUIRED_WRITABLE_PATHS = ("/tmp", "/var/cache/nginx")
+OIDC_NGINX_EXPECTED_TMPFS = {
+    "/tmp": "/tmp:size=16m,mode=1777",
+    "/var/cache/nginx": "/var/cache/nginx:size=8m,mode=0750,uid=101,gid=101",
+}
 
 
 _RUNTIME_BOOTSTRAP_HARNESS = r"""
@@ -160,19 +165,166 @@ def _condition(compose: dict, service: str, dependency: str) -> str:
     return value.get("condition") if isinstance(value, dict) else ""
 
 
-def _oidc_loopback_tmpfs_contract(value: object) -> dict[str, object]:
+def _tmpfs_entries(value: object) -> list[dict[str, object]]:
     entries = value if isinstance(value, list) else []
-    entry = entries[0] if len(entries) == 1 and isinstance(entries[0], str) else ""
-    parsed = re.fullmatch(
-        r"(?P<target>/[^:,]+):size=(?P<size>[^,]+),mode=(?P<mode>[0-7]{3,4})",
-        entry,
-    )
+    parsed_entries: list[dict[str, object]] = []
+    for raw in entries:
+        if not isinstance(raw, str):
+            parsed_entries.append(
+                {"raw": raw, "target": None, "options": {}, "flags": []}
+            )
+            continue
+        target, separator, option_text = raw.partition(":")
+        options: dict[str, str] = {}
+        flags: list[str] = []
+        if separator and target.startswith("/"):
+            for token in option_text.split(","):
+                key, equals, option_value = token.partition("=")
+                if equals:
+                    options[key] = option_value
+                elif token:
+                    flags.append(token)
+        else:
+            target = ""
+        parsed_entries.append(
+            {
+                "raw": raw,
+                "target": target or None,
+                "options": options,
+                "flags": flags,
+            }
+        )
+    return parsed_entries
+
+
+def _oidc_loopback_tmpfs_contract(
+    value: object, *, target: str = "/tmp"
+) -> dict[str, object]:
+    entries = _tmpfs_entries(value)
+    matching = [entry for entry in entries if entry["target"] == target]
+    selected = matching[0] if len(matching) == 1 else {}
+    options = selected.get("options", {})
+    if not isinstance(options, dict):
+        options = {}
     return {
-        "entry_count": len(entries),
-        "target": parsed.group("target") if parsed else None,
-        "size": parsed.group("size") if parsed else None,
-        "mode": parsed.group("mode") if parsed else None,
-        "split_mode_entry_absent": "mode=1777" not in entries,
+        "entry_count": len(matching),
+        "total_entry_count": len(entries),
+        "target": selected.get("target"),
+        "size": options.get("size"),
+        "mode": options.get("mode"),
+        "uid": options.get("uid"),
+        "gid": options.get("gid"),
+        "raw": selected.get("raw"),
+        "targets": sorted(
+            entry["target"] for entry in entries if isinstance(entry["target"], str)
+        ),
+        "split_mode_entry_absent": all(
+            entry["raw"] != "mode=1777" for entry in entries
+        ),
+    }
+
+
+def _volume_binding(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        mount_type = str(value.get("type") or "volume")
+        target = str(value.get("target") or "")
+        read_only = bool(value.get("read_only"))
+        return {"type": mount_type, "target": target, "read_only": read_only}
+    if not isinstance(value, str):
+        return {"type": "unknown", "target": "", "read_only": False}
+    parts = value.split(":")
+    target_index = next(
+        (index for index, part in enumerate(parts[1:], start=1) if part.startswith("/")),
+        -1,
+    )
+    if target_index < 0:
+        return {"type": "unknown", "target": "", "read_only": False}
+    source = ":".join(parts[:target_index])
+    target = parts[target_index]
+    options = parts[target_index + 1 :]
+    mount_type = (
+        "bind"
+        if source.startswith((".", "/", "${")) or re.match(r"^[A-Za-z]:", source)
+        else "volume"
+    )
+    return {"type": mount_type, "target": target, "read_only": "ro" in options}
+
+
+def _mount_covers_path(mount_target: str, required_path: str) -> bool:
+    normalized = mount_target.rstrip("/") or "/"
+    return normalized == "/" or required_path == normalized or required_path.startswith(
+        normalized + "/"
+    )
+
+
+def _oidc_loopback_runtime_storage_contract(service: object) -> dict[str, object]:
+    service_map = service if isinstance(service, dict) else {}
+    entries = _tmpfs_entries(service_map.get("tmpfs"))
+    tmpfs_paths = {
+        entry["target"] for entry in entries if isinstance(entry["target"], str)
+    }
+    volume_bindings = [_volume_binding(value) for value in service_map.get("volumes", [])]
+    runtime_bindings = [
+        binding
+        for binding in volume_bindings
+        if isinstance(binding["target"], str)
+        and any(
+            _mount_covers_path(binding["target"], required)
+            for required in OIDC_NGINX_REQUIRED_WRITABLE_PATHS
+        )
+    ]
+    persistent_runtime_volume_used = any(
+        binding["type"] == "volume" for binding in runtime_bindings
+    )
+    host_bind_runtime_path_used = any(
+        binding["type"] == "bind" for binding in runtime_bindings
+    )
+    writable_etc_bind = any(
+        isinstance(binding["target"], str)
+        and (
+            binding["target"] == "/etc/nginx"
+            or binding["target"].startswith("/etc/nginx/")
+        )
+        and binding["read_only"] is not True
+        for binding in volume_bindings
+    )
+    writable_etc_tmpfs = any(
+        _mount_covers_path(path, "/etc/nginx")
+        or path == "/etc/nginx"
+        or path.startswith("/etc/nginx/")
+        for path in tmpfs_paths
+    )
+    missing = sorted(set(OIDC_NGINX_REQUIRED_WRITABLE_PATHS) - tmpfs_paths)
+    unexpected = sorted(tmpfs_paths - set(OIDC_NGINX_REQUIRED_WRITABLE_PATHS))
+    raw_entries = {entry["raw"] for entry in entries if isinstance(entry["raw"], str)}
+    expected_raw = set(OIDC_NGINX_EXPECTED_TMPFS.values())
+    exact_tmpfs_contract = len(entries) == len(expected_raw) and raw_entries == expected_raw
+    return {
+        "read_only_rootfs": service_map.get("read_only") is True,
+        "privileged": service_map.get("privileged") is True,
+        "required_writable_paths": list(OIDC_NGINX_REQUIRED_WRITABLE_PATHS),
+        "runtime_tmpfs_paths": sorted(tmpfs_paths),
+        "missing_required_writable_paths": missing,
+        "unexpected_runtime_tmpfs_paths": unexpected,
+        "exact_tmpfs_contract": exact_tmpfs_contract,
+        "persistent_runtime_volume_used": persistent_runtime_volume_used,
+        "host_bind_runtime_path_used": host_bind_runtime_path_used,
+        "unauthorized_writable_etc_nginx": writable_etc_bind or writable_etc_tmpfs,
+        "run_tmpfs_present": "/run" in tmpfs_paths,
+        "runtime_storage_contract_pass": all(
+            (
+                service_map.get("read_only") is True,
+                service_map.get("privileged") is not True,
+                not missing,
+                not unexpected,
+                exact_tmpfs_contract,
+                not persistent_runtime_volume_used,
+                not host_bind_runtime_path_used,
+                not writable_etc_bind,
+                not writable_etc_tmpfs,
+                "/run" not in tmpfs_paths,
+            )
+        ),
     }
 
 
@@ -350,10 +502,98 @@ def verify(root: Path) -> dict:
     oidc_proxy = oidc_proxy_path.read_text(encoding="utf-8")
     oidc_service = services.get("oidc-loopback-proxy", {})
     oidc_tmpfs = _oidc_loopback_tmpfs_contract(oidc_service.get("tmpfs"))
+    oidc_cache_tmpfs = _oidc_loopback_tmpfs_contract(
+        oidc_service.get("tmpfs"), target="/var/cache/nginx"
+    )
+    oidc_runtime_storage = _oidc_loopback_runtime_storage_contract(oidc_service)
+    frontend_stage = dockerfile.split(
+        "FROM ${NGINX_BASE_IMAGE} AS frontend-image", 1
+    )[-1]
+    nginx_image_contract = all(
+        (
+            nginx_version == (1, 28, 0),
+            "ARG NGINX_BASE_IMAGE=nginx:${NGINX_VERSION}-alpine" in dockerfile,
+            "FROM ${NGINX_BASE_IMAGE} AS frontend-image" in dockerfile,
+            re.search(r"^USER 101:101\s*$", frontend_stage, re.MULTILINE)
+            is not None,
+            oidc_service.get("image")
+            == "${MENTORFLOW_FRONTEND_IMAGE:?MENTORFLOW_FRONTEND_IMAGE is required}",
+            oidc_service.get("command") == ["nginx", "-g", "daemon off;"],
+            "entrypoint" not in oidc_service,
+        )
+    )
+    nginx_writable_path_audit_complete = all(
+        (
+            "pid /tmp/nginx.pid;" in oidc_proxy,
+            "client_body_temp_path /tmp/client_body;" in oidc_proxy,
+            "proxy_temp_path /tmp/proxy;" in oidc_proxy,
+            "fastcgi_temp_path" not in oidc_proxy,
+            "uwsgi_temp_path" not in oidc_proxy,
+            "scgi_temp_path" not in oidc_proxy,
+            "access_log off;" in oidc_proxy,
+            "error_log /dev/stderr warn;" in oidc_proxy,
+            "lock_file" not in oidc_proxy,
+            oidc_service.get("volumes")
+            == ["./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro"],
+            nginx_image_contract,
+        )
+    )
+    nginx_path_audit = {
+        "/tmp": {
+            "used_by_exact_service": True,
+            "write_required": True,
+            "already_writable": True,
+            "fix_required": False,
+            "evidence": "pid, client_body_temp_path, and proxy_temp_path are explicitly under /tmp",
+        },
+        "/var/cache/nginx": {
+            "used_by_exact_service": True,
+            "write_required": True,
+            "already_writable": False,
+            "fix_required": True,
+            "evidence": "unoverridden FastCGI, uWSGI, and SCGI module temp directories share the image cache root; exact R57 startup failed at fastcgi_temp",
+        },
+        "/run": {
+            "used_by_exact_service": True,
+            "write_required": False,
+            "already_writable": False,
+            "fix_required": False,
+            "evidence": "TLS certificate and key are read-only secrets; PID is explicitly /tmp/nginx.pid",
+        },
+        "/var/run": {
+            "used_by_exact_service": False,
+            "write_required": False,
+            "already_writable": False,
+            "fix_required": False,
+            "evidence": "PID is explicitly under /tmp and Linux atomic accept locking requires no lock file",
+        },
+        "/etc/nginx": {
+            "used_by_exact_service": True,
+            "write_required": False,
+            "already_writable": False,
+            "fix_required": False,
+            "evidence": "the exact nginx.conf is mounted read-only and the inherited entrypoint reached nginx initialization under the R57 runtime",
+        },
+    }
+    gate(
+        "OIDC_NGINX_IMAGE_RUNTIME_CONTRACT",
+        nginx_image_contract,
+        "OIDC bridge must retain the nginx:1.28.0-alpine frontend image running as UID/GID 101",
+    )
+    gate(
+        "READ_ONLY_ROOTFS",
+        oidc_runtime_storage["read_only_rootfs"] is True,
+        "oidc-loopback-proxy read_only root filesystem must remain enabled",
+    )
+    gate(
+        "NGINX_WRITABLE_PATH_AUDIT",
+        nginx_writable_path_audit_complete,
+        "exact PID, temp-directory, log, image-user, entrypoint, and config-mount paths are not fully classified",
+    )
     gate(
         "OIDC_LOOPBACK_TMPFS_ENTRY_COUNT",
         oidc_tmpfs["entry_count"] == 1,
-        "oidc-loopback-proxy tmpfs must parse as exactly one scalar entry",
+        "oidc-loopback-proxy must contain exactly one /tmp scalar entry",
     )
     gate(
         "OIDC_LOOPBACK_TMPFS_TARGET",
@@ -377,15 +617,69 @@ def verify(root: Path) -> dict:
     )
     gate(
         "OIDC_LOOPBACK_TMPFS_SINGLE_SCALAR",
-        oidc_tmpfs
-        == {
-            "entry_count": 1,
-            "target": "/tmp",
-            "size": "16m",
-            "mode": "1777",
-            "split_mode_entry_absent": True,
-        },
+        oidc_tmpfs["raw"] == OIDC_NGINX_EXPECTED_TMPFS["/tmp"]
+        and oidc_tmpfs["entry_count"] == 1,
         "oidc-loopback-proxy tmpfs must preserve the exact one-scalar contract",
+    )
+    gate(
+        "NGINX_RUNTIME_REQUIRED_WRITABLE_PATHS",
+        oidc_runtime_storage["required_writable_paths"]
+        == list(OIDC_NGINX_REQUIRED_WRITABLE_PATHS),
+        "required writable paths must remain the exact audited /tmp and /var/cache/nginx set",
+    )
+    gate(
+        "NGINX_RUNTIME_TMPFS_PATHS",
+        oidc_runtime_storage["runtime_tmpfs_paths"]
+        == list(OIDC_NGINX_REQUIRED_WRITABLE_PATHS),
+        "runtime tmpfs paths must exactly cover the audited writable-path set",
+    )
+    gate(
+        "NGINX_CACHE_TMPFS_TARGET",
+        oidc_cache_tmpfs["entry_count"] == 1
+        and oidc_cache_tmpfs["target"] == "/var/cache/nginx",
+        "one dedicated /var/cache/nginx tmpfs is required",
+    )
+    gate(
+        "NGINX_CACHE_TMPFS_SIZE",
+        oidc_cache_tmpfs["size"] == "8m",
+        "OIDC Nginx cache tmpfs must remain bounded to 8m",
+    )
+    gate(
+        "NGINX_CACHE_TMPFS_MODE_OWNERSHIP",
+        oidc_cache_tmpfs["mode"] == "0750"
+        and oidc_cache_tmpfs["uid"] == "101"
+        and oidc_cache_tmpfs["gid"] == "101",
+        "cache tmpfs must be owned by the exact Nginx UID/GID 101 with mode 0750",
+    )
+    gate(
+        "MISSING_REQUIRED_WRITABLE_PATHS",
+        oidc_runtime_storage["missing_required_writable_paths"] == [],
+        "one or more exact Nginx runtime write paths are not backed by tmpfs",
+    )
+    gate(
+        "PERSISTENT_RUNTIME_VOLUME_USED",
+        oidc_runtime_storage["persistent_runtime_volume_used"] is False,
+        "persistent named volumes cannot provide temporary Nginx runtime state",
+    )
+    gate(
+        "HOST_BIND_RUNTIME_PATH_USED",
+        oidc_runtime_storage["host_bind_runtime_path_used"] is False,
+        "host bind mounts cannot provide temporary Nginx runtime state",
+    )
+    gate(
+        "UNAUTHORIZED_WRITABLE_ETC_NGINX",
+        oidc_runtime_storage["unauthorized_writable_etc_nginx"] is False,
+        "/etc/nginx must remain read-only",
+    )
+    gate(
+        "NGINX_RUNTIME_TMPFS_EXACT_CONTRACT",
+        oidc_runtime_storage["runtime_storage_contract_pass"] is True,
+        "OIDC Nginx runtime storage must be exact, bounded, ephemeral, and read-only-rootfs compatible",
+    )
+    gate(
+        "TLS_SECRETS_REMAIN_VISIBLE_WITHOUT_RUN_TMPFS",
+        oidc_runtime_storage["run_tmpfs_present"] is False,
+        "a broad /run tmpfs is not authorized because TLS secrets live below /run/secrets",
     )
     malformed_tmpfs = yaml.safe_load(
         "tmpfs: [/tmp:size=16m,mode=1777]\n"
@@ -393,9 +687,70 @@ def verify(root: Path) -> dict:
     malformed_contract = _oidc_loopback_tmpfs_contract(malformed_tmpfs)
     gate(
         "OIDC_LOOPBACK_TMPFS_OLD_FORM_NEGATIVE_CONTROL",
-        malformed_contract["entry_count"] == 2
+        malformed_contract["total_entry_count"] == 2
+        and malformed_contract["entry_count"] == 1
+        and malformed_contract["mode"] is None
         and malformed_contract["split_mode_entry_absent"] is False,
         "old flow-sequence form must remain a demonstrated split-entry negative control",
+    )
+    only_tmp_contract = _oidc_loopback_runtime_storage_contract(
+        {
+            "read_only": True,
+            "tmpfs": [OIDC_NGINX_EXPECTED_TMPFS["/tmp"]],
+            "volumes": ["./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro"],
+        }
+    )
+    read_only_false_contract = _oidc_loopback_runtime_storage_contract(
+        {
+            "read_only": False,
+            "tmpfs": list(OIDC_NGINX_EXPECTED_TMPFS.values()),
+            "volumes": ["./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro"],
+        }
+    )
+    persistent_volume_contract = _oidc_loopback_runtime_storage_contract(
+        {
+            "read_only": True,
+            "tmpfs": list(OIDC_NGINX_EXPECTED_TMPFS.values()),
+            "volumes": [
+                "./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro",
+                "oidc-nginx-runtime:/var/cache/nginx",
+            ],
+        }
+    )
+    host_bind_contract = _oidc_loopback_runtime_storage_contract(
+        {
+            "read_only": True,
+            "tmpfs": list(OIDC_NGINX_EXPECTED_TMPFS.values()),
+            "volumes": [
+                "./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro",
+                "./oidc-nginx-runtime:/var/cache/nginx",
+            ],
+        }
+    )
+    gate(
+        "R55_ONLY_TMP_NEGATIVE_CONTROL",
+        only_tmp_contract["runtime_storage_contract_pass"] is False
+        and only_tmp_contract["missing_required_writable_paths"]
+        == ["/var/cache/nginx"],
+        "the previous read-only R55 state with only /tmp must fail path coverage",
+    )
+    gate(
+        "READ_ONLY_FALSE_NEGATIVE_CONTROL",
+        read_only_false_contract["runtime_storage_contract_pass"] is False
+        and read_only_false_contract["read_only_rootfs"] is False,
+        "read_only:false must fail the runtime storage contract",
+    )
+    gate(
+        "PERSISTENT_VOLUME_NEGATIVE_CONTROL",
+        persistent_volume_contract["runtime_storage_contract_pass"] is False
+        and persistent_volume_contract["persistent_runtime_volume_used"] is True,
+        "a named runtime volume must fail the runtime storage contract",
+    )
+    gate(
+        "HOST_BIND_NEGATIVE_CONTROL",
+        host_bind_contract["runtime_storage_contract_pass"] is False
+        and host_bind_contract["host_bind_runtime_path_used"] is True,
+        "a host bind for runtime state must fail the runtime storage contract",
     )
     oidc_upstream = re.search(
         r"upstream\s+mentorflow_keycloak\s*\{(?P<body>.*?)\}",
@@ -511,6 +866,20 @@ def verify(root: Path) -> dict:
         "status": "PASS" if not failures else "FAIL",
         "checks": checks,
         "failures": failures,
+        "oidc_loopback_nginx_runtime": {
+            "image": "nginx:1.28.0-alpine via frontend-image",
+            "image_user": "101:101",
+            "pid_path": "/tmp/nginx.pid",
+            "client_body_temp_path": "/tmp/client_body",
+            "proxy_temp_path": "/tmp/proxy",
+            "fastcgi_temp_path": "/var/cache/nginx/fastcgi_temp",
+            "uwsgi_temp_path": "/var/cache/nginx/uwsgi_temp",
+            "scgi_temp_path": "/var/cache/nginx/scgi_temp",
+            "access_log_path": "off",
+            "error_log_path": "/dev/stderr",
+            "path_audit": nginx_path_audit,
+            **oidc_runtime_storage,
+        },
         "secrets_exposed": False if checks.get("secret_scan") == "PASS" else None,
     }
 
