@@ -160,6 +160,22 @@ def _condition(compose: dict, service: str, dependency: str) -> str:
     return value.get("condition") if isinstance(value, dict) else ""
 
 
+def _oidc_loopback_tmpfs_contract(value: object) -> dict[str, object]:
+    entries = value if isinstance(value, list) else []
+    entry = entries[0] if len(entries) == 1 and isinstance(entries[0], str) else ""
+    parsed = re.fullmatch(
+        r"(?P<target>/[^:,]+):size=(?P<size>[^,]+),mode=(?P<mode>[0-7]{3,4})",
+        entry,
+    )
+    return {
+        "entry_count": len(entries),
+        "target": parsed.group("target") if parsed else None,
+        "size": parsed.group("size") if parsed else None,
+        "mode": parsed.group("mode") if parsed else None,
+        "split_mode_entry_absent": "mode=1777" not in entries,
+    }
+
+
 def _runtime_bootstrap_probe(
     runtime_path: Path,
     mode: str,
@@ -333,6 +349,54 @@ def verify(root: Path) -> dict:
     oidc_proxy_path = asset_root / "oidc-loopback-proxy.conf"
     oidc_proxy = oidc_proxy_path.read_text(encoding="utf-8")
     oidc_service = services.get("oidc-loopback-proxy", {})
+    oidc_tmpfs = _oidc_loopback_tmpfs_contract(oidc_service.get("tmpfs"))
+    gate(
+        "OIDC_LOOPBACK_TMPFS_ENTRY_COUNT",
+        oidc_tmpfs["entry_count"] == 1,
+        "oidc-loopback-proxy tmpfs must parse as exactly one scalar entry",
+    )
+    gate(
+        "OIDC_LOOPBACK_TMPFS_TARGET",
+        oidc_tmpfs["target"] == "/tmp",
+        "oidc-loopback-proxy tmpfs target must remain /tmp",
+    )
+    gate(
+        "OIDC_LOOPBACK_TMPFS_SIZE",
+        oidc_tmpfs["size"] == "16m",
+        "oidc-loopback-proxy tmpfs size must remain 16m",
+    )
+    gate(
+        "OIDC_LOOPBACK_TMPFS_MODE",
+        oidc_tmpfs["mode"] == "1777",
+        "oidc-loopback-proxy tmpfs mode must remain 1777",
+    )
+    gate(
+        "FORBIDDEN_SPLIT_ENTRY_MODE_1777",
+        oidc_tmpfs["split_mode_entry_absent"] is True,
+        "mode=1777 must not parse as a separate tmpfs mount entry",
+    )
+    gate(
+        "OIDC_LOOPBACK_TMPFS_SINGLE_SCALAR",
+        oidc_tmpfs
+        == {
+            "entry_count": 1,
+            "target": "/tmp",
+            "size": "16m",
+            "mode": "1777",
+            "split_mode_entry_absent": True,
+        },
+        "oidc-loopback-proxy tmpfs must preserve the exact one-scalar contract",
+    )
+    malformed_tmpfs = yaml.safe_load(
+        "tmpfs: [/tmp:size=16m,mode=1777]\n"
+    )["tmpfs"]
+    malformed_contract = _oidc_loopback_tmpfs_contract(malformed_tmpfs)
+    gate(
+        "OIDC_LOOPBACK_TMPFS_OLD_FORM_NEGATIVE_CONTROL",
+        malformed_contract["entry_count"] == 2
+        and malformed_contract["split_mode_entry_absent"] is False,
+        "old flow-sequence form must remain a demonstrated split-entry negative control",
+    )
     oidc_upstream = re.search(
         r"upstream\s+mentorflow_keycloak\s*\{(?P<body>.*?)\}",
         oidc_proxy,
