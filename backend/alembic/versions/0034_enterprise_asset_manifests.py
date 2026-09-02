@@ -298,7 +298,7 @@ def _apply_postgresql_security(bind) -> None:
             )
         )
         privileges = (
-            "SELECT, INSERT, UPDATE"
+            "SELECT, INSERT, UPDATE, DELETE"
             if table == "asset_manifests"
             else "SELECT, INSERT"
         )

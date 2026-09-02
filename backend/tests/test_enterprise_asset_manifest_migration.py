@@ -110,3 +110,13 @@ def test_migration_never_mutates_cluster_role_attributes() -> None:
 
     assert re.search(r"\bALTER\s+ROLE\b", source, flags=re.IGNORECASE) is None
     assert "_assert_application_role_security(bind)" in source
+
+
+def test_manifest_delete_reaches_rls_without_overgranting_revisions() -> None:
+    source = MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert (
+        '"SELECT, INSERT, UPDATE, DELETE"\n'
+        '            if table == "asset_manifests"'
+    ) in source
+    assert 'else "SELECT, INSERT"' in source

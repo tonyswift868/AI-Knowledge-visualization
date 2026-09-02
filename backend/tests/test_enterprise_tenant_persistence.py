@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import ast
 from datetime import datetime, timezone
+import importlib.util
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 from alembic import command
@@ -70,6 +72,7 @@ from app.enterprise_tenancy.synthetic import (
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+MIGRATION_VERSIONS_ROOT = BACKEND_ROOT / "alembic" / "versions"
 TENANCY_ROOT = BACKEND_ROOT / "app" / "enterprise_tenancy"
 JOBS_MIGRATION_REVISION = "0030_enterprise_jobs_v1"
 COMPLETION_MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
@@ -96,6 +99,150 @@ CANONICAL_TABLES = {
     "asset_manifests",
     "asset_revisions",
 }
+
+
+class _RoleScalarResult:
+    def __init__(self, value: str) -> None:
+        self._value = value
+
+    def scalar_one(self) -> str:
+        return self._value
+
+
+class _RoleRowsResult:
+    def __init__(self, rows: tuple[tuple[object, ...], ...]) -> None:
+        self._rows = rows
+
+    def all(self) -> tuple[tuple[object, ...], ...]:
+        return self._rows
+
+
+class _ProvisionedRoleBind:
+    dialect = SimpleNamespace(name="postgresql")
+
+    def __init__(
+        self,
+        *,
+        current_user: str = "mentorflow_migrator",
+        roles: dict[str, tuple[bool, ...]] | None = None,
+    ) -> None:
+        self.current_user = current_user
+        self.roles = roles or {
+            "mentorflow_app": (False, False, False, False, False),
+            "mentorflow_migrator": (False, False, False, False, False),
+        }
+
+    def execute(self, statement, parameters=None):
+        sql = str(statement)
+        if "SELECT current_user" in sql:
+            return _RoleScalarResult(self.current_user)
+        if "FROM pg_roles" in sql:
+            requested = set((parameters or {}).get("roles") or ())
+            return _RoleRowsResult(
+                tuple(
+                    (role, *flags)
+                    for role, flags in self.roles.items()
+                    if role in requested
+                )
+            )
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+
+def _migration_0029() -> ModuleType:
+    path = MIGRATION_VERSIONS_ROOT / "0029_enterprise_tenancy_rls.py"
+    spec = importlib.util.spec_from_file_location(
+        "enterprise_tenancy_migration_0029",
+        path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_0029_accepts_safely_provisioned_application_and_migration_roles() -> None:
+    _migration_0029()._assert_provisioned_roles(_ProvisionedRoleBind())
+
+
+@pytest.mark.parametrize("missing_role", ("mentorflow_app", "mentorflow_migrator"))
+def test_0029_fails_closed_when_prerequisite_role_is_missing(
+    missing_role: str,
+) -> None:
+    roles = {
+        role: (False, False, False, False, False)
+        for role in ("mentorflow_app", "mentorflow_migrator")
+        if role != missing_role
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match=f"ENTERPRISE_ROLE_PROVISIONING_REQUIRED.*{missing_role}",
+    ):
+        _migration_0029()._assert_provisioned_roles(
+            _ProvisionedRoleBind(roles=roles)
+        )
+
+
+@pytest.mark.parametrize("role", ("mentorflow_app", "mentorflow_migrator"))
+@pytest.mark.parametrize(
+    ("attribute_index", "attribute"),
+    (
+        (0, "rolsuper"),
+        (1, "rolcreatedb"),
+        (2, "rolcreaterole"),
+        (3, "rolreplication"),
+        (4, "rolbypassrls"),
+    ),
+)
+def test_0029_fails_closed_for_unsafe_prerequisite_role_attribute(
+    role: str,
+    attribute_index: int,
+    attribute: str,
+) -> None:
+    unsafe = [False, False, False, False, False]
+    unsafe[attribute_index] = True
+    roles = {
+        "mentorflow_app": (False, False, False, False, False),
+        "mentorflow_migrator": (False, False, False, False, False),
+        role: tuple(unsafe),
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "ENTERPRISE_ROLE_SECURITY_CONTRACT_VIOLATION.*"
+            f"{role}.{attribute}"
+        ),
+    ):
+        _migration_0029()._assert_provisioned_roles(
+            _ProvisionedRoleBind(roles=roles)
+        )
+
+
+def test_0029_requires_dedicated_least_privilege_migration_role() -> None:
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "ENTERPRISE_ROLE_SECURITY_CONTRACT_VIOLATION.*"
+            "migrations must run as mentorflow_migrator"
+        ),
+    ):
+        _migration_0029()._assert_provisioned_roles(
+            _ProvisionedRoleBind(current_user="postgres")
+        )
+
+
+def test_entire_migration_chain_contains_no_cluster_role_ddl() -> None:
+    pattern = re.compile(r"\b(?:CREATE|DROP|ALTER)\s+ROLE\b", re.IGNORECASE)
+    violations = {
+        path.name: tuple(match.group(0).upper() for match in pattern.finditer(source))
+        for path in sorted(MIGRATION_VERSIONS_ROOT.glob("*.py"))
+        if (source := path.read_text(encoding="utf-8"))
+        if pattern.search(source)
+    }
+
+    assert violations == {}
 
 
 def _tenant(*, workspace_id: str | None = "workspace-a") -> TenantContext:

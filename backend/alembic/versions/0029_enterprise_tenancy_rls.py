@@ -18,6 +18,17 @@ depends_on = None
 
 
 APPLICATION_ROLE = "mentorflow_app"
+MIGRATION_ROLE = "mentorflow_migrator"
+ROLE_PROVISIONING_ERROR = "ENTERPRISE_ROLE_PROVISIONING_REQUIRED"
+ROLE_SECURITY_ERROR = "ENTERPRISE_ROLE_SECURITY_CONTRACT_VIOLATION"
+REQUIRED_ROLES = (APPLICATION_ROLE, MIGRATION_ROLE)
+UNSAFE_ROLE_ATTRIBUTES = (
+    "rolsuper",
+    "rolcreatedb",
+    "rolcreaterole",
+    "rolreplication",
+    "rolbypassrls",
+)
 RESOURCE_TABLE_KINDS = {
     "documents": "DOCUMENT",
     "evidence": "EVIDENCE",
@@ -467,38 +478,48 @@ def _policy_predicate(table: str) -> str:
     return _resource_predicate()
 
 
-def _ensure_application_role(bind) -> None:
+def _assert_provisioned_roles(bind) -> None:
     if bind.dialect.name != "postgresql":
         return
     current_user = str(bind.execute(sa.text("SELECT current_user")).scalar_one())
-    if current_user == APPLICATION_ROLE:
+    if current_user != MIGRATION_ROLE:
         raise RuntimeError(
-            "mentorflow_app must not run migrations or own tenant tables"
+            f"{ROLE_SECURITY_ERROR}: migrations must run as {MIGRATION_ROLE}, "
+            f"not {current_user}"
         )
-    op.execute(
+    rows = bind.execute(
         sa.text(
-            f"""
-            DO $$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1 FROM pg_roles WHERE rolname = '{APPLICATION_ROLE}'
-              ) THEN
-                CREATE ROLE {APPLICATION_ROLE}
-                  NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-                  NOINHERIT NOREPLICATION NOBYPASSRLS;
-              END IF;
-            END
-            $$
-            """
+            "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, "
+            "rolreplication, rolbypassrls FROM pg_roles "
+            "WHERE rolname = ANY(:roles)"
+        ),
+        {"roles": list(REQUIRED_ROLES)},
+    ).all()
+    role_flags = {
+        str(row[0]): tuple(bool(value) for value in row[1:])
+        for row in rows
+    }
+    missing = tuple(role for role in REQUIRED_ROLES if role not in role_flags)
+    if missing:
+        raise RuntimeError(
+            f"{ROLE_PROVISIONING_ERROR}: missing prerequisite roles: "
+            f"{', '.join(missing)}"
         )
-    )
-    op.execute(
-        sa.text(
-            f"ALTER ROLE {APPLICATION_ROLE} "
-            "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+    unsafe = tuple(
+        f"{role}.{attribute}"
+        for role in REQUIRED_ROLES
+        for attribute, enabled in zip(
+            UNSAFE_ROLE_ATTRIBUTES,
+            role_flags[role],
+            strict=True,
         )
+        if enabled
     )
-    op.execute(sa.text(f"ALTER ROLE {APPLICATION_ROLE} SET row_security = on"))
+    if unsafe:
+        raise RuntimeError(
+            f"{ROLE_SECURITY_ERROR}: unsafe prerequisite role attributes: "
+            f"{', '.join(unsafe)}"
+        )
 
 
 def _apply_postgresql_rls(bind) -> None:
@@ -655,7 +676,7 @@ def _seed_synthetic(bind) -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    _ensure_application_role(bind)
+    _assert_provisioned_roles(bind)
     _create_identity_tables(bind)
     _create_resource_scope_table(bind)
     for table, kind in RESOURCE_TABLE_KINDS.items():
