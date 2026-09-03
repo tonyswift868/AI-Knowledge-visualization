@@ -8,12 +8,15 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 from urllib.request import urlopen
 
 
@@ -32,7 +35,17 @@ REQUIRED_SECRETS = (
     "tls.key",
 )
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9._/:@-]*@sha256:[0-9a-f]{64}$")
-RESIDENT = {"postgres", "keycloak", "otel-collector", "backend", "worker", "frontend", "edge"}
+RESIDENT = {
+    "postgres",
+    "keycloak",
+    "otel-collector",
+    "backend",
+    "oidc-loopback-proxy",
+    "worker",
+    "frontend",
+    "edge",
+}
+HOST_BIND_UIDS = {"document-import": 10001}
 
 
 def _sha(path: Path) -> str:
@@ -90,6 +103,15 @@ def _preflight(release: Path) -> dict:
             raise RuntimeError(f"required secret file is missing or empty: {name}")
         if name != "tls.crt" and path.stat().st_mode & 0o077:
             raise RuntimeError(f"secret permissions are too broad: {name}")
+    for name, expected_uid in HOST_BIND_UIDS.items():
+        path = ROOT / "data" / name
+        if not path.is_dir():
+            raise RuntimeError(f"required host bind directory is missing: {path}")
+        stat = path.stat()
+        if stat.st_uid != expected_uid or stat.st_mode & 0o700 != 0o700:
+            raise RuntimeError(
+                f"host bind directory ownership is invalid: {name} requires UID {expected_uid} mode u+rwx"
+            )
     _compose(release, "config", "--quiet")
     return manifest
 
@@ -106,7 +128,7 @@ def _readiness(release: Path) -> dict:
         "postgres": ["exec", "-T", "postgres", "pg_isready", "-U", "postgres", "-d", "postgres"],
         "migration": ["run", "--rm", "--no-deps", "migration-ready"],
         "backend_startup": ["exec", "-T", "backend", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health/startup',timeout=3).read()"],
-        "keycloak_discovery": ["exec", "-T", "backend", "python", "-c", "import urllib.request;urllib.request.urlopen('http://keycloak:8080/realms/mentorflow/.well-known/openid-configuration',timeout=3).read()"],
+        "oidc_endpoint_contract": ["exec", "-T", "backend", "python", "/opt/mentorflow/rp05/runtime-entrypoint.py", "oidc-ready"],
         "otel_health": ["exec", "-T", "backend", "python", "-c", "import urllib.request;urllib.request.urlopen('http://otel-collector:13133/health',timeout=3).read()"],
         "worker": ["exec", "-T", "worker", "python", "/opt/mentorflow/rp05/runtime-entrypoint.py", "worker-health"],
         "https_edge": ["exec", "-T", "edge", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1:8443/health/startup"],
@@ -117,8 +139,38 @@ def _readiness(release: Path) -> dict:
     with urlopen(public_probe, timeout=10) as response:
         if response.status != 200:
             raise RuntimeError("public HTTPS startup probe did not return HTTP 200")
+        try:
+            payload = json.loads(response.read())
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "public HTTPS startup probe returned a non-JSON response"
+            ) from exc
+        if not isinstance(payload, dict) or not payload.get("status"):
+            raise RuntimeError("public HTTPS startup probe returned an invalid health payload")
     statuses = {name: "PASS" for name in checks}
     statuses["public_tls_https"] = "PASS"
+    pkce_query = urlencode(
+        {
+            "client_id": "mentorflow-web",
+            "redirect_uri": str(manifest["public_origin"]).rstrip("/")
+            + "/api/enterprise/auth/callback",
+            "response_type": "code",
+            "scope": "openid profile email",
+            "code_challenge": "A" * 43,
+            "code_challenge_method": "S256",
+            "state": "mentorflow-rp05-readiness-state",
+            "nonce": "mentorflow-rp05-readiness-nonce",
+        }
+    )
+    pkce_probe = (
+        str(manifest["public_origin"]).rstrip("/")
+        + "/realms/mentorflow/protocol/openid-connect/auth?"
+        + pkce_query
+    )
+    with urlopen(pkce_probe, timeout=10) as response:
+        if response.status != 200:
+            raise RuntimeError("public PKCE browser flow probe did not reach the login page")
+    statuses["pkce_browser_flow_url"] = "PASS"
     return {"resident_services": sorted(running), "checks": statuses}
 
 
@@ -146,6 +198,163 @@ def _evidence(release: Path) -> Path:
     return target
 
 
+def _restart_readiness(release: Path) -> dict:
+    checkpoints = {"initial": _readiness(release)}
+    phases = (
+        ("backend", ("backend", "oidc-loopback-proxy")),
+        ("worker", ("worker",)),
+        ("frontend", ("frontend",)),
+        ("edge", ("edge",)),
+    )
+    for name, services in phases:
+        _compose(
+            release,
+            "up",
+            "-d",
+            "--no-build",
+            "--no-deps",
+            "--force-recreate",
+            "--wait",
+            "--wait-timeout",
+            "240",
+            *services,
+        )
+        checkpoints[name] = _readiness(release)
+    return {
+        "schema_version": "mentorflow.rp05-restart-readiness.v1",
+        "status": "PASS",
+        "checkpoints": {name: "PASS" for name in checkpoints},
+    }
+
+
+def _fresh_postgres(release: Path) -> dict:
+    manifest = _preflight(release)
+    image = str(manifest["image_references"]["POSTGRES_IMAGE"])
+    name = f"mentorflow-rp05-fresh-postgres-{os.getpid()}-{secrets.token_hex(4)}"
+    secret_path = ROOT / "secrets" / "postgres_admin_password"
+    run_command = [
+        "docker",
+        "run",
+        "--detach",
+        "--name",
+        name,
+        "--read-only",
+        "--network",
+        "none",
+        "--memory",
+        "768m",
+        "--cpus",
+        "0.75",
+        "--cap-drop",
+        "ALL",
+    ]
+    for capability in ("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"):
+        run_command.extend(("--cap-add", capability))
+    run_command.extend(
+        (
+            "--tmpfs",
+            "/var/lib/postgresql/data:rw,noexec,nosuid,size=512m,mode=0700",
+            "--tmpfs",
+            "/var/run/postgresql:rw,noexec,nosuid,size=64m,mode=1777",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,size=64m,mode=1777",
+            "--mount",
+            f"type=bind,src={secret_path},dst=/run/secrets/postgres_admin_password,readonly",
+            "--env",
+            "POSTGRES_PASSWORD_FILE=/run/secrets/postgres_admin_password",
+            "--env",
+            "POSTGRES_DB=postgres",
+            "--env",
+            "POSTGRES_USER=postgres",
+            image,
+        )
+    )
+    started = False
+    try:
+        result = subprocess.run(
+            run_command,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "fresh-volume PostgreSQL container failed to start: "
+                + result.stderr[-500:]
+            )
+        started = True
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            ready = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    name,
+                    "pg_isready",
+                    "--host",
+                    "/var/run/postgresql",
+                    "--username",
+                    "postgres",
+                    "--dbname",
+                    "postgres",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            if ready.returncode == 0:
+                break
+            state = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", name],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            if state.returncode != 0 or state.stdout.strip() != "true":
+                raise RuntimeError("fresh-volume PostgreSQL exited before readiness")
+            time.sleep(2)
+        else:
+            raise RuntimeError("fresh-volume PostgreSQL readiness deadline expired")
+        version = subprocess.run(
+            [
+                "docker",
+                "exec",
+                name,
+                "psql",
+                "--no-password",
+                "--tuples-only",
+                "--username",
+                "postgres",
+                "--dbname",
+                "postgres",
+                "--command",
+                "SELECT current_setting('server_version_num')",
+            ],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if version.returncode != 0 or not version.stdout.strip().isdigit():
+            raise RuntimeError("fresh-volume PostgreSQL SQL verification failed")
+        return {
+            "schema_version": "mentorflow.rp05-postgres-fresh-volume.v1",
+            "status": "PASS",
+            "image": image,
+            "persistent_data_touched": False,
+        }
+    finally:
+        if started:
+            active_error = sys.exc_info()[0] is not None
+            cleanup = subprocess.run(
+                ["docker", "rm", "--force", name],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            if cleanup.returncode != 0 and not active_error:
+                raise RuntimeError("fresh-volume PostgreSQL cleanup failed")
+
+
 def _activate(release: Path) -> None:
     _readiness(release)
     current = ROOT / "current"
@@ -168,7 +377,7 @@ def _rollback(name: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("preflight", "config", "pull", "migrate", "up", "readiness", "evidence", "activate", "rollback", "down"))
+    parser.add_argument("action", choices=("preflight", "config", "pull", "fresh-postgres", "migrate", "up", "readiness", "restart-readiness", "evidence", "activate", "rollback", "down"))
     parser.add_argument("--release", type=Path)
     parser.add_argument("--rollback-release")
     args = parser.parse_args()
@@ -189,6 +398,14 @@ def main() -> int:
     elif args.action == "pull":
         _preflight(release)
         _compose(release, "pull", "--policy", "always")
+    elif args.action == "fresh-postgres":
+        print(
+            json.dumps(
+                _fresh_postgres(release),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
     elif args.action == "migrate":
         _preflight(release)
         _compose(release, "up", "--no-build", "--exit-code-from", "migration-ready", "migration-ready")
@@ -197,6 +414,14 @@ def main() -> int:
         _compose(release, "up", "-d", "--no-build")
     elif args.action == "readiness":
         _readiness(release)
+    elif args.action == "restart-readiness":
+        print(
+            json.dumps(
+                _restart_readiness(release),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
     elif args.action == "evidence":
         print(_evidence(release))
     elif args.action == "activate":

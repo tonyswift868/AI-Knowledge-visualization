@@ -31,7 +31,7 @@
   "refreshTokenMaxReuse": 0,
   "defaultSignatureAlgorithm": "RS256",
   "attributes": {
-    "frontendUrl": "${MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN}/realms/mentorflow"
+    "frontendUrl": "${MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN}"
   },
   "roles": {
     "realm": [

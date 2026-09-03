@@ -23,7 +23,14 @@ RESIDENT = {
     "frontend",
     "edge",
 }
-ONESHOT = {"postgres-provision", "keycloak-ready", "migrate", "migration-ready", "otel-ready"}
+ONESHOT = {
+    "postgres-provision",
+    "keycloak-ready",
+    "migrate",
+    "migration-ready",
+    "otel-ready",
+    "backend-tls-ready",
+}
 BANNED = {"seaweedfs", "docling", "prometheus", "grafana", "tempo", "loki", "k6", "object-store"}
 EXPECTED_SECRETS = {
     "postgres_admin_password", "postgres_migrator_password", "postgres_app_password",
@@ -384,9 +391,44 @@ def verify(root: Path) -> dict:
     gate("external_file_secrets", set(compose.get("secrets", {})) == EXPECTED_SECRETS and all("file" in value for value in compose["secrets"].values()), "external secret declarations are incomplete")
     gate("postgres_persistent", "/postgres:/var/lib/postgresql/data" in json.dumps(services["postgres"].get("volumes", [])), "PostgreSQL data is not host-persistent")
     gate("postgres_healthy", "healthcheck" in services["postgres"], "PostgreSQL healthcheck missing")
+    tmpfs_contract = {
+        name: _tmpfs_entries(service.get("tmpfs"))
+        for name, service in services.items()
+        if service.get("tmpfs") is not None
+    }
+    gate(
+        "compose_tmpfs_all_services",
+        all(
+            entries
+            and all(
+                isinstance(entry.get("target"), str)
+                and str(entry["target"]).startswith("/")
+                and not str(entry.get("raw") or "").startswith("mode=")
+                for entry in entries
+            )
+            for entries in tmpfs_contract.values()
+        ),
+        "every tmpfs entry must parse as one absolute mount scalar without split mode entries",
+    )
+    gate(
+        "postgres_fresh_volume_capabilities",
+        set(services["postgres"].get("cap_drop", [])) == {"ALL"}
+        and set(services["postgres"].get("cap_add", []))
+        == {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"}
+        and services["postgres"].get("read_only") is True,
+        "PostgreSQL must retain a read-only root and only the capabilities needed by its fresh-volume entrypoint",
+    )
 
     provision = (asset_root / "postgres-provision.sh").read_text(encoding="utf-8")
     gate("postgres_role_separation", all(token in provision for token in ("mentorflow_migrator", "mentorflow_app", "mentorflow_keycloak", "NOSUPERUSER", "NOBYPASSRLS", "ALTER DATABASE mentorflow OWNER TO mentorflow_migrator")), "role separation is incomplete")
+    provision_environment = services["postgres-provision"].get("environment", {})
+    gate(
+        "postgres_provision_explicit_tcp_authority",
+        provision_environment == {"PGHOST": "postgres", "PGPORT": "5432"}
+        and provision.count('--host "${PGHOST:?PGHOST is required}"') == 2
+        and provision.count('--port "${PGPORT:?PGPORT is required}"') == 2,
+        "postgres-provision must authenticate over the explicit postgres:5432 Compose authority",
+    )
     runtime_path = asset_root / "runtime-entrypoint.py"
     runtime = runtime_path.read_text(encoding="utf-8")
     gate(
@@ -438,7 +480,39 @@ def verify(root: Path) -> dict:
     gate("schema_verify_failure_fail_closed", verify_code == 31 and verify_events == expected_verify_failure_events and "runtime-exec" not in verify_events, f"schema verify failure did not stop bootstrap: {verify_detail}")
 
     keycloak_command = str(services["keycloak"].get("command", ""))
-    gate("keycloak_production_start", "kc.sh start --import-realm" in keycloak_command and "start-dev" not in compose_text, "Keycloak is not production/import mode")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    gate(
+        "keycloak_production_start",
+        "kc.sh start --optimized --import-realm" in keycloak_command
+        and "/opt/keycloak/conf/mentorflow-optimized-v1" in keycloak_command
+        and "start-dev" not in compose_text,
+        "Keycloak must consume the source-built optimized image in production/import mode",
+    )
+    gate(
+        "keycloak_build_time_optimization",
+        all(
+            token in dockerfile
+            for token in (
+                "FROM ${KEYCLOAK_BASE_IMAGE} AS keycloak-build",
+                "ENV KC_DB=postgres KC_HEALTH_ENABLED=true",
+                "RUN /opt/keycloak/bin/kc.sh build",
+                "FROM ${KEYCLOAK_BASE_IMAGE} AS keycloak-image",
+                "/opt/keycloak/conf/mentorflow-optimized-v1",
+            )
+        ),
+        "Keycloak augmentation must be completed during image construction",
+    )
+    runtime_image_template = json.loads(
+        (asset_root / "runtime-images.template.json").read_text(encoding="utf-8")
+    )
+    rp05_readme = (asset_root / "README.md").read_text(encoding="utf-8")
+    gate(
+        "keycloak_optimized_image_release_contract",
+        "mentorflow-keycloak@sha256:" in runtime_image_template["images"]["KEYCLOAK_IMAGE"]
+        and "`keycloak-image` Docker target" in rp05_readme
+        and "unmodified upstream Keycloak image is not compatible" in rp05_readme,
+        "RP-05 must require the immutable digest of the source-built optimized Keycloak image",
+    )
     realm = json.loads((root / "deploy" / "enterprise" / "config" / "keycloak-realm.json").read_text(encoding="utf-8"))
     clients = {item["clientId"]: item for item in realm.get("clients", [])}
     gate("keycloak_realm_clients", {"mentorflow-api", "mentorflow-web", "mentorflow-bff", "mentorflow-worker"} <= clients.keys() and clients["mentorflow-web"].get("publicClient") is True, "realm/client contract incomplete")
@@ -447,6 +521,13 @@ def verify(root: Path) -> dict:
         all(client.get("directAccessGrantsEnabled") is False for client in clients.values()),
         "Direct Access Grants must remain disabled for every Keycloak client",
     )
+    gate(
+        "keycloak_single_public_url_authority",
+        realm.get("attributes", {}).get("frontendUrl")
+        == "${MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN}"
+        and "/realms/mentorflow/realms/mentorflow" not in json.dumps(realm),
+        "realm frontendUrl must use the public origin without duplicating the realm path",
+    )
 
     gate("database_reachable_before_migration", _condition(compose, "postgres-provision", "postgres") == "service_healthy", "database health does not gate provisioning")
     gate("migration_dependency_graph", _condition(compose, "migrate", "postgres-provision") == "service_completed_successfully" and _condition(compose, "migration-ready", "migrate") == "service_completed_successfully", "migration gates are unordered")
@@ -454,6 +535,52 @@ def verify(root: Path) -> dict:
         gate(f"{service}_dependency_graph", all(_condition(compose, service, dependency) == "service_completed_successfully" for dependency in ("migration-ready", "keycloak-ready", "otel-ready")), f"{service} does not wait for all gates")
     gate("edge_dependency_graph", _condition(compose, "edge", "worker") == "service_healthy" and _condition(compose, "edge", "frontend") == "service_healthy", "edge can start before runtime health")
     gate("worker_current_entrypoint", "app.enterprise.worker_entry" in runtime and "MENTORFLOW_WORKER_RUNTIME_FACTORY" in compose_text and "worker-health" in runtime, "durable worker contract incomplete")
+    jobs_runtime = (
+        root / "backend" / "app" / "enterprise" / "jobs_v1" / "runtime.py"
+    ).read_text(encoding="utf-8")
+    gate(
+        "procrastinate_connector_separation",
+        "connector = procrastinate.PsycopgConnector(" in jobs_runtime
+        and "connector=procrastinate.SyncPsycopgConnector(" in jobs_runtime
+        and "return app, defer_task" in jobs_runtime,
+        "worker consumption must use the async connector while transactional outbox defer uses a sync connector",
+    )
+    tls_ready = services["backend-tls-ready"]
+    backend = services["backend"]
+    tls_ready_volumes = {_volume_binding(item)["target"] for item in tls_ready.get("volumes", [])}
+    backend_volumes = {
+        _volume_binding(item)["target"]: _volume_binding(item)
+        for item in backend.get("volumes", [])
+    }
+    gate(
+        "backend_tls_public_certificate_uid_contract",
+        tls_ready.get("user") == "0:0"
+        and set(tls_ready.get("secrets", [])) == {"tls_certificate"}
+        and "tls_private_key" not in tls_ready.get("secrets", [])
+        and set(tls_ready.get("cap_add", [])) == {"DAC_READ_SEARCH"}
+        and "/run/mentorflow/tls" in tls_ready_volumes
+        and backend.get("environment", {}).get("SSL_CERT_FILE")
+        == "/run/mentorflow/tls/tls.crt"
+        and set(backend.get("secrets", [])) == {"postgres_app_password"}
+        and backend_volumes.get("/run/mentorflow/tls", {}).get("read_only") is True
+        and _condition(compose, "backend", "backend-tls-ready")
+        == "service_completed_successfully",
+        "a bounded one-shot must publish only the public certificate as mode 0444 before UID 10001 starts",
+    )
+    gate(
+        "backend_private_key_denied",
+        "tls_private_key" not in backend.get("secrets", [])
+        and "tls_private_key" not in tls_ready.get("secrets", []),
+        "backend and its trust-anchor one-shot must not receive the TLS private key",
+    )
+    worker_tmpfs = {entry["target"]: entry for entry in _tmpfs_entries(services["worker"].get("tmpfs"))}
+    gate(
+        "worker_readiness_uid_tmpfs",
+        worker_tmpfs.get("/run/mentorflow", {}).get("options", {}).get("mode") == "0700"
+        and worker_tmpfs.get("/run/mentorflow", {}).get("options", {}).get("uid") == "10001"
+        and worker_tmpfs.get("/run/mentorflow", {}).get("options", {}).get("gid") == "10001",
+        "worker readiness tmpfs must be private and writable by UID/GID 10001",
+    )
 
     otel = _yaml(asset_root / "otel-collector.yml")
     gate("otel_three_pipelines", set(otel.get("service", {}).get("pipelines", {})) == {"traces", "metrics", "logs"}, "OTel pipelines incomplete")
@@ -461,7 +588,33 @@ def verify(root: Path) -> dict:
 
     edge = (asset_root / "edge-https.conf").read_text(encoding="utf-8")
     gate("tls_ingress", all(token in edge for token in ("listen 8443 ssl", "tls_certificate", "tls_private_key", "Strict-Transport-Security", "proxy_buffering off")), "TLS/reverse-proxy seam incomplete")
-    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    edge_tmpfs = {entry["target"]: entry for entry in _tmpfs_entries(services["edge"].get("tmpfs"))}
+    gate(
+        "edge_read_only_cache_contract",
+        services["edge"].get("read_only") is True
+        and edge_tmpfs.get("/var/cache/nginx", {}).get("options", {}).get("mode") == "0750"
+        and edge_tmpfs.get("/var/cache/nginx", {}).get("options", {}).get("uid") == "101"
+        and edge_tmpfs.get("/var/cache/nginx", {}).get("options", {}).get("gid") == "101"
+        and all(
+            path in edge
+            for path in (
+                "fastcgi_temp_path /var/cache/nginx/fastcgi_temp;",
+                "uwsgi_temp_path /var/cache/nginx/uwsgi_temp;",
+                "scgi_temp_path /var/cache/nginx/scgi_temp;",
+            )
+        ),
+        "edge must keep a read-only root with one bounded UID 101 cache tmpfs",
+    )
+    gate(
+        "edge_health_is_backend_not_spa",
+        re.search(
+            r"location\s+/health/\s*\{[^}]*proxy_pass\s+http://mentorflow_backend;",
+            edge,
+            re.DOTALL,
+        )
+        is not None,
+        "edge /health must route to backend rather than the frontend SPA fallback",
+    )
     nginx_version_match = re.search(
         r"^ARG NGINX_VERSION=(\d+)\.(\d+)\.(\d+)\s*$", dockerfile, re.MULTILINE
     )
@@ -510,6 +663,42 @@ def verify(root: Path) -> dict:
         "EDGE_BACKEND_DYNAMIC_RESOLUTION_CONTRACT",
         dynamic_backend_resolution,
         "edge must use Docker DNS and an upstream resolve server for backend without a fixed container IP",
+    )
+    for upstream_name, service_address in (
+        ("mentorflow_keycloak", "keycloak:8080"),
+        ("mentorflow_frontend", "frontend:8080"),
+    ):
+        match = re.search(
+            rf"upstream\s+{upstream_name}\s*\{{(?P<body>.*?)\}}",
+            edge,
+            re.DOTALL,
+        )
+        body = match.group("body") if match else ""
+        gate(
+            f"EDGE_{upstream_name.upper()}_DYNAMIC_RESOLUTION_CONTRACT",
+            match is not None
+            and re.search(rf"\bserver\s+{re.escape(service_address)}\s+resolve\s*;", body)
+            is not None
+            and "resolver 127.0.0.11" in body
+            and f"proxy_pass http://{upstream_name};" in edge,
+            f"edge must dynamically re-resolve {service_address}",
+        )
+    frontend_nginx = (root / "deploy" / "enterprise" / "nginx.conf").read_text(
+        encoding="utf-8"
+    )
+    gate(
+        "FRONTEND_BACKEND_DYNAMIC_RESOLUTION_CONTRACT",
+        all(
+            token in frontend_nginx
+            for token in (
+                "upstream mentorflow_backend",
+                "resolver 127.0.0.11",
+                "server backend:8000 resolve;",
+                "proxy_pass http://mentorflow_backend;",
+            )
+        )
+        and "proxy_pass http://backend:8000" not in frontend_nginx,
+        "frontend must dynamically re-resolve backend after service replacement",
     )
     oidc_proxy_path = asset_root / "oidc-loopback-proxy.conf"
     oidc_proxy = oidc_proxy_path.read_text(encoding="utf-8")
@@ -797,9 +986,20 @@ def verify(root: Path) -> dict:
     gate(
         "OIDC_BACKEND_TLS_TRUST_CONTRACT",
         backend_environment.get("SSL_CERT_FILE")
-        == "/run/secrets/tls_certificate"
-        and "tls_certificate" in backend_secrets,
-        "backend must trust the read-only public TLS certificate used by its namespace-local issuer route",
+        == "/run/mentorflow/tls/tls.crt"
+        and "tls_certificate" not in backend_secrets
+        and "tls_private_key" not in backend_secrets,
+        "backend must use the UID-readable public trust-anchor copy and receive no TLS private key",
+    )
+    gate(
+        "OIDC_BACKEND_TRANSPORT_ROUTE_BOUND",
+        backend_environment.get("MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER")
+        == "https://${MENTORFLOW_PUBLIC_HOSTNAME:?MENTORFLOW_PUBLIC_HOSTNAME is required}:18080/realms/mentorflow"
+        and services["backend"].get("extra_hosts")
+        == [
+            "${MENTORFLOW_PUBLIC_HOSTNAME:?MENTORFLOW_PUBLIC_HOSTNAME is required}:127.0.0.1"
+        ],
+        "backend server-side OIDC traffic must resolve the public issuer host to its namespace-local TLS proxy port",
     )
     gate(
         "OIDC_LOOPBACK_PROXY_LIFECYCLE_CONTRACT",
@@ -849,8 +1049,85 @@ def verify(root: Path) -> dict:
     )
     orchestrator = (root / "scripts" / "enterprise" / "rp05_staging.py").read_text(encoding="utf-8")
     gate("host_layout", all(f'"{name}"' in orchestrator for name in ("releases", "config", "secrets", "data", "backups", "evidence", "logs")), "host layout incomplete")
+    gate(
+        "host_bind_uid_preflight",
+        'HOST_BIND_UIDS = {"document-import": 10001}' in orchestrator
+        and "stat.st_uid != expected_uid" in orchestrator
+        and "mode u+rwx" in orchestrator,
+        "host preflight must fail closed when the non-root document-import bind is absent or has the wrong owner/mode",
+    )
     gate("atomic_activation_rollback", all(token in orchestrator for token in ("symlink_to", "os.replace", "rollback", '"stop"')), "activation/rollback contract missing")
     gate("non_destructive_orchestrator", not any(token in orchestrator for token in ("down -v", "rm -rf", "volume rm", "ufw", "iptables", "ssh ")), "destructive or remote command found")
+    gate(
+        "functional_jwks_and_health_orchestrator",
+        all(
+            token in orchestrator
+            for token in (
+                '"oidc_endpoint_contract"',
+                '"oidc-ready"',
+                '"pkce_browser_flow_url"',
+                '"code_challenge_method": "S256"',
+                "public HTTPS startup probe returned a non-JSON response",
+            )
+        ),
+        "readiness must execute the backend OIDC endpoint contract, a public PKCE flow, and reject SPA health false positives",
+    )
+    gate(
+        "restart_service_discovery_orchestrator",
+        all(
+            token in orchestrator
+            for token in (
+                "def _restart_readiness(",
+                '("backend", ("backend", "oidc-loopback-proxy"))',
+                '("worker", ("worker",))',
+                '("frontend", ("frontend",))',
+                '("edge", ("edge",))',
+                '"--force-recreate"',
+                '"--wait"',
+                '"--no-deps"',
+                '"restart-readiness"',
+            )
+        ),
+        "the host orchestrator must recreate every runtime hop and re-run readiness after each service-discovery phase",
+    )
+    gate(
+        "postgres_fresh_volume_runtime_orchestrator",
+        all(
+            token in orchestrator
+            for token in (
+                "def _fresh_postgres(",
+                'manifest["image_references"]["POSTGRES_IMAGE"]',
+                '"/var/lib/postgresql/data:rw,noexec,nosuid,size=512m,mode=0700"',
+                '"--cap-drop"',
+                '("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID")',
+                '"persistent_data_touched": False',
+                '["docker", "rm", "--force", name]',
+                '"fresh-postgres"',
+            )
+        )
+        and "/opt/mentorflow/data/postgres" not in orchestrator,
+        "the fresh-volume gate must use the exact digest and disposable tmpfs without touching the persistent database path",
+    )
+    gate(
+        "oidc_exact_endpoint_runtime_probe",
+        all(
+            token in runtime
+            for token in (
+                "def _oidc_ready()",
+                '"issuer": public_issuer',
+                '"authorization_endpoint"',
+                '"token_endpoint"',
+                '"jwks_uri"',
+                "MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER",
+                "OIDC token endpoint accepted an intentionally invalid code",
+                '"DISCOVERY_ISSUER_EXACT": "PASS"',
+                '"AUTHORIZATION_ENDPOINT": "PASS"',
+                '"TOKEN_ENDPOINT": "PASS"',
+                '"JWKS_ENDPOINT": "PASS"',
+            )
+        ),
+        "runtime OIDC gate must validate exact public discovery endpoints while using the TLS transport route",
+    )
 
     builder = (root / "scripts" / "enterprise" / "build_rp05_staging_release.py").read_text(encoding="utf-8")
     gate("immutable_images", "@sha256:" in builder and "DIGEST.fullmatch" in builder and "source checkout must be clean" in builder, "image/source immutability checks missing")

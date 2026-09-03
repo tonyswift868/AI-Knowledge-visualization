@@ -446,9 +446,15 @@ def build_procrastinate_app(
         max_size=max(2, config.policy.concurrency + 1),
     )
     app = procrastinate.App(connector=connector)
+    defer_app = procrastinate.App(
+        connector=procrastinate.SyncPsycopgConnector(
+            conninfo=config.conninfo,
+            min_size=1,
+            max_size=1,
+        )
+    )
 
-    @app.task(name=TASK_NAME, pass_context=True, queue=config.policy.queues[0])
-    async def execute_workflow(
+    async def execute_workflow_impl(
         context: procrastinate.JobContext,
         *,
         job_id: str,
@@ -466,7 +472,15 @@ def build_procrastinate_app(
             )
         return record.status.value if record is not None else "MISSING"
 
-    return app, execute_workflow
+    app.task(name=TASK_NAME, pass_context=True, queue=config.policy.queues[0])(
+        execute_workflow_impl
+    )
+    defer_task = defer_app.task(
+        name=TASK_NAME,
+        pass_context=True,
+        queue=config.policy.queues[0],
+    )(execute_workflow_impl)
+    return app, defer_task
 
 
 class WorkerSupervisor:

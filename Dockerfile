@@ -3,9 +3,26 @@
 ARG NODE_VERSION=22.20.0
 ARG PYTHON_VERSION=3.12.10
 ARG NGINX_VERSION=1.28.0
+ARG KEYCLOAK_VERSION=26.7.3
 ARG NODE_BASE_IMAGE=node:${NODE_VERSION}-bookworm-slim
 ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}-slim-bookworm
 ARG NGINX_BASE_IMAGE=nginx:${NGINX_VERSION}-alpine
+ARG KEYCLOAK_BASE_IMAGE=quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
+
+FROM ${KEYCLOAK_BASE_IMAGE} AS keycloak-build
+ENV KC_DB=postgres KC_HEALTH_ENABLED=true
+RUN /opt/keycloak/bin/kc.sh build
+
+FROM ${KEYCLOAK_BASE_IMAGE} AS keycloak-image
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+COPY --from=keycloak-build /opt/keycloak/ /opt/keycloak/
+RUN printf '%s\n' 'mentorflow-keycloak-optimized-v1' > /opt/keycloak/conf/mentorflow-optimized-v1
+LABEL org.opencontainers.image.title="MentorFlow Keycloak runtime" \
+      org.opencontainers.image.vendor="MentorFlow" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/tonyswift868/AI-Knowledge-visualization"
 
 FROM ${NODE_BASE_IMAGE} AS frontend-build
 WORKDIR /build/frontend

@@ -397,11 +397,14 @@ def test_readiness_requires_fresh_ready_evidence(tmp_path: Path) -> None:
 
 
 def test_procrastinate_app_registers_canonical_task_and_exact_version(tmp_path: Path) -> None:
-    app, task = build_procrastinate_app(
+    app, defer_task = build_procrastinate_app(
         _config(tmp_path / "readiness.json"),
         DurableJobExecutor(_engine(), _dependencies(_Handler())),
     )
-    assert app.tasks["mentorflow.enterprise.execute_workflow"] is task
+    consume_task = app.tasks["mentorflow.enterprise.execute_workflow"]
+    assert consume_task.name == defer_task.name == "mentorflow.enterprise.execute_workflow"
+    assert type(app.connector).__name__ == "PsycopgConnector"
+    assert type(defer_task.blueprint.connector).__name__ == "SyncPsycopgConnector"
 
 
 def test_external_connection_unwrap_is_fail_closed_for_sqlite() -> None:

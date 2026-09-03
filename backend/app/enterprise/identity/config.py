@@ -101,6 +101,7 @@ class KeycloakOidcConfig:
     logout_token_max_age_seconds: int = 300
     max_token_lifetime_seconds: int = 86_400
     allow_loopback_http: bool = False
+    transport_issuer: str | None = None
 
     def __post_init__(self) -> None:
         _validated_url(
@@ -108,6 +109,22 @@ class KeycloakOidcConfig:
             field="issuer",
             allow_loopback_http=self.allow_loopback_http,
         )
+        if self.transport_issuer:
+            transport = _validated_url(
+                self.transport_issuer,
+                field="transport_issuer",
+                allow_loopback_http=self.allow_loopback_http,
+            )
+            public = urlparse(self.issuer)
+            routed = urlparse(transport)
+            if (
+                routed.scheme != public.scheme
+                or routed.hostname != public.hostname
+                or routed.path.rstrip("/") != public.path.rstrip("/")
+            ):
+                raise IdentityConfigurationError(
+                    "OIDC transport issuer may change only the port of the public issuer"
+                )
         _validated_url(
             self.redirect_uri,
             field="redirect_uri",
@@ -148,23 +165,27 @@ class KeycloakOidcConfig:
 
     @property
     def token_endpoint(self) -> str:
-        return f"{self.issuer}/protocol/openid-connect/token"
+        return f"{self._transport_authority}/protocol/openid-connect/token"
 
     @property
     def jwks_uri(self) -> str:
-        return f"{self.issuer}/protocol/openid-connect/certs"
+        return f"{self._transport_authority}/protocol/openid-connect/certs"
 
     @property
     def introspection_endpoint(self) -> str:
-        return f"{self.issuer}/protocol/openid-connect/token/introspect"
+        return f"{self._transport_authority}/protocol/openid-connect/token/introspect"
 
     @property
     def revocation_endpoint(self) -> str:
-        return f"{self.issuer}/protocol/openid-connect/revoke"
+        return f"{self._transport_authority}/protocol/openid-connect/revoke"
 
     @property
     def end_session_endpoint(self) -> str:
         return f"{self.issuer}/protocol/openid-connect/logout"
+
+    @property
+    def _transport_authority(self) -> str:
+        return self.transport_issuer or self.issuer
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,6 +271,18 @@ class EnterpriseIdentityConfig:
             field="MENTORFLOW_KEYCLOAK_ISSUER",
             allow_loopback_http=allow_http,
         )
+        transport_raw = str(
+            env.get("MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER") or ""
+        ).strip()
+        transport_issuer = (
+            _validated_url(
+                transport_raw,
+                field="MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER",
+                allow_loopback_http=allow_http,
+            )
+            if transport_raw
+            else None
+        )
         redirect_uri = _validated_url(
             _required(env, "MENTORFLOW_KEYCLOAK_REDIRECT_URI"),
             field="MENTORFLOW_KEYCLOAK_REDIRECT_URI",
@@ -320,6 +353,7 @@ class EnterpriseIdentityConfig:
                 maximum=86_400,
             ),
             allow_loopback_http=allow_http,
+            transport_issuer=transport_issuer,
         )
         cookie_secure = not (allow_http and urlparse(redirect_uri).scheme == "http")
         redirect = urlparse(redirect_uri)

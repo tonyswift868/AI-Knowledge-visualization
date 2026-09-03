@@ -12,7 +12,7 @@ export RP05_MIGRATOR_PASSWORD="$(read_secret /run/secrets/postgres_migrator_pass
 export RP05_APP_PASSWORD="$(read_secret /run/secrets/postgres_app_password)"
 export RP05_KEYCLOAK_PASSWORD="$(read_secret /run/secrets/keycloak_db_password)"
 
-psql --no-password --set=ON_ERROR_STOP=1 --username postgres --dbname postgres <<'SQL'
+psql --no-password --set=ON_ERROR_STOP=1 --host "${PGHOST:?PGHOST is required}" --port "${PGPORT:?PGPORT is required}" --username postgres --dbname postgres <<'SQL'
 \getenv migrator_password RP05_MIGRATOR_PASSWORD
 \getenv app_password RP05_APP_PASSWORD
 \getenv keycloak_password RP05_KEYCLOAK_PASSWORD
@@ -38,7 +38,7 @@ ALTER DATABASE mentorflow OWNER TO mentorflow_migrator;
 ALTER DATABASE mentorflow_keycloak OWNER TO mentorflow_keycloak;
 SQL
 
-psql --no-password --set=ON_ERROR_STOP=1 --username postgres --dbname mentorflow <<'SQL'
+psql --no-password --set=ON_ERROR_STOP=1 --host "${PGHOST:?PGHOST is required}" --port "${PGPORT:?PGPORT is required}" --username postgres --dbname mentorflow <<'SQL'
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE mentorflow TO mentorflow_app;
 SQL

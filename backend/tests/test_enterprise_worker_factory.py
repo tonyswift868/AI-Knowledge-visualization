@@ -840,11 +840,13 @@ def test_task_name_is_registered_on_procrastinate_app(tmp_path: Path) -> None:
         runtime_factory=PRODUCTION_FACTORY_DOTTED_PATH,
         readiness_path=tmp_path / "worker-readiness.json",
     )
-    app, task = build_procrastinate_app(
+    app, defer_task = build_procrastinate_app(
         config, SimpleNamespace(execute=lambda **kwargs: None)
     )
     assert TASK_NAME == "mentorflow.enterprise.execute_workflow"
-    assert app.tasks[TASK_NAME] is task
+    assert app.tasks[TASK_NAME].name == defer_task.name == TASK_NAME
+    assert type(app.connector).__name__ == "PsycopgConnector"
+    assert type(defer_task.blueprint.connector).__name__ == "SyncPsycopgConnector"
 
 
 def test_handler_environment_contract_is_exact_preview_subset() -> None:

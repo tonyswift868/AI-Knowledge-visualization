@@ -26,17 +26,27 @@ validation while allowing the backend to fetch the public issuer's JWKS.
 
 ## Reproducible sequence
 
-1. Copy `runtime-images.template.json` and replace every image with an exact
-   `name@sha256:<64 lowercase hex>` reference.
-2. Copy `compose.env.example` and set the public HTTPS origin, hostname, and
+1. Build the repository `keycloak-image` Docker target, publish it to the
+   approved registry, and record its immutable repository digest. This target
+   runs the Keycloak production augmentation during image construction; an
+   unmodified upstream Keycloak image is not compatible with this release.
+2. Copy `runtime-images.template.json` and replace every image with an exact
+   `name@sha256:<64 lowercase hex>` reference. `KEYCLOAK_IMAGE` must be the
+   repository digest produced from the `keycloak-image` target above.
+3. Copy `compose.env.example` and set the public HTTPS origin, hostname, and
    project name. Keep the production factory and three supported handler paths
    unchanged. Do not put secrets in this file.
-3. Create the nine external secret files under `/opt/mentorflow/secrets`.
-4. Build a release with `build_rp05_staging_release.py`; transfer the resulting
+4. Create the nine external secret files under `/opt/mentorflow/secrets`.
+5. Build a release with `build_rp05_staging_release.py`; transfer the resulting
    directory without changing its manifest-covered files.
-5. On the Linux host, run `python3 rp05_staging.py preflight`, `config`, `pull`,
-   `migrate`, `up`, `readiness`, and `evidence` in that order.
-6. Use `activate` only after readiness succeeds. `rollback` changes only the
+6. On the Linux host, run `python3 rp05_staging.py preflight`, `config`, `pull`,
+   `fresh-postgres`, `migrate`, `up`, `readiness`, `restart-readiness`, and
+   `evidence` in that order. `fresh-postgres` starts the exact PostgreSQL digest
+   against an isolated tmpfs data directory and never mounts the persistent
+   database path. `restart-readiness` recreates backend, worker, frontend, and
+   edge in bounded phases and re-runs the complete readiness contract after
+   each phase.
+7. Use `activate` only after readiness succeeds. `rollback` changes only the
    atomic `current` symlink to a previously validated release.
 
 `/health/startup` is used for backend process startup. Current canonical
