@@ -12,6 +12,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from backend.app.credential_store import CredentialStoreError  # noqa: E402
 
@@ -23,7 +24,10 @@ from desktop.account_identity import (  # noqa: E402
 )
 from desktop.account_settings_page import AccountSettingsPage  # noqa: E402
 from desktop.account_vault import AccountVaultManager, VaultLayout  # noqa: E402
-from desktop.runtime import AccountSwitchCoordinator  # noqa: E402
+from desktop.runtime import (  # noqa: E402
+    AccountSwitchCoordinator,
+    clear_enterprise_account_session,
+)
 
 
 class _Settings:
@@ -400,3 +404,63 @@ def test_settings_page_shows_safe_profile_root_and_readable_availability(
     assert "access-token-secret" not in visible_text
     assert "refresh-token-secret" not in visible_text
     page.close()
+
+
+def test_account_presentation_switches_a_b_a_and_shows_new_device_state(
+    qtbot,
+    tmp_path: Path,
+    vault_root: Path,
+) -> None:
+    clear_enterprise_account_session()
+    layout = VaultLayout(vault_root)
+    manager = AccountVaultManager(layout)
+    identity_a = _identity("subject-A-ui", "Account A")
+    identity_b = _identity("subject-B-ui", "Account B")
+    identity_new = _identity("subject-new-device", "Account A on Device 2")
+    logout_calls: list[str] = []
+
+    source_a = tmp_path / "A-only.txt"
+    source_a.write_text("A", encoding="utf-8")
+    manager.mount(identity_a.profile()).import_managed(source_a)
+    page = AccountSettingsPage(
+        profile=identity_a.profile(),
+        vault_manager=manager,
+        credential_vault=_CredentialRecorder(),
+        switch_account=lambda _target: None,
+        logout_account=lambda: logout_calls.append(page.account_label.text()),
+    )
+    qtbot.addWidget(page)
+    page.show()
+    assert page.account_label.text() == "CURRENT_ACCOUNT = Account A"
+    assert page.assets.item(0, 0).text() == "A-only.txt"
+
+    manager.unmount()
+    source_b = tmp_path / "B-only.txt"
+    source_b.write_text("B", encoding="utf-8")
+    manager.mount(identity_b.profile()).import_managed(source_b)
+    page.set_profile(identity_b.profile())
+    assert page.account_label.text() == "CURRENT_ACCOUNT = Account B"
+    assert page.assets.rowCount() == 1
+    assert page.assets.item(0, 0).text() == "B-only.txt"
+    assert "A-only.txt" not in page.assets.item(0, 0).text()
+
+    manager.unmount()
+    manager.mount(identity_a.profile())
+    page.set_profile(identity_a.profile())
+    assert page.account_label.text() == "CURRENT_ACCOUNT = Account A"
+    assert page.assets.rowCount() == 1
+    assert page.assets.item(0, 0).text() == "A-only.txt"
+    assert "B-only.txt" not in page.assets.item(0, 0).text()
+
+    manager.unmount()
+    manager.mount(identity_new.profile())
+    page.set_profile(identity_new.profile())
+    page.set_synced_resource_count(1)
+    assert page.account_label.text() == "CURRENT_ACCOUNT = Account A on Device 2"
+    assert page.assets.rowCount() == 0
+    assert "NEW_DEVICE" in page.device_state_label.text()
+    assert "重新关联" in page.device_state_label.text()
+
+    qtbot.mouseClick(page.logout_button, Qt.MouseButton.LeftButton)
+    assert logout_calls == ["CURRENT_ACCOUNT = Account A on Device 2"]
+    clear_enterprise_account_session()

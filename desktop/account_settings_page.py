@@ -44,7 +44,9 @@ from .runtime import (
 
 AVAILABILITY_TEXT = {
     AssetAvailability.AVAILABLE_LOCAL: "AVAILABLE_LOCAL · 本机可用",
-    AssetAvailability.MISSING_ON_DEVICE: "MISSING_ON_DEVICE · 本机缺少文件",
+    AssetAvailability.MISSING_ON_DEVICE: (
+        "MISSING_ON_THIS_DEVICE · 当前设备缺少原文件"
+    ),
     AssetAvailability.LINKED_FILE_MISSING: "LINKED_FILE_MISSING · 请重新关联",
     AssetAvailability.REDOWNLOAD_AVAILABLE: "REDOWNLOAD_AVAILABLE · 可重新下载",
     AssetAvailability.RESTORABLE_FROM_PACKAGE: (
@@ -74,6 +76,7 @@ class AccountSettingsPage(QWidget):
         self.switch_account = switch_account
         self.logout_account = logout_account
         self.oidc_login = oidc_login or login_enterprise_account_from_env
+        self._synced_resource_count = 0
         self._oidc_thread: threading.Thread | None = None
         self._oidc_succeeded.connect(self._finish_external_oauth)
         self._oidc_failed.connect(self._external_oauth_failed)
@@ -104,9 +107,13 @@ class AccountSettingsPage(QWidget):
         self.data_root_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self.device_state_label = QLabel()
+        self.device_state_label.setObjectName("currentDeviceAccountState")
+        self.device_state_label.setWordWrap(True)
         card_layout.addWidget(self.profile_label)
         card_layout.addWidget(self.account_label)
         card_layout.addWidget(self.data_root_label)
+        card_layout.addWidget(self.device_state_label)
         layout.addWidget(card)
 
         actions = QHBoxLayout()
@@ -153,7 +160,20 @@ class AccountSettingsPage(QWidget):
 
     def set_profile(self, profile: AccountProfile) -> None:
         self.profile = profile
+        self._synced_resource_count = 0
         self.refresh()
+
+    def set_synced_resource_count(self, count: int) -> None:
+        """Present E1-05 metadata without retaining a server Manifest in the UI."""
+
+        self._synced_resource_count = max(0, int(count))
+        current = self.vault_manager.current
+        local_asset_count = (
+            len(current.list_assets())
+            if current is not None and current.profile == self.profile
+            else None
+        )
+        self._render_device_state(local_asset_count)
 
     def refresh(self) -> None:
         profile_name = (
@@ -171,6 +191,7 @@ class AccountSettingsPage(QWidget):
         current = self.vault_manager.current
         if current is None or current.profile != self.profile:
             self.assets.setRowCount(0)
+            self._render_device_state(None)
             self.status.setText(
                 startup_restore_failure()
                 or "Vault 尚未挂载；导入资料时会安全挂载当前账号目录。"
@@ -180,6 +201,7 @@ class AccountSettingsPage(QWidget):
 
     def _render_assets(self, assets: list[AssetRecord]) -> None:
         current = self.vault_manager.current
+        self._render_device_state(len(assets))
         self.assets.setRowCount(len(assets))
         for row, asset in enumerate(assets):
             availability = (
@@ -214,6 +236,25 @@ class AccountSettingsPage(QWidget):
             if organization and workspace:
                 message += f" 服务器账号状态已刷新：{organization} / {workspace}。"
         self.status.setText(message)
+
+    def _render_device_state(self, local_asset_count: int | None) -> None:
+        if self.profile.mode is ProfileMode.PERSONAL_LOCAL:
+            self.device_state_label.clear()
+            self.device_state_label.hide()
+            return
+        self.device_state_label.show()
+        if local_asset_count is None:
+            message = "当前设备正在等待此企业账号的本机 Vault。"
+        elif local_asset_count == 0 and self._synced_resource_count:
+            message = (
+                "NEW_DEVICE · 账号元数据已恢复；原始资料未保存在此设备，"
+                "请在“本地资料”中重新关联。"
+            )
+        elif local_asset_count == 0:
+            message = "当前设备尚无此企业账号的本地资料。"
+        else:
+            message = f"当前设备已载入此企业账号的 {local_asset_count} 份本地资料。"
+        self.device_state_label.setText(message)
 
     def _vault(self):
         current = self.vault_manager.current

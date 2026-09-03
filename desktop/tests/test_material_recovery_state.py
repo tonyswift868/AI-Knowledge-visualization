@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from desktop.api import ApiError  # noqa: E402
+from desktop.local_asset_page import AccountResourceRow, LocalAssetPage  # noqa: E402
 from desktop.materials_page import (  # noqa: E402
     MaterialsPage,
     material_error_message,
@@ -58,6 +62,81 @@ def test_raw_not_found_error_is_never_exposed() -> None:
     assert "重新关联" in message
 
 
+class _RelinkRejected(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("RELINK_HASH_MISMATCH")
+        self.user_message = "所选文件的 SHA-256 不匹配；本机绑定未更改。"
+
+
+class _AccountResourceService:
+    def __init__(self, *, reject: bool = False) -> None:
+        self.reject = reject
+        self.calls: list[tuple[str, Path]] = []
+        self.resource = AccountResourceRow(
+            resource_id="resource-1",
+            filename="lesson.pdf",
+            size_bytes=128,
+            source_kind="MANAGED",
+            state="MISSING_ON_THIS_DEVICE",
+            actions=("relink",),
+        )
+
+    def list_resources(self) -> list[AccountResourceRow]:
+        return [self.resource]
+
+    def relink_resource(self, resource_id: str, source: Path) -> AccountResourceRow:
+        self.calls.append((resource_id, source))
+        if self.reject:
+            raise _RelinkRejected()
+        self.resource = replace(
+            self.resource,
+            state="AVAILABLE_LOCAL",
+            actions=(),
+        )
+        return self.resource
+
+
+@pytest.mark.parametrize("reject", [False, True])
+def test_account_resource_relink_ui_delegates_hash_verification_and_refreshes(
+    qtbot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reject: bool,
+) -> None:
+    service = _AccountResourceService(reject=reject)
+    selected = tmp_path / ("wrong.pdf" if reject else "matching.pdf")
+    selected.write_bytes(b"selected by user")
+    monkeypatch.setattr(
+        "desktop.local_asset_page.QFileDialog.getOpenFileName",
+        lambda *_args, **_kwargs: (str(selected), ""),
+    )
+    page = LocalAssetPage(
+        object(),  # type: ignore[arg-type]
+        list_resources=service.list_resources,
+        relink_resource=service.relink_resource,
+    )
+    qtbot.addWidget(page)
+    page.show()
+
+    assert "MISSING_ON_THIS_DEVICE" in page.table.item(0, 2).text()
+    assert "重新关联" in page.status.text()
+    button = page.findChild(QPushButton, "localAssetAction_relink")
+    assert button is not None
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+
+    assert service.calls == [("resource-1", selected)]
+    if reject:
+        assert service.resource.state == "MISSING_ON_THIS_DEVICE"
+        assert "SHA-256 不匹配" in page.status.text()
+        assert "未更改" in page.status.text()
+        assert "MISSING_ON_THIS_DEVICE" in page.table.item(0, 2).text()
+    else:
+        assert service.resource.resource_id == "resource-1"
+        assert "RELINKED" in page.status.text()
+        assert "同一资源" in page.status.text()
+        assert "AVAILABLE_LOCAL" in page.table.item(0, 2).text()
+
+
 def test_materials_page_shows_restore_action_and_preserves_identity_message(
     qapp: QApplication,
 ) -> None:
@@ -75,7 +154,9 @@ def test_materials_page_shows_restore_action_and_preserves_identity_message(
 
     api = FakeApi()
     page = MaterialsPage(api)  # type: ignore[arg-type]
+    page.workspace.blockSignals(True)
     page.workspace.addItem("Workspace", "workspace-1")
+    page.workspace.blockSignals(False)
     page._set_materials(
         [
             {
