@@ -49,6 +49,20 @@ class DesktopApi:
         payload = self.request("GET", "/api/workspaces")
         return payload if isinstance(payload, list) else payload.get("items", [])
 
+    def account_metadata(self) -> dict[str, Any]:
+        """Fetch the authenticated account's pathless canonical metadata."""
+
+        return self.request("GET", "/api/enterprise/account/metadata")
+
+    def put_account_progress(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist one metadata-only progress snapshot for the current account."""
+
+        return self.request(
+            "PUT",
+            "/api/enterprise/account/metadata/progress",
+            json=payload,
+        )
+
     def active_workspaces(self, *, include_archived: bool = False) -> dict[str, Any]:
         params = {"compact": "true"}
         if include_archived:
