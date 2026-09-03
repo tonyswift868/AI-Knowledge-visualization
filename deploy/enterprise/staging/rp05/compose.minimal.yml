@@ -190,8 +190,10 @@ services:
   backend:
     image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
     command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, backend]
-    environment: *backend-environment
-    secrets: [postgres_app_password]
+    environment:
+      <<: *backend-environment
+      SSL_CERT_FILE: /run/secrets/tls_certificate
+    secrets: [postgres_app_password, tls_certificate]
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
       - "${MENTORFLOW_DATA_DIR:?MENTORFLOW_DATA_DIR is required}/document-import:/var/lib/mentorflow/document-import"

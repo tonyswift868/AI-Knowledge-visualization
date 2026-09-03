@@ -19,6 +19,11 @@ environment key: they fail closed without blocking factory or worker startup.
 Document uploads are shared read-only with the worker under
 `/var/lib/mentorflow/document-import`.
 
+The backend keeps the public Keycloak issuer unchanged and mounts the public
+TLS certificate read-only as the trust anchor for its namespace-local OIDC
+route. This preserves TLS, signature, issuer, audience, and expiration
+validation while allowing the backend to fetch the public issuer's JWKS.
+
 ## Reproducible sequence
 
 1. Copy `runtime-images.template.json` and replace every image with an exact

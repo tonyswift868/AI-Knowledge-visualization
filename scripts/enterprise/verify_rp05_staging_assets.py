@@ -763,6 +763,9 @@ def verify(root: Path) -> dict:
         oidc_proxy,
     )
     backend_dependency = oidc_service.get("depends_on", {}).get("backend", {})
+    backend_service = services.get("backend", {})
+    backend_environment = backend_service.get("environment", {})
+    backend_secrets = set(backend_service.get("secrets", []))
     oidc_lifecycle_bound = (
         isinstance(backend_dependency, dict)
         and backend_dependency.get("condition") == "service_healthy"
@@ -774,11 +777,16 @@ def verify(root: Path) -> dict:
     )
     gate(
         "OIDC_PUBLIC_ISSUER_PRESERVED",
-        services.get("backend", {}).get("environment", {}).get(
-            "MENTORFLOW_KEYCLOAK_ISSUER"
-        )
+        backend_environment.get("MENTORFLOW_KEYCLOAK_ISSUER")
         == "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}/realms/mentorflow",
         "backend public issuer must remain derived from the operator-approved public origin",
+    )
+    gate(
+        "OIDC_BACKEND_TLS_TRUST_CONTRACT",
+        backend_environment.get("SSL_CERT_FILE")
+        == "/run/secrets/tls_certificate"
+        and "tls_certificate" in backend_secrets,
+        "backend must trust the read-only public TLS certificate used by its namespace-local issuer route",
     )
     gate(
         "OIDC_LOOPBACK_PROXY_LIFECYCLE_CONTRACT",

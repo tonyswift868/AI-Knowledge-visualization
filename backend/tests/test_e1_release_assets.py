@@ -31,6 +31,7 @@ def test_rp05_oidc_loopback_bridge_is_lifecycle_and_dns_bound() -> None:
     assert result["status"] == "PASS", result["failures"]
     for check in (
         "OIDC_PUBLIC_ISSUER_PRESERVED",
+        "OIDC_BACKEND_TLS_TRUST_CONTRACT",
         "OIDC_LOOPBACK_PROXY_LIFECYCLE_CONTRACT",
         "OIDC_LOOPBACK_PROXY_TLS_CONTRACT",
         "OIDC_KEYCLOAK_DYNAMIC_RESOLUTION_CONTRACT",
