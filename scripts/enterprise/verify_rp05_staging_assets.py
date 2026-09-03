@@ -389,7 +389,20 @@ def verify(root: Path) -> dict:
     gate("postgres_role_separation", all(token in provision for token in ("mentorflow_migrator", "mentorflow_app", "mentorflow_keycloak", "NOSUPERUSER", "NOBYPASSRLS", "ALTER DATABASE mentorflow OWNER TO mentorflow_migrator")), "role separation is incomplete")
     runtime_path = asset_root / "runtime-entrypoint.py"
     runtime = runtime_path.read_text(encoding="utf-8")
-    gate("canonical_migration_head", "0031_enterprise_tenancy_completion" in runtime and "--check-heads" in runtime, "canonical migration check missing")
+    gate(
+        "canonical_migration_head",
+        all(
+            token in runtime
+            for token in (
+                'ALEMBIC_UPGRADE_TARGET = "head"',
+                '"upgrade",',
+                "ALEMBIC_UPGRADE_TARGET",
+                '"current", "--check-heads"',
+            )
+        )
+        and "0031_enterprise_tenancy_completion" not in runtime,
+        "runtime migration must upgrade to the symbolic repository head and verify all heads",
+    )
     gate("worker_schema_bootstrap_wired", all(token in runtime for token in ("schema-apply", "verify_worker_database", "mentorflow_migrator", "mentorflow_app")), "Procrastinate apply/verify is not wired to the migration-ready gate")
     gate("app_role_fail_closed", "verify_worker_database(engine)" in runtime and "orm.configure_enterprise_orm(app_env)" in runtime, "application-role verification contract missing")
 

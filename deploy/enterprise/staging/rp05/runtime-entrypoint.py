@@ -11,7 +11,7 @@ from urllib.parse import quote
 from urllib.request import urlopen
 
 
-HEAD = "0031_enterprise_tenancy_completion"
+ALEMBIC_UPGRADE_TARGET = "head"
 
 
 def _secret(name: str) -> str:
@@ -128,7 +128,15 @@ def main() -> int:
     action = sys.argv[1]
     if action == "migrate":
         return _exec(
-            [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", HEAD],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                "alembic.ini",
+                "upgrade",
+                ALEMBIC_UPGRADE_TARGET,
+            ],
             _runtime_environment(migration=True),
         )
     if action == "verify":
