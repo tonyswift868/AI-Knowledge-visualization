@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from datetime import datetime, timezone
 from threading import RLock
@@ -16,7 +17,13 @@ from app.enterprise.contracts_v1 import (
 
 from .context import TenantDbSession, require_enterprise_workspace_context
 from .models import (
+    ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE,
+    ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION,
+    AccountProgressSnapshotDraft,
+    AccountProgressSnapshotRecord,
+    ProgressSnapshotVersionError,
     TenantContextRequiredError,
+    TenantPersistenceError,
     TenantResourceDraft,
     TenantResourceKind,
     TenantResourceRecord,
@@ -24,6 +31,7 @@ from .models import (
 from .ports import (
     PersonalLocalResourceStorePort,
     TenantDomainRecord,
+    TenantDomainRepositoryPort,
     TenantDomainWrite,
 )
 from .repository import TenantResourceRepository
@@ -97,6 +105,82 @@ def _domain_record(record: TenantResourceRecord) -> TenantDomainRecord:
         search_text=record.search_text,
         job_id=record.job_id,
         cache_key=record.cache_key,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def _account_progress_resource_id(
+    tenant: TenantContext,
+    scope: ResourceScope,
+    progress_id: str,
+) -> str:
+    if tenant.mode is not TenantMode.ENTERPRISE_SERVER:
+        raise TenantContextRequiredError(
+            "Account progress snapshots require ENTERPRISE_SERVER"
+        )
+    if tenant.organization_id is None or tenant.workspace_id is None:
+        raise TenantContextRequiredError(
+            "Account progress snapshots require organization and workspace"
+        )
+    if (
+        scope.scope_type is not ResourceScopeType.PERSONAL
+        or scope.owner_subject_id is None
+    ):
+        raise TenantContextRequiredError(
+            "Account progress snapshots require an account-owned PERSONAL scope"
+        )
+    digest = hashlib.sha256(
+        (
+            f"{ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE}\0"
+            f"{tenant.organization_id}\0{tenant.workspace_id}\0"
+            f"{scope.owner_subject_id}\0{progress_id}"
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"progress_{digest[:48]}"
+
+
+def _account_progress_record(
+    record: TenantDomainRecord,
+    *,
+    tenant: TenantContext,
+    scope: ResourceScope,
+) -> AccountProgressSnapshotRecord:
+    payload = dict(record.payload)
+    if (
+        record.kind is not TenantResourceKind.STUDENT_EVENT
+        or payload.get("schema_version")
+        != ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION
+        or payload.get("record_type") != ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE
+    ):
+        raise TenantPersistenceError(
+            "stored student event is not an Account Core progress snapshot"
+        )
+    try:
+        validated = AccountProgressSnapshotDraft(
+            progress_id=payload["progress_id"],
+            version=payload["version"],
+            snapshot=payload["snapshot"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TenantPersistenceError(
+            "stored Account Core progress snapshot is invalid"
+        ) from exc
+    if (
+        tenant.organization_id is None
+        or tenant.workspace_id is None
+        or scope.owner_subject_id is None
+    ):
+        raise TenantPersistenceError(
+            "stored Account Core progress snapshot has no account ownership"
+        )
+    return AccountProgressSnapshotRecord(
+        progress_id=validated.progress_id,
+        version=validated.version,
+        snapshot=validated.snapshot,
+        organization_id=tenant.organization_id,
+        workspace_id=tenant.workspace_id,
+        owner_subject_id=scope.owner_subject_id,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -489,7 +573,150 @@ class PostgresTenantDomainRepository:
         return resolved if self._matches(resolved, scope) else None
 
 
+class AccountProgressSnapshotRepository:
+    """Typed Account Core projection over the existing student_events table."""
+
+    def __init__(self, repository: TenantDomainRepositoryPort) -> None:
+        if TenantResourceKind(repository.kind) is not TenantResourceKind.STUDENT_EVENT:
+            raise ValueError(
+                "Account progress snapshots must use the canonical STUDENT_EVENT repository"
+            )
+        self.repository = repository
+
+    @staticmethod
+    def _resource_id(
+        tenant: TenantContext,
+        scope: ResourceScope,
+        progress_id: str,
+    ) -> str:
+        validated = AccountProgressSnapshotDraft(
+            progress_id=progress_id,
+            version=1,
+            snapshot={},
+        )
+        return _account_progress_resource_id(
+            tenant,
+            scope,
+            validated.progress_id,
+        )
+
+    def upsert(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        value: AccountProgressSnapshotDraft,
+    ) -> AccountProgressSnapshotRecord:
+        if not isinstance(value, AccountProgressSnapshotDraft):
+            raise TypeError("value must be AccountProgressSnapshotDraft")
+        resource_id = _account_progress_resource_id(
+            tenant,
+            scope,
+            value.progress_id,
+        )
+        current_raw = self.repository.get(
+            tenant=tenant,
+            scope=scope,
+            resource_id=resource_id,
+        )
+        if current_raw is not None:
+            current = _account_progress_record(
+                current_raw,
+                tenant=tenant,
+                scope=scope,
+            )
+            if value.version < current.version:
+                raise ProgressSnapshotVersionError(
+                    "progress snapshot version must not move backwards"
+                )
+            if value.version == current.version:
+                if dict(value.snapshot) != dict(current.snapshot):
+                    raise ProgressSnapshotVersionError(
+                        "the same progress snapshot version has different metadata"
+                    )
+                return current
+        saved = self.repository.upsert(
+            tenant=tenant,
+            scope=scope,
+            value=TenantDomainWrite(
+                resource_id=resource_id,
+                title=f"Account progress: {value.progress_id}",
+                status="CURRENT",
+                payload={
+                    "schema_version": ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION,
+                    "record_type": ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE,
+                    "progress_id": value.progress_id,
+                    "version": value.version,
+                    "snapshot": dict(value.snapshot),
+                },
+                search_text=value.progress_id,
+            ),
+        )
+        result = _account_progress_record(saved, tenant=tenant, scope=scope)
+        if result.version != value.version:
+            raise TenantPersistenceError(
+                "progress snapshot upsert did not preserve the requested version"
+            )
+        return result
+
+    def get(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        progress_id: str,
+    ) -> AccountProgressSnapshotRecord | None:
+        resource_id = self._resource_id(tenant, scope, progress_id)
+        record = self.repository.get(
+            tenant=tenant,
+            scope=scope,
+            resource_id=resource_id,
+        )
+        return (
+            None
+            if record is None
+            else _account_progress_record(record, tenant=tenant, scope=scope)
+        )
+
+    def list_snapshots(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        limit: int = 200,
+    ) -> tuple[AccountProgressSnapshotRecord, ...]:
+        requested = _validated_limit(limit, 10_000)
+        records = self.repository.list_records(
+            tenant=tenant,
+            scope=scope,
+            limit=10_000,
+        )
+        snapshots = (
+            _account_progress_record(record, tenant=tenant, scope=scope)
+            for record in records
+            if record.payload.get("schema_version")
+            == ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION
+            and record.payload.get("record_type")
+            == ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE
+        )
+        return tuple(snapshots)[:requested]
+
+    def delete(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        progress_id: str,
+    ) -> bool:
+        return self.repository.delete(
+            tenant=tenant,
+            scope=scope,
+            resource_id=self._resource_id(tenant, scope, progress_id),
+        )
+
+
 __all__ = [
+    "AccountProgressSnapshotRepository",
     "InMemoryPersonalLocalResourceStore",
     "PersonalLocalDomainRepository",
     "PostgresTenantDomainRepository",

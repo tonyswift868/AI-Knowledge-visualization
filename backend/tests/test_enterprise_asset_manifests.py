@@ -498,7 +498,8 @@ def test_server_boundary_and_postgresql_rls_contract_are_exact() -> None:
     assert "NOSUPERUSER" in migration
     assert "NOBYPASSRLS" in migration
     assert 'GRANT {privileges} ON TABLE "{table}"' in migration
-    assert '"SELECT, INSERT, UPDATE"' in migration
+    assert '"SELECT, INSERT, UPDATE, DELETE"' in migration
+    assert 'else "SELECT, INSERT"' in migration
     assert 'else "SELECT, INSERT"' in migration
     assert "ENTERPRISE_JOBS_SCHEMA = \"enterprise_jobs\"" in migration
     assert "JOB_SUBMISSION_TABLES = (\"jobs\", \"outbox\")" in migration

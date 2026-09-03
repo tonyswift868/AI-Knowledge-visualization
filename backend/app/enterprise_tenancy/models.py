@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import math
+import re
+from collections.abc import Mapping as MappingABC, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -31,6 +35,30 @@ RESOURCE_TABLE_BY_KIND: dict[TenantResourceKind, str] = {
     TenantResourceKind.STUDENT_EVENT: "student_events",
     TenantResourceKind.COST_EVENT: "cost_events",
 }
+
+
+ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION = (
+    "mentorflow.account-progress-snapshot.v1"
+)
+ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE = "account_progress_snapshot"
+
+_ABSOLUTE_LOCAL_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|/)")
+_FORBIDDEN_ACCOUNT_METADATA_KEYS = frozenset(
+    {
+        "absolutepath",
+        "filebytes",
+        "localdirectorytree",
+        "localfoldertree",
+        "localparsercache",
+        "localpath",
+        "localresourcecache",
+        "rawbytes",
+        "rawresourcebytes",
+        "resourcebytes",
+    }
+)
+_MAX_ACCOUNT_PROGRESS_BYTES = 262_144
+_MAX_ACCOUNT_PROGRESS_DEPTH = 16
 
 
 class TenantPersistenceError(RuntimeError):
@@ -63,6 +91,17 @@ class ImportConfirmationError(TenantPersistenceError):
     pass
 
 
+class ProgressSnapshotVersionError(EnterprisePersistenceRequestError):
+    """A stale or conflicting Account Core progress snapshot was rejected."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            "ENTERPRISE_PROGRESS_VERSION_CONFLICT",
+            message,
+            status=409,
+        )
+
+
 def _required_identifier(value: str, field_name: str, *, limit: int = 160) -> str:
     normalized = value.strip()
     if not normalized:
@@ -70,6 +109,134 @@ def _required_identifier(value: str, field_name: str, *, limit: int = 160) -> st
     if len(normalized) > limit:
         raise ValueError(f"{field_name} must be at most {limit} characters")
     return normalized
+
+
+def _account_metadata_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.casefold())
+
+
+def _account_progress_metadata(value: Any, *, path: str, depth: int = 0) -> Any:
+    """Return canonical JSON metadata while excluding device-local material."""
+
+    if depth > _MAX_ACCOUNT_PROGRESS_DEPTH:
+        raise ValueError("account progress snapshot exceeds the nesting limit")
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} numeric values must be finite")
+        return value
+    if isinstance(value, str):
+        normalized = value.strip()
+        if _ABSOLUTE_LOCAL_PATH.match(normalized) or normalized.casefold().startswith(
+            "file:"
+        ):
+            raise ValueError(f"{path} must not contain an absolute local path")
+        if len(value) > 20_000:
+            raise ValueError(f"{path} strings must not exceed 20000 characters")
+        return value
+    if isinstance(value, MappingABC):
+        if len(value) > 256:
+            raise ValueError(f"{path} objects must not exceed 256 fields")
+        normalized_mapping: dict[str, Any] = {}
+        for raw_key, item in value.items():
+            if not isinstance(raw_key, str):
+                raise ValueError(f"{path} keys must be strings")
+            key = raw_key.strip()
+            if not key or len(key) > 160:
+                raise ValueError(f"{path} contains an invalid field name")
+            if _account_metadata_key(key) in _FORBIDDEN_ACCOUNT_METADATA_KEYS:
+                raise ValueError(f"{path} contains device-local or raw resource data")
+            normalized_mapping[key] = _account_progress_metadata(
+                item,
+                path=f"{path}.{key}",
+                depth=depth + 1,
+            )
+        return normalized_mapping
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (str, bytes, bytearray, memoryview),
+    ):
+        if len(value) > 1_000:
+            raise ValueError(f"{path} lists must not exceed 1000 items")
+        return [
+            _account_progress_metadata(
+                item,
+                path=f"{path}[{index}]",
+                depth=depth + 1,
+            )
+            for index, item in enumerate(value)
+        ]
+    raise ValueError(f"{path} must contain JSON metadata, not raw resource bytes")
+
+
+@dataclass(frozen=True, slots=True)
+class AccountProgressSnapshotDraft:
+    """Account-scoped snapshot stored through the canonical student_events row."""
+
+    progress_id: str
+    version: int
+    snapshot: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.progress_id, str):
+            raise ValueError("progress_id must be a string")
+        object.__setattr__(
+            self,
+            "progress_id",
+            _required_identifier(self.progress_id, "progress_id", limit=160),
+        )
+        if (
+            isinstance(self.version, bool)
+            or not isinstance(self.version, int)
+            or not 1 <= self.version <= 9_223_372_036_854_775_807
+        ):
+            raise ValueError("version must be a positive signed 64-bit integer")
+        normalized = _account_progress_metadata(self.snapshot, path="snapshot")
+        if not isinstance(normalized, dict):
+            raise ValueError("snapshot must be a JSON object")
+        encoded = json.dumps(
+            normalized,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(encoded) > _MAX_ACCOUNT_PROGRESS_BYTES:
+            raise ValueError("account progress snapshot must not exceed 262144 bytes")
+        object.__setattr__(self, "snapshot", normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class AccountProgressSnapshotRecord:
+    progress_id: str
+    version: int
+    snapshot: Mapping[str, Any]
+    organization_id: str
+    workspace_id: str
+    owner_subject_id: str
+    created_at: datetime | str
+    updated_at: datetime | str
+
+    def public_contract(self) -> dict[str, Any]:
+        return {
+            "schema_version": ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION,
+            "progress_id": self.progress_id,
+            "version": self.version,
+            "snapshot": dict(self.snapshot),
+            "organization_id": self.organization_id,
+            "workspace_id": self.workspace_id,
+            "owner_subject_id": self.owner_subject_id,
+            "created_at": (
+                self.created_at.isoformat()
+                if isinstance(self.created_at, datetime)
+                else str(self.created_at)
+            ),
+            "updated_at": (
+                self.updated_at.isoformat()
+                if isinstance(self.updated_at, datetime)
+                else str(self.updated_at)
+            ),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +363,10 @@ class LocalImportResult:
 
 
 __all__ = [
+    "ACCOUNT_PROGRESS_SNAPSHOT_RECORD_TYPE",
+    "ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION",
+    "AccountProgressSnapshotDraft",
+    "AccountProgressSnapshotRecord",
     "EnterprisePersistenceRequestError",
     "EnterprisePersistenceUnavailableError",
     "EnterpriseImportPlan",
@@ -203,6 +374,7 @@ __all__ = [
     "LocalImportDescriptor",
     "LocalImportResult",
     "PersonalDataImportPreview",
+    "ProgressSnapshotVersionError",
     "RESOURCE_TABLE_BY_KIND",
     "ResourceClassification",
     "ResourceScopeType",

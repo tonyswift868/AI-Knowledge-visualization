@@ -8,7 +8,11 @@ from typing import Any, Mapping, Protocol, TypeAlias
 
 from app.enterprise.contracts_v1 import ResourceScope, TenantContext, TenantMode
 
-from .models import TenantResourceKind
+from .models import (
+    AccountProgressSnapshotDraft,
+    AccountProgressSnapshotRecord,
+    TenantResourceKind,
+)
 
 
 # Do not create a second mode enum.  The frozen contract is the persistence mode.
@@ -133,6 +137,42 @@ class TenantDomainRepositoryPort(Protocol):
     ) -> TenantDomainRecord | None: ...
 
 
+class AccountProgressSnapshotRepositoryPort(Protocol):
+    """First-class Account Core progress persistence over student_events."""
+
+    def upsert(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        value: AccountProgressSnapshotDraft,
+    ) -> AccountProgressSnapshotRecord: ...
+
+    def get(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        progress_id: str,
+    ) -> AccountProgressSnapshotRecord | None: ...
+
+    def list_snapshots(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        limit: int = 200,
+    ) -> tuple[AccountProgressSnapshotRecord, ...]: ...
+
+    def delete(
+        self,
+        *,
+        tenant: TenantContext,
+        scope: ResourceScope,
+        progress_id: str,
+    ) -> bool: ...
+
+
 class PersonalLocalResourceStorePort(Protocol):
     """Small bridge implemented by existing Local stores, not a replacement for them."""
 
@@ -164,6 +204,7 @@ CostRepositoryPort: TypeAlias = TenantDomainRepositoryPort
 
 
 __all__ = [
+    "AccountProgressSnapshotRepositoryPort",
     "CostRepositoryPort",
     "DocumentRepositoryPort",
     "EvidenceRepositoryPort",
