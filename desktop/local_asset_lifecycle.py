@@ -7,7 +7,6 @@ import json
 import os
 import secrets
 import shutil
-import stat
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +19,14 @@ from .account_portability import (
     _read_verified_archive,
     account_identity_fingerprint,
 )
-from .account_vault import AccountVault, AssetAvailability, AssetRecord, ImportMode
+from .account_vault import (
+    AccountVault,
+    AssetAvailability,
+    AssetRecord,
+    ImportMode,
+    LocalResourceBinding,
+    _regular_source,
+)
 
 
 _OVERLAY_SCHEMA = "mentorflow.local-asset-lifecycle.v1"
@@ -114,11 +120,10 @@ def _verified_https_url(value: object) -> str | None:
 
 def _regular_file(path: Path) -> bool:
     try:
-        info = path.lstat()
-    except (FileNotFoundError, OSError):
+        _regular_source(path)
+    except (OSError, ValueError):
         return False
-    attributes = int(getattr(info, "st_file_attributes", 0) or 0)
-    return stat.S_ISREG(info.st_mode) and not path.is_symlink() and not (attributes & 0x400)
+    return True
 
 
 def _matches_revision(path: Path, expected_sha256: str) -> bool:
@@ -302,12 +307,37 @@ class LocalAssetLifecycle:
             return AssetAvailability.RESTORABLE_FROM_PACKAGE
         return AssetAvailability.MISSING_ON_DEVICE
 
+    def _local_path(self, asset: AssetRecord, metadata: Mapping[str, Any]) -> Path:
+        if asset.import_mode is ImportMode.LINKED:
+            return Path(str(metadata.get("linked_path") or asset.linked_path or ""))
+        return self._vault.managed_object_path(asset)
+
+    def _record_implicit_binding(
+        self,
+        asset: AssetRecord,
+        metadata: Mapping[str, Any],
+        *,
+        fingerprint_sha256: str,
+        availability: AssetAvailability,
+    ) -> LocalResourceBinding:
+        state = (
+            AssetAvailability.AVAILABLE_LOCAL
+            if availability is AssetAvailability.AVAILABLE_LOCAL
+            else AssetAvailability.MISSING_ON_THIS_DEVICE
+        )
+        return self._vault.upsert_resource_binding(
+            resource_id=asset.local_asset_id,
+            local_path=self._local_path(asset, metadata).absolute(),
+            fingerprint_sha256=fingerprint_sha256,
+            availability=state,
+        )
+
     def resolve(self, local_asset_id: str) -> LocalAssetView:
         asset = self._record(local_asset_id)
         metadata = self._metadata(local_asset_id)
         checksum = self._expected_sha(asset, metadata)
         availability = self._availability(asset, metadata)
-        return LocalAssetView(
+        view = LocalAssetView(
             local_asset_id=asset.local_asset_id,
             filename=asset.display_name,
             mime_type=asset.mime_type,
@@ -319,12 +349,19 @@ class LocalAssetLifecycle:
             verified_source_url=_verified_https_url(metadata.get("verified_source_url")),
             actions=_actions(availability),
         )
+        self._record_implicit_binding(
+            asset,
+            metadata,
+            fingerprint_sha256=checksum,
+            availability=availability,
+        )
+        return view
 
     def list_assets(self) -> list[LocalAssetView]:
         return [self.resolve(asset.local_asset_id) for asset in self._vault.list_assets()]
 
     def server_manifest_dto(self, local_asset_id: str) -> dict[str, Any]:
-        """Project one asset onto the frozen E1-02 public manifest contract."""
+        """Project pathless metadata without syncing device availability state."""
 
         asset = self.resolve(local_asset_id)
         dto: dict[str, Any] = {
@@ -335,17 +372,122 @@ class LocalAssetLifecycle:
             "sha256": asset.sha256,
             "import_mode": asset.source_kind,
             "portability": "PORTABLE" if asset.portable else "NONPORTABLE",
-            "availability": (
-                "AVAILABLE"
-                if asset.availability is AssetAvailability.AVAILABLE_LOCAL
-                else "MISSING"
-            ),
         }
         if asset.verified_source_url:
             dto["verified_source_url"] = asset.verified_source_url
         if asset.source_kind == "LINKED":
             dto["device_id"] = self._overlay["device_id"]
         return dto
+
+    def register_missing_resource(
+        self,
+        resource_id: str,
+        *,
+        fingerprint_sha256: str,
+    ) -> LocalResourceBinding:
+        """Create a pathless Device-2 binding without copying server metadata."""
+
+        return self._vault.upsert_resource_binding(
+            resource_id=resource_id,
+            local_path=None,
+            fingerprint_sha256=_valid_sha(fingerprint_sha256),
+            availability=AssetAvailability.MISSING_ON_THIS_DEVICE,
+        )
+
+    def bind_resource(
+        self,
+        resource_id: str,
+        source: Path | str,
+        *,
+        fingerprint_sha256: str,
+    ) -> LocalResourceBinding:
+        source_path = Path(source)
+        expected = _valid_sha(fingerprint_sha256)
+        if not _regular_file(source_path):
+            raise LocalAssetLifecycleError(
+                "RESOURCE_SOURCE_UNAVAILABLE",
+                "所选本机资源不可用。",
+            )
+        try:
+            observed = _sha256(source_path)
+        except OSError as exc:
+            raise LocalAssetLifecycleError(
+                "RESOURCE_SOURCE_UNAVAILABLE",
+                "读取本机资源时发生变化，请重新选择。",
+            ) from exc
+        if not secrets.compare_digest(observed, expected):
+            raise LocalAssetLifecycleError(
+                "RESOURCE_FINGERPRINT_MISMATCH",
+                "所选文件与资源 fingerprint 不匹配，未建立关联。",
+            )
+        return self._vault.upsert_resource_binding(
+            resource_id=resource_id,
+            local_path=source_path.absolute(),
+            fingerprint_sha256=expected,
+            availability=AssetAvailability.AVAILABLE_LOCAL,
+        )
+
+    def bind_resource_to_asset(
+        self,
+        resource_id: str,
+        local_asset_id: str,
+    ) -> LocalResourceBinding:
+        asset = self._record(local_asset_id)
+        metadata = self._metadata(local_asset_id)
+        view = self.resolve(local_asset_id)
+        return self._vault.upsert_resource_binding(
+            resource_id=resource_id,
+            local_path=self._local_path(asset, metadata).absolute(),
+            fingerprint_sha256=view.sha256,
+            availability=(
+                AssetAvailability.AVAILABLE_LOCAL
+                if view.availability is AssetAvailability.AVAILABLE_LOCAL
+                else AssetAvailability.MISSING_ON_THIS_DEVICE
+            ),
+        )
+
+    def resolve_resource_binding(self, resource_id: str) -> LocalResourceBinding:
+        binding = self._vault.get_resource_binding(resource_id)
+        if binding is None:
+            raise LocalAssetLifecycleError(
+                "RESOURCE_BINDING_NOT_FOUND",
+                "当前账号在本机没有这份资源的关联记录。",
+            )
+        state = (
+            AssetAvailability.AVAILABLE_LOCAL
+            if binding.local_path is not None
+            and _matches_revision(binding.local_path, binding.fingerprint_sha256)
+            else AssetAvailability.MISSING_ON_THIS_DEVICE
+        )
+        return self._vault.upsert_resource_binding(
+            resource_id=binding.resource_id,
+            local_path=binding.local_path,
+            fingerprint_sha256=binding.fingerprint_sha256,
+            availability=state,
+        )
+
+    def list_resource_bindings(self) -> list[LocalResourceBinding]:
+        return [
+            self.resolve_resource_binding(binding.resource_id)
+            for binding in self._vault.list_resource_bindings()
+        ]
+
+    def relink_resource(
+        self,
+        resource_id: str,
+        source: Path | str,
+    ) -> LocalResourceBinding:
+        binding = self._vault.get_resource_binding(resource_id)
+        if binding is None:
+            raise LocalAssetLifecycleError(
+                "RESOURCE_BINDING_NOT_FOUND",
+                "当前账号在本机没有这份资源的关联记录。",
+            )
+        return self.bind_resource(
+            binding.resource_id,
+            source,
+            fingerprint_sha256=binding.fingerprint_sha256,
+        )
 
     def relink(self, local_asset_id: str, source: Path | str) -> LocalAssetView:
         asset = self._record(local_asset_id)

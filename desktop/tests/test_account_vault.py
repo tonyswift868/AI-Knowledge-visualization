@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -194,3 +195,71 @@ def test_symlink_mode_is_classified_as_a_reparse_boundary(
     monkeypatch.setattr(Path, "lstat", lambda _path: synthetic_link)
 
     assert account_vault_module._is_reparse_point(Path("synthetic-link")) is True
+
+
+def test_resource_bindings_are_isolated_and_restored_per_account(
+    tmp_path: Path,
+    vault_root: Path,
+) -> None:
+    manager = AccountVaultManager(VaultLayout(vault_root))
+    profile_a = _identity("subject-A", "Account A").profile()
+    profile_b = _identity("subject-B", "Account B").profile()
+    source_a = tmp_path / "account-a.pdf"
+    source_b = tmp_path / "account-b.pdf"
+    source_a.write_bytes(b"account-a-resource")
+    source_b.write_bytes(b"account-b-resource")
+    fingerprint_a = hashlib.sha256(b"account-a-resource").hexdigest()
+    fingerprint_b = hashlib.sha256(b"account-b-resource").hexdigest()
+
+    vault_a = manager.mount(profile_a)
+    binding_a = vault_a.upsert_resource_binding(
+        resource_id="resource-shared-id",
+        local_path=source_a,
+        fingerprint_sha256=fingerprint_a,
+        availability=AssetAvailability.AVAILABLE_LOCAL,
+    )
+    assert binding_a.account_profile == profile_a
+    assert binding_a.local_path == source_a.absolute()
+
+    vault_b = manager.mount(profile_b)
+    assert vault_b.get_resource_binding("resource-shared-id") is None
+    binding_b = vault_b.upsert_resource_binding(
+        resource_id="resource-shared-id",
+        local_path=source_b,
+        fingerprint_sha256=fingerprint_b,
+        availability=AssetAvailability.AVAILABLE_LOCAL,
+    )
+    assert binding_b.account_profile == profile_b
+    assert binding_b.local_path == source_b.absolute()
+    assert str(source_a) not in json.dumps(binding_b.sync_safe_projection())
+
+    restored_a = manager.mount(profile_a).get_resource_binding("resource-shared-id")
+    assert restored_a is not None
+    assert restored_a.account_profile == profile_a
+    assert restored_a.local_path == source_a.absolute()
+    assert restored_a.fingerprint_sha256 == fingerprint_a
+    assert str(source_b) not in str(restored_a.local_path)
+
+
+def test_vault_database_opens_only_under_the_explicit_test_root(
+    vault_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened: list[Path] = []
+    connect = account_vault_module.sqlite3.connect
+
+    def recording_connect(database, *args, **kwargs):
+        opened.append(Path(str(database)).absolute())
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(account_vault_module.sqlite3, "connect", recording_connect)
+    manager = AccountVaultManager(VaultLayout(vault_root))
+    manager.mount(_identity("subject-test", "Test Account").profile())
+    manager.unmount()
+
+    assert opened
+    assert all(path.is_relative_to(vault_root.absolute()) for path in opened)
+    assert not any(
+        str(path).casefold().startswith(r"e:\mentorflowdata\personal-local")
+        for path in opened
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -8,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import desktop.local_asset_lifecycle as lifecycle_module
+from backend.app.enterprise_tenancy.asset_manifests import AssetManifestRegistrationIn
 from desktop.account_identity import AccountIdentity, AccountProfile
 from desktop.account_portability import PackageMode, export_account_package
 from desktop.account_vault import AccountVaultManager, AssetAvailability, VaultLayout
@@ -74,6 +77,11 @@ def test_managed_import_survives_source_delete_and_dto_has_no_device_path_or_byt
     assert view.source_kind == "MANAGED"
     assert lifecycle.resolve(view.local_asset_id).availability is AssetAvailability.AVAILABLE_LOCAL
     assert vault.managed_object_path(vault.list_assets()[0]).read_bytes() == b"managed revision"
+    binding = lifecycle.bind_resource_to_asset("resource-managed-1", view.local_asset_id)
+    assert binding.resource_id == "resource-managed-1"
+    assert binding.local_path == vault.managed_object_path(vault.list_assets()[0])
+    assert binding.fingerprint_sha256 == view.sha256
+    assert binding.availability is AssetAvailability.AVAILABLE_LOCAL
     dto = lifecycle.server_manifest_dto(view.local_asset_id)
     assert dto == {
         "local_asset_id": view.local_asset_id,
@@ -83,13 +91,15 @@ def test_managed_import_survives_source_delete_and_dto_has_no_device_path_or_byt
         "sha256": hashlib.sha256(b"managed revision").hexdigest(),
         "import_mode": "MANAGED",
         "portability": "PORTABLE",
-        "availability": "AVAILABLE",
     }
     assert not any(isinstance(value, (bytes, bytearray, memoryview)) for value in dto.values())
     assert not any(
         isinstance(value, str) and len(value) > 2 and value[1:3] in {":\\", ":/"}
         for value in dto.values()
     )
+    manifest = AssetManifestRegistrationIn.model_validate(dto)
+    assert manifest.availability == "AVAILABLE"
+    assert "availability" not in manifest.model_fields_set
 
 
 def test_linked_import_does_not_copy_and_relink_changes_only_device_overlay(
@@ -244,6 +254,84 @@ def test_account_b_cannot_enumerate_account_a_local_metadata(scratch_root: Path)
     assert vault_b.root != root_a
     assert not lifecycle_b._overlay_path.exists()
     assert manager.layout.shared_models_root not in (vault_a.root, vault_b.root)
+
+
+def test_remote_resource_binding_detects_missing_relinks_and_never_syncs_path(
+    scratch_root: Path,
+) -> None:
+    _manager, _vault, lifecycle = _service(scratch_root)
+    expected = hashlib.sha256(b"server-known-revision").hexdigest()
+
+    missing = lifecycle.register_missing_resource(
+        "resource-server-1",
+        fingerprint_sha256=expected,
+    )
+    assert missing.local_path is None
+    assert missing.availability is AssetAvailability.MISSING_ON_THIS_DEVICE
+    assert missing.last_verified_at.tzinfo is not None
+    assert missing.sync_safe_projection() == {
+        "resource_id": "resource-server-1",
+        "fingerprint_sha256": expected,
+    }
+
+    wrong = scratch_root / "wrong-resource.pdf"
+    wrong.write_bytes(b"wrong-revision")
+    with pytest.raises(LocalAssetLifecycleError, match="RESOURCE_FINGERPRINT_MISMATCH"):
+        lifecycle.relink_resource("resource-server-1", wrong)
+    assert (
+        lifecycle.resolve_resource_binding("resource-server-1").availability
+        is AssetAvailability.MISSING_ON_THIS_DEVICE
+    )
+
+    local = scratch_root / "selected" / "resource.pdf"
+    local.parent.mkdir()
+    local.write_bytes(b"server-known-revision")
+    relinked = lifecycle.relink_resource("resource-server-1", local)
+    assert relinked.availability is AssetAvailability.AVAILABLE_LOCAL
+    assert relinked.local_path == local.absolute()
+    assert relinked.fingerprint_sha256 == expected
+    assert not any((lifecycle.vault_root / "managed-assets" / "objects").rglob("*"))
+
+    serialized = json.dumps(relinked.sync_safe_projection(), sort_keys=True)
+    assert str(local) not in serialized
+    assert "local_path" not in serialized
+    assert "availability" not in serialized
+
+    local.unlink()
+    missing_again = lifecycle.resolve_resource_binding("resource-server-1")
+    assert missing_again.availability is AssetAvailability.MISSING_ON_THIS_DEVICE
+    assert missing_again.fingerprint_sha256 == expected
+
+
+def test_local_fingerprint_hashes_with_bounded_streaming_reads() -> None:
+    chunks = [b"a" * 7, b"b" * 5]
+    read_sizes: list[int] = []
+
+    class _Reader:
+        def __init__(self) -> None:
+            self.remaining = list(chunks)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self, size: int) -> bytes:
+            read_sizes.append(size)
+            return self.remaining.pop(0) if self.remaining else b""
+
+    class _StreamingPath:
+        def open(self, mode: str):
+            assert mode == "rb"
+            return _Reader()
+
+    first = lifecycle_module._sha256(_StreamingPath())  # type: ignore[arg-type]
+    second = lifecycle_module._sha256(_StreamingPath())  # type: ignore[arg-type]
+
+    assert first == second == hashlib.sha256(b"".join(chunks)).hexdigest()
+    assert read_sizes
+    assert set(read_sizes) == {lifecycle_module._CHUNK_SIZE}
 
 
 def test_personal_local_mount_is_unchanged_until_an_explicit_asset_action(

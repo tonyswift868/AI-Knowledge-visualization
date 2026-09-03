@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
+import re
 import sqlite3
 import stat
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Protocol
@@ -17,6 +19,7 @@ from .account_identity import AccountProfile, ProfileMode
 
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 VAULT_SUBDIRECTORIES = (
     "managed-assets/objects",
     "managed-assets/staging",
@@ -42,6 +45,7 @@ class ImportMode(str, Enum):
 
 class AssetAvailability(str, Enum):
     AVAILABLE_LOCAL = "AVAILABLE_LOCAL"
+    MISSING_ON_THIS_DEVICE = "MISSING_ON_THIS_DEVICE"
     MISSING_ON_DEVICE = "MISSING_ON_DEVICE"
     LINKED_FILE_MISSING = "LINKED_FILE_MISSING"
     REDOWNLOAD_AVAILABLE = "REDOWNLOAD_AVAILABLE"
@@ -188,6 +192,26 @@ class AssetRecord:
         return ()
 
 
+@dataclass(frozen=True, slots=True)
+class LocalResourceBinding:
+    """Device-only binding for one server-shared opaque resource identity."""
+
+    account_profile: AccountProfile
+    resource_id: str
+    local_path: Path | None
+    fingerprint_sha256: str
+    availability: AssetAvailability
+    last_verified_at: datetime
+
+    def sync_safe_projection(self) -> dict[str, str]:
+        """Return only identity/hash data that is safe to compose with server DTOs."""
+
+        return {
+            "resource_id": self.resource_id,
+            "fingerprint_sha256": self.fingerprint_sha256,
+        }
+
+
 class ClosableHandle(Protocol):
     def close(self) -> None: ...
 
@@ -228,6 +252,18 @@ class AccountVault:
                 OR
                 (import_mode = 'LINKED' AND linked_path IS NOT NULL
                   AND object_relative_path IS NULL)
+              )
+            );
+
+            CREATE TABLE IF NOT EXISTS local_resource_bindings (
+              resource_id TEXT PRIMARY KEY,
+              local_path TEXT,
+              fingerprint_sha256 TEXT NOT NULL,
+              availability TEXT NOT NULL,
+              last_verified_at TEXT NOT NULL,
+              CHECK (availability IN ('AVAILABLE_LOCAL', 'MISSING_ON_THIS_DEVICE')),
+              CHECK (
+                availability <> 'AVAILABLE_LOCAL' OR local_path IS NOT NULL
               )
             );
             """
@@ -413,6 +449,104 @@ class AccountVault:
             raise ValueError("asset is not managed by this Vault")
         return _safe_child(self.root, *Path(asset.object_relative_path).parts)
 
+    @staticmethod
+    def _resource_id(value: str) -> str:
+        normalized = str(value or "").strip()
+        if not _RESOURCE_ID.fullmatch(normalized):
+            raise ValueError("resource_id must be an opaque identifier")
+        return normalized
+
+    def upsert_resource_binding(
+        self,
+        *,
+        resource_id: str,
+        local_path: Path | str | None,
+        fingerprint_sha256: str,
+        availability: AssetAvailability,
+        verified_at: datetime | None = None,
+    ) -> LocalResourceBinding:
+        self._require_open()
+        identity = self._resource_id(resource_id)
+        fingerprint = _validate_sha256(fingerprint_sha256)
+        if availability not in {
+            AssetAvailability.AVAILABLE_LOCAL,
+            AssetAvailability.MISSING_ON_THIS_DEVICE,
+        }:
+            raise ValueError("resource binding availability is device-local")
+        normalized_path: str | None = None
+        if local_path is not None:
+            candidate = Path(local_path)
+            if not candidate.is_absolute():
+                raise ValueError("resource binding local_path must be absolute")
+            normalized_path = str(_lexical_path(candidate))
+        if availability is AssetAvailability.AVAILABLE_LOCAL and normalized_path is None:
+            raise ValueError("available resource binding requires local_path")
+        timestamp = verified_at or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            raise ValueError("verified_at must include timezone information")
+        verified = timestamp.astimezone(timezone.utc).isoformat()
+        self._database.execute(
+            """
+            INSERT INTO local_resource_bindings(
+              resource_id, local_path, fingerprint_sha256,
+              availability, last_verified_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(resource_id) DO UPDATE SET
+              local_path = excluded.local_path,
+              fingerprint_sha256 = excluded.fingerprint_sha256,
+              availability = excluded.availability,
+              last_verified_at = excluded.last_verified_at
+            """,
+            (
+                identity,
+                normalized_path,
+                fingerprint,
+                availability.value,
+                verified,
+            ),
+        )
+        self._database.commit()
+        binding = self.get_resource_binding(identity)
+        assert binding is not None
+        return binding
+
+    def get_resource_binding(self, resource_id: str) -> LocalResourceBinding | None:
+        self._require_open()
+        identity = self._resource_id(resource_id)
+        row = self._database.execute(
+            """
+            SELECT resource_id, local_path, fingerprint_sha256,
+              availability, last_verified_at
+            FROM local_resource_bindings
+            WHERE resource_id = ?
+            """,
+            (identity,),
+        ).fetchone()
+        if row is None:
+            return None
+        verified_at = datetime.fromisoformat(str(row["last_verified_at"]))
+        if verified_at.tzinfo is None:
+            raise RuntimeError("resource binding verification time is invalid")
+        return LocalResourceBinding(
+            account_profile=self.profile,
+            resource_id=str(row["resource_id"]),
+            local_path=(Path(str(row["local_path"])) if row["local_path"] else None),
+            fingerprint_sha256=_validate_sha256(str(row["fingerprint_sha256"])),
+            availability=AssetAvailability(str(row["availability"])),
+            last_verified_at=verified_at.astimezone(timezone.utc),
+        )
+
+    def list_resource_bindings(self) -> list[LocalResourceBinding]:
+        self._require_open()
+        identities = self._database.execute(
+            "SELECT resource_id FROM local_resource_bindings ORDER BY resource_id"
+        ).fetchall()
+        return [
+            binding
+            for row in identities
+            if (binding := self.get_resource_binding(str(row["resource_id"]))) is not None
+        ]
+
     def close(self) -> None:
         if self._closed:
             return
@@ -506,6 +640,7 @@ __all__ = [
     "AssetAvailability",
     "AssetRecord",
     "ImportMode",
+    "LocalResourceBinding",
     "SHARED_MODEL_SUBDIRECTORIES",
     "VAULT_SUBDIRECTORIES",
     "VaultLayout",
