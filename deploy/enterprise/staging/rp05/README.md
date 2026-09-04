@@ -92,9 +92,12 @@ docker compose --profile account-core-mvp \
   -f compose.account-core-mvp.yml config
 ```
 
-The Windows Desktop's current implementation uses Authorization Code + PKCE
-with an IPv4-loopback callback and the public `mentorflow-desktop` Keycloak
-client. Configure the Desktop with `MENTORFLOW_DESKTOP_OIDC_CLIENT_ID` set to
+The Windows Desktop's current implementation presents the Keycloak page in a
+dedicated off-the-record PySide6 Qt WebEngine dialog. It uses Authorization
+Code + PKCE with an IPv4-loopback callback and the public
+`mentorflow-desktop` Keycloak client; the Desktop never reads the login form or
+receives the authorization code through page script. Configure the Desktop
+with `MENTORFLOW_DESKTOP_OIDC_CLIENT_ID` set to
 `mentorflow-desktop`, `MENTORFLOW_DESKTOP_OIDC_AUDIENCE` set to
 `mentorflow-api`, the public issuer/API URL, and a server-provisioned
 organization/workspace selection. The Desktop stores refresh/access material

@@ -384,7 +384,7 @@ def test_settings_page_shows_safe_profile_root_and_readable_availability(
     assert "Not Found" not in page.status.text()
     assert "{" not in page.status.text()
 
-    page.complete_external_oauth(
+    page.complete_oidc_login(
         identity,
         access_token="access-token-secret",
         refresh_token="refresh-token-secret",

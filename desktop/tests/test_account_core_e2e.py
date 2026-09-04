@@ -237,7 +237,7 @@ def isolated_device_roots() -> Iterator[tuple[Path, Path]]:
         yield root / "d1", root / "d2"
 
 
-def test_external_browser_login_completes_on_qt_thread(qtbot, tmp_path: Path) -> None:
+def test_in_app_login_completion_switches_account_on_qt_thread(qtbot, tmp_path: Path) -> None:
     clear_enterprise_account_session()
     identity = _identity("a")
     manager = AccountVaultManager(VaultLayout(tmp_path / "login-device"))

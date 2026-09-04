@@ -1,0 +1,430 @@
+"""MentorFlow-owned, isolated Qt WebEngine surface for Enterprise OIDC.
+
+The embedded page is only an OIDC user-agent.  Authorization results continue
+to arrive through the existing IPv4 loopback receiver; this module never reads
+page DOM, cookies, form fields, authorization codes, or tokens.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Protocol
+from urllib.parse import urlsplit
+
+from PySide6.QtCore import QThread, QUrl, Signal
+from PySide6.QtWebEngineCore import (
+    QWebEngineCertificateError,
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineSettings,
+    QWebEngineUrlRequestInfo,
+    QWebEngineUrlRequestInterceptor,
+)
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .enterprise_oidc import (
+    DesktopOidcConfig,
+    EnterpriseOidcClient,
+    EnterpriseOidcError,
+    EnterpriseOidcLoginResult,
+    PreparedOidcLogin,
+)
+
+
+AUTH_DIALOG_OBJECT_NAME = "mentorflowInAppOidcDialog"
+AUTH_VIEW_OBJECT_NAME = "mentorflowInAppOidcView"
+
+
+def _origin(value: str) -> tuple[str, str, int]:
+    parsed = urlsplit(str(value or "").strip())
+    scheme = parsed.scheme.casefold()
+    hostname = str(parsed.hostname or "").casefold()
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise EnterpriseOidcError(
+            "ENTERPRISE_OIDC_BROWSER_POLICY_INVALID",
+            "OIDC browser origin is invalid",
+        ) from exc
+    if not hostname or parsed.username is not None or parsed.password is not None:
+        raise EnterpriseOidcError(
+            "ENTERPRISE_OIDC_BROWSER_POLICY_INVALID",
+            "OIDC browser origin is invalid",
+        )
+    if port is None:
+        port = 443 if scheme == "https" else 80 if scheme == "http" else 0
+    return scheme, hostname, port
+
+
+@dataclass(frozen=True, slots=True)
+class InAppOidcNavigationPolicy:
+    """Exact origins allowed inside the authentication-only browser surface."""
+
+    provider_origin: tuple[str, str, int]
+    callback_origin: tuple[str, str, int]
+    callback_path: str
+
+    @classmethod
+    def from_prepared(cls, prepared: PreparedOidcLogin) -> "InAppOidcNavigationPolicy":
+        provider = _origin(prepared.discovery.authorization_endpoint)
+        callback = urlsplit(prepared.transaction.redirect_uri)
+        callback_origin = _origin(prepared.transaction.redirect_uri)
+        if provider[0] != "https" or callback_origin[:2] != ("http", "127.0.0.1"):
+            raise EnterpriseOidcError(
+                "ENTERPRISE_OIDC_BROWSER_POLICY_INVALID",
+                "OIDC browser policy requires HTTPS identity and IPv4 loopback",
+            )
+        return cls(
+            provider_origin=provider,
+            callback_origin=callback_origin,
+            callback_path=callback.path,
+        )
+
+    def allows(self, value: str) -> bool:
+        raw = str(value or "").strip()
+        if raw == "about:blank":
+            return True
+        if not raw or any(ord(character) < 32 for character in raw):
+            return False
+        parsed = urlsplit(raw)
+        if parsed.username is not None or parsed.password is not None:
+            return False
+        try:
+            candidate_origin = _origin(raw)
+        except EnterpriseOidcError:
+            return False
+        if candidate_origin == self.provider_origin:
+            return parsed.scheme.casefold() == "https"
+        return (
+            candidate_origin == self.callback_origin
+            and parsed.scheme.casefold() == "http"
+            and parsed.hostname == "127.0.0.1"
+            and parsed.path == self.callback_path
+            and not parsed.fragment
+        )
+
+
+class _AuthRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.policy: InAppOidcNavigationPolicy | None = None
+
+    def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:  # noqa: N802
+        policy = self.policy
+        if policy is None or not policy.allows(info.requestUrl().toString()):
+            info.block(True)
+
+
+class _AuthWebPage(QWebEnginePage):
+    def __init__(
+        self,
+        profile: QWebEngineProfile,
+        interceptor: _AuthRequestInterceptor,
+        parent: QWidget,
+    ) -> None:
+        super().__init__(profile, parent)
+        self._interceptor = interceptor
+        self.featurePermissionRequested.connect(self._deny_feature)
+
+    def acceptNavigationRequest(  # noqa: N802
+        self,
+        url: QUrl,
+        _navigation_type: QWebEnginePage.NavigationType,
+        _is_main_frame: bool,
+    ) -> bool:
+        policy = self._interceptor.policy
+        return policy is not None and policy.allows(url.toString())
+
+    def createWindow(  # noqa: N802
+        self,
+        _window_type: QWebEnginePage.WebWindowType,
+    ) -> QWebEnginePage | None:
+        return None
+
+    def certificateError(  # noqa: N802
+        self,
+        error: QWebEngineCertificateError,
+    ) -> bool:
+        error.rejectCertificate()
+        return False
+
+    def _deny_feature(self, origin: QUrl, feature: QWebEnginePage.Feature) -> None:
+        self.setFeaturePermission(
+            origin,
+            feature,
+            QWebEnginePage.PermissionPolicy.PermissionDeniedByUser,
+        )
+
+
+class _OidcClient(Protocol):
+    async def prepare_login(
+        self,
+        *,
+        force_reauthentication: bool = False,
+    ) -> PreparedOidcLogin: ...
+
+    async def complete_login(
+        self,
+        prepared: PreparedOidcLogin,
+        callback_url: str,
+    ) -> EnterpriseOidcLoginResult: ...
+
+    async def aclose(self) -> None: ...
+
+
+class InAppOidcLoginDialog(QDialog):
+    """A single-purpose, off-the-record Keycloak authorization dialog."""
+
+    _prepared_signal = Signal(object)
+    _succeeded_signal = Signal(object)
+    _failed_signal = Signal(str, str)
+
+    def __init__(
+        self,
+        config: DesktopOidcConfig,
+        *,
+        parent: QWidget | None = None,
+        client_factory: Callable[[DesktopOidcConfig], _OidcClient] = EnterpriseOidcClient,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName(AUTH_DIALOG_OBJECT_NAME)
+        self.setWindowTitle("登录 MentorFlow Enterprise")
+        self.setModal(True)
+        self.resize(760, 720)
+        self._config = config
+        self._client_factory = client_factory
+        self._cancelled = threading.Event()
+        self._page_ready = threading.Event()
+        self._worker: threading.Thread | None = None
+        self._prepared: PreparedOidcLogin | None = None
+        self._result: EnterpriseOidcLoginResult | None = None
+        self._error: EnterpriseOidcError | None = None
+
+        layout = QVBoxLayout(self)
+        heading = QLabel("企业账号安全登录")
+        heading.setObjectName("inAppOidcHeading")
+        layout.addWidget(heading)
+        self.status = QLabel("正在建立加密的企业登录会话…")
+        self.status.setObjectName("inAppOidcStatus")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        # A nameless profile is off-the-record.  No auth cookies, cache,
+        # permissions, or browsing history survive this dialog instance.
+        self.profile = QWebEngineProfile(self)
+        self.profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
+        )
+        self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.NoCache)
+        self.profile.setHttpCacheMaximumSize(0)
+        self.profile.setPersistentPermissionsPolicy(
+            QWebEngineProfile.PersistentPermissionsPolicy.AskEveryTime
+        )
+        self.profile.setSpellCheckEnabled(False)
+        self.profile.downloadRequested.connect(lambda request: request.cancel())
+
+        self._interceptor = _AuthRequestInterceptor(self)
+        self.profile.setUrlRequestInterceptor(self._interceptor)
+        self.view = QWebEngineView(self)
+        self.view.setObjectName(AUTH_VIEW_OBJECT_NAME)
+        self.page = _AuthWebPage(self.profile, self._interceptor, self.view)
+        self.view.setPage(self.page)
+        settings = self.view.settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalStorageEnabled,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent,
+            False,
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.ScreenCaptureEnabled,
+            False,
+        )
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, False)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, False)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.NavigateOnDropEnabled, False)
+        layout.addWidget(self.view, 1)
+
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel = QPushButton("取消登录")
+        cancel.setObjectName("inAppOidcCancelButton")
+        cancel.clicked.connect(self.reject)
+        actions.addWidget(cancel)
+        layout.addLayout(actions)
+
+        self._prepared_signal.connect(self._show_authorization_page)
+        self._succeeded_signal.connect(self._finish_successfully)
+        self._failed_signal.connect(self._finish_with_error)
+
+    @property
+    def is_off_the_record(self) -> bool:
+        return self.profile.isOffTheRecord()
+
+    def _start(self) -> None:
+        if self._worker is not None:
+            return
+        self._worker = threading.Thread(
+            target=self._run_protocol,
+            name="mentorflow-in-app-oidc",
+            daemon=True,
+        )
+        self._worker.start()
+
+    def _run_protocol(self) -> None:
+        async def run() -> EnterpriseOidcLoginResult:
+            client = self._client_factory(self._config)
+            prepared: PreparedOidcLogin | None = None
+            try:
+                prepared = await client.prepare_login(force_reauthentication=True)
+                self._prepared_signal.emit(prepared)
+                page_ready = await asyncio.to_thread(self._page_ready.wait, 10.0)
+                if not page_ready or self._cancelled.is_set():
+                    raise EnterpriseOidcError(
+                        "ENTERPRISE_OIDC_LOGIN_CANCELLED",
+                        "Enterprise login was cancelled",
+                    )
+                callback = await asyncio.to_thread(
+                    prepared.receiver.wait,
+                    self._config.callback_timeout_seconds,
+                )
+                if self._cancelled.is_set():
+                    raise EnterpriseOidcError(
+                        "ENTERPRISE_OIDC_LOGIN_CANCELLED",
+                        "Enterprise login was cancelled",
+                    )
+                return await client.complete_login(prepared, callback)
+            finally:
+                if prepared is not None:
+                    prepared.receiver.close()
+                await client.aclose()
+
+        try:
+            self._succeeded_signal.emit(asyncio.run(run()))
+        except EnterpriseOidcError as exc:
+            self._failed_signal.emit(exc.code, exc.message)
+        except Exception:
+            self._failed_signal.emit(
+                "ENTERPRISE_OIDC_IN_APP_FAILED",
+                "Enterprise login could not be completed safely",
+            )
+
+    def _show_authorization_page(self, value: object) -> None:
+        if self._cancelled.is_set() or not isinstance(value, PreparedOidcLogin):
+            return
+        try:
+            policy = InAppOidcNavigationPolicy.from_prepared(value)
+        except EnterpriseOidcError as exc:
+            value.receiver.close()
+            self._finish_with_error(exc.code, exc.message)
+            return
+        self._prepared = value
+        self._interceptor.policy = policy
+        self.status.setText(
+            "请在下方 Keycloak 页面完成身份验证。MentorFlow 不读取或保存登录表单。"
+        )
+        self.view.setUrl(QUrl(value.authorization_url))
+        self._page_ready.set()
+
+    def _finish_successfully(self, value: object) -> None:
+        if self._cancelled.is_set() or not isinstance(value, EnterpriseOidcLoginResult):
+            return
+        self._result = value
+        self.accept()
+
+    def _finish_with_error(self, code: str, message: str) -> None:
+        if self._cancelled.is_set():
+            return
+        self._error = EnterpriseOidcError(code, message)
+        self.reject()
+
+    def _reset_browser(self) -> None:
+        # The profile is single-use and never attached to another dialog.  It
+        # remains parent-owned until the Account page/app is destroyed, while
+        # all session state is cleared as soon as this login attempt finishes.
+        self.view.stop()
+        self.profile.cookieStore().deleteAllCookies()
+        self.profile.clearHttpCache()
+        self._interceptor.policy = None
+
+    def reject(self) -> None:
+        self._cancelled.set()
+        prepared = self._prepared
+        if prepared is not None:
+            prepared.receiver.close()
+        super().reject()
+
+    def execute_login(self) -> EnterpriseOidcLoginResult:
+        application = QApplication.instance()
+        if application is None or QThread.currentThread() is not application.thread():
+            raise EnterpriseOidcError(
+                "ENTERPRISE_OIDC_UI_THREAD_REQUIRED",
+                "In-app Enterprise login requires the MentorFlow UI thread",
+            )
+        self._start()
+        try:
+            self.exec()
+        finally:
+            self._reset_browser()
+            worker = self._worker
+            if worker is not None:
+                worker.join(timeout=2.0)
+        if self._result is not None:
+            return self._result
+        if self._error is not None:
+            raise self._error
+        raise EnterpriseOidcError(
+            "ENTERPRISE_OIDC_LOGIN_CANCELLED",
+            "Enterprise login was cancelled",
+        )
+
+
+def login_enterprise_account_in_app_from_env(
+    *,
+    parent: QWidget | None = None,
+) -> EnterpriseOidcLoginResult:
+    dialog = InAppOidcLoginDialog(
+        DesktopOidcConfig.from_env(),
+        parent=parent,
+    )
+    return dialog.execute_login()
+
+
+__all__ = [
+    "AUTH_DIALOG_OBJECT_NAME",
+    "AUTH_VIEW_OBJECT_NAME",
+    "InAppOidcLoginDialog",
+    "InAppOidcNavigationPolicy",
+    "login_enterprise_account_in_app_from_env",
+]

@@ -194,9 +194,8 @@ def test_keycloak_response_issuer_and_session_state_are_validated() -> None:
     assert error.value.code == "ENTERPRISE_OIDC_ISSUER_INVALID"
 
 
-def test_login_opens_external_browser_returns_to_loopback_and_refreshes_state_once() -> None:
+def test_prepared_login_returns_to_loopback_and_refreshes_state_once() -> None:
     validator = _Validator()
-    browser_urls: list[str] = []
     requests: list[tuple[str, str]] = []
     token_forms: list[Mapping[str, list[str]]] = []
 
@@ -231,9 +230,9 @@ def test_login_opens_external_browser_returns_to_loopback_and_refreshes_state_on
             token_validator=validator,
         )
 
-        def open_browser(url: str) -> bool:
-            browser_urls.append(url)
-            query = parse_qs(urlsplit(url).query)
+        prepared = await client.prepare_login(force_reauthentication=True)
+        try:
+            query = parse_qs(urlsplit(prepared.authorization_url).query)
             callback = query["redirect_uri"][0] + "?" + urlencode(
                 {"code": "auth-code", "state": query["state"][0]}
             )
@@ -244,19 +243,21 @@ def test_login_opens_external_browser_returns_to_loopback_and_refreshes_state_on
                 assert "access-secret" not in response.text
 
             threading.Thread(target=return_to_desktop, daemon=True).start()
-            return True
-
-        try:
-            return await client.login(browser_opener=open_browser)
+            callback_url = await asyncio.to_thread(
+                prepared.receiver.wait,
+                client.config.callback_timeout_seconds,
+            )
+            result = await client.complete_login(prepared, callback_url)
+            return result, query
         finally:
+            prepared.receiver.close()
             await client.aclose()
             await http.aclose()
 
-    result = asyncio.run(run())
+    result, browser_query = asyncio.run(run())
 
-    assert len(browser_urls) == 1
-    browser_query = parse_qs(urlsplit(browser_urls[0]).query)
     assert browser_query["code_challenge_method"] == ["S256"]
+    assert browser_query["prompt"] == ["login"]
     assert browser_query["nonce"] == [validator.login_calls[0][2]]
     assert token_forms[0]["grant_type"] == ["authorization_code"]
     assert token_forms[0]["code"] == ["auth-code"]

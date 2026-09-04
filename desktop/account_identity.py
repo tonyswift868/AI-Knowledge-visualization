@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import webbrowser
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -318,14 +317,6 @@ class AccountCredentialVault:
         except ImportError:
             pass
 
-
-def open_system_browser_oauth(authorization_url: str) -> bool:
-    parsed = urlsplit(str(authorization_url or "").strip())
-    if parsed.scheme.casefold() != "https" or not parsed.hostname:
-        raise ValueError("OAuth authorization URL must use HTTPS")
-    return bool(webbrowser.open_new_tab(parsed.geturl()))
-
-
 __all__ = [
     "AccountCredentialVault",
     "AccountIdentity",
@@ -336,6 +327,5 @@ __all__ = [
     "canonicalize_issuer",
     "identity_hash",
     "issuer_hash",
-    "open_system_browser_oauth",
     "subject_hash",
 ]

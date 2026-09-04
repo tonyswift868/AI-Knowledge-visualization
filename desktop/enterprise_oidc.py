@@ -1,8 +1,10 @@
 """Native Desktop OIDC Authorization Code + PKCE account flow.
 
-The browser owns interactive authentication.  MentorFlow receives exactly one
-loopback callback, validates the OIDC tokens, refreshes tenant-scoped server
-state, and only then exposes an account identity to the Desktop lifecycle.
+An OIDC user-agent owns interactive authentication.  MentorFlow receives
+exactly one loopback callback, validates the OIDC tokens, refreshes
+tenant-scoped server state, and only then exposes an account identity to the
+Desktop lifecycle.  The normal Desktop UI supplies an isolated in-app Qt
+WebEngine user-agent; the protocol core remains UI-agnostic.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -32,7 +34,6 @@ from .account_identity import (
     AccountProfile,
     ProfileMode,
     canonicalize_issuer,
-    open_system_browser_oauth,
 )
 
 
@@ -456,8 +457,9 @@ class OidcLoginTransaction:
         endpoint: str,
         client_id: str,
         scopes: tuple[str, ...],
+        force_reauthentication: bool = False,
     ) -> str:
-        return f"{endpoint}?{urlencode({
+        parameters = {
             'response_type': 'code',
             'client_id': client_id,
             'redirect_uri': self.redirect_uri,
@@ -466,7 +468,13 @@ class OidcLoginTransaction:
             'nonce': self.nonce,
             'code_challenge': self.code_challenge,
             'code_challenge_method': 'S256',
-        })}"
+        }
+        if force_reauthentication:
+            # Account switching must never silently reuse the previous
+            # interactive session, even if a platform browser profile is
+            # accidentally retained by its host.
+            parameters['prompt'] = 'login'
+        return f"{endpoint}?{urlencode(parameters)}"
 
     def consume_callback(self, callback_url: str) -> AuthorizationCode:
         if self._consumed or self._code_verifier is None:
@@ -611,6 +619,8 @@ class LoopbackCallbackReceiver:
     def __init__(self, *, port: int = 0, callback_path: str = DEFAULT_CALLBACK_PATH) -> None:
         self.callback_path = callback_path
         self._event = threading.Event()
+        self._closed = threading.Event()
+        self._close_lock = threading.Lock()
         self._callback_url = ""
         try:
             self._server = _LoopbackServer(("127.0.0.1", int(port)), _CallbackHandler)
@@ -634,9 +644,22 @@ class LoopbackCallbackReceiver:
 
     def wait(self, timeout_seconds: float) -> str:
         deadline = time.monotonic() + float(timeout_seconds)
-        while not self._event.is_set() and time.monotonic() < deadline:
-            self._server.handle_request()
+        while (
+            not self._event.is_set()
+            and not self._closed.is_set()
+            and time.monotonic() < deadline
+        ):
+            try:
+                self._server.handle_request()
+            except OSError:
+                if not self._closed.is_set():
+                    raise
         if not self._event.is_set():
+            if self._closed.is_set():
+                raise EnterpriseOidcError(
+                    "ENTERPRISE_OIDC_LOGIN_CANCELLED",
+                    "Enterprise login was cancelled",
+                )
             raise EnterpriseOidcError(
                 "ENTERPRISE_OIDC_CALLBACK_TIMEOUT",
                 "Enterprise login did not return to MentorFlow in time",
@@ -644,7 +667,11 @@ class LoopbackCallbackReceiver:
         return self._callback_url
 
     def close(self) -> None:
-        self._server.server_close()
+        with self._close_lock:
+            if self._closed.is_set():
+                return
+            self._closed.set()
+            self._server.server_close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -747,7 +774,11 @@ class EnterpriseOidcClient:
             )
         return self._token_validator
 
-    async def prepare_login(self) -> PreparedOidcLogin:
+    async def prepare_login(
+        self,
+        *,
+        force_reauthentication: bool = False,
+    ) -> PreparedOidcLogin:
         receiver = LoopbackCallbackReceiver(
             port=self.config.callback_port,
             callback_path=self.config.callback_path,
@@ -762,6 +793,7 @@ class EnterpriseOidcClient:
                 endpoint=discovery.authorization_endpoint,
                 client_id=self.config.client_id,
                 scopes=self.config.scopes,
+                force_reauthentication=force_reauthentication,
             )
             return PreparedOidcLogin(
                 receiver=receiver,
@@ -923,26 +955,6 @@ class EnterpriseOidcClient:
             server_state=state,
         )
 
-    async def login(
-        self,
-        *,
-        browser_opener: Callable[[str], bool] = open_system_browser_oauth,
-    ) -> EnterpriseOidcLoginResult:
-        prepared = await self.prepare_login()
-        try:
-            if not browser_opener(prepared.authorization_url):
-                raise EnterpriseOidcError(
-                    "ENTERPRISE_OIDC_BROWSER_FAILED",
-                    "System browser could not be opened",
-                )
-            callback = await asyncio.to_thread(
-                prepared.receiver.wait,
-                self.config.callback_timeout_seconds,
-            )
-            return await self.complete_login(prepared, callback)
-        finally:
-            prepared.receiver.close()
-
     async def restore(
         self,
         profile: AccountProfile,
@@ -1011,17 +1023,6 @@ class EnterpriseOidcClient:
             await self._http.aclose()
 
 
-def login_enterprise_account_from_env() -> EnterpriseOidcLoginResult:
-    async def run() -> EnterpriseOidcLoginResult:
-        client = EnterpriseOidcClient(DesktopOidcConfig.from_env())
-        try:
-            return await client.login()
-        finally:
-            await client.aclose()
-
-    return asyncio.run(run())
-
-
 def restore_enterprise_account_from_env(
     profile: AccountProfile,
     credentials: AccountCredentialVault,
@@ -1048,6 +1049,5 @@ __all__ = [
     "OidcLoginTransaction",
     "PreparedOidcLogin",
     "ValidatedTokenIdentity",
-    "login_enterprise_account_from_env",
     "restore_enterprise_account_from_env",
 ]

@@ -296,11 +296,12 @@ def test_account_core_secret_materialization_omits_worker_consumer(
     assert "worker" not in consumers
 
 
-def test_current_desktop_login_transport_is_pkce_system_browser_not_password_grant() -> None:
+def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> None:
     desktop = (ROOT / "desktop" / "enterprise_oidc.py").read_text(encoding="utf-8")
     settings = (ROOT / "desktop" / "account_settings_page.py").read_text(
         encoding="utf-8"
     )
+    embedded = (ROOT / "desktop" / "in_app_oidc.py").read_text(encoding="utf-8")
     realm = json.loads(
         (ROOT / "deploy" / "enterprise" / "config" / "keycloak-realm.json").read_text(
             encoding="utf-8"
@@ -308,11 +309,16 @@ def test_current_desktop_login_transport_is_pkce_system_browser_not_password_gra
     )
     clients = {item["clientId"]: item for item in realm["clients"]}
     client = clients["mentorflow-desktop"]
-    assert "open_system_browser_oauth" in desktop
     assert "code_challenge_method" in desktop
+    assert "open_system_browser_oauth" not in desktop
     assert '"grant_type": "authorization_code"' in desktop
     assert "/api/enterprise/auth/me" in desktop
-    assert "externalBrowserOAuthButton" in settings
+    assert "inAppOidcLoginButton" in settings
+    assert "login_enterprise_account_in_app_from_env" in settings
+    assert "open_system_browser_oauth" not in embedded
+    assert "QWebEngineView" in embedded
+    assert "NoPersistentCookies" in embedded
+    assert "prompt=login" not in embedded  # Query construction stays in OIDC core.
     assert client["publicClient"] is True
     assert client["standardFlowEnabled"] is True
     assert client["directAccessGrantsEnabled"] is False
