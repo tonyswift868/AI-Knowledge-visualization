@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
 import os
@@ -29,6 +30,8 @@ from app.observability.runtime import (
     force_flush_open_telemetry,
     shutdown_open_telemetry,
 )
+from app.knowledge_policy import CONVERSION_POLICY
+from app.sources.document.preflight import probe_docling_dependency
 
 
 logger = logging.getLogger(__name__)
@@ -160,6 +163,30 @@ def _build_runtime(config: WorkerRuntimeConfig, engine: Any):
     return app, task
 
 
+def _require_document_runtime(source: Mapping[str, str]) -> None:
+    configured = str(
+        source.get("MENTORFLOW_WORKER_DOCUMENT_RUNTIME_REQUIRED") or "false"
+    ).strip().casefold()
+    if configured in {"", "0", "false", "no"}:
+        return
+    if configured not in {"1", "true", "yes"}:
+        raise WorkerConfigurationError(
+            "MENTORFLOW_WORKER_DOCUMENT_RUNTIME_REQUIRED must be true or false"
+        )
+    dependency = probe_docling_dependency()
+    expected_version = str(CONVERSION_POLICY.docling.version)
+    if not dependency.available or dependency.version != expected_version:
+        raise WorkerConfigurationError(
+            "required Docling runtime is unavailable or version-mismatched"
+        )
+    try:
+        importlib.import_module("docling.document_converter")
+    except Exception as exc:
+        raise WorkerConfigurationError(
+            "required Docling document converter is unavailable"
+        ) from exc
+
+
 def _check_connection(app: Any) -> None:
     try:
         with app.open():
@@ -223,6 +250,7 @@ def _stop_worker_runtime(supervisor: WorkerSupervisor | None, engine: Any) -> No
 
 def _run(source: Mapping[str, str]) -> int:
     config = load_config(source)
+    _require_document_runtime(source)
     engine = orm.configure_enterprise_orm(source)
     supervisor: WorkerSupervisor | None = None
     try:
@@ -248,15 +276,13 @@ def _run(source: Mapping[str, str]) -> int:
 
 def _health(source: Mapping[str, str]) -> int:
     config = load_config(source)
+    read_readiness(
+        config.readiness_path,
+        maximum_age_seconds=max(10.0, config.maintenance_interval_seconds * 3),
+    )
     engine = orm.configure_enterprise_orm(source)
     try:
         verify_worker_database(engine)
-        app, _ = _build_runtime(config, engine)
-        _check_connection(app)
-        read_readiness(
-            config.readiness_path,
-            maximum_age_seconds=max(10.0, config.maintenance_interval_seconds * 3),
-        )
         _json_status("READY")
         return 0
     finally:

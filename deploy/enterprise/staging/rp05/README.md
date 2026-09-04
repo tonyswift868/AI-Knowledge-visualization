@@ -2,8 +2,10 @@
 
 This package is a deployment asset, not evidence that host `89.45.45.28` was
 changed or that a real TLS/staging run passed. It deliberately excludes
-SeaweedFS, Docling, Prometheus, Grafana, Tempo, Loki, and k6 from the default
-Compose graph.
+SeaweedFS, Prometheus, Grafana, Tempo, Loki, and k6 from the default Compose
+graph. Docling is installed in the durable Worker image because the Preview
+profile enables the Document Ingestion handler; model/network access remains
+disabled at runtime.
 
 ## Host contract
 
@@ -37,11 +39,16 @@ validation while allowing the backend to fetch the public issuer's JWKS.
    project name. Keep the production factory and three supported handler paths
    unchanged. Do not put secrets in this file.
 4. Create the nine external secret files under `/opt/mentorflow/secrets`.
+   `materialize-secrets` copies them into consumer-isolated named volumes with
+   explicit UID/GID/mode metadata. Services never depend on Compose remapping a
+   host file's ownership, and no service receives unrelated secrets.
 5. Build a release with `build_rp05_staging_release.py`; transfer the resulting
    directory without changing its manifest-covered files.
 6. On the Linux host, run `python3 rp05_staging.py preflight`, `config`, `pull`,
-   `fresh-postgres`, `migrate`, `up`, `readiness`, `restart-readiness`, and
-   `evidence` in that order. `fresh-postgres` starts the exact PostgreSQL digest
+   `materialize-secrets`, `fresh-postgres`, `migrate`, `up`, `readiness`,
+   `restart-readiness`, and `evidence` in that order. `migrate` and `up` also
+   rerun the materializer fail-closed before starting consumers.
+   `fresh-postgres` starts the exact PostgreSQL digest
    against an isolated tmpfs data directory and never mounts the persistent
    database path. `restart-readiness` recreates backend, worker, frontend, and
    edge in bounded phases and re-runs the complete readiness contract after
@@ -49,7 +56,9 @@ validation while allowing the backend to fetch the public issuer's JWKS.
 7. Use `activate` only after readiness succeeds. `rollback` changes only the
    atomic `current` symlink to a previously validated release.
 
-`/health/startup` is used for backend process startup. Current canonical
-`/health/ready` requires an object store in a staging environment, while RP-05
-explicitly excludes that service; therefore that full-product readiness gate
-remains `PENDING` until the separate object-storage delivery is integrated.
+`/health/startup` is used only for backend process startup. RP-05 classifies
+object storage as `OPTIONAL_DISABLED`: the profile does not advertise object
+storage operations, and `/health/ready` reports
+`OBJECT_STORE_DISABLED_NOT_REQUIRED` as a non-required dependency. The public
+readiness gate still requires PostgreSQL, Keycloak/OIDC, OpenTelemetry, a fresh
+durable-worker heartbeat, the migration head, and the backend/edge path.

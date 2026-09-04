@@ -46,6 +46,26 @@ RESIDENT = {
     "edge",
 }
 HOST_BIND_UIDS = {"document-import": 10001}
+FULL_READINESS_CODES = {
+    "postgres": "POSTGRES_REACHABLE",
+    "keycloak_discovery": "KEYCLOAK_DISCOVERY_OK",
+    "otel_collector": "OTEL_COLLECTOR_HEALTHY",
+    "worker_dependencies": "WORKER_DEPENDENCIES_READY",
+}
+SECRET_CONSUMERS = {
+    "postgres",
+    "postgres-provision",
+    "keycloak",
+    "keycloak-ready",
+    "migrate",
+    "migration-ready",
+    "backend",
+    "worker",
+    "backend-tls-ready",
+    "oidc-loopback-proxy",
+    "edge",
+}
+EXPECTED_SECRET_TARGET_COUNT = 21
 
 
 def _sha(path: Path) -> str:
@@ -116,6 +136,102 @@ def _preflight(release: Path) -> dict:
     return manifest
 
 
+def _materialize_secrets(release: Path) -> dict:
+    _preflight(release)
+    completed = _compose(
+        release,
+        "run",
+        "--rm",
+        "--no-deps",
+        "runtime-secrets-ready",
+        capture=True,
+    )
+    try:
+        payload = json.loads(completed.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as exc:
+        raise RuntimeError("secret materializer returned an invalid receipt") from exc
+    rows = payload.get("secrets")
+    if (
+        payload.get("schema_version")
+        != "mentorflow.rp05-secret-materialization.v1"
+        or payload.get("status") != "PASS"
+        or not isinstance(rows, list)
+        or len(rows) != EXPECTED_SECRET_TARGET_COUNT
+    ):
+        raise RuntimeError("secret materializer did not prove effective permissions")
+    required = {
+        "secret_name",
+        "source_type",
+        "consumer_service",
+        "consumer_uid",
+        "consumer_gid",
+        "effective_file_uid",
+        "effective_file_gid",
+        "effective_mode",
+        "required_access",
+        "private_or_public",
+    }
+    if any(not isinstance(row, dict) or set(row) != required for row in rows):
+        raise RuntimeError("secret materializer receipt shape is invalid")
+    if {
+        str(row["consumer_service"])
+        for row in rows
+    } != SECRET_CONSUMERS or len(
+        {(str(row["consumer_service"]), str(row["secret_name"])) for row in rows}
+    ) != EXPECTED_SECRET_TARGET_COUNT:
+        raise RuntimeError("secret materializer receipt target set is invalid")
+    for row in rows:
+        classification = row["private_or_public"]
+        expected_mode = "0444" if classification == "public" else "0400"
+        if (
+            classification not in {"private", "public"}
+            or row["source_type"] != "compose_file_secret"
+            or row["required_access"] != "read"
+            or row["consumer_uid"] != row["effective_file_uid"]
+            or row["consumer_gid"] != row["effective_file_gid"]
+            or row["effective_mode"] != expected_mode
+        ):
+            raise RuntimeError("secret materializer effective permission proof failed")
+    return payload
+
+
+def _validate_full_readiness(payload: object) -> None:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("status") != "ready"
+        or payload.get("started") is not True
+    ):
+        raise RuntimeError("public HTTPS readiness probe did not report ready")
+    dependencies = payload.get("dependencies")
+    if not isinstance(dependencies, list):
+        raise RuntimeError("public HTTPS readiness dependencies are missing")
+    by_name = {
+        str(item.get("name")): item
+        for item in dependencies
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    expected_names = set(FULL_READINESS_CODES) | {"object_store"}
+    if set(by_name) != expected_names or len(dependencies) != len(expected_names):
+        raise RuntimeError("public HTTPS readiness dependency set is invalid")
+    for name, code in FULL_READINESS_CODES.items():
+        item = by_name.get(name)
+        if (
+            item is None
+            or item.get("ready") is not True
+            or item.get("required") is not True
+            or item.get("code") != code
+        ):
+            raise RuntimeError(f"required readiness dependency is not ready: {name}")
+    object_store = by_name.get("object_store")
+    if (
+        object_store is None
+        or object_store.get("ready") is not False
+        or object_store.get("required") is not False
+        or object_store.get("code") != "OBJECT_STORE_DISABLED_NOT_REQUIRED"
+    ):
+        raise RuntimeError("object-store profile readiness is not explicit")
+
+
 def _readiness(release: Path) -> dict:
     manifest = _preflight(release)
     running = set(
@@ -131,22 +247,21 @@ def _readiness(release: Path) -> dict:
         "oidc_endpoint_contract": ["exec", "-T", "backend", "python", "/opt/mentorflow/rp05/runtime-entrypoint.py", "oidc-ready"],
         "otel_health": ["exec", "-T", "backend", "python", "-c", "import urllib.request;urllib.request.urlopen('http://otel-collector:13133/health',timeout=3).read()"],
         "worker": ["exec", "-T", "worker", "python", "/opt/mentorflow/rp05/runtime-entrypoint.py", "worker-health"],
-        "https_edge": ["exec", "-T", "edge", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1:8443/health/startup"],
+        "https_edge": ["exec", "-T", "edge", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1:8443/health/ready"],
     }
     for args in checks.values():
         _compose(release, *args)
-    public_probe = str(manifest["public_origin"]).rstrip("/") + "/health/startup"
+    public_probe = str(manifest["public_origin"]).rstrip("/") + "/health/ready"
     with urlopen(public_probe, timeout=10) as response:
         if response.status != 200:
-            raise RuntimeError("public HTTPS startup probe did not return HTTP 200")
+            raise RuntimeError("public HTTPS readiness probe did not return HTTP 200")
         try:
             payload = json.loads(response.read())
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RuntimeError(
-                "public HTTPS startup probe returned a non-JSON response"
+                "public HTTPS readiness probe returned a non-JSON response"
             ) from exc
-        if not isinstance(payload, dict) or not payload.get("status"):
-            raise RuntimeError("public HTTPS startup probe returned an invalid health payload")
+        _validate_full_readiness(payload)
     statuses = {name: "PASS" for name in checks}
     statuses["public_tls_https"] = "PASS"
     pkce_query = urlencode(
@@ -184,7 +299,8 @@ def _evidence(release: Path) -> Path:
         "source": manifest["source"],
         "image_references": manifest["image_references"],
         "readiness": readiness,
-        "canonical_full_product_readiness": "PENDING_OBJECT_STORAGE_INTEGRATION",
+        "canonical_full_product_readiness": "PASS_WITH_OBJECT_STORE_DISABLED_NOT_REQUIRED",
+        "object_store_profile": "OPTIONAL_DISABLED",
         "real_tls_staging_gate": "PASS",
         "real_minimal_stack_staging_gate": "PASS",
         "secrets_exposed": False,
@@ -377,7 +493,7 @@ def _rollback(name: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("preflight", "config", "pull", "fresh-postgres", "migrate", "up", "readiness", "restart-readiness", "evidence", "activate", "rollback", "down"))
+    parser.add_argument("action", choices=("preflight", "config", "pull", "materialize-secrets", "fresh-postgres", "migrate", "up", "readiness", "restart-readiness", "evidence", "activate", "rollback", "down"))
     parser.add_argument("--release", type=Path)
     parser.add_argument("--rollback-release")
     args = parser.parse_args()
@@ -398,6 +514,8 @@ def main() -> int:
     elif args.action == "pull":
         _preflight(release)
         _compose(release, "pull", "--policy", "always")
+    elif args.action == "materialize-secrets":
+        print(json.dumps(_materialize_secrets(release), sort_keys=True, separators=(",", ":")))
     elif args.action == "fresh-postgres":
         print(
             json.dumps(
@@ -407,10 +525,10 @@ def main() -> int:
             )
         )
     elif args.action == "migrate":
-        _preflight(release)
+        _materialize_secrets(release)
         _compose(release, "up", "--no-build", "--exit-code-from", "migration-ready", "migration-ready")
     elif args.action == "up":
-        _preflight(release)
+        _materialize_secrets(release)
         _compose(release, "up", "-d", "--no-build")
     elif args.action == "readiness":
         _readiness(release)

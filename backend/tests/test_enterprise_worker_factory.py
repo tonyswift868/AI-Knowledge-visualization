@@ -778,7 +778,7 @@ def test_worker_health_loads_preview_factory_without_account_deletion_handler(
         try:
             assert worker_entry._health(source) == 0
             assert json.loads(capsys.readouterr().out)["status"] == "READY"
-            assert events == ["database", "queue", "readiness"]
+            assert events == ["readiness", "database"]
         finally:
             engine.dispose()
 

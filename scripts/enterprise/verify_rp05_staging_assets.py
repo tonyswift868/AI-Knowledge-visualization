@@ -24,6 +24,7 @@ RESIDENT = {
     "edge",
 }
 ONESHOT = {
+    "runtime-secrets-ready",
     "postgres-provision",
     "keycloak-ready",
     "migrate",
@@ -36,6 +37,19 @@ EXPECTED_SECRETS = {
     "postgres_admin_password", "postgres_migrator_password", "postgres_app_password",
     "keycloak_db_password", "keycloak_admin_password", "bff_client_secret",
     "worker_client_secret", "tls_certificate", "tls_private_key",
+}
+CONSUMER_SECRET_VOLUMES = {
+    "postgres": "postgres_secrets",
+    "postgres-provision": "postgres_provision_secrets",
+    "keycloak": "keycloak_secrets",
+    "keycloak-ready": "keycloak_ready_secrets",
+    "migrate": "migrate_secrets",
+    "migration-ready": "migration_ready_secrets",
+    "backend": "backend_secrets",
+    "worker": "worker_secrets",
+    "backend-tls-ready": "backend_tls_source",
+    "oidc-loopback-proxy": "oidc_proxy_secrets",
+    "edge": "edge_secrets",
 }
 OIDC_NGINX_REQUIRED_WRITABLE_PATHS = ("/tmp", "/var/cache/nginx")
 OIDC_NGINX_EXPECTED_TMPFS = {
@@ -236,16 +250,21 @@ def _volume_binding(value: object) -> dict[str, object]:
         mount_type = str(value.get("type") or "volume")
         target = str(value.get("target") or "")
         read_only = bool(value.get("read_only"))
-        return {"type": mount_type, "target": target, "read_only": read_only}
+        return {
+            "type": mount_type,
+            "source": str(value.get("source") or ""),
+            "target": target,
+            "read_only": read_only,
+        }
     if not isinstance(value, str):
-        return {"type": "unknown", "target": "", "read_only": False}
+        return {"type": "unknown", "source": "", "target": "", "read_only": False}
     parts = value.split(":")
     target_index = next(
         (index for index, part in enumerate(parts[1:], start=1) if part.startswith("/")),
         -1,
     )
     if target_index < 0:
-        return {"type": "unknown", "target": "", "read_only": False}
+        return {"type": "unknown", "source": "", "target": "", "read_only": False}
     source = ":".join(parts[:target_index])
     target = parts[target_index]
     options = parts[target_index + 1 :]
@@ -254,7 +273,12 @@ def _volume_binding(value: object) -> dict[str, object]:
         if source.startswith((".", "/", "${")) or re.match(r"^[A-Za-z]:", source)
         else "volume"
     )
-    return {"type": mount_type, "target": target, "read_only": "ro" in options}
+    return {
+        "type": mount_type,
+        "source": source,
+        "target": target,
+        "read_only": "ro" in options,
+    }
 
 
 def _mount_covers_path(mount_target: str, required_path: str) -> bool:
@@ -389,6 +413,58 @@ def verify(root: Path) -> dict:
     gate("public_surface_http_https_only", set(edge_ports) == {"80:8080", "443:8443"}, "public ports are not exactly HTTP/HTTPS")
     gate("internal_network_isolated", compose.get("networks", {}).get("internal", {}).get("internal") is True, "internal network is not isolated")
     gate("external_file_secrets", set(compose.get("secrets", {})) == EXPECTED_SECRETS and all("file" in value for value in compose["secrets"].values()), "external secret declarations are incomplete")
+    materializer_service = services["runtime-secrets-ready"]
+    materializer_source = (asset_root / "secret-materializer.py").read_text(
+        encoding="utf-8"
+    )
+    gate(
+        "secret_materializer_capability_contract",
+        materializer_service.get("user") == "0:0"
+        and set(materializer_service.get("cap_drop", [])) == {"ALL"}
+        and set(materializer_service.get("cap_add", [])) == {"CHOWN", "DAC_READ_SEARCH"}
+        and materializer_service.get("network_mode") == "none"
+        and set(materializer_service.get("secrets", [])) == EXPECTED_SECRETS,
+        "only the bounded root materializer may read host-backed Compose secrets",
+    )
+    consumer_mounts = {}
+    for service_name, volume_name in CONSUMER_SECRET_VOLUMES.items():
+        bindings = [_volume_binding(item) for item in services[service_name].get("volumes", [])]
+        consumer_mounts[service_name] = any(
+            binding.get("source") == volume_name
+            and binding.get("target") == "/run/secrets"
+            and binding.get("read_only") is True
+            for binding in bindings
+        )
+    gate(
+        "secret_consumer_volume_isolation",
+        all(consumer_mounts.values())
+        and all(
+            not service.get("secrets")
+            for name, service in services.items()
+            if name != "runtime-secrets-ready"
+        ),
+        "secret consumers must receive only their isolated materialized volume",
+    )
+    gate(
+        "secret_effective_permission_receipt",
+        all(
+            token in materializer_source
+            for token in (
+                "consumer_service",
+                "consumer_uid",
+                "consumer_gid",
+                "effective_file_uid",
+                "effective_file_gid",
+                "effective_mode",
+                "private_or_public",
+                '0o444, "public"',
+                '0o400, "private"',
+            )
+        )
+        and 'SecretTarget("postgres_app_password", "backend"' in materializer_source
+        and 'SecretTarget("tls_private_key", "backend"' not in materializer_source,
+        "materialization must prove effective metadata and deny the backend private key",
+    )
     gate("postgres_persistent", "/postgres:/var/lib/postgresql/data" in json.dumps(services["postgres"].get("volumes", [])), "PostgreSQL data is not host-persistent")
     gate("postgres_healthy", "healthcheck" in services["postgres"], "PostgreSQL healthcheck missing")
     tmpfs_contract = {
@@ -419,15 +495,31 @@ def verify(root: Path) -> dict:
         "PostgreSQL must retain a read-only root and only the capabilities needed by its fresh-volume entrypoint",
     )
 
-    provision = (asset_root / "postgres-provision.sh").read_text(encoding="utf-8")
-    gate("postgres_role_separation", all(token in provision for token in ("mentorflow_migrator", "mentorflow_app", "mentorflow_keycloak", "NOSUPERUSER", "NOBYPASSRLS", "ALTER DATABASE mentorflow OWNER TO mentorflow_migrator")), "role separation is incomplete")
-    provision_environment = services["postgres-provision"].get("environment", {})
+    provision = (asset_root / "postgres-provision.py").read_text(encoding="utf-8")
+    gate("postgres_role_separation", all(token in provision for token in ("mentorflow_migrator", "mentorflow_app", "mentorflow_keycloak", "NOSUPERUSER", "NOBYPASSRLS", "ALTER DATABASE")), "role separation is incomplete")
     gate(
         "postgres_provision_explicit_tcp_authority",
-        provision_environment == {"PGHOST": "postgres", "PGPORT": "5432"}
-        and provision.count('--host "${PGHOST:?PGHOST is required}"') == 2
-        and provision.count('--port "${PGPORT:?PGPORT is required}"') == 2,
+        '"host": "postgres"' in provision
+        and '"port": 5432' in provision
+        and provision.count("_connection_kwargs(") >= 3
+        and services["postgres-provision"].get("user") == "10001:10001"
+        and "PGPASSWORD" not in compose_text,
         "postgres-provision must authenticate over the explicit postgres:5432 Compose authority",
+    )
+    gate(
+        "postgres_provision_fail_closed",
+        all(
+            token in provision
+            for token in (
+                "SECRET_UNREADABLE",
+                "SECRET_EMPTY",
+                "POSTGRES_PROVISION_FAILED",
+                "receipt = provision()",
+            )
+        )
+        and "export " not in provision
+        and not (asset_root / "postgres-provision.sh").exists(),
+        "secret reads and SQL must complete before the PASS receipt is emitted",
     )
     runtime_path = asset_root / "runtime-entrypoint.py"
     runtime = runtime_path.read_text(encoding="utf-8")
@@ -555,13 +647,14 @@ def verify(root: Path) -> dict:
     gate(
         "backend_tls_public_certificate_uid_contract",
         tls_ready.get("user") == "0:0"
-        and set(tls_ready.get("secrets", [])) == {"tls_certificate"}
-        and "tls_private_key" not in tls_ready.get("secrets", [])
-        and set(tls_ready.get("cap_add", [])) == {"DAC_READ_SEARCH"}
+        and not tls_ready.get("secrets")
+        and set(tls_ready.get("cap_drop", [])) == {"ALL"}
+        and not tls_ready.get("cap_add")
+        and "/run/secrets" in tls_ready_volumes
         and "/run/mentorflow/tls" in tls_ready_volumes
         and backend.get("environment", {}).get("SSL_CERT_FILE")
         == "/run/mentorflow/tls/tls.crt"
-        and set(backend.get("secrets", [])) == {"postgres_app_password"}
+        and not backend.get("secrets")
         and backend_volumes.get("/run/mentorflow/tls", {}).get("read_only") is True
         and _condition(compose, "backend", "backend-tls-ready")
         == "service_completed_successfully",
@@ -569,8 +662,9 @@ def verify(root: Path) -> dict:
     )
     gate(
         "backend_private_key_denied",
-        "tls_private_key" not in backend.get("secrets", [])
-        and "tls_private_key" not in tls_ready.get("secrets", []),
+        'SecretTarget("tls_private_key", "backend"' not in materializer_source
+        and 'SecretTarget("tls_private_key", "backend-tls-ready"'
+        not in materializer_source,
         "backend and its trust-anchor one-shot must not receive the TLS private key",
     )
     worker_tmpfs = {entry["target"]: entry for entry in _tmpfs_entries(services["worker"].get("tmpfs"))}
@@ -580,6 +674,65 @@ def verify(root: Path) -> dict:
         and worker_tmpfs.get("/run/mentorflow", {}).get("options", {}).get("uid") == "10001"
         and worker_tmpfs.get("/run/mentorflow", {}).get("options", {}).get("gid") == "10001",
         "worker readiness tmpfs must be private and writable by UID/GID 10001",
+    )
+    health_source = (
+        root / "backend" / "app" / "observability" / "health.py"
+    ).read_text(encoding="utf-8")
+    gate(
+        "postgres_health_uses_canonical_sqlalchemy_engine",
+        "orm.engine.connect()" in health_source
+        and 'sa.text("SELECT 1")' in health_source
+        and "psycopg.connect(url" not in health_source
+        and "?connect_timeout=2" in runtime,
+        "PostgreSQL health must reuse the configured SQLAlchemy engine with a bounded driver timeout",
+    )
+    gate(
+        "worker_dependency_uses_real_heartbeat",
+        "procrastinate_workers" in health_source
+        and "last_heartbeat" in health_source
+        and "MENTORFLOW_WORKER_DEPENDENCIES_READY" not in health_source,
+        "backend readiness must derive worker state from a fresh Procrastinate heartbeat",
+    )
+    gate(
+        "object_store_optional_disabled_profile",
+        services["backend"].get("environment", {}).get(
+            "MENTORFLOW_OBJECT_STORE_PROFILE"
+        )
+        == "OPTIONAL_DISABLED"
+        and "OBJECT_STORE_DISABLED_NOT_REQUIRED" in health_source
+        and "required=enterprise_required and not object_store_optional_disabled"
+        in health_source,
+        "RP-05 object storage must be explicitly disabled and non-required",
+    )
+    gate(
+        "worker_health_bounded_authority",
+        worker_entry.index("read_readiness(", worker_entry.index("def _health"))
+        < worker_entry.index("verify_worker_database(engine)", worker_entry.index("def _health"))
+        and "_build_runtime(config, engine)" not in worker_entry[
+            worker_entry.index("def _health") : worker_entry.index("def _schema_apply")
+        ]
+        and "_check_connection(app)" not in worker_entry[
+            worker_entry.index("def _health") : worker_entry.index("def _schema_apply")
+        ]
+        and services["worker"].get("healthcheck", {}).get("timeout") == "8s",
+        "worker health must perform one readiness read plus one bounded schema/DB verification",
+    )
+    gate(
+        "worker_docling_runtime_closure",
+        services["worker"].get("environment", {}).get(
+            "MENTORFLOW_WORKER_DOCUMENT_RUNTIME_REQUIRED"
+        )
+        == "true"
+        and all(
+            services["worker"].get("environment", {}).get(name) == "1"
+            for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE", "PIP_NO_INDEX")
+        )
+        and "FROM document-runtime-base AS worker-image" in dockerfile
+        and "FROM document-runtime-base AS document-worker-image" in dockerfile
+        and "requirements-documents.txt" in dockerfile
+        and "_require_document_runtime(source)" in worker_entry
+        and 'importlib.import_module("docling.document_converter")' in worker_entry,
+        "enabled document ingestion requires the pinned Docling runtime without startup downloads",
     )
 
     otel = _yaml(asset_root / "otel-collector.yml")
@@ -735,8 +888,11 @@ def verify(root: Path) -> dict:
             "access_log off;" in oidc_proxy,
             "error_log /dev/stderr warn;" in oidc_proxy,
             "lock_file" not in oidc_proxy,
-            oidc_service.get("volumes")
-            == ["./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro"],
+            set(oidc_service.get("volumes", []))
+            == {
+                "./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro",
+                "oidc_proxy_secrets:/run/secrets:ro",
+            },
             nginx_image_contract,
         )
     )
@@ -1017,8 +1173,9 @@ def verify(root: Path) -> dict:
                 "ssl_protocols TLSv1.2 TLSv1.3",
             )
         )
-        and set(oidc_service.get("secrets", []))
-        == {"tls_certificate", "tls_private_key"},
+        and not oidc_service.get("secrets")
+        and "oidc_proxy_secrets:/run/secrets:ro"
+        in oidc_service.get("volumes", []),
         "OIDC bridge must expose only the verified TLS loopback listener",
     )
     gate(
@@ -1067,10 +1224,26 @@ def verify(root: Path) -> dict:
                 '"oidc-ready"',
                 '"pkce_browser_flow_url"',
                 '"code_challenge_method": "S256"',
-                "public HTTPS startup probe returned a non-JSON response",
+                "public HTTPS readiness probe returned a non-JSON response",
+                '"OBJECT_STORE_DISABLED_NOT_REQUIRED"',
+                '"WORKER_DEPENDENCIES_READY"',
             )
         ),
         "readiness must execute the backend OIDC endpoint contract, a public PKCE flow, and reject SPA health false positives",
+    )
+    gate(
+        "secret_materialization_orchestrator",
+        all(
+            token in orchestrator
+            for token in (
+                "def _materialize_secrets(",
+                '"runtime-secrets-ready"',
+                '"materialize-secrets"',
+                '"mentorflow.rp05-secret-materialization.v1"',
+            )
+        )
+        and orchestrator.count("_materialize_secrets(release)") >= 3,
+        "migrate and startup must rerun the bounded secret materializer",
     )
     gate(
         "restart_service_discovery_orchestrator",

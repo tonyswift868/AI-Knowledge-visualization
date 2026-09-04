@@ -86,10 +86,11 @@ def test_recovery_compose_preserves_bounded_uid_and_secret_contracts() -> None:
         "SETGID",
         "SETUID",
     }
-    assert services["postgres-provision"]["environment"] == {
-        "PGHOST": "postgres",
-        "PGPORT": "5432",
-    }
+    assert services["postgres-provision"]["user"] == "10001:10001"
+    assert services["postgres-provision"]["command"] == [
+        "python",
+        "/opt/mentorflow/rp05/postgres-provision.py",
+    ]
     assert "/run/mentorflow:size=16m,mode=0700,uid=10001,gid=10001" in services[
         "worker"
     ]["tmpfs"]
@@ -97,10 +98,11 @@ def test_recovery_compose_preserves_bounded_uid_and_secret_contracts() -> None:
     tls_ready = services["backend-tls-ready"]
     backend = services["backend"]
     assert tls_ready["user"] == "0:0"
-    assert set(tls_ready["secrets"]) == {"tls_certificate"}
-    assert set(tls_ready["cap_add"]) == {"DAC_READ_SEARCH"}
+    assert not tls_ready.get("secrets")
+    assert "backend_tls_source:/run/secrets:ro" in tls_ready["volumes"]
     assert backend["environment"]["SSL_CERT_FILE"] == "/run/mentorflow/tls/tls.crt"
-    assert set(backend["secrets"]) == {"postgres_app_password"}
+    assert not backend.get("secrets")
+    assert "backend_secrets:/run/secrets:ro" in backend["volumes"]
     assert "tls_private_key" not in json.dumps({"tls_ready": tls_ready, "backend": backend})
 
 
@@ -219,13 +221,23 @@ def test_static_recovery_seam_verifier_covers_every_active_contract() -> None:
     required = {
         "compose_tmpfs_all_services",
         "postgres_fresh_volume_capabilities",
+        "secret_materializer_capability_contract",
+        "secret_consumer_volume_isolation",
+        "secret_effective_permission_receipt",
+        "secret_materialization_orchestrator",
+        "postgres_provision_fail_closed",
         "postgres_provision_explicit_tcp_authority",
+        "postgres_health_uses_canonical_sqlalchemy_engine",
         "keycloak_build_time_optimization",
         "keycloak_optimized_image_release_contract",
         "keycloak_single_public_url_authority",
         "backend_tls_public_certificate_uid_contract",
         "backend_private_key_denied",
         "worker_readiness_uid_tmpfs",
+        "worker_health_bounded_authority",
+        "worker_dependency_uses_real_heartbeat",
+        "worker_docling_runtime_closure",
+        "object_store_optional_disabled_profile",
         "procrastinate_connector_separation",
         "edge_read_only_cache_contract",
         "edge_health_is_backend_not_spa",
@@ -265,7 +277,31 @@ def test_readiness_executes_real_jwks_transport_and_validates_public_health(
             return None
 
         def read(self) -> bytes:
-            return b'{"status":"ok"}'
+            return json.dumps(
+                {
+                    "status": "ready",
+                    "started": True,
+                    "dependencies": [
+                        {
+                            "name": name,
+                            "ready": True,
+                            "required": True,
+                            "code": code,
+                            "duration_ms": 1,
+                        }
+                        for name, code in rp05_staging.FULL_READINESS_CODES.items()
+                    ]
+                    + [
+                        {
+                            "name": "object_store",
+                            "ready": False,
+                            "required": False,
+                            "code": "OBJECT_STORE_DISABLED_NOT_REQUIRED",
+                            "duration_ms": 0,
+                        }
+                    ],
+                }
+            ).encode("utf-8")
 
     monkeypatch.setattr(
         rp05_staging,

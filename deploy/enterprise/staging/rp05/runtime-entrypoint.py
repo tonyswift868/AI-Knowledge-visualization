@@ -30,7 +30,10 @@ def _secret(name: str) -> str:
 
 def _database_url(role: str, secret_name: str) -> str:
     password = quote(_secret(secret_name), safe="")
-    return f"postgresql+psycopg://{role}:{password}@postgres:5432/mentorflow"
+    return (
+        f"postgresql+psycopg://{role}:{password}@postgres:5432/mentorflow"
+        "?connect_timeout=2"
+    )
 
 
 def _runtime_environment(*, migration: bool = False) -> dict[str, str]:

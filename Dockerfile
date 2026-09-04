@@ -84,18 +84,20 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1"]
 
-FROM backend-base AS worker-image
-LABEL org.opencontainers.image.title="MentorFlow durable worker"
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD ["python", "-m", "app.enterprise.worker_entry", "health"]
-CMD ["python", "-m", "app.enterprise.worker_entry", "run"]
-
-FROM backend-base AS document-worker-image
+FROM backend-base AS document-runtime-base
 USER root
 COPY --from=document-worker-wheels /wheels /wheels
 COPY backend/requirements-documents.txt /app/backend/requirements-documents.txt
 RUN python -m pip install --no-index --find-links=/wheels -r /app/backend/requirements-documents.txt && rm -rf /wheels
 USER 10001:10001
+
+FROM document-runtime-base AS worker-image
+LABEL org.opencontainers.image.title="MentorFlow durable worker"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD ["python", "-m", "app.enterprise.worker_entry", "health"]
+CMD ["python", "-m", "app.enterprise.worker_entry", "run"]
+
+FROM document-runtime-base AS document-worker-image
 LABEL org.opencontainers.image.title="MentorFlow document worker"
 CMD ["python", "-X", "utf8", "-m", "app.sources.document.ingestion.worker", "--serve", "--config", "/run/mentorflow/document-worker-config.json"]
 

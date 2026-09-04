@@ -419,7 +419,8 @@ def test_worker_image_and_release_workflow_are_digest_capable() -> None:
     workflow = (
         REPO_ROOT / ".github" / "workflows" / "container-release.yml"
     ).read_text(encoding="utf-8")
-    assert "FROM backend-base AS worker-image" in dockerfile
+    assert "FROM document-runtime-base AS worker-image" in dockerfile
+    assert "FROM document-runtime-base AS document-worker-image" in dockerfile
     assert '"app.enterprise.worker_entry", "health"' in dockerfile
     assert '"app.enterprise.worker_entry", "run"' in dockerfile
     assert "backend frontend document-worker worker" in workflow

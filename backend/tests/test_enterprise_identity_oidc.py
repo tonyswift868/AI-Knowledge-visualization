@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -344,6 +345,76 @@ def test_authorization_code_login_uses_pkce_nonce_and_one_time_state(signing_key
     assert seen_form["grant_type"] == "authorization_code"
     assert session.principal.subject == "account-001"
     assert replay_code == "OIDC_STATE_INVALID"
+
+
+def test_worker_token_is_rejected_while_supported_user_pkce_token_is_accepted(
+    signing_keys,
+) -> None:
+    trusted, _ = signing_keys
+    adapter = _adapter(trusted.public_key())
+    service_token = _token(
+        trusted,
+        claims=_claims(
+            azp="mentorflow-worker",
+            preferred_username="service-account-mentorflow-worker",
+        ),
+    )
+    with pytest.raises(IdentityError) as rejected:
+        asyncio.run(adapter.validate_access_token(service_token))
+    assert rejected.value.code == "OIDC_AUTHORIZED_PARTY_INVALID"
+
+    authorization: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        form = parse_qs(request.content.decode("utf-8"))
+        assert form["grant_type"] == ["authorization_code"]
+        assert form["code_verifier"][0]
+        return httpx.Response(
+            200,
+            json={
+                "access_token": _token(trusted),
+                "id_token": _token(
+                    trusted,
+                    claims=_claims(aud=CLIENT_ID, nonce=authorization["nonce"]),
+                ),
+                "refresh_token": "opaque-refresh-token",
+                "refresh_expires_in": 1_800,
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = KeycloakOidcClient(
+                EnterpriseIdentityConfig(
+                    mode=TenantMode.ENTERPRISE_SERVER,
+                    keycloak=_config(),
+                ),
+                oidc=adapter,
+                http_client=http,
+            )
+            query = parse_qs(urlparse(await client.begin_login()).query)
+            authorization.update({key: value[0] for key, value in query.items()})
+            return await client.complete_login(
+                code="supported-user-code",
+                state=authorization["state"],
+            )
+
+    session = asyncio.run(scenario())
+    assert authorization["response_type"] == "code"
+    assert authorization["code_challenge_method"] == "S256"
+    assert session.principal.actor_kind is ActorKind.HUMAN
+    assert session.principal.subject == "account-001"
+    assert session.principal.client_id == CLIENT_ID
+    realm = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "deploy"
+            / "enterprise"
+            / "config"
+            / "keycloak-realm.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert sum(bool(client["directAccessGrantsEnabled"]) for client in realm["clients"]) == 0
 
 
 def test_pending_login_capacity_evicts_oldest_transaction() -> None:

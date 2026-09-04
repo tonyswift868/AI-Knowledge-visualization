@@ -304,7 +304,8 @@ def test_container_and_sbom_consume_the_authoritative_dependency_truth() -> None
     assert "COPY backend/requirements.txt ./requirements.txt" in dockerfile
     assert "pip wheel --wheel-dir /wheels -r requirements.txt" in dockerfile
     assert "FROM backend-base AS backend-image" in dockerfile
-    assert "FROM backend-base AS worker-image" in dockerfile
-    assert "FROM backend-base AS document-worker-image" in dockerfile
+    assert "FROM backend-base AS document-runtime-base" in dockerfile
+    assert "FROM document-runtime-base AS worker-image" in dockerfile
+    assert "FROM document-runtime-base AS document-worker-image" in dockerfile
     assert 'PYTHON_LOCK = ROOT / "backend" / "requirements.lock.txt"' in sbom_generator
     assert 'PYTHON_DIRECT = ROOT / "backend" / "requirements.txt"' in sbom_generator
