@@ -1,10 +1,23 @@
 import os
+import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_dynamic_libs,
+    collect_submodules,
+    copy_metadata,
+)
 
 
 root = Path.cwd()
+backend_root = root / "backend"
+# Desktop runtime imports the canonical backend namespace as ``app`` after
+# selecting the account-scoped data root.  Make that same namespace visible
+# while PyInstaller enumerates hidden imports; collecting ``backend.app``
+# creates a second, unusable module identity and misses dynamic ``app.*``
+# imports such as the cost boundaries.
+sys.path.insert(0, str(backend_root))
 datas = [
     (str(root / "backend" / "alembic" / "env.py"), "backend/alembic"),
     (str(root / "backend" / "alembic" / "script.py.mako"), "backend/alembic"),
@@ -88,8 +101,21 @@ for catalog_relative in (
 # ignored ``__pycache__`` entries.  Add only the tracked migration sources.
 for migration in sorted((root / "backend" / "alembic" / "versions").glob("*.py")):
     datas.append((str(migration), "backend/alembic/versions"))
-binaries = []
-hiddenimports = collect_submodules("backend.app") + collect_submodules("keyring.backends")
+# ``desktop.runtime`` activates an account-scoped data root before importing
+# ``app.main`` and deliberately exposes ``_internal/backend`` as the canonical
+# import root.  Keep the tracked application sources at that runtime location;
+# hidden imports in the PYZ alone are not discoverable through this boundary in
+# the frozen process.
+for app_source in sorted((backend_root / "app").rglob("*.py")):
+    relative_parent = app_source.relative_to(backend_root).parent
+    destination = Path("backend") / relative_parent
+    datas.append((str(app_source), destination.as_posix()))
+
+# OR-Tools native extensions depend on the DLLs shipped in ``ortools/.libs``.
+# Preserve that wheel layout so its existing fail-closed preloader can resolve
+# the exact bundled libraries before CP-SAT is imported.
+binaries = collect_dynamic_libs("ortools")
+hiddenimports = collect_submodules("app") + collect_submodules("keyring.backends")
 
 for package in ("docling", "rapidocr", "instructor", "yt_dlp"):
     package_datas, package_binaries, package_hidden = collect_all(package)
@@ -105,7 +131,7 @@ for package in ("keyring", "argon2-cffi", "docling", "instructor", "yt-dlp"):
 
 a = Analysis(
     [str(root / "desktop_entry.py")],
-    pathex=[str(root)],
+    pathex=[str(root), str(backend_root)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -115,6 +141,23 @@ a = Analysis(
     excludes=["pytest", "playwright"],
     noarchive=False,
 )
+
+# Qt 6 on supported Windows releases resolves the platform ICU shim from
+# System32.  Some optional document dependencies can make PyInstaller collect
+# an unrelated versioned ICU pair at the package root under the same generic
+# ``icuuc.dll`` name.  That file wins DLL search order and makes QtCore fail
+# with ERROR_PROC_NOT_FOUND before the Desktop UI can start.  No packaged
+# extension imports the versioned data DLL directly; keep the conflicting
+# pair out of the root so Qt loads the Windows platform shim it was built for.
+_conflicting_root_icu = {"icuuc.dll", "icudt78.dll"}
+a.binaries = [
+    entry
+    for entry in a.binaries
+    if not (
+        Path(str(entry[0])).parent == Path(".")
+        and Path(str(entry[0])).name.casefold() in _conflicting_root_icu
+    )
+]
 pyz = PYZ(a.pure)
 
 exe = EXE(
