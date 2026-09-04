@@ -14,6 +14,11 @@ import sqlalchemy as sa
 
 Probe = Callable[[], tuple[bool, str]]
 
+ACCOUNT_CORE_MVP_PROFILE = "ACCOUNT_CORE_MVP"
+REQUIRED_AND_HEALTHY = "REQUIRED_AND_HEALTHY"
+REQUIRED_AND_UNHEALTHY = "REQUIRED_AND_UNHEALTHY"
+NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP = "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP"
+
 
 @dataclass(frozen=True, slots=True)
 class DependencyResult:
@@ -22,19 +27,27 @@ class DependencyResult:
     code: str
     duration_ms: int
     required: bool
+    requirement_state: str | None = None
 
 
 class HealthRegistry:
     def __init__(self) -> None:
         self.started = False
         self._probes: dict[str, tuple[Probe, bool]] = {}
+        self._not_required: set[str] = set()
+        self.runtime_profile: str | None = None
 
     def register(self, name: str, probe: Probe, *, required: bool = True) -> None:
         self._probes[name] = (probe, required)
 
+    def register_not_required(self, name: str) -> None:
+        self._not_required.add(str(name))
+
     def clear(self) -> None:
         self.started = False
         self._probes.clear()
+        self._not_required.clear()
+        self.runtime_profile = None
 
     def results(self) -> list[DependencyResult]:
         results: list[DependencyResult] = []
@@ -44,7 +57,32 @@ class HealthRegistry:
                 ready, code = probe()
             except Exception:
                 ready, code = False, "PROBE_FAILED"
-            results.append(DependencyResult(name, bool(ready), str(code)[:64], max(0, int((time.perf_counter() - started) * 1000)), required))
+            profile_state = None
+            if self.runtime_profile == ACCOUNT_CORE_MVP_PROFILE and required:
+                profile_state = (
+                    REQUIRED_AND_HEALTHY if ready else REQUIRED_AND_UNHEALTHY
+                )
+            results.append(
+                DependencyResult(
+                    name,
+                    bool(ready),
+                    str(code)[:64],
+                    max(0, int((time.perf_counter() - started) * 1000)),
+                    required,
+                    profile_state,
+                )
+            )
+        for name in sorted(self._not_required):
+            results.append(
+                DependencyResult(
+                    name=name,
+                    ready=False,
+                    code=NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP,
+                    duration_ms=0,
+                    required=False,
+                    requirement_state=NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP,
+                )
+            )
         return results
 
     def readiness(self) -> dict[str, object]:
@@ -53,7 +91,15 @@ class HealthRegistry:
         return {
             "status": "ready" if ready else "not_ready",
             "started": self.started,
-            "dependencies": [asdict(item) for item in dependencies],
+            "runtime_profile": self.runtime_profile,
+            "dependencies": [
+                {
+                    key: value
+                    for key, value in asdict(item).items()
+                    if key != "requirement_state" or value is not None
+                }
+                for item in dependencies
+            ],
         }
 
 
@@ -85,7 +131,13 @@ def _keycloak_probe() -> tuple[bool, str]:
         import httpx
         response = httpx.get(discovery, timeout=2.0, follow_redirects=False)
         payload = response.json() if response.status_code == 200 else {}
-        return (response.status_code == 200 and bool(payload.get("issuer")), "KEYCLOAK_DISCOVERY_OK" if response.status_code == 200 else "KEYCLOAK_DISCOVERY_UNREACHABLE")
+        ready = response.status_code == 200 and bool(payload.get("issuer"))
+        return (
+            ready,
+            "KEYCLOAK_DISCOVERY_OK"
+            if ready
+            else "KEYCLOAK_DISCOVERY_UNREACHABLE",
+        )
     except Exception:
         return False, "KEYCLOAK_DISCOVERY_UNREACHABLE"
 
@@ -150,31 +202,68 @@ def _otel_collector_probe() -> tuple[bool, str]:
     return probe_collector_health()
 
 
-def configure_default_health_probes(*, enterprise_required: bool | None = None) -> None:
-    health_registry.clear()
+def configure_default_health_probes(
+    *,
+    enterprise_required: bool | None = None,
+    runtime_profile: str | None = None,
+    registry: HealthRegistry | None = None,
+) -> HealthRegistry:
+    target = registry or health_registry
+    target.clear()
+    resolved_profile = str(
+        runtime_profile or os.getenv("MENTORFLOW_RUNTIME_PROFILE") or ""
+    ).strip().upper()
+    if resolved_profile == ACCOUNT_CORE_MVP_PROFILE:
+        target.runtime_profile = ACCOUNT_CORE_MVP_PROFILE
+        target.register("postgres", _postgres_probe, required=True)
+        target.register("keycloak_discovery", _keycloak_probe, required=True)
+        for name in (
+            "ai_provider",
+            "assessment",
+            "document_ingestion",
+            "document_parsing",
+            "document_worker",
+            "object_store",
+            "otel_collector",
+            "teacher",
+            "web_frontend",
+            "worker_dependencies",
+        ):
+            target.register_not_required(name)
+        return target
     if enterprise_required is None:
         enterprise_required = str(os.getenv("MENTORFLOW_ENVIRONMENT") or "local").casefold() in {"staging", "production"}
-    health_registry.register("postgres", _postgres_probe, required=enterprise_required)
-    health_registry.register("keycloak_discovery", _keycloak_probe, required=enterprise_required)
+    target.register("postgres", _postgres_probe, required=enterprise_required)
+    target.register("keycloak_discovery", _keycloak_probe, required=enterprise_required)
     object_store_optional_disabled = (
         str(os.getenv("MENTORFLOW_OBJECT_STORE_PROFILE") or "").strip().upper()
         == "OPTIONAL_DISABLED"
         and not str(os.getenv("MENTORFLOW_OBJECT_STORE_ROOT") or "").strip()
         and not str(os.getenv("MENTORFLOW_OBJECT_STORE_HEALTH_URL") or "").strip()
     )
-    health_registry.register(
+    target.register(
         "object_store",
         _object_store_probe,
         required=enterprise_required and not object_store_optional_disabled,
     )
-    health_registry.register("worker_dependencies", _worker_probe, required=enterprise_required)
+    target.register("worker_dependencies", _worker_probe, required=enterprise_required)
     from .runtime import otel_enabled
 
     if otel_enabled():
-        health_registry.register("otel_collector", _otel_collector_probe, required=True)
+        target.register("otel_collector", _otel_collector_probe, required=True)
+    return target
 
 
 health_registry = HealthRegistry()
 
 
-__all__ = ["DependencyResult", "HealthRegistry", "configure_default_health_probes", "health_registry"]
+__all__ = [
+    "ACCOUNT_CORE_MVP_PROFILE",
+    "DependencyResult",
+    "HealthRegistry",
+    "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP",
+    "REQUIRED_AND_HEALTHY",
+    "REQUIRED_AND_UNHEALTHY",
+    "configure_default_health_probes",
+    "health_registry",
+]

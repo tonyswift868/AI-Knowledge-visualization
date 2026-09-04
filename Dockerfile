@@ -101,6 +101,21 @@ FROM document-runtime-base AS document-worker-image
 LABEL org.opencontainers.image.title="MentorFlow document worker"
 CMD ["python", "-X", "utf8", "-m", "app.sources.document.ingestion.worker", "--serve", "--config", "/run/mentorflow/document-worker-config.json"]
 
+FROM ${NGINX_BASE_IMAGE} AS account-core-edge-image
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+ARG APP_VERSION=0.0.0
+LABEL org.opencontainers.image.title="MentorFlow Account Core edge" \
+      org.opencontainers.image.vendor="MentorFlow" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/tonyswift868/AI-Knowledge-visualization"
+COPY deploy/enterprise/staging/rp05/account-core-edge.conf /etc/nginx/nginx.conf
+USER 101:101
+EXPOSE 8443
+CMD ["nginx", "-g", "daemon off;"]
+
 FROM ${NGINX_BASE_IMAGE} AS frontend-image
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown

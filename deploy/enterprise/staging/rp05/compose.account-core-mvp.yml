@@ -1,0 +1,348 @@
+name: "${MENTORFLOW_COMPOSE_PROJECT:?MENTORFLOW_COMPOSE_PROJECT is required}"
+
+x-account-core-profile: &account-core-profile
+  profiles: [account-core-mvp]
+
+x-locked-service: &locked-service
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  networks: [internal]
+
+x-account-core-environment: &account-core-environment
+  MENTORFLOW_DEPLOYMENT_MODE: ENTERPRISE_SERVER
+  MENTORFLOW_RUNTIME_PROFILE: ACCOUNT_CORE_MVP
+  MENTORFLOW_ENVIRONMENT: staging
+  MENTORFLOW_KEYCLOAK_ISSUER: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}/realms/mentorflow"
+  MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER: "https://${MENTORFLOW_PUBLIC_HOSTNAME:?MENTORFLOW_PUBLIC_HOSTNAME is required}:18080/realms/mentorflow"
+  MENTORFLOW_KEYCLOAK_DISCOVERY_URL: http://keycloak:8080/realms/mentorflow/.well-known/openid-configuration
+  MENTORFLOW_KEYCLOAK_REDIRECT_URI: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}/api/enterprise/auth/callback"
+  MENTORFLOW_KEYCLOAK_POST_LOGOUT_REDIRECT_URI: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}/"
+  MENTORFLOW_KEYCLOAK_CLIENT_ID: mentorflow-web
+  MENTORFLOW_KEYCLOAK_AUDIENCE: mentorflow-api
+  MENTORFLOW_IDENTITY_ALLOWED_ORIGINS: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+  MENTORFLOW_OTEL_ENABLED: "false"
+  MENTORFLOW_OBJECT_STORE_PROFILE: OPTIONAL_DISABLED
+
+services:
+  runtime-secrets-ready:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "0:0"
+    command: [python, /opt/mentorflow/rp05/secret-materializer.py]
+    environment:
+      MENTORFLOW_RUNTIME_PROFILE: ACCOUNT_CORE_MVP
+    secrets:
+      - postgres_admin_password
+      - postgres_migrator_password
+      - postgres_app_password
+      - keycloak_db_password
+      - keycloak_admin_password
+      - bff_client_secret
+      - worker_client_secret
+      - tls_certificate
+      - tls_private_key
+    volumes:
+      - ./secret-materializer.py:/opt/mentorflow/rp05/secret-materializer.py:ro
+      - postgres_secrets:/materialized/postgres
+      - postgres_provision_secrets:/materialized/postgres-provision
+      - keycloak_secrets:/materialized/keycloak
+      - keycloak_ready_secrets:/materialized/keycloak-ready
+      - migrate_secrets:/materialized/migrate
+      - migration_ready_secrets:/materialized/migration-ready
+      - backend_secrets:/materialized/backend
+      - backend_tls_source:/materialized/backend-tls-ready
+      - oidc_proxy_secrets:/materialized/oidc-loopback-proxy
+      - edge_secrets:/materialized/edge
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=0700]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+
+  postgres:
+    <<: [*account-core-profile, *locked-service]
+    image: "${POSTGRES_IMAGE:?POSTGRES_IMAGE is required}"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    volumes:
+      - "${MENTORFLOW_DATA_DIR:?MENTORFLOW_DATA_DIR is required}/postgres:/var/lib/postgresql/data"
+      - postgres_secrets:/run/secrets:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/run/postgresql:size=64m,mode=1777
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+    mem_limit: 768m
+    cpus: 0.75
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    depends_on:
+      runtime-secrets-ready: {condition: service_completed_successfully}
+
+  postgres-provision:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "10001:10001"
+    command: [python, /opt/mentorflow/rp05/postgres-provision.py]
+    volumes:
+      - ./postgres-provision.py:/opt/mentorflow/rp05/postgres-provision.py:ro
+      - postgres_provision_secrets:/run/secrets:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=32m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+
+  keycloak:
+    <<: [*account-core-profile, *locked-service]
+    image: "${KEYCLOAK_IMAGE:?KEYCLOAK_IMAGE is required}"
+    user: "1000:0"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - >-
+        KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /run/secrets/keycloak_admin_password)";
+        test -n "$$KC_BOOTSTRAP_ADMIN_PASSWORD";
+        KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)";
+        test -n "$$KC_DB_PASSWORD";
+        MENTORFLOW_BFF_CLIENT_SECRET="$$(cat /run/secrets/bff_client_secret)";
+        test -n "$$MENTORFLOW_BFF_CLIENT_SECRET";
+        MENTORFLOW_WORKER_CLIENT_SECRET="$$(cat /run/secrets/worker_client_secret)";
+        test -n "$$MENTORFLOW_WORKER_CLIENT_SECRET";
+        export KC_BOOTSTRAP_ADMIN_PASSWORD KC_DB_PASSWORD MENTORFLOW_BFF_CLIENT_SECRET MENTORFLOW_WORKER_CLIENT_SECRET;
+        test -f /opt/keycloak/conf/mentorflow-optimized-v1;
+        exec /opt/keycloak/bin/kc.sh start --optimized --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN_USERNAME:-mentorflow-staging-admin}"
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: mentorflow_keycloak
+      KC_DB_USERNAME: mentorflow_keycloak
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+      KC_HOSTNAME_STRICT: "true"
+      KC_PROXY_HEADERS: xforwarded
+      JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=35
+      MENTORFLOW_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+      MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+    volumes:
+      - ../../config/keycloak-realm.json:/opt/keycloak/data/import/mentorflow-realm.json:ro
+      - keycloak_secrets:/run/secrets:ro
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /opt/keycloak/data/tmp:size=128m,mode=1777
+    depends_on:
+      postgres-provision: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD-SHELL, "bash -ec \"exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+    mem_limit: 896m
+    cpus: 0.75
+
+  keycloak-ready:
+    <<: *account-core-profile
+    image: "${KEYCLOAK_IMAGE:?KEYCLOAK_IMAGE is required}"
+    user: "1000:0"
+    entrypoint: [/bin/sh, /opt/mentorflow/rp05/keycloak-ready.sh]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN_USERNAME:-mentorflow-staging-admin}"
+      MENTORFLOW_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
+    volumes:
+      - ./keycloak-ready.sh:/opt/mentorflow/rp05/keycloak-ready.sh:ro
+      - keycloak_ready_secrets:/run/secrets:ro
+    depends_on:
+      keycloak: {condition: service_healthy}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=32m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+
+  migrate:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "10001:10001"
+    working_dir: /app/backend
+    command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, migrate]
+    volumes:
+      - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - migrate_secrets:/run/secrets:ro
+    depends_on:
+      postgres-provision: {condition: service_completed_successfully}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=128m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+
+  migration-ready:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "10001:10001"
+    working_dir: /app/backend
+    command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, account-core-verify]
+    volumes:
+      - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - migration_ready_secrets:/run/secrets:ro
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=64m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+
+  backend-tls-ready:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "0:0"
+    entrypoint: [python, -c]
+    command:
+      - >-
+        import os, pathlib, ssl;
+        source=pathlib.Path('/run/secrets/tls_certificate');
+        target=pathlib.Path('/run/mentorflow/tls/tls.crt');
+        temporary=target.with_suffix('.tmp');
+        payload=source.read_bytes();
+        target.parent.mkdir(parents=True,exist_ok=True);
+        temporary.write_bytes(payload);
+        os.chmod(temporary,0o444);
+        os.replace(temporary,target);
+        ssl.create_default_context(cafile=str(target))
+    volumes:
+      - backend_tls_source:/run/secrets:ro
+      - backend_tls:/run/mentorflow/tls
+    depends_on:
+      runtime-secrets-ready: {condition: service_completed_successfully}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+
+  backend:
+    <<: [*account-core-profile, *locked-service]
+    image: "${MENTORFLOW_BACKEND_IMAGE:?MENTORFLOW_BACKEND_IMAGE is required}"
+    user: "10001:10001"
+    command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, account-core-backend]
+    environment:
+      <<: *account-core-environment
+      SSL_CERT_FILE: /run/mentorflow/tls/tls.crt
+    volumes:
+      - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - backend_tls:/run/mentorflow/tls:ro
+      - backend_secrets:/run/secrets:ro
+    extra_hosts:
+      - "${MENTORFLOW_PUBLIC_HOSTNAME:?MENTORFLOW_PUBLIC_HOSTNAME is required}:127.0.0.1"
+    depends_on:
+      migration-ready: {condition: service_completed_successfully}
+      keycloak-ready: {condition: service_completed_successfully}
+      backend-tls-ready: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/startup',timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 16
+      start_period: 15s
+    tmpfs: [/tmp:size=64m,mode=1777]
+    mem_limit: 384m
+    cpus: 0.5
+
+  oidc-loopback-proxy:
+    <<: *account-core-profile
+    image: "${MENTORFLOW_ACCOUNT_CORE_EDGE_IMAGE:?MENTORFLOW_ACCOUNT_CORE_EDGE_IMAGE is required}"
+    user: "101:101"
+    command: [nginx, -g, daemon off;]
+    network_mode: service:backend
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./oidc-loopback-proxy.conf:/etc/nginx/nginx.conf:ro
+      - oidc_proxy_secrets:/run/secrets:ro
+    healthcheck:
+      test: [CMD, nc, -z, 127.0.0.1, "18080"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/cache/nginx:size=8m,mode=0750,uid=101,gid=101
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.1
+
+  edge:
+    <<: [*account-core-profile, *locked-service]
+    image: "${MENTORFLOW_ACCOUNT_CORE_EDGE_IMAGE:?MENTORFLOW_ACCOUNT_CORE_EDGE_IMAGE is required}"
+    user: "101:101"
+    command: [nginx, -g, daemon off;]
+    ports: ["443:8443"]
+    volumes:
+      - ./account-core-edge.conf:/etc/nginx/nginx.conf:ro
+      - edge_secrets:/run/secrets:ro
+    depends_on:
+      backend: {condition: service_healthy}
+      keycloak-ready: {condition: service_completed_successfully}
+      oidc-loopback-proxy: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, --no-check-certificate, -O, /dev/null, https://127.0.0.1:8443/health/ready]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/cache/nginx:size=8m,mode=0750,uid=101,gid=101
+    mem_limit: 96m
+    cpus: 0.2
+    networks: [internal, edge]
+
+secrets:
+  postgres_admin_password: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/postgres_admin_password"}
+  postgres_migrator_password: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/postgres_migrator_password"}
+  postgres_app_password: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/postgres_app_password"}
+  keycloak_db_password: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/keycloak_db_password"}
+  keycloak_admin_password: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/keycloak_admin_password"}
+  bff_client_secret: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/bff_client_secret"}
+  worker_client_secret: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/worker_client_secret"}
+  tls_certificate: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/tls.crt"}
+  tls_private_key: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/tls.key"}
+
+volumes:
+  backend_tls: {}
+  postgres_secrets: {}
+  postgres_provision_secrets: {}
+  keycloak_secrets: {}
+  keycloak_ready_secrets: {}
+  migrate_secrets: {}
+  migration_ready_secrets: {}
+  backend_secrets: {}
+  backend_tls_source: {}
+  oidc_proxy_secrets: {}
+  edge_secrets: {}
+
+networks:
+  internal: {internal: true}
+  edge: {}

@@ -740,13 +740,30 @@ async def backchannel_logout(request: Request) -> Response:
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
-def install_enterprise_identity(app: FastAPI) -> None:
-    app.include_router(router)
+_ACCOUNT_CORE_IDENTITY_ROUTE_NAMES = frozenset({"me"})
+
+
+def _account_core_identity_router() -> APIRouter:
+    selected = APIRouter()
+    selected.routes.extend(
+        route
+        for route in router.routes
+        if route.name in _ACCOUNT_CORE_IDENTITY_ROUTE_NAMES
+    )
+    return selected
+
+
+def install_enterprise_identity(
+    app: FastAPI,
+    *,
+    account_core_only: bool = False,
+) -> None:
+    app.include_router(_account_core_identity_router() if account_core_only else router)
     # Imported lazily to keep the identity runtime independent from product
     # modules while installing the exact tenant-safe facade alongside it.
     from app.enterprise.product_bridge import install_enterprise_product_bridge
 
-    install_enterprise_product_bridge(app)
+    install_enterprise_product_bridge(app, account_core_only=account_core_only)
 
     async def _identity_error_handler(
         request: Request,
@@ -770,6 +787,7 @@ __all__ = [
     "LOGOUT_PATH",
     "ME_PATH",
     "REFRESH_PATH",
+    "_ACCOUNT_CORE_IDENTITY_ROUTE_NAMES",
     "build_enterprise_identity_runtime",
     "enterprise_route_is_tenant_ready",
     "identity_error_response",

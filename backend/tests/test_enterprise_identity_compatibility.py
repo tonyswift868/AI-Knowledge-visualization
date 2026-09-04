@@ -48,6 +48,7 @@ def test_realm_provisions_exact_clients_roles_pkce_audience_and_secret_reference
         "mentorflow-api",
         "mentorflow-web",
         "mentorflow-bff",
+        "mentorflow-desktop",
         "mentorflow-worker",
     }
 
@@ -71,6 +72,18 @@ def test_realm_provisions_exact_clients_roles_pkce_audience_and_secret_reference
     assert audience["config"]["included.client.audience"] == "mentorflow-api"
     assert audience["config"]["access.token.claim"] == "true"
     assert audience["config"]["id.token.claim"] == "false"
+
+    desktop = clients["mentorflow-desktop"]
+    assert desktop["publicClient"] is True
+    assert desktop["standardFlowEnabled"] is True
+    assert desktop["implicitFlowEnabled"] is False
+    assert desktop["directAccessGrantsEnabled"] is False
+    assert desktop["serviceAccountsEnabled"] is False
+    assert desktop["attributes"]["pkce.code.challenge.method"] == "S256"
+    assert desktop["redirectUris"] == ["http://127.0.0.1/oauth/callback"]
+    assert desktop["webOrigins"] == []
+    desktop_audience = desktop["protocolMappers"][0]
+    assert desktop_audience["config"]["included.client.audience"] == "mentorflow-api"
 
     bff = clients["mentorflow-bff"]
     worker = clients["mentorflow-worker"]

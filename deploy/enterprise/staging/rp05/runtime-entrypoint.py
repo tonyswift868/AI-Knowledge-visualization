@@ -237,6 +237,51 @@ def _oidc_ready() -> int:
     return 0
 
 
+def _verify_account_core() -> int:
+    """Verify only the canonical Account Core schema; never touch worker state."""
+
+    migration_env = _runtime_environment(migration=True)
+    code = _run_command(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            "alembic.ini",
+            "current",
+            "--check-heads",
+        ],
+        migration_env,
+        quiet=True,
+    )
+    if code:
+        return code
+
+    from app import orm
+    from app.enterprise_tenancy.schema import ENTERPRISE_MIGRATION_REVISION
+
+    app_env = _runtime_environment()
+    engine = orm.configure_enterprise_orm(app_env)
+    try:
+        orm.verify_enterprise_runtime_schema()
+    finally:
+        engine.dispose()
+    print(
+        json.dumps(
+            {
+                "schema_version": "mentorflow.account-core-migration-ready.v1",
+                "status": "PASS",
+                "alembic_target": ALEMBIC_UPGRADE_TARGET,
+                "repository_head": ENTERPRISE_MIGRATION_REVISION,
+                "worker_schema": "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return 0
+
+
 def _bounded_json_http_error(error: HTTPError, *, label: str) -> dict[str, object]:
     payload = error.read(OIDC_RESPONSE_LIMIT + 1)
     if len(payload) > OIDC_RESPONSE_LIMIT:
@@ -252,7 +297,11 @@ def _bounded_json_http_error(error: HTTPError, *, label: str) -> dict[str, objec
 
 def main() -> int:
     if len(sys.argv) != 2:
-        raise SystemExit("usage: runtime-entrypoint.py migrate|verify|otel-ready|oidc-ready|backend|worker|worker-health")
+        raise SystemExit(
+            "usage: runtime-entrypoint.py "
+            "migrate|verify|account-core-verify|otel-ready|oidc-ready|"
+            "backend|account-core-backend|worker|worker-health"
+        )
     action = sys.argv[1]
     if action == "migrate":
         return _exec(
@@ -269,6 +318,8 @@ def main() -> int:
         )
     if action == "verify":
         return _verify()
+    if action == "account-core-verify":
+        return _verify_account_core()
     if action == "otel-ready":
         return _otel_ready()
     if action == "oidc-ready":
@@ -276,6 +327,24 @@ def main() -> int:
     if action == "backend":
         return _exec(
             [sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"],
+            _runtime_environment(),
+        )
+    if action == "account-core-backend":
+        return _exec(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "app.account_core_mvp:app",
+                "--app-dir",
+                "/app/backend",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+                "--proxy-headers",
+                "--forwarded-allow-ips=*",
+            ],
             _runtime_environment(),
         )
     if action == "worker":

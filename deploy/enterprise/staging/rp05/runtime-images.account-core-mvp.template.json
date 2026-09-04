@@ -1,0 +1,9 @@
+{
+  "schema_version": "mentorflow.account-core-mvp-runtime-images.v1",
+  "images": {
+    "KEYCLOAK_IMAGE": "ghcr.io/example/mentorflow-keycloak@sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+    "MENTORFLOW_ACCOUNT_CORE_EDGE_IMAGE": "ghcr.io/example/mentorflow-account-core-edge@sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+    "MENTORFLOW_BACKEND_IMAGE": "ghcr.io/example/mentorflow-backend@sha256:REPLACE_WITH_64_LOWERCASE_HEX",
+    "POSTGRES_IMAGE": "postgres@sha256:REPLACE_WITH_64_LOWERCASE_HEX"
+  }
+}

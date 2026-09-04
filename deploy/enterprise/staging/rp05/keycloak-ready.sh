@@ -15,7 +15,7 @@ mkdir -p "$HOME"
 
 /opt/keycloak/bin/kcadm.sh get realms/mentorflow --config "$HOME/kcadm.config" --fields realm,enabled \
   | grep -q '"realm" : "mentorflow"'
-for client_id in mentorflow-api mentorflow-web mentorflow-bff mentorflow-worker; do
+for client_id in mentorflow-api mentorflow-web mentorflow-bff mentorflow-desktop mentorflow-worker; do
   /opt/keycloak/bin/kcadm.sh get clients --config "$HOME/kcadm.config" -r mentorflow -q "clientId=$client_id" --fields clientId,enabled \
     | grep -q "\"clientId\" : \"$client_id\""
 done
@@ -23,4 +23,9 @@ web_client="$(/opt/keycloak/bin/kcadm.sh get clients --config "$HOME/kcadm.confi
 printf '%s' "$web_client" | grep -Fq '"publicClient" : true'
 printf '%s' "$web_client" | grep -Fq "${MENTORFLOW_PUBLIC_ORIGIN}/api/enterprise/auth/callback"
 printf '%s' "$web_client" | grep -Fq "${MENTORFLOW_PUBLIC_ORIGIN}"
+desktop_client="$(/opt/keycloak/bin/kcadm.sh get clients --config "$HOME/kcadm.config" -r mentorflow -q clientId=mentorflow-desktop)"
+printf '%s' "$desktop_client" | grep -Fq '"publicClient" : true'
+printf '%s' "$desktop_client" | grep -Fq '"standardFlowEnabled" : true'
+printf '%s' "$desktop_client" | grep -Fq '"directAccessGrantsEnabled" : false'
+printf '%s' "$desktop_client" | grep -Fq 'http://127.0.0.1/oauth/callback'
 echo '{"schema_version":"mentorflow.rp05-keycloak-ready.v1","status":"PASS"}'

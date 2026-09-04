@@ -2,3 +2,4 @@ backend/tests/fixtures/document_learning/*.html text eol=lf
 backend/tests/fixtures/document_learning/*.md text eol=lf
 scripts/enterprise/*.sh text eol=lf
 deploy/enterprise/staging/*.sh text eol=lf
+deploy/enterprise/staging/rp05/*.sh text eol=lf

@@ -755,8 +755,36 @@ async def enterprise_teach_next(
         raise IdentityError(exc.code, exc.message, status=exc.status) from exc
 
 
-def install_enterprise_product_bridge(app: FastAPI) -> None:
-    app.include_router(router)
+_ACCOUNT_CORE_ROUTE_NAMES = frozenset(
+    {
+        "enterprise_account_asset_manifest",
+        "enterprise_account_metadata",
+        "enterprise_create_workspace",
+        "enterprise_get_goal",
+        "enterprise_get_workspace",
+        "enterprise_mark_account_asset_missing",
+        "enterprise_patch_goal",
+        "enterprise_put_account_progress",
+        "enterprise_select_documents",
+        "enterprise_set_goal",
+    }
+)
+
+
+def _account_core_router() -> APIRouter:
+    selected = APIRouter()
+    selected.routes.extend(
+        route for route in router.routes if route.name in _ACCOUNT_CORE_ROUTE_NAMES
+    )
+    return selected
+
+
+def install_enterprise_product_bridge(
+    app: FastAPI,
+    *,
+    account_core_only: bool = False,
+) -> None:
+    app.include_router(_account_core_router() if account_core_only else router)
 
 
 __all__ = [
@@ -764,6 +792,7 @@ __all__ = [
     "ACCOUNT_PROGRESS_SNAPSHOT_SCHEMA_VERSION",
     "AccountProgressSnapshotIn",
     "ENTERPRISE_PRODUCT_PREFIX",
+    "_ACCOUNT_CORE_ROUTE_NAMES",
     "install_enterprise_product_bridge",
     "router",
 ]

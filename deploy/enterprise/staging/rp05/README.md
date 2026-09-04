@@ -62,3 +62,43 @@ storage operations, and `/health/ready` reports
 `OBJECT_STORE_DISABLED_NOT_REQUIRED` as a non-required dependency. The public
 readiness gate still requires PostgreSQL, Keycloak/OIDC, OpenTelemetry, a fresh
 durable-worker heartbeat, the migration head, and the backend/edge path.
+
+## Account Core MVP profile
+
+`compose.account-core-mvp.yml` is a bounded profile of this same RP-05
+deployment framework. Start it only with `--profile account-core-mvp`. Its
+resident services are PostgreSQL, Keycloak, the Account Core backend, the
+namespace-local OIDC transport proxy, and the TLS edge. Secret materialization,
+PostgreSQL provisioning, Keycloak verification, Alembic `head` migration,
+schema verification, and TLS trust materialization are one-shot services.
+
+The profile starts `app.account_core_mvp:app` and exposes only health, the
+Desktop bearer principal endpoint, Workspace/Goal metadata, Account
+Plan/Progress projections, and Asset Manifest metadata registration/read
+operations. Worker, document-worker, Docling, Procrastinate processing,
+document ingestion, OpenTelemetry, object storage, the Web frontend, Teacher,
+Assessment, and AI Providers are neither built nor readiness-gated. The
+readiness response labels each of them `NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP`.
+
+Build only the Docker targets `backend-image`, `keycloak-image`, and
+`account-core-edge-image`; use the exact PostgreSQL base digest separately.
+`runtime-images.account-core-mvp.template.json` lists the four immutable image
+inputs. Copy `compose.account-core-mvp.env.example`, replace every placeholder,
+then render without starting containers:
+
+```sh
+docker compose --profile account-core-mvp \
+  --env-file compose.account-core-mvp.env \
+  -f compose.account-core-mvp.yml config
+```
+
+The Windows Desktop's current implementation uses Authorization Code + PKCE
+with an IPv4-loopback callback and the public `mentorflow-desktop` Keycloak
+client. Configure the Desktop with `MENTORFLOW_DESKTOP_OIDC_CLIENT_ID` set to
+`mentorflow-desktop`, `MENTORFLOW_DESKTOP_OIDC_AUDIENCE` set to
+`mentorflow-api`, the public issuer/API URL, and a server-provisioned
+organization/workspace selection. The Desktop stores refresh/access material
+only through its Credential Locker. The backend receives the bearer access
+token plus selected organization/workspace headers and resolves membership
+server-side; it does not accept account or tenant fields in Account metadata
+payloads.

@@ -49,6 +49,22 @@ TARGETS = (
     SecretTarget("tls_private_key", "edge", 101, 101, 0o400, "private"),
 )
 
+ACCOUNT_CORE_MVP_PROFILE = "ACCOUNT_CORE_MVP"
+ACCOUNT_CORE_MVP_CONSUMERS = frozenset(
+    {
+        "backend",
+        "backend-tls-ready",
+        "edge",
+        "keycloak",
+        "keycloak-ready",
+        "migrate",
+        "migration-ready",
+        "oidc-loopback-proxy",
+        "postgres",
+        "postgres-provision",
+    }
+)
+
 
 class SecretMaterializationError(RuntimeError):
     """Stable failure that never includes secret content."""
@@ -123,9 +139,25 @@ def _write_target(target: SecretTarget, payload: bytes) -> dict[str, object]:
     }
 
 
+def _targets_for_runtime_profile() -> tuple[SecretTarget, ...]:
+    profile = str(os.getenv("MENTORFLOW_RUNTIME_PROFILE") or "").strip().upper()
+    if not profile:
+        return TARGETS
+    if profile == ACCOUNT_CORE_MVP_PROFILE:
+        return tuple(
+            target
+            for target in TARGETS
+            if target.consumer_service in ACCOUNT_CORE_MVP_CONSUMERS
+        )
+    raise SecretMaterializationError("RUNTIME_PROFILE_INVALID")
+
+
 def materialize() -> list[dict[str, object]]:
-    payloads = {name: _read_source(name) for name in {item.secret_name for item in TARGETS}}
-    return [_write_target(target, payloads[target.secret_name]) for target in TARGETS]
+    targets = _targets_for_runtime_profile()
+    payloads = {
+        name: _read_source(name) for name in {item.secret_name for item in targets}
+    }
+    return [_write_target(target, payloads[target.secret_name]) for target in targets]
 
 
 def main() -> int:
