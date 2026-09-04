@@ -358,6 +358,7 @@ def test_account_core_secret_materialization_omits_worker_consumer(
 
 
 def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> None:
+    mvp_environment = _compose()["x-account-core-environment"]
     desktop = (ROOT / "desktop" / "enterprise_oidc.py").read_text(encoding="utf-8")
     settings = (ROOT / "desktop" / "account_settings_page.py").read_text(
         encoding="utf-8"
@@ -370,6 +371,12 @@ def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> 
     )
     clients = {item["clientId"]: item for item in realm["clients"]}
     client = clients["mentorflow-desktop"]
+    assert mvp_environment["MENTORFLOW_KEYCLOAK_CLIENT_ID"] == "mentorflow-desktop"
+    assert mvp_environment["MENTORFLOW_KEYCLOAK_AUDIENCE"] == "mentorflow-api"
+    assert (
+        mvp_environment["MENTORFLOW_KEYCLOAK_CLIENT_ID"]
+        != mvp_environment["MENTORFLOW_KEYCLOAK_AUDIENCE"]
+    )
     assert "code_challenge_method" in desktop
     assert "open_system_browser_oauth" not in desktop
     assert '"grant_type": "authorization_code"' in desktop

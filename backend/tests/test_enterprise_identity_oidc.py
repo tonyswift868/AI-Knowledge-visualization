@@ -167,6 +167,71 @@ def test_oidc_adapter_validates_signature_and_registered_claims(signing_keys) ->
     assert caught.value.code == "OIDC_CLAIM_REQUIRED"
 
 
+def test_account_core_desktop_azp_preserves_all_token_validation_gates(
+    signing_keys,
+) -> None:
+    trusted, forged = signing_keys
+    desktop_client_id = "mentorflow-desktop"
+    adapter = OidcIdentityAdapter(
+        _config(client_id=desktop_client_id),
+        signing_keys=_StaticSigningKey(trusted.public_key()),
+        clock=lambda: NOW,
+    )
+
+    principal = asyncio.run(
+        adapter.validate_access_token(
+            _token(trusted, claims=_claims(azp=desktop_client_id))
+        )
+    )
+    assert principal.client_id == desktop_client_id
+    assert principal.audiences == (AUDIENCE,)
+
+    invalid_cases = [
+        (
+            _token(trusted, claims=_claims(azp="unknown-client")),
+            "OIDC_AUTHORIZED_PARTY_INVALID",
+        ),
+        (
+            _token(
+                trusted,
+                claims=_claims(azp=desktop_client_id, aud="wrong-audience"),
+            ),
+            "OIDC_AUDIENCE_INVALID",
+        ),
+        (
+            _token(
+                trusted,
+                claims=_claims(
+                    azp=desktop_client_id,
+                    iss="https://forged.example.test/realms/mentorflow",
+                ),
+            ),
+            "OIDC_ISSUER_INVALID",
+        ),
+        (
+            _token(forged, claims=_claims(azp=desktop_client_id)),
+            "OIDC_SIGNATURE_INVALID",
+        ),
+        (
+            _token(
+                trusted,
+                claims=_claims(
+                    azp=desktop_client_id,
+                    iat=int((NOW - timedelta(minutes=3)).timestamp()),
+                    auth_time=int((NOW - timedelta(minutes=4)).timestamp()),
+                    nbf=int((NOW - timedelta(minutes=3)).timestamp()),
+                    exp=int((NOW - timedelta(minutes=2)).timestamp()),
+                ),
+            ),
+            "OIDC_TOKEN_EXPIRED",
+        ),
+    ]
+    for token, expected_code in invalid_cases:
+        with pytest.raises(IdentityError) as caught:
+            asyncio.run(adapter.validate_access_token(token))
+        assert caught.value.code == expected_code
+
+
 def test_service_account_classification_requires_keycloak_service_shape(signing_keys) -> None:
     trusted, _ = signing_keys
     claims = _claims(
