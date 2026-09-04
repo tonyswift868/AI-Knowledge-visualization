@@ -187,6 +187,7 @@
         "pkce.code.challenge.method": "S256"
       },
       "defaultClientScopes": [
+        "basic",
         "acr",
         "roles",
         "profile",

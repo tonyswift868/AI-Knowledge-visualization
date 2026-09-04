@@ -183,10 +183,17 @@ def test_account_core_desktop_azp_preserves_all_token_validation_gates(
             _token(trusted, claims=_claims(azp=desktop_client_id))
         )
     )
+    assert principal.subject == "account-001"
     assert principal.client_id == desktop_client_id
     assert principal.audiences == (AUDIENCE,)
 
+    missing_sub_claims = _claims(azp=desktop_client_id)
+    missing_sub_claims.pop("sub")
     invalid_cases = [
+        (
+            _token(trusted, claims=missing_sub_claims),
+            "OIDC_CLAIM_REQUIRED",
+        ),
         (
             _token(trusted, claims=_claims(azp="unknown-client")),
             "OIDC_AUTHORIZED_PARTY_INVALID",

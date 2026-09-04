@@ -391,3 +391,19 @@ def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> 
     assert client["standardFlowEnabled"] is True
     assert client["directAccessGrantsEnabled"] is False
     assert client["redirectUris"] == ["http://127.0.0.1/oauth/callback"]
+    assert client["defaultClientScopes"] == [
+        "basic",
+        "acr",
+        "roles",
+        "profile",
+        "email",
+    ]
+    assert client["defaultClientScopes"].count("basic") == 1
+    # Reuse Keycloak's built-in basic scope and its Subject (sub) mapper.
+    assert not any(
+        scope.get("name") == "basic" for scope in realm.get("clientScopes", [])
+    )
+    assert all(
+        mapper.get("protocolMapper") != "oidc-sub-mapper"
+        for mapper in client.get("protocolMappers", [])
+    )
