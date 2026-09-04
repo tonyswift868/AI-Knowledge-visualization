@@ -15,7 +15,9 @@ import yaml
 from app import orm
 from app.enterprise import worker_entry
 from app.enterprise.jobs_v1.runtime import WorkerConfigurationError
+from app.observability import api as observability_api
 from app.observability import health
+from app.observability.health import HealthRegistry
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -275,8 +277,27 @@ def test_postgres_health_reuses_canonical_engine_and_fails_without_leaking_url(
     monkeypatch.setattr(orm, "engine", _Engine())
     assert health._postgres_probe() == (True, "POSTGRES_REACHABLE")
 
-    monkeypatch.setattr(orm, "engine", _Engine(failure=TimeoutError(secret_url)))
-    assert health._postgres_probe() == (False, "POSTGRES_UNREACHABLE")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        ConnectionError("bad host"),
+        PermissionError("bad credentials"),
+        TimeoutError("connection timeout"),
+    ),
+    ids=("bad-host", "bad-credentials", "timeout"),
+)
+def test_postgres_health_failures_are_truthful_and_secret_free(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    secret_url = "postgresql+psycopg://mentorflow_app:p%40ss%3Aword@postgres:5432/mentorflow?connect_timeout=2"
+    monkeypatch.setenv("MENTORFLOW_DATABASE_URL", secret_url)
+    monkeypatch.setattr(orm, "engine", _Engine(failure=failure))
+    result = health._postgres_probe()
+    assert result == (False, "POSTGRES_UNREACHABLE")
+    assert secret_url not in repr(result)
 
 
 def test_runtime_database_url_preserves_encoded_password_and_timeout(
@@ -346,6 +367,48 @@ def test_worker_health_is_one_bounded_readiness_and_database_check(
     assert elapsed < 6
     assert engine.disposed is True
     assert json.loads(capsys.readouterr().out)["status"] == "READY"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        WorkerConfigurationError("database unavailable"),
+        WorkerConfigurationError("schema unavailable"),
+    ),
+    ids=("database-failure", "schema-failure"),
+)
+def test_worker_health_dependency_failures_are_bounded_and_dispose_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: WorkerConfigurationError,
+) -> None:
+    source = {
+        "MENTORFLOW_DEPLOYMENT_MODE": "ENTERPRISE_SERVER",
+        "MENTORFLOW_DATABASE_URL": "postgresql+psycopg://mentorflow_app:test@postgres:5432/mentorflow?connect_timeout=2",
+        "MENTORFLOW_WORKER_RUNTIME_FACTORY": "app.enterprise.jobs_v1.production:build",
+        "MENTORFLOW_WORKER_READINESS_PATH": str(tmp_path / "worker-ready.json"),
+    }
+    engine = _Engine()
+    monkeypatch.setattr(
+        worker_entry,
+        "read_readiness",
+        lambda *_args, **_kwargs: {"status": "READY"},
+    )
+    monkeypatch.setattr(
+        worker_entry.orm,
+        "configure_enterprise_orm",
+        lambda _source: engine,
+    )
+    monkeypatch.setattr(
+        worker_entry,
+        "verify_worker_database",
+        lambda _engine: (_ for _ in ()).throw(failure),
+    )
+    started = time.perf_counter()
+    with pytest.raises(WorkerConfigurationError, match=str(failure)):
+        worker_entry._health(source)
+    assert time.perf_counter() - started < 6
+    assert engine.disposed is True
 
 
 def test_object_store_optional_disabled_is_truthful_and_non_required(
@@ -470,6 +533,22 @@ def test_full_readiness_accepts_only_exact_required_and_optional_states() -> Non
     payload["status"] = "not_ready"
     with pytest.raises(RuntimeError, match="did not report ready"):
         rp05_staging._validate_full_readiness(payload)
+
+
+def test_required_dependency_failure_returns_http_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = HealthRegistry()
+    registry.register(
+        "postgres",
+        lambda: (False, "POSTGRES_UNREACHABLE"),
+        required=True,
+    )
+    registry.started = True
+    monkeypatch.setattr(observability_api, "health_registry", registry)
+    response = observability_api.readiness()
+    assert response.status_code == 503
+    assert json.loads(response.body)["status"] == "not_ready"
 
 
 def test_worker_image_shares_offline_docling_layer_without_changing_backend() -> None:
