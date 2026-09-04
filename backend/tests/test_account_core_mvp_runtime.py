@@ -44,6 +44,31 @@ EXCLUDED_SERVICES = {
     "teacher",
     "worker",
 }
+EXPECTED_TMPFS_MOUNTS = {
+    "runtime-secrets-ready": ["/tmp:size=16m,mode=0700"],
+    "postgres": [
+        "/tmp:size=64m,mode=1777",
+        "/var/run/postgresql:size=64m,mode=1777",
+    ],
+    "postgres-provision": ["/tmp:size=32m,mode=1777"],
+    "keycloak": [
+        "/tmp:size=128m,mode=1777",
+        "/opt/keycloak/data/tmp:size=128m,mode=1777",
+    ],
+    "keycloak-ready": ["/tmp:size=32m,mode=1777"],
+    "migrate": ["/tmp:size=128m,mode=1777"],
+    "migration-ready": ["/tmp:size=64m,mode=1777"],
+    "backend-tls-ready": ["/tmp:size=16m,mode=1777"],
+    "backend": ["/tmp:size=64m,mode=1777"],
+    "oidc-loopback-proxy": [
+        "/tmp:size=16m,mode=1777",
+        "/var/cache/nginx:size=8m,mode=0750,uid=101,gid=101",
+    ],
+    "edge": [
+        "/tmp:size=64m,mode=1777",
+        "/var/cache/nginx:size=8m,mode=0750,uid=101,gid=101",
+    ],
+}
 
 
 def _load_script(name: str, path: Path):
@@ -57,6 +82,42 @@ def _load_script(name: str, path: Path):
 
 def _compose() -> dict[str, object]:
     return yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+
+
+def test_account_core_mvp_tmpfs_entries_are_single_unambiguous_mounts() -> None:
+    services = _compose()["services"]
+    assert set(services) == RESIDENT_SERVICES | ONE_SHOT_SERVICES
+    assert not set(services) & EXCLUDED_SERVICES
+    assert "worker" not in services
+    assert "docling" not in services
+
+    observed = {
+        name: service["tmpfs"]
+        for name, service in services.items()
+        if service.get("tmpfs")
+    }
+    assert observed == EXPECTED_TMPFS_MOUNTS
+
+    for service_name, entries in observed.items():
+        for entry in entries:
+            assert isinstance(entry, str), service_name
+            assert entry.startswith("/"), (service_name, entry)
+            assert not entry.startswith(("mode=", "uid=", "gid=", "size=")), (
+                service_name,
+                entry,
+            )
+            target, separator, options = entry.partition(":")
+            assert separator and target.startswith("/"), (service_name, entry)
+            option_names = [option.partition("=")[0] for option in options.split(",")]
+            assert all("=" in option for option in options.split(",")), (
+                service_name,
+                entry,
+            )
+            assert len(option_names) == len(set(option_names)), (service_name, entry)
+            assert set(option_names) <= {"mode", "uid", "gid", "size"}, (
+                service_name,
+                entry,
+            )
 
 
 def test_account_core_compose_has_only_minimum_profile_services() -> None:
