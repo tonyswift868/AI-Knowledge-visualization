@@ -21,6 +21,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from desktop.account_identity import (  # noqa: E402
     NONSECRET_ACCOUNT_PREFERENCE_KEYS,
@@ -237,7 +239,8 @@ def isolated_device_roots() -> Iterator[tuple[Path, Path]]:
         yield root / "d1", root / "d2"
 
 
-def test_in_app_login_completion_switches_account_on_qt_thread(qtbot, tmp_path: Path) -> None:
+def test_in_app_login_completion_switches_account_on_qt_thread(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
     clear_enterprise_account_session()
     identity = _identity("a")
     manager = AccountVaultManager(VaultLayout(tmp_path / "login-device"))
@@ -259,11 +262,14 @@ def test_in_app_login_completion_switches_account_on_qt_thread(qtbot, tmp_path: 
         logout_account=lambda: None,
         oidc_login=lambda: result,
     )
-    qtbot.addWidget(page)
     page.show()
     try:
-        qtbot.mouseClick(page.oauth_button, Qt.MouseButton.LeftButton)
-        qtbot.waitUntil(lambda: switched == [identity], timeout=3_000)
+        QTest.mouseClick(page.oauth_button, Qt.MouseButton.LeftButton)
+        for _ in range(150):
+            if switched == [identity]:
+                break
+            QTest.qWait(20)
+        assert switched == [identity]
 
         assert credentials.subjects == [identity.subject]
         assert enterprise_account_server_state(identity.profile())["authenticated"] is True

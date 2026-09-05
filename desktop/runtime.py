@@ -176,6 +176,19 @@ def _bind_desktop_profile_data_root(
     return account_root
 
 
+def bind_desktop_profile_data_root(
+    profile: AccountProfile,
+    *,
+    source: dict[str, str] | os._Environ[str] | None = None,
+) -> Path:
+    """Bind one already-authenticated profile without doing network restore."""
+
+    return _bind_desktop_profile_data_root(
+        profile,
+        source=os.environ if source is None else source,
+    )
+
+
 def preflight_desktop_account_storage(
     *,
     settings: object | None = None,
@@ -254,7 +267,7 @@ class LocalService(QObject):
     failed = Signal(str)
     stopped = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, *, resolved_profile: AccountProfile | None = None) -> None:
         super().__init__()
         global _active_local_service
         _active_local_service = self
@@ -270,6 +283,7 @@ class LocalService(QObject):
         self.health_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._server_error: Exception | None = None
+        self._resolved_profile = resolved_profile
 
     @staticmethod
     def _bind_listener(port: int = 0) -> socket.socket:
@@ -291,7 +305,10 @@ class LocalService(QObject):
         # importing it opens the SQLite/ORM files selected by the previous
         # next-launch pointer.  A failed restore is rebound to Personal Local
         # first, so the prior account database is never opened in this process.
-        preflight_desktop_account_storage()
+        if self._resolved_profile is None:
+            preflight_desktop_account_storage()
+        else:
+            bind_desktop_profile_data_root(self._resolved_profile)
         # The backend's canonical import root is ``app`` (its own modules use
         # that name for shared enterprise contracts).  Loading it once as
         # ``backend.app`` creates duplicate Enum/contract classes and makes a

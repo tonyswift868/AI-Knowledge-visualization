@@ -418,7 +418,10 @@ def login_enterprise_account_in_app_from_env(
         DesktopOidcConfig.from_env(),
         parent=parent,
     )
-    return dialog.execute_login()
+    try:
+        return dialog.execute_login()
+    finally:
+        dialog.deleteLater()
 
 
 __all__ = [

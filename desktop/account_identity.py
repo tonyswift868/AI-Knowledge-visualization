@@ -169,7 +169,14 @@ class AccountPreferenceStore:
             self.settings.setValue(key, value)
         self.settings.sync()
 
-    def load(self) -> AccountProfile:
+    def load_unvalidated(self) -> AccountProfile:
+        """Read only the non-secret profile selection.
+
+        Startup UI uses this narrow reader before it schedules network token
+        restoration on a worker thread.  ``load`` remains the fail-closed
+        convenience API for callers that require an already validated session.
+        """
+
         mode = str(
             self.settings.value(
                 "account/profile_mode",
@@ -179,7 +186,7 @@ class AccountPreferenceStore:
         )
         if mode != ProfileMode.ENTERPRISE_ACCOUNT.value:
             return AccountProfile.personal_local()
-        profile = AccountProfile(
+        return AccountProfile(
             mode=ProfileMode.ENTERPRISE_ACCOUNT,
             display_name=str(
                 self.settings.value("account/display_name", "Enterprise Account")
@@ -188,6 +195,11 @@ class AccountPreferenceStore:
             issuer_hash=str(self.settings.value("account/issuer_hash", "") or ""),
             subject_hash=str(self.settings.value("account/subject_hash", "") or ""),
         )
+
+    def load(self) -> AccountProfile:
+        profile = self.load_unvalidated()
+        if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
+            return profile
         # A configured Enterprise Desktop must prove that its Locker session
         # and server identity still bind to this profile before main_window
         # mounts the account Vault.  Personal Local and unconfigured unit

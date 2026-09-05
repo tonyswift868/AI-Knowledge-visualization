@@ -68,6 +68,8 @@ class AccountSettingsPage(QWidget):
         switch_account: Callable[[AccountIdentity], object],
         logout_account: Callable[[], None],
         oidc_login: Callable[[], EnterpriseOidcLoginResult] | None = None,
+        begin_account_switch: Callable[[], None] | None = None,
+        open_recovery_center: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self.profile = profile
@@ -79,6 +81,8 @@ class AccountSettingsPage(QWidget):
         # always creates the MentorFlow-owned in-app authentication dialog on
         # the Qt UI thread.
         self.oidc_login = oidc_login
+        self.begin_account_switch = begin_account_switch
+        self.open_recovery_center = open_recovery_center
         self._synced_resource_count = 0
         self._oidc_thread: threading.Thread | None = None
         self._oidc_succeeded.connect(self._finish_oidc)
@@ -141,6 +145,8 @@ class AccountSettingsPage(QWidget):
 
         account_actions = QHBoxLayout()
         self.oauth_button = QPushButton("在 MentorFlow 内登录或切换企业账号")
+        if self.begin_account_switch is not None:
+            self.oauth_button.setText("切换企业账号")
         self.oauth_button.setObjectName("inAppOidcLoginButton")
         self.oauth_button.clicked.connect(self._begin_in_app_oauth)
         account_actions.addWidget(self.oauth_button)
@@ -148,6 +154,13 @@ class AccountSettingsPage(QWidget):
         self.logout_button.setObjectName("accountLogoutButton")
         self.logout_button.clicked.connect(self.logout_account)
         account_actions.addWidget(self.logout_button)
+        self.recovery_button = QPushButton("本机资料恢复")
+        self.recovery_button.setObjectName("openDeviceRecoveryButton")
+        self.recovery_button.setAccessibleName("打开本机资料恢复")
+        self.recovery_button.setVisible(self.open_recovery_center is not None)
+        if self.open_recovery_center is not None:
+            self.recovery_button.clicked.connect(self.open_recovery_center)
+        account_actions.addWidget(self.recovery_button)
         account_actions.addStretch()
         layout.addLayout(account_actions)
 
@@ -250,8 +263,8 @@ class AccountSettingsPage(QWidget):
             message = "当前设备正在等待此企业账号的本机 Vault。"
         elif local_asset_count == 0 and self._synced_resource_count:
             message = (
-                "NEW_DEVICE · 账号元数据已恢复；原始资料未保存在此设备，"
-                "请在“本地资料”中重新关联。"
+                "学习记录已经恢复；这台电脑还缺少本机资料，"
+                "请打开“本机资料恢复”重新关联。"
             )
         elif local_asset_count == 0:
             message = "当前设备尚无此企业账号的本地资料。"
@@ -288,6 +301,9 @@ class AccountSettingsPage(QWidget):
         self.refresh()
 
     def _begin_in_app_oauth(self) -> None:
+        if self.begin_account_switch is not None:
+            self.begin_account_switch()
+            return
         if self._oidc_thread is not None and self._oidc_thread.is_alive():
             return
         self.oauth_button.setEnabled(False)
