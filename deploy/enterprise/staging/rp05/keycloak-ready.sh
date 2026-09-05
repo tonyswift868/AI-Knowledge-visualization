@@ -28,4 +28,10 @@ printf '%s' "$desktop_client" | grep -Fq '"publicClient" : true'
 printf '%s' "$desktop_client" | grep -Fq '"standardFlowEnabled" : true'
 printf '%s' "$desktop_client" | grep -Fq '"directAccessGrantsEnabled" : false'
 printf '%s' "$desktop_client" | grep -Fq 'http://127.0.0.1/oauth/callback'
+if [ -n "${MENTORFLOW_DESKTOP_LOGIN_THEME:-}" ]; then
+  printf '%s' "$desktop_client" | grep -Fq "\"login_theme\" : \"$MENTORFLOW_DESKTOP_LOGIN_THEME\"" || {
+    echo 'Desktop login theme is not bound; existing realms need a client-only theme update' >&2
+    exit 31
+  }
+fi
 echo '{"schema_version":"mentorflow.rp05-keycloak-ready.v1","status":"PASS"}'

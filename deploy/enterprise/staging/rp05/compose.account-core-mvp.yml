@@ -140,6 +140,7 @@ services:
       MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
     volumes:
       - ../../config/keycloak-realm.json:/opt/keycloak/data/import/mentorflow-realm.json:ro
+      - ../../themes/mentorflow-desktop-v1:/opt/keycloak/themes/mentorflow-desktop-v1:ro
       - keycloak_secrets:/run/secrets:ro
     tmpfs:
       - "/tmp:size=128m,mode=1777"
@@ -161,6 +162,7 @@ services:
     user: "1000:0"
     entrypoint: [/bin/sh, /opt/mentorflow/rp05/keycloak-ready.sh]
     environment:
+      MENTORFLOW_DESKTOP_LOGIN_THEME: mentorflow-desktop-v1
       KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN_USERNAME:-mentorflow-staging-admin}"
       MENTORFLOW_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
     volumes:
