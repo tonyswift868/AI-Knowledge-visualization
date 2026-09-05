@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
+
+from .workspace_bootstrap import ensure_workspace_profile
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +246,11 @@ def seed_synthetic_tenants(
                         "role": "ADMIN" if subject_index == 1 else "LEARNER",
                     },
                 )
+        # Older migration-only fixtures predate 0033. Current schema seeds must
+        # create complete workspace records in the caller's existing transaction.
+        if inspect(connection).has_table("workspace_profiles"):
+            for workspace_id in organization.workspace_ids:
+                ensure_workspace_profile(connection, organization.organization_id, workspace_id)
     json_value = (
         "CAST(:payload_json AS JSONB)"
         if connection.dialect.name == "postgresql"

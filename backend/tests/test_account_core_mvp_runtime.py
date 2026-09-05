@@ -162,6 +162,8 @@ def test_account_core_docker_target_does_not_inherit_frontend_or_document_runtim
 def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
     paths = set(account_core_mvp.app.openapi()["paths"])
     assert paths == {
+        "/api/enterprise/account/workspaces",
+        "/api/enterprise/account/workspaces/initialize",
         "/api/enterprise/account/metadata",
         "/api/enterprise/account/metadata/assets",
         "/api/enterprise/account/metadata/assets/{asset_id}/missing",
@@ -297,7 +299,7 @@ def test_account_core_schema_verify_never_invokes_worker_schema(
     assert runtime._verify_account_core() == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt["status"] == "PASS"
-    assert receipt["repository_head"] == "0034_enterprise_asset_manifests"
+    assert receipt["repository_head"] == "0035_account_workspace_bootstrap"
     assert receipt["worker_schema"] == "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP"
     assert calls[0][-2:] == ["current", "--check-heads"]
     assert disposed == [True]

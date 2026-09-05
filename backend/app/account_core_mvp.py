@@ -17,6 +17,10 @@ from fastapi.responses import JSONResponse
 
 from app import orm as orm_runtime
 from app.enterprise.contracts_v1 import TenantMode
+from app.enterprise.account_workspaces import (
+    ACCOUNT_WORKSPACE_PATHS, authenticate_account, router as account_workspace_router,
+)
+from app.enterprise_tenancy.workspace_bootstrap import AccountWorkspaceBootstrap
 from app.enterprise.identity.config import EnterpriseIdentityConfig
 from app.enterprise.identity.context import IdentityContextError
 from app.enterprise.identity.oidc import IdentityError
@@ -64,6 +68,9 @@ async def lifespan(app: FastAPI):
         engine = orm_runtime.configure_enterprise_orm()
         orm_runtime.verify_enterprise_runtime_schema()
         app.state.enterprise_workspace_service = EnterpriseWorkspaceService(engine)
+        app.state.account_workspace_bootstrap = AccountWorkspaceBootstrap(
+            engine, issuer=config.keycloak.issuer
+        )
         app.state.enterprise_document_import_service = EnterpriseDocumentImportService(
             engine
         )
@@ -88,6 +95,7 @@ app = FastAPI(
     openapi_url=None,
 )
 install_enterprise_identity(app, account_core_only=True)
+app.include_router(account_workspace_router)
 
 
 @app.get("/health/live")
@@ -139,7 +147,9 @@ async def account_core_identity_boundary(request: Request, call_next):
                     "Enterprise identity is not enabled",
                     status=503,
                 )
-            if not runtime.is_public_path(path):
+            if path in ACCOUNT_WORKSPACE_PATHS:
+                await authenticate_account(request, runtime)
+            elif not runtime.is_public_path(path):
                 binding = await runtime.authenticate_request(request)
                 request.state.enterprise_identity = binding
                 request.state.actor_context = (
@@ -159,6 +169,8 @@ async def account_core_identity_boundary(request: Request, call_next):
         response = identity_error_response(request, exc)
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-MentorFlow-Runtime-Profile"] = RUNTIME_PROFILE
+    if request.url.path in ACCOUNT_WORKSPACE_PATHS:
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 

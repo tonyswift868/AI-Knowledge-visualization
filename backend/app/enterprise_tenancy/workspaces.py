@@ -302,6 +302,17 @@ class EnterpriseWorkspaceService:
         with self.transactions.transaction(context) as transaction:
             row = self._workspace_row(transaction, workspace_id)
             if row is None:
+                exists = transaction.connection.execute(
+                    text("SELECT id FROM workspaces WHERE id = :workspace "
+                         "AND organization_id = :organization"),
+                    {"workspace": workspace_id, "organization": tenant.organization_id},
+                ).scalar_one_or_none()
+                if exists is not None:
+                    raise _error(
+                        "ENTERPRISE_WORKSPACE_INITIALIZATION_REQUIRED",
+                        "Workspace profile requires account initialization",
+                        409,
+                    )
                 raise _error(
                     "ENTERPRISE_WORKSPACE_NOT_FOUND",
                     "Workspace was not found in the selected tenant context",

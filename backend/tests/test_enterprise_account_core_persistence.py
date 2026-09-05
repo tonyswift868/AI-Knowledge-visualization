@@ -358,13 +358,13 @@ def test_plan_and_progress_account_ownership_survive_repository_restart(
     restarted.dispose()
 
 
-def test_account_core_reuses_existing_schema_and_native_rls_without_0035() -> None:
+def test_account_core_reuses_existing_schema_with_bootstrap_forward_migration() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     assert ScriptDirectory.from_config(config).get_heads() == [
-        "0034_enterprise_asset_manifests"
+        "0035_account_workspace_bootstrap"
     ]
-    assert ENTERPRISE_MIGRATION_REVISION == "0034_enterprise_asset_manifests"
+    assert ENTERPRISE_MIGRATION_REVISION == "0035_account_workspace_bootstrap"
     assert not (
         BACKEND_ROOT
         / "alembic"
