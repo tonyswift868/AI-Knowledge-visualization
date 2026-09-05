@@ -19,6 +19,21 @@ _BUILD_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "build_distrib
 _SPEC_FILE = Path(__file__).resolve().parents[2] / "MentorFlow.spec"
 
 
+def test_manifest_exclusion_needs_no_second_entry_resolution(tmp_path, monkeypatch):
+    root = tmp_path / 'verified'
+    root.mkdir()
+    manifest = root / 'manifest.json'
+    payload = root / 'MentorFlow.exe'
+    # The complete security iterator remains the validation boundary. This
+    # fixture isolates only the post-validation manifest-name exclusion step.
+    monkeypatch.setattr(verifier, '_iter_package_entries', lambda _root: iter([(manifest, False), (payload, False)]))
+    def redundant_resolution(*args, **kwargs):
+        raise AssertionError('already validated entries must not be resolved again only for name comparison')
+    with monkeypatch.context() as comparison_only:
+        comparison_only.setattr(Path, 'resolve', redundant_resolution)
+        assert list(verifier._iter_package_files(root, manifest)) == [payload]
+
+
 def _run_cleanup_guard(root: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
     powershell = shutil.which("powershell.exe")
     if powershell is None:

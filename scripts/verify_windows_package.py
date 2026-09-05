@@ -507,9 +507,12 @@ def _find_user_data_files(package_root: Path) -> list[str]:
 
 
 def _iter_package_files(package_root: Path, manifest_path: Path) -> Iterable[Path]:
-    manifest_resolved = manifest_path.resolve(strict=False)
+    # Entries are independently validated by the iterator (including resolved
+    # containment, reparse points and hardlinks). Excluding the manifest by its
+    # lexical name needs no second filesystem resolution for every payload file.
+    manifest_absolute = manifest_path.absolute()
     for candidate, _ in _iter_package_entries(package_root):
-        if candidate.resolve(strict=False) != manifest_resolved:
+        if candidate.absolute() != manifest_absolute:
             yield candidate
 
 
