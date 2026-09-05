@@ -53,6 +53,13 @@ def qapp() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def isolated_startup_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Startup binds many account paths directly. Never let those point later
+    # test modules at this test's already-deleted disposable Vault.
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+
+
 @pytest.fixture
 def short_root() -> Path:
     scratch = Path("E:/Codex/Temp")
