@@ -874,10 +874,10 @@ class MainWindow(QMainWindow):
         if self.account_profile.mode is ProfileMode.PERSONAL_LOCAL:
             return
         try:
-            self.account_credential_vault.logout(self.account_profile)
             if self._return_to_login_gate_callback is not None:
                 self._return_to_login_gate_callback("logout")
                 return
+            self.account_credential_vault.logout(self.account_profile)
             self._account_switch_in_progress = True
             self._account_switch_coordinator().switch_to_profile(
                 AccountProfile.personal_local(),

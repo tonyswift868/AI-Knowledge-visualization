@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QThread, QUrl, Signal
+from PySide6.QtCore import QThread, QUrl, Signal, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWebEngineCore import (
     QWebEngineCertificateError,
     QWebEnginePage,
@@ -45,6 +46,7 @@ from .enterprise_oidc import (
 
 AUTH_DIALOG_OBJECT_NAME = "mentorflowInAppOidcDialog"
 AUTH_VIEW_OBJECT_NAME = "mentorflowInAppOidcView"
+_retiring_dialogs: set[object] = set()
 
 
 def _origin(value: str) -> tuple[str, str, int]:
@@ -190,6 +192,9 @@ class InAppOidcLoginDialog(QDialog):
     _prepared_signal = Signal(object)
     _succeeded_signal = Signal(object)
     _failed_signal = Signal(str, str)
+    authenticated = Signal(object)
+    authentication_failed = Signal(str, str)
+    _worker_finished = Signal()
 
     def __init__(
         self,
@@ -197,12 +202,19 @@ class InAppOidcLoginDialog(QDialog):
         *,
         parent: QWidget | None = None,
         client_factory: Callable[[DesktopOidcConfig], _OidcClient] = EnterpriseOidcClient,
+        embedded: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(AUTH_DIALOG_OBJECT_NAME)
         self.setWindowTitle("登录 MentorFlow Enterprise")
         self.setModal(True)
         self.resize(760, 720)
+        self._embedded = embedded
+        self._dispose_pending = False
+        self._browser_releasing = False
+        if embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
+            self.setModal(False)
         self._config = config
         self._client_factory = client_factory
         self._cancelled = threading.Event()
@@ -216,14 +228,40 @@ class InAppOidcLoginDialog(QDialog):
         heading = QLabel("企业账号安全登录")
         heading.setObjectName("inAppOidcHeading")
         layout.addWidget(heading)
+        heading.setVisible(not embedded)
         self.status = QLabel("正在建立加密的企业登录会话…")
         self.status.setObjectName("inAppOidcStatus")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+        self._browser_created = False
+        if not embedded:
+            self._ensure_browser()
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel = QPushButton("取消登录")
+        cancel.setObjectName("inAppOidcCancelButton")
+        cancel.clicked.connect(self.reject)
+        actions.addWidget(cancel)
+        cancel.setVisible(not embedded)
+        layout.addLayout(actions)
+
+        self._prepared_signal.connect(self._show_authorization_page)
+        self._succeeded_signal.connect(self._finish_successfully)
+        self._failed_signal.connect(self._finish_with_error)
+        self._worker_finished.connect(self._release_if_disposed)
+
+
+    def _ensure_browser(self) -> None:
+        if self._browser_created:
+            return
+        self._browser_created = True
+        embedded, layout = self._embedded, self.layout()
         # A nameless profile is off-the-record.  No auth cookies, cache,
         # permissions, or browsing history survive this dialog instance.
-        self.profile = QWebEngineProfile(self)
+        # Attach the profile after the view below: QObject destroys children
+        # in insertion order, and every page must die before its profile.
+        self.profile = QWebEngineProfile()
         self.profile.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
         )
@@ -235,12 +273,18 @@ class InAppOidcLoginDialog(QDialog):
         self.profile.setSpellCheckEnabled(False)
         self.profile.downloadRequested.connect(lambda request: request.cancel())
 
-        self._interceptor = _AuthRequestInterceptor(self)
+        self._interceptor = _AuthRequestInterceptor(self.profile)
         self.profile.setUrlRequestInterceptor(self._interceptor)
         self.view = QWebEngineView(self)
         self.view.setObjectName(AUTH_VIEW_OBJECT_NAME)
         self.page = _AuthWebPage(self.profile, self._interceptor, self.view)
         self.view.setPage(self.page)
+        self.profile.setParent(self)
+        self.page.setBackgroundColor(QColor("#fff9fc"))
+        if embedded:
+            self.view.hide()
+            self.view.loadFinished.connect(self._page_loaded)
+            layout.setContentsMargins(0, 0, 0, 0)
         settings = self.view.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         settings.setAttribute(
@@ -276,17 +320,54 @@ class InAppOidcLoginDialog(QDialog):
         settings.setAttribute(QWebEngineSettings.WebAttribute.NavigateOnDropEnabled, False)
         layout.addWidget(self.view, 1)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
-        cancel = QPushButton("取消登录")
-        cancel.setObjectName("inAppOidcCancelButton")
-        cancel.clicked.connect(self.reject)
-        actions.addWidget(cancel)
-        layout.addLayout(actions)
 
-        self._prepared_signal.connect(self._show_authorization_page)
-        self._succeeded_signal.connect(self._finish_successfully)
-        self._failed_signal.connect(self._finish_with_error)
+    def _page_loaded(self, ok: bool) -> None:
+        if not self._browser_created:
+            return
+        if self._cancelled.is_set():
+            return
+        if not ok:
+            self._finish_with_error("ENTERPRISE_LOGIN_PAGE_UNAVAILABLE", "登录页面暂时无法加载，请重试。")
+            return
+        self.status.hide()
+        self.view.show()
+        self.view.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def start_embedded(self) -> None:
+        if not self._embedded:
+            raise RuntimeError("Embedded login requires a child widget")
+        self.show()
+        self._start()
+
+    def dispose(self) -> None:
+        self._cancelled.set()
+        self._page_ready.set()
+        if self._prepared is not None:
+            self._prepared.receiver.close()
+        self._reset_browser()
+        self.hide()
+        # A pending protocol finish can outlive the gate/layout. Detach before
+        # DeferredDelete (the close-during-discovery native regression), and
+        # retain Python ownership until Qt has actually destroyed the object.
+        if self not in _retiring_dialogs:
+            _retiring_dialogs.add(self)
+            self.destroyed.connect(lambda: _retiring_dialogs.discard(self))
+        self.setParent(None)
+        self._dispose_pending = True
+        if self._worker is None or not self._worker.is_alive():
+            self._release_if_disposed()
+
+    def _release_if_disposed(self) -> None:
+        if self._dispose_pending and not self._browser_releasing:
+            self._browser_releasing = True
+            if not self._browser_created:
+                self.deleteLater()
+                return
+            # Let the event loop finish page destruction before the browser
+            # context, then release the shell after both are gone.
+            self.page.destroyed.connect(self.profile.deleteLater)
+            self.profile.destroyed.connect(self.deleteLater)
+            self.page.deleteLater()
 
     @property
     def is_off_the_record(self) -> bool:
@@ -339,6 +420,8 @@ class InAppOidcLoginDialog(QDialog):
                 "ENTERPRISE_OIDC_IN_APP_FAILED",
                 "Enterprise login could not be completed safely",
             )
+        finally:
+            self._worker_finished.emit()
 
     def _show_authorization_page(self, value: object) -> None:
         if self._cancelled.is_set() or not isinstance(value, PreparedOidcLogin):
@@ -350,9 +433,10 @@ class InAppOidcLoginDialog(QDialog):
             self._finish_with_error(exc.code, exc.message)
             return
         self._prepared = value
+        self._ensure_browser()
         self._interceptor.policy = policy
         self.status.setText(
-            "请在下方 Keycloak 页面完成身份验证。MentorFlow 不读取或保存登录表单。"
+            "正在加载登录页面…"
         )
         self.view.setUrl(QUrl(value.authorization_url))
         self._page_ready.set()
@@ -361,21 +445,36 @@ class InAppOidcLoginDialog(QDialog):
         if self._cancelled.is_set() or not isinstance(value, EnterpriseOidcLoginResult):
             return
         self._result = value
-        self.accept()
+        if self._embedded:
+            self._reset_browser()
+            self.authenticated.emit(value)
+        else:
+            self.accept()
 
     def _finish_with_error(self, code: str, message: str) -> None:
         if self._cancelled.is_set():
             return
         self._error = EnterpriseOidcError(code, message)
-        self.reject()
+        if self._embedded:
+            self._cancelled.set()
+            if self._prepared is not None:
+                self._prepared.receiver.close()
+            self._reset_browser()
+            self.authentication_failed.emit(code, message)
+        else:
+            self.reject()
 
     def _reset_browser(self) -> None:
+        if not self._browser_created:
+            return
         # The profile is single-use and never attached to another dialog.  It
         # remains parent-owned until the Account page/app is destroyed, while
         # all session state is cleared as soon as this login attempt finishes.
         self.view.stop()
         self.profile.cookieStore().deleteAllCookies()
-        self.profile.clearHttpCache()
+        # NoCache + off-the-record already prevent a reusable cache. Starting
+        # an asynchronous cache clear while tearing down its profile can leave
+        # Chromium work targeting a destroyed browser context.
         self._interceptor.policy = None
 
     def reject(self) -> None:

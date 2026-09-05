@@ -1077,6 +1077,14 @@ class MentorFlowApplication:
         self.migration_center = None
         self.bootstrap_result = None
         self._last_login_result = None
+        self._login_generation = 0
+        self._login_cancelled = threading.Event()
+        self._auth_pane = None
+        self._remembered_profile = None
+        self._closing = False
+        from .account_identity import AccountPreferenceStore
+        from .login_session import LoginSession
+        self._login_session = LoginSession(AccountPreferenceStore(QSettings("MentorFlow", "MentorFlow")))
         pixmap = QPixmap(520, 270)
         pixmap.fill(QColor("#244c40"))
         self.splash = QSplashScreen(pixmap)
@@ -1106,11 +1114,6 @@ class MentorFlowApplication:
         return self.app.exec()
 
     def _show_login_gate(self) -> None:
-        from .account_identity import (
-            AccountCredentialVault,
-            AccountPreferenceStore,
-            ProfileMode,
-        )
         from .startup_flow import LoginGateState, LoginGateWindow
 
         self.login_gate = LoginGateWindow()
@@ -1118,86 +1121,100 @@ class MentorFlowApplication:
         self.login_gate.retry_requested.connect(self._retry_login_or_bootstrap)
         self.login_gate.background_succeeded.connect(self._background_succeeded)
         self.login_gate.background_failed.connect(self._background_failed)
+        self.login_gate.cancel_requested.connect(self._cancel_login)
+        self.login_gate.closed.connect(self._invalidate_login_jobs)
+        self.login_gate.notice_label.setText(os.environ.pop("MENTORFLOW_LOGIN_NOTICE", ""))
         self.login_gate.show()
         try:
-            profile = AccountPreferenceStore(
-                QSettings("MentorFlow", "MentorFlow")
-            ).load_unvalidated()
+            profile, automatic = self._login_session.remembered()
         except ValueError:
-            AccountPreferenceStore(QSettings("MentorFlow", "MentorFlow")).clear()
-            profile = None
-        force_login = os.getenv(
-            "MENTORFLOW_DESKTOP_FORCE_LOGIN_GATE", ""
-        ).strip().casefold() in {"1", "true", "yes", "on"}
-        if (
-            not force_login
-            and profile is not None
-            and profile.mode is ProfileMode.ENTERPRISE_ACCOUNT
-        ):
-            self.login_gate.set_state(
-                LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING,
-                detail="正在安全恢复上次登录…",
-            )
-
-            def restore() -> None:
-                from .enterprise_oidc import restore_enterprise_account_from_env
-
-                try:
-                    result = restore_enterprise_account_from_env(
-                        profile,
-                        AccountCredentialVault(),
-                    )
-                    self.login_gate.background_succeeded.emit("restore", result)
-                except Exception:
-                    try:
-                        AccountCredentialVault().logout(profile)
-                    except Exception:
-                        pass
-                    AccountPreferenceStore(
-                        QSettings("MentorFlow", "MentorFlow")
-                    ).clear()
-                    self.login_gate.background_failed.emit(
-                        "restore",
-                        "上次登录已失效，请重新登录。",
-                    )
-
-            threading.Thread(
-                target=restore,
-                name="mentorflow-session-restore",
-                daemon=True,
-            ).start()
-        else:
+            profile, automatic = None, False
+        force_once = os.environ.pop("MENTORFLOW_DESKTOP_REQUIRE_INTERACTIVE_ONCE", "") == "1"
+        self._remembered_profile = None if force_once else profile
+        if self._remembered_profile is not None:
+            self.login_gate.remember_box.setChecked(True)
+            self.login_gate.auto_box.setChecked(automatic)
             self.login_gate.set_state(LoginGateState.LOGIN_READY)
+            self.login_gate.state_title.setText(profile.safe_account_label)
+            self.login_gate.state_detail.setText("已记住此账号，点击登录可免输密码继续。")
+            self.login_gate.primary_button.setText("登录")
+            if automatic:
+                QTimer.singleShot(0, self._begin_remembered_login)
+        else:
+            self.login_gate.set_state(LoginGateState.AUTHENTICATING, detail="正在加载登录页面…")
+            QTimer.singleShot(0, self._begin_interactive_login)
+
+    def _invalidate_login_jobs(self) -> None:
+        self._login_generation += 1
+        self._login_cancelled.set()
+        self._login_cancelled = threading.Event()
+        if self._auth_pane is not None:
+            pane, self._auth_pane = self._auth_pane, None
+            if self.login_gate is not None:
+                self.login_gate.set_auth_content(None)
+            pane.dispose()
+
+    def _cancel_login(self) -> None:
+        self._invalidate_login_jobs()
+        self._remembered_profile = None
+        self._last_login_result = None
+        self.login_gate.remember_box.setChecked(False)
+        self.login_gate.auto_box.setChecked(False)
+        # Cancel automatic login without deleting any account's credentials.
+        self._login_session.preferences.settings.setValue("account/auto_login", "0")
+        self._login_session.preferences.settings.sync()
+        self._begin_interactive_login()
+
+    def _begin_remembered_login(self) -> None:
+        from .startup_flow import LoginGateState
+        if self._closing or self._remembered_profile is None:
+            return
+        self._invalidate_login_jobs()
+        generation, cancelled = self._login_generation, self._login_cancelled
+        profile, gate = self._remembered_profile, self.login_gate
+        gate.set_state(LoginGateState.AUTHENTICATING, detail="正在登录…")
+        gate.state_detail.setText("正在安全恢复已记住的会话…")
+
+        def restore() -> None:
+            try:
+                result = self._login_session.restore(profile, cancelled)
+                gate.background_succeeded.emit(f"{generation}:restore", result)
+            except Exception as exc:
+                code = getattr(exc, "code", "")
+                reauthenticate = code in {"ENTERPRISE_SESSION_REAUTH_REQUIRED", "ENTERPRISE_OIDC_TOKEN_INVALID",
+                                          "ENTERPRISE_ACCOUNT_RESTORE_MISMATCH", "ENTERPRISE_ACCOUNT_ISSUER_CHANGED",
+                                          "CREDENTIAL_NOT_FOUND"}
+                job = "restore_expired" if reauthenticate else "restore"
+                gate.background_failed.emit(f"{generation}:{job}", "登录已失效，请重新登录。" if reauthenticate else "暂时无法恢复登录，请检查网络或账号权限后重试。")
+        threading.Thread(target=restore, name="mentorflow-session-restore", daemon=True).start()
 
     def _begin_interactive_login(self) -> None:
-        from .enterprise_oidc import EnterpriseOidcError
-        from .in_app_oidc import login_enterprise_account_in_app_from_env
+        from .enterprise_oidc import DesktopOidcConfig
+        from .in_app_oidc import InAppOidcLoginDialog
         from .startup_flow import LoginGateState
 
-        if self.login_gate is None:
+        if self.login_gate is None or self._closing:
             return
+        if self._remembered_profile is not None:
+            self._begin_remembered_login()
+            return
+        self._invalidate_login_jobs()
+        generation = self._login_generation
         self.login_gate.set_state(LoginGateState.AUTHENTICATING)
         try:
-            result = login_enterprise_account_in_app_from_env(parent=self.login_gate)
-        except EnterpriseOidcError as exc:
-            if exc.code == "ENTERPRISE_OIDC_LOGIN_CANCELLED":
-                self.login_gate.set_state(LoginGateState.LOGIN_READY)
-            else:
-                self.login_gate.set_state(
-                    LoginGateState.AUTH_FAILED,
-                    detail="登录未完成，请检查网络或账号后重试。",
-                )
-            return
+            pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True)
+            self._auth_pane = pane
+            pane.authenticated.connect(lambda result: self._accept_login_result(result) if generation == self._login_generation else None)
+            pane.authentication_failed.connect(lambda code, message: self._background_failed(f"{generation}:authenticate", "登录页面暂不可用，请检查网络或账号权限后重试。"))
+            self.login_gate.set_auth_content(pane)
+            pane.start_embedded()
         except Exception:
             self.login_gate.set_state(
                 LoginGateState.AUTH_FAILED,
-                detail="登录窗口暂时无法打开，请稍后重试。",
+                detail="登录页面暂时无法打开，请稍后重试。",
             )
-            return
-        self._accept_login_result(result)
 
     def _accept_login_result(self, result) -> None:
-        from .account_identity import AccountCredentialVault, AccountPreferenceStore
         from .enterprise_oidc import EnterpriseOidcLoginResult
         from .runtime import record_enterprise_account_session
         from .startup_flow import LoginGateState
@@ -1210,14 +1227,8 @@ class MentorFlowApplication:
                 )
             return
         try:
-            AccountCredentialVault().store_oauth_tokens(
-                result.identity,
-                access_token=result.access_token,
-                refresh_token=result.refresh_token,
-            )
-            AccountPreferenceStore(
-                QSettings("MentorFlow", "MentorFlow")
-            ).save_target(result.identity.profile(), sync_cursor=result.sync_cursor)
+            self._login_session.accept(result, remember=self.login_gate.remember_box.isChecked(),
+                                       automatic=self.login_gate.auto_box.isChecked())
             record_enterprise_account_session(
                 result.identity.profile(),
                 result.server_state,
@@ -1229,6 +1240,7 @@ class MentorFlowApplication:
             )
             return
         self._last_login_result = result
+        self._invalidate_login_jobs()
         self._start_account_bootstrap()
 
     def _start_account_bootstrap(self) -> None:
@@ -1241,15 +1253,16 @@ class MentorFlowApplication:
             detail="正在确认账号 · 正在恢复学习数据 · 正在检查本机资料",
         )
         login_result = self._last_login_result
+        generation, gate = self._login_generation, self.login_gate
 
         def bootstrap() -> None:
             try:
                 result = bootstrap_enterprise_account(login_result)
-                self.login_gate.background_succeeded.emit("bootstrap", result)
+                gate.background_succeeded.emit(f"{generation}:bootstrap", result)
             except Exception as exc:
                 message = str(getattr(exc, "user_message", "") or "")
-                self.login_gate.background_failed.emit(
-                    "bootstrap",
+                gate.background_failed.emit(
+                    f"{generation}:bootstrap",
                     message or "账号数据暂时无法恢复，请检查网络和磁盘后重试。",
                 )
 
@@ -1266,8 +1279,17 @@ class MentorFlowApplication:
             self._begin_interactive_login()
 
     def _background_succeeded(self, job: str, result: object) -> None:
+        if ":" in job:
+            generation, job = job.split(":", 1)
+            if int(generation) != self._login_generation or self._closing:
+                if job == "bootstrap" and hasattr(result, "close"):
+                    result.close()
+                return
         if job == "restore":
             self._accept_login_result(result)
+            return
+        if job == "logout_remote":
+            self._finish_return_to_login_gate(result)
             return
         if job != "bootstrap":
             return
@@ -1280,6 +1302,8 @@ class MentorFlowApplication:
             self._background_failed("bootstrap", "账号数据结果无法验证，请重试。")
             return
         self.bootstrap_result = result
+        from .runtime import bind_desktop_profile_data_root
+        bind_desktop_profile_data_root(result.profile)
         if result.device_state is DeviceBootstrapState.NEW_DEVICE_OR_EMPTY_LOCAL_STATE:
             self._show_device_migration(before_main=True)
         else:
@@ -1288,9 +1312,28 @@ class MentorFlowApplication:
     def _background_failed(self, job: str, message: str) -> None:
         from .startup_flow import LoginGateState
 
+        if ":" in job:
+            generation, job = job.split(":", 1)
+            if int(generation) != self._login_generation or self._closing:
+                return
+
         if self.login_gate is None:
             return
-        if job == "restore":
+        if job == "logout":
+            self._last_login_result = None
+            self.login_gate.set_state(LoginGateState.AUTH_FAILED, detail=message)
+            self.login_gate.primary_button.hide()
+            self.login_gate.cancel_button.hide()
+            return
+        if job == "restore_expired":
+            self._login_session.preferences.disable_restore()
+            self._remembered_profile = None
+            self._last_login_result = None
+            self.login_gate.remember_box.setChecked(False)
+            self._begin_interactive_login()
+            return
+        if job in {"restore", "authenticate"}:
+            self._invalidate_login_jobs()
             self._last_login_result = None
             self.login_gate.set_state(
                 LoginGateState.AUTH_FAILED,
@@ -1354,9 +1397,12 @@ class MentorFlowApplication:
                 detail="正在打开你的学习空间…",
             )
         self.service = LocalService(resolved_profile=self.bootstrap_result.profile)
-        self.service.ready.connect(self._service_ready)
-        self.service.failed.connect(self._service_failed)
         service = self.service
+        generation = self._login_generation
+        service.ready.connect(lambda origin: self._service_ready(origin)
+                              if service is self.service and generation == self._login_generation and not self._closing else None)
+        service.failed.connect(lambda message: self._service_failed(message)
+                               if service is self.service and generation == self._login_generation and not self._closing else None)
 
         def start_service() -> None:
             try:
@@ -1411,34 +1457,82 @@ class MentorFlowApplication:
         self.main.show()
         if self._enterprise_login_required:
             if self.login_gate is not None:
-                self.login_gate.close()
+                self.login_gate.hide()
         else:
             self.splash.finish(self.main)
 
     def _return_to_login_gate(self, reason: str) -> None:
-        from .account_identity import AccountCredentialVault, AccountProfile
+        from .startup_flow import LoginGateState
 
         if self.main is None:
             return
+        if self.main._account_switch_in_progress:
+            return
         self.main._account_switch_in_progress = True
+        self._invalidate_login_jobs()
+        self._login_session.preferences.disable_restore()
+        generation, gate = self._login_generation, self.login_gate
+        profile = self.main.account_profile
+        refresh = self._last_login_result.refresh_token if self._last_login_result is not None else None
+        old_main, old_service = self.main, self.service
+        # Stop UI producers before waiting on their executors off the Qt thread.
+        for timer in old_main.findChildren(QTimer):
+            timer.stop()
+        old_main.setEnabled(False)
+        self.main.hide()
+        gate.set_state(LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING, detail="正在安全结束当前账号会话…")
+        gate.show()
+
+        def logout():
+            try:
+                for name in ("_official_executor", "_analogy_executor", "_provider_executor", "_workspace_executor"):
+                    executor = getattr(old_main, name, None)
+                    if executor is not None:
+                        executor.shutdown(wait=True, cancel_futures=True)
+                if old_service is not None:
+                    old_service.stop()
+                    if not old_service.handles_closed:
+                        raise RuntimeError("Previous account API is still running")
+                # Switching is not explicit logout: preserve opted-in A
+                # credentials, but never auto-restore A into B's login attempt.
+                remote = False
+                if reason == "logout":
+                    remote = self._login_session.logout(profile, remote=True, refresh_token=refresh)
+                gate.background_succeeded.emit(f"{generation}:logout_remote", {"reason": reason, "remote": remote})
+            except Exception:
+                gate.background_failed.emit(f"{generation}:logout", "此设备的会话未能完整清除，请关闭软件后重试。")
+        threading.Thread(target=logout, name="mentorflow-account-logout", daemon=True).start()
+
+    def _finish_return_to_login_gate(self, outcome) -> None:
+        from .runtime import clear_enterprise_account_session
+        reason = outcome["reason"]
         try:
-            AccountCredentialVault().logout(self.main.account_profile)
-            os.environ["MENTORFLOW_DESKTOP_FORCE_LOGIN_GATE"] = "1"
-            self.main._account_switch_coordinator().switch_to_profile(
-                AccountProfile.personal_local(),
-                initial_event=(
-                    "logout_current_enterprise_account"
-                    if reason == "logout"
-                    else "switch_account_to_login_gate"
-                ),
-            )
+            if self.service is not None and not self.service.handles_closed:
+                raise RuntimeError("Previous account API is still running")
+            old_main = self.main
+            old_main._close_current_account_handles()
+            old_main._clear_account_ui_and_runtime_cache()
+            old_main.account_vault_manager.unmount()
+            if self.bootstrap_result is not None:
+                self.bootstrap_result.close()
+            clear_enterprise_account_session()
+            old_main.close()
+            old_main.deleteLater()
+            self.main = self.api = self.service = self.bootstrap_result = None
+            self.migration_center = None
+            self._last_login_result = None
+            self._remembered_profile = None
+            self.login_gate.remember_box.setChecked(False)
+            self.login_gate.auto_box.setChecked(False)
+            if reason == "logout":
+                self.login_gate.notice_label.setText(
+                    "已退出当前账号。" if outcome["remote"] else "此设备已退出；远端会话注销未确认。"
+                )
+            else:
+                self.login_gate.notice_label.setText("")
+            self._begin_interactive_login()
         except (OSError, RuntimeError, ValueError):
-            self.main._account_switch_in_progress = False
-            QMessageBox.warning(
-                self.main,
-                "无法安全切换账号",
-                "当前账号的数据句柄未能完整关闭，请稍后重试。",
-            )
+            self._background_failed("logout", "当前账号的数据句柄未能完整关闭，请关闭软件后重试。")
 
     def _service_failed(self, message: str) -> None:
         self.splash.close()
@@ -1450,6 +1544,9 @@ class MentorFlowApplication:
         self.app.quit()
 
     def _shutdown(self) -> None:
+        self._closing = True
+        self._invalidate_login_jobs()
+        self._last_login_result = None
         if getattr(self, "api", None):
             self.api.close()
         if getattr(self, "service", None):
@@ -1459,6 +1556,8 @@ class MentorFlowApplication:
 
 
 def main() -> int:
+    import multiprocessing
+    multiprocessing.freeze_support()
     return MentorFlowApplication().run()
 
 

@@ -138,6 +138,8 @@ NONSECRET_ACCOUNT_PREFERENCE_KEYS = frozenset(
         "account/display_name",
         "account/sync_cursor",
         "account/model_selection",
+        "account/remember_me",
+        "account/auto_login",
     }
 )
 
@@ -154,7 +156,16 @@ class AccountPreferenceStore:
         *,
         sync_cursor: str = "",
         model_selection: str = "",
+        remember_me: bool | None = None,
+        auto_login: bool | None = None,
     ) -> None:
+        same_account = (
+            self.settings.value("account/issuer_hash", "") == profile.issuer_hash
+            and self.settings.value("account/subject_hash", "") == profile.subject_hash
+        )
+        previous_remember, previous_auto = self.login_options()
+        remember = same_account and previous_remember if remember_me is None else bool(remember_me)
+        automatic = same_account and previous_auto if auto_login is None else bool(auto_login)
         values = {
             "account/profile_mode": profile.mode.value,
             "account/issuer_hash": profile.issuer_hash or "",
@@ -162,11 +173,22 @@ class AccountPreferenceStore:
             "account/display_name": profile.safe_account_label,
             "account/sync_cursor": str(sync_cursor or ""),
             "account/model_selection": str(model_selection or ""),
+            "account/remember_me": "1" if remember else "0",
+            "account/auto_login": "1" if remember and automatic else "0",
         }
         if set(values) != NONSECRET_ACCOUNT_PREFERENCE_KEYS:
             raise RuntimeError("account preference allowlist changed unexpectedly")
         for key, value in values.items():
             self.settings.setValue(key, value)
+        self.settings.sync()
+
+    def login_options(self) -> tuple[bool, bool]:
+        remember = str(self.settings.value("account/remember_me", "0")) == "1"
+        return remember, remember and str(self.settings.value("account/auto_login", "0")) == "1"
+
+    def disable_restore(self) -> None:
+        self.settings.setValue("account/remember_me", "0")
+        self.settings.setValue("account/auto_login", "0")
         self.settings.sync()
 
     def load_unvalidated(self) -> AccountProfile:

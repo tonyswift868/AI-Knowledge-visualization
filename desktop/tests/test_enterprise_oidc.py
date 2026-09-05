@@ -74,6 +74,16 @@ def _state(subject: str = "subject-a") -> dict[str, object]:
     }
 
 
+def _workspaces_response(request):
+    assert "X-MentorFlow-Organization-ID" not in request.headers
+    assert "X-MentorFlow-Workspace-ID" not in request.headers
+    return httpx.Response(200, json={
+        "workspaces": [{"id": "workspace-a", "organization_id": "org-a", "title": "Account A space",
+                        "status": "active", "initialization_status": "READY"}],
+        "default_workspace_id": "workspace-a", "initialization_required": False,
+    })
+
+
 class _Validator:
     def __init__(self) -> None:
         self.login_calls: list[tuple[str, str, str]] = []
@@ -201,6 +211,8 @@ def test_prepared_login_returns_to_loopback_and_refreshes_state_once() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append((request.method, str(request.url)))
+        if request.url.path == "/api/enterprise/account/workspaces":
+            return _workspaces_response(request)
         if str(request.url) == f"{ISSUER}/.well-known/openid-configuration":
             return httpx.Response(200, json=_discovery())
         if str(request.url) == f"{ISSUER}/protocol/openid-connect/token":
@@ -301,6 +313,8 @@ def test_restart_refreshes_expired_session_and_rejects_cross_account_state() -> 
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal token_requests
+        if request.url.path == "/api/enterprise/account/workspaces":
+            return _workspaces_response(request)
         if str(request.url) == f"{ISSUER}/.well-known/openid-configuration":
             return httpx.Response(200, json=_discovery())
         if str(request.url) == f"{ISSUER}/protocol/openid-connect/token":
@@ -344,7 +358,7 @@ def test_restart_refreshes_expired_session_and_rejects_cross_account_state() -> 
     assert token_requests == 1
     assert validator.access_calls == ["expired-access", "fresh-access"]
     assert credentials.stored == [
-        (restored.identity, "fresh-access", "refresh-rotated")
+        (AccountIdentity(ISSUER, "subject-a", "Token Account A"), "fresh-access", "refresh-rotated")
     ]
 
 
@@ -352,6 +366,8 @@ def test_server_state_subject_mismatch_never_returns_an_account() -> None:
     validator = _Validator()
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/enterprise/account/workspaces":
+            return _workspaces_response(request)
         if str(request.url) == f"{ISSUER}/.well-known/openid-configuration":
             return httpx.Response(200, json=_discovery())
         if str(request.url) == f"{ISSUER}/protocol/openid-connect/token":
