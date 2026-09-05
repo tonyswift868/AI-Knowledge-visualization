@@ -49,7 +49,12 @@ def test_health_requires_mentorflow_identity_not_any_http_200() -> None:
     )
 
 
-def test_start_and_stop_are_deterministic() -> None:
+def test_start_and_stop_are_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MENTORFLOW_USER_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENTORFLOW_DB", str(tmp_path / "app.db"))
+    monkeypatch.setenv("MENTORFLOW_ORM_DB", str(tmp_path / "mentorflow_v2.db"))
+    monkeypatch.setenv("MENTORFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", str(tmp_path))
     service = LocalService()
     service.start()
     try:

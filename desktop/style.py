@@ -27,6 +27,8 @@ QPushButton:hover { background: #ffeaf3; border-color: #db86aa; }
 #navigation::item:hover { background: #50364d; color: white; }
 #navigation::item:selected { background: #c95f8d; color: white; }
 #accountBadge { color: #faeaf1; background: #533b54; border-radius: 10px; padding: 12px; }
+#deviceRecoveryBanner { color: #fff7fa; background: #a94f79; border: 1px solid #cf82a5; border-radius: 10px; padding: 8px 10px; }
+#deviceRecoveryBanner:hover { color: white; background: #c95f8d; }
 #pageHeading { font-size: 28px; font-weight: 800; color: #3b2b3f; }
 #pageSubtitle { color: #786572; }
 #metricCard, #explanationCard { border: 1px solid #d9d3c8; border-radius: 15px; background: #fffdf8; padding: 18px; }

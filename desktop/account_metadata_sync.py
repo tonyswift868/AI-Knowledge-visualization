@@ -95,6 +95,12 @@ class LocalResourceLifecycle(Protocol):
         source: Path | str,
     ) -> ResourceBinding: ...
 
+    def bind_resource_to_asset(
+        self,
+        resource_id: str,
+        local_asset_id: str,
+    ) -> ResourceBinding: ...
+
 
 @dataclass(frozen=True, slots=True)
 class SyncedResource:
@@ -429,13 +435,33 @@ class AccountMetadataSyncService:
         except LocalAssetLifecycleError as exc:
             raise AccountMetadataSyncError(exc.code, exc.user_message) from exc
 
-    def _binding_for(self, resource_id: str, fingerprint: str) -> ResourceBinding:
+    def _binding_for(
+        self,
+        resource_id: str,
+        fingerprint: str,
+        server_metadata: Mapping[str, Any] | None = None,
+    ) -> ResourceBinding:
         try:
             binding = self._lifecycle.resolve_resource_binding(resource_id)
         except LocalAssetLifecycleError as exc:
             if exc.code != "RESOURCE_BINDING_NOT_FOUND":
                 raise AccountMetadataSyncError(exc.code, exc.user_message) from exc
-            binding = self._missing_binding(resource_id, fingerprint)
+            binding = None
+            local_asset_id = str(
+                (server_metadata or {}).get("local_asset_id") or ""
+            ).strip()
+            binder = getattr(self._lifecycle, "bind_resource_to_asset", None)
+            if local_asset_id and callable(binder):
+                try:
+                    binding = binder(resource_id, _resource_id(local_asset_id))
+                except LocalAssetLifecycleError as bind_exc:
+                    if bind_exc.code != "ASSET_NOT_FOUND":
+                        raise AccountMetadataSyncError(
+                            bind_exc.code,
+                            bind_exc.user_message,
+                        ) from bind_exc
+            if binding is None:
+                binding = self._missing_binding(resource_id, fingerprint)
         binding_resource_id = _resource_id(_binding_value(binding, "resource_id"))
         binding_fingerprint = _fingerprint(
             _binding_value(binding, "fingerprint_sha256")
@@ -465,7 +491,7 @@ class AccountMetadataSyncService:
 
         resources: list[SyncedResource] = []
         for row, (resource_id, fingerprint) in zip(rows, contracts, strict=True):
-            binding = self._binding_for(resource_id, fingerprint)
+            binding = self._binding_for(resource_id, fingerprint, row)
             state = (
                 ResourceDeviceState.AVAILABLE
                 if _availability_value(binding) == "AVAILABLE_LOCAL"
@@ -485,6 +511,30 @@ class AccountMetadataSyncService:
         )
         self._snapshot = snapshot
         return snapshot
+
+    def refresh_device_state(self) -> AccountMetadataSnapshot:
+        """Reconcile cached server metadata after a device-only recovery action."""
+
+        if self._snapshot is None:
+            raise AccountMetadataSyncError(
+                "METADATA_SYNC_REQUIRED",
+                "请先同步 Account metadata，再检查本机资料。",
+            )
+        resources: list[SyncedResource] = []
+        for resource in self._snapshot.resources:
+            binding = self._binding_for(
+                resource.resource_id,
+                resource.expected_fingerprint_sha256,
+                resource.server_metadata,
+            )
+            state = (
+                ResourceDeviceState.AVAILABLE
+                if _availability_value(binding) == "AVAILABLE_LOCAL"
+                else ResourceDeviceState.MISSING_ON_THIS_DEVICE
+            )
+            resources.append(replace(resource, state=state))
+        self._snapshot = replace(self._snapshot, resources=tuple(resources))
+        return self._snapshot
 
     def relink(
         self,

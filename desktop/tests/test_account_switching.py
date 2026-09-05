@@ -407,10 +407,10 @@ def test_settings_page_shows_safe_profile_root_and_readable_availability(
 
 
 def test_account_presentation_switches_a_b_a_and_shows_new_device_state(
-    qtbot,
     tmp_path: Path,
     vault_root: Path,
 ) -> None:
+    application = QApplication.instance() or QApplication([])
     clear_enterprise_account_session()
     layout = VaultLayout(vault_root)
     manager = AccountVaultManager(layout)
@@ -429,7 +429,6 @@ def test_account_presentation_switches_a_b_a_and_shows_new_device_state(
         switch_account=lambda _target: None,
         logout_account=lambda: logout_calls.append(page.account_label.text()),
     )
-    qtbot.addWidget(page)
     page.show()
     assert page.account_label.text() == "CURRENT_ACCOUNT = Account A"
     assert page.assets.item(0, 0).text() == "A-only.txt"
@@ -458,9 +457,12 @@ def test_account_presentation_switches_a_b_a_and_shows_new_device_state(
     page.set_synced_resource_count(1)
     assert page.account_label.text() == "CURRENT_ACCOUNT = Account A on Device 2"
     assert page.assets.rowCount() == 0
-    assert "NEW_DEVICE" in page.device_state_label.text()
+    assert "NEW_DEVICE" not in page.device_state_label.text()
     assert "重新关联" in page.device_state_label.text()
 
-    qtbot.mouseClick(page.logout_button, Qt.MouseButton.LeftButton)
+    page.logout_button.click()
     assert logout_calls == ["CURRENT_ACCOUNT = Account A on Device 2"]
     clear_enterprise_account_session()
+    page.close()
+    manager.unmount()
+    application.processEvents()

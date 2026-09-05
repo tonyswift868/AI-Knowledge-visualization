@@ -113,6 +113,20 @@ def test_public_frontend_assets_exclude_private_teacher_model(tmp_path: Path, mo
     assert "teacher2d/tsubaki-live2d/manifest.json" in private_collected
 
 
+def test_pyinstaller_uses_canonical_app_namespace_and_drops_conflicting_root_icu() -> None:
+    source = _SPEC_FILE.read_text(encoding="utf-8")
+
+    assert 'collect_submodules("app")' in source
+    assert 'collect_submodules("backend.app")' not in source
+    assert 'str(root), str(backend_root)' in source
+    assert '(backend_root / "app").rglob("*.py")' in source
+    assert 'relative_to(backend_root).parent' in source
+    assert 'destination = Path("backend") / relative_parent' in source
+    assert 'binaries = collect_dynamic_libs("ortools")' in source
+    assert '_conflicting_root_icu = {"icuuc.dll", "icudt78.dll"}' in source
+    assert 'Path(str(entry[0])).parent == Path(".")' in source
+
+
 def test_public_catalog_and_required_self_check_pass(tmp_path: Path) -> None:
     package = _package(tmp_path)
     verifier.build_manifest(package)

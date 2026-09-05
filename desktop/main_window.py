@@ -436,27 +436,51 @@ class MainWindow(QMainWindow):
             return cls.DEEPSEEK_FLASH_MODEL
         return value
 
-    def __init__(self, api: DesktopApi, user: dict, origin: str):
+    def __init__(
+        self,
+        api: DesktopApi,
+        user: dict,
+        origin: str,
+        *,
+        account_profile: AccountProfile | None = None,
+        account_vault_manager: AccountVaultManager | None = None,
+        local_asset_lifecycle: LocalAssetLifecycle | None = None,
+        bootstrap_snapshot: object | None = None,
+        open_recovery_center=None,
+        return_to_login_gate=None,
+    ):
         super().__init__()
         self.api = api
         self.user = user
         self.origin = origin
         self.settings = QSettings("MentorFlow", "MentorFlow")
         self.account_preferences = AccountPreferenceStore(self.settings)
-        try:
-            self.account_profile = self.account_preferences.load()
-        except ValueError:
-            self.account_preferences.clear()
-            self.account_profile = AccountProfile.personal_local()
+        if account_profile is not None:
+            self.account_profile = account_profile
+        else:
+            try:
+                self.account_profile = self.account_preferences.load()
+            except ValueError:
+                self.account_preferences.clear()
+                self.account_profile = AccountProfile.personal_local()
         vault_root = Path(
             os.getenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData")
         )
-        self.account_vault_manager = AccountVaultManager(VaultLayout(vault_root))
-        self.account_vault_manager.mount(self.account_profile)
-        self.local_asset_lifecycle = LocalAssetLifecycle(
+        self.account_vault_manager = account_vault_manager or AccountVaultManager(
+            VaultLayout(vault_root)
+        )
+        if (
+            self.account_vault_manager.current is None
+            or self.account_vault_manager.current.profile != self.account_profile
+        ):
+            self.account_vault_manager.mount(self.account_profile)
+        self.local_asset_lifecycle = local_asset_lifecycle or LocalAssetLifecycle(
             self.account_vault_manager.current,
             account_identity=self.user,
         )
+        self.bootstrap_snapshot = bootstrap_snapshot
+        self._open_recovery_center_callback = open_recovery_center
+        self._return_to_login_gate_callback = return_to_login_gate
         self.account_credential_vault = AccountCredentialVault()
         self._account_switch_in_progress = False
         analogy_policy_version = "v12"
@@ -550,6 +574,15 @@ class MainWindow(QMainWindow):
             QListWidgetItem(label, self.navigation)
         self.navigation.currentRowChanged.connect(self._navigate)
         side.addWidget(self.navigation, 1)
+        self.device_recovery_button = QPushButton()
+        self.device_recovery_button.setObjectName("deviceRecoveryBanner")
+        self.device_recovery_button.setAccessibleName("打开本机资料恢复")
+        self.device_recovery_button.setVisible(False)
+        if self._open_recovery_center_callback is not None:
+            self.device_recovery_button.clicked.connect(
+                self._open_recovery_center_callback
+            )
+        side.addWidget(self.device_recovery_button)
         account = QLabel(
             "Personal Local\n本机独立数据"
             if self.account_profile.mode is ProfileMode.PERSONAL_LOCAL
@@ -597,11 +630,18 @@ class MainWindow(QMainWindow):
             credential_vault=self.account_credential_vault,
             switch_account=self._switch_enterprise_account,
             logout_account=self._logout_enterprise_account,
+            begin_account_switch=(
+                self._begin_account_switch_at_login_gate
+                if self._return_to_login_gate_callback is not None
+                else None
+            ),
+            open_recovery_center=self._open_recovery_center_callback,
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
         self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle)
         self.pages.addWidget(self.local_asset_page)
+        self.set_device_recovery_snapshot(self.bootstrap_snapshot)
         layout.addWidget(self.pages, 1)
         self.navigation.setCurrentRow(0)
         QTimer.singleShot(0, self._refresh_overview)
@@ -612,6 +652,27 @@ class MainWindow(QMainWindow):
         # intentionally no timer and no network request during normal launch.
         self._official_updates = self._official_feed_service.load_cached()
         self._render_fact()
+
+    def set_device_recovery_snapshot(self, snapshot: object | None) -> None:
+        self.bootstrap_snapshot = snapshot
+        resources = tuple(getattr(snapshot, "resources", ()) or ())
+        missing = sum(
+            1
+            for item in resources
+            if str(getattr(getattr(item, "state", ""), "value", getattr(item, "state", "")))
+            == "MISSING_ON_THIS_DEVICE"
+        )
+        self.account_settings_page.set_synced_resource_count(len(resources))
+        if missing and self._open_recovery_center_callback is not None:
+            self.device_recovery_button.setText(f"需要恢复 {missing} 项资料")
+            self.device_recovery_button.setVisible(True)
+        else:
+            self.device_recovery_button.setVisible(False)
+
+    def _begin_account_switch_at_login_gate(self) -> None:
+        callback = self._return_to_login_gate_callback
+        if callback is not None:
+            callback("switch")
 
     def _page(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -814,6 +875,9 @@ class MainWindow(QMainWindow):
             return
         try:
             self.account_credential_vault.logout(self.account_profile)
+            if self._return_to_login_gate_callback is not None:
+                self._return_to_login_gate_callback("logout")
+                return
             self._account_switch_in_progress = True
             self._account_switch_coordinator().switch_to_profile(
                 AccountProfile.personal_local(),
@@ -1718,11 +1782,14 @@ class MainWindow(QMainWindow):
         cards_container.setLayout(cards)
         local_mode = os.getenv("MENTORFLOW_LOCAL_DATA_MODE", "").strip().lower() in {"1", "true", "yes"}
         account_card = ("本地学习空间", "已自动识别") if local_mode else ("学习账户", "已连接")
+        account_snapshot = self.bootstrap_snapshot
+        if account_snapshot is not None:
+            account_card = ("学习空间", str(account_snapshot.workspace.get("title") or "已连接"))
         self.overview_metric_values: dict[str, QLabel] = {}
         for key, (title, value) in (
             ("space", account_card),
-            ("active", ("进行中任务", "读取中")),
-            ("progress", ("已完成学习项", "读取中")),
+            ("active", ("学习计划" if account_snapshot is not None else "进行中任务", "读取中")),
+            ("progress", ("进度记录" if account_snapshot is not None else "已完成学习项", "读取中")),
         ):
             card = QFrame()
             card.setObjectName("metricCard")
@@ -2413,6 +2480,20 @@ class MainWindow(QMainWindow):
     def _refresh_overview(self) -> None:
         if not hasattr(self, "overview_task_list"):
             return
+        if self.bootstrap_snapshot is not None:
+            snapshot = self.bootstrap_snapshot
+            self.overview_metric_values["active"].setText(str(len(snapshot.plans)))
+            self.overview_metric_values["progress"].setText(str(len(snapshot.progress)))
+            self.overview_current_plan.setText(
+                "学习计划与进度已同步。本机资料可从“账号与数据”中的“本机资料恢复”继续处理。"
+                if snapshot.plans else "欢迎来到新的学习空间，目前没有历史学习计划。"
+            )
+            self.overview_calendar.set_day_summaries({})
+            self.overview_calendar_summary.setText("当前账号同步内容未包含每日任务日程。")
+            self.overview_status_icon.setVisible(False)
+            self.overview_status.setVisible(False)
+            self._show_account_plan_metadata(self.overview_task_list)
+            return
         cached = self._workspace_cache.get(False)
         if cached is not None:
             self._render_overview_items(cached)
@@ -2815,6 +2896,10 @@ class MainWindow(QMainWindow):
             self.provider_status.setText(f"连接失败：{exc.code}：{exc.message}")
 
     def _refresh_tasks(self, _checked: bool = False) -> None:
+        if self.bootstrap_snapshot is not None:
+            self._show_account_plan_metadata(self.task_list)
+            self.task_loading_status.setText("已恢复当前账号的计划与进度记录")
+            return
         include_archived = bool(
             getattr(self, "include_archived_plans", None)
             and self.include_archived_plans.isChecked()
@@ -2830,6 +2915,25 @@ class MainWindow(QMainWindow):
             include_archived=include_archived,
         )
         QTimer.singleShot(40, lambda: self._poll_task_refresh(token, include_archived))
+
+    def _show_account_plan_metadata(self, target: QListWidget) -> None:
+        """Render the authenticated snapshot without inventing local task rows."""
+        snapshot = self.bootstrap_snapshot
+        target.clear()
+        include_archived = bool(self.include_archived_plans.isChecked())
+        plans = [
+            plan for plan in snapshot.plans
+            if include_archived or str(plan.get("status", "")).casefold() != "archived"
+        ]
+        for plan in plans:
+            plan_id = str(plan.get("plan_id") or "")
+            progress = [entry for entry in snapshot.progress if entry.get("plan_id") == plan_id]
+            title = str(plan.get("title") or "学习计划")
+            item = QListWidgetItem(f"{title}\n已同步 · 进度记录 {len(progress)} 项")
+            item.setSizeHint(QSize(300, 76))
+            target.addItem(item)
+        if not plans:
+            target.addItem(QListWidgetItem("当前账号没有可显示的学习计划。"))
 
     def _poll_task_refresh(self, token: int, include_archived: bool) -> None:
         future = self._workspace_refresh_future

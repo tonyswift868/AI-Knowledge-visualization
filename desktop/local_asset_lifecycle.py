@@ -418,7 +418,7 @@ class LocalAssetLifecycle:
         if not secrets.compare_digest(observed, expected):
             raise LocalAssetLifecycleError(
                 "RESOURCE_FINGERPRINT_MISMATCH",
-                "所选文件与资源 fingerprint 不匹配，未建立关联。",
+                "所选文件不是同一份资料，本机关联未更改。",
             )
         return self._vault.upsert_resource_binding(
             resource_id=resource_id,
@@ -567,6 +567,53 @@ class LocalAssetLifecycle:
         finally:
             temporary.unlink(missing_ok=True)
         return self.resolve(local_asset_id)
+
+    def reacquire_resource(
+        self,
+        resource_id: str,
+        *,
+        fingerprint_sha256: str,
+        verified_source_url: str,
+    ) -> LocalResourceBinding:
+        """Reacquire one missing server resource through the existing importer."""
+
+        expected = _valid_sha(fingerprint_sha256)
+        url = _verified_https_url(verified_source_url)
+        if not url:
+            raise LocalAssetLifecycleError(
+                "SOURCE_NOT_VERIFIED",
+                "没有已验证的重新获取来源。",
+            )
+        temporary = (
+            self._vault.root
+            / "managed-assets"
+            / "staging"
+            / f"{uuid.uuid4().hex}.reacquire"
+        )
+        try:
+            self._downloader(url, temporary)
+            if not _regular_file(temporary) or not _matches_revision(
+                temporary,
+                expected,
+            ):
+                raise LocalAssetLifecycleError(
+                    "RESOURCE_FINGERPRINT_MISMATCH",
+                    "重新获取的资料与原 revision 不一致，本机关联未更改。",
+                )
+            asset = self.import_managed(
+                temporary,
+                verified_source_url=url,
+            )
+            return self.bind_resource_to_asset(resource_id, asset.local_asset_id)
+        except LocalAssetLifecycleError:
+            raise
+        except Exception as exc:
+            raise LocalAssetLifecycleError(
+                "DOWNLOAD_FAILED",
+                "资料未能重新获取，请稍后重试或选择本机文件。",
+            ) from exc
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def restore_from_package(self, local_asset_id: str, package: Path | str) -> LocalAssetView:
         asset = self._record(local_asset_id)
