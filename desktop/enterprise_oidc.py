@@ -819,6 +819,10 @@ class EnterpriseOidcClient:
                 headers={"Accept": "application/json"},
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if data.get("grant_type") == "refresh_token" and exc.response.status_code in {400, 401, 403}:
+                raise EnterpriseOidcError("ENTERPRISE_SESSION_REAUTH_REQUIRED", "登录已失效，请重新输入账号密码。") from exc
+            raise EnterpriseOidcError("ENTERPRISE_OIDC_TOKEN_EXCHANGE_FAILED", "登录服务暂不可用。") from exc
         except httpx.HTTPError as exc:
             raise EnterpriseOidcError(
                 "ENTERPRISE_OIDC_TOKEN_EXCHANGE_FAILED",
@@ -845,6 +849,55 @@ class EnterpriseOidcClient:
             )
         return OAuthTokens(access_token=access, refresh_token=refresh, id_token=identity)
 
+    async def _discover_workspace(self, access_token: str) -> Mapping[str, object]:
+        """Consume the canonical subject-only workspace bootstrap contract."""
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {access_token}"}
+
+        async def request(initialize: bool = False) -> Mapping[str, object]:
+            try:
+                if initialize:
+                    response = await self._http.post(
+                        f"{self.config.api_base_url}/api/enterprise/account/workspaces/initialize",
+                        headers=headers, json={},
+                    )
+                else:
+                    response = await self._http.get(
+                        f"{self.config.api_base_url}/api/enterprise/account/workspaces", headers=headers,
+                    )
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise EnterpriseOidcError(
+                    "ENTERPRISE_WORKSPACE_DISCOVERY_FAILED", "学习空间暂不可用，请检查网络或账号权限后重试。",
+                ) from exc
+            payload = _json_object(response, "Account workspaces")
+            rows = payload.get("workspaces")
+            if not isinstance(rows, list) or type(payload.get("initialization_required")) is not bool:
+                raise EnterpriseOidcError("ENTERPRISE_WORKSPACE_RESPONSE_INVALID", "学习空间响应无法验证。")
+            seen = set()
+            for row in rows:
+                if not isinstance(row, Mapping) or any(
+                    not isinstance(row.get(key), str) or not row[key].strip()
+                    for key in ("id", "organization_id", "title")
+                ) or row.get("status") != "active" or row.get("initialization_status") not in {"READY", "PROFILE_REQUIRED"}:
+                    raise EnterpriseOidcError("ENTERPRISE_WORKSPACE_RESPONSE_INVALID", "学习空间响应无法验证。")
+                if row["id"] in seen:
+                    raise EnterpriseOidcError("ENTERPRISE_WORKSPACE_RESPONSE_INVALID", "学习空间响应无法验证。")
+                seen.add(row["id"])
+            default = payload.get("default_workspace_id")
+            if default is not None and (not isinstance(default, str) or default not in seen):
+                raise EnterpriseOidcError("ENTERPRISE_WORKSPACE_RESPONSE_INVALID", "学习空间响应无法验证。")
+            return payload
+
+        payload = await request()
+        if not payload["workspaces"] or payload["initialization_required"]:
+            payload = await request(initialize=True)
+        rows = payload["workspaces"]
+        if not rows or payload["initialization_required"] or any(row["initialization_status"] != "READY" for row in rows):
+            raise EnterpriseOidcError("ENTERPRISE_WORKSPACE_INITIALIZATION_REQUIRED", "学习空间尚未准备好，请重试。")
+        # A configured ID is only a hint and must be in this fresh allowed list.
+        selected = next((row for row in rows if row["id"] == self.config.workspace_id), None)
+        return selected or next((row for row in rows if row["id"] == payload.get("default_workspace_id")), rows[0])
+
     async def _server_state(
         self,
         validated: ValidatedTokenIdentity,
@@ -854,10 +907,11 @@ class EnterpriseOidcClient:
             "Accept": "application/json",
             "Authorization": f"Bearer {access_token}",
         }
-        if self.config.organization_id:
-            headers["X-MentorFlow-Organization-ID"] = self.config.organization_id
-        if self.config.workspace_id:
-            headers["X-MentorFlow-Workspace-ID"] = self.config.workspace_id
+        if canonicalize_issuer(validated.issuer) != self.config.issuer:
+            raise EnterpriseOidcError("ENTERPRISE_OIDC_ISSUER_INVALID", "登录身份来源不匹配。")
+        selected = await self._discover_workspace(access_token)
+        headers["X-MentorFlow-Organization-ID"] = selected["organization_id"]
+        headers["X-MentorFlow-Workspace-ID"] = selected["id"]
         try:
             response = await self._http.get(
                 f"{self.config.api_base_url}/api/enterprise/auth/me",
@@ -897,6 +951,8 @@ class EnterpriseOidcClient:
             "context.workspace_id",
             limit=240,
         )
+        if organization_id != selected["organization_id"] or workspace_id != selected["id"]:
+            raise EnterpriseOidcError("ENTERPRISE_ACCOUNT_STATE_MISMATCH", "服务端返回的空间与已验证选择不一致。")
         display = (
             str(account.get("display_name") or "").strip()
             or str(account.get("preferred_username") or "").strip()
@@ -959,6 +1015,8 @@ class EnterpriseOidcClient:
         self,
         profile: AccountProfile,
         credentials: AccountCredentialVault,
+        *,
+        refresh_session: bool = False,
     ) -> EnterpriseOidcLoginResult:
         if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
             raise EnterpriseOidcError(
@@ -973,6 +1031,8 @@ class EnterpriseOidcClient:
         effective_refresh = refresh_token
         try:
             validated = await validator.validate_access(access_token)
+            if refresh_session:
+                raise EnterpriseOidcError("ENTERPRISE_REFRESH_REQUIRED", "Refresh current server session")
         except Exception:
             refreshed = await self._token_request(
                 discovery.token_endpoint,
@@ -992,8 +1052,8 @@ class EnterpriseOidcClient:
                     "ENTERPRISE_OIDC_TOKEN_INVALID",
                     "Restored Enterprise session token is invalid",
                 ) from exc
-        identity, state = await self._server_state(validated, effective_access)
-        restored_profile = identity.profile()
+        verified_identity = AccountIdentity(validated.issuer, validated.subject, validated.display_name)
+        restored_profile = verified_identity.profile()
         if (
             restored_profile.issuer_hash != profile.issuer_hash
             or restored_profile.subject_hash != profile.subject_hash
@@ -1004,10 +1064,11 @@ class EnterpriseOidcClient:
             )
         if (effective_access, effective_refresh) != (access_token, refresh_token):
             credentials.store_oauth_tokens(
-                identity,
+                verified_identity,
                 access_token=effective_access,
                 refresh_token=effective_refresh,
             )
+        identity, state = await self._server_state(validated, effective_access)
         return EnterpriseOidcLoginResult(
             identity=identity,
             access_token=effective_access,
@@ -1015,6 +1076,23 @@ class EnterpriseOidcClient:
             server_state=state,
             restored=True,
         )
+
+    async def end_session(self, refresh_token: str) -> bool:
+        """End this Keycloak client session, without a browser or global logout."""
+        if not refresh_token:
+            return False
+        # Discovery has already constrained all endpoints to the configured
+        # Keycloak issuer; never accept a runtime-provided logout URL.
+        await self._discovery()
+        try:
+            response = await self._http.post(
+                f"{self.config.issuer}/protocol/openid-connect/logout",
+                data={"client_id": self.config.client_id, "refresh_token": refresh_token},
+                headers={"Accept": "application/json"},
+            )
+            return response.status_code in {200, 204}
+        except httpx.HTTPError:
+            return False
 
     async def aclose(self) -> None:
         if self._token_validator is not None and self._owns_validator:
@@ -1026,11 +1104,13 @@ class EnterpriseOidcClient:
 def restore_enterprise_account_from_env(
     profile: AccountProfile,
     credentials: AccountCredentialVault,
+    *,
+    refresh_session: bool = False,
 ) -> EnterpriseOidcLoginResult:
     async def run() -> EnterpriseOidcLoginResult:
         client = EnterpriseOidcClient(DesktopOidcConfig.from_env())
         try:
-            return await client.restore(profile, credentials)
+            return await client.restore(profile, credentials, refresh_session=refresh_session)
         finally:
             await client.aclose()
 

@@ -20,6 +20,7 @@ import httpx
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -331,7 +332,8 @@ def bootstrap_enterprise_account(
             account_identity=identity,
         )
         snapshot = sync.sync()
-        bind_desktop_profile_data_root(profile)
+        # Environment binding belongs to the UI generation acceptance gate.
+        # A late A bootstrap must never redirect B's process-global paths.
         return AccountBootstrapResult(
             identity=identity,
             profile=profile,
@@ -365,6 +367,8 @@ class LoginGateWindow(QWidget):
     retry_requested = Signal()
     background_succeeded = Signal(str, object)
     background_failed = Signal(str, str)
+    cancel_requested = Signal()
+    closed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -378,9 +382,10 @@ class LoginGateWindow(QWidget):
             | Qt.WindowType.WindowCloseButtonHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        self.resize(440, 580)
-        self.setMinimumSize(400, 520)
-        self.setMaximumSize(480, 660)
+        # Reserve the provider form viewport from first paint, including the
+        # native consent controls. Loading/form/refresh never resize the shell.
+        self.resize(480, 740)
+        self.setMinimumSize(440, 680)
         self.state = LoginGateState.LOGIN_READY
         self._retry_mode = False
         self._centered = False
@@ -402,9 +407,9 @@ class LoginGateWindow(QWidget):
             "QPushButton#loginPrimaryButton:disabled { background: #d9b7c6; color: #fff7fa; }"
         )
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(42, 42, 42, 34)
+        outer.setContentsMargins(20, 16, 20, 16)
         outer.setSpacing(14)
-        outer.addStretch(1)
+        self.brand_widgets = []
         brand = QFrame()
         brand.setObjectName("loginBrandMark")
         brand.setFixedSize(64, 64)
@@ -419,21 +424,27 @@ class LoginGateWindow(QWidget):
         brand_wrap.addWidget(brand)
         brand_wrap.addStretch(1)
         outer.addLayout(brand_wrap)
+        self.brand_widgets.append(brand)
         title = QLabel("MentorFlow")
         title.setObjectName("loginTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(title)
+        self.brand_widgets.append(title)
         subtitle = QLabel("回到属于你的学习空间")
         subtitle.setObjectName("loginSubtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(subtitle)
+        self.brand_widgets.append(subtitle)
         outer.addSpacing(14)
         card = QFrame()
         card.setObjectName("loginCard")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(26, 24, 26, 24)
         card_layout.setSpacing(11)
+        self.content_layout = card_layout
+        self.auth_content = None
         self.state_title = QLabel()
+        self.state_title.setTextFormat(Qt.TextFormat.PlainText)
         self.state_title.setObjectName("loginStateTitle")
         self.state_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.state_title)
@@ -449,13 +460,53 @@ class LoginGateWindow(QWidget):
         self.primary_button.setDefault(True)
         self.primary_button.clicked.connect(self._activate)
         card_layout.addWidget(self.primary_button)
-        outer.addWidget(card)
-        privacy = QLabel("登录在 MentorFlow 的隔离窗口中完成。\n密码和登录表单不会被 MentorFlow 读取。")
+        outer.addWidget(card, 1)
+        self.remember_box = QCheckBox("记住我（下次免输密码）")
+        self.remember_box.setObjectName("rememberLoginCheckBox")
+        self.auto_box = QCheckBox("自动登录")
+        self.auto_box.setObjectName("autoLoginCheckBox")
+        self.auto_box.setEnabled(False)
+        self.remember_box.toggled.connect(self._remember_toggled)
+        outer.addWidget(self.remember_box)
+        outer.addWidget(self.auto_box)
+        self.cancel_button = QPushButton("取消并选择其他账号")
+        self.cancel_button.setObjectName("loginCancelButton")
+        self.cancel_button.clicked.connect(self.cancel_requested)
+        outer.addWidget(self.cancel_button)
+        self.notice_label = QLabel()
+        self.notice_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.notice_label.setWordWrap(True)
+        self.notice_label.setObjectName("loginSessionNotice")
+        outer.addWidget(self.notice_label)
+        privacy = QLabel("密码仅由身份服务处理，MentorFlow 不读取或保存原始密码。")
         privacy.setObjectName("loginSubtitle")
         privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         privacy.setWordWrap(True)
         outer.addWidget(privacy)
-        outer.addStretch(2)
+        self.cancel_button.hide()
+
+    def _remember_toggled(self, enabled: bool) -> None:
+        self.auto_box.setEnabled(enabled)
+        if not enabled:
+            self.auto_box.setChecked(False)
+
+    def set_auth_content(self, content: QWidget | None) -> None:
+        if self.auth_content is not None:
+            self.content_layout.removeWidget(self.auth_content)
+            self.auth_content.hide()
+        self.auth_content = content
+        for widget in self.brand_widgets:
+            widget.setVisible(content is None)
+        self.state_title.setVisible(content is None)
+        self.state_detail.setVisible(content is None)
+        self.primary_button.setVisible(content is None)
+        if content is not None:
+            self.content_layout.addWidget(content, 1)
+            content.show()
+
+    def closeEvent(self, event) -> None:
+        self.closed.emit()
+        super().closeEvent(event)
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
@@ -488,7 +539,7 @@ class LoginGateWindow(QWidget):
             enabled = True
         elif state is LoginGateState.AUTHENTICATING:
             title = "正在验证身份"
-            message = "请在 MentorFlow 登录页面中完成验证。"
+            message = detail or "请在 MentorFlow 登录页面中完成验证。"
             button = "正在登录…"
             enabled = False
         elif state is LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING:
@@ -505,6 +556,7 @@ class LoginGateWindow(QWidget):
         self.state_detail.setText(message)
         self.primary_button.setText(button)
         self.primary_button.setEnabled(enabled)
+        self.cancel_button.setVisible(state in {LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED})
         if enabled:
             self.primary_button.setFocus(Qt.FocusReason.OtherFocusReason)
 

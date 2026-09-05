@@ -216,7 +216,9 @@ def test_bootstrap_fetches_metadata_once_and_detects_empty_device(
         assert result.missing_count == 1
         assert result.snapshot.plans[0]["plan_id"] == "plan-1"
         assert result.snapshot.progress[0]["version"] == 8
-        assert Path(os.environ["MENTORFLOW_USER_DATA_ROOT"]) == result.vault_manager.current.root
+        # Worker-side bootstrap must not redirect process-global paths before
+        # the UI accepts its account/generation. Root binds only after that gate.
+        assert os.environ.get("MENTORFLOW_USER_DATA_ROOT") != str(result.vault_manager.current.root)
     finally:
         result.close()
 
@@ -390,8 +392,8 @@ def test_login_gate_exposes_all_truthful_states(qapp: QApplication) -> None:
     gate = LoginGateWindow()
     try:
         assert gate.objectName() == "mentorflowLoginGateWindow"
-        assert 400 <= gate.width() <= 480
-        assert 520 <= gate.height() <= 660
+        assert 440 <= gate.width() <= 520
+        assert 680 <= gate.height() <= 800
         assert gate.state is LoginGateState.LOGIN_READY
         assert gate.primary_button.isEnabled()
 
