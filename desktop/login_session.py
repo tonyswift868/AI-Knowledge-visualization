@@ -63,11 +63,11 @@ class LoginSession:
         profile = result.identity.profile()
         # With no consent, keep this session only in the existing in-memory
         # login result. Do not overwrite/delete any earlier Locker credentials.
-        if remember:
+        if remember and not result.restored:
             with account_session_lock(profile, blocking=False):
                 self.credentials.store_oauth_tokens(result.identity, access_token=result.access_token,
                                                    refresh_token=result.refresh_token)
-        elif result.restored:
+        elif not remember and result.restored:
             # The user explicitly turned off Remember for this restored
             # account. Remove its rotated recovery pair, never another account.
             with account_session_lock(profile, blocking=False):
@@ -96,11 +96,17 @@ class LoginSession:
             if remote:
                 async def end():
                     from .enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient
+                    from .account_identity import issuer_hash
                     client = EnterpriseOidcClient(DesktopOidcConfig.from_env())
                     try:
-                        token = refresh_token
-                        if token is None:
+                        if profile.issuer_hash != issuer_hash(client.config.issuer):
+                            return False
+                        try:
                             _, token = self.credentials.load_oauth_tokens(profile)
+                        except Exception as exc:
+                            if getattr(exc, 'code', '') != 'CREDENTIAL_NOT_FOUND' and not isinstance(exc, KeyError):
+                                raise
+                            token = refresh_token
                         return await client.end_session(token)
                     finally:
                         await client.aclose()

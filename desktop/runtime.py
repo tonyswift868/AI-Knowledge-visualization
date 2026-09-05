@@ -284,6 +284,7 @@ class LocalService(QObject):
         self._stop_event = threading.Event()
         self._server_error: Exception | None = None
         self._resolved_profile = resolved_profile
+        self._process_stop = None
 
     @staticmethod
     def _bind_listener(port: int = 0) -> socket.socket:
@@ -309,6 +310,9 @@ class LocalService(QObject):
             preflight_desktop_account_storage()
         else:
             bind_desktop_profile_data_root(self._resolved_profile)
+        if self._resolved_profile is not None and self._resolved_profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
+            self._start_account_process()
+            return
         # The backend's canonical import root is ``app`` (its own modules use
         # that name for shared enterprise contracts).  Loading it once as
         # ``backend.app`` creates duplicate Enum/contract classes and makes a
@@ -353,6 +357,31 @@ class LocalService(QObject):
             target=self._wait_until_ready,
             name="mentorflow-health",
             daemon=True,
+        )
+        self.health_thread.start()
+
+    def _start_account_process(self) -> None:
+        import multiprocessing
+        from .account_backend import run_account_backend
+
+        if self.thread is not None and self.thread.is_alive():
+            return
+        if self._listener is None:
+            raise RuntimeError("Account listener is closed")
+        context = multiprocessing.get_context("spawn")
+        self._process_stop = context.Event()
+        self._stop_event.clear()
+        self._server_error = None
+        # spawn transfers the reserved socket handle; there is no free-port
+        # selection/rebind race and no reuse of A's module-global engines.
+        self.thread = context.Process(
+            target=run_account_backend,
+            args=(self._listener, os.environ["MENTORFLOW_USER_DATA_ROOT"], self._process_stop),
+            name="mentorflow-account-api", daemon=True,
+        )
+        self.thread.start()
+        self.health_thread = threading.Thread(
+            target=self._wait_until_ready, name="mentorflow-account-health", daemon=True,
         )
         self.health_thread.start()
 
@@ -422,10 +451,17 @@ class LocalService(QObject):
 
     def stop(self) -> None:
         self._stop_event.set()
+        if self._process_stop is not None:
+            self._process_stop.set()
         if self.server:
             self.server.should_exit = True
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=15)
+        if self._process_stop is not None and self.thread and self.thread.is_alive():
+            # Terminate only this owned account API process if graceful
+            # shutdown timed out. B must not start until death is observed.
+            self.thread.terminate()
+            self.thread.join(timeout=3)
         if self.health_thread and self.health_thread.is_alive():
             self.health_thread.join(timeout=3)
         self._close_listener()

@@ -34,6 +34,7 @@ from .account_identity import (
     AccountProfile,
     ProfileMode,
     canonicalize_issuer,
+    issuer_hash,
 )
 
 
@@ -1022,6 +1023,10 @@ class EnterpriseOidcClient:
             raise EnterpriseOidcError(
                 "ENTERPRISE_ACCOUNT_PROFILE_REQUIRED",
                 "Enterprise Account profile is required",
+            )
+        if profile.issuer_hash != issuer_hash(self.config.issuer):
+            raise EnterpriseOidcError(
+                "ENTERPRISE_ACCOUNT_ISSUER_CHANGED", "登录服务已变更，请重新登录。",
             )
         access_token, refresh_token = credentials.load_oauth_tokens(profile)
         discovery = await self._discovery()

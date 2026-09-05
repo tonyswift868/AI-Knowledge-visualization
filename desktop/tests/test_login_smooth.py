@@ -10,12 +10,14 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QObject
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtTest import QTest
 
 from desktop.account_identity import AccountIdentity, AccountPreferenceStore
 from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient, EnterpriseOidcError, EnterpriseOidcLoginResult, ValidatedTokenIdentity
 from desktop.login_session import LoginSession
+from desktop.in_app_oidc import InAppOidcLoginDialog as RealOidcPane
 
 ISSUER = 'https://identity.example.test/realms/mentorflow'
 API = 'https://api.example.test'
@@ -228,6 +230,126 @@ def test_late_bootstrap_closes_its_own_resources_without_binding_paths(app_conte
     stale = SimpleNamespace(close=lambda: closed.append(True))
     target._background_succeeded(f'{target._login_generation - 1}:bootstrap', stale)
     assert closed == [True] and bound == [] and target.bootstrap_result is None
+
+
+@pytest.mark.parametrize('reason', ['switch', 'logout'])
+def test_account_switch_reuses_gate_only_after_a_is_quiescent(app_context, monkeypatch, reason):
+    target, qt, _ = app_context
+    target._show_login_gate(); qt.processEvents()
+    gate, window_id = target.login_gate, int(target.login_gate.winId())
+    events, released = [], threading.Event()
+    class OldMain(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.account_profile = login().identity.profile()
+            self._account_switch_in_progress = False
+            self.account_vault_manager = SimpleNamespace(unmount=lambda: events.append('unmount'))
+        def _close_current_account_handles(self): events.append('handles')
+        def _clear_account_ui_and_runtime_cache(self): events.append('cache')
+    class Service:
+        handles_closed = False
+        def stop(self):
+            assert released.wait(3)
+            self.handles_closed = True
+            events.append('service-dead')
+    old_main, old_service = OldMain(), Service()
+    target.main, target.service = old_main, old_service
+    target._last_login_result = login()
+    target._login_session.accept(login(), remember=True, automatic=True)
+    monkeypatch.setattr(target._login_session, 'logout', lambda *a, **k: events.append('logout') or False)
+    target._return_to_login_gate(reason)
+    qt.processEvents()
+    assert target._auth_pane is None
+    assert target.main is old_main
+    assert not old_main.isEnabled()
+    released.set()
+    for _ in range(150):
+        QTest.qWait(10)
+        if target._auth_pane is not None: break
+    assert target.login_gate is gate and int(gate.winId()) == window_id
+    assert target._auth_pane.started and not target._auth_pane.isWindow()
+    assert target.main is None and target.service is None
+    assert events.index('service-dead') < events.index('unmount')
+    assert ('logout' in events) is (reason == 'logout')
+    assert target._login_session.preferences.login_options() == (False, False)
+    if reason == 'logout': assert '远端会话注销未确认' in gate.notice_label.text()
+
+
+def test_closing_gate_during_discovery_detaches_and_releases_real_qt_pane(app_context, monkeypatch):
+    import asyncio
+    import shiboken6
+    entered, release = threading.Event(), threading.Event()
+    class Client:
+        async def prepare_login(self, **kwargs):
+            entered.set()
+            await asyncio.to_thread(release.wait, 3)
+            raise EnterpriseOidcError('ENTERPRISE_DISCOVERY_FAILED', 'synthetic failure')
+        async def aclose(self): pass
+    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog',
+                        lambda config, **kw: RealOidcPane(config, **kw, client_factory=lambda _: Client()))
+    target, qt, _ = app_context
+    target._show_login_gate(); qt.processEvents()
+    pane = target._auth_pane
+    assert entered.wait(3)
+    target.login_gate.close()
+    assert pane.parent() is None
+    assert target._auth_pane is None
+    release.set(); pane._worker.join(4)
+    assert not pane._worker.is_alive()
+    # Process late failure/finished signals and actual DeferredDelete events.
+    QTest.qWait(100)
+    assert not shiboken6.isValid(pane)
+    assert target.main is None
+
+
+def test_delayed_restored_accept_never_overwrites_a_newer_rotation():
+    credentials = Credentials()
+    session = LoginSession(AccountPreferenceStore(Settings()), credentials)
+    stale = replace(login(), restored=True)
+    credentials.store_oauth_tokens(stale.identity, access_token='newest-access', refresh_token='newest-refresh')
+    session.accept(stale, remember=True, automatic=True)
+    assert credentials.load_oauth_tokens(stale.identity.profile()) == ('newest-access', 'newest-refresh')
+
+
+def test_changed_issuer_never_receives_saved_credentials():
+    result = login()
+    class Vault:
+        def load_oauth_tokens(self, profile):
+            raise AssertionError('Must reject issuer change before even reading Locker')
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: (_ for _ in ()).throw(AssertionError('No request allowed')),
+        )) as http:
+            client = EnterpriseOidcClient(DesktopOidcConfig('https://other.example.test', 'desktop', 'api', API), http_client=http)
+            with pytest.raises(EnterpriseOidcError) as failure:
+                await client.restore(result.identity.profile(), Vault(), refresh_session=True)
+            assert failure.value.code == 'ENTERPRISE_ACCOUNT_ISSUER_CHANGED'
+    asyncio.run(run())
+
+
+def test_stale_account_service_signals_cannot_open_or_fail_the_new_session(app_context, monkeypatch):
+    import desktop.main as entry
+    target, qt, _ = app_context
+    target._show_login_gate(); qt.processEvents()
+    target.bootstrap_result = SimpleNamespace(profile=login().identity.profile(), close=lambda: None)
+    class Service(QObject):
+        ready = Signal(str)
+        failed = Signal(str)
+        def __init__(self, **kwargs): super().__init__()
+        def start(self): pass
+        def stop(self): pass
+    observed = []
+    monkeypatch.setattr(entry, 'LocalService', Service)
+    monkeypatch.setattr(target, '_service_ready', lambda origin: observed.append('ready'))
+    monkeypatch.setattr(target, '_service_failed', lambda message: observed.append('failed'))
+    target._start_enterprise_local_service()
+    previous = target.service
+    target._invalidate_login_jobs()
+    target.service = Service()
+    previous.ready.emit('http://127.0.0.1:1234')
+    previous.failed.emit('late old-account failure')
+    qt.processEvents()
+    assert observed == [] and target.main is None
 
 
 def workspaces(empty=False, repair=False):

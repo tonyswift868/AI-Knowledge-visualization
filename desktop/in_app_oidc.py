@@ -46,6 +46,7 @@ from .enterprise_oidc import (
 
 AUTH_DIALOG_OBJECT_NAME = "mentorflowInAppOidcDialog"
 AUTH_VIEW_OBJECT_NAME = "mentorflowInAppOidcView"
+_retiring_dialogs: set[object] = set()
 
 
 def _origin(value: str) -> tuple[str, str, int]:
@@ -210,6 +211,7 @@ class InAppOidcLoginDialog(QDialog):
         self.resize(760, 720)
         self._embedded = embedded
         self._dispose_pending = False
+        self._browser_releasing = False
         if embedded:
             self.setWindowFlags(Qt.WindowType.Widget)
             self.setModal(False)
@@ -232,9 +234,34 @@ class InAppOidcLoginDialog(QDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+        self._browser_created = False
+        if not embedded:
+            self._ensure_browser()
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel = QPushButton("取消登录")
+        cancel.setObjectName("inAppOidcCancelButton")
+        cancel.clicked.connect(self.reject)
+        actions.addWidget(cancel)
+        cancel.setVisible(not embedded)
+        layout.addLayout(actions)
+
+        self._prepared_signal.connect(self._show_authorization_page)
+        self._succeeded_signal.connect(self._finish_successfully)
+        self._failed_signal.connect(self._finish_with_error)
+        self._worker_finished.connect(self._release_if_disposed)
+
+
+    def _ensure_browser(self) -> None:
+        if self._browser_created:
+            return
+        self._browser_created = True
+        embedded, layout = self._embedded, self.layout()
         # A nameless profile is off-the-record.  No auth cookies, cache,
         # permissions, or browsing history survive this dialog instance.
-        self.profile = QWebEngineProfile(self)
+        # Attach the profile after the view below: QObject destroys children
+        # in insertion order, and every page must die before its profile.
+        self.profile = QWebEngineProfile()
         self.profile.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
         )
@@ -246,12 +273,13 @@ class InAppOidcLoginDialog(QDialog):
         self.profile.setSpellCheckEnabled(False)
         self.profile.downloadRequested.connect(lambda request: request.cancel())
 
-        self._interceptor = _AuthRequestInterceptor(self)
+        self._interceptor = _AuthRequestInterceptor(self.profile)
         self.profile.setUrlRequestInterceptor(self._interceptor)
         self.view = QWebEngineView(self)
         self.view.setObjectName(AUTH_VIEW_OBJECT_NAME)
         self.page = _AuthWebPage(self.profile, self._interceptor, self.view)
         self.view.setPage(self.page)
+        self.profile.setParent(self)
         self.page.setBackgroundColor(QColor("#fff9fc"))
         if embedded:
             self.view.hide()
@@ -292,21 +320,10 @@ class InAppOidcLoginDialog(QDialog):
         settings.setAttribute(QWebEngineSettings.WebAttribute.NavigateOnDropEnabled, False)
         layout.addWidget(self.view, 1)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
-        cancel = QPushButton("取消登录")
-        cancel.setObjectName("inAppOidcCancelButton")
-        cancel.clicked.connect(self.reject)
-        actions.addWidget(cancel)
-        cancel.setVisible(not embedded)
-        layout.addLayout(actions)
-
-        self._prepared_signal.connect(self._show_authorization_page)
-        self._succeeded_signal.connect(self._finish_successfully)
-        self._failed_signal.connect(self._finish_with_error)
-        self._worker_finished.connect(self._release_if_disposed)
 
     def _page_loaded(self, ok: bool) -> None:
+        if not self._browser_created:
+            return
         if self._cancelled.is_set():
             return
         if not ok:
@@ -329,13 +346,28 @@ class InAppOidcLoginDialog(QDialog):
             self._prepared.receiver.close()
         self._reset_browser()
         self.hide()
+        # A pending protocol finish can outlive the gate/layout. Detach before
+        # DeferredDelete (the close-during-discovery native regression), and
+        # retain Python ownership until Qt has actually destroyed the object.
+        if self not in _retiring_dialogs:
+            _retiring_dialogs.add(self)
+            self.destroyed.connect(lambda: _retiring_dialogs.discard(self))
+        self.setParent(None)
         self._dispose_pending = True
         if self._worker is None or not self._worker.is_alive():
-            self.deleteLater()
+            self._release_if_disposed()
 
     def _release_if_disposed(self) -> None:
-        if self._dispose_pending:
-            self.deleteLater()
+        if self._dispose_pending and not self._browser_releasing:
+            self._browser_releasing = True
+            if not self._browser_created:
+                self.deleteLater()
+                return
+            # Let the event loop finish page destruction before the browser
+            # context, then release the shell after both are gone.
+            self.page.destroyed.connect(self.profile.deleteLater)
+            self.profile.destroyed.connect(self.deleteLater)
+            self.page.deleteLater()
 
     @property
     def is_off_the_record(self) -> bool:
@@ -401,6 +433,7 @@ class InAppOidcLoginDialog(QDialog):
             self._finish_with_error(exc.code, exc.message)
             return
         self._prepared = value
+        self._ensure_browser()
         self._interceptor.policy = policy
         self.status.setText(
             "正在加载登录页面…"
@@ -432,12 +465,16 @@ class InAppOidcLoginDialog(QDialog):
             self.reject()
 
     def _reset_browser(self) -> None:
+        if not self._browser_created:
+            return
         # The profile is single-use and never attached to another dialog.  It
         # remains parent-owned until the Account page/app is destroyed, while
         # all session state is cleared as soon as this login attempt finishes.
         self.view.stop()
         self.profile.cookieStore().deleteAllCookies()
-        self.profile.clearHttpCache()
+        # NoCache + off-the-record already prevent a reusable cache. Starting
+        # an asynchronous cache clear while tearing down its profile can leave
+        # Chromium work targeting a destroyed browser context.
         self._interceptor.policy = None
 
     def reject(self) -> None:

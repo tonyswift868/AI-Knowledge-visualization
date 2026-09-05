@@ -384,8 +384,11 @@ class LoginGateWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         # Reserve the provider form viewport from first paint, including the
         # native consent controls. Loading/form/refresh never resize the shell.
-        self.resize(480, 740)
-        self.setMinimumSize(440, 680)
+        area = self.screen().availableGeometry()
+        available_width = max(240, area.width() - 48)
+        available_height = max(320, area.height() - 80)
+        self.resize(min(480, available_width), min(740, available_height))
+        self.setMinimumSize(min(440, available_width), min(680, available_height))
         self.state = LoginGateState.LOGIN_READY
         self._retry_mode = False
         self._centered = False
