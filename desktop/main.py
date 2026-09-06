@@ -1054,16 +1054,9 @@ class MentorFlowApplication:
         os.environ.setdefault("PYTHONUTF8", "1")
         # Backend/UI modules are imported only after the data-root decision;
         # this is what keeps first-start import from racing default DB setup.
-        global DesktopApi, LocalService, STYLE
-        from .api import DesktopApi as _DesktopApi
-        from .runtime import LocalService as _LocalService
+        global STYLE
         from .style import STYLE as _STYLE
-
-        DesktopApi, LocalService, STYLE = (
-            _DesktopApi,
-            _LocalService,
-            _STYLE,
-        )
+        STYLE = _STYLE
         self.app.setWindowIcon(
             QIcon(str(PROJECT_ROOT / "frontend" / "public" / "teacher2d" / "tsubaki-live2d" / "icon.png"))
         )
@@ -1104,6 +1097,7 @@ class MentorFlowApplication:
         if self._enterprise_login_required:
             self._show_login_gate()
         else:
+            from .runtime import LocalService
             self.splash.show()
             self.service = LocalService()
             self.service.ready.connect(self._service_ready)
@@ -1394,6 +1388,7 @@ class MentorFlowApplication:
                 LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING,
                 detail="正在打开你的学习空间…",
             )
+        from .runtime import LocalService
         self.service = LocalService(resolved_profile=self.bootstrap_result.profile)
         service = self.service
         generation = self._login_generation
@@ -1416,6 +1411,7 @@ class MentorFlowApplication:
         ).start()
 
     def _service_ready(self, origin: str) -> None:
+        from .api import DesktopApi
         self.api = DesktopApi(origin)
         try:
             if self.bootstrap_result is not None:

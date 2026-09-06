@@ -46,7 +46,6 @@ from .account_vault import AccountVaultManager, VaultLayout
 from .enterprise_oidc import DesktopOidcConfig, EnterpriseOidcLoginResult
 from .local_asset_lifecycle import LocalAssetLifecycle
 from .local_asset_lifecycle import LocalAssetLifecycleError
-from .runtime import bind_desktop_profile_data_root
 
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
