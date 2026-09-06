@@ -1,6 +1,21 @@
 """Synthetic Desktop behavior tests, not live Keycloak/server qualification."""
 from __future__ import annotations
 
+
+def test_business_window_import_stays_behind_authenticated_show_main():
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / 'main.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    application = next(node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == 'MentorFlowApplication')
+    import_owners = [method.name for method in application.body
+        if isinstance(method, ast.FunctionDef)
+        for node in ast.walk(method)
+        if isinstance(node, ast.ImportFrom) and node.module == 'main_window']
+    assert import_owners == ['_show_main']
+
 import asyncio
 import json
 import threading

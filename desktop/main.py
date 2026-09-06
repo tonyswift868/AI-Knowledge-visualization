@@ -1054,15 +1054,13 @@ class MentorFlowApplication:
         os.environ.setdefault("PYTHONUTF8", "1")
         # Backend/UI modules are imported only after the data-root decision;
         # this is what keeps first-start import from racing default DB setup.
-        global DesktopApi, MainWindow, LocalService, STYLE
+        global DesktopApi, LocalService, STYLE
         from .api import DesktopApi as _DesktopApi
-        from .main_window import MainWindow as _MainWindow
         from .runtime import LocalService as _LocalService
         from .style import STYLE as _STYLE
 
-        DesktopApi, MainWindow, LocalService, STYLE = (
+        DesktopApi, LocalService, STYLE = (
             _DesktopApi,
-            _MainWindow,
             _LocalService,
             _STYLE,
         )
@@ -1435,6 +1433,10 @@ class MentorFlowApplication:
     def _show_main(self, user: dict) -> None:
         if not self.api:
             return
+        # Business pages are not needed to authenticate. Keep their imports
+        # behind the verified login/bootstrap gate instead of delaying its form.
+        from .main_window import MainWindow
+
         if self.bootstrap_result is None:
             self.main = MainWindow(self.api, user, self.service.origin)
         else:

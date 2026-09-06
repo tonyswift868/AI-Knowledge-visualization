@@ -339,17 +339,20 @@ def _validate_staging_entry(
     return True
 
 
-def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool) -> None:
+def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True) -> None:
     """Fail closed for links, reparse points, special files, and escapes."""
     try:
         relative = _relative(candidate, package_root)
-        resolved = candidate.resolve(strict=False)
+        resolved = candidate.resolve(strict=False) if resolve_path else candidate
         metadata = candidate.lstat()
     except (OSError, RuntimeError, ValueError) as exc:
         raise PackageError(f"cannot inspect package path {candidate}: {exc}") from exc
-    if not _is_within(resolved, package_root):
+    # The caller supplies the validated, resolved package root. Do not resolve
+    # both paths again for every file: this is a lexical comparison of the
+    # already resolved path, not a weaker mtime/size trust decision.
+    if not resolved.is_relative_to(package_root):
         raise PackageError(f"package path resolves outside package root: {relative} -> {resolved}")
-    if candidate.is_symlink():
+    if stat.S_ISLNK(metadata.st_mode):
         raise PackageError(f"package contains symlink/reparse path: {relative}")
     attributes = int(getattr(metadata, "st_file_attributes", 0) or 0)
     reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
@@ -372,7 +375,7 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
         raise PackageError(f"package contains stale Python bytecode: {relative}")
 
 
-def _iter_package_entries(package_root: Path) -> Iterable[tuple[Path, bool]]:
+def _iter_package_entries(package_root: Path, *, resolve_paths: bool = True) -> Iterable[tuple[Path, bool]]:
     """Yield package entries without ever following links or reparse points."""
     pending = [package_root]
     while pending:
@@ -387,7 +390,7 @@ def _iter_package_entries(package_root: Path) -> Iterable[tuple[Path, bool]]:
                 is_directory = entry.is_dir(follow_symlinks=False)
             except OSError as exc:
                 raise PackageError(f"cannot inspect package path {candidate}: {exc}") from exc
-            _validate_package_entry(candidate, package_root, directory=is_directory)
+            _validate_package_entry(candidate, package_root, directory=is_directory, resolve_path=resolve_paths)
             if is_directory:
                 pending.append(candidate)
             else:
@@ -479,9 +482,12 @@ def _config_contains_secret(candidate: Path) -> bool:
     return _text_has_secret_value(text)
 
 
-def _find_user_data_files(package_root: Path) -> list[str]:
+def _find_user_data_files(package_root: Path, *, validated_files: list[Path] | None = None) -> list[str]:
     found: list[str] = []
-    for candidate, _ in _iter_package_entries(package_root):
+    files = validated_files if validated_files is not None else (
+        candidate for candidate, _ in _iter_package_entries(package_root)
+    )
+    for candidate in files:
         relative = _relative(candidate, package_root)
         if _is_application_managed_path(relative) and (
             candidate.name.casefold() in USER_DATA_NAMES
@@ -582,7 +588,11 @@ def verify_package(package_root: Path, *, data_root: Path | None, check_data: bo
     missing = [str(path) for path in required if not (package_root / path).is_file()]
     if missing:
         raise PackageError("required package files are missing: " + ", ".join(missing))
-    user_data = _find_user_data_files(package_root)
+    # One complete resolved security traversal per verification. Reuse its
+    # inventory for privacy checks; every listed payload is still
+    # read and SHA-256 checked on every launch.
+    validated_files = [candidate for candidate, _ in _iter_package_entries(package_root)]
+    user_data = _find_user_data_files(package_root, validated_files=validated_files)
     if user_data:
         raise PackageError("package contains user data, database, or secret configuration files: " + ", ".join(user_data))
     mismatches: list[str] = []
@@ -616,9 +626,15 @@ def verify_package(package_root: Path, *, data_root: Path | None, check_data: bo
         actual = sha256_file(candidate)
         if actual != expected:
             mismatches.append(f"tampered:{entry['path']}")
+    # Re-enumerate after hashing to reject late additions/replaced links. This
+    # walk checks every component with lstat before descending, never follows
+    # reparse points, and checks lexical containment under the revalidated root.
+    # It needs no repeat filesystem resolution of every ancestor of every file.
+    _validate_package_root(package_root)
     actual_paths = {
         _relative(candidate, package_root)
-        for candidate in _iter_package_files(package_root, manifest_path)
+        for candidate, _ in _iter_package_entries(package_root, resolve_paths=False)
+        if candidate != manifest_path
     }
     for extra in sorted(actual_paths - listed_paths):
         mismatches.append(f"unexpected:{extra}")
