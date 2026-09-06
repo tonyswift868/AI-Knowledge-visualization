@@ -256,6 +256,17 @@ class InstallTrustTests(unittest.TestCase):
         for name in ["icon.png", "prompt.txt", "_internal/story_packs/icon.png", "module.pyd", "security.json", "qmldir", "ui.qml", "plugin.dll", "module.py", ICON.replace(".png", ".svg")]:
             self.assertEqual(trust.category(name), "CRITICAL")
 
+    def test_cached_stat_never_authorizes_lexical_escape(self):
+        app = self.root / "App"
+        outside = self.root / "outside.bin"
+        outside.write_bytes(b"outside")
+        for candidate in [outside, app / ".." / "outside.bin"]:
+            with self.assertRaises(v.PackageError):
+                v._validate_package_entry(candidate, app, directory=False, resolve_path=False, cached_stat=outside.stat())
+        for relative in ["MentorFlow.exe", "../outside.bin", str(outside)]:
+            with self.assertRaises(v.PackageError):
+                v._validate_package_entry(outside, app, directory=False, resolve_path=False, cached_stat=outside.stat(), cached_relative=relative)
+
 
 if __name__ == "__main__":
     unittest.main()

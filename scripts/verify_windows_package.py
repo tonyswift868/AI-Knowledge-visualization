@@ -344,10 +344,15 @@ def _validate_staging_entry(
     return True
 
 
-def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True, cached_stat=None) -> None:
+def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True, cached_stat=None, cached_relative: str | None = None) -> None:
     """Fail closed for links, reparse points, special files, and escapes."""
     try:
-        relative = _relative(candidate, package_root)
+        relative = _relative(candidate, package_root) if cached_relative is None else cached_relative
+        relative_path = Path(relative)
+        if relative_path.drive or relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ValueError("parent traversal is not a package entry")
+        if cached_relative is not None and package_root / relative_path != candidate:
+            raise ValueError("cached relative path does not identify candidate")
         resolved = candidate.resolve(strict=False) if resolve_path else candidate
         metadata = cached_stat if cached_stat is not None else candidate.lstat()
     except (OSError, RuntimeError, ValueError) as exc:
@@ -355,7 +360,9 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
     # The caller supplies the validated, resolved package root. Do not resolve
     # both paths again for every file: this is a lexical comparison of the
     # already resolved path, not a weaker mtime/size trust decision.
-    if not resolved.is_relative_to(package_root):
+    # The relative-path check above proves lexical containment. Only a resolved
+    # path needs a second containment check (e.g. an alias escaping the root).
+    if resolve_path and not resolved.is_relative_to(package_root):
         raise PackageError(f"package path resolves outside package root: {relative} -> {resolved}")
     if stat.S_ISLNK(metadata.st_mode):
         raise PackageError(f"package contains symlink/reparse path: {relative}")
@@ -371,12 +378,12 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
             raise PackageError(f"package contains a special/non-regular file: {relative}")
         if int(getattr(metadata, "st_nlink", 1) or 1) != 1:
             raise PackageError(f"package contains a hardlink; copy the file instead: {relative}")
-    parts = tuple(part.casefold() for part in Path(relative).parts)
+    parts = tuple(part.casefold() for part in relative_path.parts)
     if any(part in STALE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains stale Python bytecode path: {relative}")
     if _is_application_managed_path(relative) and any(part in PRIVATE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains a private/development path: {relative}")
-    if Path(relative).suffix.casefold() in STALE_BYTECODE_SUFFIXES:
+    if relative_path.suffix.casefold() in STALE_BYTECODE_SUFFIXES:
         raise PackageError(f"package contains stale Python bytecode: {relative}")
 
 

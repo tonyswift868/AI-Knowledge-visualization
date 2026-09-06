@@ -161,19 +161,24 @@ def _root(path: Path) -> Path:
 
 def _walk(root: Path):
     from scripts import verify_windows_package as v
-    pending = [root]
+    pending = [(root, "")]
+    app_root = root / "App"
     while pending:
-        directory = pending.pop()
+        directory, prefix = pending.pop()
         with os.scandir(directory) as entries:
             for entry in entries:
                 path = Path(entry.path)
                 st = path.lstat()
                 isdir = stat.S_ISDIR(st.st_mode)
-                validation_root = root / "App" if path.is_relative_to(root / "App") and path != root / "App" else root
-                v._validate_package_entry(path, validation_root, directory=isdir, cached_stat=st, resolve_path=False)
-                yield path, st, isdir
+                # Relative names come only from the validated scandir chain,
+                # never from the manifest or another untrusted caller.
+                relative = prefix + "/" + entry.name if prefix else entry.name
+                in_app = prefix == "App" or prefix.startswith("App/")
+                validation_root = app_root if in_app else root
+                v._validate_package_entry(path, validation_root, directory=isdir, cached_stat=st, cached_relative=relative[4:] if in_app else relative, resolve_path=False)
+                yield path, st, isdir, relative
                 if isdir:
-                    pending.append(path)
+                    pending.append((path, relative))
 
 
 def protect_installation(path: Path) -> None:
@@ -288,9 +293,8 @@ def _snapshot(root: Path):
     from scripts import verify_windows_package as v
     assert_protected(root)
     rows, files = {}, {}
-    for path, st, isdir in _walk(root):
+    for path, st, isdir, key in _walk(root):
         assert_protected(path)
-        key = path.relative_to(root).as_posix()
         if key == RECEIPT:
             if isdir:
                 raise RepairRequired("receipt is not a file")
