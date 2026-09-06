@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import threading
 import time
 from functools import lru_cache
 
@@ -34,6 +35,7 @@ def _api():
     kernel = c.WinDLL("kernel32", use_last_error=True)
     signatures = {
         "GetNamedSecurityInfoW": ([w.LPWSTR, w.DWORD, w.DWORD] + [c.POINTER(c.c_void_p)] * 5, w.DWORD),
+        "GetFileSecurityW": ([w.LPCWSTR, w.DWORD, c.c_void_p, w.DWORD, c.POINTER(w.DWORD)], w.BOOL),
         "ConvertSecurityDescriptorToStringSecurityDescriptorW": ([c.c_void_p, w.DWORD, w.DWORD, c.POINTER(w.LPWSTR), c.POINTER(w.DWORD)], w.BOOL),
         "ConvertStringSecurityDescriptorToSecurityDescriptorW": ([w.LPCWSTR, w.DWORD, c.POINTER(c.c_void_p), c.POINTER(w.DWORD)], w.BOOL),
         "GetSecurityDescriptorOwner": ([c.c_void_p, c.POINTER(c.c_void_p), c.POINTER(w.BOOL)], w.BOOL),
@@ -49,21 +51,43 @@ def _api():
     return adv, kernel
 
 
-def security_descriptor(path: Path) -> str:
+_acl_buffers = threading.local()
+
+
+@lru_cache(maxsize=128)
+def _descriptor_text(raw: bytes) -> str:
+    """Pure conversion of an exact, complete self-relative OS descriptor."""
     adv, kernel = _api()
-    sd = c.c_void_p()
-    result = adv.GetNamedSecurityInfoW(str(path), 1, 5, None, None, None, None, c.byref(sd))
-    if result:
-        raise RepairRequired(f"ACL read failed ({result}): {path}")
+    sd = c.create_string_buffer(raw)
     output = w.LPWSTR()
     try:
         if not adv.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd, 1, 5, c.byref(output), None):
-            raise RepairRequired(f"ACL conversion failed: {path}")
+            raise RepairRequired("ACL conversion failed")
         return output.value
     finally:
         if output:
             kernel.LocalFree(output)
-        kernel.LocalFree(sd)
+
+
+def security_descriptor(path: Path) -> str:
+    # Every call reads the actual owner/DACL from Windows. Only conversion of
+    # identical descriptor bytes is cached; never a path's permissions/result.
+    # GetFileSecurityW returns a complete self-relative descriptor on success.
+    adv, _ = _api()
+    buffer = getattr(_acl_buffers, "buffer", None)
+    if buffer is None:
+        buffer = _acl_buffers.buffer = c.create_string_buffer(4096)
+    needed = w.DWORD()
+    for attempt in range(2):
+        if adv.GetFileSecurityW(str(path), 5, buffer, len(buffer), c.byref(needed)):
+            if not 20 <= needed.value <= len(buffer):
+                raise RepairRequired(f"ACL descriptor length invalid: {path}")
+            return _descriptor_text(c.string_at(buffer, needed.value))
+        error = c.get_last_error()
+        if attempt or error != 122 or not len(buffer) < needed.value <= 131072:
+            raise RepairRequired(f"ACL read failed ({error}): {path}")
+        buffer = _acl_buffers.buffer = c.create_string_buffer(needed.value)
+    raise RepairRequired(f"ACL read failed: {path}")
 
 
 @lru_cache(maxsize=128)
