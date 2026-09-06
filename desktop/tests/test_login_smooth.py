@@ -351,13 +351,20 @@ def test_stale_account_service_signals_cannot_open_or_fail_the_new_session(app_c
         ready = Signal(str)
         failed = Signal(str)
         def __init__(self, **kwargs): super().__init__()
-        def start(self): pass
+        def start(self):
+            startup_order.append('service')
+            started.set()
         def stop(self): pass
     observed = []
+    startup_order = []
+    started = threading.Event()
+    monkeypatch.setattr(entry, '_prepare_desktop_frontend', lambda: startup_order.append('frontend'))
     monkeypatch.setattr(entry, 'LocalService', Service)
     monkeypatch.setattr(target, '_service_ready', lambda origin: observed.append('ready'))
     monkeypatch.setattr(target, '_service_failed', lambda message: observed.append('failed'))
     target._start_enterprise_local_service()
+    assert started.wait(2)
+    assert startup_order == ['frontend', 'service']
     previous = target.service
     target._invalidate_login_jobs()
     target.service = Service()

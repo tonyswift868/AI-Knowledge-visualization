@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import functools
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -339,12 +341,12 @@ def _validate_staging_entry(
     return True
 
 
-def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True) -> None:
+def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True, cached_stat=None) -> None:
     """Fail closed for links, reparse points, special files, and escapes."""
     try:
         relative = _relative(candidate, package_root)
         resolved = candidate.resolve(strict=False) if resolve_path else candidate
-        metadata = candidate.lstat()
+        metadata = cached_stat if cached_stat is not None else candidate.lstat()
     except (OSError, RuntimeError, ValueError) as exc:
         raise PackageError(f"cannot inspect package path {candidate}: {exc}") from exc
     # The caller supplies the validated, resolved package root. Do not resolve
@@ -1246,6 +1248,263 @@ def stage_update(version_file: Path, *, owner: str | None, repo: str | None, rel
     return result
 
 
+_GATE_SCHEMA = "mentorflow.protected-package-gate.v1"
+_RESOURCE_SUFFIXES = frozenset({".png", ".webp", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".woff", ".woff2", ".ttf", ".otf", ".mp3", ".wav", ".mp4", ".qm", ".sqlite", ".csv", ".txt", ".md"})
+
+
+def package_file_category(relative: str) -> str:
+    """Deny by default: code, loaders, configs and unknown formats stay critical."""
+    path = Path(relative)
+    if path.suffix.casefold() in _RESOURCE_SUFFIXES and path.parts[0].casefold() not in {"self-check", "config"}:
+        return "IMMUTABLE_RESOURCE"
+    return "CRITICAL_EXECUTABLE"
+
+
+@functools.lru_cache(maxsize=1)
+def _windows_gate_api():
+    if os.name != "nt":
+        raise PackageError("protected verification state requires Windows")
+    import ctypes as c
+    from ctypes import wintypes as w
+    class Blob(c.Structure):
+        _fields_ = [("size", w.DWORD), ("data", c.POINTER(c.c_ubyte))]
+    class Basic(c.Structure):
+        _fields_ = [("creation", c.c_longlong), ("access", c.c_longlong), ("write", c.c_longlong), ("change", c.c_longlong), ("attributes", w.DWORD)]
+    crypt = c.WinDLL("crypt32", use_last_error=True)
+    kernel = c.WinDLL("kernel32", use_last_error=True)
+    crypt.CryptProtectData.argtypes = [c.POINTER(Blob), w.LPCWSTR, c.POINTER(Blob), c.c_void_p, c.c_void_p, w.DWORD, c.POINTER(Blob)]
+    crypt.CryptProtectData.restype = w.BOOL
+    crypt.CryptUnprotectData.argtypes = [c.POINTER(Blob), c.c_void_p, c.POINTER(Blob), c.c_void_p, c.c_void_p, w.DWORD, c.POINTER(Blob)]
+    crypt.CryptUnprotectData.restype = w.BOOL
+    kernel.LocalFree.argtypes = [c.c_void_p]
+    kernel.LocalFree.restype = c.c_void_p
+    kernel.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, c.c_void_p, w.DWORD, w.DWORD, w.HANDLE]
+    kernel.CreateFileW.restype = w.HANDLE
+    kernel.GetFileInformationByHandleEx.argtypes = [w.HANDLE, c.c_int, c.c_void_p, w.DWORD]
+    kernel.GetFileInformationByHandleEx.restype = w.BOOL
+    kernel.CloseHandle.argtypes = [w.HANDLE]
+    kernel.CloseHandle.restype = w.BOOL
+    return c, Blob, Basic, crypt, kernel
+
+
+def _protect_gate_state(data: bytes, *, decrypt: bool = False) -> bytes:
+    """Current-user DPAPI authenticated state; no plaintext PASS flag or key."""
+    c, Blob, _basic, crypt, kernel = _windows_gate_api()
+    buffer = c.create_string_buffer(data)
+    source = Blob(len(data), c.cast(buffer, c.POINTER(c.c_ubyte)))
+    output = Blob()
+    operation = crypt.CryptUnprotectData if decrypt else crypt.CryptProtectData
+    if not operation(c.byref(source), None, None, None, None, 1, c.byref(output)):
+        raise PackageError("verification state protection failed")
+    try:
+        return c.string_at(output.data, output.size)
+    finally:
+        kernel.LocalFree(c.cast(output.data, c.c_void_p))
+
+
+def _resource_change_time(path: Path) -> int:
+    """Include NTFS ChangeTime: restoring LastWriteTime is not a cache hit."""
+    c, _blob, Basic, _crypt, kernel = _windows_gate_api()
+    handle = kernel.CreateFileW(str(path), 0x80, 7, None, 3, 0x00200000, None)
+    if handle == c.c_void_p(-1).value:
+        raise PackageError(f"cannot inspect resource change time: {path.name}")
+    try:
+        info = Basic()
+        if not kernel.GetFileInformationByHandleEx(handle, 0, c.byref(info), c.sizeof(info)):
+            raise PackageError("cannot inspect resource change time")
+        if info.attributes & 0x400:
+            raise PackageError("resource became a reparse point")
+        return info.change
+    finally:
+        kernel.CloseHandle(handle)
+
+
+@contextmanager
+def _watch_gate_directory(root: Path):
+    """Fail closed on any in-flight mutation without a second directory walk."""
+    c, _blob, _basic, _crypt, kernel = _windows_gate_api()
+    from ctypes import wintypes as w
+    class Overlapped(c.Structure):
+        _fields_ = [("internal", c.c_size_t), ("internal_high", c.c_size_t), ("offset", w.DWORD), ("offset_high", w.DWORD), ("event", w.HANDLE)]
+    kernel.CreateEventW.argtypes = [c.c_void_p, w.BOOL, w.BOOL, w.LPCWSTR]
+    kernel.CreateEventW.restype = w.HANDLE
+    kernel.ReadDirectoryChangesW.argtypes = [w.HANDLE, c.c_void_p, w.DWORD, w.BOOL, w.DWORD, c.c_void_p, c.POINTER(Overlapped), c.c_void_p]
+    kernel.ReadDirectoryChangesW.restype = w.BOOL
+    kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+    kernel.WaitForSingleObject.restype = w.DWORD
+    kernel.CancelIoEx.argtypes = [w.HANDLE, c.POINTER(Overlapped)]
+    kernel.CancelIoEx.restype = w.BOOL
+    kernel.GetOverlappedResult.argtypes = [w.HANDLE, c.POINTER(Overlapped), c.POINTER(w.DWORD), w.BOOL]
+    kernel.GetOverlappedResult.restype = w.BOOL
+    directory = kernel.CreateFileW(str(root), 1, 7, None, 3, 0x42000000, None)
+    if directory == c.c_void_p(-1).value:
+        raise PackageError("cannot watch immutable package directory")
+    event = kernel.CreateEventW(None, True, False, None)
+    if not event:
+        kernel.CloseHandle(directory)
+        raise PackageError("cannot protect package enumeration")
+    overlapped = Overlapped(event=event)
+    buffer = c.create_string_buffer(65536)
+    pending = False
+    try:
+        if not kernel.ReadDirectoryChangesW(directory, buffer, len(buffer), True, 0x15f, None, c.byref(overlapped), None):
+            raise PackageError("cannot protect package enumeration")
+        pending = True
+        def unchanged():
+            if kernel.WaitForSingleObject(event, 0) != 258:
+                raise PackageError("package changed during security verification")
+        yield unchanged
+        unchanged()
+    finally:
+        if pending:
+            kernel.CancelIoEx(directory, c.byref(overlapped))
+            transferred = w.DWORD()
+            kernel.GetOverlappedResult(directory, c.byref(overlapped), c.byref(transferred), True)
+        kernel.CloseHandle(event)
+        kernel.CloseHandle(directory)
+
+
+def verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, hash_workers: int = 1) -> dict[str, Any]:
+    started = time.perf_counter()
+    if hash_workers not in {1, 2, 4}:
+        raise PackageError("unsupported bounded hash worker count")
+    root = _validate_package_root(package_root).resolve()
+    with _watch_gate_directory(root) as unchanged:
+        report = _verify_launch_gate(root, state_path=state_path, expected_manifest_sha256=expected_manifest_sha256, unchanged=unchanged, hash_workers=hash_workers)
+    report["total_seconds"] = time.perf_counter() - started
+    return report
+
+
+def _hash_gate_entries(root: Path, keys: list[str], workers: int):
+    def hash_one(key):
+        return key, sha256_file(root / key)
+    if workers == 1:
+        yield from map(hash_one, keys)
+    else:
+        # Opt-in only after a small disk benchmark; one process, bounded reads.
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            yield from pool.map(hash_one, keys)
+
+
+def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, unchanged, hash_workers: int) -> dict[str, Any]:
+    """Single enumeration, always-hashed code, protected prior resource proof.
+
+    Invoke only from the launcher which pins this helper and manifest. DPAPI
+    protects against editing/copying state, not a compromised Windows account.
+    """
+    started = time.perf_counter()
+    package_root = _validate_package_root(package_root).resolve()
+    state_path = Path(os.path.abspath(state_path))
+    if state_path.is_relative_to(package_root):
+        raise PackageError("verification state must remain outside immutable package")
+    _validate_existing_parent_chain(state_path.parent, label="verification state")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    _validate_staging_entry(state_path.parent, state_path.parent, directory=True, allow_missing=False)
+    _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
+    manifest_path = package_root / MANIFEST_RELATIVE
+    _validate_package_entry(manifest_path, package_root, directory=False)
+    manifest_hash = sha256_file(manifest_path)
+    if not SHA256_RE.fullmatch(expected_manifest_sha256.lower()) or manifest_hash != expected_manifest_sha256.lower():
+        raise PackageError("manifest trust anchor mismatch")
+    manifest = _json_load(manifest_path)
+    if manifest.get("schema") != MANIFEST_SCHEMA or manifest.get("product") != "MentorFlow":
+        raise PackageError("unsupported package manifest")
+    expected = {}
+    for entry in manifest.get("files", []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise PackageError("invalid manifest file entry")
+        relative = Path(entry["path"])
+        key = relative.as_posix()
+        if relative.is_absolute() or relative.drive or ".." in relative.parts or key in expected or not SHA256_RE.fullmatch(str(entry.get("sha256", ""))) or type(entry.get("size")) is not int:
+            raise PackageError("unsafe manifest entry")
+        expected[key] = entry
+    inventory = {}
+    categories = {"CRITICAL_EXECUTABLE": {"files": 0, "bytes": 0}, "IMMUTABLE_RESOURCE": {"files": 0, "bytes": 0}}
+    pending = [package_root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                metadata = entry.stat(follow_symlinks=False)
+                # On Windows DirEntry.stat deliberately omits file identity and
+                # link count (zeros). One real lstat is required, then reused.
+                if not metadata.st_ino or not metadata.st_nlink:
+                    metadata = path.lstat()
+                is_directory = stat.S_ISDIR(metadata.st_mode)
+                _validate_package_entry(path, package_root, directory=is_directory, resolve_path=False, cached_stat=metadata)
+                if is_directory:
+                    pending.append(path)
+                    continue
+                key = _relative(path, package_root)
+                if path == manifest_path:
+                    continue
+                if key not in expected:
+                    raise PackageError(f"unexpected package file: {key}")
+                if metadata.st_size != expected[key]["size"]:
+                    raise PackageError(f"package size mismatch: {key}")
+                category = package_file_category(key)
+                categories[category]["files"] += 1
+                categories[category]["bytes"] += metadata.st_size
+                inventory[key] = [metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_dev, metadata.st_ino,
+                    _resource_change_time(path) if category == "IMMUTABLE_RESOURCE" else 0]
+    if set(inventory) != set(expected):
+        raise PackageError("package file set mismatch: missing payload")
+    required = {"MentorFlow.exe", VERSION_FILE_NAME, "SELF-CHECK/MentorFlowSelfCheck.exe", "SELF-CHECK/verify_windows_package.py", "SELF-CHECK/mentorflow-check.bat", "SELF-CHECK/mentorflow-update.bat"}
+    if not required.issubset(inventory):
+        raise PackageError("required package files missing")
+    version = load_version(package_root / VERSION_FILE_NAME)
+    if version["version"] != manifest.get("version"):
+        raise PackageError("package version mismatch")
+    root_stat = package_root.stat()
+    binding = {"schema": _GATE_SCHEMA, "manifest_sha256": manifest_hash, "root": str(package_root), "root_identity": [root_stat.st_dev, root_stat.st_ino], "version": version["version"]}
+    prior = None
+    try:
+        if state_path.stat().st_size <= 16 * 1024 * 1024:
+            prior = json.loads(_protect_gate_state(state_path.read_bytes(), decrypt=True))
+    except (OSError, ValueError, PackageError):
+        pass
+    now = time.time()
+    reliable_resource_metadata = all(values[-1] > 0 for key, values in inventory.items() if package_file_category(key) == "IMMUTABLE_RESOURCE")
+    reusable = reliable_resource_metadata and isinstance(prior, dict) and prior.get("binding") == binding and prior.get("inventory") == inventory and type(prior.get("full_verified_at")) in {int, float} and 0 <= now - prior["full_verified_at"] < 86400
+    inventory_seconds = time.perf_counter() - started
+    if not reusable:
+        private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory] + [manifest_path])
+        if private:
+            raise PackageError("package contains private data/configuration")
+    hash_started = time.perf_counter()
+    critical_hashes = {}
+    to_hash = [key for key in sorted(inventory) if not reusable or package_file_category(key) == "CRITICAL_EXECUTABLE"]
+    for key, digest in _hash_gate_entries(package_root, to_hash, hash_workers):
+        if digest != expected[key]["sha256"]:
+            raise PackageError(f"package tampered: {key}")
+        if package_file_category(key) == "CRITICAL_EXECUTABLE":
+            critical_hashes[key] = digest
+    hash_seconds = time.perf_counter() - hash_started
+    if reusable and prior.get("critical_hashes") != critical_hashes:
+        raise PackageError("protected critical hash binding mismatch")
+    # A watch follows the directory handle, not a replacement at its old name.
+    # Check the root identity again without performing another enumeration.
+    final_root = _validate_package_root(package_root).stat()
+    if (final_root.st_dev, final_root.st_ino) != (root_stat.st_dev, root_stat.st_ino):
+        raise PackageError("package root identity changed during verification")
+    unchanged()
+    if not reusable:
+        state = {"binding": binding, "inventory": inventory, "critical_hashes": critical_hashes, "full_verified_at": time.time()}
+        encrypted = _protect_gate_state(json.dumps(state, sort_keys=True, separators=(",", ":")).encode())
+        # Replace atomically; do not leave a plaintext snapshot on disk.
+        with tempfile.NamedTemporaryFile(dir=state_path.parent, prefix="gate-", delete=False) as temporary:
+            temporary.write(encrypted)
+            temp_path = Path(temporary.name)
+        try:
+            _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
+            temp_path.replace(state_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    return {"verification": "PASS", "mode": "REPEAT" if reusable else "FULL", "hash_workers": hash_workers, "inventory_seconds": inventory_seconds, "hash_seconds": hash_seconds, "total_seconds": time.perf_counter() - started, "categories": categories, "files": len(inventory)}
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MentorFlow Windows package integrity and update helper")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1258,6 +1517,11 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--no-data-check", action="store_true")
     verify.add_argument("--no-smoke", action="store_true")
     verify.add_argument("--smoke-seconds", type=float, default=5.0)
+    gate = subparsers.add_parser("launch-gate", help="protected Windows repeat-start verification")
+    gate.add_argument("--package-root", type=Path, required=True)
+    gate.add_argument("--state-path", type=Path, required=True)
+    gate.add_argument("--expected-manifest-sha256", required=True)
+    gate.add_argument("--hash-workers", type=int, choices=(1, 2, 4), default=1)
     update = subparsers.add_parser("check-update", help="check and optionally stage a GitHub release")
     update.add_argument("--version-file", type=Path)
     update.add_argument("--owner")
@@ -1271,6 +1535,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
+        if args.command == "launch-gate":
+            report = verify_launch_gate(args.package_root, state_path=args.state_path, expected_manifest_sha256=args.expected_manifest_sha256, hash_workers=args.hash_workers)
+            print(json.dumps(report, ensure_ascii=False))
+            print("MENTORFLOW_PACKAGE_CHECK=PASS")
+            return 0
         if args.command == "build-manifest":
             path = build_manifest(args.package_root, version_file=args.version_file)
             print(f"PACKAGE_MANIFEST={path}")

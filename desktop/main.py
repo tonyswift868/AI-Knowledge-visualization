@@ -1034,11 +1034,11 @@ class MentorFlowApplication:
         self._startup_failed = False
         self._enterprise_login_required = False
         try:
-            _prepare_desktop_frontend()
             from .enterprise_oidc import DesktopOidcConfig
 
             self._enterprise_login_required = DesktopOidcConfig.is_configured()
             if not self._enterprise_login_required:
+                _prepare_desktop_frontend()
                 _prepare_desktop_storage()
         except StartupCancelled:
             self._startup_cancelled = True
@@ -1404,6 +1404,7 @@ class MentorFlowApplication:
 
         def start_service() -> None:
             try:
+                _prepare_desktop_frontend()
                 service.start()
             except Exception:
                 service.failed.emit("本机学习服务暂时无法打开，请重新启动后重试。")
