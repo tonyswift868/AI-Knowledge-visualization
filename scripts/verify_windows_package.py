@@ -21,6 +21,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -187,14 +188,28 @@ def load_version(path: Path) -> dict[str, Any]:
     return payload
 
 
-def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024, prefix: bytearray | None = None) -> str:
+_hash_buffers = threading.local()
+
+
+def sha256_file(path: Path, *, chunk_size: int = 256 * 1024, prefix: bytearray | None = None) -> str:
+    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+        raise ValueError("hash chunk size must be a positive integer")
+    # One reusable buffer per reader, not a new large allocation for each of
+    # the thousands of tiny package files. Raw readinto also avoids buffering
+    # and copying the same bytes twice. This never reuses a digest or file data.
+    buffer = getattr(_hash_buffers, "buffer", None)
+    if buffer is None or len(buffer) != chunk_size:
+        buffer = _hash_buffers.buffer = bytearray(chunk_size)
+    view = memoryview(buffer)
     digest = hashlib.sha256()
+    if prefix is not None:
+        prefix.clear()
     try:
-        with path.open("rb") as handle:
-            if prefix is not None:
-                prefix[:] = handle.read(len(SQLITE_MAGIC))
-                digest.update(prefix)
-            for chunk in iter(lambda: handle.read(chunk_size), b""):
+        with path.open("rb", buffering=0) as handle:
+            while size := handle.readinto(view):
+                chunk = view[:size]
+                if prefix is not None and len(prefix) < len(SQLITE_MAGIC):
+                    prefix.extend(chunk[:len(SQLITE_MAGIC) - len(prefix)])
                 digest.update(chunk)
     except OSError as exc:
         raise PackageError(f"cannot hash {path}: {exc}") from exc

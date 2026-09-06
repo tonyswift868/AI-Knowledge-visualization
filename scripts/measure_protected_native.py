@@ -1,5 +1,6 @@
 """Three native gate processes under the verified same-user normal token."""
 import ctypes as c
+import hashlib
 from ctypes import wintypes as w
 import json
 from pathlib import Path
@@ -10,7 +11,14 @@ from scripts import windows_install_trust as trust
 
 
 def main():
-    exe = Path("E:/MentorFlow-TrustTest-20260906/native-runner/MentorFlowInstallGate.exe")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exe', type=Path, default=Path("E:/MentorFlow-TrustTest-20260906/native-runner/MentorFlowInstallGate.exe"))
+    parser.add_argument('--output', type=Path, default=Path("E:/Codex/Temp/E107-TrustBoundary/native-gate-results.json"))
+    options = parser.parse_args()
+    exe = options.exe
+    trust.assert_safe_parents(exe)
+    trust.assert_protected(exe)
     root = Path("E:/MentorFlow-TrustTest-20260906/large")
     adv, kernel = trust._api()
     primary = w.HANDLE()
@@ -52,7 +60,9 @@ def main():
         kernel.CloseHandle(primary)
     times = [row["seconds"] for row in runs]
     result = {"runs": runs, "p50": statistics.median(times), "maximum": max(times), "scope": "native security gate process start-to-exit, not launch-click-to-form"}
-    Path("E:/Codex/Temp/E107-TrustBoundary/native-gate-results.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    result['executable'] = str(exe)
+    result['executable_sha256'] = hashlib.sha256(exe.read_bytes()).hexdigest()
+    options.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":
