@@ -25,6 +25,10 @@ internal static class ProtectedStageChecks
             Reject(() => stage.WriteNewFile("short.bin", new MemoryStream(value), 4));
             Reject(() => stage.WriteNewFile("long.bin", new MemoryStream(value), 2));
             stage.WriteNewFile("deep/" + new String('a', 120) + "/" + new String('b', 120) + "/ok.bin", new MemoryStream(value), 3);
+            stage.WriteNewFile("zero.bin", new MemoryStream(new byte[0]), 0);
+            byte[] blocks = new byte[131089];
+            for (int index = 0; index < blocks.Length; index++) blocks[index] = (byte)(index % 251);
+            stage.WriteNewFile("blocks.bin", new MemoryStream(blocks), blocks.Length);
             Console.WriteLine(stage.Root);
             return 0;
         }

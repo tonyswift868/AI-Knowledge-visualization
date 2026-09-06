@@ -41,6 +41,8 @@ class ProtectedStageNativeTests(unittest.TestCase):
         deep = root / 'deep' / ('a' * 120) / ('b' * 120) / 'ok.bin'
         self.assertGreater(len(str(deep)), 260)
         self.assertEqual(Path('\\\\?\\' + str(deep)).read_bytes(), b'\x01\x02\x03')
+        self.assertEqual((root / 'zero.bin').read_bytes(), b'')
+        self.assertEqual((root / 'blocks.bin').read_bytes(), bytes(index % 251 for index in range(131089)))
         with normal_token(), self.assertRaises(PermissionError):
             good.write_bytes(b'ordinary token write must fail')
         self.assertEqual(good.read_bytes(), b'\x01\x02\x03')

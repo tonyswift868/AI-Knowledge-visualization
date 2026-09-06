@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
@@ -152,10 +153,11 @@ namespace MentorFlow.Installation
                 if (!directories.Contains(parent)) CreateDirectory(parent);
             }
             using (Descriptor descriptor = new Descriptor())
-            using (SafeFileHandle handle = CreateFileW(@"\\?\" + destination, 0x40000000U, 0, ref descriptor.Value, 1, 0x80, IntPtr.Zero))
+            using (SafeFileHandle handle = CreateFileW(@"\\?\" + destination, 0xc0000000U, 0, ref descriptor.Value, 1, 0x80, IntPtr.Zero))
             {
                 if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
-                using (FileStream outgoing = new FileStream(handle, FileAccess.Write, 65536, false))
+                using (FileStream outgoing = new FileStream(handle, FileAccess.ReadWrite, 65536, false))
+                using (SHA256 inputHash = SHA256.Create())
                 {
                     byte[] buffer = new byte[65536];
                     long remaining = expectedLength;
@@ -163,11 +165,24 @@ namespace MentorFlow.Installation
                     {
                         int count = incoming.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
                         if (count == 0) throw new InvalidDataException("Truncated staged file");
+                        inputHash.TransformBlock(buffer, 0, count, buffer, 0);
                         outgoing.Write(buffer, 0, count);
                         remaining -= count;
                     }
                     if (incoming.ReadByte() != -1) throw new InvalidDataException("Staged file exceeds declared length");
+                    inputHash.TransformFinalBlock(new byte[0], 0, 0);
                     outgoing.Flush(true);
+                    // Verify bytes through the same exclusive handle before
+                    // releasing the file or returning it to the bootstrap.
+                    outgoing.Position = 0;
+                    using (SHA256 storedHash = SHA256.Create())
+                    {
+                        byte[] stored = storedHash.ComputeHash(outgoing);
+                        byte[] expected = inputHash.Hash;
+                        for (int index = 0; index < expected.Length; index++)
+                            if (stored[index] != expected[index])
+                                throw new InvalidDataException("Staged file readback SHA-256 mismatch");
+                    }
                 }
             }
             return destination;
