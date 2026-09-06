@@ -79,12 +79,22 @@ $script:ownedTunnel = $null
 $progressWindow = $null
 function Test-SupportedEndpoint {
     $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-    $document = & $curl --silent --fail --noproxy '*' --connect-timeout 2 --max-time 4 --cacert $certificate 'https://localhost:18080/realms/mentorflow/.well-known/openid-configuration' 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    # Use the owned process exit code, never ambient $LASTEXITCODE under StrictMode.
+    $probeInfo = New-CleanProcess $curl
+    $probeInfo.Arguments = '--silent --fail --noproxy * --connect-timeout 2 --max-time 4 --cacert "' + $certificate + '" https://localhost:18080/realms/mentorflow/.well-known/openid-configuration'
+    $probeInfo.RedirectStandardOutput = $true
+    $probeInfo.RedirectStandardError = $true
+    $probe = $null
     try {
-        $discovery = ($document -join "`n") | ConvertFrom-Json
+        $probe = [Diagnostics.Process]::Start($probeInfo)
+        $document = $probe.StandardOutput.ReadToEndAsync()
+        $probeErrors = $probe.StandardError.ReadToEndAsync()
+        if (-not $probe.WaitForExit(5000)) { $probe.Kill(); $probe.WaitForExit(); return $false }
+        if ($probe.ExitCode -ne 0) { return $false }
+        $discovery = $document.Result | ConvertFrom-Json
         return ($discovery.issuer -ceq 'https://localhost:18080/realms/mentorflow')
     } catch { return $false }
+    finally { if ($null -ne $probe) { $probe.Dispose() } }
 }
 function Ensure-SupportedTunnel {
     if (Test-SupportedEndpoint) { Write-Output 'TUNNEL_TLS=EXISTING_PINNED_ENDPOINT'; return }
@@ -214,5 +224,9 @@ try {
     if ($null -ne $progressWindow) { $progressWindow.Close(); $progressWindow.Dispose() }
     Close-OwnedTunnel
     [Console]::Error.WriteLine('MENTORFLOW_LAUNCH_REJECTED: ' + $_.Exception.Message)
+    if (-not $ValidateOnly) {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show('MentorFlow could not complete secure startup. Please contact support. Do not bypass verification.', 'MentorFlow - Startup failed') | Out-Null
+    }
     exit 2
 }

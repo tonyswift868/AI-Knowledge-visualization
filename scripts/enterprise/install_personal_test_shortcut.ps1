@@ -21,6 +21,6 @@ $shortcut.Arguments=$expectedArguments
 $shortcut.WorkingDirectory=$Release
 $shortcut.IconLocation=$icon+',0'
 $shortcut.Description='MentorFlow — verified personal test launch; isolated account data'
-$shortcut.WindowStyle=7
+$shortcut.WindowStyle=1
 $shortcut.Save()
 [pscustomobject]@{ Shortcut=$shortcutPath; Target=$shortcut.TargetPath; Arguments=$shortcut.Arguments; WorkingDirectory=$shortcut.WorkingDirectory; Icon=$shortcut.IconLocation } | ConvertTo-Json
