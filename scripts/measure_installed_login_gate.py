@@ -42,6 +42,8 @@ def main():
     parser.add_argument('--form-probe', type=Path)
     parser.add_argument('--observe-seconds', type=float, default=0)
     parser.add_argument('--probe-oidc', action='store_true')
+    parser.add_argument('--window-renderer', type=Path)
+    parser.add_argument('--restore-login-window', action='store_true')
     args = parser.parse_args()
     if not 0 <= args.observe_seconds <= 30:
         parser.error('--observe-seconds must be between 0 and 30')
@@ -137,6 +139,9 @@ def main():
     callback_type = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
     user.EnumWindows.argtypes = [callback_type, w.LPARAM]
     user.IsWindowVisible.argtypes = [w.HWND]
+    user.IsIconic.argtypes = [w.HWND]
+    user.GetClientRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
+    user.ShowWindowAsync.argtypes = [w.HWND, c.c_int]
     user.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
     user.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, c.c_int]
     user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
@@ -167,6 +172,16 @@ def main():
                 title = c.create_unicode_buffer(256)
                 user.GetWindowTextW(hwnd, title, len(title))
                 if title.value == '登录 MentorFlow':
+                    if user.IsIconic(hwnd):
+                        report['login_minimized_observed'] = True
+                        if args.restore_login_window and not report.get('login_restore_requested'):
+                            report['login_restore_requested'] = True
+                            user.ShowWindowAsync(hwnd, 9)  # Restore only this owned login window.
+                        return True
+                    client = w.RECT()
+                    if not user.GetClientRect(hwnd, c.byref(client)) or client.right < 200 or client.bottom < 200:
+                        report['login_small_client_observed'] = True
+                        return True
                     gate_hwnd = hwnd
                     if report['login_visible_seconds'] is None:
                         report['login_visible_seconds'] = time.perf_counter() - start
@@ -175,10 +190,22 @@ def main():
                     # potentially sensitive window text or account labels.
                     report['main_visible_before_login'] = True
                 return True
+            # Only a currently visible, non-minimized window may trigger a
+            # capture/close observation. Do not reuse last iteration's HWND.
+            gate_hwnd = None
             user.EnumWindows(callback_type(inspect), 0)
             if (gate_hwnd and report['qtcore_loaded'] and
                     time.perf_counter() - start - report['login_visible_seconds'] >= args.observe_seconds):
                 report['passive_observe_seconds'] = args.observe_seconds
+                if args.window_renderer:
+                    owner_pid = w.DWORD()
+                    user.GetWindowThreadProcessId(gate_hwnd, c.byref(owner_pid))
+                    picture = data / ('owned-window-render-' + str(process.pid) + '.png')
+                    rendered = subprocess.run([str(args.window_renderer), str(gate_hwnd),
+                        str(owner_pid.value), str(picture)], capture_output=True, timeout=10,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
+                    report['window_render_exit'] = rendered.returncode
+                    report['window_render_path'] = str(picture) if rendered.returncode == 0 else None
                 if args.probe_oidc:
                     report['oidc_probe_exit'], report['oidc_issuer_ready'] = probe_oidc(root)
                 if args.form_probe:

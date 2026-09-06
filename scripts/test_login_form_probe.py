@@ -41,6 +41,10 @@ class FormProbeTests(unittest.TestCase):
         sources = Path(__file__).parent
         probe = scratch / 'probe.exe'
         fixture = scratch / 'fixture.exe'
+        renderer = scratch / 'renderer.exe'
+        subprocess.run([str(compiler), '/nologo', '/out:' + str(renderer),
+            '/reference:System.Drawing.dll', str(sources / 'OwnedWindowRender.cs')],
+            check=True, capture_output=True)
         subprocess.run([str(compiler), '/nologo', '/out:' + str(probe),
             *['/reference:' + str(framework / 'WPF' / name) for name in (
                 'UIAutomationClient.dll', 'UIAutomationTypes.dll', 'WindowsBase.dll')],
@@ -52,6 +56,18 @@ class FormProbeTests(unittest.TestCase):
             creationflags=subprocess.CREATE_NO_WINDOW)
         handle = int(process.stdout.readline().strip())
         try:
+            picture = scratch / 'render.png'
+            rejected = subprocess.run([str(renderer), str(handle), str(process.pid + 1), str(picture)],
+                timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(rejected.returncode, 3)
+            self.assertFalse(picture.exists())
+            rendered = subprocess.run([str(renderer), str(handle), str(process.pid), str(picture)],
+                timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(rendered.returncode, 0)
+            from PIL import Image
+            with Image.open(picture) as image:
+                self.assertGreater(image.width, 100)
+                self.assertGreater(len(image.convert('RGB').getcolors(maxcolors=1000000)), 1)
             wrong = subprocess.run([str(probe), str(handle), str(process.pid + 1)],
                 capture_output=True, text=True, timeout=35, creationflags=subprocess.CREATE_NO_WINDOW)
             self.assertEqual(wrong.returncode, 3)
