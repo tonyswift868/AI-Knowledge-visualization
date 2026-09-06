@@ -90,3 +90,40 @@ No final source-to-package binding, packaged login/registration completion,
 remember/restart, live A/B isolation or owner import is claimed by this receipt.
 The existing package and fallback remain untouched. Final integration/build is
 deferred until both sides' source/contracts are ready, as explicitly requested.
+
+## Desktop binding inventory for A's later delivery (no proposed endpoint)
+
+Source inspection after 13334cf10c020b75320b7d56e4cf43df2b1346f4:
+
+- `desktop/main.py::_start_account_bootstrap` calls
+  `startup_flow.bootstrap_enterprise_account` on the login generation's worker;
+  accept the verified identity only through the existing generation gate.
+  Do not use a username hint as import ownership.
+- `startup_flow.AccountBootstrapResult` carries identity/profile, metadata_api,
+  metadata_sync, snapshot, Vault manager and local lifecycle. These are the
+  existing account-scoped handles available to a future import UI action.
+- `AccountMetadataSnapshot` reads `workspace`, `plans`, `progress` and
+  `resource_manifest.assets`. `SyncedResource` holds resource_id,
+  expected_fingerprint_sha256, pathless server_metadata and current device state.
+  The service validates account issuer/subject and selected organization/workspace.
+- `EnterpriseAccountMetadataApi.account_metadata` currently caches its first
+  response. `_PreloadedMetadataApi` also retains bootstrap's first payload.
+  `AccountMetadataSyncService.refresh_device_state` only reconciles local
+  bindings against the cached snapshot; it does NOT fetch newly imported plans
+  or progress. Contract binding must explicitly refresh/recreate the accepted
+  account's metadata snapshot after a successful server import. Merely calling
+  refresh_device_state would show stale learning metadata.
+- `main._show_device_migration` connects the center's snapshot_changed signal
+  to `MainWindow.set_device_recovery_snapshot`. The resource banner and account
+  indicator now consume that same snapshot; retain this single publication path
+  and its account generation ownership when wiring import completion.
+- `account_portability.import_account_package(archive_path, target_vault_root,
+  expected_account_identity=..., allow_personal_local=False)` is the existing
+  local archive boundary, not a server Plan import transport. Source snapshots,
+  source hashes, per-item mappings, confirmation binding and durable import
+  receipts must be reconciled with A's actual contract before implementation.
+  Original bytes, device paths and local resource bindings remain local.
+
+No import route, request schema, idempotency key or authorization semantics were
+invented here. No real source inventory was reopened. This is a source call-site
+handoff, not an implemented import adapter or a claim of recovered owner data.
