@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import time
 import uuid
 import winreg
@@ -23,6 +24,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--helper', type=Path, required=True)
     parser.add_argument('--resume-test-root', type=Path)
+    parser.add_argument('--form-probe', type=Path)
     args = parser.parse_args()
     # Read only the boolean. Never dump profile labels, tokens or preferences.
     try:
@@ -154,6 +156,16 @@ def main():
                 return True
             user.EnumWindows(callback_type(inspect), 0)
             if gate_hwnd and report['qtcore_loaded']:
+                if args.form_probe:
+                    gate_pid = w.DWORD()
+                    user.GetWindowThreadProcessId(gate_hwnd, c.byref(gate_pid))
+                    probe = subprocess.run([str(args.form_probe), str(gate_hwnd), str(gate_pid.value)],
+                        capture_output=True, text=True, timeout=35,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
+                    report['form_probe_exit'] = probe.returncode
+                    report['form_probe_result'] = probe.stdout.strip()
+                    report['form_controls_focus_ready_seconds'] = (
+                        time.perf_counter() - start if probe.returncode == 0 else None)
                 user.PostMessageW(gate_hwnd, 0x10, 0, 0)
                 break
             if kernel.WaitForSingleObject(process.process, 0) == 0:
@@ -186,6 +198,8 @@ def main():
         kernel.CloseHandle(process.process)
     if report['login_visible_seconds'] is None or report['main_visible_before_login'] or not report['qtcore_loaded'] or not report['close_exit'] or report.get('exit_code') != 0 or report['owned_children_still_running']:
         raise RuntimeError('Installed LoginGate observation did not qualify; see recorded evidence')
+    if args.form_probe and report.get('form_controls_focus_ready_seconds') is None:
+        raise RuntimeError('Form controls readiness not observed; see recorded evidence')
 
 
 if __name__ == '__main__':
