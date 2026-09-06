@@ -59,6 +59,23 @@ class HashBufferTests(unittest.TestCase):
         with self.assertRaisesRegex(v.PackageError, "read failed"):
             v.sha256_file(FailingPath())
 
+    def test_batched_readers_match_serial_across_partial_batches(self):
+        with tempfile.TemporaryDirectory(prefix="e107-batches-", dir="E:/Codex/Temp") as directory:
+            root = Path(directory)
+            keys = []
+            for index in range(67):
+                key = str(index)
+                (root / key).write_bytes(bytes([index]) * (index * 97))
+                keys.append(key)
+            for count in (0, 1, 31, 32, 33, 64, 67):
+                serial = list(v._hash_gate_entries(root, keys[:count], 1))
+                parallel = list(v._hash_gate_entries(root, keys[:count], 4))
+                self.assertEqual(parallel, serial)
+                self.assertEqual([row[0] for row in parallel], keys[:count])
+            (root / '40').unlink()
+            with self.assertRaises(v.PackageError):
+                list(v._hash_gate_entries(root, keys, 4))
+
 
 if __name__ == "__main__":
     unittest.main()

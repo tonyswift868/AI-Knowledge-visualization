@@ -1420,8 +1420,15 @@ def _hash_gate_entries(root: Path, keys: list[str], workers: int):
     else:
         # Opt-in only after a small disk benchmark; one process, bounded reads.
         from concurrent.futures import ThreadPoolExecutor
+        def hash_batch(batch):
+            return list(map(hash_one, batch))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            yield from pool.map(hash_one, keys)
+            # Keep the caller's order and every per-file digest, but avoid one
+            # Future/queue operation per tiny file. Readers remain bounded by
+            # workers, and an error in any batch still aborts verification.
+            batches = (keys[index:index + 32] for index in range(0, len(keys), 32))
+            for result in pool.map(hash_batch, batches):
+                yield from result
 
 
 def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, unchanged, hash_workers: int) -> dict[str, Any]:
