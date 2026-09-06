@@ -443,9 +443,12 @@ def main(argv=None):
     parser.add_argument("--source-sha")
     parser.add_argument("--tree-sha")
     parser.add_argument("--payload-source", type=Path)
+    parser.add_argument("--shortcut-path", type=Path, help="install only: create a new native shortcut after verification")
     parser.add_argument("--quiet-install", action="store_true", help="installer host supplies its own visible progress")
     args = parser.parse_args(argv)
     try:
+        if args.shortcut_path is not None and args.command != "install":
+            raise RepairRequired("shortcut publication is install-only")
         if args.command == "protect":
             protect_installation(args.install_root)
             print("MENTORFLOW_INSTALL_ACL=PASS")
@@ -456,12 +459,20 @@ def main(argv=None):
                 if args.payload_source is None:
                     raise RepairRequired("installer payload source required")
                 identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
+                def publish(result, status=None):
+                    if args.shortcut_path is not None:
+                        if status is not None:
+                            status.update("正在创建经过验证的启动快捷方式…")
+                        from scripts.windows_install_shortcut import publish_shortcut
+                        result['shortcut'] = publish_shortcut(args.install_root, args.shortcut_path, **identities)
+                    return result
                 if args.quiet_install:
-                    result = install_package(args.payload_source, args.install_root, **identities)
+                    result = publish(install_package(args.payload_source, args.install_root, **identities))
                 else:
                     from scripts.windows_install_progress import InstallProgress
                     with InstallProgress() as status:
                         result = install_package(args.payload_source, args.install_root, progress=status.update, **identities)
+                        result = publish(result, status)
                 print(json.dumps(result))
                 return 0
             def verify(progress=None):
