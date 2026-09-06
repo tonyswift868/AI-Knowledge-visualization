@@ -369,7 +369,9 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
     try:
         relative = _relative(candidate, package_root) if cached_relative is None else cached_relative
         relative_path = Path(relative)
-        if relative_path.drive or relative_path.is_absolute() or ".." in relative_path.parts:
+        # Windows rooted-relative names ('/outside') have a root but no drive;
+        # is_absolute() alone misses them and joining discards package_root.
+        if relative_path.drive or relative_path.root or ".." in relative_path.parts:
             raise ValueError("parent traversal is not a package entry")
         if cached_relative is not None and package_root / relative_path != candidate:
             raise ValueError("cached relative path does not identify candidate")
