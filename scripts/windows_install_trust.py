@@ -325,12 +325,28 @@ def category(relative: str) -> str:
     return "CRITICAL"
 
 
+def _check_entry_acls(paths):
+    """Fresh per-entry ACL reads; finish all checks before hashing any code."""
+    def check_batch(batch):
+        for path in batch:
+            assert_protected(path)
+    if len(paths) < 64:
+        check_batch(paths)
+        return
+    from concurrent.futures import ThreadPoolExecutor
+    # Avoid one task per file; worker count is bounded, buffers are thread-local.
+    # No successful per-path authorization result survives this verification.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for _ in pool.map(check_batch, (paths[i:i + 64] for i in range(0, len(paths), 64))):
+            pass
+
+
 def _snapshot(root: Path):
     from scripts import verify_windows_package as v
     assert_protected(root)
-    rows, files = {}, {}
+    rows, files, acl_paths = {}, {}, []
     for path, st, isdir, key in _walk(root):
-        assert_protected(path)
+        acl_paths.append(path)
         if key == RECEIPT:
             if isdir:
                 raise RepairRequired("receipt is not a file")
@@ -346,6 +362,9 @@ def _snapshot(root: Path):
             files[key[4:]] = path
     if "App" not in rows:
         raise RepairRequired("installed App directory missing")
+    # Collection does not read/execute payload content. Reject every unsafe ACL
+    # before returning the snapshot; the directory watcher covers both phases.
+    _check_entry_acls(acl_paths)
     # Root time changes when committing the receipt; bind stable identity only.
     st = root.stat()
     return rows, files, [st.st_dev, st.st_ino]
