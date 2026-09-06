@@ -110,10 +110,8 @@ namespace MentorFlow.Installation
             directories.Add(path);
         }
 
-        internal string WriteNewFile(string relative, Stream incoming, long expectedLength)
+        internal static string[] ValidateRelative(string relative)
         {
-            if (expectedLength < 0 || expectedLength > 8L * 1024 * 1024 * 1024)
-                throw new InvalidOperationException("Invalid staged file length");
             if (String.IsNullOrEmpty(relative) || relative.IndexOf('\\') >= 0 || relative.IndexOf(':') >= 0)
                 throw new InvalidOperationException("Noncanonical staged path");
             string[] parts = relative.Split('/');
@@ -124,6 +122,25 @@ namespace MentorFlow.Installation
                     Regex.IsMatch(part, @"^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)", RegexOptions.IgnoreCase))
                     throw new InvalidOperationException("Unsafe staged path component");
             }
+            return parts;
+        }
+
+        internal void EnsureSubdirectory(string relative)
+        {
+            string parent = Root;
+            foreach (string part in ValidateRelative(relative))
+            {
+                parent = Path.Combine(parent, part);
+                if (parent.Length >= 32760) throw new InvalidOperationException("Staged path too long");
+                if (!directories.Contains(parent)) CreateDirectory(parent);
+            }
+        }
+
+        internal string WriteNewFile(string relative, Stream incoming, long expectedLength)
+        {
+            if (expectedLength < 0 || expectedLength > 8L * 1024 * 1024 * 1024)
+                throw new InvalidOperationException("Invalid staged file length");
+            string[] parts = ValidateRelative(relative);
             string destination = Path.Combine(Root, String.Join(Path.DirectorySeparatorChar.ToString(), parts));
             // Canonical validated names use extended Win32 paths; no dependence
             // on machine-wide long-path policy or .NET path-based FileStream.
