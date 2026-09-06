@@ -239,6 +239,11 @@ def _is_application_managed_path(relative: str) -> bool:
     trigger a private-path finding by themselves.
     """
     parts = tuple(part.casefold() for part in Path(relative).parts)
+    return _application_managed_parts(parts)
+
+
+def _application_managed_parts(parts: tuple[str, ...]) -> bool:
+    """Pure rule over already normalized/casefolded path components."""
     if not parts or parts[0] != "_internal":
         return True
     return len(parts) > 1 and parts[1] in APPLICATION_MANAGED_INTERNAL_ROOTS
@@ -396,7 +401,7 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
     parts = tuple(part.casefold() for part in relative_path.parts)
     if any(part in STALE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains stale Python bytecode path: {relative}")
-    if _is_application_managed_path(relative) and any(part in PRIVATE_PATH_COMPONENTS for part in parts):
+    if _application_managed_parts(parts) and any(part in PRIVATE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains a private/development path: {relative}")
     if relative_path.suffix.casefold() in STALE_BYTECODE_SUFFIXES:
         raise PackageError(f"package contains stale Python bytecode: {relative}")

@@ -66,7 +66,10 @@ def security_descriptor(path: Path) -> str:
         kernel.LocalFree(sd)
 
 
+@lru_cache(maxsize=128)
 def _parts(sddl: str):
+    # Cache only pure parsing of an exact descriptor string. Callers must read
+    # the actual descriptor from Windows for every path, on every verification.
     match = re.fullmatch(r"O:([^:]+)D:([^()]*)((?:\([^()]+\))*)", sddl)
     if not match:
         raise RepairRequired("unrecognized owner/DACL structure")
@@ -93,7 +96,7 @@ def _parts(sddl: str):
         aces.append((fields[1], mask, fields[5]))
     if not aces:
         raise RepairRequired("empty or absent DACL")
-    return owner, control, aces
+    return owner, control, tuple(aces)
 
 
 def assert_protected(path: Path) -> None:
@@ -287,8 +290,9 @@ def category(relative: str) -> str:
     QML/JS/SVG, story/prompt assets, configs, fonts, plugin metadata, archives
     and all unreviewed paths remain CRITICAL regardless of filename suffix.
     """
-    parts = Path(relative).parts
-    if len(parts) >= 7 and parts[:3] == ("_internal", "PySide6", "qml") and parts[-3:-1] == ("designer", "images") and Path(relative).suffix == ".png":
+    path = Path(relative)
+    parts = path.parts
+    if len(parts) >= 7 and parts[:3] == ("_internal", "PySide6", "qml") and parts[-3:-1] == ("designer", "images") and path.suffix == ".png":
         return "STATIC_RESOURCE"
     return "CRITICAL"
 
@@ -303,8 +307,9 @@ def _snapshot(root: Path):
             if isdir:
                 raise RepairRequired("receipt is not a file")
             continue
-        change_time = v._resource_change_time(path) if not isdir and key.startswith("App/") and category(key[4:]) == "STATIC_RESOURCE" else 0
-        if not isdir and key.startswith("App/") and category(key[4:]) == "STATIC_RESOURCE" and change_time <= 0:
+        is_static = not isdir and key.startswith("App/") and category(key[4:]) == "STATIC_RESOURCE"
+        change_time = v._resource_change_time(path) if is_static else 0
+        if is_static and change_time <= 0:
             raise RepairRequired("static resource ChangeTime unavailable")
         rows[key] = ["dir" if isdir else "file", st.st_size if not isdir else 0, st.st_mtime_ns, st.st_ctime_ns, st.st_dev, st.st_ino, change_time]
         if not isdir:
