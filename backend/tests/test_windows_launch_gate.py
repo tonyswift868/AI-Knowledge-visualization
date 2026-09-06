@@ -1,5 +1,6 @@
 """Windows protected-cache and content gates; only synthetic disposable packages."""
 import os
+import json
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def run(gate):
     return v.verify_launch_gate(root, state_path=state, expected_manifest_sha256=anchor)
 
 
-def test_full_then_repeat_protected_state(gate, monkeypatch):
+def test_diagnostic_state_never_skips_resource_hashes(gate, monkeypatch):
     assert run(gate)["mode"] == "FULL"
     assert not gate[1].read_bytes().startswith(b"{")
     original = v.sha256_file
@@ -35,9 +36,25 @@ def test_full_then_repeat_protected_state(gate, monkeypatch):
         hashed.append(path.name)
         return original(path)
     monkeypatch.setattr(v, "sha256_file", measured)
-    assert run(gate)["mode"] == "REPEAT"
+    assert run(gate)["mode"] == "FULL"
     assert "MentorFlow.exe" in hashed and "QtCore.dll" in hashed
-    assert "resource.png" not in hashed
+    assert "resource.png" in hashed
+
+
+def test_same_user_resealed_state_cannot_authorize_tampered_resource(gate):
+    run(gate)
+    root, state_path, _anchor = gate
+    state = json.loads(v._protect_gate_state(state_path.read_bytes(), decrypt=True))
+    resource = root / "resource.png"
+    resource.write_bytes(b"X" * resource.stat().st_size)
+    stat = resource.lstat()
+    state["inventory"]["resource.png"] = [
+        stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_dev,
+        stat.st_ino, v._resource_change_time(resource),
+    ]
+    state_path.write_bytes(v._protect_gate_state(json.dumps(state).encode()))
+    with pytest.raises(v.PackageError, match="tampered: resource.png"):
+        run(gate)
 
 
 @pytest.mark.parametrize("name", ["MentorFlow.exe", "QtCore.dll", "resource.png"])
@@ -117,7 +134,7 @@ def test_single_enumeration_and_bounded_parallel_hashes(gate, monkeypatch):
     root, state, anchor = gate
     assert v.verify_launch_gate(root, state_path=state, expected_manifest_sha256=anchor, hash_workers=4)['mode'] == 'FULL'
     assert len(scans) == len(set(scans))
-    assert v.verify_launch_gate(root, state_path=state, expected_manifest_sha256=anchor, hash_workers=4)['mode'] == 'REPEAT'
+    assert v.verify_launch_gate(root, state_path=state, expected_manifest_sha256=anchor, hash_workers=4)['mode'] == 'FULL'
     (root / 'QtCore.dll').write_bytes(b'X' * len(b'synthetic DLL'))
     with pytest.raises(v.PackageError, match='tampered'):
         v.verify_launch_gate(root, state_path=state, expected_manifest_sha256=anchor, hash_workers=4)

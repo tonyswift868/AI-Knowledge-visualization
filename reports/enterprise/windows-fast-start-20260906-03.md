@@ -20,7 +20,7 @@ Manifest payload classification (14,038 payloads; manifest separately pinned):
 | Category | Count | Bytes | Policy |
 | --- | ---: | ---: | --- |
 | CRITICAL_EXECUTABLE | 11,204 | 1,772,685,327 | SHA-256 every invocation |
-| IMMUTABLE_RESOURCE | 2,834 | 313,759,933 | Reuse only authenticated prior full proof with identical metadata |
+| IMMUTABLE_RESOURCE | 2,834 | 313,759,933 | SHA-256 every invocation; cache reuse disabled |
 | ALLOWED_EXTERNAL_CONFIG | Outside manifest | Not a payload exclusion | Existing strict Runtime/launch.json schema/data_profile only |
 
 All EXE, DLL, PYD, Python source/bootstrap, Qt plugins/QML, JS, archives, active
@@ -33,16 +33,20 @@ State uses current-user Windows DPAPI authenticated encryption, with no plaintex
 PASS flag or stored application secret. It binds schema, exact manifest SHA,
 root path and volume/file identity, package version, every file's size/times/
 identity, resource NTFS ChangeTime, exact critical hashes, and successful full
-verification timestamp. Changed/missing/invalid/expired state causes full hashes;
-proof expires after 24 hours. Metadata is an invalidation trigger, never the
-original cryptographic proof. Unavailable reliable resource metadata disables
-reuse. In-package or aliased state paths are rejected.
+verification timestamp. The record is diagnostic only and is never consumed
+to authorize hash skipping. All resources are hashed on every invocation.
+In-package or aliased state paths are rejected.
 
 Security boundary: DPAPI authenticates data for the Windows logon identity;
-it is not process-origin attestation and does not defend against arbitrary code
-already running as that same Windows identity. Do not advertise a stronger
-installer-service or compromised-host boundary. The launcher/helper trust pins
-and same-user protection assumptions must remain explicit at integration review.
+it is not process-origin attestation. A synthetic-package regression reproduced
+an actual bypass at dc48b28: modify a same-length resource, update its inventory
+metadata, and re-seal the state as the same user; the unchanged manifest anchor
+was incorrectly accepted as REPEAT/PASS. Raw state-corruption tests were not
+sufficient. This repair removes state-based authorization entirely. The same
+forgery must now fail with a resource hash mismatch. Existing installer source
+explicitly reports unsigned; no independent receipt-signing authority was found
+in the examined installer/launch flow. No privileged service or new trust root
+was installed. A trusted authority is required before any future cache reuse.
 See [Microsoft CryptProtectData](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata).
 
 A single directory enumeration reuses normalized paths and stat results. Windows
@@ -65,12 +69,34 @@ serialized, not run as competing verifier processes.
 
 ## Final-source controlled-copy evidence
 
+### State-origin security repair (after dc48b28)
+
+All-payload hashing restored; no cache state can authorize PASS. Same-user
+re-sealing is covered by an ordinary rejection regression, not a skip/xfail.
+Focused gate, personal launcher and account launch suites: 56 PASS, 0 SKIP,
+0 XFAIL; exit 0. Evidence: E:/Codex/Temp/e107-state-origin-regression.xml.
+Pytest data paths were pinned to scratch before collection; the worktree-local
+DB before/after SHA-256 guard returned unchanged. The earlier incident below
+remains disclosed. Historical four symlink permission skips were not rerun or
+converted to PASS.
+
+Current four-reader measurements on the same isolated physical package:
+
+| Invocation | Mode | Hash | Total |
+| --- | --- | ---: | ---: |
+| First in this run | FULL | 6.191 s | 10.546 s |
+| Unchanged repeated launch | FULL | 6.368 s | 11.687 s |
+
+These are source-verifier timings, not packaged launch-click-to-form timings,
+and not cold-cache measurements. The security target is still NOT met. No
+secure cache speedup is claimed; source LoginGate timings below were not rerun.
+
 One physical copy only:
 E:/Codex/Temp/E107-FastStart-20260906-03/MentorFlow.
 Copied from the preserved old release using robocopy, without hardlinks.
 All mutation scenarios reused this disposable copy and restored their bytes.
 
-Final reliable-identity implementation, four hash readers:
+Historical dc48b28 measurements, four hash readers (superseded for acceptance):
 
 | Measurement | Inventory/state | Hash | Total |
 | --- | ---: | ---: | ---: |
@@ -82,10 +108,10 @@ the corrected Windows identity/link-count handling and are not final acceptance
 numbers. No strict cold-cache or idle-machine claim. Hashing ~1.77 GB of critical
 payload remains material work; it was not reclassified as resource data merely
 to meet the latency target.
-Expected integration benefit on this measured host is a repeat verifier around
-8 seconds rather than repeating all resource hashes; native-helper startup and
-the final packaged click-to-form path are still unmeasured. This is an estimate,
-not a promise of either the 3-second security gate or 8-second end-to-end target.
+The historical 7.860-second REPEAT result used the now-rejected cache trust
+assumption and is NOT secure acceptance evidence. Current repeated launches
+perform FULL verification; native-helper startup and the final packaged
+click-to-form path remain unmeasured.
 
 Final-source isolated full-copy EXE, Qt6Core DLL, PNG resource and manifest byte
 tampering all rejected; unknown.cfg addition rejected. Unit tests additionally

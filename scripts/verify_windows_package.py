@@ -1388,10 +1388,10 @@ def _hash_gate_entries(root: Path, keys: list[str], workers: int):
 
 
 def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, unchanged, hash_workers: int) -> dict[str, Any]:
-    """Single enumeration, always-hashed code, protected prior resource proof.
+    """Single enumeration and full payload hashes with a diagnostic receipt.
 
     Invoke only from the launcher which pins this helper and manifest. DPAPI
-    protects against editing/copying state, not a compromised Windows account.
+    state is not evidence of trusted creator provenance and never skips hashes.
     """
     started = time.perf_counter()
     package_root = _validate_package_root(package_root).resolve()
@@ -1459,50 +1459,41 @@ def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manife
         raise PackageError("package version mismatch")
     root_stat = package_root.stat()
     binding = {"schema": _GATE_SCHEMA, "manifest_sha256": manifest_hash, "root": str(package_root), "root_identity": [root_stat.st_dev, root_stat.st_ino], "version": version["version"]}
-    prior = None
-    try:
-        if state_path.stat().st_size <= 16 * 1024 * 1024:
-            prior = json.loads(_protect_gate_state(state_path.read_bytes(), decrypt=True))
-    except (OSError, ValueError, PackageError):
-        pass
-    now = time.time()
-    reliable_resource_metadata = all(values[-1] > 0 for key, values in inventory.items() if package_file_category(key) == "IMMUTABLE_RESOURCE")
-    reusable = reliable_resource_metadata and isinstance(prior, dict) and prior.get("binding") == binding and prior.get("inventory") == inventory and type(prior.get("full_verified_at")) in {int, float} and 0 <= now - prior["full_verified_at"] < 86400
+    # DPAPI authenticates the Windows user, not the creator of a verification
+    # receipt. The same user can re-seal forged inventory after changing a file.
+    # Until an independent trusted authority exists, this record is diagnostic
+    # only: never consume it to authorize skipping any payload hash.
     inventory_seconds = time.perf_counter() - started
-    if not reusable:
-        private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory] + [manifest_path])
-        if private:
-            raise PackageError("package contains private data/configuration")
+    private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory] + [manifest_path])
+    if private:
+        raise PackageError("package contains private data/configuration")
     hash_started = time.perf_counter()
     critical_hashes = {}
-    to_hash = [key for key in sorted(inventory) if not reusable or package_file_category(key) == "CRITICAL_EXECUTABLE"]
+    to_hash = sorted(inventory)
     for key, digest in _hash_gate_entries(package_root, to_hash, hash_workers):
         if digest != expected[key]["sha256"]:
             raise PackageError(f"package tampered: {key}")
         if package_file_category(key) == "CRITICAL_EXECUTABLE":
             critical_hashes[key] = digest
     hash_seconds = time.perf_counter() - hash_started
-    if reusable and prior.get("critical_hashes") != critical_hashes:
-        raise PackageError("protected critical hash binding mismatch")
     # A watch follows the directory handle, not a replacement at its old name.
     # Check the root identity again without performing another enumeration.
     final_root = _validate_package_root(package_root).stat()
     if (final_root.st_dev, final_root.st_ino) != (root_stat.st_dev, root_stat.st_ino):
         raise PackageError("package root identity changed during verification")
     unchanged()
-    if not reusable:
-        state = {"binding": binding, "inventory": inventory, "critical_hashes": critical_hashes, "full_verified_at": time.time()}
-        encrypted = _protect_gate_state(json.dumps(state, sort_keys=True, separators=(",", ":")).encode())
-        # Replace atomically; do not leave a plaintext snapshot on disk.
-        with tempfile.NamedTemporaryFile(dir=state_path.parent, prefix="gate-", delete=False) as temporary:
-            temporary.write(encrypted)
-            temp_path = Path(temporary.name)
-        try:
-            _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
-            temp_path.replace(state_path)
-        finally:
-            temp_path.unlink(missing_ok=True)
-    return {"verification": "PASS", "mode": "REPEAT" if reusable else "FULL", "hash_workers": hash_workers, "inventory_seconds": inventory_seconds, "hash_seconds": hash_seconds, "total_seconds": time.perf_counter() - started, "categories": categories, "files": len(inventory)}
+    state = {"binding": binding, "inventory": inventory, "critical_hashes": critical_hashes, "full_verified_at": time.time()}
+    encrypted = _protect_gate_state(json.dumps(state, sort_keys=True, separators=(",", ":")).encode())
+    # Replace atomically; do not leave a plaintext snapshot on disk.
+    with tempfile.NamedTemporaryFile(dir=state_path.parent, prefix="gate-", delete=False) as temporary:
+        temporary.write(encrypted)
+        temp_path = Path(temporary.name)
+    try:
+        _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
+        temp_path.replace(state_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    return {"verification": "PASS", "mode": "FULL", "hash_workers": hash_workers, "inventory_seconds": inventory_seconds, "hash_seconds": hash_seconds, "total_seconds": time.perf_counter() - started, "categories": categories, "files": len(inventory)}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1517,7 +1508,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--no-data-check", action="store_true")
     verify.add_argument("--no-smoke", action="store_true")
     verify.add_argument("--smoke-seconds", type=float, default=5.0)
-    gate = subparsers.add_parser("launch-gate", help="protected Windows repeat-start verification")
+    gate = subparsers.add_parser("launch-gate", help="full Windows launch verification with a diagnostic receipt")
     gate.add_argument("--package-root", type=Path, required=True)
     gate.add_argument("--state-path", type=Path, required=True)
     gate.add_argument("--expected-manifest-sha256", required=True)

@@ -130,6 +130,7 @@ try {
     # Source template for the next integrated release: rebind the frozen helper
     # and manifest anchors when building that release. The preserved old launcher
     # is not modified. launch-gate never opens a database or runs application code.
+    # DPAPI state is diagnostic only; every payload is hashed on every launch.
     $progressWindow = $null
     if (-not $ValidateOnly) {
         Add-Type -AssemblyName System.Windows.Forms
