@@ -88,7 +88,7 @@ namespace MentorFlow.Installation
             string link = shortcut.Text;
             try
             {
-                await Task.Run(() => InstallFromEmbedded.Run(root, link, Path.GetPathRoot(Path.GetFullPath(root)), message =>
+                await Task.Run(() => InstallFromEmbedded.Run(root, link, Path.GetDirectoryName(Path.GetFullPath(root).TrimEnd('\\')), message =>
                     BeginInvoke(new Action(() => status.Text = message))));
                 ResultCode = 0;
                 status.Text = "安装完成。请关闭安装器，再通过新快捷方式启动 MentorFlow。";
