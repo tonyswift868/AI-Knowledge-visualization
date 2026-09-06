@@ -2,10 +2,20 @@ import ctypes
 from pathlib import Path
 import subprocess
 import tempfile
+import sys
 import unittest
 
 
 class FormProbeTests(unittest.TestCase):
+    def test_invalid_dwell_rejects_before_fixture_access(self):
+        for options in (['--observe-seconds', '-1'], ['--observe-seconds', '31'],
+                        ['--observe-seconds', 'nan'],
+                        ['--observe-seconds', '1', '--form-probe', 'unused.exe']):
+            result = subprocess.run([sys.executable, '-m', 'scripts.measure_installed_login_gate',
+                '--helper', 'unused.exe', *options], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('error:', result.stderr)
+
     def test_actual_synthetic_controls_and_wrong_process_rejection(self):
         scratch = Path(tempfile.mkdtemp(prefix='e107-form-probe-', dir='E:/Codex/Temp'))
         framework = Path('C:/Windows/Microsoft.NET/Framework64/v4.0.30319')

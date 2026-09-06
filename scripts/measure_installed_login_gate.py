@@ -25,7 +25,12 @@ def main():
     parser.add_argument('--helper', type=Path, required=True)
     parser.add_argument('--resume-test-root', type=Path)
     parser.add_argument('--form-probe', type=Path)
+    parser.add_argument('--observe-seconds', type=float, default=0)
     args = parser.parse_args()
+    if not 0 <= args.observe_seconds <= 30:
+        parser.error('--observe-seconds must be between 0 and 30')
+    if args.form_probe and args.observe_seconds:
+        parser.error('Use either a form probe or a passive dwell control, not both')
     # Read only the boolean. Never dump profile labels, tokens or preferences.
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\MentorFlow\MentorFlow\account') as key:
@@ -155,7 +160,9 @@ def main():
                     report['main_visible_before_login'] = True
                 return True
             user.EnumWindows(callback_type(inspect), 0)
-            if gate_hwnd and report['qtcore_loaded']:
+            if (gate_hwnd and report['qtcore_loaded'] and
+                    time.perf_counter() - start - report['login_visible_seconds'] >= args.observe_seconds):
+                report['passive_observe_seconds'] = args.observe_seconds
                 if args.form_probe:
                     gate_pid = w.DWORD()
                     user.GetWindowThreadProcessId(gate_hwnd, c.byref(gate_pid))
