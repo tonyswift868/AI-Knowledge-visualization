@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts import profile_protected_repeat as profile
@@ -34,6 +36,30 @@ class RepeatProfileTests(unittest.TestCase):
             with self.assertRaises(profile.trust.RepairRequired):
                 profile.measure('isolated', {})
         self.assertIs(profile.trust._snapshot, original)
+
+    def test_hash_detail_preserves_digest_prefix_and_restores_hash(self):
+        original = profile.verifier.sha256_file
+        with tempfile.TemporaryDirectory(dir='E:/Codex/Temp') as directory:
+            root = Path(directory)
+            path = root / 'synthetic.bin'
+            path.write_bytes(b'isolated synthetic bytes')
+            expected = original(path)
+            prefix = bytearray()
+            def verify(*args, **kwargs):
+                profile.trust._root(root)
+                profile.trust._snapshot(root)
+                profile.trust._check_entry_acls([])
+                profile.trust._identity({})
+                self.assertEqual(profile.verifier.sha256_file(path, prefix=prefix), expected)
+                return dict(total_seconds=1, hash_seconds=0.5)
+            with patch.object(profile.trust, '_root'), patch.object(profile.trust, '_snapshot'), \
+                 patch.object(profile.trust, '_check_entry_acls'), patch.object(profile.trust, '_identity'), \
+                 patch.object(profile.trust, 'verify_installation', side_effect=verify):
+                result = profile.measure(root, {}, hash_detail=True)
+            self.assertEqual(prefix, b'isolated synthet')
+            self.assertEqual(result['hash_calls'], 1)
+            self.assertEqual(result['slowest_hash_calls'][0]['bytes'], path.stat().st_size)
+            self.assertIs(profile.verifier.sha256_file, original)
 
 
 if __name__ == '__main__':
