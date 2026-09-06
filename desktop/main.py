@@ -1026,7 +1026,7 @@ def _import_development_data_once(app_root: Path, data_root: Path) -> None:
 
 
 class MentorFlowApplication:
-    def __init__(self) -> None:
+    def __init__(self, *, login_gate=None) -> None:
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.app.setApplicationName("MentorFlow")
         self.app.setOrganizationName("MentorFlow")
@@ -1064,7 +1064,7 @@ class MentorFlowApplication:
         self.service: LocalService | None = None
         self.api: DesktopApi | None = None
         self.main: MainWindow | None = None
-        self.login_gate = None
+        self.login_gate = login_gate
         self.migration_center = None
         self.bootstrap_result = None
         self._last_login_result = None
@@ -1108,7 +1108,8 @@ class MentorFlowApplication:
     def _show_login_gate(self) -> None:
         from .startup_flow import LoginGateState, LoginGateWindow
 
-        self.login_gate = LoginGateWindow()
+        if self.login_gate is None:
+            self.login_gate = LoginGateWindow()
         self.login_gate.login_requested.connect(self._begin_interactive_login)
         self.login_gate.retry_requested.connect(self._retry_login_or_bootstrap)
         self.login_gate.background_succeeded.connect(self._background_succeeded)
@@ -1196,6 +1197,10 @@ class MentorFlowApplication:
         try:
             pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True)
             self._auth_pane = pane
+            record = getattr(self, "_startup_record", None)
+            if record is not None:
+                pane.authorization_navigation_started.connect(lambda: record("KEYCLOAK_NAVIGATION_BEGIN"))
+                pane.authorization_document_loaded.connect(lambda ok: record("KEYCLOAK_DOCUMENT_LOADED" if ok else "KEYCLOAK_DOCUMENT_FAILED"))
             pane.authenticated.connect(lambda result: self._accept_login_result(result) if generation == self._login_generation else None)
             pane.authentication_failed.connect(lambda code, message: self._background_failed(f"{generation}:authenticate", "登录页面暂不可用，请检查网络或账号权限后重试。"))
             self.login_gate.set_auth_content(pane)

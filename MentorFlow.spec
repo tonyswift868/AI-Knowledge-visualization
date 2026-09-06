@@ -130,7 +130,7 @@ for package in ("keyring", "argon2-cffi", "docling", "instructor", "yt-dlp"):
         pass
 
 a = Analysis(
-    [str(root / "desktop_entry.py")],
+    [str(root / ("desktop_gui_entry.py" if os.getenv("MENTORFLOW_BUILD_PROTECTED_GUI") == "1" else "desktop_entry.py"))],
     pathex=[str(root), str(backend_root)],
     binaries=binaries,
     datas=datas,

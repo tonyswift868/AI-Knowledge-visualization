@@ -77,6 +77,11 @@ def publish_shortcut(root: Path, destination: Path, **identities):
         raise trust.RepairRequired('integrated native launch gate is missing')
     arguments = ('launch --install-root "' + str(root) + '" --manifest-sha256 ' + identities['manifest_sha256']
                  + ' --source-sha ' + identities['source_sha'] + ' --tree-sha ' + identities['tree_sha'])
+    if (root / 'App/SELF-CHECK/gui-bootstrap-closure.json').is_file():
+        # Only a fully verified GUI-enabled installation selects this route.
+        # The windowed EXE owns one LoginGate across both startup barriers.
+        gate = root / 'App/MentorFlow.exe'
+        arguments = arguments.removeprefix('launch ')
     temporary = destination.parent / ('e107-' + uuid.uuid4().hex + '.lnk')
     try:
         with trust._create_protected(temporary, directory=False):
