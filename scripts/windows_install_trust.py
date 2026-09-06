@@ -417,7 +417,7 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         keys = sorted(expected) if activate else sorted(key for key in expected if category(key) == "CRITICAL")
         critical, prefixes = {}, {}
         hash_start = time.perf_counter()
-        for index, (key, digest, prefix) in enumerate(v._hash_gate_entries(package, keys, workers)):
+        for index, (key, digest, prefix) in enumerate(v._hash_gate_entries(package, keys, workers, validated_paths=files)):
             if activate and progress and index % 64 == 0:
                 progress(f"正在执行完整 SHA-256 验证：{index}/{len(keys)}")
             if digest != expected[key]["sha256"]:

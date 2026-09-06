@@ -1412,10 +1412,14 @@ def verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifes
     return report
 
 
-def _hash_gate_entries(root: Path, keys: list[str], workers: int):
+def _hash_gate_entries(root: Path, keys: list[str], workers: int, *, validated_paths=None):
+    # Only a completed namespace/metadata validation may supply this per-run
+    # mapping. It is not manifest input and never survives a gate invocation.
+    # Reuse the actual Path objects already checked by the snapshot and ACL pass.
     def hash_one(key):
         prefix = bytearray()
-        digest = sha256_file(root / key, prefix=prefix)
+        path = root / key if validated_paths is None else validated_paths[key]
+        digest = sha256_file(path, prefix=prefix)
         return key, digest, bytes(prefix)
     if workers == 1:
         yield from map(hash_one, keys)

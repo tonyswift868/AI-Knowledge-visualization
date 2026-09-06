@@ -70,11 +70,31 @@ class HashBufferTests(unittest.TestCase):
             for count in (0, 1, 31, 32, 33, 64, 67):
                 serial = list(v._hash_gate_entries(root, keys[:count], 1))
                 parallel = list(v._hash_gate_entries(root, keys[:count], 4))
+                cached = list(v._hash_gate_entries(root, keys[:count], 4,
+                    validated_paths={key: root / key for key in keys}))
                 self.assertEqual(parallel, serial)
+                self.assertEqual(cached, serial)
                 self.assertEqual([row[0] for row in parallel], keys[:count])
             (root / '40').unlink()
             with self.assertRaises(v.PackageError):
                 list(v._hash_gate_entries(root, keys, 4))
+            with self.assertRaises(v.PackageError):
+                list(v._hash_gate_entries(root, keys, 4,
+                    validated_paths={key: root / key for key in keys}))
+
+    def test_validated_paths_are_not_a_content_cache(self):
+        with tempfile.TemporaryDirectory(prefix='e107-path-reuse-', dir='E:/Codex/Temp') as directory:
+            root = Path(directory)
+            path = root / 'runtime.dll'
+            mapping = {'runtime.dll': path}
+            path.write_bytes(b'original')
+            before = list(v._hash_gate_entries(root, list(mapping), 1, validated_paths=mapping))
+            path.write_bytes(b'modified')
+            after = list(v._hash_gate_entries(root, list(mapping), 4, validated_paths=mapping))
+            self.assertNotEqual(before[0][1], after[0][1])
+            self.assertEqual(after[0][1], hashlib.sha256(b'modified').hexdigest())
+            with self.assertRaises(KeyError):
+                list(v._hash_gate_entries(root, list(mapping), 4, validated_paths={}))
 
 
 if __name__ == "__main__":
