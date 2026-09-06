@@ -100,6 +100,20 @@ namespace MentorFlow.Installation
             return stage;
         }
 
+        internal static void PrepareUatRoot()
+        {
+            if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+                throw new InvalidOperationException("Elevated installation required");
+            const string root = @"E:\MentorFlow";
+            AssertSafeParents(@"E:\");
+            if (Directory.Exists(root) || File.Exists(root))
+                throw new InvalidOperationException("Existing installation preserved; repair requires separate approval");
+            ProtectedStage stage = new ProtectedStage();
+            stage.Root = root;
+            stage.CreateDirectory(root);
+            stage.CreateDirectory(Path.Combine(root, "App"));
+        }
+
         private void CreateDirectory(string path)
         {
             using (Descriptor descriptor = new Descriptor())

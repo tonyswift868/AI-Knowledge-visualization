@@ -18,8 +18,13 @@ ${Using:StrFunc} UnStrStr
 ; Also protect direct makensis invocation, not only the PowerShell wrapper.
 ; This legacy entry cannot establish the new admin-owned installation boundary.
 !if /FileExists "${PAYLOAD_DIR}\MentorFlowInstallGate.exe"
+ !ifndef PROTECTED_INSTALL
   !error "PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user installer."
+ !endif
 !endif
+!ifdef PROTECTED_INSTALL
+ !include "ProtectedInstall.nsh"
+!else
 !ifndef PRODUCT_VERSION
   !define PRODUCT_VERSION "0.0.0-dev"
 !endif
@@ -142,6 +147,7 @@ Section "MentorFlow" SEC_MAIN
   CreateShortCut "$SMPROGRAMS\${SHORTCUT_FOLDER}\${SHORTCUT_NAME}" "$INSTDIR\MentorFlow.exe" "" "$INSTDIR\MentorFlow.exe" 0
   CreateShortCut "$SMPROGRAMS\${SHORTCUT_FOLDER}\${UNINSTALL_SHORTCUT_NAME}" "$INSTDIR\Uninstall.exe"
 SectionEnd
+
 
 Section /o "Desktop shortcut" SEC_DESKTOP
   SetShellVarContext current
@@ -436,3 +442,4 @@ un.program_tree_unsafe_silent:
   DeleteRegKey /ifempty HKCU "${PRODUCT_KEY}"
   RMDir /r "$INSTDIR"
 SectionEnd
+!endif ; protected branch vs legacy per-user installer

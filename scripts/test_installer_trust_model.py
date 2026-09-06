@@ -8,7 +8,7 @@ import unittest
 
 class InstallerTrustModelTests(unittest.TestCase):
     def test_native_payload_refused_before_compiler_or_output(self):
-        scratch = Path(tempfile.mkdtemp(prefix='e107-installer-boundary-', dir='E:/Codex/Temp'))
+        scratch = Path(tempfile.mkdtemp(prefix='e107-installer-boundary-'))
         payload = scratch / 'payload'
         payload.mkdir()
         (payload / 'MentorFlow.exe').write_bytes(b'non-executable fixture')

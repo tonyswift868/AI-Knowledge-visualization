@@ -12,7 +12,11 @@ param(
     [string]$DesktopShortcutName = '',
     [string]$DataRootCanonical = '',
     [string]$DataRootLocalAppData = '',
-    [string]$InstallDir = ''
+    [string]$InstallDir = '',
+    [switch]$ProtectedInstall,
+    [string]$BuildScratch = '',
+    [string]$SourceSha = '',
+    [string]$SourceTree = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,8 +50,16 @@ function Assert-ExistingDirectory([string]$Path, [string]$Label) {
 # receive direct-to-product shortcuts. Keep this fail-closed until a qualified
 # elevated outer bootstrap replaces this entry; never elevate the old uninstaller.
 $payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
-if (Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) {
+if ((Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) -and -not $ProtectedInstall) {
     throw 'PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user NSIS installer. Use the qualified protected-installation bootstrap; do not build or distribute this installer.'
+}
+if ($ProtectedInstall) {
+    if ($SourceSha -notmatch '^[0-9a-f]{40}$' -or $SourceTree -notmatch '^[0-9a-f]{40}$') { throw 'Exact source identities required' }
+    if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected UAT uses its fixed installation contract' }
+    if (-not $BuildScratch -or -not ([IO.Path]::GetFullPath($BuildScratch)).StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
+    $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw | ConvertFrom-Json
+    if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
+    $manifestPin = (Get-FileHash -LiteralPath (Join-Path $payload 'SELF-CHECK\package-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
 if (-not (Test-Path -LiteralPath $VersionFile -PathType Leaf)) {
@@ -129,9 +141,22 @@ if ($LASTEXITCODE -ne 0) {
 
 New-Item -ItemType Directory -Path $outputRootFull -Force | Out-Null
 $outputPath = Join-Path $outputRootFull ("MentorFlow-{0}-win-x64-Setup.exe" -f $version)
+if (Test-Path -LiteralPath $outputPath) { throw 'Existing installer output preserved' }
 $fileVersion = (($version -split '[+-]', 2)[0] + '.0')
 $compileDefines = [System.Collections.Generic.List[string]]::new()
 $compileDefines.Add("/DMAX_INSTALL_DIR_CHARS=$maxInstallDirChars")
+if ($ProtectedInstall) {
+    New-Item -ItemType Directory -Path $BuildScratch -Force | Out-Null
+    $helperPath = Join-Path $BuildScratch 'PrepareMentorFlowRoot.exe'
+    $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    & $compiler /nologo /target:winexe "/out:$helperPath" "/win32manifest:$ProjectRoot\installer\nsis-helper.manifest" "$ProjectRoot\installer\ProtectedStage.cs" "$ProjectRoot\installer\PrepareNsisRoot.cs"
+    if ($LASTEXITCODE -ne 0) { throw 'NSIS root helper compilation failed' }
+    $compileDefines.Add('/DPROTECTED_INSTALL=1')
+    $compileDefines.Add("/DROOT_HELPER=$helperPath")
+    $compileDefines.Add("/DMANIFEST_SHA=$manifestPin")
+    $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
+    $compileDefines.Add("/DSOURCE_TREE=$SourceTree")
+}
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }
 if ($UninstallKey) { $compileDefines.Add("/DUNINSTALL_KEY=$UninstallKey") }
 if ($ShortcutFolder) { $compileDefines.Add("/DSHORTCUT_FOLDER=$ShortcutFolder") }
