@@ -42,13 +42,17 @@ def main():
             began = time.perf_counter()
             if not adv.CreateProcessWithTokenW(primary, 0, str(exe), args, 0x08000000, None, str(root / "App"), c.byref(startup), c.byref(process)):
                 raise RuntimeError(f"normal native process creation failed: {c.get_last_error()}")
+            created = time.perf_counter()
             try:
                 if kernel.WaitForSingleObject(process.process, 60000) != 0:
                     raise RuntimeError(f"native gate still running; retain PID {process.pid} for follow-up")
                 code = w.DWORD()
                 if not kernel.GetExitCodeProcess(process.process, c.byref(code)):
                     raise RuntimeError("native exit code unavailable")
-                row = {"pid": process.pid, "exit_code": code.value, "seconds": time.perf_counter() - began, "normal_token": True}
+                finished = time.perf_counter()
+                row = {"pid": process.pid, "exit_code": code.value, "seconds": finished - began, "normal_token": True,
+                       "process_creation_call_seconds": created - began,
+                       "post_creation_wait_seconds": finished - created}
                 runs.append(row)
                 print(json.dumps(row), flush=True)
                 if code.value != 0:
