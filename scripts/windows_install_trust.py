@@ -222,7 +222,7 @@ def _create_protected(path: Path, *, directory: bool):
         kernel.LocalFree(sd)
 
 
-def install_package(source: Path, destination: Path, **identities):
+def install_package(source: Path, destination: Path, *, progress=None, **identities):
     """Elevated installer entry; immutable per-version target, never in-place.
 
     A failed install leaves no valid receipt and is not launched. Existing
@@ -232,6 +232,8 @@ def install_package(source: Path, destination: Path, **identities):
     from scripts import verify_windows_package as v
     if not c.WinDLL("shell32").IsUserAnAdmin():
         raise RepairRequired("installation requires elevation")
+    if progress:
+        progress("正在检查安装路径与发布清单…")
     destination = Path(os.path.abspath(destination))
     if len(destination.parts) < 2 or destination.exists():
         raise RepairRequired("new dedicated installation directory required")
@@ -247,7 +249,9 @@ def install_package(source: Path, destination: Path, **identities):
     app = destination / "App"
     _create_protected(app, directory=True)
     import shutil
-    for path, isdir in sorted(entries, key=lambda row: len(row[0].parts)):
+    for index, (path, isdir) in enumerate(sorted(entries, key=lambda row: len(row[0].parts))):
+        if progress and index % 64 == 0:
+            progress(f"正在复制受保护程序文件：{index}/{len(entries)}")
         target = app / path.relative_to(source)
         parent = app
         for part in target.relative_to(app).parts[:-1]:
@@ -267,7 +271,7 @@ def install_package(source: Path, destination: Path, **identities):
     started = time.perf_counter()
     for attempt in range(3):
         try:
-            result = verify_installation(destination, activate=True, **identities)
+            result = verify_installation(destination, activate=True, progress=progress, **identities)
             result.update(activation_attempts=attempt + 1, activation_total_seconds=time.perf_counter() - started)
             return result
         except v.PackageError as error:
@@ -318,7 +322,7 @@ def _identity(rows) -> str:
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4):
+def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4, progress=None):
     from scripts import verify_windows_package as v
     start = time.perf_counter()
     for name, value, length in [("manifest", manifest_sha256, 64), ("source", source_sha, 40), ("tree", tree_sha, 40)]:
@@ -327,6 +331,8 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
     root = _root(path)
     if activate and not c.WinDLL("shell32").IsUserAnAdmin():
         raise RepairRequired("receipt activation requires elevation")
+    if activate and progress:
+        progress("正在检查文件集合与安装权限…")
     with v._watch_gate_directory(root) as unchanged:
         rows, files, root_id = _snapshot(root)
         package = root / "App"
@@ -359,7 +365,9 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         keys = sorted(expected) if activate else sorted(key for key in expected if category(key) == "CRITICAL")
         critical, prefixes = {}, {}
         hash_start = time.perf_counter()
-        for key, digest, prefix in v._hash_gate_entries(package, keys, workers):
+        for index, (key, digest, prefix) in enumerate(v._hash_gate_entries(package, keys, workers)):
+            if activate and progress and index % 64 == 0:
+                progress(f"正在执行完整 SHA-256 验证：{index}/{len(keys)}")
             if digest != expected[key]["sha256"]:
                 raise RepairRequired(f"package tampered: {key}; FULL VERIFY / REPAIR REQUIRED")
             prefixes[key] = prefix
@@ -377,6 +385,8 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
             raise RepairRequired("installation root replaced during verification")
         unchanged()
     if activate:
+        if progress:
+            progress("完整验证已通过，正在保存受保护安装记录…")
         receipt = {"binding": binding, "inventory": rows, "file_set_identity": _identity(rows), "critical_hashes": critical, "full_verified_at": time.time(), "full_verified": True}
         # Receipt bytes are admin-owned from their first creation, not secured
         # after a potentially user-owned file has already been opened.
@@ -404,6 +414,7 @@ def main(argv=None):
     parser.add_argument("--source-sha")
     parser.add_argument("--tree-sha")
     parser.add_argument("--payload-source", type=Path)
+    parser.add_argument("--quiet-install", action="store_true", help="installer host supplies its own visible progress")
     args = parser.parse_args(argv)
     try:
         if args.command == "protect":
@@ -415,19 +426,30 @@ def main(argv=None):
             if args.command == "install":
                 if args.payload_source is None:
                     raise RepairRequired("installer payload source required")
-                result = install_package(args.payload_source, args.install_root, manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
+                identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
+                if args.quiet_install:
+                    result = install_package(args.payload_source, args.install_root, **identities)
+                else:
+                    from scripts.windows_install_progress import InstallProgress
+                    with InstallProgress() as status:
+                        result = install_package(args.payload_source, args.install_root, progress=status.update, **identities)
                 print(json.dumps(result))
                 return 0
-            def verify():
-                return verify_installation(args.install_root, manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha, activate=args.command == "activate")
+            def verify(progress=None):
+                return verify_installation(args.install_root, manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha, activate=args.command == "activate", progress=progress)
             if args.command == "launch":
                 from scripts.windows_installed_launch import launch
                 return launch(args.install_root, verify)
-            result = verify()
+            if args.command == "activate" and not args.quiet_install:
+                from scripts.windows_install_progress import InstallProgress
+                with InstallProgress() as status:
+                    result = verify(status.update)
+            else:
+                result = verify()
             print(json.dumps(result))
             print("MENTORFLOW_INSTALL_GATE=PASS")
         return 0
-    except (RepairRequired, v.PackageError, OSError, ValueError, KeyError, TypeError) as error:
+    except (RuntimeError, v.PackageError, OSError, ValueError, KeyError, TypeError) as error:
         if args.command == "launch":
             from scripts.windows_installed_launch import show_repair
             show_repair(str(error))
