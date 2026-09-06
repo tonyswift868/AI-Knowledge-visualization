@@ -1,8 +1,8 @@
-"""Pre-Qt verification of the installed, minimal GUI bootstrap closure.
+"""Bounded verification of the installed, minimal GUI bootstrap closure.
 
-This is NOT the application security gate. It permits only the protected
-native login shell to paint. The unchanged full repeat-start gate must still
-pass before importing account/application modules or starting authentication.
+Internal UAT daily startup relies on the existing protected installation and
+its full install-time verification. The closure check runs after first paint;
+the full verifier remains available for install, update and manual repair.
 """
 from pathlib import Path, PurePosixPath
 import json
@@ -33,18 +33,27 @@ def closure_paths(document):
     return files
 
 
+def protected_gui_location(root, *, executable):
+    """Constant-size path/ACL check; never enumerate or hash the package."""
+    from scripts import windows_install_trust as trust
+    root = trust._root(root)
+    package = root / 'App'
+    if Path(executable).absolute() != package / 'MentorFlow.exe':
+        raise trust.RepairRequired('GUI entry must run from this protected installation')
+    for path in (root, package, package / 'MentorFlow.exe'):
+        trust.assert_safe_parents(path)
+        trust.assert_protected(path)
+    return package
+
+
 def verify_gui_bootstrap(root, *, manifest_sha256, source_sha, tree_sha, executable):
     from scripts import windows_install_trust as trust
     from scripts import verify_windows_package as v
     for value, size in ((manifest_sha256, 64), (source_sha, 40), (tree_sha, 40)):
         if not re.fullmatch('[0-9a-f]{' + str(size) + '}', value or ''):
             raise trust.RepairRequired('missing GUI release identity')
-    root = trust._root(root)
-    package = root / 'App'
-    if Path(executable).absolute() != package / 'MentorFlow.exe':
-        raise trust.RepairRequired('GUI entry must run from this protected installation')
-    for path in (root, package):
-        trust.assert_protected(path)
+    package = protected_gui_location(root, executable=executable)
+    root = package.parent
 
     def protected_file(key):
         path = package.joinpath(*PurePosixPath(key).parts)

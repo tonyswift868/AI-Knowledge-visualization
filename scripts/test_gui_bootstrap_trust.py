@@ -9,7 +9,7 @@ from scripts import gui_bootstrap_trust as gui
 from scripts import windows_install_trust as trust
 from scripts import verify_windows_package as v
 
-SCRATCH = Path('D:/CodexScratch/MentorFlow/MF-E107-USER-LAUNCH-EXPERIENCE-20260907-01')
+SCRATCH = Path(tempfile.gettempdir())
 
 
 class GuiBootstrapTrustTests(unittest.TestCase):
@@ -46,6 +46,20 @@ class GuiBootstrapTrustTests(unittest.TestCase):
 
     def test_exact_synthetic_closure_accepted_without_loading_qt(self):
         self.assertEqual(self.verify(),self.package)
+
+    def test_prepaint_location_does_not_hash_or_enumerate_package(self):
+        with patch.object(v, 'sha256_file', side_effect=AssertionError('prepaint hashing')):
+            self.assertEqual(gui.protected_gui_location(self.root,
+                executable=self.package/'MentorFlow.exe'), self.package)
+
+    def test_daily_entry_never_calls_full_inventory_verifier(self):
+        import ast
+        source = Path(__file__).resolve().parents[1] / 'desktop_gui_entry.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                    for alias in node.names}
+        self.assertNotIn('verify_installation', imported)
+        self.assertIn('verify_gui_bootstrap', imported)
 
     def test_exe_and_qt_tampering_rejected(self):
         for key in ('MentorFlow.exe','_internal/PySide6/Qt6Core.dll'):

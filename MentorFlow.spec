@@ -1,4 +1,5 @@
 import os
+import hashlib
 import sys
 from pathlib import Path
 
@@ -159,6 +160,20 @@ a.binaries = [
     )
 ]
 pyz = PYZ(a.pure)
+
+# Some wheel license trees exceed MAX_PATH even inside the prescribed D: build
+# root. Preserve every license byte under a deterministic, bounded destination;
+# these are attribution data, not importable/runtime resources. Do not omit the
+# dependency or its licenses to make COLLECT succeed.
+a.datas = [
+    (str(Path(Path(entry[0]).parts[0]) / 'licenses' /
+         (hashlib.sha256(str(entry[0]).encode('utf-8')).hexdigest() + '.txt')),
+     *entry[1:])
+    if '.dist-info' in Path(entry[0]).parts[0] and
+       'licenses' in Path(entry[0]).parts and len(str(entry[0])) > 140
+    else entry
+    for entry in a.datas
+]
 
 exe = EXE(
     pyz,

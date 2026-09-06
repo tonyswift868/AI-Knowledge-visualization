@@ -1,8 +1,8 @@
 """Windowed protected entry: one LoginGate from first paint through login.
 
-The installer owns the executable and its minimal Qt closure. Preflight checks
-that closure before Qt import; the existing complete fast gate runs after the
-shell paints, before any account/business module is imported.
+The installer fully verifies the package. Daily UAT launch checks the protected
+location before Qt import, then verifies the bounded GUI closure after paint.
+Full inventory verification remains an install/manual operation, not daily UX.
 """
 import json
 import os
@@ -21,9 +21,9 @@ def main(argv=None):
     parser.add_argument('--source-sha', required=True)
     parser.add_argument('--tree-sha', required=True)
     args = parser.parse_args(argv)
-    from scripts.gui_bootstrap_trust import verify_gui_bootstrap
+    from scripts.gui_bootstrap_trust import verify_gui_bootstrap, protected_gui_location
     identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
-    package = verify_gui_bootstrap(args.install_root, executable=sys.executable, **identities)
+    package = protected_gui_location(args.install_root, executable=sys.executable)
     args.install_root = package.parent
     from desktop.startup_connection import prepare_environment, ConnectionPreparation
     env, certificate = prepare_environment(args.install_root)
@@ -64,8 +64,8 @@ def main(argv=None):
     product = []
 
     def verify():
-        from scripts.windows_install_trust import verify_installation
-        return verify_installation(args.install_root, **identities)
+        verify_gui_bootstrap(args.install_root, executable=sys.executable, **identities)
+        return {'verification': 'PASS', 'scope': 'gui-bootstrap-closure'}
 
     def attach(window):
         from desktop.enterprise_oidc import DesktopOidcConfig

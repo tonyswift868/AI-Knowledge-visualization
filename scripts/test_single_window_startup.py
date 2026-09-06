@@ -48,7 +48,7 @@ class SingleWindowStartupTests(unittest.TestCase):
         import tempfile
         from PySide6.QtCore import QSettings
         from desktop.main import MentorFlowApplication
-        scratch = Path('D:/CodexScratch/MentorFlow/MF-E107-USER-LAUNCH-EXPERIENCE-20260907-01')
+        scratch = Path(__import__('tempfile').gettempdir())
         with tempfile.TemporaryDirectory(dir=scratch, prefix='attach-') as folder:
             root = Path(folder)
             overrides = {
