@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ def test_fixture_check_does_not_open_network(tmp_path: Path, monkeypatch: pytest
     def fail_network(*_args, **_kwargs):
         raise AssertionError("fixture check attempted network access")
 
-    monkeypatch.setattr(verify_windows_package.urllib.request, "urlopen", fail_network)
+    monkeypatch.setattr(urllib.request, "urlopen", fail_network)
     result = update_service.check_for_update(version_file=version_file, release_json=fixture)
     assert result == {"update": False, "current": "1.0.0", "latest": "1.0.0"}
 

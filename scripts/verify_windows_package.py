@@ -16,16 +16,12 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -755,6 +751,7 @@ def _iter_data_entries(data_root: Path) -> Iterable[tuple[Path, bool]]:
 
 
 def check_sqlite_root(data_root: Path, *, package_root: Path | None = None) -> dict[str, Any]:
+    import sqlite3
     data_root = data_root.expanduser()
     if _path_exists(data_root):
         _validate_data_entry(data_root, data_root.parent.resolve(strict=False), directory=True)
@@ -850,6 +847,7 @@ def _sqlite_count(connection: sqlite3.Connection, table: str) -> int:
 
 def _fresh_install_report(data_root: Path, *, package_root: Path) -> dict[str, Any]:
     """Inspect a disposable install without ever opening a DB read/write."""
+    import sqlite3
     data_root = data_root.expanduser()
     report = check_sqlite_root(data_root, package_root=package_root)
     data_root = Path(report["root"])
@@ -1083,6 +1081,8 @@ def _read_bounded_response(response: Any, *, limit: int, label: str) -> bytes:
 
 
 def _github_release(owner: str, repo: str) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repo):
         raise PackageError("GitHub owner/repo must contain only letters, digits, '.', '_' or '-'")
     url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
@@ -1130,6 +1130,8 @@ def _find_release_asset(release: dict[str, Any], *, version: str, pattern: str) 
 
 
 def stage_update(version_file: Path, *, owner: str | None, repo: str | None, release_json: Path | None, staging_root: Path | None, download: bool) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
     current = load_version(version_file)
     config = current.get("update") if isinstance(current.get("update"), dict) else {}
     owner_value = (owner or os.getenv("MENTORFLOW_GITHUB_OWNER") or config.get("owner") or "").strip()
