@@ -214,6 +214,15 @@ class InstallTrustTests(unittest.TestCase):
             self.verify()
         trust.protect_installation(self.root)
 
+    def test_parent_delete_permission_rejected(self):
+        from unittest.mock import patch
+        with patch.object(trust, "SDDL", trust.SDDL.replace("0x1200a9", "0x1300a9")):
+            with self.assertRaises(trust.RepairRequired):
+                trust._set_protected(self.root)
+        with self.assertRaisesRegex(trust.RepairRequired, "replace installation"):
+            trust.assert_safe_parents(self.root / "App")
+        trust.protect_installation(self.root)
+
     def test_real_new_version_needs_new_full_activation(self):
         self.verify(activate=True)
         app = self.root / "App"

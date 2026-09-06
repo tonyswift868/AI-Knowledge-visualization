@@ -120,7 +120,12 @@ def assert_safe_parents(root: Path) -> None:
         if owner not in TRUSTEES and not re.fullmatch(r"S-1-5-21-(?:\d+-){3}500", owner):
             raise RepairRequired(f"ordinary-user-owned installation parent: {parent}")
         for flags, mask, sid in aces:
-            if "IO" not in flags and sid not in TRUSTEES and mask & (0x10000000 | 0x40000 | 0x80000 | 0x40):
+            # DELETE on a non-volume ancestor also permits renaming that whole
+            # ancestor, replacing the path before the native gate can execute.
+            unsafe = 0x10000000 | 0x40000 | 0x80000 | 0x40
+            if parent != Path(parent.anchor):
+                unsafe |= 0x10000
+            if "IO" not in flags and sid not in TRUSTEES and mask & unsafe:
                 raise RepairRequired(f"ordinary user may replace installation via parent: {parent}")
 
 
