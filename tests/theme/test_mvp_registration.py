@@ -229,7 +229,13 @@ def test_other_profiles_and_security_code_identical_to_accepted_base():
     paths = ['deploy/enterprise/config/keycloak-realm.json',
              'deploy/enterprise/staging/rp05/compose.account-core-mvp.yml',
              'backend/app/enterprise/identity', 'backend/app/enterprise/contracts_v1.py',
-             'backend/alembic', 'desktop', 'deploy/enterprise/themes']
+             'backend/alembic', 'deploy/enterprise/themes',
+             # UAT integration intentionally updates MainWindow history/lifecycle.
+             # Keep the unchanged identity/token/credential boundary frozen;
+             # test_account_uat_integration binds the exact approved Desktop delta.
+             'desktop/enterprise_oidc.py', 'desktop/in_app_oidc.py',
+             'desktop/account_identity.py',
+             'desktop/login_session.py', 'desktop/startup_flow.py', 'desktop/runtime.py']
     assert subprocess.check_output(['git', 'diff', base, '--', *paths], cwd=ROOT) == b''
     realm = json.loads((ROOT / paths[0]).read_text(encoding='utf-8'))
     assert realm.get('registrationAllowed', False) is False

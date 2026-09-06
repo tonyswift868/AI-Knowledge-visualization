@@ -1469,6 +1469,10 @@ class MentorFlowApplication:
         if self.main._account_switch_in_progress:
             return
         self.main._account_switch_in_progress = True
+        # Fence analogy producers before the existing API/executor drain starts.
+        seal_history = getattr(self.main, '_seal_analogy_history', None)
+        if seal_history is not None:
+            seal_history()
         self._invalidate_login_jobs()
         self._login_session.preferences.disable_restore()
         generation, gate = self._login_generation, self.login_gate
