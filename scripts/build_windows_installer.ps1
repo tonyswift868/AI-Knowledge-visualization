@@ -41,6 +41,15 @@ function Assert-ExistingDirectory([string]$Path, [string]$Label) {
     return $full
 }
 
+# This NSIS entry is the legacy per-user installer. A payload containing the
+# protected-installation gate must not silently be installed user-writable or
+# receive direct-to-product shortcuts. Keep this fail-closed until a qualified
+# elevated outer bootstrap replaces this entry; never elevate the old uninstaller.
+$payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
+if (Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) {
+    throw 'PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user NSIS installer. Use the qualified protected-installation bootstrap; do not build or distribute this installer.'
+}
+
 if (-not (Test-Path -LiteralPath $VersionFile -PathType Leaf)) {
     throw "Single-source version manifest is missing: $VersionFile"
 }
@@ -63,7 +72,6 @@ if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]
     throw "Invalid MentorFlow version: $version"
 }
 
-$payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
 $payloadExe = Join-Path $payload 'MentorFlow.exe'
 if (-not (Test-Path -LiteralPath $payloadExe -PathType Leaf)) {
     throw "Verified payload executable is missing: $payloadExe"

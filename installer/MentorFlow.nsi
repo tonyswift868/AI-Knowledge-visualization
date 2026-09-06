@@ -15,6 +15,11 @@ ${Using:StrFunc} UnStrStr
 !ifndef PAYLOAD_DIR
   !error "PAYLOAD_DIR is required (the verified MentorFlow payload root)."
 !endif
+; Also protect direct makensis invocation, not only the PowerShell wrapper.
+; This legacy entry cannot establish the new admin-owned installation boundary.
+!if /FileExists "${PAYLOAD_DIR}\MentorFlowInstallGate.exe"
+  !error "PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user installer."
+!endif
 !ifndef PRODUCT_VERSION
   !define PRODUCT_VERSION "0.0.0-dev"
 !endif
