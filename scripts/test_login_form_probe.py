@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import sys
+import time
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -56,6 +57,35 @@ class FormProbeTests(unittest.TestCase):
             creationflags=subprocess.CREATE_NO_WINDOW)
         handle = int(process.stdout.readline().strip())
         try:
+            from ctypes import wintypes as w
+            from scripts.measure_installed_login_gate import login_window_state
+            user = ctypes.WinDLL('user32')
+            user.IsWindowVisible.argtypes = [w.HWND]
+            user.IsIconic.argtypes = [w.HWND]
+            user.GetClientRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
+            user.ShowWindowAsync.argtypes = [w.HWND, ctypes.c_int]
+            user.GetWindowRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
+            user.SetWindowPos.argtypes = [w.HWND, w.HWND, ctypes.c_int, ctypes.c_int,
+                                         ctypes.c_int, ctypes.c_int, w.UINT]
+            def expect_state(expected):
+                deadline = time.monotonic() + 3
+                while login_window_state(user, handle) != expected and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertEqual(login_window_state(user, handle), expected)
+            expect_state('visible')
+            user.ShowWindowAsync(handle, 6)
+            expect_state('minimized')
+            user.ShowWindowAsync(handle, 0)
+            expect_state('hidden')
+            user.ShowWindowAsync(handle, 9)
+            expect_state('visible')
+            original_area = w.RECT()
+            self.assertTrue(user.GetWindowRect(handle, ctypes.byref(original_area)))
+            user.SetWindowPos(handle, None, 0, 0, 150, 150, 0x16)
+            expect_state('small')
+            user.SetWindowPos(handle, None, 0, 0, original_area.right - original_area.left,
+                              original_area.bottom - original_area.top, 0x16)
+            expect_state('visible')
             picture = scratch / 'render.png'
             rejected = subprocess.run([str(renderer), str(handle), str(process.pid + 1), str(picture)],
                 timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)

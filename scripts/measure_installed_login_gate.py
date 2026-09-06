@@ -19,6 +19,18 @@ from scripts import verify_windows_package as v
 from scripts.test_windows_install_trust import normal_token
 
 
+def login_window_state(user, hwnd):
+    if not user.IsWindowVisible(hwnd):
+        return 'hidden'
+    if user.IsIconic(hwnd):
+        return 'minimized'
+    client = w.RECT()
+    if (not user.GetClientRect(hwnd, c.byref(client)) or
+            client.right - client.left < 200 or client.bottom - client.top < 200):
+        return 'small'
+    return 'visible'
+
+
 def probe_oidc(root):
     from scripts.windows_installed_launch import ISSUER
     response = subprocess.run([
@@ -172,14 +184,14 @@ def main():
                 title = c.create_unicode_buffer(256)
                 user.GetWindowTextW(hwnd, title, len(title))
                 if title.value == '登录 MentorFlow':
-                    if user.IsIconic(hwnd):
+                    window_state = login_window_state(user, hwnd)
+                    if window_state == 'minimized':
                         report['login_minimized_observed'] = True
                         if args.restore_login_window and not report.get('login_restore_requested'):
                             report['login_restore_requested'] = True
                             user.ShowWindowAsync(hwnd, 9)  # Restore only this owned login window.
                         return True
-                    client = w.RECT()
-                    if not user.GetClientRect(hwnd, c.byref(client)) or client.right < 200 or client.bottom < 200:
+                    if window_state != 'visible':
                         report['login_small_client_observed'] = True
                         return True
                     gate_hwnd = hwnd
