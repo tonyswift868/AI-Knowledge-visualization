@@ -314,9 +314,13 @@ def category(relative: str) -> str:
     QML/JS/SVG, story/prompt assets, configs, fonts, plugin metadata, archives
     and all unreviewed paths remain CRITICAL regardless of filename suffix.
     """
-    path = Path(relative)
-    parts = path.parts
-    if len(parts) >= 7 and parts[:3] == ("_internal", "PySide6", "qml") and parts[-3:-1] == ("designer", "images") and path.suffix == ".png":
+    # The walker and accepted manifest use canonical slash-separated names.
+    # Never normalize an alias into the small static-resource allowlist. This
+    # is pure classification, not a cached filesystem or verification result.
+    if not relative.startswith("_internal/PySide6/qml/") or not relative.endswith(".png") or "\\" in relative:
+        return "CRITICAL"
+    parts = relative.split("/")
+    if len(parts) >= 7 and parts[-3:-1] == ["designer", "images"] and all(part not in ("", ".", "..") for part in parts):
         return "STATIC_RESOURCE"
     return "CRITICAL"
 
