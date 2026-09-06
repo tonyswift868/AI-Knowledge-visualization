@@ -187,10 +187,13 @@ def load_version(path: Path) -> dict[str, Any]:
     return payload
 
 
-def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024, prefix: bytearray | None = None) -> str:
     digest = hashlib.sha256()
     try:
         with path.open("rb") as handle:
+            if prefix is not None:
+                prefix[:] = handle.read(len(SQLITE_MAGIC))
+                digest.update(prefix)
             for chunk in iter(lambda: handle.read(chunk_size), b""):
                 digest.update(chunk)
     except OSError as exc:
@@ -484,7 +487,7 @@ def _config_contains_secret(candidate: Path) -> bool:
     return _text_has_secret_value(text)
 
 
-def _find_user_data_files(package_root: Path, *, validated_files: list[Path] | None = None) -> list[str]:
+def _find_user_data_files(package_root: Path, *, validated_files: list[Path] | None = None, hashed_prefixes: dict[str, bytes] | None = None) -> list[str]:
     found: list[str] = []
     files = validated_files if validated_files is not None else (
         candidate for candidate, _ in _iter_package_entries(package_root)
@@ -504,11 +507,16 @@ def _find_user_data_files(package_root: Path, *, validated_files: list[Path] | N
             found.append(relative)
         # Do not trust an extension: a private SQLite database can be renamed
         # to an innocuous-looking asset before it reaches the package.
-        try:
-            with candidate.open("rb") as handle:
-                magic = handle.read(len(SQLITE_MAGIC))
-        except OSError as exc:
-            raise PackageError(f"cannot inspect package file {relative}: {exc}") from exc
+        if hashed_prefixes is not None:
+            if relative not in hashed_prefixes:
+                raise PackageError(f"missing hashed file prefix: {relative}")
+            magic = hashed_prefixes[relative]
+        else:
+            try:
+                with candidate.open("rb") as handle:
+                    magic = handle.read(len(SQLITE_MAGIC))
+            except OSError as exc:
+                raise PackageError(f"cannot inspect package file {relative}: {exc}") from exc
         if magic == SQLITE_MAGIC and relative not in PACKAGED_STATIC_DATABASES:
             found.append(relative)
     return sorted(set(found))
@@ -1377,7 +1385,9 @@ def verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifes
 
 def _hash_gate_entries(root: Path, keys: list[str], workers: int):
     def hash_one(key):
-        return key, sha256_file(root / key)
+        prefix = bytearray()
+        digest = sha256_file(root / key, prefix=prefix)
+        return key, digest, bytes(prefix)
     if workers == 1:
         yield from map(hash_one, keys)
     else:
@@ -1464,18 +1474,22 @@ def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manife
     # Until an independent trusted authority exists, this record is diagnostic
     # only: never consume it to authorize skipping any payload hash.
     inventory_seconds = time.perf_counter() - started
-    private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory] + [manifest_path])
-    if private:
-        raise PackageError("package contains private data/configuration")
     hash_started = time.perf_counter()
     critical_hashes = {}
+    hashed_prefixes = {}
     to_hash = sorted(inventory)
-    for key, digest in _hash_gate_entries(package_root, to_hash, hash_workers):
+    for key, digest, prefix in _hash_gate_entries(package_root, to_hash, hash_workers):
         if digest != expected[key]["sha256"]:
             raise PackageError(f"package tampered: {key}")
+        hashed_prefixes[key] = prefix
         if package_file_category(key) == "CRITICAL_EXECUTABLE":
             critical_hashes[key] = digest
     hash_seconds = time.perf_counter() - hash_started
+    private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory], hashed_prefixes=hashed_prefixes)
+    # The manifest is separately pinned and is not a payload hash entry.
+    private += _find_user_data_files(package_root, validated_files=[manifest_path])
+    if private:
+        raise PackageError("package contains private data/configuration")
     # A watch follows the directory handle, not a replacement at its old name.
     # Check the root identity again without performing another enumeration.
     final_root = _validate_package_root(package_root).stat()

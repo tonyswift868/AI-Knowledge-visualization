@@ -32,9 +32,9 @@ def test_diagnostic_state_never_skips_resource_hashes(gate, monkeypatch):
     assert not gate[1].read_bytes().startswith(b"{")
     original = v.sha256_file
     hashed = []
-    def measured(path):
+    def measured(path, **kwargs):
         hashed.append(path.name)
-        return original(path)
+        return original(path, **kwargs)
     monkeypatch.setattr(v, "sha256_file", measured)
     assert run(gate)["mode"] == "FULL"
     assert "MentorFlow.exe" in hashed and "QtCore.dll" in hashed
@@ -55,6 +55,49 @@ def test_same_user_resealed_state_cannot_authorize_tampered_resource(gate):
     state_path.write_bytes(v._protect_gate_state(json.dumps(state).encode()))
     with pytest.raises(v.PackageError, match="tampered: resource.png"):
         run(gate)
+
+
+def test_payload_hash_and_magic_share_one_file_open(gate, monkeypatch):
+    original = Path.open
+    opened = []
+    def measured(path, *args, **kwargs):
+        if path == gate[0] / "resource.png":
+            opened.append(path)
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", measured)
+    assert run(gate)["verification"] == "PASS"
+    assert len(opened) == 1
+
+
+def test_renamed_sqlite_rejected_even_with_matching_manifest(gate):
+    root, state, _anchor = gate
+    resource = root / "resource.png"
+    resource.write_bytes(v.SQLITE_MAGIC + b"synthetic private data")
+    manifest_path = root / v.MANIFEST_RELATIVE
+    manifest = json.loads(manifest_path.read_bytes())
+    for entry in manifest["files"]:
+        if entry["path"] == "resource.png":
+            entry["sha256"] = v.sha256_file(resource)
+            entry["size"] = resource.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(v.PackageError, match="private data"):
+        run((root, state, v.sha256_file(manifest_path)))
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("payload", [b"", b"short", b"A" * 1048593], ids=["empty", "short", "multi-chunk"])
+def test_prefix_capture_preserves_exact_digest(tmp_path, payload):
+    import hashlib
+    path = tmp_path / "payload"
+    path.write_bytes(payload)
+    prefix = bytearray(b"old state")
+    assert v.sha256_file(path, prefix=prefix) == hashlib.sha256(payload).hexdigest()
+    assert prefix == payload[:len(v.SQLITE_MAGIC)]
+
+
+def test_missing_prefix_fails_closed(gate):
+    with pytest.raises(v.PackageError, match="missing hashed file prefix"):
+        v._find_user_data_files(gate[0], validated_files=[gate[0] / "resource.png"], hashed_prefixes={})
 
 
 @pytest.mark.parametrize("name", ["MentorFlow.exe", "QtCore.dll", "resource.png"])
@@ -95,8 +138,8 @@ def test_edited_cache_forces_full_verification(gate, damage):
 def test_change_during_hash_rejected_without_second_walk(gate, monkeypatch):
     run(gate)
     original = v.sha256_file
-    def changed(path):
-        digest = original(path)
+    def changed(path, **kwargs):
+        digest = original(path, **kwargs)
         if path.name == "QtCore.dll":
             (gate[0] / "late.bin").write_bytes(b"late")
         return digest
@@ -177,8 +220,8 @@ def test_root_replacement_during_hash_fails_closed(gate, tmp_path, monkeypatch):
     run(gate)
     root = gate[0]
     original = v.sha256_file
-    def replace_root(path):
-        digest = original(path)
+    def replace_root(path, **kwargs):
+        digest = original(path, **kwargs)
         if path.name == 'QtCore.dll':
             parked = tmp_path / 'parked-package'
             root.rename(parked)

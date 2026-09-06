@@ -69,6 +69,39 @@ serialized, not run as competing verifier processes.
 
 ## Final-source controlled-copy evidence
 
+### Single-read privacy/hash refinement (after 51988a9)
+
+The SQLite magic header is now captured by the same open/read stream that
+computes the payload SHA-256. Privacy checks consume these bounded prefixes;
+missing evidence fails closed. Secret-config and private-name checks remain,
+and the separately pinned manifest still receives its own privacy inspection.
+Legacy build/verify callers retain their original direct-read privacy path.
+No cache authorization was reintroduced. Synthetic checks cover renamed SQLite
+with a matching manifest, empty/short/multi-chunk exact hashes, missing prefixes,
+and exactly one resource open for hash plus magic inspection.
+
+Focused gate/launcher/account run: 61 PASS, but exit 1 because the new 1 MB
+parameter produced an oversized pytest test ID (Windows environment variable
+limit), causing setup/teardown errors before that case ran. Explicit short IDs
+fixed the test harness. Corrected gate plus selected legacy privacy regression:
+30 PASS, 0 SKIP, 0 XFAIL, exit 0; evidence
+E:/Codex/Temp/e107-single-read-corrected.xml. Launcher/account code did not change
+after their passing assertions. Both runs confirmed the worktree-local DB hash
+unchanged. Full-copy EXE/DLL/resource/manifest/unknown-file rejection was rerun
+successfully after this refinement; payload changes were restored.
+
+Same isolated copy, four readers: first FULL 8.977 s (hash 6.291 s); unchanged
+second FULL 9.639 s (hash 6.263 s). These replace the preceding implementation's
+10.546/11.687 s observations for current-source timing; different runs are not
+a controlled cold-cache comparison or an end-to-end launch benchmark.
+The 3-second security gate target remains unmet.
+
+Trust-boundary evidence: installer/MentorFlow.nsi specifies
+RequestExecutionLevel user and defaults to $LOCALAPPDATA/Programs/MentorFlow.
+It does not supply an independent trusted state issuer. Re-enabling persistent
+hash skipping requires a separately authorized trust design; metadata or a
+same-user DPAPI/HMAC wrapper is not sufficient.
+
 ### State-origin security repair (after dc48b28)
 
 All-payload hashing restored; no cache state can authorize PASS. Same-user
