@@ -113,6 +113,8 @@ def _window(tmp_path, qt_app):
     from desktop.main_window import MainWindow
 
     window = MainWindow.__new__(MainWindow)
+    from desktop.account_identity import AccountProfile
+    window.account_profile = AccountProfile.personal_local()
     window.settings = QSettings(
         str(tmp_path / "life-analogy-prefetch.ini"), QSettings.Format.IniFormat
     )

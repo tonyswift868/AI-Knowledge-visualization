@@ -1,6 +1,6 @@
 """Synthetic nonempty data qualification. No live server or formal data access.
 
-The marked known failure is an acceptance blocker, not an isolation PASS.
+The former history failure is a mandatory ordinary regression.
 """
 import copy
 import hashlib
@@ -136,7 +136,6 @@ def test_nonempty_a_b_a_restart_real_vault_sync_and_bindings(tmp_path):
             manager.unmount()
 
 
-@pytest.mark.xfail(strict=True, reason='Acceptance blocker: global analogy/recent_cards leaks across account preference changes')
 def test_recent_history_must_not_cross_accounts(tmp_path):
     # Isolated real QSettings INI: never write the user's global registry settings.
     settings = QSettings(str(tmp_path / 'shared-shape.ini'), QSettings.Format.IniFormat)
@@ -147,8 +146,14 @@ def test_recent_history_must_not_cross_accounts(tmp_path):
     settings.setValue('analogy/recent_cards', json.dumps([{'summary': 'PRIVATE-A-RECENT', 'concept_key': 'concept-a'}]))
     settings.sync()
     preferences.save_target(b)
-    loaded = MainWindow._load_recent_analogy_cards(SimpleNamespace(settings=settings))
-    assert loaded == [], 'A recent-history content was loaded in B context; stop this acceptance chain'
+    from desktop.runtime import record_enterprise_account_session, clear_enterprise_account_session
+    record_enterprise_account_session(b, {'authenticated': True, 'context': {'organization_id': 'org-b', 'workspace_id': 'ws-b'}})
+    try:
+        loaded = MainWindow._load_recent_analogy_cards(SimpleNamespace(settings=settings, account_profile=b))
+        assert loaded == [], 'A recent-history content was loaded in B context; stop this acceptance chain'
+        assert 'PRIVATE-A-RECENT' in settings.value('analogy/recent_cards')
+    finally:
+        clear_enterprise_account_session()
 
 
 def test_late_nonempty_a_bootstrap_closes_only_a_while_b_remains_mounted(app_context, monkeypatch):

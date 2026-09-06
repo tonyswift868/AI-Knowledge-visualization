@@ -54,6 +54,7 @@ from .account_identity import (
     ProfileMode,
 )
 from .account_settings_page import AccountSettingsPage
+from .analogy_history import analogy_settings, analogy_ticket, analogy_ticket_current
 from .account_vault import AccountVaultManager, VaultLayout
 from .local_asset_lifecycle import LocalAssetLifecycle
 from .local_asset_page import LocalAssetPage
@@ -483,17 +484,7 @@ class MainWindow(QMainWindow):
         self._return_to_login_gate_callback = return_to_login_gate
         self.account_credential_vault = AccountCredentialVault()
         self._account_switch_in_progress = False
-        analogy_policy_version = "v12"
-        if str(self.settings.value("analogy/generation_policy", "") or "") != analogy_policy_version:
-            # Old accepted cards may predate arithmetic and meme-safety gates.
-            # Start the new sequence once so the first buffered card exercises
-            # the current safe-meme contract instead of reviving stale output.
-            self.settings.setValue("analogy/generation_policy", analogy_policy_version)
-            self.settings.setValue("analogy/variation_counter", -1)
-            self.settings.remove("analogy/latest_card")
-            self.settings.remove("analogy/prefetched_card")
-            self.settings.remove("analogy/card_library")
-            self.settings.sync()
+        self._initialize_analogy_policy()
         self.provider_session_id = ""
         self._fact_index = 0
         self._tutorial_overlay: SpotlightTutorial | None = None
@@ -623,6 +614,7 @@ class MainWindow(QMainWindow):
             str(self.settings.value("official_updates/enabled", "0") or "0") == "1",
             self.classroom_page.apply_theme,
         )
+        self.system_page.analogy_history_settings = analogy_settings(self)
         self.pages.addWidget(self.system_page)
         self.account_settings_page = AccountSettingsPage(
             profile=self.account_profile,
@@ -774,11 +766,13 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _stop_current_account_tasks(self) -> None:
+        self._seal_analogy_history()
         service = active_local_service()
         if service is not None:
             service.stop()
 
     def _close_current_account_handles(self) -> None:
+        self._seal_analogy_history()
         for name in (
             "_official_executor",
             "_analogy_executor",
@@ -821,10 +815,6 @@ class MainWindow(QMainWindow):
             "provider/credential_ref",
             "provider/base_url",
             "provider/model",
-            "analogy/latest_card",
-            "analogy/prefetched_card",
-            "analogy/card_library",
-            "news/interests",
             "news/blocked",
             "development/teacher_action_reviews_v1",
         ):
@@ -893,8 +883,8 @@ class MainWindow(QMainWindow):
 
     def _next_fact(self) -> None:
         keywords = str(
-            self.settings.value("analogy/keywords", "")
-            or self.settings.value("news/interests", "")
+            analogy_settings(self).value("analogy/keywords", "")
+            or analogy_settings(self).value("news/interests", "")
             or ""
         ).strip()
         if not keywords:
@@ -939,6 +929,9 @@ class MainWindow(QMainWindow):
 
     def _set_analogy_button_feedback(self, text: str, duration_ms: int = 800) -> None:
         """Show brief, non-technical feedback without disabling the action."""
+        ticket = analogy_ticket(self)
+        if not analogy_ticket_current(self, ticket):
+            return
 
         if not hasattr(self, "next_fact_button"):
             return
@@ -950,7 +943,7 @@ class MainWindow(QMainWindow):
         self.next_fact_button.setText(self._analogy_button_feedback or "换一张")
 
         def clear_feedback() -> None:
-            if token != int(getattr(self, "_analogy_button_feedback_token", 0)):
+            if not analogy_ticket_current(self, ticket) or token != int(getattr(self, "_analogy_button_feedback_token", 0)):
                 return
             self._analogy_button_feedback = ""
             self._update_analogy_button_state()
@@ -960,7 +953,7 @@ class MainWindow(QMainWindow):
     def _load_recent_analogy_cards(self) -> list[dict[str, str]]:
         """Load structured long-term memory used to prevent concept/template repetition."""
 
-        raw = str(self.settings.value("analogy/recent_cards", "") or "")
+        raw = str(analogy_settings(self).value("analogy/recent_cards", "") or "")
         try:
             values = json.loads(raw) if raw else []
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1006,10 +999,30 @@ class MainWindow(QMainWindow):
                 records.append(record)
         return records[-48:]
 
+    def _initialize_analogy_policy(self) -> None:
+        self._analogy_policy_version = 'v12'
+        store = analogy_settings(self)
+        self._analogy_legacy_policy_mismatch = False
+        if not store.active or str(store.value('analogy/generation_policy', '')) == self._analogy_policy_version:
+            return
+        if store.owner == 'personal-local':
+            # Retain unmarked bytes, but do not revive cards from an obsolete
+            # quality policy. Advance the policy only after a new accepted card.
+            self._analogy_legacy_policy_mismatch = True
+        else:
+            store.setValue('analogy/generation_policy', self._analogy_policy_version)
+            for key in ('analogy/latest_card', 'analogy/prefetched_card', 'analogy/card_library'):
+                store.remove(key)
+        store.setValue('analogy/variation_counter', -1)
+        self.settings.sync()
+
     def _load_cached_life_example(self) -> dict[str, str]:
         """Restore the last good card so refresh never leaves a blank panel."""
 
-        raw = str(self.settings.value("analogy/latest_card", "") or "")
+        if getattr(self, '_analogy_legacy_policy_mismatch', False):
+            return {}
+
+        raw = str(analogy_settings(self).value("analogy/latest_card", "") or "")
         try:
             value = json.loads(raw) if raw else {}
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1029,12 +1042,16 @@ class MainWindow(QMainWindow):
         card: dict[str, object],
         memory: dict[str, object] | None = None,
     ) -> None:
+        if not analogy_settings(self).active:
+            return
         cached_card = {
             field: str(card.get(field) or "").strip()
             for field in ("title", "analogy", "takeaway")
         }
         if cached_card["title"] and cached_card["analogy"]:
-            self.settings.setValue(
+            analogy_settings(self).setValue('analogy/generation_policy', getattr(self, '_analogy_policy_version', 'v12'))
+            self._analogy_legacy_policy_mismatch = False
+            analogy_settings(self).setValue(
                 "analogy/latest_card",
                 json.dumps(
                     {"schema": "mentorflow.life-analogy.v7", **cached_card},
@@ -1062,23 +1079,26 @@ class MainWindow(QMainWindow):
             "meme_key": str(memory.get("meme_key") or "").strip()[:80],
             "scene_signature": str(memory.get("scene_signature") or "").strip()[:160],
         }
-        recent_cards = list(getattr(self, "_analogy_recent_cards", []))
+        recent_cards = self._load_recent_analogy_cards()
         self._analogy_recent_cards = [
             value
             for value in recent_cards
             if value.get("summary") != summary
         ][-47:] + [record]
-        self.settings.setValue(
+        analogy_settings(self).setValue(
             "analogy/recent_cards",
             json.dumps(self._analogy_recent_cards, ensure_ascii=False),
         )
         self.settings.sync()
 
     def _analogy_context_key(self) -> str:
+        if not analogy_settings(self).active:
+            return ''
         payload = {
+            "account_scope": analogy_settings(self).owner,
             "keywords": str(
-                self.settings.value("analogy/keywords", "")
-                or self.settings.value("news/interests", "")
+                analogy_settings(self).value("analogy/keywords", "")
+                or analogy_settings(self).value("news/interests", "")
                 or ""
             ).strip(),
             "base_url": str(self.settings.value("provider/base_url", "") or "").strip(),
@@ -1090,7 +1110,9 @@ class MainWindow(QMainWindow):
         ).hexdigest()
 
     def _load_prefetched_life_examples(self) -> list[dict[str, object]]:
-        raw = str(self.settings.value("analogy/prefetched_card", "") or "")
+        if getattr(self, '_analogy_legacy_policy_mismatch', False):
+            return []
+        raw = str(analogy_settings(self).value("analogy/prefetched_card", "") or "")
         try:
             value = json.loads(raw) if raw else {}
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1122,7 +1144,10 @@ class MainWindow(QMainWindow):
     def _load_analogy_card_library(self) -> list[dict[str, object]]:
         """Load reusable provider cards for zero-wait repeated browsing."""
 
-        raw = str(self.settings.value("analogy/card_library", "") or "")
+        if getattr(self, '_analogy_legacy_policy_mismatch', False):
+            return []
+
+        raw = str(analogy_settings(self).value("analogy/card_library", "") or "")
         try:
             value = json.loads(raw) if raw else {}
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1144,11 +1169,13 @@ class MainWindow(QMainWindow):
         return accepted[-12:]
 
     def _persist_analogy_card_library(self) -> None:
+        if not analogy_settings(self).active:
+            return
         library = list(getattr(self, "_analogy_card_library", []))[-12:]
         if not library:
-            self.settings.remove("analogy/card_library")
+            analogy_settings(self).remove("analogy/card_library")
             return
-        self.settings.setValue(
+        analogy_settings(self).setValue(
             "analogy/card_library",
             json.dumps(
                 {"schema": "mentorflow.life-analogy.library.v1", "items": library},
@@ -1157,6 +1184,8 @@ class MainWindow(QMainWindow):
         )
 
     def _remember_analogy_library_item(self, item: dict[str, object]) -> None:
+        if not analogy_settings(self).active or not isinstance(item, dict) or item.get('context') != self._analogy_context_key():
+            return
         result = item.get("result") if isinstance(item, dict) else None
         card = result.get("card") if isinstance(result, dict) else None
         if not isinstance(card, dict):
@@ -1188,6 +1217,8 @@ class MainWindow(QMainWindow):
         self._persist_analogy_card_library()
 
     def _consume_analogy_library(self) -> bool:
+        if not analogy_settings(self).active:
+            return False
         library = list(getattr(self, "_analogy_card_library", []))
         if not library:
             return False
@@ -1228,9 +1259,11 @@ class MainWindow(QMainWindow):
         return values[0] if values else {}
 
     def _persist_analogy_prefetch_queue(self) -> None:
+        if not analogy_settings(self).active:
+            return
         queue = list(getattr(self, "_analogy_prefetch_queue", []))[:3]
         if queue:
-            self.settings.setValue(
+            analogy_settings(self).setValue(
                 "analogy/prefetched_card",
                 json.dumps(
                     {"schema": "mentorflow.life-analogy.prefetch.v5", "items": queue},
@@ -1238,10 +1271,12 @@ class MainWindow(QMainWindow):
                 ),
             )
         else:
-            self.settings.remove("analogy/prefetched_card")
+            analogy_settings(self).remove("analogy/prefetched_card")
         self.settings.sync()
 
     def _clear_analogy_prefetch(self) -> None:
+        if not analogy_settings(self).active:
+            return
         self._analogy_prefetch_generation = int(getattr(self, "_analogy_prefetch_generation", 0)) + 1
         futures = set(getattr(self, "_analogy_prefetch_futures", set()))
         legacy_future = getattr(self, "_analogy_prefetch_future", None)
@@ -1263,14 +1298,22 @@ class MainWindow(QMainWindow):
         self._analogy_prefetch_queue = []
         self._analogy_card_library = []
         self._analogy_library_cursor = 0
-        self.settings.remove("analogy/prefetched_card")
-        self.settings.remove("analogy/card_library")
+        analogy_settings(self).remove("analogy/prefetched_card")
+        analogy_settings(self).remove("analogy/card_library")
         self.settings.sync()
         self._update_analogy_button_state()
 
+    def _seal_analogy_history(self) -> None:
+        """Revoke old producers before waiting for API shutdown; preserve disk history."""
+        self._analogy_history_closed = True
+        self._analogy_prefetch_generation = int(getattr(self, '_analogy_prefetch_generation', 0)) + 1
+        self._analogy_button_feedback_token = int(getattr(self, '_analogy_button_feedback_token', 0)) + 1
+        for future in set(getattr(self, '_analogy_prefetch_futures', set())):
+            future.cancel()
+
     def _next_analogy_seed(self) -> int:
-        variation_seed = int(self.settings.value("analogy/variation_counter", 0) or 0) + 1
-        self.settings.setValue("analogy/variation_counter", variation_seed)
+        variation_seed = int(analogy_settings(self).value("analogy/variation_counter", 0) or 0) + 1
+        analogy_settings(self).setValue("analogy/variation_counter", variation_seed)
         self.settings.sync()
         return variation_seed
 
@@ -1280,13 +1323,19 @@ class MainWindow(QMainWindow):
         keywords: str,
         recent_cards: list[dict[str, str]],
         variation_seed: int,
+        request_api=None,
+        ticket: tuple[str | None, int] | None = None,
     ) -> dict:
         """Fill one buffer slot without turning one slow draft into a 90-second wait."""
 
         last_error: Exception | None = None
+        ticket = ticket if ticket is not None else analogy_ticket(self)
+        if not analogy_ticket_current(self, ticket):
+            raise RuntimeError('Analogy account context is no longer active')
+        request_api = request_api if request_api is not None else self.api
         for _attempt in range(1):
             try:
-                result = self.api.generate_life_analogy(
+                result = request_api.generate_life_analogy(
                     provider_session_id,
                     keywords,
                     recent_cards=recent_cards,
@@ -1309,9 +1358,11 @@ class MainWindow(QMainWindow):
         raise last_error or RuntimeError("life analogy generation failed")
 
     def _schedule_analogy_prefetch(self) -> None:
+        if not analogy_settings(self).active:
+            return
         keywords = str(
-            self.settings.value("analogy/keywords", "")
-            or self.settings.value("news/interests", "")
+            analogy_settings(self).value("analogy/keywords", "")
+            or analogy_settings(self).value("news/interests", "")
             or ""
         ).strip()
         context = self._analogy_context_key()
@@ -1354,8 +1405,10 @@ class MainWindow(QMainWindow):
                 self._generate_life_analogy_resilient,
                 self.provider_session_id,
                 keywords,
-                list(self._analogy_recent_cards),
+                self._load_recent_analogy_cards(),
                 self._next_analogy_seed(),
+                self.api,
+                analogy_ticket(self),
             )
             futures.add(future)
             self._analogy_prefetch_futures = futures
@@ -1378,7 +1431,8 @@ class MainWindow(QMainWindow):
         # Reject that callback before it can inspect or clear the replacement
         # future belonging to the new context.
         if (
-            generation != int(getattr(self, "_analogy_prefetch_generation", 0))
+            not analogy_settings(self).active
+            or generation != int(getattr(self, "_analogy_prefetch_generation", 0))
             or context != self._analogy_context_key()
         ):
             return
@@ -1471,6 +1525,8 @@ class MainWindow(QMainWindow):
             self._set_analogy_button_feedback("暂时保留这一张", 900)
 
     def _consume_analogy_prefetch(self) -> bool:
+        if not analogy_settings(self).active:
+            return False
         queue = list(getattr(self, "_analogy_prefetch_queue", []))
         prefetched = queue[0] if queue else getattr(self, "_analogy_prefetched", {})
         if not prefetched or str(prefetched.get("context") or "") != self._analogy_context_key():
@@ -1505,6 +1561,8 @@ class MainWindow(QMainWindow):
         return True
 
     def _has_valid_analogy_prefetch(self) -> bool:
+        if not analogy_settings(self).active:
+            return False
         queue = list(getattr(self, "_analogy_prefetch_queue", []))
         prefetched = queue[0] if queue else getattr(self, "_analogy_prefetched", {})
         if not isinstance(prefetched, dict) or str(prefetched.get("context") or "") != self._analogy_context_key():
@@ -1521,8 +1579,8 @@ class MainWindow(QMainWindow):
     def _update_analogy_button_state(self) -> None:
         if hasattr(self, "next_fact_button"):
             keywords = str(
-                self.settings.value("analogy/keywords", "")
-                or self.settings.value("news/interests", "")
+                analogy_settings(self).value("analogy/keywords", "")
+                or analogy_settings(self).value("news/interests", "")
                 or ""
             ).strip()
             # The action is always available: with no keywords it opens the
@@ -1555,8 +1613,8 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "offline_fact_title"):
             return
         keywords = str(
-            self.settings.value("analogy/keywords", "")
-            or self.settings.value("news/interests", "")
+            analogy_settings(self).value("analogy/keywords", "")
+            or analogy_settings(self).value("news/interests", "")
             or ""
         ).strip()
         if not keywords:
@@ -1567,7 +1625,7 @@ class MainWindow(QMainWindow):
             self.fact_source_button.setVisible(False)
             self._update_analogy_button_state()
             return
-        if self._life_example:
+        if analogy_settings(self).active and self._life_example:
             self.offline_fact_title.setText(str(self._life_example.get("title") or "生活小剧场"))
             self.offline_fact_body.setText(str(self._life_example.get("analogy") or ""))
             takeaway = str(self._life_example.get("takeaway") or "").strip()
@@ -1588,7 +1646,7 @@ class MainWindow(QMainWindow):
         self._update_analogy_button_state()
 
     def _preferred_updates(self) -> list[OfficialUpdate]:
-        interests = str(self.settings.value("news/interests", "") or "").strip().casefold()
+        interests = str(analogy_settings(self).value("news/interests", "") or "").strip().casefold()
         blocked = str(self.settings.value("news/blocked", "") or "").strip().casefold()
         blocked_terms = [value for value in re.split(r"[，,、\s]+", blocked) if value]
         interest_terms = [value for value in re.split(r"[，,、\s]+", interests) if value]
@@ -1603,6 +1661,9 @@ class MainWindow(QMainWindow):
         return allowed if self._news_ai_ranked else matched
 
     def _open_news_preferences(self) -> None:
+        ticket = analogy_ticket(self)
+        if not analogy_ticket_current(self, ticket):
+            return
         dialog = QDialog(self)
         dialog.setWindowTitle("生活类比设置")
         dialog.setMinimumWidth(520)
@@ -1617,8 +1678,8 @@ class MainWindow(QMainWindow):
         hint.setWordWrap(True)
         box.addWidget(hint)
         interests = QLineEdit(str(
-            self.settings.value("analogy/keywords", "")
-            or self.settings.value("news/interests", "")
+            analogy_settings(self).value("analogy/keywords", "")
+            or analogy_settings(self).value("news/interests", "")
             or ""
         ))
         interests.setPlaceholderText("例如：写下几个你想换种方式理解的词")
@@ -1631,11 +1692,13 @@ class MainWindow(QMainWindow):
         box.addWidget(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        if not analogy_ticket_current(self, ticket):
+            return
         value = interests.text().strip()
         if not value:
             QMessageBox.information(self, "还差一步", "请至少填写一个你关注的方向。")
             return
-        self.settings.setValue("analogy/keywords", value)
+        analogy_settings(self).setValue("analogy/keywords", value)
         self.settings.sync()
         self._clear_analogy_prefetch()
         self._render_fact()
@@ -1698,8 +1761,8 @@ class MainWindow(QMainWindow):
 
     def _rank_updates_with_provider(self) -> None:
         keywords = str(
-            self.settings.value("analogy/keywords", "")
-            or self.settings.value("news/interests", "")
+            analogy_settings(self).value("analogy/keywords", "")
+            or analogy_settings(self).value("news/interests", "")
             or ""
         ).strip()
         if not keywords or not getattr(self, "provider_session_id", ""):
@@ -1721,6 +1784,10 @@ class MainWindow(QMainWindow):
         keep that slot safe by routing it through the same buffer validator
         instead of ever replacing the visible card directly.
         """
+        if not analogy_settings(self).active:
+            return
+        if analogy_settings(self).owner != 'personal-local' and (generation is None or context is None):
+            return  # No anonymous legacy callback may adopt the current account.
         future = getattr(self, "_personalized_rank_future", None)
         if future is None:
             return

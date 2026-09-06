@@ -64,10 +64,10 @@ DEFAULT_BACKUP_ROOT = Path(os.getenv("MENTORFLOW_BACKUP_ROOT", r"E:\Codex\Data\b
 FREE_CHAT_PROMPT_SETTINGS_KEY = "classroom/free_chat_prompt"
 
 
-def _safe_qsettings_snapshot() -> dict[str, Any]:
+def _safe_qsettings_snapshot(*, history_settings=None, settings=None) -> dict[str, Any]:
     """Return only nonsecret Qt settings that are useful on a new device."""
 
-    settings = QSettings("MentorFlow", "MentorFlow")
+    settings = settings if settings is not None else QSettings("MentorFlow", "MentorFlow")
     allowed = {
         "official_updates/enabled",
         "tutorial/completed",
@@ -81,13 +81,19 @@ def _safe_qsettings_snapshot() -> dict[str, Any]:
         "provider/preset_name",
     }
     snapshot: dict[str, Any] = {}
-    for key in settings.allKeys():
+    history_keys = {"analogy/generation_policy", "analogy/keywords", "news/interests"}
+    for key in set(settings.allKeys()) | history_keys:
         if key not in allowed and not key.startswith("task-colors/"):
             continue
         # Credential references and provider sessions are deliberately not in
         # the allowlist.  QSettings can return QVariant wrappers, so retain
         # only JSON-native scalar values here.
-        value = settings.value(key)
+        if key in history_keys:
+            # A bare global snapshot has no authority to export legacy history
+            # into an Enterprise account. The window supplies its captured scope.
+            value = history_settings.value(key, None) if history_settings is not None else None
+        else:
+            value = settings.value(key)
         if isinstance(value, (bool, int, float, str)):
             snapshot[key] = value
     return snapshot
@@ -1023,6 +1029,8 @@ class SystemPage(QWidget):
             self.migration_status.setText(f"导出失败：{exc}")
             return
         personal_local = bool(self.personal_local_export.isChecked())
+        # Capture scoped preferences on the Qt thread, before background work.
+        preferences = _safe_qsettings_snapshot(history_settings=getattr(self, 'analogy_history_settings', None))
         if not self._start_data_action(
             "quick_export" if mode is PackageMode.QUICK else "full_export",
             lambda: export_account_package(
@@ -1031,7 +1039,7 @@ class SystemPage(QWidget):
                 account_identity=self.account_identity,
                 mode=mode,
                 structured_snapshot=catalogs["structured_snapshot"],
-                preferences=_safe_qsettings_snapshot(),
+                preferences=preferences,
                 asset_manifests=catalogs["asset_manifests"],
                 model_manifests=catalogs["model_manifests"],
                 personal_local=personal_local,

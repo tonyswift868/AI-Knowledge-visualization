@@ -414,6 +414,7 @@ def test_overview_life_analogy_hides_private_keywords(tmp_path, monkeypatch) -> 
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "private-sentinel-keyword")
     window.provider_session_id = "verified-provider"
@@ -455,6 +456,7 @@ def test_overview_life_analogy_first_failure_restores_empty_state(tmp_path, monk
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-first-failure.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "private-sentinel-keyword")
     window.provider_session_id = "verified-provider"
@@ -492,6 +494,7 @@ def test_overview_life_analogy_refresh_failure_restores_previous_card(tmp_path, 
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-refresh-failure.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "private-sentinel-keyword")
     window.provider_session_id = "verified-provider"
@@ -531,6 +534,7 @@ def test_overview_life_analogy_prefetch_is_consumed_without_network_wait(tmp_pat
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-prefetch.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "private-sentinel-keyword")
     window.settings.setValue("provider/base_url", "https://api.deepseek.com/v1")
@@ -601,6 +605,7 @@ def test_overview_life_analogy_prefetch_fills_bounded_buffer_and_persists(tmp_pa
             }
 
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-prefetch-build.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "private-sentinel-keyword")
     window.settings.setValue("provider/base_url", "https://api.deepseek.com/v1")
@@ -637,7 +642,7 @@ def test_overview_life_analogy_prefetch_fills_bounded_buffer_and_persists(tmp_pa
     application.processEvents()
 
 
-def test_life_analogy_slot_failure_is_bounded_to_one_provider_call() -> None:
+def test_life_analogy_slot_failure_is_bounded_to_one_provider_call(tmp_path) -> None:
     from desktop.main_window import MainWindow
 
     calls: list[int] = []
@@ -648,13 +653,14 @@ def test_life_analogy_slot_failure_is_bounded_to_one_provider_call() -> None:
             raise RuntimeError("candidate rejected")
 
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.api = FakeApi()
     with pytest.raises(RuntimeError, match="candidate rejected"):
         window._generate_life_analogy_resilient("session", "方向", [], 10)
     assert calls == [10]
 
 
-def test_life_analogy_slot_rejects_malformed_success_without_serial_retry() -> None:
+def test_life_analogy_slot_rejects_malformed_success_without_serial_retry(tmp_path) -> None:
     from desktop.main_window import MainWindow
 
     calls: list[int] = []
@@ -665,6 +671,7 @@ def test_life_analogy_slot_rejects_malformed_success_without_serial_retry() -> N
             return {"state": "ready", "card": None}
 
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.api = FakeApi()
     with pytest.raises(RuntimeError, match="missing card"):
         window._generate_life_analogy_resilient("session", "方向", [], 10)
@@ -682,6 +689,7 @@ def test_life_analogy_poll_clears_busy_for_payload_without_card(tmp_path, monkey
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-malformed.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "方向")
     window.provider_session_id = "verified-provider"
@@ -717,6 +725,7 @@ def test_life_analogy_poll_ignores_late_card_after_context_clear(tmp_path, monke
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-stale.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "新方向")
     window.settings.setValue("provider/base_url", "https://new.example/v1")
@@ -1010,6 +1019,7 @@ def test_next_fact_click_keeps_button_available_and_consumes_pending_card(tmp_pa
 
     application = QApplication.instance() or QApplication([])
     window = MainWindow.__new__(MainWindow)
+    _explicit_personal_history(window, tmp_path)
     window.settings = QSettings(str(tmp_path / "analogy-pending.ini"), QSettings.Format.IniFormat)
     window.settings.setValue("analogy/keywords", "pending-keyword")
     window.settings.setValue("provider/base_url", "https://api.example/v1")
@@ -2005,3 +2015,11 @@ def test_native_map_progress_uses_persisted_backend_units(monkeypatch) -> None:
     window.map_progress.deleteLater()
     window.map_state.deleteLater()
     application.processEvents()
+
+
+def _explicit_personal_history(window, tmp_path):
+    """Analogy fixtures run in explicit isolated Personal Local mode."""
+    from desktop.account_identity import AccountProfile
+    from PySide6.QtCore import QSettings
+    window.account_profile = AccountProfile.personal_local()
+    window.settings = QSettings(str(tmp_path / 'analogy-history.ini'), QSettings.Format.IniFormat)
