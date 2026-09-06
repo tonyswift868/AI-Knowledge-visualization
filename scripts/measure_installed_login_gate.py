@@ -19,6 +19,21 @@ from scripts import verify_windows_package as v
 from scripts.test_windows_install_trust import normal_token
 
 
+def probe_oidc(root):
+    from scripts.windows_installed_launch import ISSUER
+    response = subprocess.run([
+        str(Path(os.environ['SystemRoot']) / 'System32/curl.exe'),
+        '--silent', '--fail', '--noproxy', '*', '--connect-timeout', '2',
+        '--max-time', '4', '--cacert', str(root / 'App/Config/edge-tls-ca.crt'),
+        ISSUER + '/.well-known/openid-configuration'],
+        capture_output=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        ready = response.returncode == 0 and json.loads(response.stdout).get('issuer') == ISSUER
+    except (ValueError, AttributeError):
+        ready = False
+    return response.returncode, ready
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -26,6 +41,7 @@ def main():
     parser.add_argument('--resume-test-root', type=Path)
     parser.add_argument('--form-probe', type=Path)
     parser.add_argument('--observe-seconds', type=float, default=0)
+    parser.add_argument('--probe-oidc', action='store_true')
     args = parser.parse_args()
     if not 0 <= args.observe_seconds <= 30:
         parser.error('--observe-seconds must be between 0 and 30')
@@ -163,6 +179,8 @@ def main():
             if (gate_hwnd and report['qtcore_loaded'] and
                     time.perf_counter() - start - report['login_visible_seconds'] >= args.observe_seconds):
                 report['passive_observe_seconds'] = args.observe_seconds
+                if args.probe_oidc:
+                    report['oidc_probe_exit'], report['oidc_issuer_ready'] = probe_oidc(root)
                 if args.form_probe:
                     gate_pid = w.DWORD()
                     user.GetWindowThreadProcessId(gate_hwnd, c.byref(gate_pid))
@@ -207,6 +225,8 @@ def main():
         raise RuntimeError('Installed LoginGate observation did not qualify; see recorded evidence')
     if args.form_probe and report.get('form_controls_focus_ready_seconds') is None:
         raise RuntimeError('Form controls readiness not observed; see recorded evidence')
+    if args.probe_oidc and not report.get('oidc_issuer_ready'):
+        raise RuntimeError('OIDC readiness not verified during owned launch; see recorded evidence')
 
 
 if __name__ == '__main__':

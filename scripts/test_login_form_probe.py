@@ -4,9 +4,27 @@ import subprocess
 import tempfile
 import sys
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 
 class FormProbeTests(unittest.TestCase):
+    def test_oidc_probe_requires_tls_success_and_exact_issuer(self):
+        from scripts.measure_installed_login_gate import probe_oidc
+        from scripts.windows_installed_launch import ISSUER
+        import json
+        for code, body, expected in ((0, {'issuer': ISSUER}, True),
+                (22, {'issuer': ISSUER}, False), (0, {'issuer': 'https://other.invalid'}, False),
+                (0, [], False), (0, 'not json', False)):
+            raw = body if isinstance(body, str) else json.dumps(body)
+            with patch('scripts.measure_installed_login_gate.subprocess.run',
+                       return_value=SimpleNamespace(returncode=code, stdout=raw)) as run:
+                self.assertEqual(probe_oidc(Path('E:/isolated')), (code, expected))
+                command = run.call_args.args[0]
+                self.assertIn('--cacert', command)
+                self.assertNotIn('--insecure', command)
+                self.assertNotIn('-k', command)
+
     def test_invalid_dwell_rejects_before_fixture_access(self):
         for options in (['--observe-seconds', '-1'], ['--observe-seconds', '31'],
                         ['--observe-seconds', 'nan'],
