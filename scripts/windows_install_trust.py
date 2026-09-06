@@ -490,7 +490,7 @@ def main(argv=None):
             print("MENTORFLOW_INSTALL_GATE=PASS")
         return 0
     except (RuntimeError, v.PackageError, OSError, ValueError, KeyError, TypeError) as error:
-        if args.command == "launch":
+        if args.command == "launch" or (args.command in ("install", "activate") and not args.quiet_install):
             from scripts.windows_installed_launch import show_repair
             show_repair(str(error))
         print(f"FULL VERIFY / REPAIR REQUIRED: {error}")

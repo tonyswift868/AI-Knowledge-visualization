@@ -9,6 +9,29 @@ from scripts import windows_install_trust as trust
 
 
 class InstallProgressTests(unittest.TestCase):
+    def test_windowed_install_failure_has_visible_error_and_nonzero_exit(self):
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        from io import StringIO
+        for command in ('install', 'activate'):
+            with self.subTest(command=command), patch('scripts.windows_installed_launch.show_repair') as show, redirect_stdout(StringIO()):
+                # Missing identities fail before any filesystem mutation or
+                # progress dialog; a windowed host must still show the error.
+                code = trust.main([command, '--install-root', 'E:/Codex/Temp/unused-install-error'])
+                self.assertEqual(code, 3)
+                show.assert_called_once_with('pinned release identities required')
+
+    def test_quiet_install_failure_leaves_error_presentation_to_host(self):
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        from io import StringIO
+        for command in ('install', 'activate'):
+            with self.subTest(command=command), patch('scripts.windows_installed_launch.show_repair') as show, redirect_stdout(StringIO()) as output:
+                code = trust.main([command, '--install-root', 'E:/Codex/Temp/unused-install-error', '--quiet-install'])
+                self.assertEqual(code, 3)
+                show.assert_not_called()
+                self.assertIn('FULL VERIFY / REPAIR REQUIRED', output.getvalue())
+
     def test_activation_command_uses_installation_status(self):
         from unittest.mock import patch
         from contextlib import redirect_stdout
