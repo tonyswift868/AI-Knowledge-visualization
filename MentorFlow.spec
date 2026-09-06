@@ -206,9 +206,25 @@ selfcheck_exe = EXE(
     console=True,
 )
 
+install_gate_a = Analysis(
+    [str(root / "scripts" / "run_windows_install_gate.py")],
+    pathex=[str(root)], binaries=[], datas=[], hiddenimports=[], hookspath=[],
+    hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
+)
+install_gate_pyz = PYZ(install_gate_a.pure)
+install_gate_exe = EXE(
+    install_gate_pyz, install_gate_a.scripts, [],
+    exclude_binaries=True, name="MentorFlowInstallGate", debug=False,
+    bootloader_ignore_signals=False, strip=False, upx=True, console=False,
+    uac_admin=False,
+)
+
 coll = COLLECT(
     exe,
     selfcheck_exe,
+    install_gate_exe,
+    install_gate_a.binaries,
+    install_gate_a.datas,
     a.binaries,
     a.datas,
     strip=False,
