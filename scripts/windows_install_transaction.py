@@ -277,11 +277,12 @@ class Shortcut:
 
 class Transaction:
     def __init__(self,source,root,identities,uninstaller,*,cancel=lambda:False,status=lambda stage,percent:None,
-                 registry=None,shortcut=None,fault=lambda point:None):
+                 registry=None,shortcut=None,fault=lambda point:None,retain_previous=False):
         self.source=Path(source); self.root=Path(root); self.ids=identities; self.uninstaller=Path(uninstaller)
         self.cancel=cancel; self.status=status; self.registry=registry or Registry()
         self.shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop/MentorFlow.lnk')
         self.fault=fault; self.attempt=None; self.journal=None
+        self.retain_previous=retain_previous
     def checkpoint(self,point):
         self.fault(point)
         if self.cancel(): raise Cancelled('安装已取消，正在回滚。')
@@ -351,12 +352,17 @@ class Transaction:
     def run(self):
         if not c.windll.shell32.IsUserAnAdmin(): raise PermissionError('installer elevation required')
         self.status('正在检查和清理已确认的失败安装',0)
-        cleanup_failed(cancelled=lambda:self.checkpoint('cleanup'))
+        # Updating an existing valid install must not clean any failed first
+        # installation elsewhere (especially the default E:\MentorFlow root).
+        if not self.retain_previous:
+            cleanup_failed(cancelled=lambda:self.checkpoint('cleanup'))
         self.root=validate_target(self.root)
         self.recover()
         doc,rows,_,_=self.preflight()
         self.checkpoint('preflight')
         old=recognised(self.root)
+        if self.retain_previous and not old:
+            raise ValueError('update requires a verified existing installation')
         if old: trust.verify_installation(self.root,**identities_from_receipt(self.root),workers=1,
             cancelled=lambda:self.checkpoint('verify_old'))
         registry=self.registry.snapshot(); shortcut=self.shortcut.snapshot()
@@ -365,6 +371,8 @@ class Transaction:
         self.attempt=stagebase/uuid.uuid4().hex
         self.journal={'schema':'mentorflow.install-transaction.v1','root':str(self.root),'created_root':created,
             'phase':'COPYING','old':old,'registry':registry,'shortcut':shortcut,'moved':[], 'metadata_started':False}
+        if self.retain_previous:
+            self.journal['retain_previous']=True
         setup_owned=[]
         try:
             if created:
@@ -425,10 +433,24 @@ class Transaction:
         except BaseException:
             self.rollback()
             raise
-        remove_attempt(self.attempt)
+        self.complete_transaction()
         try: stagebase.rmdir()
         except OSError: pass
         return {'status':'PASS','root':str(self.root)}
+    def complete_transaction(self):
+        if self.journal.get('retain_previous') and self.journal.get('old'):
+            previous=self.root/'.update-previous'
+            if not previous.exists(): trust._create_protected(previous,directory=True)
+            assert_no_alias(previous); trust.assert_protected(previous)
+            self.journal['phase']='COMMITTED'
+            self.journal['pending_update_health']=True
+            self.save()
+            # Entire journal-owned prior tree is retained. Never delete previous
+            # immediately after commit or conflate installed with healthy.
+            self.attempt.rename(previous/self.attempt.name)
+            self.attempt=previous/self.attempt.name
+        else:
+            remove_attempt(self.attempt)
     def recover(self):
         base=self.root/STAGING
         if not base.exists(): return
@@ -447,9 +469,11 @@ class Transaction:
             # Receipt publication is the durable commit boundary, after all
             # metadata and verification. A kill before COMMITTED journal save
             # must finalize that commit, not restore a now obsolete old version.
-            published=(journal.get('commit_receipt_sha256') and (self.root/trust.RECEIPT).is_file()
+            published=(not journal.get('rollback_requested') and journal.get('commit_receipt_sha256') and (self.root/trust.RECEIPT).is_file()
                 and sha(self.root/trust.RECEIPT)==journal['commit_receipt_sha256'])
-            if journal['phase'] in ('COMMITTED','ROLLED_BACK','UNINSTALLED') or published:
+            if journal['phase']=='COMMITTED' or published:
+                self.complete_transaction()
+            elif journal['phase'] in ('ROLLED_BACK','UNINSTALLED'):
                 remove_attempt(attempt)
             else: self.rollback()
         if base.exists():

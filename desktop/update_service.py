@@ -175,3 +175,185 @@ __all__ = [
     "stage_download",
     "launch_verified_installer",
 ]
+
+
+# Mature update path extends this existing facade/cache; the legacy explicit
+# source checker above is NOT the normal in-app installation action anymore.
+class MatureUpdateService:
+    STATES = frozenset(('IDLE', 'CHECKING', 'UP_TO_DATE', 'UPDATE_AVAILABLE',
+        'DOWNLOADING', 'DOWNLOAD_PAUSED_OR_INTERRUPTED', 'READY_TO_APPLY', 'APPLYING',
+        'RESTART_REQUIRED', 'FAILED_RECOVERABLE', 'FAILED_SECURITY'))
+
+    def __init__(self, *, install_root, cache_root, metadata_url, public_keys,
+                 current, channel='stable', transport=None, apply_bridge=None):
+        import os
+        import threading
+        from .update_download import ObjectCache, HTTPTransport
+        from .update_protocol import digest, SecurityError
+        self.install_root = Path(install_root).absolute()
+        cache_root = Path(cache_root).absolute()
+        if (cache_root == self.install_root or cache_root.is_relative_to(self.install_root)
+                or self.install_root.is_relative_to(cache_root)
+                or cache_root == Path('E:/MentorFlowData') or cache_root.is_relative_to(Path('E:/MentorFlowData'))):
+            raise SecurityError('update cache overlaps program/user data')
+        identity = digest(os.path.normcase(str(self.install_root)).encode('utf-8'))
+        self.cache = ObjectCache(cache_root / identity, transport or HTTPTransport(metadata_url))
+        self.metadata_url, self.keys = metadata_url, dict(public_keys)
+        self.current, self.channel = current, channel
+        self.apply_bridge = apply_bridge
+        self.cancel_event = threading.Event()
+        self.release, self.plan, self.staged = None, None, None
+        self.snapshot = dict(state='IDLE', current=current, channel=channel,
+                             last_checked=None, actual_downloaded_bytes=0, message='尚未检查更新')
+        self._next_check = 0
+        self._failures = 0
+        self._load_status()
+
+    def _load_status(self):
+        from .update_download import safe_entry
+        from .update_protocol import strict_json
+        path = self.cache.root / 'state.json'
+        if safe_entry(path, self.cache.root):
+            try:
+                doc = strict_json(path.read_bytes())
+                # Cache can throttle checks but cannot authorize any release/apply.
+                import time
+                checked = float(doc.get('last_checked') or 0)
+                if 0 < checked <= time.time():
+                    self.snapshot['last_checked'] = checked
+                    self._next_check = min(float(doc.get('next_check') or 0), time.time()+86400)
+            except (ValueError, TypeError):
+                pass
+
+    def _state(self, name, message, **values):
+        assert name in self.STATES
+        self.snapshot = {**self.snapshot, **values, 'state': name, 'message': message}
+
+    def _persist_check(self):
+        from .update_protocol import canonical
+        from .update_download import safe_entry
+        path = self.cache.root / 'state.json'
+        temporary = self.cache.root / 'state.pending'
+        for candidate in (path, temporary):
+            safe_entry(candidate, self.cache.root)
+        with temporary.open('wb') as stream:
+            stream.write(canonical(dict(last_checked=self.snapshot['last_checked'], next_check=self._next_check)))
+            stream.flush()
+            import os
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+
+    def _local_rows(self):
+        from .update_protocol import MANIFEST_PATH, digest, strict_json
+        from .update_download import safe_entry
+        app = self.install_root / 'App'
+        path = app / MANIFEST_PATH
+        if not path.is_file():
+            return None
+        safe_entry(path, app, missing=False)
+        raw = path.read_bytes()
+        try:
+            doc = strict_json(raw)
+            if doc.get('version') != self.current:
+                return None
+            rows = {r['path']: r for r in doc['files']}
+            rows[MANIFEST_PATH] = dict(path=MANIFEST_PATH, size=len(raw), sha256=digest(raw))
+            return rows
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def check(self, *, manual=True):
+        import logging
+        import time
+        from .update_download import InstallUpdateLock
+        from .update_protocol import MAX_METADATA, SecurityError, verify_release, make_plan
+        if not manual and time.time() < self._next_check:
+            return dict(self.snapshot)
+        try:
+            with InstallUpdateLock(self.cache.root):
+                self._state('CHECKING', '正在检查更新…')
+                raw = self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA)
+                release = verify_release(raw, self.keys, current=self.current, channel=self.channel)
+                plan = make_plan(release, self._local_rows(), self.current)
+                self.release, self.plan, self.staged = release, plan, None
+                self._failures = 0
+                self._next_check = time.time() + 86400
+                self._state('UPDATE_AVAILABLE' if plan['update'] else 'UP_TO_DATE',
+                            '发现新版本' if plan['update'] else '当前已是最新版本',
+                            **plan, last_checked=time.time())
+                self._persist_check()
+        except Exception as exc:
+            logging.getLogger(__name__).exception('desktop signed update check failed')
+            self.release, self.plan, self.staged = None, None, None
+            self._failures += 1
+            self._next_check = time.time() + min(86400, 60 * 2**min(self._failures, 10))
+            self._state('FAILED_SECURITY' if isinstance(exc, SecurityError) else 'FAILED_RECOVERABLE',
+                        '更新校验未通过，已阻止更新。' if isinstance(exc, SecurityError) else '暂时无法检查更新，当前版本可继续使用。',
+                        last_checked=time.time())
+        return dict(self.snapshot)
+
+    def download(self):
+        import logging
+        from .update_download import InstallUpdateLock
+        from .update_protocol import SecurityError, DownloadCancelled, verify_release
+        if self.release is None or not self.plan or not self.plan['update']:
+            return dict(self.snapshot)
+        self.cancel_event.clear()
+        before = self.cache.transport.bytes_received
+        try:
+            with InstallUpdateLock(self.cache.root):
+                release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel)
+                self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
+                def progress(_):
+                    self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before}
+                self.staged = self.cache.reconstruct(release, self.plan, self.install_root/'App',
+                    cancel=self.cancel_event.is_set, progress=progress)
+                actual = self.cache.transport.bytes_received-before
+                self._state('READY_TO_APPLY', '下载和校验完成，可稍后更新。',
+                            actual_downloaded_bytes=actual,
+                            saved_bytes=max(0, self.plan['full_bytes']-actual),
+                            saving_percent=100 * max(0, 1-actual/max(1,self.plan['full_bytes'])))
+        except Exception as exc:
+            logging.getLogger(__name__).exception('desktop incremental download failed')
+            self.staged = None
+            state = 'FAILED_SECURITY' if isinstance(exc, SecurityError) else 'DOWNLOAD_PAUSED_OR_INTERRUPTED'
+            self._state(state, '更新校验未通过，已阻止应用。' if isinstance(exc, SecurityError) else '下载已暂停，当前版本不受影响，可稍后继续。',
+                        actual_downloaded_bytes=self.cache.transport.bytes_received-before)
+        return dict(self.snapshot)
+
+    def cancel_download(self):
+        self.cancel_event.set()
+
+    def apply_and_restart(self):
+        from .update_protocol import RecoverableError, verify_release
+        from .update_download import InstallUpdateLock
+        if not self.staged or self.apply_bridge is None:
+            raise RecoverableError('protected update/restart bridge is not qualified/configured')
+        with InstallUpdateLock(self.cache.root):
+            release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel)
+            self.cache.verify_tree(self.staged, release)
+            self._state('APPLYING', '正在准备受保护更新…')
+            # Bridge must independently verify metadata after elevation, retain
+            # previous known-good and restart via ordinary-user shell, not Setup.
+            result = self.apply_bridge(self.install_root, self.staged, release.envelope)
+            self._state('RESTART_REQUIRED', '等待更新重启与健康确认')
+            return result
+
+
+def configured_mature_service(*, version_manifest=None, install_root=None):
+    """Build-provisioned feed only. Never infer a production trust key/endpoint."""
+    import base64
+    import sys
+    from .version import VERSION_MANIFEST
+    manifest = version_manifest or VERSION_MANIFEST
+    config = manifest.get('update', {})
+    if config.get('protocol') != 'mentorflow.signed-file-release.v1':
+        return None
+    keys = config.get('public_keys')
+    if not keys or not config.get('metadata_url'):
+        return None
+    root = Path(install_root) if install_root else Path(sys.executable).absolute().parent.parent
+    return MatureUpdateService(install_root=root,
+        cache_root=config.get('staging_root', r'E:\MentorFlowUpdates'),
+        metadata_url=config['metadata_url'], public_keys={k:base64.b64decode(v,validate=True) for k,v in keys.items()},
+        current=manifest['version'], channel=manifest.get('channel','stable'))

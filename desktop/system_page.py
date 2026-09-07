@@ -51,12 +51,7 @@ from .classroom_theme import (
 )
 from .local_migration import MigrationError
 from .version import VERSION_MANIFEST
-from .update_service import (
-    UpdateError,
-    check_for_update,
-    download_update,
-    launch_verified_installer,
-)
+from .update_panel import UpdatePanel
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -300,12 +295,10 @@ class SystemPage(QWidget):
         self._diagnostics_future: Future[str] | None = None
         self._data_future: Future[Any] | None = None
         self._data_action = ""
-        self._update_future: Future[dict[str, Any]] | None = None
-        self._update_action = ""
-        self._last_update_result: dict[str, Any] | None = None
         self._build()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self.update_panel.shutdown()
         self._executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
 
@@ -360,41 +353,8 @@ class SystemPage(QWidget):
         common_hint.setWordWrap(True)
         settings_layout.addWidget(common_hint)
 
-        update_card = QFrame(settings_card)
-        update_card.setObjectName("updateCenter")
-        update_layout = QVBoxLayout(update_card)
-        update_layout.setContentsMargins(12, 10, 12, 10)
-        update_layout.setSpacing(8)
-        update_layout.addWidget(QLabel("软件安装包更新"))
-        update_hint = QLabel(
-            "只在你点击检查时访问官方 GitHub Release；下载并启动最新 Windows 安装包，"
-            "更新程序本身，不替换或清空你的学习数据。"
-        )
-        update_hint.setObjectName("pageSubtitle")
-        update_hint.setWordWrap(True)
-        update_layout.addWidget(update_hint)
-        update_actions = QHBoxLayout()
-        self.update_check_button = QPushButton("检查更新")
-        self.update_check_button.setAccessibleName("检查 MentorFlow 软件更新")
-        self.update_check_button.clicked.connect(self.check_for_updates)
-        update_actions.addWidget(self.update_check_button)
-        self.update_download_button = QPushButton("下载并校验更新")
-        self.update_download_button.setAccessibleName("下载并校验 MentorFlow 更新")
-        self.update_download_button.setEnabled(False)
-        self.update_download_button.clicked.connect(self.download_and_install_update)
-        update_actions.addWidget(self.update_download_button)
-        self.update_release_button = QPushButton("打开 Release 页面")
-        self.update_release_button.setAccessibleName("打开 MentorFlow Release 页面")
-        self.update_release_button.setEnabled(False)
-        self.update_release_button.clicked.connect(self._open_update_release)
-        update_actions.addWidget(self.update_release_button)
-        update_actions.addStretch(1)
-        update_layout.addLayout(update_actions)
-        self.update_status = QLabel("尚未检查；点击“检查更新”后才会联网。")
-        self.update_status.setObjectName("inlineStatus")
-        self.update_status.setWordWrap(True)
-        update_layout.addWidget(self.update_status)
-        settings_layout.addWidget(update_card)
+        self.update_panel = UpdatePanel(settings_card)
+        settings_layout.addWidget(self.update_panel)
 
         theme_label = QLabel("课堂皮肤")
         theme_label.setObjectName("sectionHeading")
@@ -803,111 +763,11 @@ class SystemPage(QWidget):
             )
 
     def check_for_updates(self) -> None:
-        """Start an explicit, asynchronous official release check."""
-
-        if self._update_future is not None and not self._update_future.done():
-            self.update_status.setText("更新检查正在进行，请稍候。")
-            return
-        self._update_action = "check"
-        self._last_update_result = None
-        self.update_check_button.setEnabled(False)
-        self.update_download_button.setEnabled(False)
-        self.update_release_button.setEnabled(False)
-        self.update_check_button.setText("检查中……")
-        self.update_status.setText("正在从官方 GitHub Release 检查更新……")
-        self._update_future = self._executor.submit(check_for_update)
-        QTimer.singleShot(40, self._poll_update)
+        self.update_panel._run("check")
 
     def download_and_install_update(self) -> None:
-        """Stage a verified update, then ask before launching an installer."""
-
-        if self._update_future is not None and not self._update_future.done():
-            self.update_status.setText("更新操作正在进行，请稍候。")
-            return
-        result = self._last_update_result or {}
-        if not bool(result.get("update")):
-            self.update_status.setText("当前没有可下载的更新，请先检查更新。")
-            self.update_download_button.setEnabled(False)
-            return
-        self._update_action = "download"
-        self.update_check_button.setEnabled(False)
-        self.update_download_button.setEnabled(False)
-        self.update_release_button.setEnabled(False)
-        self.update_download_button.setText("下载并校验中……")
-        self.update_status.setText("正在下载到 E:\\MentorFlowUpdates 并校验 SHA-256……")
-        self._update_future = self._executor.submit(download_update)
-        QTimer.singleShot(40, self._poll_update)
-
-    def _poll_update(self) -> None:
-        future = self._update_future
-        if future is None:
-            return
-        if not future.done():
-            QTimer.singleShot(40, self._poll_update)
-            return
-        self._update_future = None
-        action = self._update_action
-        self._update_action = ""
-        try:
-            result = future.result()
-            if action == "check":
-                self._last_update_result = result
-                if not bool(result.get("update")):
-                    self.update_status.setText(
-                        f"当前已是最新版本（{result.get('current') or VERSION_MANIFEST.get('version') or 'unknown'}）。"
-                    )
-                else:
-                    latest = str(result.get("latest") or "新版本")
-                    release_page = str(result.get("release_page") or "")
-                    self.update_status.setText(
-                        f"发现新版本 {latest}（当前 {result.get('current') or 'unknown'}）。"
-                        "可打开 Release 页面查看说明，或下载并校验安装器。"
-                    )
-                    self.update_download_button.setEnabled(True)
-                    self.update_release_button.setEnabled(bool(release_page))
-            else:
-                staged_path = str(result.get("staged_path") or "")
-                if not staged_path:
-                    raise UpdateError("更新已完成校验，但没有返回暂存路径")
-                installer = Path(staged_path)
-                if installer.suffix.casefold() != ".exe":
-                    self.update_status.setText(
-                        f"资源已校验并暂存到：{installer}\n当前资源不是 Windows 安装器，请退出软件后手动处理。"
-                    )
-                else:
-                    answer = QMessageBox.question(
-                        self,
-                        "确认启动安装器",
-                        f"安装器已通过 SHA-256 校验：\n{installer}\n\n"
-                        "启动后请按 Windows 安装向导操作；MentorFlow 不会覆盖当前数据目录。是否启动？",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No,
-                    )
-                    if answer == QMessageBox.StandardButton.Yes:
-                        launch_verified_installer(
-                            installer,
-                            expected_sha256=str(result.get("sha256") or ""),
-                        )
-                        self.update_status.setText(f"已启动已校验安装器：{installer}")
-                    else:
-                        self.update_status.setText(f"已校验并暂存安装器：{installer}（未启动）。")
-        except Exception as exc:  # defensive boundary around optional networking/installer launch
-            self.update_status.setText(f"更新失败：{exc}")
-        finally:
-            self.update_check_button.setEnabled(True)
-            self.update_check_button.setText("检查更新")
-            if action == "download":
-                self.update_download_button.setText("下载并校验更新")
-                self.update_download_button.setEnabled(bool(self._last_update_result and self._last_update_result.get("update")))
-                self.update_release_button.setEnabled(bool(self._last_update_result and self._last_update_result.get("release_page")))
-
-    def _open_update_release(self) -> None:
-        result = self._last_update_result or {}
-        url = str(result.get("release_page") or "")
-        if not url.startswith("https://github.com/"):
-            self.update_status.setText("Release 页面地址无效，未打开外部链接。")
-            return
-        QDesktopServices.openUrl(QUrl(url))
+        """Compatibility action: download only, never launch a full Setup."""
+        self.update_panel._run("download")
 
     def refresh(self) -> None:
         if self._diagnostics_future is not None and not self._diagnostics_future.done():
