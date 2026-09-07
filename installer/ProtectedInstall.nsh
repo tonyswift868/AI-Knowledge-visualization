@@ -65,6 +65,13 @@ Function .onInit
 FunctionEnd
 
 Function ValidateDirectory
+ !ifdef MAX_INSTALL_DIR_CHARS
+ StrLen $0 $INSTDIR
+ ${If} $0 > ${MAX_INSTALL_DIR_CHARS}
+   MessageBox MB_ICONSTOP "安装位置路径过长，请选择更靠近磁盘根目录的位置。"
+   Abort
+ ${EndIf}
+ !endif
  StrCpy $HelperArgs '--install-root "$INSTDIR" --payload-source "$PayloadSource" --manifest-sha256 ${MANIFEST_SHA} --source-sha ${SOURCE_SHA} --tree-sha ${SOURCE_TREE} --uninstaller-source "$PLUGINSDIR\Uninstall.exe" --status-file "$StatusFile"'
  ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" preflight $HelperArgs' $0
  ${If} $0 != 0

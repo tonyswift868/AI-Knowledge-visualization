@@ -185,7 +185,8 @@ class MatureUpdateService:
         'RESTART_REQUIRED', 'FAILED_RECOVERABLE', 'FAILED_SECURITY'))
 
     def __init__(self, *, install_root, cache_root, metadata_url, public_keys,
-                 current, channel='stable', transport=None, apply_bridge=None):
+                 current, channel='stable', transport=None, apply_bridge=None,
+                 accepted_app=None, runtime_staging_root=None, accepted_source_factory=None):
         import os
         import threading
         from .update_download import ObjectCache, HTTPTransport
@@ -203,12 +204,15 @@ class MatureUpdateService:
             raise SecurityError('update cache overlaps program/user data')
         identity = digest(os.path.normcase(str(self.install_root)).encode('utf-8'))
         self.install_identity = identity
-        self.cache = ObjectCache(cache_root / identity, transport or HTTPTransport(metadata_url))
+        self.cache = ObjectCache(cache_root / identity, transport or HTTPTransport(metadata_url),
+            accepted_app=accepted_app, runtime_root=runtime_staging_root or self.install_root/'.u')
         self.metadata_url, self.keys = metadata_url, dict(public_keys)
         if channel not in ('stable', 'beta'):
             raise SecurityError('unsupported update channel')
         self.current, self.channel = current, channel
         self.apply_bridge = apply_bridge
+        self._accepted_source_factory=accepted_source_factory
+        self._owned_source=False; self._busy=False; self._closed=False
         self.cancel_event = threading.Event()
         self.release, self.plan, self.staged = None, None, None
         self.snapshot = dict(state='IDLE', current=current, channel=channel,
@@ -316,6 +320,8 @@ class MatureUpdateService:
                 self.telemetry.totals['bytes_read'] += len(raw)
                 release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
+                from scripts.runtime_path_budget import budget
+                budget(self.install_root,release.rows)
                 self.telemetry.mark('T02_METADATA_VERIFIED')
                 self._remember_release(release)
                 plan = make_plan(release, self._local_rows(), self.current)
@@ -338,6 +344,8 @@ class MatureUpdateService:
             self._state('FAILED_SECURITY' if isinstance(exc, SecurityError) else 'FAILED_RECOVERABLE',
                         '更新校验未通过，已阻止更新。' if isinstance(exc, SecurityError) else '暂时无法检查更新，当前版本可继续使用。',
                         last_checked=time.time())
+            from scripts.runtime_path_budget import MESSAGE
+            if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
         return dict(self.snapshot)
 
     def download(self):
@@ -346,10 +354,18 @@ class MatureUpdateService:
         from .update_protocol import SecurityError, DownloadCancelled, verify_release
         if self.release is None or not self.plan or not self.plan['update']:
             return dict(self.snapshot)
+        if self._closed: return dict(self.snapshot)
+        self._busy=True
         self.cancel_event.clear()
         before = self.cache.transport.bytes_received
         try:
             with InstallUpdateLock(self.cache.root):
+                if self._closed: raise DownloadCancelled('update service closed')
+                # Lazy worker-only acceptance: never scan the package while
+                # constructing the ordinary startup/settings UI.
+                if self.cache.accepted_app is None and self._accepted_source_factory is not None:
+                    self.cache.accepted_app=self._accepted_source_factory()
+                    self._owned_source=True
                 release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
                 self._remember_release(release)
@@ -372,10 +388,24 @@ class MatureUpdateService:
             state = 'FAILED_SECURITY' if isinstance(exc, SecurityError) else 'DOWNLOAD_PAUSED_OR_INTERRUPTED'
             self._state(state, '更新校验未通过，已阻止应用。' if isinstance(exc, SecurityError) else '下载已暂停，当前版本不受影响，可稍后继续。',
                         actual_downloaded_bytes=self.cache.transport.bytes_received-before)
+            from scripts.runtime_path_budget import MESSAGE
+            if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
+        finally:
+            self._busy=False
+            if self._closed: self._close_source()
         return dict(self.snapshot)
 
     def cancel_download(self):
         self.cancel_event.set()
+
+    def _close_source(self):
+        if self._owned_source and self.cache.accepted_app is not None:
+            self.cache.accepted_app.close()
+            self._owned_source=False
+
+    def close(self):
+        self._closed=True; self.cancel_download()
+        if not self._busy: self._close_source()
 
     def apply_and_restart(self):
         from .update_protocol import SecurityError
@@ -427,7 +457,9 @@ def configured_mature_service(*, version_manifest=None, install_root=None):
     if not keys or not config.get('metadata_url'):
         return None
     root = Path(install_root) if install_root else Path(sys.executable).absolute().parent.parent
+    from .update_tree_security import AcceptedApp
     return MatureUpdateService(install_root=root,
         cache_root=config.get('staging_root', r'E:\MentorFlowUpdates'),
         metadata_url=config['metadata_url'], public_keys={k:base64.b64decode(v,validate=True) for k,v in keys.items()},
-        current=manifest['version'], channel=manifest.get('channel','stable'))
+        current=manifest['version'], channel=manifest.get('channel','stable'),
+        accepted_source_factory=lambda:AcceptedApp.protected(root))

@@ -8,6 +8,53 @@ import sys
 import time
 
 
+def fast_materialization():
+    """Frozen real-payload performance only; no network/apply/install action."""
+    if not getattr(sys,'frozen',False) or ctypes.windll.shell32.IsUserAnAdmin():
+        raise RuntimeError('standard-user frozen UAT required')
+    config=json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
+    root=Path(config['root'])
+    if root != Path('D:/MFU7') or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe':
+        raise RuntimeError('dispatch-07 short isolated root required')
+    from desktop.update_protocol import verify_release,make_plan,MANIFEST_PATH,digest,canonical
+    from desktop.update_download import ObjectCache,UpdateTelemetry
+    from desktop.update_tree_security import AcceptedApp
+    from scripts.runtime_path_budget import budget
+    app=root/'base/App'; raw=(app/MANIFEST_PATH).read_bytes()
+    rows={r['path']:r for r in json.loads(raw)['files']}
+    rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=digest(raw))
+    release=verify_release((root/'release-happy.json').read_bytes(),
+        {config['key_id']:base64.b64decode(config['public_key'])},current='1.1.0')
+    admission=budget(app.parent,release.rows)
+    evidence=root/'fast-result.json'
+    if evidence.exists(): raise RuntimeError('existing fast evidence preserved')
+    accepted_start=time.monotonic()
+    with AcceptedApp(app,rows,digest(raw)) as accepted:
+        acceptance_ms=(time.monotonic()-accepted_start)*1000
+        cache=ObjectCache(root/'c',None,runtime_root=app.parent/'.u',accepted_app=accepted)
+        plan=make_plan(release,rows,'1.1.0'); trace=UpdateTelemetry()
+        start=time.monotonic()
+        target=cache.reconstruct(release,plan,app,telemetry=trace)
+        trace.mark('T14_READY_TO_APPLY')
+        elapsed=(time.monotonic()-start)*1000
+        samples=[]
+        for path in ('MentorFlow.exe','_internal/PySide6/QtCore.pyd','_internal/python313.dll'):
+            original=app/path; dest=target/path
+            if original.exists() and dest.exists():
+                samples.append(dict(path=path,samefile=original.samefile(dest),
+                    source_inode=original.stat().st_ino,target_inode=dest.stat().st_ino,
+                    source_links=original.stat().st_nlink,target_links=dest.stat().st_nlink,
+                    source_sha256=digest(original.read_bytes()),target_sha256=digest(dest.read_bytes())))
+        changed=[p for p in release.rows if rows.get(p)!=release.rows[p]]
+        independent=all(not (app/p).samefile(target/p) for p in changed if (app/p).exists())
+        evidence.write_bytes(canonical(dict(packaged=True,pid=os.getpid(),state='READY_TO_APPLY',
+            target=str(target),acceptance_ms=acceptance_ms,rebuild_ms=elapsed,
+            target_manifest_verify='PASS_REAL_PACKAGED',telemetry=trace.report(),
+            samples=samples,changed_independent=independent,path_budget=admission,
+            current_manifest_sha256=digest(raw),source_sha=config['source_sha'],tree_sha=config['tree_sha'])))
+    return 0
+
+
 def startup(python_entry):
     """UAT-only event-loop health, not an install receipt/integrity authority.
 
@@ -19,7 +66,7 @@ def startup(python_entry):
         raise RuntimeError('real frozen executable required')
     config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
     root = Path(config['root']).absolute()
-    if not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+    if root != Path('D:/MFU7') and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
         raise RuntimeError('isolated UAT root required')
     if ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('standard user required')
@@ -27,7 +74,7 @@ def startup(python_entry):
     if not executable.is_relative_to(root) or executable.name != 'MentorFlow.exe':
         raise RuntimeError('unexpected UAT executable location')
     request = json.loads((root/'startup-request.json').read_bytes())
-    if set(request) != {'case'} or request['case'] not in {'base', 'direct', 'reconstructed'}:
+    if set(request) != {'case'} or request['case'] not in {'base', 'direct', 'reconstructed', 'near-limit'}:
         raise RuntimeError('invalid startup request')
     output = root/('startup-'+request['case']+'.json')
     if output.exists():
@@ -79,7 +126,7 @@ def main():
         raise RuntimeError('real frozen executable required')
     config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
     root = Path(config['root']).absolute()
-    if not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+    if root != Path('D:/MFU7') and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
         raise RuntimeError('isolated UAT root required')
     if ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('UAT check/download must not be elevated')

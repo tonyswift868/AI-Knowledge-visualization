@@ -24,6 +24,7 @@ from .update_protocol import (DownloadCancelled, RecoverableError, SecurityError
 
 
 _trace = ContextVar('update_io_trace', default=None)
+_directory_guard = ContextVar('update_directory_guard', default=None)
 
 
 class UpdateTelemetry:
@@ -33,6 +34,8 @@ class UpdateTelemetry:
         self.totals = dict(file_count=0, bytes_read=0, bytes_written=0,
                           bytes_reused=0, bytes_hashed=0, hash_file_count=0,
                           hash_wall_ms=0., hash_cpu_ms=0., path_wall_ms=0.)
+        self.totals.update(path_validation_calls=0, path_unique_dirs=0,
+            path_system_calls=0,hardlinked_file_count=0, hardlinked_bytes=0, copy_file_count=0, copy_bytes=0)
         self.last_time = time.monotonic()
         self.last_totals = dict(self.totals)
 
@@ -66,6 +69,9 @@ def hash_file(path):
 def safe_entry(path: Path, root: Path, *, directory=False, missing=True):
     start = time.monotonic()
     try:
+        guard = _directory_guard.get()
+        if guard is not None:
+            return guard.check(path, root, directory=directory, missing=missing)
         return v._validate_staging_entry(path, root, directory=directory,
                                         allow_missing=missing, label='desktop update cache')
     except v.PackageError as exc:
@@ -74,6 +80,7 @@ def safe_entry(path: Path, root: Path, *, directory=False, missing=True):
         trace = _trace.get()
         if trace:
             trace.totals['path_wall_ms'] += (time.monotonic()-start)*1000
+            trace.totals['path_validation_calls'] += 1
 
 
 class InstallUpdateLock:
@@ -210,7 +217,7 @@ class HTTPTransport:
 
 
 class ObjectCache:
-    def __init__(self, root: Path, transport: UpdateTransport):
+    def __init__(self, root: Path, transport: UpdateTransport, *, runtime_root=None, accepted_app=None):
         cache_root = Path(root).absolute()
         if os.name == 'nt':
             # Hash-addressed cache + a deep package path can exceed MAX_PATH.
@@ -220,6 +227,9 @@ class ObjectCache:
                 raise SecurityError('cache requires a local volume')
             cache_root = Path('\\\\?\\' + str(cache_root))
         self.root, self.transport = cache_root, transport
+        self.runtime_root = Path(runtime_root).absolute() if runtime_root else self.root
+        self.accepted_app = accepted_app
+        self._hardlinks = {}
         safe_entry(self.root, self.root, directory=True)
         self.root.mkdir(parents=True, exist_ok=True)
         self.objects = self.root / 'objects'
@@ -296,6 +306,12 @@ class ObjectCache:
                     progress=lambda n: None, telemetry=None):
         trace = telemetry or UpdateTelemetry()
         token = _trace.set(trace)
+        guard = None
+        guard_token = None
+        if os.name == 'nt':
+            from .update_tree_security import DirectoryPins
+            guard = DirectoryPins()
+            guard_token = _directory_guard.set(guard)
         try:
             return self._reconstruct(release, plan, old_app, cancel=cancel,
                                      progress=progress, trace=trace)
@@ -303,10 +319,19 @@ class ObjectCache:
             trace.mark('RECONSTRUCTION_FAILED', exc)
             raise
         finally:
+            if guard is not None:
+                trace.totals['path_system_calls'] = guard.calls
+                trace.totals['path_unique_dirs'] = len(guard.handles)
+                guard.close()
+                _directory_guard.reset(guard_token)
             self.telemetry = trace.report()
             _trace.reset(token)
 
     def _reconstruct(self, release, plan, old_app, *, cancel, progress, trace):
+        from scripts.runtime_path_budget import runtime_root as check_runtime
+        stage_root = self.runtime_root
+        target = stage_root / hashlib.sha256(release.envelope).hexdigest()[:12] / 'App'
+        check_runtime(target, release.rows)
         self.disk_preflight(release, plan)
         # Fetch the small changed set first. Cancellation/corrupt-asset feedback
         # must not wait for materialization of the entire unchanged payload.
@@ -319,16 +344,28 @@ class ObjectCache:
             downloaded[path] = self.download(release.assets[path], cancel=cancel, progress=progress)
         trace.mark('T04_ASSET_DOWNLOAD_COMPLETE')
         trace.mark('T05_RECONSTRUCTION_BEGIN')
-        target = self.root / ('version-' + hashlib.sha256(release.envelope).hexdigest())
-        safe_entry(target, self.root, directory=True)
+        safe_entry(target.parent,stage_root,directory=True)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        identity=target.parent/'release.json'
+        if safe_entry(identity,stage_root):
+            if identity.read_bytes()!=release.envelope:
+                raise SecurityError('short staging identity collision')
+        else:
+            with identity.open('xb') as stream:
+                stream.write(release.envelope); stream.flush(); os.fsync(stream.fileno())
+        safe_entry(target, stage_root, directory=True)
         target.mkdir(exist_ok=True)
         allowed = set(release.rows)
         for existing in target.rglob('*'):
-            safe_entry(existing, self.root, directory=existing.is_dir(), missing=False)
+            safe_entry(existing, stage_root, directory=existing.is_dir(), missing=False)
             if existing.is_file() and existing.relative_to(target).as_posix() not in allowed:
                 raise SecurityError('unknown staging file preserved')
         trace.mark('T06_STAGE_DIRECTORY_READY')
         trace.mark('T07_UNCHANGED_MATERIALIZATION_BEGIN')
+        hardlink_volume = False
+        if self.accepted_app is not None and not self.accepted_app.closed:
+            from .update_tree_security import normal, filesystem
+            hardlink_volume = normal(old_app).drive.casefold()==normal(stage_root).drive.casefold() and filesystem(stage_root)=='NTFS'
         ordered = [p for p in release.rows if p not in fetch] + [p for p in release.rows if p in fetch]
         changed_started = False
         for path in ordered:
@@ -340,7 +377,7 @@ class ObjectCache:
             if cancel():
                 raise DownloadCancelled('reconstruction cancelled')
             destination = target / path
-            safe_entry(destination, self.root)
+            safe_entry(destination, stage_root)
             if destination.exists():
                 if destination.stat().st_size != row['size'] or hash_file(destination) != row['sha256']:
                     raise SecurityError('reconstruction cache was modified')
@@ -357,14 +394,38 @@ class ObjectCache:
                         source = candidate
             if source is None:
                 source = self.download(release.assets[path], cancel=cancel, progress=progress)
-            # Never hardlink live App: its bytes and ACL must remain independent.
-            safe_entry(destination.parent, self.root, directory=True)
+            safe_entry(destination.parent, stage_root, directory=True)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            copying = self.root / 'copying'
-            safe_entry(copying, self.root, directory=True)
+            accepted = self.accepted_app
+            if path not in fetch and accepted is not None and accepted.matches(path,row,old_app):
+                from .update_tree_security import normal
+                if hardlink_volume:
+                    try:
+                        os.link(source,destination)
+                    except OSError as exc:
+                        # Only documented capability/permission failures can
+                        # use an independent copy. Aliases/collisions/unknown
+                        # errors never silently become a weaker path.
+                        if getattr(exc,'winerror',None) not in (1,5,17,50,1314):
+                            raise SecurityError('unexpected hardlink failure') from exc
+                    else:
+                        self._hardlinks[normal(destination)] = normal(source)
+                        guard = _directory_guard.get()
+                        guard.allowed_links.update((normal(source),normal(destination)))
+                        accepted.pins.allowed_links.add(normal(source))
+                        if not os.path.samefile(source,destination):
+                            raise SecurityError('hardlink identity mismatch')
+                        trace.totals['hardlinked_file_count'] += 1
+                        trace.totals['hardlinked_bytes'] += row['size']
+                        trace.totals['bytes_reused'] += row['size']
+                        trace.totals['file_count'] += 1
+                        continue
+            # Changed/new/control files always have independent file objects.
+            copying = stage_root / 'copying'
+            safe_entry(copying, stage_root, directory=True)
             copying.mkdir(exist_ok=True)
             temporary = copying / (row['sha256'] + '.part')
-            safe_entry(temporary, self.root)
+            safe_entry(temporary, stage_root)
             # Only this single owned incomplete-copy name is restarted. Completed
             # cache objects and live App are never removed after interruption.
             def copy_verified(source):
@@ -394,13 +455,15 @@ class ObjectCache:
                 # A locally modified unchanged source is not trusted. Preserve
                 # it and recover through the signed asset, as before.
                 source = self.download(release.assets[path], cancel=cancel, progress=progress)
-                safe_entry(temporary, self.root)
+                safe_entry(temporary, stage_root)
                 if not copy_verified(source):
                     raise SecurityError('reconstructed file hash mismatch')
-            safe_entry(destination, self.root)
+            safe_entry(destination, stage_root)
             if destination.exists(): raise SecurityError('staging destination changed during copy')
             temporary.rename(destination)
             trace.totals['file_count'] += 1
+            trace.totals['copy_file_count'] += 1
+            trace.totals['copy_bytes'] += row['size']
             if path not in fetch:
                 trace.totals['bytes_reused'] += row['size']
         if not changed_started:
@@ -414,9 +477,27 @@ class ObjectCache:
         return target
 
     def verify_tree(self, target, release):
+        guard = _directory_guard.get()
+        if guard is None and os.name=='nt':
+            from .update_tree_security import DirectoryPins
+            with DirectoryPins() as pins:
+                token = _directory_guard.set(pins)
+                try: return self.verify_tree(target,release)
+                finally: _directory_guard.reset(token)
+        if guard is not None:
+            from .update_tree_security import normal
+            for destination, source in self._hardlinks.items():
+                if not destination.is_relative_to(normal(target)): continue
+                if not self.accepted_app or self.accepted_app.closed:
+                    raise SecurityError('immutable source lease ended; reacquire before reuse')
+                guard.allowed_links.update((source,destination))
+                safe_entry(source,self.accepted_app.root,missing=False)
+                safe_entry(destination,self.runtime_root,missing=False)
+                if destination.stat().st_nlink != 2 or not os.path.samefile(source,destination):
+                    raise SecurityError('hardlink source binding changed')
         files = set()
         for path in Path(target).rglob('*'):
-            safe_entry(path, self.root, directory=path.is_dir(), missing=False)
+            safe_entry(path, self.runtime_root, directory=path.is_dir(), missing=False)
             if path.is_file():
                 files.add(path.relative_to(target).as_posix())
         if files != set(release.rows):

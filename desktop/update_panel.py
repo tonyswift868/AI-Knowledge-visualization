@@ -113,6 +113,7 @@ class UpdatePanel(QFrame):
 
     def shutdown(self):
         self._closed=True; self.timer.stop(); self._cancel()
+        if self.service and hasattr(self.service,'close'): self.service.close()
 
     def closeEvent(self,event):
         self.shutdown(); super().closeEvent(event)

@@ -311,6 +311,8 @@ class Transaction:
     def preflight(self,check_space=True):
         self.root=validate_target(self.root)
         doc,rows=load_manifest(self.source,self.ids['manifest_sha256'])
+        from scripts.runtime_path_budget import budget
+        budget(self.root,rows)
         if self.root==self.source or self.root.is_relative_to(self.source) or self.source.is_relative_to(self.root):
             raise ValueError('源程序与安装目录不能重叠。')
         if self.root.exists() and any(self.root.iterdir()) and not recognised(self.root):

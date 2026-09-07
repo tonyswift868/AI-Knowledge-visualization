@@ -10,6 +10,9 @@ import time
 PYTHON_ENTRY_MONOTONIC = time.monotonic()
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--qualify-fast-materialization']:
+        from desktop.packaged_update_uat import fast_materialization
+        raise SystemExit(fast_materialization())
     if sys.argv[1:] in (['--qualify-packaged-updater'], ['--qualify-packaged-startup']):
         from desktop.packaged_update_uat import main, startup
         if sys.argv[1:] == ['--qualify-packaged-startup']:

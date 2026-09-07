@@ -102,7 +102,8 @@ $longestPayloadRelativePath = (
         ForEach-Object { $_.FullName.Substring($payload.Length).TrimStart('\').Length } |
         Measure-Object -Maximum
 ).Maximum
-$maxInstallDirChars = 258 - 1 - [int]$longestPayloadRelativePath
+# Reserve the runtime .u\<12-hex>\App staging suffix and a legacy DLL margin.
+$maxInstallDirChars = 240 - 21 - [int]$longestPayloadRelativePath
 if ($maxInstallDirChars -lt 20) {
     throw "Payload paths leave no safe NSIS install-root budget: $maxInstallDirChars characters."
 }
