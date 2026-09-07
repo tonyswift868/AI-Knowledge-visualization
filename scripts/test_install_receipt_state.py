@@ -26,7 +26,7 @@ class StateTests(unittest.TestCase):
 
     def receipt(self):
         return dict(schema_version=1,record_type=state.INSTALLED_KIND,state='HEALTHY',immutable_tree=True,
-            binding=dict(schema=trust.SCHEMA,source_sha='1'*40,tree_sha='2'*40,manifest_sha256='3'*64,version='1.1.0',root=str(self.root),root_identity=[self.root.stat().st_dev,self.root.stat().st_ino]),
+            binding=dict(schema=trust.LEGACY_SCHEMA,source_sha='1'*40,tree_sha='2'*40,manifest_sha256='3'*64,version='1.1.0',root=str(self.root),root_identity=[self.root.stat().st_dev,self.root.stat().st_ino]),
             inventory={},file_set_identity='4'*64,critical_hashes={},full_verified=True,full_verified_at=time.time())
 
     def test_missing_receipt_preseed(self):
@@ -125,6 +125,8 @@ class StateTests(unittest.TestCase):
                     time.sleep(.1)
             receipt=state.read_document(self.root/trust.RECEIPT)
             self.assertEqual(receipt['record_type'],state.INSTALLED_KIND)
+            self.assertEqual(receipt['schema_version'],2)
+            self.assertEqual(receipt['state'],'PENDING_HEALTH')
             self.assertEqual(trust.verify_installation(self.root,**ids)['verification'],'PASS')
             self.assertTrue((self.root/'.uat-control/acl-bootstrap-result.json').exists())
             self.assertNotIn('.uat-control',receipt['inventory'])

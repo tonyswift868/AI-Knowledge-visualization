@@ -52,7 +52,7 @@ def protected_witness(root, channel, release=None):
     return epoch,signed_hash
 
 
-def apply_update(root, source, envelope, *, channel='stable'):
+def apply_update(root, source, envelope, *, channel='stable', on_committed=None):
     """Invoked by a qualified elevated launcher only, never by normal UI startup."""
     if not tx.c.windll.shell32.IsUserAnAdmin():
         raise PermissionError('protected update requires explicit elevation')
@@ -61,6 +61,8 @@ def apply_update(root, source, envelope, *, channel='stable'):
     root, source = tx.validate_target(root), Path(source).absolute()
     with tx.installer_lock():
         tx.Transaction(source, root, {}, root/'Uninstall.exe').recover()
+        from scripts.update_health import reconcile_finalization
+        reconcile_finalization(root)
         for path in (root/tx.STAGING/tx.PREVIOUS).glob('*/journal.json'):
             tx.assert_no_alias(path); trust.assert_protected(path)
             if path.stat().st_size > 1024**2:
@@ -84,29 +86,37 @@ def apply_update(root, source, envelope, *, channel='stable'):
         from desktop.update_protocol import digest
         if manifest_pin != digest(release.manifest_bytes):
             raise SecurityError('staged manifest differs from signed release')
-        from scripts.prepare_transactional_installer import verify
-        verify(source, manifest_pin)
+        # Transaction copies every signed file into NEW protected staging and
+        # hashes it before the protected full verification/commit. User-writable
+        # staging never becomes executable authority. This accepts immutable
+        # incremental hardlinks without chmod/ACL mutation of current/previous.
         version_doc = json.loads((source/'mentorflow-version.json').read_bytes())
         if version_doc.get('product') != 'MentorFlow' or version_doc.get('version') != release.version:
             raise SecurityError('target version file differs from signed release')
         protected_witness(root,channel,release)
         ids = dict(manifest_sha256=manifest_pin, source_sha=release.signed['source_sha'],
                    tree_sha=release.signed['tree_sha'])
-        transaction = tx.Transaction(source, root, ids, root/'Uninstall.exe', retain_previous=True)
+        transaction = tx.Transaction(source, root, ids, root/'Uninstall.exe', retain_previous=True,signed_source=True)
         result = transaction.run()
         result.update(previous_retained=str(transaction.attempt), pending_update_health=True,
                       restart='NOT_IMPLEMENTED_NO_ELEVATED_APP_LAUNCH')
+        if on_committed is not None:
+            # Keep this helper and its installer lock ALIVE through first
+            # launch/finalize/recovery. The coordinator must react to the
+            # committed event, never wait for helper exit to launch the target.
+            result.update(on_committed(transaction,result))
         return result
 
 
-def rollback_previous(root, attempt_name, *, registry=None, shortcut=None):
+def rollback_previous(root, attempt_name, *, registry=None, shortcut=None, _lock_held=False):
     """Explicit elevated recovery, not automatic first-launch acceptance."""
     if not tx.c.windll.shell32.IsUserAnAdmin():
         raise PermissionError('rollback requires elevation')
     if len(attempt_name) != 32 or any(c not in '0123456789abcdef' for c in attempt_name):
         raise SecurityError('invalid previous transaction identifier')
     root = tx.validate_target(root)
-    with tx.installer_lock():
+    from contextlib import nullcontext
+    with nullcontext() if _lock_held else tx.installer_lock():
         recovery = tx.Transaction(root/'App', root, {}, root/'Uninstall.exe', registry=registry, shortcut=shortcut)
         had_recovery = (root/tx.STAGING/attempt_name).exists()
         recovery.recover()

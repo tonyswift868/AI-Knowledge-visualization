@@ -17,7 +17,8 @@ import threading
 import time
 from functools import lru_cache
 
-SCHEMA = "mentorflow.admin-installation.v1"
+LEGACY_SCHEMA = "mentorflow.admin-installation.v1"
+SCHEMA = "mentorflow.admin-installation.v2"
 RECEIPT = "installation-receipt.json"
 SDDL = "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)"
 TRUSTEES = {"SY", "BA"}
@@ -405,17 +406,25 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         assert_protected(root / RECEIPT)
         if (root / RECEIPT).stat().st_size > 16 * 1024 * 1024:
             raise RepairRequired('oversized receipt')
-        control_hashes = json.loads((root / RECEIPT).read_bytes()).get('control_hashes', {})
+        from scripts.install_receipt_state import read_document, validate_installed_record
+        control_hashes = validate_installed_record(read_document(root / RECEIPT), root).get('control_hashes', {})
     control_hashes = control_hashes or {}
-    if (not isinstance(control_hashes, dict) or set(control_hashes) - {'Uninstall.exe'} or
+    if (not isinstance(control_hashes, dict) or
+            any(key not in {'Uninstall.exe','UpdateBridge.exe'} and not key.startswith('UpdateRuntime/') for key in control_hashes) or
             any(not re.fullmatch('[0-9a-f]{64}', value) for value in control_hashes.values())):
         raise RepairRequired('invalid installer control identity')
+    if control_hashes:
+        from desktop.update_protocol import safe_path
+        for key in control_hashes:safe_path(key)
     if activate and not c.WinDLL("shell32").IsUserAnAdmin():
         raise RepairRequired("receipt activation requires elevation")
     if activate and progress:
         progress("正在检查文件集合与安装权限…")
     with v._watch_gate_directory(root) as unchanged:
         rows, files, root_id = _snapshot(root, control_hashes, cancelled)
+        from desktop.windows_identity import inventory_wire
+        native_rows=rows
+        rows=inventory_wire(native_rows)
         if any(key not in rows for key in control_hashes):
             raise RepairRequired('installer control file missing')
         package = root / "App"
@@ -434,18 +443,26 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         required = {"MentorFlow.exe", v.VERSION_FILE_NAME, "SELF-CHECK/MentorFlowSelfCheck.exe", "SELF-CHECK/verify_windows_package.py", "SELF-CHECK/mentorflow-check.bat", "SELF-CHECK/mentorflow-update.bat"}
         if not required.issubset(expected):
             raise RepairRequired("required startup files missing")
-        binding = {"schema": SCHEMA, "source_sha": source_sha, "tree_sha": tree_sha, "manifest_sha256": manifest_sha256, "version": manifest["version"], "root": str(root), "root_identity": root_id}
+        from desktop.windows_identity import from_legacy
+        binding = {"schema": SCHEMA, "source_sha": source_sha, "tree_sha": tree_sha, "manifest_sha256": manifest_sha256, "version": manifest["version"], "root": str(root), "root_identity": from_legacy(root_id)}
         if not activate:
             try:
                 if receipt_path.stat().st_size > 16 * 1024 * 1024:
                     raise ValueError("oversize")
                 from scripts.install_receipt_state import read_document, validate_installed_record
                 prior = validate_installed_record(read_document(receipt_path), root)
+                if prior['binding']['schema'] == LEGACY_SCHEMA:
+                    # Read-only exact adapter. Existing receipt bytes are not
+                    # refreshed, migrated or routed through JSON Number.
+                    binding = {**binding, 'schema': LEGACY_SCHEMA, 'root_identity': root_id}
+                    rows=native_rows
                 expected_fields = {"binding", "inventory", "file_set_identity", "critical_hashes", "full_verified_at", "full_verified"}
                 if 'record_type' in prior:
                     expected_fields.update({'schema_version', 'record_type', 'state', 'immutable_tree'})
                 if 'control_hashes' in prior:
                     expected_fields.add('control_hashes')
+                if 'health' in prior:
+                    expected_fields.add('health')
                 if set(prior) != expected_fields or prior.get('control_hashes', {}) != control_hashes or prior["binding"] != binding or prior["inventory"] != rows or prior["file_set_identity"] != _identity(rows) or prior["full_verified"] is not True or type(prior["full_verified_at"]) not in (int, float) or not 0 < prior["full_verified_at"] <= time.time():
                     raise ValueError("invalid receipt")
             except (OSError, ValueError, KeyError, TypeError) as error:
@@ -476,7 +493,8 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
     if activate:
         if progress:
             progress("完整验证已通过，正在保存受保护安装记录…")
-        receipt = {"schema_version": 1, "record_type": "mentorflow-installed-receipt", "state": "HEALTHY", "immutable_tree": True,
+        # File acceptance does not attest that a real window has started.
+        receipt = {"schema_version": 2, "record_type": "mentorflow-installed-receipt", "state": "PENDING_HEALTH", "immutable_tree": True,
                    "binding": binding, "inventory": rows, "file_set_identity": _identity(rows), "critical_hashes": critical, "full_verified_at": time.time(), "full_verified": True}
         if control_hashes:
             receipt['control_hashes'] = control_hashes

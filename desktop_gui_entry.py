@@ -20,7 +20,15 @@ def main(argv=None):
     parser.add_argument('--manifest-sha256', required=True)
     parser.add_argument('--source-sha', required=True)
     parser.add_argument('--tree-sha', required=True)
+    parser.add_argument('--update-attempt')
+    parser.add_argument('--update-nonce')
     args = parser.parse_args(argv)
+    if bool(args.update_attempt) != bool(args.update_nonce):
+        raise ValueError('incomplete update health correlation')
+    if args.update_attempt:
+        import re
+        if re.fullmatch('[0-9a-f]{32}',args.update_attempt) is None or re.fullmatch('[0-9a-f]{64}',args.update_nonce) is None:
+            raise ValueError('invalid update health correlation')
     from scripts.gui_bootstrap_trust import verify_gui_bootstrap, protected_gui_location
     identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
     package = protected_gui_location(args.install_root, executable=sys.executable)
@@ -57,6 +65,10 @@ def main(argv=None):
     app = QApplication([sys.executable])
     app.setApplicationName('MentorFlow')
     app.setOrganizationName('MentorFlow')
+    from scripts.install_product import configured
+    if configured().uat:
+        app.setApplicationName(configured().app_id)
+        app.setOrganizationName(configured().app_id)
     gate = LoginGateWindow()
     gate.set_state(LoginGateState.STARTING)
     record('LOGIN_GATE_CREATED')
@@ -81,7 +93,10 @@ def main(argv=None):
 
     controller = StartupController(gate, verify=verify,
         connection_factory=lambda: ConnectionPreparation(env, certificate), attach=attach, record=record)
+    from desktop.gui_update_runtime import attach_updates
+    attach_updates(app,gate,controller,args.install_root,attempt_id=args.update_attempt,nonce=args.update_nonce)
     app.aboutToQuit.connect(controller.close)
+    gate.closed.connect(lambda:app.quit() if not product else None)
     gate.show()
     record('LOGIN_GATE_SHOW_REQUESTED')
     code = app.exec()

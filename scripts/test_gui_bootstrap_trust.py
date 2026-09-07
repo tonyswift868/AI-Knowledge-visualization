@@ -32,7 +32,7 @@ class GuiBootstrapTrustTests(unittest.TestCase):
         manifest.write_text(json.dumps({'schema':v.MANIFEST_SCHEMA,'product':'MentorFlow',
             'files':[{'path':key,'sha256':digest} for key,digest in hashes.items()]}), encoding='utf-8')
         self.identities = dict(manifest_sha256=v.sha256_file(manifest), source_sha='a'*40, tree_sha='b'*40)
-        receipt = {'binding':dict(self.identities, schema=trust.SCHEMA, root=str(self.root),
+        receipt = {'binding':dict(self.identities, schema=trust.LEGACY_SCHEMA, root=str(self.root),
             root_identity=[self.root.stat().st_dev,self.root.stat().st_ino]),
             'critical_hashes':hashes,'full_verified':True}
         (self.root/trust.RECEIPT).write_text(json.dumps(receipt), encoding='utf-8')

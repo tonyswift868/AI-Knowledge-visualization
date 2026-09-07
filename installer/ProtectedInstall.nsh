@@ -2,6 +2,9 @@
 !ifndef TRANSACTION_HELPER
  !error "TRANSACTION_HELPER required"
 !endif
+!ifndef TRANSACTION_RUNTIME
+ !error "Verified onedir TRANSACTION_RUNTIME required; elevated onefile execution prohibited"
+!endif
 !ifndef MANIFEST_SHA
  !error "MANIFEST_SHA required"
 !endif
@@ -14,9 +17,15 @@
 !if ${INSTALL_SPACE_KIB} > 2147483647
  !error "INSTALL_SPACE_KIB exceeds NSIS section-size range"
 !endif
-Name "MentorFlow"
+!ifndef PROTECTED_APP_ID
+ !define PROTECTED_APP_ID "MentorFlow"
+!endif
+!ifndef PROTECTED_DEFAULT_DIR
+ !define PROTECTED_DEFAULT_DIR "E:\MentorFlow"
+!endif
+Name "${PROTECTED_APP_ID}"
 OutFile "${OUTPUT_FILE}"
-InstallDir "E:\MentorFlow"
+InstallDir "${PROTECTED_DEFAULT_DIR}"
 RequestExecutionLevel admin
 SetCompressor lzma
 ShowInstDetails hide
@@ -47,17 +56,20 @@ Var PreviousRoot
 
 Function .onInit
  InitPluginsDir
+ ; NSIS 3.12 creates a restricted plugin directory. Embed the complete onedir
+ ; runtime; never run a High onefile bootloader using inherited user TEMP.
+ SetOutPath "$PLUGINSDIR\InstallRuntime"
+ File /r "${TRANSACTION_RUNTIME}\*.*"
  SetOutPath "$PLUGINSDIR"
- File /oname=MentorFlowInstallGate.exe "${TRANSACTION_HELPER}"
  WriteUninstaller "$PLUGINSDIR\Uninstall.exe"
  ${GetParent} "$EXEDIR" $PayloadSource
  StrCpy $StatusFile "$PLUGINSDIR\install-status.ini"
  StrCpy $CancelFile "$PLUGINSDIR\cancel.request"
  StrCpy $Installing 0
  SetRegView 64
- ReadRegStr $PreviousRoot HKLM "Software\MentorFlow" "InstallLocation"
+ ReadRegStr $PreviousRoot HKLM "Software\${PROTECTED_APP_ID}" "InstallLocation"
  ${If} $PreviousRoot != ""
-   ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" recognise --install-root "$PreviousRoot"' $0
+   ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" recognise --install-root "$PreviousRoot"' $0
    ${If} $0 == 0
      StrCpy $INSTDIR $PreviousRoot
    ${EndIf}
@@ -73,7 +85,7 @@ Function ValidateDirectory
  ${EndIf}
  !endif
  StrCpy $HelperArgs '--install-root "$INSTDIR" --payload-source "$PayloadSource" --manifest-sha256 ${MANIFEST_SHA} --source-sha ${SOURCE_SHA} --tree-sha ${SOURCE_TREE} --uninstaller-source "$PLUGINSDIR\Uninstall.exe" --status-file "$StatusFile"'
- ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" preflight $HelperArgs' $0
+ ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" preflight $HelperArgs' $0
  ${If} $0 != 0
    ReadINIStr $1 "$StatusFile" "install" "error"
    MessageBox MB_ICONSTOP "安装前检查未通过：$1"
@@ -121,7 +133,7 @@ Section "MentorFlow"
  GetFunctionAddress $0 UpdateStatus
  nsDialogs::CreateTimer $0 250
  DetailPrint "正在安装 MentorFlow…"
- ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" transaction $HelperArgs --cancel-file "$CancelFile" --shortcut-path "$DESKTOP\MentorFlow.lnk"' $4
+ ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" transaction $HelperArgs --cancel-file "$CancelFile" --shortcut-path "$DESKTOP\${PROTECTED_APP_ID}.lnk"' $4
  GetFunctionAddress $0 UpdateStatus
  nsDialogs::KillTimer $0
  StrCpy $Installing 0
@@ -133,13 +145,16 @@ Section "MentorFlow"
    Abort
  ${EndIf}
  DetailPrint "完整验证通过，安装完成。"
+ IfFileExists "$INSTDIR\UpdateBridge.exe" 0 +2
+   Exec '"$INSTDIR\UpdateBridge.exe" --initial-health'
 SectionEnd
 
 Section "Uninstall"
  InitPluginsDir
+ SetOutPath "$PLUGINSDIR\InstallRuntime"
+ File /r "${TRANSACTION_RUNTIME}\*.*"
  SetOutPath "$PLUGINSDIR"
- File /oname=MentorFlowInstallGate.exe "${TRANSACTION_HELPER}"
- ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" uninstall-transaction --install-root "$INSTDIR" --shortcut-path "$DESKTOP\MentorFlow.lnk"' $0
+ ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" uninstall-transaction --install-root "$INSTDIR" --shortcut-path "$DESKTOP\${PROTECTED_APP_ID}.lnk"' $0
  ${If} $0 != 0
    MessageBox MB_ICONSTOP "卸载未完成，程序或恢复事务已保留。"
    SetErrorLevel $0

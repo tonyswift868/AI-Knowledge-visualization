@@ -64,7 +64,8 @@ def restart_fixture(root):
 @pytest.fixture
 def case():
     base=Path(tempfile.mkdtemp(prefix='up-',dir=os.environ['TEMP']))
-    assert base.as_posix().startswith('D:/CodexScratch/MentorFlow')
+    assert (base.parent == Path('D:/MF14W') or
+            base.parent.is_relative_to(Path('D:/CodexScratch/MentorFlow')))
     with ExitStack() as stack:
         adapters(stack)
         feed,old_ids=prepare(base)

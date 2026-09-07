@@ -6,7 +6,7 @@ import pytest
 from desktop.tests.test_mature_update import feed
 from desktop.update_protocol import MANIFEST_PATH, digest, SecurityError, canonical
 from desktop.update_tree_security import AcceptedApp
-from scripts.windows_install_trust import SCHEMA
+from scripts.windows_install_trust import LEGACY_SCHEMA as SCHEMA
 
 
 def inputs(feed):

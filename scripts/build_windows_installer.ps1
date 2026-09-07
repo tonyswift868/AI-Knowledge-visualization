@@ -16,7 +16,10 @@ param(
     [switch]$ProtectedInstall,
     [string]$BuildScratch = '',
     [string]$SourceSha = '',
-    [string]$SourceTree = ''
+    [string]$SourceTree = '',
+    [string]$UatAppId = '',
+    [string]$UatWorkRoot = '',
+    [string]$UatDefaultInstallDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,10 +61,20 @@ if ($ProtectedInstall) {
     if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected installation paths are selected at runtime; build-time metadata overrides are prohibited' }
     $scratchFull = if ($BuildScratch) { [IO.Path]::GetFullPath($BuildScratch).TrimEnd('\') } else { '' }
     $runtimeQualificationScratch = 'D:\CodexScratch\MentorFlowMF-E107-INSTALLER-RUNTIME-QUALIFY-20260907-03'
-    if (-not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
+    $isolatedScratch = $false
+    if ($UatAppId) {
+        if ($UatAppId -notmatch '^MentorFlow\.UAT\.[A-Za-z0-9-]{1,32}$' -or -not $UatWorkRoot -or -not $UatDefaultInstallDir) { throw 'Exact isolated UAT build namespace required' }
+        $uatWorkFull = [IO.Path]::GetFullPath($UatWorkRoot).TrimEnd('\')
+        $uatInstallFull = [IO.Path]::GetFullPath($UatDefaultInstallDir).TrimEnd('\')
+        if ($uatWorkFull -notmatch '^D:\\[^\\]+$' -or $uatInstallFull -notmatch '^D:\\[^\\]+$' -or
+            $uatWorkFull.Equals($uatInstallFull,[StringComparison]::OrdinalIgnoreCase) -or $uatInstallFull -eq 'D:\MFUAC') { throw 'Separate short isolated D: roots required' }
+        $isolatedScratch = $scratchFull.StartsWith($uatWorkFull+'\',[StringComparison]::OrdinalIgnoreCase)
+    } elseif ($UatWorkRoot -or $UatDefaultInstallDir) { throw 'UAT paths require compiled UAT namespace' }
+    if (-not $isolatedScratch -and -not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
         -not $scratchFull.Equals($runtimeQualificationScratch, [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
     $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw | ConvertFrom-Json
     if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
+    if ($UatAppId -and $identity.app_id -ne $UatAppId) { throw 'Payload compiled namespace mismatch' }
     $manifestPin = (Get-FileHash -LiteralPath (Join-Path $payload 'SELF-CHECK\package-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
@@ -78,7 +91,8 @@ if (-not (Test-Path -LiteralPath $NsisPath -PathType Leaf)) {
     throw "Verified NSIS 3.12 compiler is missing: $NsisPath"
 }
 
-$versionManifest = Get-Content -LiteralPath $VersionFile -Raw | ConvertFrom-Json
+$versionInput = if ($ProtectedInstall) { Join-Path $payload 'mentorflow-version.json' } else { $VersionFile }
+$versionManifest = Get-Content -LiteralPath $versionInput -Raw | ConvertFrom-Json
 if ($versionManifest.schema -ne 'mentorflow.version.v1' -or $versionManifest.product -ne 'MentorFlow') {
     throw "Unsupported MentorFlow version manifest: $VersionFile"
 }
@@ -174,10 +188,18 @@ if ($ProtectedInstall) {
     $helperPath = Join-Path $payload 'MentorFlowInstallGate.exe'
     $compileDefines.Add('/DPROTECTED_INSTALL=1')
     $compileDefines.Add("/DTRANSACTION_HELPER=$helperPath")
+    $transactionRuntime = Join-Path $payload 'InstallRuntime'
+    if (-not (Test-Path -LiteralPath (Join-Path $transactionRuntime 'MentorFlowInstallGate.exe') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $transactionRuntime '_internal\python313.dll') -PathType Leaf)) { throw 'Verified onedir installer runtime required; onefile elevation prohibited' }
+    $compileDefines.Add("/DTRANSACTION_RUNTIME=$transactionRuntime")
     $compileDefines.Add("/DMANIFEST_SHA=$manifestPin")
     $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
     $compileDefines.Add("/DSOURCE_TREE=$SourceTree")
     $compileDefines.Add("/DINSTALL_SPACE_KIB=$spaceKib")
+    if ($UatAppId) {
+        $compileDefines.Add("/DPROTECTED_APP_ID=$UatAppId")
+        $compileDefines.Add("/DPROTECTED_DEFAULT_DIR=$uatInstallFull")
+    }
 }
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }
 if ($UninstallKey) { $compileDefines.Add("/DUNINSTALL_KEY=$UninstallKey") }

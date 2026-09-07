@@ -12,7 +12,8 @@ from pathlib import PurePosixPath
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-APP_ID = 'MentorFlow'
+from scripts.install_product import configured
+APP_ID = configured().app_id
 UPDATER_VERSION = '1.0.0'
 MANIFEST_PATH = 'SELF-CHECK/package-manifest.json'
 MAX_METADATA = 16 * 1024**2
@@ -169,7 +170,7 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         for base in signed['base_versions']:
             version_key(base)
         manifest = signed['file_manifest']
-        if manifest['schema'] != 'mentorflow.windows-package-manifest.v1' or manifest['product'] != APP_ID or manifest['version'] != signed['version'] or manifest.get('executable') != 'MentorFlow.exe':
+        if manifest['schema'] != 'mentorflow.windows-package-manifest.v1' or manifest['product'] != 'MentorFlow' or manifest['version'] != signed['version'] or manifest.get('executable') != 'MentorFlow.exe':
             raise SecurityError('manifest identity mismatch')
         if not 1 <= len(manifest['files']) <= 50000:
             raise SecurityError('invalid file count')

@@ -31,11 +31,13 @@ def estimate_install_space_kib(rows):
             raise ValueError('invalid payload size')
         allocated += ((size + cluster - 1) // cluster) * cluster
         directories.update(Path(key).parents)
-    helper_size = rows['MentorFlowInstallGate.exe']['size']
+    helper_size = sum(row['size'] for key,row in rows.items() if key.startswith('InstallRuntime/')) or rows['MentorFlowInstallGate.exe']['size']
     if helper_size <= 0:
         raise ValueError('empty installer helper')
     # The NSIS uninstaller embeds this helper plus a small executable stub.
     estimated = allocated + (len(directories) + 4) * cluster
+    estimated += sum(((row['size']+cluster-1)//cluster)*cluster for key,row in rows.items()
+                     if key=='UpdateBridge.exe' or key.startswith('UpdateRuntime/'))
     estimated += 64 * 1024**2 + helper_size + 1024**2
     kib = (estimated + 1023) // 1024
     if not 0 < kib <= 0x7fffffff:

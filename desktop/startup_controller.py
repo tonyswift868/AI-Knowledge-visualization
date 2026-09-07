@@ -77,6 +77,9 @@ class StartupController(QObject):
             self.connection.close()
             message = ("程序安全检查未通过，请修复安装后重试。" if not self.results["SECURITY_GATE"]
                        else "无法连接到 MentorFlow 服务，请检查网络后重试。")
+            from scripts.install_product import configured
+            if self.results['SECURITY_GATE'] and configured().uat:
+                message='此隔离 UAT 未连接账号服务。请使用“关于与检查更新”验证安装和更新；未恢复或加载账号资料。'
             self.gate.set_state(LoginGateState.ERROR, detail=message, retry_bootstrap=True)
             return
         self.gate.set_state(LoginGateState.LOADING_AUTH)

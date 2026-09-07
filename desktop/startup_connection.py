@@ -22,9 +22,18 @@ def prepare_environment(root: Path):
     trust.assert_protected(certificate)
     if v.sha256_file(certificate) != CA_SHA:
         raise trust.RepairRequired("TLS certificate pin mismatch")
-    local = Path(os.environ["LOCALAPPDATA"]) / "MentorFlow"
-    profile = read_profile(local / "Runtime/launch.json")
-    vault = local / "Accounts" / profile
+    from scripts.install_product import configured
+    product=configured()
+    if product.uat:
+        from mentorflow_delivery_authority import DATA_ROOT, WORK_ROOT
+        vault=Path(DATA_ROOT).absolute()
+        if not vault.is_relative_to(Path(WORK_ROOT).absolute()):
+            raise ValueError('UAT data must remain within compiled isolated work root')
+        product.validate_root(vault)
+    else:
+        local = Path(os.environ["LOCALAPPDATA"]) / "MentorFlow"
+        profile = read_profile(local / "Runtime/launch.json")
+        vault = local / "Accounts" / profile
     temp = vault / "runtime-temp"
     v._validate_existing_parent_chain(temp, label="external runtime")
     temp.mkdir(parents=True, exist_ok=True)
@@ -84,6 +93,12 @@ class ConnectionPreparation:
                         self._owned.remove(process)
 
     def connect(self):
+        from scripts.install_product import configured
+        if configured().uat:
+            # Delivery testing needs the real pre-login application and update
+            # UI, not a server/account session. Do not probe OIDC, read SSH keys
+            # or create a preview tunnel in this compiled isolated product.
+            return False
         if self.endpoint_ready():
             return True
         if self.cancelled.is_set():

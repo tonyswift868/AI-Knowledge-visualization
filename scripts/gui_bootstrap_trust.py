@@ -79,10 +79,13 @@ def verify_gui_bootstrap(root, *, manifest_sha256, source_sha, tree_sha, executa
         raise trust.RepairRequired('invalid GUI installation receipt')
     receipt = json.loads(receipt_path.read_bytes())
     binding = receipt['binding']
-    if (receipt.get('full_verified') is not True or binding.get('schema') != trust.SCHEMA or
+    from desktop.windows_identity import from_legacy
+    native_id=[root.stat().st_dev, root.stat().st_ino]
+    expected_identity=from_legacy(native_id) if binding.get('schema') == trust.SCHEMA else native_id
+    if (receipt.get('full_verified') is not True or binding.get('schema') not in (trust.SCHEMA,trust.LEGACY_SCHEMA) or
             binding.get('root') != str(root) or binding.get('manifest_sha256') != manifest_sha256 or
             binding.get('source_sha') != source_sha or binding.get('tree_sha') != tree_sha or
-            binding.get('root_identity') != [root.stat().st_dev, root.stat().st_ino]):
+            binding.get('root_identity') != expected_identity):
         raise trust.RepairRequired('GUI installation binding mismatch')
     closure_file = protected_file(CLOSURE)
     if v.sha256_file(closure_file) != expected.get(CLOSURE):

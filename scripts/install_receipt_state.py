@@ -55,23 +55,57 @@ def validate_installed_record(doc, root):
     if not isinstance(doc,dict): raise ReceiptStateError('invalid installed record')
     typed={'schema_version','record_type','state','immutable_tree'}
     present=typed & set(doc)
-    if present and (present!=typed or type(doc['schema_version']) is not int or doc['schema_version']!=1 or
-            doc['record_type']!=INSTALLED_KIND or doc['state']!='HEALTHY' or doc['immutable_tree'] is not True):
+    if present and (present!=typed or type(doc['schema_version']) is not int or doc['schema_version'] not in (1,2) or
+            doc['record_type']!=INSTALLED_KIND or doc['state'] not in ('HEALTHY','PENDING_HEALTH') or doc['immutable_tree'] is not True):
         raise ReceiptStateError('wrong installed record type/state')
     required={'binding','inventory','file_set_identity','critical_hashes','full_verified_at','full_verified'}
-    allowed=required|typed|{'control_hashes'}
+    allowed=required|typed|{'control_hashes','health'}
     if not required<=set(doc) or set(doc)-allowed: raise ReceiptStateError('invalid installed schema')
     binding=doc['binding']
-    if not isinstance(binding,dict) or set(binding)!={'schema','source_sha','tree_sha','manifest_sha256','version','root','root_identity'} or binding['schema']!='mentorflow.admin-installation.v1':
+    schema = 'mentorflow.admin-installation.v2' if doc.get('schema_version') == 2 else 'mentorflow.admin-installation.v1'
+    if not isinstance(binding,dict) or set(binding)!={'schema','source_sha','tree_sha','manifest_sha256','version','root','root_identity'} or binding['schema']!=schema:
         raise ReceiptStateError('wrong installed binding schema')
     if binding['root']!=str(Path(root)) or not re.fullmatch(r'\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?',binding.get('version','')):
         raise ReceiptStateError('wrong installed root/version')
     for key,size in [('source_sha',40),('tree_sha',40),('manifest_sha256',64)]:
         if not isinstance(binding[key],str) or not re.fullmatch('[0-9a-f]{%d}'%size,binding[key]):raise ReceiptStateError('wrong installed hash')
     rid=binding['root_identity']
-    if not isinstance(rid,list) or len(rid)!=2 or any(type(n)is not int or n<0 for n in rid):raise ReceiptStateError('wrong root identity')
+    from desktop.windows_identity import decode, from_legacy, IdentityError
+    try:
+        decode(rid) if doc.get('schema_version') == 2 else from_legacy(rid)
+    except IdentityError as error: raise ReceiptStateError('wrong root identity') from error
+    if doc.get('schema_version') == 1 and doc.get('state') != 'HEALTHY':
+        raise ReceiptStateError('wrong legacy installed state')
+    if 'health' in doc:
+        health=doc['health']
+        fields={'schema','attempt_id','nonce','version','manifest_sha256','install_identity','process','window','attested_at'}
+        if (doc.get('schema_version')!=2 or doc.get('state')!='HEALTHY' or not isinstance(health,dict) or
+                set(health)!=fields or health['schema']!='mentorflow.process-window-health.v1' or
+                health['version']!=binding['version'] or health['manifest_sha256']!=binding['manifest_sha256'] or
+                health['install_identity']!=rid):
+            raise ReceiptStateError('invalid installed health binding')
+        process=health['process'];window=health['window']
+        if (not isinstance(process,dict) or set(process)!={'pid','executable','created_filetime_hex','integrity_rid','elevated','alive'} or
+                type(process['pid']) is not int or not 0<process['pid']<2**32 or process['executable']!=str(Path(root)/'App/MentorFlow.exe') or
+                not isinstance(process['created_filetime_hex'],str) or re.fullmatch('[0-9a-f]{16}',process['created_filetime_hex']) is None or
+                process['integrity_rid']!=8192 or process['elevated'] is not False or process['alive'] is not True or
+                not isinstance(window,dict) or set(window)!={'hwnd_hex','window_pid','visible','responsive'} or
+                window['window_pid']!=process['pid'] or window['visible'] is not True or window['responsive'] is not True or
+                not isinstance(window['hwnd_hex'],str) or re.fullmatch('[0-9a-f]{16}',window['hwnd_hex']) is None or
+                not isinstance(health['attempt_id'],str) or re.fullmatch('[0-9a-f]{32}',health['attempt_id']) is None or
+                not isinstance(health['nonce'],str) or re.fullmatch('[0-9a-f]{64}',health['nonce']) is None or
+                type(health['attested_at']) is not int or not 0<health['attested_at']<=time.time()):
+            raise ReceiptStateError('invalid installed process/window attestation')
+    elif doc.get('schema_version')==2 and doc.get('state')=='HEALTHY':
+        raise ReceiptStateError('healthy receipt requires attested process/window evidence')
     if doc['full_verified'] is not True or type(doc['full_verified_at']) not in (int,float) or not 0<doc['full_verified_at']<=time.time():raise ReceiptStateError('invalid installed verification time')
     if not isinstance(doc['inventory'],dict) or not isinstance(doc['critical_hashes'],dict) or not re.fullmatch('[0-9a-f]{64}',doc['file_set_identity']):raise ReceiptStateError('invalid installed inventory')
+    if doc.get('schema_version')==2:
+        for row in doc['inventory'].values():
+            if (not isinstance(row,list) or len(row)!=7 or row[0] not in ('file','dir') or type(row[1]) is not int or not 0<=row[1]<2**53 or
+                    any(not isinstance(row[index],str) or re.fullmatch('[0-9a-f]{%d}'%width,row[index]) is None
+                        for index,width in ((2,16),(3,16),(4,16),(5,32),(6,16)))):
+                raise ReceiptStateError('invalid lossless v2 inventory')
     # Legacy v1 is accepted only by its exact schema, not receipt-looking keys.
     return doc
 
@@ -113,7 +147,8 @@ def inspect_root(root):
         doc=validate_installed_record(read_document(authority),root)
         ids={k:doc['binding'][k] for k in ('source_sha','tree_sha','manifest_sha256')}
         trust.verify_installation(root,**ids)
-        return dict(state='BASE_INSTALLED_HEALTHY',can_seed_base=False,canonical_receipt=str(authority),receipt=doc)
+        return dict(state='PENDING_HEALTH' if doc.get('state') == 'PENDING_HEALTH' else 'BASE_INSTALLED_HEALTHY',
+            can_seed_base=False,canonical_receipt=str(authority),receipt=doc)
     bootstrap=root/'.uat-control/acl-bootstrap-result.json'
     v._validate_package_entry(bootstrap,root,directory=False)
     trust.assert_protected(bootstrap);trust.assert_protected(bootstrap.parent)

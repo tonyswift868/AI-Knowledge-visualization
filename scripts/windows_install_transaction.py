@@ -40,7 +40,8 @@ def installer_lock():
     kernel.CreateMutexW.argtypes=[c.c_void_p,w.BOOL,w.LPCWSTR]
     kernel.CreateMutexW.restype=w.HANDLE
     kernel.CloseHandle.argtypes=[w.HANDLE]
-    handle=kernel.CreateMutexW(None,False,'Global\\MentorFlow-Installer-Transaction-v1')
+    from scripts.install_product import configured
+    handle=kernel.CreateMutexW(None,False,'Global\\'+configured().app_id+'-Installer-Transaction-v1')
     if not handle: raise OSError(c.get_last_error(),'cannot acquire installer lock')
     already=c.get_last_error()==183
     try:
@@ -64,8 +65,11 @@ def relative(key):
 def load_manifest(source, pin):
     path=Path(source)/v.MANIFEST_RELATIVE
     v._validate_package_entry(path, Path(source), directory=False)
-    if sha(path)!=pin: raise ValueError('manifest identity mismatch')
-    doc=json.loads(path.read_bytes())
+    if path.stat().st_size > 16*1024**2: raise ValueError('oversized manifest')
+    raw=path.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=pin: raise ValueError('manifest identity mismatch')
+    from desktop.update_protocol import strict_json
+    doc=strict_json(raw)
     if doc.get('schema')!=v.MANIFEST_SCHEMA or doc.get('product')!='MentorFlow':
         raise ValueError('manifest schema mismatch')
     rows={}
@@ -80,7 +84,7 @@ def load_manifest(source, pin):
         rows[key]=row
     if not 1 <= len(rows) <= 50000: raise ValueError('manifest file count')
     rows[v.MANIFEST_RELATIVE.as_posix()]={'path':v.MANIFEST_RELATIVE.as_posix(),
-        'size':path.stat().st_size,'sha256':pin}
+        'size':len(raw),'sha256':pin}
     return doc,rows
 
 def assert_no_alias(path):
@@ -90,6 +94,8 @@ def assert_no_alias(path):
     return st
 
 def validate_target(root):
+    from scripts.install_product import configured
+    configured().validate_root(root)
     root=Path(os.path.abspath(root))
     if root==Path(root.anchor) or not root.anchor or str(root).startswith('\\\\'):
         raise ValueError('请选择本地程序文件夹，而不是磁盘根目录。')
@@ -211,10 +217,13 @@ def remove_attempt(path):
     path.rmdir()
 
 class Registry:
+    def __init__(self,product=None):
+        from scripts.install_product import configured
+        self.product=product or configured()
     def snapshot(self):
         import winreg as r
         result={}
-        for key,names in REG_FIELDS.items():
+        for key,names in self.product.registry_fields.items():
             values={}; result[key]=values
             for name in names:
                 try:
@@ -224,6 +233,9 @@ class Registry:
         return result
     def restore(self,snapshot):
         import winreg as r
+        if (set(snapshot)!=set(self.product.registry_fields) or
+                any(set(values)!=set(self.product.registry_fields[key]) for key,values in snapshot.items())):
+            raise ValueError('registry snapshot outside compiled product namespace')
         for key,values in snapshot.items():
             with r.CreateKeyEx(r.HKEY_LOCAL_MACHINE,key,0,r.KEY_WRITE|r.KEY_READ|r.KEY_WOW64_64KEY) as handle:
                 for name,item in values.items():
@@ -237,8 +249,8 @@ class Registry:
                 except FileNotFoundError: pass
     def publish(self,root,version):
         import winreg as r
-        values={REG_PRODUCT:{'InstallLocation':str(root),'Version':version},REG_UNINSTALL:{
-            'DisplayName':'MentorFlow','DisplayVersion':version,'Publisher':'MentorFlow',
+        values={self.product.product_key:{'InstallLocation':str(root),'Version':version},self.product.uninstall_key:{
+            'DisplayName':self.product.app_id,'DisplayVersion':version,'Publisher':'MentorFlow',
             'InstallLocation':str(root),'UninstallString':'"'+str(root/'Uninstall.exe')+'"',
             'NoModify':1,'NoRepair':1}}
         for key,rows in values.items():
@@ -279,12 +291,14 @@ class Shortcut:
 
 class Transaction:
     def __init__(self,source,root,identities,uninstaller,*,cancel=lambda:False,status=lambda stage,percent:None,
-                 registry=None,shortcut=None,fault=lambda point:None,retain_previous=False):
+                 registry=None,shortcut=None,fault=lambda point:None,retain_previous=False,signed_source=False):
         self.source=Path(source); self.root=Path(root); self.ids=identities; self.uninstaller=Path(uninstaller)
         self.cancel=cancel; self.status=status; self.registry=registry or Registry()
-        self.shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop/MentorFlow.lnk')
+        from scripts.install_product import configured
+        self.shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop'/configured().shortcut_name)
         self.fault=fault; self.attempt=None; self.journal=None
         self.retain_previous=retain_previous
+        self.signed_source=signed_source
     def checkpoint(self,point):
         self.fault(point)
         if self.cancel(): raise Cancelled('安装已取消，正在回滚。')
@@ -296,13 +310,15 @@ class Transaction:
             temp.replace(target)
         finally: temp.unlink(missing_ok=True)
     def copy_file(self,source,destination,expected=None):
-        self.checkpoint('copy_begin'); assert_no_alias(source)
+        self.checkpoint('copy_begin')
+        if not self.signed_source or expected is None: assert_no_alias(source)
         parent=destination.parent
         pending=[]
         while not parent.exists(): pending.append(parent); parent=parent.parent
         for directory in reversed(pending): trust._create_protected(directory,directory=True)
         digest=hashlib.sha256()
-        with source.open('rb') as incoming,trust._create_protected(destination,directory=False) as outgoing:
+        from scripts.update_source_reader import open_source
+        with open_source(source) as incoming,trust._create_protected(destination,directory=False) as outgoing:
             while block:=incoming.read(65536):
                 self.checkpoint('copy_chunk'); outgoing.write(block); digest.update(block)
             outgoing.flush(); os.fsync(outgoing.fileno())
@@ -334,6 +350,8 @@ class Transaction:
         cluster=sectors.value*sector_bytes.value
         parents={str(Path(key).parent) for key in rows}
         required=sum(((r['size']+cluster-1)//cluster)*cluster for r in rows.values())
+        required+=sum(((r['size']+cluster-1)//cluster)*cluster for key,r in rows.items()
+                      if key=='UpdateBridge.exe' or key.startswith('UpdateRuntime/'))
         # Old committed App is renamed, never copied. Its bytes already count
         # against reported free space; reserve only new allocations + controls.
         required+=(len(parents)+4)*cluster+64*1024**2+self.uninstaller.stat().st_size
@@ -358,7 +376,7 @@ class Transaction:
         self.status('正在检查和清理已确认的失败安装',0)
         # Updating an existing valid install must not clean any failed first
         # installation elsewhere (especially the default E:\MentorFlow root).
-        if not self.retain_previous:
+        if not self.retain_previous and self.root.absolute() == FAILED_ROOT:
             cleanup_failed(cancelled=lambda:self.checkpoint('cleanup'))
         self.root=validate_target(self.root)
         self.recover()
@@ -400,6 +418,20 @@ class Transaction:
                 self.status('正在准备程序文件',int(index*70/len(rows)))
                 self.copy_file(self.source.joinpath(*relative(key)),new/'App'/key,row['sha256'])
             controls={'Uninstall.exe':self.copy_file(self.uninstaller,new/'Uninstall.exe')}
+            bridge=self.root/'UpdateBridge.exe'
+            bridge_source=bridge if bridge.exists() else self.source/'UpdateBridge.exe'
+            if bridge_source.exists():
+                # Stable control runtime stays OUTSIDE swapped App for both
+                # Medium coordinator and High helper. Updates preserve it.
+                expected_bridge=(json.loads((self.root/trust.RECEIPT).read_bytes())['control_hashes']['UpdateBridge.exe']
+                                 if bridge.exists() else rows['UpdateBridge.exe']['sha256'])
+                controls['UpdateBridge.exe']=self.copy_file(bridge_source,new/'UpdateBridge.exe',expected_bridge)
+            prior_controls=(json.loads((self.root/trust.RECEIPT).read_bytes()).get('control_hashes',{}) if old else {})
+            runtime_source=self.root if (self.root/'UpdateRuntime').exists() else self.source
+            runtime_rows=({key:dict(sha256=pin) for key,pin in prior_controls.items() if key.startswith('UpdateRuntime/')}
+                          if runtime_source==self.root else {key:row for key,row in rows.items() if key.startswith('UpdateRuntime/')})
+            for key,row in runtime_rows.items():
+                controls[key]=self.copy_file(runtime_source/key,new/key,row['sha256'])
             self.checkpoint('before_verify')
             self.verify(new,controls,True)
             self.checkpoint('before_commit')
@@ -413,6 +445,12 @@ class Transaction:
             self.journal['new_app']=True; self.save()
             (new/'App').rename(self.root/'App')
             (new/'Uninstall.exe').rename(self.root/'Uninstall.exe')
+            if 'UpdateBridge.exe' in controls and not bridge.exists():
+                self.journal['created_bridge']=True;self.save()
+                (new/'UpdateBridge.exe').rename(bridge)
+            if runtime_rows and not (self.root/'UpdateRuntime').exists():
+                self.journal['created_runtime']=True;self.save()
+                (new/'UpdateRuntime').rename(self.root/'UpdateRuntime')
             self.checkpoint('after_swap')
             staged_receipt=self.attempt/'validated-receipt.json'
             self.verify(self.root,controls,True,staged_receipt)
@@ -472,7 +510,7 @@ class Transaction:
             if path.stat().st_size>1024*1024: raise ValueError('oversized transaction journal')
             journal=json.loads(path.read_bytes())
             if (journal.get('schema')!='mentorflow.install-transaction.v1' or journal.get('root')!=str(self.root)
-                    or set(journal.get('moved',[]))-{'App',trust.RECEIPT,'Uninstall.exe'}):
+                    or set(journal.get('moved',[]))-{'App',trust.RECEIPT,'Uninstall.exe','UpdateBridge.exe','UpdateRuntime'}):
                 raise ValueError('unknown transaction preserved')
             self.attempt=attempt; self.journal=journal
             # Receipt publication is the durable commit boundary, after all
@@ -503,6 +541,10 @@ class Transaction:
             if (self.root/'App').exists(): (self.root/'App').rename(failed)
             (self.root/trust.RECEIPT).unlink(missing_ok=True)
             (self.root/'Uninstall.exe').unlink(missing_ok=True)
+            if journal.get('created_bridge'):
+                (self.root/'UpdateBridge.exe').unlink(missing_ok=True)
+            if journal.get('created_runtime') and (self.root/'UpdateRuntime').exists():
+                (self.root/'UpdateRuntime').rename(self.attempt/'rejected-runtime')
             # Persist BEFORE restoring any old names. Recovery must never
             # mistake an already restored old App for the failed new App.
             journal['new_app']=False; self.save()
@@ -520,7 +562,8 @@ class Transaction:
 def uninstall(root,registry=None,shortcut=None):
     if not c.windll.shell32.IsUserAnAdmin(): raise PermissionError('uninstall elevation required')
     root=validate_target(root); registry=registry or Registry()
-    shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop/MentorFlow.lnk')
+    from scripts.install_product import configured
+    shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop'/configured().shortcut_name)
     ids=identities_from_receipt(root)
     trust.verify_installation(root,**ids)
     if (root/STAGING).exists() and any((root/STAGING).iterdir()):
@@ -536,7 +579,8 @@ def uninstall(root,registry=None,shortcut=None):
     txn.save()
     try:
         owns_shortcut=shortcut.points_to(root)
-        for name in ('App',trust.RECEIPT,'Uninstall.exe'):
+        for name in ('App',trust.RECEIPT,'Uninstall.exe','UpdateBridge.exe','UpdateRuntime'):
+            if not (root/name).exists():continue
             txn.journal['moved'].append(name); txn.save(); (root/name).rename(backup/name)
         txn.journal['metadata_started']=True; txn.save()
         empty=registry.snapshot()
@@ -574,6 +618,10 @@ def main(argv=None):
     parser.add_argument('--shortcut-path',type=Path)
     args=parser.parse_args(argv)
     try:
+        from scripts.install_product import configured
+        product=configured()
+        if product.uat and args.shortcut_path and args.shortcut_path.name != product.shortcut_name:
+            raise ValueError('shortcut outside compiled UAT namespace')
         if args.command=='recognise':
             return 0 if recognised(validate_target(args.install_root)) else 3
         if args.command=='uninstall-transaction':

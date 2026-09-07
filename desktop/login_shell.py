@@ -27,6 +27,7 @@ class LoginGateWindow(QWidget):
     background_failed = Signal(str, str)
     cancel_requested = Signal()
     closed = Signal()
+    about_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -145,6 +146,12 @@ class LoginGateWindow(QWidget):
         privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         privacy.setWordWrap(True)
         outer.addWidget(privacy)
+        self.about_button = QPushButton('关于与检查更新')
+        self.about_button.setObjectName('loginAboutUpdates')
+        self.about_button.setAccessibleName('关于与检查更新')
+        self.about_button.clicked.connect(self.about_requested.emit)
+        self.about_button.setEnabled(False)
+        outer.addWidget(self.about_button)
         self.cancel_button.hide()
 
     def _remember_toggled(self, enabled: bool) -> None:

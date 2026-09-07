@@ -97,6 +97,7 @@ class UpdatePanel(QFrame):
             return
         snap=dict(self.service.snapshot); state=snap['state']
         running=bool(self._thread and self._thread.is_alive())
+        running=running or state in ('APPLYING','RESTART_REQUIRED')
         self.check_button.setEnabled(not running)
         self.download_button.setEnabled(not running and self.service.plan is not None and bool(self.service.plan.get('update')) and state != 'FAILED_SECURITY')
         self.cancel_button.setEnabled(state=='DOWNLOADING')

@@ -59,13 +59,10 @@ def hardlink_eligible(current, target):
 def receipt_file_identity(kernel,handle):
     # Python 3.13 installation receipts use the full 64-bit volume serial and
     # 128-bit FileId. BY_HANDLE_FILE_INFORMATION truncates the volume to DWORD.
-    class FileIdInfo(c.Structure):
-        _fields_=[('volume',c.c_ulonglong),('file_id',c.c_ubyte*16)]
-    kernel.GetFileInformationByHandleEx.argtypes=[w.HANDLE,c.c_int,c.c_void_p,w.DWORD]
-    result=FileIdInfo()
-    if not kernel.GetFileInformationByHandleEx(handle,18,c.byref(result),c.sizeof(result)):
-        raise SecurityError('full source root file identity unavailable')
-    return [result.volume,int.from_bytes(bytes(result.file_id),'little')]
+    from .windows_identity import from_handle, decode
+    volume, file_id = decode(from_handle(kernel,handle))
+    # In-process legacy inventory adapter only, never a transport producer.
+    return [volume, int.from_bytes(file_id,'little')]
 
 
 class DirectoryPins:
@@ -185,22 +182,27 @@ class AcceptedApp:
             phase('SOURCE_MANIFEST_PARSE_MS',start)
             start=time.perf_counter()
             if receipt is not None:
-                from scripts.windows_install_trust import SCHEMA
+                from scripts.windows_install_trust import SCHEMA, LEGACY_SCHEMA
+                from .windows_identity import from_legacy, decode
                 binding=receipt.get('binding',{})
-                if (receipt.get('full_verified') is not True or binding.get('schema')!=SCHEMA or
+                expected_identity=from_legacy(install_id) if binding.get('schema')==SCHEMA else install_id
+                if (receipt.get('full_verified') is not True or binding.get('schema') not in (SCHEMA,LEGACY_SCHEMA) or
                     binding.get('manifest_sha256')!=manifest_sha256 or binding.get('version')!=manifest['version'] or
                     binding.get('root')!=str(self.root.parent) or
-                    binding.get('root_identity')!=install_id):
+                    binding.get('root_identity')!=expected_identity):
                     raise SecurityError('accepted receipt binding/root identity mismatch')
                 app_inventory=receipt.get('inventory',{}).get('App',[])
-                if len(app_inventory)!=7 or app_inventory[0]!='dir' or app_inventory[4:6]!=root_id:
+                wire_root=from_legacy(root_id)
+                expected_app_identity=([wire_root['volume_hex'],wire_root['file_id_le_hex']]
+                    if binding.get('schema')==SCHEMA else root_id)
+                if len(app_inventory)!=7 or app_inventory[0]!='dir' or app_inventory[4:6]!=expected_app_identity:
                     raise SecurityError('accepted receipt App identity mismatch')
             elif protected:
                 raise SecurityError('protected source requires accepted receipt')
-            self.lease=dict(app_id='MentorFlow',installed_version=manifest['version'],
+            from .windows_identity import from_legacy
+            self.lease=dict(schema_version=2,app_id='MentorFlow',installed_version=manifest['version'],
                 installed_manifest_sha256=manifest_sha256,install_root_normalized=str(self.root.parent),
-                volume_identity=install_id[0],root_file_identity=install_id[1],
-                app_file_identity=root_id[1],
+                install_identity=from_legacy(install_id),app_identity=from_legacy(root_id),
                 receipt_schema=receipt['binding']['schema'] if receipt else 'explicit-pinned-uat-only',
                 immutable_tree=True,protected_contract=protected,uat_writable_root=not protected)
             phase('SOURCE_RECEIPT_BINDING_MS',start)

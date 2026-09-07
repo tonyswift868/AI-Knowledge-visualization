@@ -204,8 +204,15 @@ class MatureUpdateService:
             raise SecurityError('update cache overlaps program/user data')
         identity = digest(os.path.normcase(str(self.install_root)).encode('utf-8'))
         self.install_identity = identity
+        runtime_staging_root=Path(runtime_staging_root).absolute() if runtime_staging_root else cache_root/'.u'/identity[:12]
+        safe_entry(runtime_staging_root,runtime_staging_root,directory=True)
+        if (runtime_staging_root == self.install_root or runtime_staging_root.is_relative_to(self.install_root)
+                or self.install_root.is_relative_to(runtime_staging_root)
+                or runtime_staging_root == Path('E:/MentorFlowData')
+                or runtime_staging_root.is_relative_to(Path('E:/MentorFlowData'))):
+            raise SecurityError('update preparation must remain outside installed program/user data')
         self.cache = ObjectCache(cache_root / identity, transport or HTTPTransport(metadata_url),
-            accepted_app=accepted_app, runtime_root=runtime_staging_root or self.install_root/'.u')
+            accepted_app=accepted_app, runtime_root=runtime_staging_root)
         self.metadata_url, self.keys = metadata_url, dict(public_keys)
         if channel not in ('stable', 'beta'):
             raise SecurityError('unsupported update channel')
@@ -458,8 +465,11 @@ def configured_mature_service(*, version_manifest=None, install_root=None):
         return None
     root = Path(install_root) if install_root else Path(sys.executable).absolute().parent.parent
     from .update_tree_security import AcceptedApp
+    from .update_download import HTTPTransport
+    from scripts.install_product import configured
     return MatureUpdateService(install_root=root,
         cache_root=config.get('staging_root', r'E:\MentorFlowUpdates'),
         metadata_url=config['metadata_url'], public_keys={k:base64.b64decode(v,validate=True) for k,v in keys.items()},
         current=manifest['version'], channel=manifest.get('channel','stable'),
+        transport=HTTPTransport(config['metadata_url'],fixture_http=configured().uat),
         accepted_source_factory=lambda:AcceptedApp.protected(root))

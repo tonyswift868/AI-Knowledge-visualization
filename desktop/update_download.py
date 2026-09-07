@@ -365,7 +365,13 @@ class ObjectCache:
         hardlink_volume = False
         if self.accepted_app is not None and not self.accepted_app.closed:
             from .update_tree_security import hardlink_eligible
-            hardlink_volume = hardlink_eligible(old_app,stage_root)
+            # A protected canonical receipt includes an exact no-alias file
+            # inventory. Adding a user-staging hardlink changes the live file's
+            # link/ChangeTime metadata and invalidates that authority. Keep the
+            # hardlink optimization for explicit non-protected fixture leases;
+            # protected installations reuse bytes through independent copies.
+            hardlink_volume = (not self.accepted_app.lease.get('protected_contract') and
+                               hardlink_eligible(old_app,stage_root))
         ordered = [p for p in release.rows if p not in fetch] + [p for p in release.rows if p in fetch]
         changed_started = False
         for path in ordered:
