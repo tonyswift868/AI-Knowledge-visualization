@@ -344,6 +344,8 @@ def _check_entry_acls(paths):
 def _snapshot(root: Path, control_hashes=None, cancelled=lambda: None):
     from scripts import verify_windows_package as v
     assert_protected(root)
+    from scripts.install_receipt_state import validate_evidence_namespace
+    validate_evidence_namespace(root)
     rows, files, acl_paths = {}, {}, []
     for path, st, isdir, key in _walk(root):
         cancelled()
@@ -351,6 +353,10 @@ def _snapshot(root: Path, control_hashes=None, cancelled=lambda: None):
         # Reserved, admin-owned transaction workspace. It never participates
         # in application loading. Still validate every entry and ACL below.
         if key == '.install-staging' or key.startswith('.install-staging/'):
+            continue
+        # Typed non-executable evidence namespace, independently validated.
+        # It is never a source of installed authority or App inventory.
+        if key == '.uat-control' or key.startswith('.uat-control/'):
             continue
         if key == RECEIPT:
             if isdir:
@@ -433,8 +439,11 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
             try:
                 if receipt_path.stat().st_size > 16 * 1024 * 1024:
                     raise ValueError("oversize")
-                prior = json.loads(receipt_path.read_bytes())
+                from scripts.install_receipt_state import read_document, validate_installed_record
+                prior = validate_installed_record(read_document(receipt_path), root)
                 expected_fields = {"binding", "inventory", "file_set_identity", "critical_hashes", "full_verified_at", "full_verified"}
+                if 'record_type' in prior:
+                    expected_fields.update({'schema_version', 'record_type', 'state', 'immutable_tree'})
                 if 'control_hashes' in prior:
                     expected_fields.add('control_hashes')
                 if set(prior) != expected_fields or prior.get('control_hashes', {}) != control_hashes or prior["binding"] != binding or prior["inventory"] != rows or prior["file_set_identity"] != _identity(rows) or prior["full_verified"] is not True or type(prior["full_verified_at"]) not in (int, float) or not 0 < prior["full_verified_at"] <= time.time():
@@ -467,7 +476,8 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
     if activate:
         if progress:
             progress("完整验证已通过，正在保存受保护安装记录…")
-        receipt = {"binding": binding, "inventory": rows, "file_set_identity": _identity(rows), "critical_hashes": critical, "full_verified_at": time.time(), "full_verified": True}
+        receipt = {"schema_version": 1, "record_type": "mentorflow-installed-receipt", "state": "HEALTHY", "immutable_tree": True,
+                   "binding": binding, "inventory": rows, "file_set_identity": _identity(rows), "critical_hashes": critical, "full_verified_at": time.time(), "full_verified": True}
         if control_hashes:
             receipt['control_hashes'] = control_hashes
         # Receipt bytes are admin-owned from their first creation, not secured
