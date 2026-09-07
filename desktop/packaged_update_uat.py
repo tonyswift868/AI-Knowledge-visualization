@@ -14,8 +14,8 @@ def fast_materialization():
         raise RuntimeError('standard-user frozen UAT required')
     config=json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
     root=Path(config['root'])
-    if root != Path('D:/MFU7') or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe':
-        raise RuntimeError('dispatch-07 short isolated root required')
+    if root not in (Path('D:/MFU7'),Path('D:/MFU8')) or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe':
+        raise RuntimeError('dispatch short isolated root required')
     from desktop.update_protocol import verify_release,make_plan,MANIFEST_PATH,digest,canonical
     from desktop.update_download import ObjectCache,UpdateTelemetry
     from desktop.update_tree_security import AcceptedApp
@@ -29,7 +29,10 @@ def fast_materialization():
     evidence=root/'fast-result.json'
     if evidence.exists(): raise RuntimeError('existing fast evidence preserved')
     accepted_start=time.monotonic()
-    with AcceptedApp(app,rows,digest(raw)) as accepted:
+    receipt_start=time.monotonic()
+    receipt=json.loads((app.parent/'installation-receipt.json').read_bytes()) if root==Path('D:/MFU8') else None
+    receipt_ms=(time.monotonic()-receipt_start)*1000
+    with AcceptedApp(app,rows,digest(raw),receipt=receipt) as accepted:
         acceptance_ms=(time.monotonic()-accepted_start)*1000
         cache=ObjectCache(root/'c',None,runtime_root=app.parent/'.u',accepted_app=accepted)
         plan=make_plan(release,rows,'1.1.0'); trace=UpdateTelemetry()
@@ -49,6 +52,8 @@ def fast_materialization():
         independent=all(not (app/p).samefile(target/p) for p in changed if (app/p).exists())
         evidence.write_bytes(canonical(dict(packaged=True,pid=os.getpid(),state='READY_TO_APPLY',
             target=str(target),acceptance_ms=acceptance_ms,rebuild_ms=elapsed,
+            source_profile=dict(accepted.profile,SOURCE_RECEIPT_LOAD_MS=receipt_ms),
+            source_identity_lease=accepted.lease,
             target_manifest_verify='PASS_REAL_PACKAGED',telemetry=trace.report(),
             samples=samples,changed_independent=independent,path_budget=admission,
             current_manifest_sha256=digest(raw),source_sha=config['source_sha'],tree_sha=config['tree_sha'])))
@@ -66,7 +71,7 @@ def startup(python_entry):
         raise RuntimeError('real frozen executable required')
     config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
     root = Path(config['root']).absolute()
-    if root != Path('D:/MFU7') and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+    if root not in (Path('D:/MFU7'),Path('D:/MFU8')) and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
         raise RuntimeError('isolated UAT root required')
     if ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('standard user required')
@@ -230,3 +235,55 @@ def main():
             if not running: finish('DOWNLOAD_FINISHED')
     panel.check_button.click(); timer.timeout.connect(tick); timer.start()
     return app.exec()
+
+
+def cross_volume():
+    """Real frozen engine, D current/cache -> E temp/final; no apply authority."""
+    if not getattr(sys,'frozen',False) or ctypes.windll.shell32.IsUserAnAdmin():
+        raise RuntimeError('standard-user frozen UAT required')
+    config=json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
+    root=Path(config['root']); output=root/'cross-volume-result.json'
+    if root!=Path('D:/MFU8') or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe' or output.exists():
+        raise RuntimeError('dispatch-08 isolated executable/evidence required')
+    from desktop.update_protocol import verify_release,make_plan,MANIFEST_PATH,digest,canonical
+    from desktop.update_download import ObjectCache,UpdateTelemetry
+    from desktop.update_tree_security import AcceptedApp,hardlink_eligible,normal
+    app=root/'subset/install/App'; raw=(app/MANIFEST_PATH).read_bytes()
+    rows={r['path']:r for r in json.loads(raw)['files']}
+    rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=digest(raw))
+    release=verify_release((root/'subset/release.json').read_bytes(),
+        {config['key_id']:base64.b64decode(config['public_key'])},current='1.1.0')
+    stage=Path('E:/Codex/Temp/MFU8-cross-volume')
+    if stage.exists(): raise RuntimeError('existing cross-volume fixture preserved')
+    stage.mkdir(parents=True)
+    before={p:digest((app/p).read_bytes()) for p in rows}
+    renames=[]; original_rename=Path.rename; original_link=os.link
+    def checked_rename(source,destination):
+        source=normal(source); destination=normal(destination)
+        if source.suffix=='.part':
+            assert source.is_relative_to(stage) and destination.is_relative_to(stage)
+            assert source.stat().st_dev==destination.parent.stat().st_dev==stage.stat().st_dev
+            renames.append(dict(temp=str(source),target=str(destination),volume=source.stat().st_dev))
+        return original_rename(source,destination)
+    def forbidden_link(*args,**kwargs): raise AssertionError('cross-volume hardlink attempted')
+    try:
+        Path.rename=checked_rename; os.link=forbidden_link
+        with AcceptedApp(app,rows,digest(raw)) as accepted:
+            cache=ObjectCache(root/'subset/cache',None,runtime_root=stage,accepted_app=accepted)
+            trace=UpdateTelemetry()
+            target=cache.reconstruct(release,make_plan(release,rows,'1.1.0'),app,telemetry=trace)
+            full=json.loads((root/'release-happy.json').read_bytes())['signed']['file_manifest']['files']
+            assert not hardlink_eligible(root/'base/App',stage)
+            assert len(renames)==len(release.rows)
+            assert not cache._hardlinks
+            assert all(before[p]==digest((app/p).read_bytes()) for p in rows)
+            output.write_bytes(canonical(dict(packaged=True,qualification='PASS_REAL_PACKAGED_SUBSET',
+                source_sha=config['source_sha'],exe_sha256=digest(Path(sys.executable).read_bytes()),
+                target=str(target),source_volume=app.stat().st_dev,target_volume=stage.stat().st_dev,
+                full_manifest_files=len(full),full_manifest_strategy='COPY_FALLBACK',
+                hardlink_attempts=0,renames=renames,telemetry=trace.report(),previous_hash_preserved=True,
+                target_manifest_verify='PASS_REAL_PACKAGED_SUBSET',temp_on_target_volume=True,
+                final_rename_same_volume=True)))
+    finally:
+        Path.rename=original_rename; os.link=original_link
+    return 0

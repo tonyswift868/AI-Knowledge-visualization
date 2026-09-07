@@ -14,8 +14,9 @@ import json
 import os
 from pathlib import Path
 import stat
+import time
 
-from .update_protocol import SecurityError, safe_path, MANIFEST_PATH
+from .update_protocol import SecurityError, safe_path, MANIFEST_PATH, strict_json, version_key
 
 
 def normal(path):
@@ -48,6 +49,23 @@ def filesystem(path):
     if not kernel.GetVolumeInformationW(normal(path).anchor,None,0,None,None,None,name,len(name)):
         raise OSError(c.get_last_error(),'cannot inspect update volume')
     return name.value
+
+
+def hardlink_eligible(current, target):
+    """One operation-wide decision, independent of payload size/manifest rows."""
+    return normal(current).drive.casefold()==normal(target).drive.casefold() and filesystem(target)=='NTFS'
+
+
+def receipt_file_identity(kernel,handle):
+    # Python 3.13 installation receipts use the full 64-bit volume serial and
+    # 128-bit FileId. BY_HANDLE_FILE_INFORMATION truncates the volume to DWORD.
+    class FileIdInfo(c.Structure):
+        _fields_=[('volume',c.c_ulonglong),('file_id',c.c_ubyte*16)]
+    kernel.GetFileInformationByHandleEx.argtypes=[w.HANDLE,c.c_int,c.c_void_p,w.DWORD]
+    result=FileIdInfo()
+    if not kernel.GetFileInformationByHandleEx(handle,18,c.byref(result),c.sizeof(result)):
+        raise SecurityError('full source root file identity unavailable')
+    return [result.volume,int.from_bytes(bytes(result.file_id),'little')]
 
 
 class DirectoryPins:
@@ -129,54 +147,149 @@ def immutable_path(path):
 
 
 class AcceptedApp:
-    """Live immutable content lease, never constructed from size/mtime alone.
+    """Accepted-current identity lease; final target SHA is content authority.
 
-    Source manifest is pinned by the caller's accepted identity, all contents
-    are verified, and unchanged payload handles deny writes until close. A
-    production caller additionally proves the existing protected receipt.
-    Non-Windows/unsupported filesystems use the existing independent-copy path.
+    Production uses protected(), anchored in the existing admin receipt. The
+    direct constructor is for an explicitly pinned UAT/current identity, not a
+    replacement production trust root. No payload pre-hash: every hardlinked
+    target is still fully read/hashed before READY. Retained read-data handles
+    deny in-place writes through verification until this lease closes.
     """
-    def __init__(self,app,rows,manifest_sha256):
+    def __init__(self,app,rows,manifest_sha256,*,receipt=None,protected=False):
+        started=time.perf_counter()
         self.root=normal(app); self.rows=dict(rows); self.pins=DirectoryPins()
         self.files={}; self.identities={}; self.closed=False
+        self.profile={}; self.lease={}
+        def phase(name,start): self.profile[name]=(time.perf_counter()-start)*1000
+        phase('SOURCE_ROOT_PATH_SAFETY_MS',started)
         try:
+            start=time.perf_counter()
             self.pins.check(self.root,self.root,directory=True,missing=False)
-            for path,row in self.rows.items():
-                safe_path(path)
-                if row['path'] != path: raise SecurityError('accepted row/path mismatch')
-                item=self.root/path
-                self.pins.check(item,self.root,missing=False)
-                if immutable_path(path):
-                    handle=self.pins.kernel.CreateFileW(str(item),0x80000000,1|4,None,3,0x00200000,None)
-                    if handle == c.c_void_p(-1).value: raise SecurityError('immutable source has a writer')
-                    self.files[path]=handle
-                    info=Info()
-                    if not self.pins.kernel.GetFileInformationByHandle(handle,c.byref(info)):
-                        raise SecurityError('cannot identify immutable source')
-                    self.identities[path]=(info.volume,info.index_high,info.index_low)
-                with item.open('rb') as stream:
-                    if item.stat().st_size != row['size'] or hashlib.file_digest(stream,'sha256').hexdigest()!=row['sha256']:
-                        raise SecurityError('accepted source content mismatch')
+            root_id=receipt_file_identity(self.pins.kernel,self.pins.handles[self.root])
+            install_id=receipt_file_identity(self.pins.kernel,self.pins.handles[self.root.parent])
+            phase('SOURCE_ROOT_IDENTITY_MS',start)
+            start=time.perf_counter()
+            self.pins.check(self.root/MANIFEST_PATH,self.root,missing=False)
             raw=(self.root/MANIFEST_PATH).read_bytes()
             if hashlib.sha256(raw).hexdigest()!=manifest_sha256:
                 raise SecurityError('accepted manifest pin mismatch')
-            declared={r['path']:r for r in json.loads(raw)['files']}
+            manifest=strict_json(raw)
+            if manifest.get('schema')!='mentorflow.windows-package-manifest.v1' or manifest.get('product')!='MentorFlow' or manifest.get('executable')!='MentorFlow.exe':
+                raise SecurityError('accepted manifest identity mismatch')
+            version_key(manifest.get('version'))
+            declared={r['path']:r for r in manifest['files']}
+            if len(declared)!=len(manifest['files']) or MANIFEST_PATH in declared:
+                raise SecurityError('accepted duplicate/self manifest row')
             declared[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=manifest_sha256)
             if declared != self.rows: raise SecurityError('accepted manifest rows mismatch')
+            phase('SOURCE_MANIFEST_PARSE_MS',start)
+            start=time.perf_counter()
+            if receipt is not None:
+                from scripts.windows_install_trust import SCHEMA
+                binding=receipt.get('binding',{})
+                if (receipt.get('full_verified') is not True or binding.get('schema')!=SCHEMA or
+                    binding.get('manifest_sha256')!=manifest_sha256 or binding.get('version')!=manifest['version'] or
+                    binding.get('root')!=str(self.root.parent) or
+                    binding.get('root_identity')!=install_id):
+                    raise SecurityError('accepted receipt binding/root identity mismatch')
+                app_inventory=receipt.get('inventory',{}).get('App',[])
+                if len(app_inventory)!=7 or app_inventory[0]!='dir' or app_inventory[4:6]!=root_id:
+                    raise SecurityError('accepted receipt App identity mismatch')
+            elif protected:
+                raise SecurityError('protected source requires accepted receipt')
+            self.lease=dict(app_id='MentorFlow',installed_version=manifest['version'],
+                installed_manifest_sha256=manifest_sha256,install_root_normalized=str(self.root.parent),
+                volume_identity=install_id[0],root_file_identity=install_id[1],
+                app_file_identity=root_id[1],
+                receipt_schema=receipt['binding']['schema'] if receipt else 'explicit-pinned-uat-only',
+                immutable_tree=True,protected_contract=protected,uat_writable_root=not protected)
+            phase('SOURCE_RECEIPT_BINDING_MS',start)
+            start=time.perf_counter(); directories={self.root}; folded=set()
+            for path,row in self.rows.items():
+                safe_path(path)
+                if row['path'] != path or path.casefold() in folded:
+                    raise SecurityError('accepted row/path mismatch or alias')
+                folded.add(path.casefold())
+                parent=(self.root/path).parent
+                while parent!=self.root:
+                    directories.add(parent); parent=parent.parent
+            phase('SOURCE_FILE_PATH_VALIDATION_MS',start)
+            start=time.perf_counter()
+            for directory in sorted(directories,key=lambda p:len(p.parts)):
+                self.pins.check(directory,self.root,directory=True,missing=False)
+            phase('SOURCE_UNIQUE_DIR_SECURITY_MS',start)
+            start=time.perf_counter()
+            def acquire(entry):
+                path,row=entry
+                item=self.root/path
+                immutable=immutable_path(path)
+                handle=self.pins.kernel.CreateFileW(str(item),0x80000000 if immutable else 0x80,1|4,None,3,0x00200000,None)
+                if handle == c.c_void_p(-1).value:
+                    return path,None,None,SecurityError('immutable source missing or has a writer')
+                try:
+                    info=Info(); name=c.create_unicode_buffer(32768)
+                    length=self.pins.kernel.GetFinalPathNameByHandleW(handle,name,len(name),0)
+                    if (not length or length>=len(name) or normal(name.value)!=item or
+                        not self.pins.kernel.GetFileInformationByHandle(handle,c.byref(info)) or
+                        info.attributes & (0x400|0x10) or info.links!=1 or
+                        ((info.size_high<<32)|info.size_low) != row['size']):
+                        raise SecurityError('accepted file identity/path/metadata mismatch')
+                    identity=(info.volume,info.index_high,info.index_low)
+                except BaseException as error:
+                    self.pins.kernel.CloseHandle(handle)
+                    return path,None,None,error
+                if not immutable:
+                    self.pins.kernel.CloseHandle(handle); handle=None
+                return path,handle,identity,None
+            # Cold native read-data opens dominate (117s measured serial), not
+            # hashing. Bounded concurrency preserves exactly the same access,
+            # no-follow, identity, and deny-write checks. Drain ALL results on
+            # failure so successful sibling handles never leak.
+            from concurrent.futures import ThreadPoolExecutor
+            failure=None
+            with ThreadPoolExecutor(max_workers=16,thread_name_prefix='source-lease') as pool:
+                for path,handle,identity,error in pool.map(acquire,self.rows.items()):
+                    if handle is not None:
+                        self.files[path]=handle; self.identities[path]=identity
+                    if error is not None and failure is None: failure=error
+            if failure is not None: raise failure
+            phase('SOURCE_FILE_METADATA_MS',start)
+            self.profile.update(SOURCE_FILES=len(self.rows),SOURCE_DIRS=len(directories),
+                SOURCE_BYTES_HASHED=len(raw),SOURCE_HASH_COUNT=1,SOURCE_PAYLOAD_HASH_COUNT=0,
+                SOURCE_FILE_ENUM_MS=0,SOURCE_FILE_HASH_MS=0,SOURCE_REPARSE_CHECK_MS=0,
+                SOURCE_OPEN_COUNT=len(self.rows)+1,SOURCE_STAT_COUNT=1,
+                SOURCE_REALPATH_OR_RESOLVE_COUNT=0,SOURCE_ANCESTOR_WALK_COUNT=0,
+                INITIAL_SOURCE_ACCEPTANCE_MS=(time.perf_counter()-started)*1000,
+                phase_note='manifest hash included in parse; native file reparse checks included in metadata; unique-directory pin includes bounded ancestor admission, no per-file ancestor walk')
         except BaseException:
             self.close(); raise
 
     @classmethod
     def protected(cls,install_root):
-        from scripts.windows_install_transaction import identities_from_receipt
-        from scripts.windows_install_trust import assert_protected
-        root=normal(install_root); ids=identities_from_receipt(root)
-        app=root/'App'; assert_protected(app)
-        raw=(app/MANIFEST_PATH).read_bytes()
-        rows={r['path']:r for r in json.loads(raw)['files']}
-        rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=ids['manifest_sha256'])
-        for path in rows: assert_protected(app/path)
-        return cls(app,rows,ids['manifest_sha256'])
+        from scripts.windows_install_trust import assert_protected, assert_safe_parents, RECEIPT, _check_entry_acls
+        start=time.perf_counter(); root=normal(install_root); app=root/'App'
+        assert_safe_parents(root)
+        for path in (root,root/RECEIPT,app,app/MANIFEST_PATH): assert_protected(path)
+        with DirectoryPins() as pins:
+            pins.check(root/RECEIPT,root,missing=False)
+            if (root/RECEIPT).stat().st_size>16*1024**2: raise SecurityError('oversized source receipt')
+            receipt=strict_json((root/RECEIPT).read_bytes())
+        receipt_ms=(time.perf_counter()-start)*1000
+        raw=(app/MANIFEST_PATH).read_bytes(); pin=receipt['binding']['manifest_sha256']
+        rows={r['path']:r for r in strict_json(raw)['files']}
+        rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=pin)
+        accepted=cls(app,rows,pin,receipt=receipt,protected=True)
+        try:
+            # Keep fresh per-object ACL verification: a protected parent alone
+            # cannot prove that a child has no explicit writable ACL.
+            acl_start=time.perf_counter()
+            _check_entry_acls([app/path for path in rows]+[p for p in accepted.pins.handles if p.is_relative_to(app)])
+            accepted.profile['SOURCE_ACL_MS']=(time.perf_counter()-acl_start)*1000
+            accepted.profile['SOURCE_RECEIPT_LOAD_MS']=receipt_ms
+            accepted.profile['INITIAL_SOURCE_ACCEPTANCE_MS']=(time.perf_counter()-start)*1000
+            return accepted
+        except BaseException:
+            accepted.close(); raise
 
     def close(self):
         for handle in self.files.values(): self.pins.kernel.CloseHandle(handle)

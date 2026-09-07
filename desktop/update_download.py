@@ -364,8 +364,8 @@ class ObjectCache:
         trace.mark('T07_UNCHANGED_MATERIALIZATION_BEGIN')
         hardlink_volume = False
         if self.accepted_app is not None and not self.accepted_app.closed:
-            from .update_tree_security import normal, filesystem
-            hardlink_volume = normal(old_app).drive.casefold()==normal(stage_root).drive.casefold() and filesystem(stage_root)=='NTFS'
+            from .update_tree_security import hardlink_eligible
+            hardlink_volume = hardlink_eligible(old_app,stage_root)
         ordered = [p for p in release.rows if p not in fetch] + [p for p in release.rows if p in fetch]
         changed_started = False
         for path in ordered:

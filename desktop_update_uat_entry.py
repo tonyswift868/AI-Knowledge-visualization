@@ -10,6 +10,9 @@ import time
 PYTHON_ENTRY_MONOTONIC = time.monotonic()
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--qualify-cross-volume']:
+        from desktop.packaged_update_uat import cross_volume
+        raise SystemExit(cross_volume())
     if sys.argv[1:] == ['--qualify-fast-materialization']:
         from desktop.packaged_update_uat import fast_materialization
         raise SystemExit(fast_materialization())
