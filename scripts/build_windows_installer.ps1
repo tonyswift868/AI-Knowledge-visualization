@@ -198,7 +198,7 @@ if ($ProtectedInstall) {
     $compileDefines.Add("/DINSTALL_SPACE_MB=$([math]::Ceiling([double]$spaceKib/1024))")
     if ($UatAppId) {
         $compileDefines.Add("/DPROTECTED_APP_ID=$UatAppId")
-        $compileDefines.Add('/DPROTECTED_SHORTCUT_NAME=MentorFlow 预览版.lnk')
+        $compileDefines.Add('/DPROTECTED_SHORTCUT_NAME=MentorFlow ' + [char]0x9884 + [char]0x89c8 + [char]0x7248 + '.lnk')
     }
 }
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }

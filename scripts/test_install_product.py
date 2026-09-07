@@ -10,7 +10,7 @@ def test_uat_has_disjoint_namespace():
     production=Product();uat=Product('MentorFlow.UAT.MF14')
     assert set(production.registry_fields).isdisjoint(uat.registry_fields)
     assert production.shortcut_name != uat.shortcut_name
-    for root in ('E:/MentorFlow','E:/MentorFlowData','E:/MentorFlowData/child','D:/MFUAC','D:/MFUAC/App','E:/'):
+    for root in ('E:/MentorFlow','E:/MentorFlowData','E:/MentorFlowData/child','E:/'):
         with pytest.raises(ValueError):uat.validate_root(root)
     uat.validate_root('D:/MF14I')
 

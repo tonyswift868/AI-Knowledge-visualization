@@ -22,6 +22,10 @@ SCHEMA = "mentorflow.admin-installation.v2"
 RECEIPT = "installation-receipt.json"
 SDDL = "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)"
 TRUSTEES = {"SY", "BA"}
+# Windows Modules Installer owns canonical Program Files. It is an OS service,
+# not an ordinary-user principal. This allowance applies ONLY to ancestors;
+# installed application/control objects still require the exact protected ACL.
+PARENT_TRUSTEES = TRUSTEES | {"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"}
 
 
 class RepairRequired(RuntimeError):
@@ -112,7 +116,8 @@ def _parts(sddl: str):
             else:
                 # Ancestors can use concatenated generic/read/delete rights.
                 tokens = re.findall("..", fields[2])
-                bits = {"GR": 0x80000000, "GX": 0x20000000, "GW": 0x40000000, "SD": 0x10000, "RC": 0x20000}
+                bits = {"GR": 0x80000000, "GX": 0x20000000, "GW": 0x40000000, "SD": 0x10000, "RC": 0x20000,
+                        "LC": 0x4}  # Native SDDL alias present on Windows volume roots.
                 if "".join(tokens) != fields[2] or any(t not in bits for t in tokens):
                     raise RepairRequired("unsupported ACL rights")
                 mask = 0
@@ -145,7 +150,7 @@ def assert_safe_parents(root: Path) -> None:
         if st.st_file_attributes & 0x400:
             raise RepairRequired(f"reparse installation parent: {parent}")
         owner, _, aces = _parts(security_descriptor(parent))
-        if owner not in TRUSTEES and not re.fullmatch(r"S-1-5-21-(?:\d+-){3}500", owner):
+        if owner not in PARENT_TRUSTEES and not re.fullmatch(r"S-1-5-21-(?:\d+-){3}500", owner):
             raise RepairRequired(f"ordinary-user-owned installation parent: {parent}")
         for flags, mask, sid in aces:
             # DELETE on a non-volume ancestor also permits renaming that whole
@@ -153,7 +158,7 @@ def assert_safe_parents(root: Path) -> None:
             unsafe = 0x10000000 | 0x40000 | 0x80000 | 0x40
             if parent != Path(parent.anchor):
                 unsafe |= 0x10000
-            if "IO" not in flags and sid not in TRUSTEES and mask & unsafe:
+            if "IO" not in flags and sid not in PARENT_TRUSTEES and mask & unsafe:
                 raise RepairRequired(f"ordinary user may replace installation via parent: {parent}")
 
 

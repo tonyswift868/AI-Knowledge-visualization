@@ -35,12 +35,24 @@ def main():
     build.provision=lambda work:{} # This installer candidate does not provision a live update feed/key.
     identity=build.source_identity();build.build_binaries(args,identity)
     directory=configure(args.work,{},identity);app=args.work/'Candidate'
-    if app.exists():raise ValueError('candidate exists; preserve prior attempt')
-    _,rows=verify(args.payload,args.manifest_sha256)
-    app.mkdir()
-    for key,row in rows.items():
-        dest=app/key;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(args.payload/key,dest)
-        if v.sha256_file(dest)!=row['sha256']:raise ValueError('source changed during copy')
+    if app.exists():
+        # A bounded repair may refresh our unpublished candidate, not a final
+        # distribution. Verify it first, retain its identity and evidence.
+        old_identity=json.loads((app/'SELF-CHECK/source-identity.json').read_bytes())
+        build.git('merge-base','--is-ancestor',old_identity['source_sha'],identity['source_sha'])
+        verify(app,v.sha256_file(app/v.MANIFEST_RELATIVE))
+        prior=directory/'prior-candidate';prior.mkdir()
+        for name in ('source-identity.json','package-manifest.json'):
+            shutil.copyfile(app/'SELF-CHECK'/name,prior/name)
+        if (app/'Installer').exists():
+            if (app/'Installer').resolve().parent!=app.resolve():raise ValueError('installer scratch alias')
+            shutil.rmtree(app/'Installer')
+    else:
+        _,rows=verify(args.payload,args.manifest_sha256)
+        app.mkdir()
+        for key,row in rows.items():
+            dest=app/key;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(args.payload/key,dest)
+            if v.sha256_file(dest)!=row['sha256']:raise ValueError('source changed during copy')
     shutil.copyfile(directory/'app/MentorFlow.exe',app/'MentorFlow.exe')
     shutil.copyfile(directory/'native/MentorFlowInstallGate/MentorFlowInstallGate.exe',app/'MentorFlowInstallGate.exe')
     shutil.copyfile(directory/'UpdateBridge.exe',app/'UpdateBridge.exe')
@@ -65,9 +77,9 @@ def main():
                build.PROJECT/'scripts/build_windows_installer.ps1','-ProtectedInstall','-PayloadRoot',app,'-OutputRoot',output,
                '-PythonPath',sys.executable,'-BuildScratch',args.work/'nsis','-SourceSha',identity['source_sha'],
                '-SourceTree',identity['tree_sha'],'-UatAppId',identity['app_id'],'-UatWorkRoot',args.work],build.PROJECT,
-               args.work/'installer.log',{**os.environ,'PSModulePath':os.environ['SystemRoot']+'/System32/WindowsPowerShell/v1.0/Modules'})
+               directory/'installer.log',{**os.environ,'PSModulePath':os.environ['SystemRoot']+'/System32/WindowsPowerShell/v1.0/Modules'})
     setup=output/'MentorFlow-1.2.3-win-x64-Setup.exe'
-    build.emit(args.work/'candidate-evidence.json',dict(source=identity,app=str(app),version=doc['version'],
+    build.emit(directory/'candidate-evidence.json',dict(source=identity,app=str(app),version=doc['version'],
         exe_sha256=v.sha256_file(app/'MentorFlow.exe'),manifest_sha256=v.sha256_file(manifest),
         installer_sha256=v.sha256_file(setup),payload_bytes=sum(row['size'] for row in rows.values()),
         public_feed_configured=False,installed=False))

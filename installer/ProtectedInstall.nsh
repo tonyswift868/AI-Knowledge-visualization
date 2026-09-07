@@ -123,6 +123,10 @@ Function BrowseExistingParent
    MessageBox MB_ICONSTOP "所选安装位置不存在。请选择一个已经存在的文件夹。"
    Return
  ${EndIf}
+ StrCpy $1 $SelectedParent 1 -1
+ ${If} $1 == "\"
+   StrCpy $SelectedParent $SelectedParent -1
+ ${EndIf}
  StrCpy $INSTDIR "$SelectedParent\MentorFlow"
  ${NSD_SetText} $DirectoryEdit "$INSTDIR"
 FunctionEnd

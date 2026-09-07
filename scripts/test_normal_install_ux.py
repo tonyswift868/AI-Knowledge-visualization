@@ -80,3 +80,10 @@ def test_shortcut_failure_restores_first_link(case):
     with patch.object(links.links['start_menu'],'publish',side_effect=OSError('test write failure')),pytest.raises(OSError):
         links.publish(case.root,case.ids)
     assert links.snapshot()==dict(desktop=None,start_menu=None)
+
+def test_current_windows_program_files_parent_is_accepted_read_only():
+    import os
+    from scripts.windows_install_trust import assert_safe_parents,TRUSTEES,PARENT_TRUSTEES
+    root=Path(os.environ['ProgramFiles'])/'MentorFlow'
+    existing_parent(root);assert_safe_parents(root)
+    assert len(TRUSTEES)==2 and len(PARENT_TRUSTEES)==3
