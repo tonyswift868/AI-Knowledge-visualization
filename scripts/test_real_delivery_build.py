@@ -24,7 +24,10 @@ def test_public_authority_contains_no_signing_private_material(tmp_path):
     private=(tmp_path/'keys/uat-ed25519.key').read_bytes()
     assert repr(private) not in source and base64.b64encode(private).decode() not in source
     assert build.provision(tmp_path)==public
-    with pytest.raises(ValueError):build.configure(tmp_path,public,{**identity,'source_sha':'b'*40})
+    next_directory=build.configure(tmp_path,public,{**identity,'source_sha':'b'*40})
+    assert next_directory!=directory
+    assert (directory/'mentorflow_delivery_authority.py').read_text(encoding='utf-8')==source
+    with pytest.raises(ValueError):build.configure(tmp_path,{**public,'key_id':'changed-key'},identity)
     assert build.version_doc('1.2.1',tmp_path,public,'http://127.0.0.1:48147')['desktop_notice']
     assert build.version_doc('1.2.2',tmp_path,public,'http://127.0.0.1:48147',bad=True)['uat_recovery_fixture']=='exit-before-health-v1'
 
