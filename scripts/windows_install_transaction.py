@@ -122,48 +122,76 @@ def recognised(root):
         return sha(Path(root)/'App'/v.MANIFEST_RELATIVE)==ids['manifest_sha256']
     except (OSError,ValueError,KeyError,TypeError,RuntimeError): return False
 
-def failed_owned(root=FAILED_ROOT):
-    """Read-only all-before-delete proof. Unknown content aborts cleanup."""
-    root=Path(root)
+CLEANUP_LEDGER = 'failed-install-cleanup.json'
+
+def failed_owned(root=None, *, cancelled=lambda:None):
+    """Prove every remaining file before deletion, including resumed cleanup."""
+    root=Path(root) if root is not None else FAILED_ROOT
     if not root.exists(): return []
     if root != FAILED_ROOT or (root/trust.RECEIPT).exists(): return []
     assert_no_alias(root); trust.assert_protected(root)
-    if any(p.name!='App' for p in root.iterdir()): raise ValueError('旧失败目录有未知项目，全部保留。')
-    app=root/'App'
-    if not app.exists(): return []
-    assert_no_alias(app); trust.assert_protected(app)
-    if sha(app/v.MANIFEST_RELATIVE)!=FAILED_MANIFEST_SHA:
-        raise ValueError('旧失败安装清单不同，全部保留。')
-    _, expected=load_manifest(app,FAILED_MANIFEST_SHA)
-    entries=list(app.rglob('*')); files=[]
-    for path in entries:
-        st=assert_no_alias(path)
-        if path.is_file():
+    if any(p.name not in ('App',CLEANUP_LEDGER) for p in root.iterdir()):
+        raise ValueError('旧失败目录有未知项目，全部保留。')
+    app=root/'App'; ledger=root/CLEANUP_LEDGER
+    resumed=ledger.exists()
+    if resumed:
+        assert_no_alias(ledger); trust.assert_protected(ledger)
+        if ledger.stat().st_size>16*1024**2: raise ValueError('oversized cleanup ledger')
+        state=json.loads(ledger.read_bytes())
+        if state.get('schema')!='mentorflow.failed-cleanup.v1' or state.get('manifest_sha256')!=FAILED_MANIFEST_SHA:
+            raise ValueError('unknown cleanup ledger preserved')
+        expected=state['files']
+        if not isinstance(expected,dict) or not 1<=len(expected)<=50000: raise ValueError('invalid cleanup inventory')
+        for key,row in expected.items():
+            relative(key)
+            if not v.SHA256_RE.fullmatch(row['sha256']): raise ValueError('invalid cleanup digest')
+    else:
+        if not app.exists(): return []
+        if sha(app/v.MANIFEST_RELATIVE)!=FAILED_MANIFEST_SHA:
+            raise ValueError('旧失败安装清单不同，全部保留。')
+        _,expected=load_manifest(app,FAILED_MANIFEST_SHA)
+    directories={Path(key).parent.as_posix() for key in expected}
+    directories.update(parent.as_posix() for key in expected for parent in Path(key).parents)
+    if resumed:
+        for key in state.get('directories',[]):
+            relative(key); directories.add(key)
+    files=[]
+    if app.exists():
+        assert_no_alias(app); trust.assert_protected(app)
+        for path in app.rglob('*'):
+            cancelled(); assert_no_alias(path); trust.assert_protected(path)
             key=path.relative_to(app).as_posix()
-            if key not in expected or sha(path)!=expected[key]['sha256']:
-                raise ValueError('旧失败安装有未知或已修改文件，全部保留。')
-            files.append(path)
-    # A complete valid payload without a receipt could be somebody else's
-    # installation: only the observed missing-INSTALLER failure is recognised.
+            if path.is_dir():
+                if key not in directories: raise ValueError('unknown cleanup directory preserved')
+            elif path.is_file():
+                if key not in expected or sha(path)!=expected[key]['sha256']:
+                    raise ValueError('旧失败安装有未知或已修改文件，全部保留。')
+                files.append(path)
     missing=set(expected)-{p.relative_to(app).as_posix() for p in files}
-    if not missing or any(Path(key).name!='INSTALLER' for key in missing):
+    if not resumed and (not missing or any(Path(key).name!='INSTALLER' for key in missing)):
         raise ValueError('旧目录不符合已审计的失败形态，全部保留。')
     return files
 
-def cleanup_failed():
-    files=failed_owned()
-    if not files: return 0
-    # Every file is proved before any removal; no wholesale root deletion.
+def cleanup_failed(*,cancelled=lambda:None):
+    files=failed_owned(cancelled=cancelled)
+    ledger=FAILED_ROOT/CLEANUP_LEDGER; app=FAILED_ROOT/'App'
+    if not files and not ledger.exists(): return 0
+    if not ledger.exists():
+        # Protected durable all-before-delete proof; future missing files are
+        # permitted only when this record already exists and matches the pin.
+        state=dict(schema='mentorflow.failed-cleanup.v1',manifest_sha256=FAILED_MANIFEST_SHA,
+            files={p.relative_to(app).as_posix():dict(size=p.stat().st_size,sha256=sha(p)) for p in files},
+            directories=[p.relative_to(app).as_posix() for p in app.rglob('*') if p.is_dir()])
+        with trust._create_protected(ledger,directory=False) as stream:
+            stream.write(json.dumps(state).encode()); stream.flush(); os.fsync(stream.fileno())
     total=sum(p.stat().st_size for p in files)
-    directories={p.parent for p in files}
     for path in files:
-        assert_no_alias(path); path.unlink()
-    app=FAILED_ROOT/'App'
-    for directory in sorted(directories,key=lambda p:len(p.parts),reverse=True):
-        while directory!=FAILED_ROOT:
-            try: directory.rmdir()
-            except OSError: break  # includes unknown empty directories: preserve
-            directory=directory.parent
+        cancelled(); assert_no_alias(path); path.unlink()
+    if app.exists():
+        for directory in sorted((p for p in app.rglob('*') if p.is_dir()),key=lambda p:len(p.parts),reverse=True):
+            cancelled(); directory.rmdir() # only previously proved, empty dirs
+        app.rmdir()
+    ledger.unlink() # last: interrupted cleanup retains its proof
     return total
 
 def remove_attempt(path):
@@ -174,8 +202,10 @@ def remove_attempt(path):
     entries=list(path.rglob('*'))
     for entry in entries: assert_no_alias(entry)
     for entry in sorted(entries,key=lambda p:len(p.parts),reverse=True):
+        if entry==path/'journal.json': continue
         if entry.is_dir(): entry.rmdir()
         else: entry.unlink()
+    (path/'journal.json').unlink()
     path.rmdir()
 
 class Registry:
@@ -227,7 +257,7 @@ class Shortcut:
         else:
             temporary=self.path.with_name('mf-rollback-'+uuid.uuid4().hex+'.lnk')
             temporary.write_bytes(base64.b64decode(value)); temporary.replace(self.path)
-    def publish(self,root,ids):
+    def publish(self,root,ids,*,before_replace=lambda value:None):
         from scripts.windows_install_shortcut import _save_link,read_link
         arguments='--install-root "'+str(root)+'" --manifest-sha256 '+ids['manifest_sha256']+' --source-sha '+ids['source_sha']+' --tree-sha '+ids['tree_sha']
         temporary=self.path.with_name('mf-install-'+uuid.uuid4().hex+'.lnk')
@@ -237,6 +267,8 @@ class Shortcut:
             if actual != dict(target=str(root/'App/MentorFlow.exe'),arguments=arguments,
                               workdir=str(root/'App'),icon=str(root/'App/MentorFlow.exe')):
                 raise ValueError('shortcut readback mismatch')
+            # Durable intent must exist BEFORE replacing the public shortcut.
+            before_replace(base64.b64encode(temporary.read_bytes()).decode('ascii'))
             temporary.replace(self.path)
         finally: temporary.unlink(missing_ok=True)
     def points_to(self,root):
@@ -280,8 +312,11 @@ class Transaction:
             raise ValueError('源程序与安装目录不能重叠。')
         if self.root.exists() and any(self.root.iterdir()) and not recognised(self.root):
             pending=any((self.root/STAGING).glob('*/journal.json')) if (self.root/STAGING).is_dir() else False
-            failed=(self.root==FAILED_ROOT and (self.root/'App'/v.MANIFEST_RELATIVE).is_file()
+            failed=(self.root==FAILED_ROOT and not (self.root/trust.RECEIPT).exists() and (self.root/'App'/v.MANIFEST_RELATIVE).is_file()
                     and sha(self.root/'App'/v.MANIFEST_RELATIVE)==FAILED_MANIFEST_SHA)
+            if self.root==FAILED_ROOT and not (self.root/trust.RECEIPT).exists() and (self.root/CLEANUP_LEDGER).is_file():
+                failed_owned(self.root) # full remaining-file proof, not name-only admission
+                failed=True
             if not pending and not failed:
                 raise ValueError('目标目录包含未识别内容，请选择空文件夹。')
         parent=self.root
@@ -300,14 +335,15 @@ class Transaction:
         free=shutil.disk_usage(parent).free
         if check_space and free<required: raise ValueError('磁盘空间不足，尚未开始复制文件。')
         return doc,rows,required,free
-    def verify(self,root,controls,activate):
+    def verify(self,root,controls,activate,receipt_destination=None):
         # Discard the entire interrupted snapshot, as install_package does.
         # NTFS can deliver the final copy/rename notification after handles close.
         for attempt in range(3):
             self.checkpoint('verify')
             try:
                 return trust.verify_installation(root,**self.ids,activate=activate,control_hashes=controls,
-                    workers=1,cancelled=lambda:self.checkpoint('verify'),progress=lambda stage:self.status('正在验证安装',80))
+                    workers=1,cancelled=lambda:self.checkpoint('verify'),progress=lambda stage:self.status('正在验证安装',80),
+                    receipt_destination=receipt_destination)
             except v.PackageError as error:
                 if str(error) != 'package changed during security verification' or attempt == 2:
                     raise
@@ -315,7 +351,7 @@ class Transaction:
     def run(self):
         if not c.windll.shell32.IsUserAnAdmin(): raise PermissionError('installer elevation required')
         self.status('正在检查和清理已确认的失败安装',0)
-        cleanup_failed()
+        cleanup_failed(cancelled=lambda:self.checkpoint('cleanup'))
         self.root=validate_target(self.root)
         self.recover()
         doc,rows,_,_=self.preflight()
@@ -366,17 +402,24 @@ class Transaction:
             (new/'App').rename(self.root/'App')
             (new/'Uninstall.exe').rename(self.root/'Uninstall.exe')
             self.checkpoint('after_swap')
-            self.verify(self.root,controls,True)
+            staged_receipt=self.attempt/'validated-receipt.json'
+            self.verify(self.root,controls,True,staged_receipt)
             self.checkpoint('before_metadata')
             self.journal['metadata_started']=True; self.save()
             self.registry.publish(self.root,doc['version']); self.checkpoint('registry')
             if self.shortcut.snapshot()!=shortcut:
                 raise ValueError('桌面快捷方式已被其他操作修改，保留该修改。')
             self.journal['shortcut_started']=True; self.save()
-            self.shortcut.publish(self.root,self.ids)
+            def remember_shortcut(value):
+                self.journal['new_shortcut']=value; self.save()
+            self.shortcut.publish(self.root,self.ids,before_replace=remember_shortcut)
             self.journal['new_shortcut']=self.shortcut.snapshot(); self.save()
             self.checkpoint('shortcut')
-            self.verify(self.root,controls,False)
+            self.verify(self.root,controls,False,staged_receipt)
+            self.checkpoint('before_receipt_publish')
+            self.journal['commit_receipt_sha256']=sha(staged_receipt); self.save()
+            staged_receipt.replace(self.root/trust.RECEIPT)
+            self.checkpoint('receipt_published')
             self.journal['phase']='COMMITTED'; self.save()
             self.status('安装成功',100)
         except BaseException:
@@ -392,6 +435,8 @@ class Transaction:
         assert_no_alias(base); trust.assert_protected(base)
         for attempt in list(base.iterdir()):
             assert_no_alias(attempt); trust.assert_protected(attempt)
+            if len(attempt.name)==32 and all(ch in '0123456789abcdef' for ch in attempt.name) and not any(attempt.iterdir()):
+                attempt.rmdir(); continue
             path=attempt/'journal.json'; assert_no_alias(path); trust.assert_protected(path)
             if path.stat().st_size>1024*1024: raise ValueError('oversized transaction journal')
             journal=json.loads(path.read_bytes())
@@ -399,7 +444,12 @@ class Transaction:
                     or set(journal.get('moved',[]))-{'App',trust.RECEIPT,'Uninstall.exe'}):
                 raise ValueError('unknown transaction preserved')
             self.attempt=attempt; self.journal=journal
-            if journal['phase'] in ('COMMITTED','ROLLED_BACK','UNINSTALLED'):
+            # Receipt publication is the durable commit boundary, after all
+            # metadata and verification. A kill before COMMITTED journal save
+            # must finalize that commit, not restore a now obsolete old version.
+            published=(journal.get('commit_receipt_sha256') and (self.root/trust.RECEIPT).is_file()
+                and sha(self.root/trust.RECEIPT)==journal['commit_receipt_sha256'])
+            if journal['phase'] in ('COMMITTED','ROLLED_BACK','UNINSTALLED') or published:
                 remove_attempt(attempt)
             else: self.rollback()
         if base.exists():

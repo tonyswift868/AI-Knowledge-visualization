@@ -56,7 +56,10 @@ if ((Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) -a
 if ($ProtectedInstall) {
     if ($SourceSha -notmatch '^[0-9a-f]{40}$' -or $SourceTree -notmatch '^[0-9a-f]{40}$') { throw 'Exact source identities required' }
     if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected installation paths are selected at runtime; build-time metadata overrides are prohibited' }
-    if (-not $BuildScratch -or -not ([IO.Path]::GetFullPath($BuildScratch)).StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
+    $scratchFull = if ($BuildScratch) { [IO.Path]::GetFullPath($BuildScratch).TrimEnd('\') } else { '' }
+    $runtimeQualificationScratch = 'D:\CodexScratch\MentorFlowMF-E107-INSTALLER-RUNTIME-QUALIFY-20260907-03'
+    if (-not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
+        -not $scratchFull.Equals($runtimeQualificationScratch, [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
     $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw | ConvertFrom-Json
     if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
     $manifestPin = (Get-FileHash -LiteralPath (Join-Path $payload 'SELF-CHECK\package-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -21,7 +21,8 @@ class Shortcut:
     def __init__(self): self.value=None
     def snapshot(self): return self.value
     def restore(self,value): self.value=value
-    def publish(self,root,ids): self.value=str(root/'App/MentorFlow.exe')
+    def publish(self,root,ids,*,before_replace=lambda value:None):
+        before_replace(str(root/'App/MentorFlow.exe')); self.value=str(root/'App/MentorFlow.exe')
     def points_to(self,root): return self.value==str(root/'App/MentorFlow.exe')
 
 class TransactionTests(unittest.TestCase):
@@ -189,5 +190,32 @@ class TransactionTests(unittest.TestCase):
         with patch.object(trust,'_create_protected',fail):
             with self.assertRaises(OSError): self.transaction().run()
         self.assert_fresh_rolled_back()
+
+    def test_preflight_accepts_owned_cleanup_after_manifest_was_deleted(self):
+        self.root.mkdir()
+        (self.root/tx.CLEANUP_LEDGER).write_text(json.dumps(dict(schema='mentorflow.failed-cleanup.v1',
+            manifest_sha256=tx.FAILED_MANIFEST_SHA,files={'MentorFlow.exe':dict(size=1,sha256='a'*64)},directories=[])))
+        with patch.object(tx,'FAILED_ROOT',self.root):
+            self.transaction().preflight()
+
+    def test_real_shortcut_expected_bytes_persist_before_publication(self):
+        shortcut=tx.Shortcut(self.base/'transaction.lnk'); observed=[]
+        def remember(value):
+            self.assertFalse(shortcut.path.exists()); observed.append(value)
+        shortcut.publish(self.root,self.ids,before_replace=remember)
+        self.assertEqual(observed,[shortcut.snapshot()])
+        from scripts.windows_install_shortcut import read_link
+        fields=read_link(shortcut.path)
+        self.assertEqual(fields['target'],str(self.root/'App/MentorFlow.exe'))
+        self.assertEqual(fields['workdir'],str(self.root/'App'))
+        self.assertIn(self.pin,fields['arguments'])
+
+    def test_preflight_cleanup_ledger_does_not_authorize_unknown_root_files(self):
+        self.root.mkdir(); (self.root/'unknown.txt').write_bytes(b'keep')
+        (self.root/tx.CLEANUP_LEDGER).write_text(json.dumps(dict(schema='mentorflow.failed-cleanup.v1',
+            manifest_sha256=tx.FAILED_MANIFEST_SHA,files={'MentorFlow.exe':dict(size=1,sha256='a'*64)},directories=[])))
+        with patch.object(tx,'FAILED_ROOT',self.root),self.assertRaises(ValueError):
+            self.transaction().preflight()
+        self.assertEqual((self.root/'unknown.txt').read_bytes(),b'keep')
 
 if __name__=='__main__': unittest.main()

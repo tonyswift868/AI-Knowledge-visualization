@@ -383,13 +383,18 @@ def _identity(rows) -> str:
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4, progress=None, control_hashes=None, cancelled=lambda: None):
+def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4, progress=None, control_hashes=None, cancelled=lambda: None, receipt_destination=None):
     from scripts import verify_windows_package as v
     start = time.perf_counter()
     for name, value, length in [("manifest", manifest_sha256, 64), ("source", source_sha, 40), ("tree", tree_sha, 40)]:
         if not re.fullmatch(r"[0-9a-f]{" + str(length) + "}", value):
             raise RepairRequired(f"invalid pinned {name} identity")
     root = _root(path)
+    receipt_path = root / RECEIPT
+    if receipt_destination is not None:
+        receipt_path = Path(receipt_destination)
+        if not receipt_path.is_relative_to(root / '.install-staging'):
+            raise RepairRequired('transaction receipt must remain in protected staging')
     if not activate and control_hashes is None and (root / RECEIPT).is_file():
         assert_protected(root / RECEIPT)
         if (root / RECEIPT).stat().st_size > 16 * 1024 * 1024:
@@ -424,7 +429,6 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         if not required.issubset(expected):
             raise RepairRequired("required startup files missing")
         binding = {"schema": SCHEMA, "source_sha": source_sha, "tree_sha": tree_sha, "manifest_sha256": manifest_sha256, "version": manifest["version"], "root": str(root), "root_identity": root_id}
-        receipt_path = root / RECEIPT
         if not activate:
             try:
                 if receipt_path.stat().st_size > 16 * 1024 * 1024:
@@ -469,7 +473,7 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         # Receipt bytes are admin-owned from their first creation, not secured
         # after a potentially user-owned file has already been opened.
         import uuid
-        temporary = root / ("receipt-" + uuid.uuid4().hex + ".pending")
+        temporary = receipt_path.parent / ("receipt-" + uuid.uuid4().hex + ".pending")
         try:
             with _create_protected(temporary, directory=False) as stream:
                 stream.write(json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode("utf-8"))
