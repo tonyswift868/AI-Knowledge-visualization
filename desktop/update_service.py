@@ -181,7 +181,7 @@ __all__ = [
 # source checker above is NOT the normal in-app installation action anymore.
 class MatureUpdateService:
     STATES = frozenset(('IDLE', 'CHECKING', 'UP_TO_DATE', 'UPDATE_AVAILABLE',
-        'DOWNLOADING', 'DOWNLOAD_PAUSED_OR_INTERRUPTED', 'READY_TO_APPLY', 'APPLYING',
+        'PREPARING', 'DOWNLOADING', 'DOWNLOAD_PAUSED_OR_INTERRUPTED', 'READY_TO_APPLY', 'APPLYING',
         'RESTART_REQUIRED', 'FAILED_RECOVERABLE', 'FAILED_SECURITY'))
 
     def __init__(self, *, install_root, cache_root, metadata_url, public_keys,
@@ -368,6 +368,7 @@ class MatureUpdateService:
         try:
             with InstallUpdateLock(self.cache.root):
                 if self._closed: raise DownloadCancelled('update service closed')
+                self._state('PREPARING', '正在准备更新…')
                 # Lazy worker-only acceptance: never scan the package while
                 # constructing the ordinary startup/settings UI.
                 if self.cache.accepted_app is None and self._accepted_source_factory is not None:

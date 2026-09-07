@@ -55,7 +55,7 @@ from .update_panel import UpdatePanel
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BACKUP_ROOT = Path(os.getenv("MENTORFLOW_BACKUP_ROOT", r"E:\Codex\Data\backups\MentorFlow"))
+DEFAULT_BACKUP_ROOT = Path(os.getenv("MENTORFLOW_BACKUP_ROOT", str(Path(os.environ['LOCALAPPDATA'])/'MentorFlow/Backups')))
 FREE_CHAT_PROMPT_SETTINGS_KEY = "classroom/free_chat_prompt"
 
 
@@ -923,7 +923,7 @@ class SystemPage(QWidget):
         target = QFileDialog.getExistingDirectory(
             self,
             "选择新的或空的账号 Vault 目录",
-            str(Path(r"D:\CodexScratch")),
+            str(self.data_root.parent),
         )
         if not target:
             self.migration_status.setText("已取消导入，没有选择目标目录。")

@@ -1531,7 +1531,7 @@ def export_migration_archive(
     output_parent_info = _validate_existing_entry(output.parent, role="导出目标")
     assert output_parent_info is not None
     temp_root = _ensure_directory(
-        Path(os.getenv("MENTORFLOW_TEMP_ROOT", r"E:\Codex\Temp")),
+        Path(os.getenv("MENTORFLOW_TEMP_ROOT", tempfile.gettempdir())),
         role="迁移暂存",
     )
     temp_root_info = _validate_existing_entry(temp_root, role="迁移暂存")

@@ -103,7 +103,7 @@ class ConnectionPreparation:
             return True
         if self.cancelled.is_set():
             return False
-        key = Path("E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519")
+        key = Path(os.environ['LOCALAPPDATA']) / 'MentorFlow/Runtime/preview-ssh.key'
         if not key.is_file():
             return False
         from scripts import verify_windows_package as v

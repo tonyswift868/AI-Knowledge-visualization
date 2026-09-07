@@ -710,7 +710,7 @@ def _export_account_package_impl(
     output_parent_info = _validate_existing_entry(output_parent, role="便携包导出目标")
     assert output_parent_info is not None
     temp_root = _ensure_directory(
-        Path(os.getenv("MENTORFLOW_TEMP_ROOT", r"E:\Codex\Temp")),
+        Path(os.getenv("MENTORFLOW_TEMP_ROOT", tempfile.gettempdir())),
         role="便携包暂存",
     )
     temp_root_info = _validate_existing_entry(temp_root, role="便携包暂存")

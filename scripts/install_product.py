@@ -23,7 +23,7 @@ class Product:
     @property
     def uninstall_key(self): return 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\' + self.app_id
     @property
-    def shortcut_name(self): return self.app_id + '.lnk'
+    def shortcut_name(self): return ('MentorFlow 预览版' if self.uat else 'MentorFlow') + '.lnk'
     @property
     def registry_fields(self):
         return {self.product_key: ('InstallLocation','Version'), self.uninstall_key:
@@ -32,7 +32,7 @@ class Product:
     def validate_root(self,root):
         root=Path(root).absolute()
         if self.uat:
-            for forbidden in map(Path,('E:/MentorFlow','E:/MentorFlowData','D:/MFUAC')):
+            for forbidden in map(Path,('E:/MentorFlow','E:/MentorFlowData')):
                 if root==forbidden or root.is_relative_to(forbidden) or forbidden.is_relative_to(root):
                     raise ValueError('UAT cannot target formal or historical installation roots')
         return root

@@ -63,11 +63,10 @@ if ($ProtectedInstall) {
     $runtimeQualificationScratch = 'D:\CodexScratch\MentorFlowMF-E107-INSTALLER-RUNTIME-QUALIFY-20260907-03'
     $isolatedScratch = $false
     if ($UatAppId) {
-        if ($UatAppId -notmatch '^MentorFlow\.UAT\.[A-Za-z0-9-]{1,32}$' -or -not $UatWorkRoot -or -not $UatDefaultInstallDir) { throw 'Exact isolated UAT build namespace required' }
+        if ($UatAppId -notmatch '^MentorFlow\.UAT\.[A-Za-z0-9-]{1,32}$' -or -not $UatWorkRoot) { throw 'Exact isolated UAT build namespace required' }
         $uatWorkFull = [IO.Path]::GetFullPath($UatWorkRoot).TrimEnd('\')
-        $uatInstallFull = [IO.Path]::GetFullPath($UatDefaultInstallDir).TrimEnd('\')
-        if ($uatWorkFull -notmatch '^D:\\[^\\]+$' -or $uatInstallFull -notmatch '^D:\\[^\\]+$' -or
-            $uatWorkFull.Equals($uatInstallFull,[StringComparison]::OrdinalIgnoreCase) -or $uatInstallFull -eq 'D:\MFUAC') { throw 'Separate short isolated D: roots required' }
+        if ($UatDefaultInstallDir) { throw 'Install defaults must be resolved from Windows at runtime, not supplied by the build' }
+        if ($uatWorkFull -notmatch '^D:\\[^\\]+$') { throw 'Dedicated short build scratch required' }
         $isolatedScratch = $scratchFull.StartsWith($uatWorkFull+'\',[StringComparison]::OrdinalIgnoreCase)
     } elseif ($UatWorkRoot -or $UatDefaultInstallDir) { throw 'UAT paths require compiled UAT namespace' }
     if (-not $isolatedScratch -and -not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
@@ -196,9 +195,10 @@ if ($ProtectedInstall) {
     $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
     $compileDefines.Add("/DSOURCE_TREE=$SourceTree")
     $compileDefines.Add("/DINSTALL_SPACE_KIB=$spaceKib")
+    $compileDefines.Add("/DINSTALL_SPACE_MB=$([math]::Ceiling([double]$spaceKib/1024))")
     if ($UatAppId) {
         $compileDefines.Add("/DPROTECTED_APP_ID=$UatAppId")
-        $compileDefines.Add("/DPROTECTED_DEFAULT_DIR=$uatInstallFull")
+        $compileDefines.Add('/DPROTECTED_SHORTCUT_NAME=MentorFlow 预览版.lnk')
     }
 }
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }

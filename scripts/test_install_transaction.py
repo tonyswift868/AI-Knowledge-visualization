@@ -108,7 +108,7 @@ class TransactionTests(unittest.TestCase):
         self.assert_fresh_rolled_back()
     def test_unrelated_nonempty_target_preserved(self):
         self.root.mkdir(); unknown=self.root/'user-note.txt'; unknown.write_bytes(b'keep')
-        with self.assertRaisesRegex(ValueError,'未识别'): self.transaction().run()
+        with self.assertRaisesRegex(ValueError,'已有其他文件'): self.transaction().run()
         self.assertEqual(unknown.read_bytes(),b'keep')
         self.assertEqual(list(self.root.iterdir()),[unknown])
     def test_drive_and_data_roots_rejected(self):

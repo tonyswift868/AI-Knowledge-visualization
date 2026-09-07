@@ -24,7 +24,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             label=QLabel(notice);label.setObjectName('desktopReleaseNotice');label.setWordWrap(True)
             layout.addWidget(label)
         if configured().uat:
-            layout.addWidget(QLabel('隔离 UAT：账号服务未连接；本页使用真实程序更新流程。'))
+            layout.addWidget(QLabel('预览版：账号服务暂未连接，您仍可查看软件版本。'))
         panel=UpdatePanel(about,auto_delay_ms=60000);layout.addWidget(panel)
         if panel.service is not None:
             from desktop.update_bridge import handoff
@@ -46,7 +46,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         if not controller.results.get('SECURITY_GATE') or not gate.isVisible():return
         timer.stop();gate.about_button.setEnabled(True)
         if configured().uat:
-            gate.setWindowTitle('MentorFlow UAT · '+VERSION_MANIFEST['version'])
+            gate.setWindowTitle('MentorFlow · '+VERSION_MANIFEST['version'])
             # Only an explicitly compiled isolated UAT build honours this
             # signed, manifest-governed bad release. No environment/CLI hook;
             # production ignores it. Exit before issuing any health message.

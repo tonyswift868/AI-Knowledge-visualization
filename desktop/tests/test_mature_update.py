@@ -386,7 +386,8 @@ def test_no_feed_ui_does_not_offer_full_setup():
     from desktop.update_panel import UpdatePanel
     panel=UpdatePanel(service=None)
     assert not panel.apply_button.isEnabled() and not panel.download_button.isEnabled()
-    assert '完整安装器' in panel.status.text()
+    assert '当前版本可继续使用' in panel.status.text()
+    assert not panel.on_exit.isVisible()
     panel.shutdown(); panel.close()
 
 

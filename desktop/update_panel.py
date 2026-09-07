@@ -42,7 +42,7 @@ class UpdatePanel(QFrame):
         self.sizes.setWordWrap(True); layout.addWidget(self.sizes)
         actions = QHBoxLayout()
         self.check_button = QPushButton('检查更新')
-        self.download_button = QPushButton('下载更新')
+        self.download_button = QPushButton('更新')
         self.cancel_button = QPushButton('取消下载')
         self.apply_button = QPushButton('更新并重启')
         self.later_button = QPushButton('稍后')
@@ -53,7 +53,7 @@ class UpdatePanel(QFrame):
         layout.addWidget(self.progress)
         self.on_exit = QCheckBox('退出时更新')
         self.on_exit.setEnabled(False)
-        self.on_exit.setToolTip('需要完成受保护更新、普通权限重启和健康回滚资格验证后启用。')
+        self.on_exit.hide()
         layout.addWidget(self.on_exit)
         self.status = QLabel(''); self.status.setWordWrap(True); layout.addWidget(self.status)
         self.check_button.clicked.connect(lambda:self._run('check'))
@@ -88,11 +88,11 @@ class UpdatePanel(QFrame):
 
     @staticmethod
     def _size(value):
-        return f'{value/1024**2:.2f} MiB'
+        return f'{value/1024**3:.1f} GB' if value>=1024**3 else f'{value/1024**2:.1f} MB'
 
     def refresh(self):
         if self.service is None:
-            self.status.setText(self._error or '可信更新源尚未配置；不会下载完整安装器替代增量更新。')
+            self.status.setText(self._error or '暂时无法检查更新，当前版本可继续使用。')
             for button in (self.check_button,self.download_button,self.cancel_button,self.apply_button,self.later_button): button.setEnabled(False)
             return
         snap=dict(self.service.snapshot); state=snap['state']
@@ -100,17 +100,20 @@ class UpdatePanel(QFrame):
         running=running or state in ('APPLYING','RESTART_REQUIRED')
         self.check_button.setEnabled(not running)
         self.download_button.setEnabled(not running and self.service.plan is not None and bool(self.service.plan.get('update')) and state != 'FAILED_SECURITY')
-        self.cancel_button.setEnabled(state=='DOWNLOADING')
+        self.cancel_button.setEnabled(state in ('PREPARING','DOWNLOADING'))
         self.apply_button.setEnabled(not running and state=='READY_TO_APPLY' and self.service.apply_bridge is not None)
-        self.apply_button.setToolTip('受保护应用与重启通道尚未通过生产资格验证。' if self.service.apply_bridge is None else '')
+        self.apply_button.setToolTip('当前暂不能重启更新。' if self.service.apply_bridge is None else '')
         self.later_button.setEnabled(not running)
         checked=snap.get('last_checked')
         self.checked_label.setText('最近检查：'+(datetime.fromtimestamp(checked).strftime('%Y-%m-%d %H:%M:%S') if checked else '尚未检查'))
         actual=snap.get('actual_downloaded_bytes',0); expected=snap.get('expected_download_bytes',0)
-        self.sizes.setText(f"最新版本：{snap.get('latest','—')} · 完整版本大小：{self._size(snap.get('full_bytes',0))} · 预计下载：{self._size(expected)} · 实际下载：{self._size(actual)}")
+        self.sizes.setText(f"最新版本：{snap.get('latest','—')} · 下载大小：{self._size(expected)}")
         if snap.get('release_notes'): self.notes.setText(snap['release_notes'])
+        preparing=state=='PREPARING' or state=='DOWNLOADING' and actual>=expected
+        self.progress.setRange(0,0 if preparing else 100)
         self.progress.setValue(100 if state=='READY_TO_APPLY' else min(99,int(actual*100/max(1,expected))))
         self.status.setText(self._error or snap['message'])
+        if preparing and not self._error:self.status.setText('正在准备更新…')
 
     def shutdown(self):
         self._closed=True; self.timer.stop(); self._cancel()

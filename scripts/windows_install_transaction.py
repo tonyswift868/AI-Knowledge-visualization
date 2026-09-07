@@ -289,17 +289,50 @@ class Shortcut:
         from scripts.windows_install_shortcut import read_link
         return self.path.exists() and Path(read_link(self.path)['target'])==root/'App/MentorFlow.exe'
 
+class ShortcutSet:
+    """Desktop and Start menu entries share the existing transaction journal."""
+    def __init__(self,desktop=None):
+        from scripts.install_product import configured
+        buffer=c.create_unicode_buffer(32768)
+        if desktop is None:
+            if c.windll.shell32.SHGetFolderPathW(None,0x10,None,0,buffer):raise ValueError('无法找到桌面目录。')
+            desktop=Path(buffer.value)/configured().shortcut_name
+        if c.windll.shell32.SHGetFolderPathW(None,2,None,0,buffer):
+            raise ValueError('无法找到开始菜单目录。')
+        parent=Path(buffer.value)
+        if not parent.is_dir():raise ValueError('开始菜单目录不存在。')
+        self.links={'desktop':Shortcut(desktop),'start_menu':Shortcut(parent/configured().shortcut_name)}
+    def snapshot(self):return {key:link.snapshot() for key,link in self.links.items()}
+    def restore(self,value):
+        if value is not None and set(value)!=set(self.links):raise ValueError('invalid shortcut group snapshot')
+        for key,link in self.links.items():link.restore(value[key] if value is not None else None)
+    def points_to(self,root):return all(link.points_to(root) for link in self.links.values())
+    def publish(self,root,ids,*,before_replace=lambda value:None):
+        prior=self.snapshot();published={}
+        try:
+            for key,link in self.links.items():
+                if link.path.exists() and not link.points_to(root):
+                    raise ValueError('已有其他程序的快捷方式，请选择修复原安装或先更改快捷方式名称。')
+                def remember(value,key=key):
+                    intent=self.snapshot();intent[key]=value;before_replace(intent)
+                link.publish(root,ids,before_replace=remember);published[key]=link.snapshot()
+        except BaseException:
+            for key,value in published.items():
+                if self.links[key].snapshot()==value:self.links[key].restore(prior[key])
+            raise
+
 class Transaction:
     def __init__(self,source,root,identities,uninstaller,*,cancel=lambda:False,status=lambda stage,percent:None,
                  registry=None,shortcut=None,fault=lambda point:None,retain_previous=False,signed_source=False):
         self.source=Path(source); self.root=Path(root); self.ids=identities; self.uninstaller=Path(uninstaller)
         self.cancel=cancel; self.status=status; self.registry=registry or Registry()
         from scripts.install_product import configured
-        self.shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop'/configured().shortcut_name)
+        self.shortcut=shortcut or ShortcutSet()
         self.fault=fault; self.attempt=None; self.journal=None
         self.retain_previous=retain_previous
         self.signed_source=signed_source
         self.timings={'started':time.monotonic()}
+        self.payload_total=0; self.payload_done=0; self.last_progress=0.0
     def checkpoint(self,point):
         if point in ('preflight','copy_begin','before_verify','before_commit','after_swap','before_receipt_publish','receipt_published'):
             self.timings.setdefault(point,time.monotonic())
@@ -325,10 +358,18 @@ class Transaction:
         with open_source(source) as incoming,trust._create_protected(destination,directory=False) as outgoing:
             while block:=incoming.read(65536):
                 self.checkpoint('copy_chunk'); outgoing.write(block); digest.update(block)
+                if self.payload_total:
+                    self.payload_done+=len(block)
+                    now=time.monotonic()
+                    if now-self.last_progress>=0.15:
+                        self.status('正在安装 MentorFlow…',min(70,int(70*self.payload_done/self.payload_total)))
+                        self.last_progress=now
             outgoing.flush(); os.fsync(outgoing.fileno())
         if expected and digest.hexdigest()!=expected: raise ValueError('staging file hash mismatch: '+str(destination))
         return digest.hexdigest()
     def preflight(self,check_space=True):
+        from scripts.install_location import existing_parent
+        existing_parent(self.root,require_product_name=False)
         self.root=validate_target(self.root)
         doc,rows=load_manifest(self.source,self.ids['manifest_sha256'])
         from scripts.runtime_path_budget import budget
@@ -343,7 +384,7 @@ class Transaction:
                 failed_owned(self.root) # full remaining-file proof, not name-only admission
                 failed=True
             if not pending and not failed:
-                raise ValueError('目标目录包含未识别内容，请选择空文件夹。')
+                raise ValueError('该文件夹中已有其他文件。请选择其他安装位置。')
         parent=self.root
         while not parent.exists(): parent=parent.parent
         sectors,sector_bytes,free_clusters,total_clusters=w.DWORD(),w.DWORD(),w.DWORD(),w.DWORD()
@@ -360,7 +401,9 @@ class Transaction:
         # against reported free space; reserve only new allocations + controls.
         required+=(len(parents)+4)*cluster+64*1024**2+self.uninstaller.stat().st_size
         free=shutil.disk_usage(parent).free
-        if check_space and free<required: raise ValueError('磁盘空间不足，尚未开始复制文件。')
+        if check_space and free<required:
+            from scripts.install_location import low_space_message
+            raise ValueError(low_space_message(required,free))
         return doc,rows,required,free
     def verify(self,root,controls,activate,receipt_destination=None):
         # Discard the entire interrupted snapshot, as install_package does.
@@ -377,7 +420,7 @@ class Transaction:
                 time.sleep(0.1)
     def run(self):
         if not c.windll.shell32.IsUserAnAdmin(): raise PermissionError('installer elevation required')
-        self.status('正在检查和清理已确认的失败安装',0)
+        self.status('正在准备安装 MentorFlow…',0)
         # Updating an existing valid install must not clean any failed first
         # installation elsewhere (especially the default E:\MentorFlow root).
         if not self.retain_previous and self.root.absolute() == FAILED_ROOT:
@@ -424,9 +467,11 @@ class Transaction:
         try:
             trust._create_protected(new,directory=True); trust._create_protected(new/'App',directory=True)
             trust._create_protected(backup,directory=True)
+            self.payload_total=sum(row['size'] for row in rows.values());self.payload_done=0
             for index,(key,row) in enumerate(rows.items()):
-                self.status('正在准备程序文件',int(index*70/len(rows)))
                 self.copy_file(self.source.joinpath(*relative(key)),new/'App'/key,row['sha256'])
+            self.payload_total=0
+            self.status('正在完成安装，请稍候…',75)
             controls={'Uninstall.exe':self.copy_file(self.uninstaller,new/'Uninstall.exe')}
             bridge=self.root/'UpdateBridge.exe'
             bridge_source=bridge if bridge.exists() else self.source/'UpdateBridge.exe'
@@ -573,7 +618,7 @@ def uninstall(root,registry=None,shortcut=None):
     if not c.windll.shell32.IsUserAnAdmin(): raise PermissionError('uninstall elevation required')
     root=validate_target(root); registry=registry or Registry()
     from scripts.install_product import configured
-    shortcut=shortcut or Shortcut(Path(os.environ['USERPROFILE'])/'Desktop'/configured().shortcut_name)
+    shortcut=shortcut or ShortcutSet()
     ids=identities_from_receipt(root)
     trust.verify_installation(root,**ids)
     if (root/STAGING).exists() and any((root/STAGING).iterdir()):
@@ -636,11 +681,13 @@ def main(argv=None):
             return 0 if recognised(validate_target(args.install_root)) else 3
         if args.command=='uninstall-transaction':
             with installer_lock():
-                uninstall(args.install_root,shortcut=Shortcut(args.shortcut_path) if args.shortcut_path else None)
+                uninstall(args.install_root,shortcut=ShortcutSet(args.shortcut_path) if args.shortcut_path else None)
             return 0
+        from scripts.install_location import existing_parent
+        existing_parent(args.install_root)
         ids={key:getattr(args,key) for key in ('manifest_sha256','source_sha','tree_sha')}
         txn=Transaction(args.payload_source,args.install_root,ids,args.uninstaller_source,
-            shortcut=Shortcut(args.shortcut_path) if args.shortcut_path else None,
+            shortcut=ShortcutSet(args.shortcut_path) if args.shortcut_path else None,
             cancel=lambda:args.cancel_file is not None and args.cancel_file.exists(),
             status=lambda stage,percent:write_status(args.status_file,stage,percent))
         if args.command=='preflight':

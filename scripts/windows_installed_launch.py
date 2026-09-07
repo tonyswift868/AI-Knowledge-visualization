@@ -78,7 +78,7 @@ def launch(root, verify):
             return
         # Preserve the existing preview transport only. No server mutation or
         # credential copying; production transport is an integration decision.
-        key = Path("E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519")
+        key = Path(os.environ['LOCALAPPDATA']) / 'MentorFlow/Runtime/preview-ssh.key'
         if not key.is_file():
             return
         v._validate_existing_parent_chain(key.parent, label="preview transport key")

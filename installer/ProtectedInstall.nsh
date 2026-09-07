@@ -20,12 +20,12 @@
 !ifndef PROTECTED_APP_ID
  !define PROTECTED_APP_ID "MentorFlow"
 !endif
-!ifndef PROTECTED_DEFAULT_DIR
- !define PROTECTED_DEFAULT_DIR "E:\MentorFlow"
+!ifndef PROTECTED_SHORTCUT_NAME
+ !define PROTECTED_SHORTCUT_NAME "MentorFlow.lnk"
 !endif
-Name "${PROTECTED_APP_ID}"
+Name "MentorFlow"
 OutFile "${OUTPUT_FILE}"
-InstallDir "${PROTECTED_DEFAULT_DIR}"
+InstallDir "$PROGRAMFILES64\MentorFlow"
 RequestExecutionLevel admin
 SetCompressor lzma
 ShowInstDetails hide
@@ -38,13 +38,16 @@ Var StatusFile
 Var CancelFile
 Var HelperArgs
 Var PreviousRoot
+Var DirectoryDialog
+Var DirectoryEdit
+Var BrowseButton
+Var SelectedParent
+Var DirectoryPreview
 !define MUI_CUSTOMFUNCTION_ABORT RequestCancel
 !define MUI_WELCOMEPAGE_TITLE "安装 MentorFlow"
-!define MUI_WELCOMEPAGE_TEXT "请选择程序安装目录。安装器需与上一级 MentorFlow UAT 程序文件一起保留。安装不修改学习或账号数据。"
+!define MUI_WELCOMEPAGE_TEXT "欢迎安装 MentorFlow。请选择这台电脑上已有的安装位置。安装不会修改您的学习资料或账号数据。"
 !insertmacro MUI_PAGE_WELCOME
-!define MUI_DIRECTORYPAGE_TEXT_TOP "请选择 MentorFlow 的安装文件夹。下方所需空间为估算值（含临时空间预留）；安装前将按所选磁盘重新核验。"
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE ValidateDirectory
-!insertmacro MUI_PAGE_DIRECTORY
+Page custom DirectoryCreate ValidateDirectory
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallShow
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TEXT "程序安装与完整校验已完成。请关闭安装器后从桌面启动 MentorFlow，日常启动无需管理员权限。"
@@ -66,6 +69,17 @@ Function .onInit
  StrCpy $StatusFile "$PLUGINSDIR\install-status.ini"
  StrCpy $CancelFile "$PLUGINSDIR\cancel.request"
  StrCpy $Installing 0
+ ; Resolve current-machine system parent at runtime; never compile a drive.
+ StrCpy $SelectedParent "$PROGRAMFILES64"
+ IfFileExists "$SelectedParent\*.*" default_parent_ok
+ StrCpy $SelectedParent "$PROGRAMFILES"
+ IfFileExists "$SelectedParent\*.*" default_parent_ok
+ StrCpy $SelectedParent "$LOCALAPPDATA"
+ IfFileExists "$SelectedParent\*.*" default_parent_ok
+ MessageBox MB_ICONSTOP "找不到有效的默认安装位置，请检查这台电脑的系统目录。"
+ Abort
+ default_parent_ok:
+ StrCpy $INSTDIR "$SelectedParent\MentorFlow"
  SetRegView 64
  ReadRegStr $PreviousRoot HKLM "Software\${PROTECTED_APP_ID}" "InstallLocation"
  ${If} $PreviousRoot != ""
@@ -76,7 +90,45 @@ Function .onInit
  ${EndIf}
 FunctionEnd
 
+Function DirectoryCreate
+ !insertmacro MUI_HEADER_TEXT "安装位置" "选择这台电脑上已有的文件夹。"
+ nsDialogs::Create 1018
+ Pop $DirectoryDialog
+ ${NSD_CreateLabel} 0 0 100% 28u "MentorFlow 将安装到所选文件夹中的 MentorFlow 子文件夹。"
+ Pop $0
+ ${NSD_CreateText} 0 35u 78% 14u "$INSTDIR"
+ Pop $DirectoryEdit
+ ${NSD_CreateBrowseButton} 80% 35u 20% 14u "浏览…"
+ Pop $BrowseButton
+ ${NSD_OnClick} $BrowseButton BrowseExistingParent
+ ${NSD_CreateLabel} 0 63u 100% 30u "需要空间：约 ${INSTALL_SPACE_MB} MB。安装前会自动检查可用空间。"
+ Pop $DirectoryPreview
+ nsDialogs::Show
+FunctionEnd
+
+Function BrowseExistingParent
+ Pop $0
+ ${NSD_GetText} $DirectoryEdit $1
+ ${GetParent} "$1" $SelectedParent
+ nsDialogs::SelectFolderDialog "选择已有的安装位置" "$SelectedParent"
+ Pop $SelectedParent
+ ${If} $SelectedParent == "error"
+   Return
+ ${EndIf}
+ ; The native picker result is untrusted until an actual directory check.
+ System::Call 'kernel32::GetFileAttributesW(w "$SelectedParent")i.r0'
+ IntOp $1 $0 & 0x10
+ ${If} $0 == -1
+ ${OrIf} $1 == 0
+   MessageBox MB_ICONSTOP "所选安装位置不存在。请选择一个已经存在的文件夹。"
+   Return
+ ${EndIf}
+ StrCpy $INSTDIR "$SelectedParent\MentorFlow"
+ ${NSD_SetText} $DirectoryEdit "$INSTDIR"
+FunctionEnd
+
 Function ValidateDirectory
+ ${NSD_GetText} $DirectoryEdit $INSTDIR
  !ifdef MAX_INSTALL_DIR_CHARS
  StrLen $0 $INSTDIR
  ${If} $0 > ${MAX_INSTALL_DIR_CHARS}
@@ -91,11 +143,6 @@ Function ValidateDirectory
    MessageBox MB_ICONSTOP "安装前检查未通过：$1"
    Abort
  ${EndIf}
- ReadINIStr $1 "$StatusFile" "install" "stage"
- ReadINIStr $2 "$StatusFile" "install" "percent"
- MessageBox MB_OKCANCEL "MentorFlow 将安装到：$INSTDIR$\r$\n所需新增空间（字节）：$1$\r$\n可用空间（字节）：$2" IDOK accepted
- Abort
- accepted:
 FunctionEnd
 
 Function InstallShow
@@ -133,7 +180,7 @@ Section "MentorFlow"
  GetFunctionAddress $0 UpdateStatus
  nsDialogs::CreateTimer $0 250
  DetailPrint "正在安装 MentorFlow…"
- ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" transaction $HelperArgs --cancel-file "$CancelFile" --shortcut-path "$DESKTOP\${PROTECTED_APP_ID}.lnk"' $4
+ ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" transaction $HelperArgs --cancel-file "$CancelFile" --shortcut-path "$DESKTOP\${PROTECTED_SHORTCUT_NAME}"' $4
  GetFunctionAddress $0 UpdateStatus
  nsDialogs::KillTimer $0
  StrCpy $Installing 0
@@ -144,7 +191,7 @@ Section "MentorFlow"
    SetErrorLevel $4
    Abort
  ${EndIf}
- DetailPrint "完整验证通过，安装完成。"
+ DetailPrint "安装成功。"
  IfFileExists "$INSTDIR\UpdateBridge.exe" 0 +2
    Exec '"$INSTDIR\UpdateBridge.exe" --initial-health'
 SectionEnd
@@ -154,7 +201,7 @@ Section "Uninstall"
  SetOutPath "$PLUGINSDIR\InstallRuntime"
  File /r "${TRANSACTION_RUNTIME}\*.*"
  SetOutPath "$PLUGINSDIR"
- ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" uninstall-transaction --install-root "$INSTDIR" --shortcut-path "$DESKTOP\${PROTECTED_APP_ID}.lnk"' $0
+ ExecWait '"$PLUGINSDIR\InstallRuntime\MentorFlowInstallGate.exe" uninstall-transaction --install-root "$INSTDIR" --shortcut-path "$DESKTOP\${PROTECTED_SHORTCUT_NAME}"' $0
  ${If} $0 != 0
    MessageBox MB_ICONSTOP "卸载未完成，程序或恢复事务已保留。"
    SetErrorLevel $0
