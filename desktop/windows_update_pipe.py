@@ -12,6 +12,7 @@ import time
 from .update_protocol import canonical, strict_json, SecurityError
 
 MAX_MESSAGE=16384
+PIPE_SDDL='D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)S:(ML;;NW;;;ME)'
 
 
 def name(attempt,role):
@@ -81,7 +82,11 @@ class Listener(Channel):
         sd=c.c_void_p();size=w.DWORD()
         # Local authenticated interactive users can exchange data only. No
         # impersonation, anonymous/remote access or arbitrary command messages.
-        if not adv.ConvertStringSecurityDescriptorToSecurityDescriptorW('D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)',1,c.byref(sd),c.byref(size)):
+        # Explicit Medium object label permits the intended Medium→High
+        # request channel without relying on a creator's token default label.
+        # Low-integrity writes remain denied; native peer checks still govern
+        # every operation. This label applies to the pipe, not to program files.
+        if not adv.ConvertStringSecurityDescriptorToSecurityDescriptorW(PIPE_SDDL,1,c.byref(sd),c.byref(size)):
             raise c.WinError(c.get_last_error())
         try:
             sa=SA(c.sizeof(SA),sd,False)

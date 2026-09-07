@@ -62,7 +62,7 @@ def provision(work):
 
 
 def configure(work,public,identity):
-    build=work/'build';build.mkdir(exist_ok=True)
+    build=work/'build'/identity['source_sha'][:12];build.mkdir(parents=True,exist_ok=True)
     generated=build/'mentorflow_delivery_authority.py'
     values=dict(APP_ID=APP_ID,WORK_ROOT=str(work),DATA_ROOT=str(work/'data'),
                 PUBLIC_KEYS={public['key_id']:base64.b64decode(public['public_key'])},SOURCE_SHA=identity['source_sha'])
@@ -76,7 +76,7 @@ def configure(work,public,identity):
 
 def build_binaries(args,identity):
     work=args.work;public=provision(work);build=configure(work,public,identity)
-    evidence=work/'binaries.json'
+    evidence=build/'binaries.json'
     if evidence.exists():
         old=json.loads(evidence.read_bytes())
         if old['source']!=identity:raise ValueError('old binaries belong to different source; preserve and select new work root')
@@ -108,7 +108,12 @@ def build_binaries(args,identity):
     artifacts.append(dict(path=str(bridge),sha256=v.sha256_file(bridge)))
     run([sys.executable,'-B','-m','PyInstaller','--distpath',build/'app','--workpath',build/'pyi-app',
         PROJECT/'release/real-delivery-app.spec'],PROJECT,build/'app.build.log',env)
-    exe=build/'app/MentorFlow.exe';artifacts.append(dict(path=str(exe),sha256=v.sha256_file(exe)))
+    # EXE(exclude_binaries=True) without COLLECT deliberately leaves the
+    # executable in workpath. Preserve it and explicitly collect that output.
+    compiled=build/'pyi-app/real-delivery-app/MentorFlow.exe'
+    exe=build/'app/MentorFlow.exe';exe.parent.mkdir(exist_ok=True)
+    shutil.copyfile(compiled,exe)
+    artifacts.append(dict(path=str(exe),sha256=v.sha256_file(exe)))
     # Verify frozen code did not capture the two protected unrelated scripts.
     from PyInstaller.archive.readers import CArchiveReader
     archive=CArchiveReader(str(exe));pyz=archive.open_embedded_archive('PYZ.pyz')
@@ -134,6 +139,7 @@ def prepare_base(args,identity):
         if old['source']!=identity:raise ValueError('base source changed')
         return old
     build_binaries(args,identity);public=provision(work)
+    build=configure(work,public,identity)
     source=args.payload;target=work/'release/base/App'
     if target.exists():raise ValueError('incomplete copied BASE preserved: '+str(target))
     from scripts.prepare_transactional_installer import verify
@@ -144,13 +150,13 @@ def prepare_base(args,identity):
         destination=target/key;destination.parent.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(source/key,destination)
         if v.sha256_file(destination)!=row['sha256']:raise ValueError('source changed during BASE copy: '+key)
-    replacements={target/'MentorFlow.exe':work/'build/app/MentorFlow.exe',
-                  target/'MentorFlowInstallGate.exe':work/'build/native/MentorFlowInstallGate/MentorFlowInstallGate.exe',
-                  target/'UpdateBridge.exe':work/'build/UpdateBridge.exe',
+    replacements={target/'MentorFlow.exe':build/'app/MentorFlow.exe',
+                  target/'MentorFlowInstallGate.exe':build/'native/MentorFlowInstallGate/MentorFlowInstallGate.exe',
+                  target/'UpdateBridge.exe':build/'UpdateBridge.exe',
                   target/'SELF-CHECK/verify_windows_package.py':PROJECT/'scripts/verify_windows_package.py'}
     for destination,source_file in replacements.items():shutil.copyfile(source_file,destination)
     for folder,name in [('InstallRuntime','MentorFlowInstallGate'),('UpdateRuntime','UpdateRuntime')]:
-        shutil.copytree(work/'build/native'/name,target/folder)
+        shutil.copytree(build/'native'/name,target/folder)
     # Only newly copied build inputs are replaced; historical bundles untouched.
     public_version=version_doc('1.2.0',work,public,args.origin)
     for relative in ('mentorflow-version.json','_internal/mentorflow-version.json'):
