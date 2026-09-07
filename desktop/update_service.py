@@ -302,16 +302,21 @@ class MatureUpdateService:
     def check(self, *, manual=True):
         import logging
         import time
-        from .update_download import InstallUpdateLock
+        from .update_download import InstallUpdateLock, UpdateTelemetry
         from .update_protocol import MAX_METADATA, SecurityError, verify_release, make_plan, rollout_eligible
         if not manual and time.time() < self._next_check:
             return dict(self.snapshot)
         try:
+            self.telemetry = UpdateTelemetry()
+            self.telemetry.mark('T00_UPDATE_BEGIN')
             with InstallUpdateLock(self.cache.root):
                 self._state('CHECKING', '正在检查更新…')
+                self.telemetry.mark('T01_METADATA_FETCH_BEGIN')
                 raw = self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA)
+                self.telemetry.totals['bytes_read'] += len(raw)
                 release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
+                self.telemetry.mark('T02_METADATA_VERIFIED')
                 self._remember_release(release)
                 plan = make_plan(release, self._local_rows(), self.current)
                 eligible = rollout_eligible(release, self.install_identity)
@@ -352,12 +357,15 @@ class MatureUpdateService:
                 def progress(_):
                     self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before}
                 self.staged = self.cache.reconstruct(release, self.plan, self.install_root/'App',
-                    cancel=self.cancel_event.is_set, progress=progress)
+                    cancel=self.cancel_event.is_set, progress=progress,
+                    telemetry=getattr(self, 'telemetry', None))
                 actual = self.cache.transport.bytes_received-before
                 self._state('READY_TO_APPLY', '下载和校验完成，可稍后更新。',
                             actual_downloaded_bytes=actual,
                             saved_bytes=max(0, self.plan['full_bytes']-actual),
                             saving_percent=100 * max(0, 1-actual/max(1,self.plan['full_bytes'])))
+                if getattr(self, 'telemetry', None):
+                    self.telemetry.mark('T14_READY_TO_APPLY')
         except Exception as exc:
             logging.getLogger(__name__).exception('desktop incremental download failed')
             self.staged = None

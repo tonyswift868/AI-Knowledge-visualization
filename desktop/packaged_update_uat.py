@@ -8,6 +8,72 @@ import sys
 import time
 
 
+def startup(python_entry):
+    """UAT-only event-loop health, not an install receipt/integrity authority.
+
+    Full target verification remains in reconstruct and pre-apply. Repeating
+    the 2 GB scan before QApplication is neither startup health nor useful
+    evidence of a DLL/Qt failure.
+    """
+    if not getattr(sys, 'frozen', False):
+        raise RuntimeError('real frozen executable required')
+    config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
+    root = Path(config['root']).absolute()
+    if not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+        raise RuntimeError('isolated UAT root required')
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        raise RuntimeError('standard user required')
+    executable = Path(str(Path(sys.executable).absolute()).removeprefix('\\\\?\\'))
+    if not executable.is_relative_to(root) or executable.name != 'MentorFlow.exe':
+        raise RuntimeError('unexpected UAT executable location')
+    request = json.loads((root/'startup-request.json').read_bytes())
+    if set(request) != {'case'} or request['case'] not in {'base', 'direct', 'reconstructed'}:
+        raise RuntimeError('invalid startup request')
+    output = root/('startup-'+request['case']+'.json')
+    if output.exists():
+        raise RuntimeError('existing startup evidence preserved')
+    marks = dict(PYTHON_ENTRY_READY=python_entry,
+                 PYINSTALLER_BOOTSTRAP_READY=python_entry)
+    # Python entry is the first observable post-bootloader point; do not claim
+    # an independently measured internal C bootloader timestamp.
+    result = dict(packaged=True, pid=os.getpid(), executable=str(executable),
+        sys_meipass=sys._MEIPASS, internal_root=str(executable.parent/'_internal'),
+        real_product_health=False, full_package_verify=False, marks=marks)
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QTimer
+        marks['QT_IMPORT_READY'] = time.monotonic()
+        from desktop.update_panel import UpdatePanel
+        from desktop.version import VERSION_MANIFEST
+        if request['case'] != 'base':
+            from desktop.update_protocol import verify_release
+            release = verify_release((root/'release-happy.json').read_bytes(),
+                {config['key_id']:base64.b64decode(config['public_key'],validate=True)},current='1.1.0')
+            if VERSION_MANIFEST['version'] != release.version:
+                raise RuntimeError('runtime version differs from signed target')
+        app = QApplication([str(executable)])
+        marks['QAPPLICATION_READY'] = time.monotonic()
+        panel = UpdatePanel(service=None)
+        marks['WINDOW_CONSTRUCTED'] = time.monotonic()
+        panel.show()
+        def ready():
+            if not panel.isVisible():
+                result['fatal_error'] = 'window not visible'
+            else:
+                marks['WINDOW_READY'] = time.monotonic()
+                result.update(version=VERSION_MANIFEST['version'],
+                    version_label=panel.version_label.text(), qt_event_loop_ready=True,
+                    qtcore_module_path=sys.modules['PySide6.QtCore'].__file__)
+            output.write_text(json.dumps(result,indent=2),encoding='utf-8')
+            panel.shutdown(); panel.close(); app.quit()
+        QTimer.singleShot(200, ready)
+        return app.exec()
+    except Exception as exc:
+        result['fatal_error'] = type(exc).__name__ + ': ' + str(exc)
+        output.write_text(json.dumps(result,indent=2),encoding='utf-8')
+        raise
+
+
 def main():
     if not getattr(sys, 'frozen', False):
         raise RuntimeError('real frozen executable required')
@@ -35,12 +101,11 @@ def main():
         normalized = Path(str(executable).removeprefix('\\\\?\\'))
         if not normalized.is_relative_to(root/'cache-happy') or executable.name != 'MentorFlow.exe':
             raise RuntimeError('unexpected UAT executable location')
-        from desktop.update_download import ObjectCache
         from desktop.update_protocol import verify_release
         signed = verify_release((root/'release-happy.json').read_bytes(),
             {config['key_id']:base64.b64decode(config['public_key'],validate=True)},current='1.1.0')
-        cache = ObjectCache(normalized.parent.parent, None)
-        cache.verify_tree(executable.parent, signed)
+        # Explicit updater/pre-apply verification owns complete integrity.
+        # This finite frozen health probe only checks runtime/Qt/version READY.
         from desktop.version import VERSION_MANIFEST
         if VERSION_MANIFEST['version'] != signed.version:
             raise RuntimeError('target visible version differs from signed release')
@@ -91,6 +156,7 @@ def main():
     def finish(reason):
         timer.stop(); service.cancel_download()
         result.update(reason=reason, snapshot=dict(service.snapshot), qt_event_ticks=ticks,
+            telemetry=service.telemetry.report() if getattr(service,'telemetry',None) else None,
             total_http_body_bytes=transport.bytes_received, metadata_body_bytes=check_total,
             elapsed_seconds=round(time.monotonic()-started,3),
             staged=str(service.staged) if service.staged else None,

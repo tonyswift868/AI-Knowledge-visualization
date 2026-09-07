@@ -139,6 +139,47 @@ def test_same_version_no_update(feed):
     assert feed.service().check()['state'] == 'UP_TO_DATE'
 
 
+def test_rebuild_phase_trace_and_independent_changed_object(feed):
+    service = feed.service(); service.check()
+    assert service.download()['state'] == 'READY_TO_APPLY'
+    trace = service.telemetry.report()
+    assert [r['name'].split('_')[0] for r in trace['events']] == [f'T{i:02}' for i in range(15)]
+    for row in trace['events']:
+        assert row['end_monotonic'] >= row['start_monotonic']
+        assert not row['errors']
+        assert {'file_count','bytes_read','bytes_written','bytes_reused','bytes_hashed'} <= row.keys()
+    source = feed.app/'_internal/frontend/ui.txt'
+    target = service.staged/'_internal/frontend/ui.txt'
+    assert not source.samefile(target)
+    before = source.read_bytes()
+    target.write_bytes(b'isolated target changed')
+    assert source.read_bytes() == before
+    with pytest.raises(SecurityError):
+        service.cache.verify_tree(service.staged, service.release)
+
+
+def test_untrusted_unchanged_source_stream_hash_and_signed_fallback(feed):
+    source = feed.app/'MentorFlow.exe'
+    source.write_bytes(b'X'*len(feed.old_files['MentorFlow.exe']))
+    service = feed.service(); service.check()
+    assert service.download()['state'] == 'READY_TO_APPLY'
+    assert (service.staged/'MentorFlow.exe').read_bytes() == feed.old_files['MentorFlow.exe']
+    assert source.read_bytes() == b'X'*len(feed.old_files['MentorFlow.exe'])
+
+
+def test_final_full_hash_catches_post_stream_copy_tamper(feed, monkeypatch):
+    service = feed.service(); service.check()
+    original = Path.rename
+    def tamper_after_rename(path, destination):
+        result = original(path, destination)
+        if Path(destination).name == 'MentorFlow.exe':
+            Path(destination).write_bytes(b'X'*len(feed.old_files['MentorFlow.exe']))
+        return result
+    monkeypatch.setattr(Path, 'rename', tamper_after_rename)
+    assert service.download()['state'] == 'FAILED_SECURITY'
+    assert service.staged is None
+
+
 @pytest.mark.parametrize('field,value', [('app_id','OtherApp'),('channel','beta'),('version','0.9.0'),
     ('signature_algorithm','none'),('mandatory',True),('version','999999.0.0')])
 def test_signed_wrong_contract_and_fake_high_version_rejected(feed, field, value):

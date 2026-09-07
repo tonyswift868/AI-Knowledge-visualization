@@ -12,6 +12,7 @@ import re
 import shutil
 import threading
 import time
+from contextvars import ContextVar
 from urllib.parse import urlsplit
 from typing import Protocol, Iterator, Callable
 
@@ -22,17 +23,57 @@ from .update_protocol import (DownloadCancelled, RecoverableError, SecurityError
                               Release, MANIFEST_PATH)
 
 
+_trace = ContextVar('update_io_trace', default=None)
+
+
+class UpdateTelemetry:
+    """Per-operation diagnostic counters; never an integrity authority."""
+    def __init__(self):
+        self.events = []
+        self.totals = dict(file_count=0, bytes_read=0, bytes_written=0,
+                          bytes_reused=0, bytes_hashed=0, hash_file_count=0,
+                          hash_wall_ms=0., hash_cpu_ms=0., path_wall_ms=0.)
+        self.last_time = time.monotonic()
+        self.last_totals = dict(self.totals)
+
+    def mark(self, name, error=None):
+        now = time.monotonic()
+        self.events.append(dict(name=name, start_monotonic=self.last_time,
+            end_monotonic=now, elapsed_ms=(now-self.last_time)*1000,
+            **{k:self.totals[k]-self.last_totals[k] for k in self.totals},
+            errors=[] if error is None else [type(error).__name__]))
+        self.last_time, self.last_totals = now, dict(self.totals)
+
+    def report(self):
+        return dict(events=list(self.events), totals=dict(self.totals))
+
+
 def hash_file(path):
+    trace = _trace.get()
+    start, cpu = time.monotonic(), time.thread_time()
     with Path(path).open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        result = hashlib.file_digest(stream, 'sha256').hexdigest()
+        if trace:
+            size = stream.tell()
+            trace.totals['bytes_read'] += size
+            trace.totals['bytes_hashed'] += size
+            trace.totals['hash_file_count'] += 1
+            trace.totals['hash_wall_ms'] += (time.monotonic()-start)*1000
+            trace.totals['hash_cpu_ms'] += (time.thread_time()-cpu)*1000
+        return result
 
 
 def safe_entry(path: Path, root: Path, *, directory=False, missing=True):
+    start = time.monotonic()
     try:
         return v._validate_staging_entry(path, root, directory=directory,
                                         allow_missing=missing, label='desktop update cache')
     except v.PackageError as exc:
         raise SecurityError('unsafe update-cache entry') from exc
+    finally:
+        trace = _trace.get()
+        if trace:
+            trace.totals['path_wall_ms'] += (time.monotonic()-start)*1000
 
 
 class InstallUpdateLock:
@@ -227,6 +268,9 @@ class ObjectCache:
                         if stream is None or offset + len(value) > asset['size']:
                             raise SecurityError('asset response size mismatch')
                         stream.write(value); offset += len(value); progress(len(value))
+                        trace = _trace.get()
+                        if trace:
+                            trace.totals['bytes_written'] += len(value)
             finally:
                 if stream is not None:
                     stream.flush(); os.fsync(stream.fileno()); stream.close()
@@ -249,8 +293,32 @@ class ObjectCache:
         return required
 
     def reconstruct(self, release: Release, plan: dict, old_app: Path | None, *, cancel=lambda: False,
-                    progress=lambda n: None):
+                    progress=lambda n: None, telemetry=None):
+        trace = telemetry or UpdateTelemetry()
+        token = _trace.set(trace)
+        try:
+            return self._reconstruct(release, plan, old_app, cancel=cancel,
+                                     progress=progress, trace=trace)
+        except Exception as exc:
+            trace.mark('RECONSTRUCTION_FAILED', exc)
+            raise
+        finally:
+            self.telemetry = trace.report()
+            _trace.reset(token)
+
+    def _reconstruct(self, release, plan, old_app, *, cancel, progress, trace):
         self.disk_preflight(release, plan)
+        # Fetch the small changed set first. Cancellation/corrupt-asset feedback
+        # must not wait for materialization of the entire unchanged payload.
+        fetch = set(plan['download_paths'])
+        trace.mark('T03_ASSET_DOWNLOAD_BEGIN')
+        downloaded = {}
+        for path in plan['download_paths']:
+            if cancel():
+                raise DownloadCancelled('download cancelled')
+            downloaded[path] = self.download(release.assets[path], cancel=cancel, progress=progress)
+        trace.mark('T04_ASSET_DOWNLOAD_COMPLETE')
+        trace.mark('T05_RECONSTRUCTION_BEGIN')
         target = self.root / ('version-' + hashlib.sha256(release.envelope).hexdigest())
         safe_entry(target, self.root, directory=True)
         target.mkdir(exist_ok=True)
@@ -259,8 +327,16 @@ class ObjectCache:
             safe_entry(existing, self.root, directory=existing.is_dir(), missing=False)
             if existing.is_file() and existing.relative_to(target).as_posix() not in allowed:
                 raise SecurityError('unknown staging file preserved')
-        fetch = set(plan['download_paths'])
-        for path, row in release.rows.items():
+        trace.mark('T06_STAGE_DIRECTORY_READY')
+        trace.mark('T07_UNCHANGED_MATERIALIZATION_BEGIN')
+        ordered = [p for p in release.rows if p not in fetch] + [p for p in release.rows if p in fetch]
+        changed_started = False
+        for path in ordered:
+            row = release.rows[path]
+            if path in fetch and not changed_started:
+                trace.mark('T08_UNCHANGED_MATERIALIZATION_END')
+                trace.mark('T09_CHANGED_MATERIALIZATION_BEGIN')
+                changed_started = True
             if cancel():
                 raise DownloadCancelled('reconstruction cancelled')
             destination = target / path
@@ -269,12 +345,15 @@ class ObjectCache:
                 if destination.stat().st_size != row['size'] or hash_file(destination) != row['sha256']:
                     raise SecurityError('reconstruction cache was modified')
                 continue
-            source = None
+            source = downloaded.get(path)
             if path not in fetch and old_app is not None:
                 candidate = Path(old_app) / path
                 if candidate.is_file():
                     safe_entry(candidate, Path(old_app), missing=False)
-                    if candidate.stat().st_size == row['size'] and hash_file(candidate) == row['sha256']:
+                    if candidate.stat().st_size == row['size']:
+                        # Untrusted source identity is verified while copying,
+                        # not accepted on size/mtime. Final target bytes are
+                        # independently read and hashed by verify_tree below.
                         source = candidate
             if source is None:
                 source = self.download(release.assets[path], cancel=cancel, progress=progress)
@@ -288,18 +367,50 @@ class ObjectCache:
             safe_entry(temporary, self.root)
             # Only this single owned incomplete-copy name is restarted. Completed
             # cache objects and live App are never removed after interruption.
-            with source.open('rb') as incoming, temporary.open('wb') as outgoing:
-                while block := incoming.read(65536):
-                    if cancel():
-                        raise DownloadCancelled('reconstruction cancelled')
-                    outgoing.write(block)
-                outgoing.flush(); os.fsync(outgoing.fileno())
-            if hash_file(temporary) != row['sha256']:
-                raise SecurityError('reconstructed file hash mismatch')
+            def copy_verified(source):
+                hasher = hashlib.sha256()
+                count = 0
+                with source.open('rb') as incoming, temporary.open('wb') as outgoing:
+                    while block := incoming.read(65536):
+                        if cancel():
+                            raise DownloadCancelled('reconstruction cancelled')
+                        count += len(block)
+                        if count > row['size']:
+                            raise SecurityError('reconstruction source grew')
+                        start, cpu = time.monotonic(), time.thread_time()
+                        hasher.update(block)
+                        trace.totals['hash_wall_ms'] += (time.monotonic()-start)*1000
+                        trace.totals['hash_cpu_ms'] += (time.thread_time()-cpu)*1000
+                        trace.totals['bytes_hashed'] += len(block)
+                        trace.totals['bytes_read'] += len(block)
+                        outgoing.write(block)
+                        trace.totals['bytes_written'] += len(block)
+                    outgoing.flush(); os.fsync(outgoing.fileno())
+                trace.totals['hash_file_count'] += 1
+                return count == row['size'] and hasher.hexdigest() == row['sha256']
+            if not copy_verified(source):
+                if path in fetch or old_app is None or source != Path(old_app)/path:
+                    raise SecurityError('reconstructed file hash mismatch')
+                # A locally modified unchanged source is not trusted. Preserve
+                # it and recover through the signed asset, as before.
+                source = self.download(release.assets[path], cancel=cancel, progress=progress)
+                safe_entry(temporary, self.root)
+                if not copy_verified(source):
+                    raise SecurityError('reconstructed file hash mismatch')
             safe_entry(destination, self.root)
             if destination.exists(): raise SecurityError('staging destination changed during copy')
             temporary.rename(destination)
+            trace.totals['file_count'] += 1
+            if path not in fetch:
+                trace.totals['bytes_reused'] += row['size']
+        if not changed_started:
+            trace.mark('T08_UNCHANGED_MATERIALIZATION_END')
+            trace.mark('T09_CHANGED_MATERIALIZATION_BEGIN')
+        trace.mark('T10_CHANGED_MATERIALIZATION_END')
+        trace.mark('T11_VERIFY_BEGIN')
         self.verify_tree(target, release)
+        trace.mark('T12_VERIFY_END')
+        trace.mark('T13_TARGET_COMPLETE')
         return target
 
     def verify_tree(self, target, release):
