@@ -1,0 +1,90 @@
+"""Finite UAT-only packaged check/download measurement; no apply authority."""
+import base64
+import ctypes
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+
+def main():
+    if not getattr(sys, 'frozen', False):
+        raise RuntimeError('real frozen executable required')
+    config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
+    root = Path(config['root']).absolute()
+    if not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+        raise RuntimeError('isolated UAT root required')
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        raise RuntimeError('UAT check/download must not be elevated')
+    from desktop.update_download import HTTPTransport
+    from desktop.update_service import MatureUpdateService
+    from desktop.update_protocol import digest, canonical
+    from scripts import windows_update_apply
+    from desktop.system_page import SystemPage
+    from desktop.update_panel import UpdatePanel
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+    # This marker cannot enable this mode in a production build: only the
+    # separate build-selected entry handles the qualification argument.
+    executable = Path(sys.executable).absolute()
+    if executable != root/'base/App/MentorFlow.exe':
+        raise RuntimeError('unexpected UAT executable location')
+    request = json.loads((root/'request.json').read_bytes())
+    if set(request) != {'port', 'case'} or type(request['port']) is not int or not 1024 <= request['port'] <= 65535:
+        raise RuntimeError('invalid local UAT request')
+    case = request['case']
+    if case not in {'happy', 'tampered', 'expired', 'replay', 'corrupt', 'cancel', 'resume', 'offline', 'fallback'}:
+        raise RuntimeError('invalid UAT case')
+    origin = 'http://127.0.0.1:' + str(request['port'])
+    transport = HTTPTransport(origin, fixture_http=True, connect=2, read=3, total=30)
+    current = json.loads((executable.parent/'mentorflow-version.json').read_bytes())['version']
+    service = MatureUpdateService(install_root=executable.parent.parent,
+        cache_root=root/('cache-'+('happy' if case == 'replay' else 'cancel' if case == 'resume' else case)),
+        metadata_url=origin+'/stable.json', public_keys={config['key_id']:base64.b64decode(config['public_key'],validate=True)},
+        current=current, transport=transport)
+    app = QApplication([str(executable)])
+    app.setApplicationName('MentorFlow Packaged Update UAT')
+    # Reuse the exact production Settings card. No parallel updater page is
+    # added to the product. SystemPage module import also proves frozen closure.
+    panel = UpdatePanel(service=service, auto_delay_ms=600000)
+    panel.setWindowTitle('MentorFlow — isolated packaged updater qualification')
+    panel.show()
+    started=time.monotonic(); ticks=0; phase='check'; check_total=0
+    output=root/('result-'+case+'.json')
+    if output.exists(): raise RuntimeError('existing UAT evidence preserved')
+    result=dict(packaged=True, executable=str(executable), pid=os.getpid(),
+        elevation='STANDARD_USER', case=case, main_requested_execution_level='asInvoker',
+        ui_scope='real frozen UpdatePanel; not authenticated product main window',
+        system_page_import=SystemPage.__name__, apply_module_import=windows_update_apply.__name__,
+        source_sha=config['source_sha'], tree_sha=config['tree_sha'])
+    timer=QTimer(); timer.setInterval(20)
+
+    def finish(reason):
+        timer.stop(); service.cancel_download()
+        result.update(reason=reason, snapshot=dict(service.snapshot), qt_event_ticks=ticks,
+            total_http_body_bytes=transport.bytes_received, metadata_body_bytes=check_total,
+            elapsed_seconds=round(time.monotonic()-started,3),
+            staged=str(service.staged) if service.staged else None,
+            packaged_ui_created=panel.isVisible(), main_window_qualified=False,
+            app_exe_sha256=digest(executable.read_bytes()))
+        output.write_bytes(canonical(result))
+        panel.shutdown(); panel.close(); app.quit()
+
+    def tick():
+        nonlocal ticks, phase, check_total
+        ticks+=1
+        if time.monotonic()-started>240:
+            finish('BOUNDED_TIMEOUT'); return
+        running=panel._thread and panel._thread.is_alive()
+        if phase=='check' and not running:
+            check_total=transport.bytes_received
+            if service.snapshot['state']=='UPDATE_AVAILABLE' and case not in {'tampered','expired','replay','offline'}:
+                phase='download'; panel.download_button.click()
+            else: finish('CHECK_FINISHED')
+        elif phase=='download':
+            if case=='cancel' and service.snapshot.get('actual_downloaded_bytes',0)>65536:
+                panel.cancel_button.click()
+            if not running: finish('DOWNLOAD_FINISHED')
+    panel.check_button.click(); timer.timeout.connect(tick); timer.start()
+    return app.exec()

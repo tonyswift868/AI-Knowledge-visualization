@@ -12,6 +12,15 @@ from PyInstaller.utils.hooks import (
 
 
 root = Path.cwd()
+uat_config = os.getenv('MENTORFLOW_PACKAGED_UPDATE_UAT_CONFIG', '')
+if uat_config:
+    import json
+    uat_path = Path(uat_config).absolute()
+    if not uat_path.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
+        raise ValueError('UAT public build configuration must be in isolated scratch')
+    uat_doc = json.loads(uat_path.read_bytes())
+    if set(uat_doc) != {'schema', 'root', 'public_key', 'key_id', 'source_sha', 'tree_sha'} or uat_doc['schema'] != 'mentorflow.packaged-update-uat.v1':
+        raise ValueError('invalid UAT public build configuration')
 backend_root = root / "backend"
 # Desktop runtime imports the canonical backend namespace as ``app`` after
 # selecting the account-scoped data root.  Make that same namespace visible
@@ -130,8 +139,12 @@ for package in ("keyring", "argon2-cffi", "docling", "instructor", "yt-dlp"):
     except Exception:
         pass
 
+if uat_config:
+    datas.append((str(uat_path), 'update-uat'))
+    hiddenimports += ['scripts.windows_update_apply']
+
 a = Analysis(
-    [str(root / ("desktop_gui_entry.py" if os.getenv("MENTORFLOW_BUILD_PROTECTED_GUI") == "1" else "desktop_entry.py"))],
+    [str(root / ('desktop_update_uat_entry.py' if uat_config else "desktop_gui_entry.py" if os.getenv("MENTORFLOW_BUILD_PROTECTED_GUI") == "1" else "desktop_entry.py"))],
     pathex=[str(root), str(backend_root)],
     binaries=binaries,
     datas=datas,
@@ -245,5 +258,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="MentorFlow",
+    name="App" if uat_config else "MentorFlow",
 )
