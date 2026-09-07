@@ -103,8 +103,14 @@ def main():
     identity.update(exe_sha256=exe_pin, manifest_sha256=pin, main_execution_level='asInvoker', longPathAware=True)
     (work/'build-identity.json').write_bytes(canonical(identity))
     # New hardlink replicas are used solely read-only by frozen Qt probes.
+    def replica_file(source, destination):
+        # Authority manifests are intentionally single-link under the existing
+        # path-safety contract. Payload can still be shared read-only.
+        if Path(source).name == 'package-manifest.json':
+            return shutil.copyfile(source, destination)
+        return os.link(source, destination)
     for root in roots[1:]:
-        shutil.copytree(a, root/'App', copy_function=os.link)
+        shutil.copytree(a, root/'App', copy_function=replica_file)
     print('THREE_BUNDLES_MATERIALIZED', flush=True)
     measurements, negatives = [], []
     def launch(root, mutation=None):
@@ -119,7 +125,10 @@ def main():
             signed_release_identity=digest(canonical(dict(app_id='MentorFlow', version=manifest['version'], manifest_sha256=pin))),
             receipt_sha256=None, health_endpoint=str(control/'health.json'), fixture_root=None, cross_volume_root=None)
         expected = copy.deepcopy(request)
-        if mutation: mutation(request)
+        # Exercise coordinator rejection of actual same-EXE health against a
+        # wrong expected contract. Do not trigger windowed bootloader error
+        # dialogs by deliberately crashing the frozen application.
+        if mutation: mutation(expected)
         signed = canonical(dict(signed=request,key_id='relocation-fixture',signature=base64.b64encode(private.sign(canonical(request))).decode()))
         request_path = control/'request.json'
         request_path.write_bytes(signed)

@@ -90,3 +90,14 @@ def test_path_budget_preserved():
     from scripts.runtime_path_budget import budget
     assert budget('E:\\MentorFlow', ['_internal/QtCore.pyd'])
     with pytest.raises(ValueError): budget('D:\\'+'x'*240, ['_internal/QtCore.pyd'])
+
+
+def test_authority_manifest_alias_rejected(tmp_path):
+    import os
+    from desktop.update_tree_security import DirectoryPins
+    source=tmp_path/'package-manifest.json'
+    source.write_bytes(b'{}')
+    os.link(source,tmp_path/'alias.json')
+    with DirectoryPins() as pins:
+        with pytest.raises(SecurityError, match='unaccepted update hardlink'):
+            pins.check(source,tmp_path,missing=False)

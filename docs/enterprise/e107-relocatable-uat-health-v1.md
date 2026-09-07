@@ -57,14 +57,22 @@ nonce-bearing user-writable evidence alone is not a security attestation.
 dependency closure, verifies its PE manifest and embedded modules, independently
 copies the old bundle, regenerates its manifest, then makes two read-only
 hardlink replicas of that new bundle. The old package is never linked for writes.
-Three actual frozen processes use offscreen Qt, independently signed attempts,
-and separate output directories. This proves Qt event-loop boot, not foreground
+Each authority manifest is copied independently: the existing path guard rejects
+hardlinked authority files. Three actual frozen processes use offscreen Qt,
+independently signed attempts, and separate output directories. This proves Qt event-loop boot, not foreground
 UX, authenticated main-window readiness, protected update apply or health acceptance.
 
-The same EXE is also launched with four wrong/stale contracts. Resulting signals
-are rejected by the coordinator validator, or the package rejects before Qt.
+Health from the same actual EXE is checked against four wrong/stale expected
+contracts and rejected by the coordinator validator. Malformed signed requests
+are separately covered by source tests; those are not claimed as live launches.
 Full 2.11 GB performance qualification is not repeated; package manifest hashing
 is a build-integrity operation, not a performance acceptance run.
 
 The base-seed/update UAC authorizations remain valid and separately counted.
 Relocation/health success alone does not satisfy the protected seed receipt gate.
+The current protected root contains `.uat-control/acl-bootstrap-result.json`;
+the unchanged installation verifier `_snapshot` rejects it as an unknown control
+file. It also contains the original App sentinel, not a BASE inventory. Seeding
+requires an explicit preserved-control inventory/receipt adapter; deleting prior
+bootstrap evidence, weakening the verifier, or copying the old fixture's receipt
+is not an acceptable workaround. No seed or update UAC is consumed by this fix.
