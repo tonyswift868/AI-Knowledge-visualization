@@ -1,0 +1,11 @@
+{
+  "schema": "mentorflow.actions-compute-policy.v1",
+  "default_classification": "heavy",
+  "allowed_entry_events": ["workflow_dispatch", "workflow_call"],
+  "approved_runner_labels": ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"],
+  "runner_evidence": "2026-09-07 read-only GitHub actions/runners: mentorflow-e1-turkey-01 online; no runner registered by this task",
+  "lightweight_exceptions": {},
+  "execution_policy": "LOCAL / OWN VPS / SELF-HOSTED; no default GitHub test compute",
+  "guard_execution": "Local preflight, A integration and VPS preflight only; never auto-dispatch an Action",
+  "remote_settings": "CodeQL Default Setup, dependency graph automatic submission and Dependabot security updates require separate remote review; source guard cannot disable them"
+}

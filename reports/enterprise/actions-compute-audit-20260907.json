@@ -1,0 +1,1193 @@
+{
+  "dispatch_id": "MF-E107-GITHUB-ACTIONS-AUTO-TEST-KILL-20260907-01",
+  "task_id": "MENTORFLOW_GITHUB_ACTIONS_ZERO_AUTO_TEST_GUARD_V1",
+  "source_base": "21337c1eda64f7e087fcade77c3d4cd7dce4a0af",
+  "counting": "workflow/event pairs; job definitions, not matrix expansion; all workflows conservatively heavy",
+  "before": {
+    "status": "FAIL",
+    "counts": {
+      "all_workflow_count": 8,
+      "auto_github_compute_trigger_count": 6,
+      "heavy_auto_trigger_count": 6,
+      "github_hosted_job_count": 29,
+      "github_hosted_heavy_job_count": 29,
+      "self_hosted_job_count": 5,
+      "unknown_runner_job_count": 0
+    },
+    "workflows": [
+      {
+        "workflow_file": ".github/workflows/container-release.yml",
+        "workflow_name": "Container Build Scan Publish",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "source-contract": {
+            "name": "Bind final release to the exact promoted canonical source",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "quality": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          },
+          "scanner-lease": {
+            "name": "Container scanner dependency lease",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "build": {
+            "name": "Build four source-bound image candidates with Buildx",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "scan": {
+            "name": "Scan and SBOM / ${{ matrix.target }}",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "publish": {
+            "name": "Publish four verified images and immutable release package",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "required-gate": {
+            "name": "Require every final-release gate and publication result",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "always()"
+          }
+        },
+        "heavy_jobs": [
+          "source-contract",
+          "quality",
+          "scanner-lease",
+          "build",
+          "scan",
+          "publish",
+          "required-gate"
+        ],
+        "uses_codeql": true,
+        "uses_github_hosted": true,
+        "uses_self_hosted": false,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-ci.yml",
+        "workflow_name": "Enterprise reusable CI lanes",
+        "triggers": [
+          "push",
+          "workflow_call",
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "lane-contract": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / lane contract",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "github.ref != 'refs/heads/codex/e1-postgres17-real-gate-r1'"
+          },
+          "postgres17-rls-worker-real-gate": {
+            "name": "E1-02 / PostgreSQL 17.6 RLS and Worker real gate",
+            "runs_on": [
+              "self-hosted",
+              "linux",
+              "x64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "github.event_name == 'push' && github.ref == 'refs/heads/codex/e1-postgres17-real-gate-r1'"
+          },
+          "readiness-provenance": {
+            "name": "${{ inputs.lane }} / GitHub-reachable readiness provenance",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-fast": {
+            "name": "PR_FAST / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}",
+            "runs_on": "${{ matrix.os }}",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST'"
+          },
+          "backend-full": {
+            "name": "MAIN_FULL / Backend core / Ubuntu 24.04 / Python ${{ matrix.python }}",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-full-windows": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / Backend core / Windows / Python ${{ matrix.python }} / shard ${{ matrix.shard }} of 6",
+            "runs_on": "windows-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "backend-document-ml": {
+            "name": "MAIN_FULL / Backend document and ML / Ubuntu 24.04 / Python 3.11",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-desktop": {
+            "name": "MAIN_FULL / Backend desktop / Windows / Python 3.11",
+            "runs_on": "windows-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "frontend": {
+            "name": "${{ inputs.lane }} / Frontend / ${{ matrix.os }} / Node 22.20.0",
+            "runs_on": "${{ matrix.os }}",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "enterprise-contract": {
+            "name": "${{ inputs.lane }} / frozen enterprise contract and tenant fixtures",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "enterprise-security-corpus": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / enterprise security corpus",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "migrations": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / migration round trip",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "shadow-repair-contract": {
+            "name": "SHADOW_REPAIR_E107 / workflow and watchdog contract",
+            "runs_on": "windows-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "shadow-shard-coverage": {
+            "name": "SHADOW_REPAIR_E107 / deterministic shard coverage",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))"
+          },
+          "shadow-required-gate": {
+            "name": "SHADOW_REPAIR_E107 / required gate",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))"
+          },
+          "database-lease": {
+            "name": "MAIN_FULL / enterprise database dependency lease",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "rls": {
+            "name": "MAIN_FULL / PostgreSQL RLS",
+            "runs_on": "ubuntu-24.04",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "needs.database-lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "lane-contract",
+          "postgres17-rls-worker-real-gate",
+          "readiness-provenance",
+          "backend-fast",
+          "backend-full",
+          "backend-full-windows",
+          "backend-document-ml",
+          "backend-desktop",
+          "frontend",
+          "enterprise-contract",
+          "enterprise-security-corpus",
+          "migrations",
+          "shadow-repair-contract",
+          "shadow-shard-coverage",
+          "shadow-required-gate",
+          "database-lease",
+          "rls"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": true,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-load.yml",
+        "workflow_name": "Enterprise Load and Tenant Isolation",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "lease": {
+            "name": "lease",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "load": {
+            "name": "load",
+            "runs_on": [
+              "self-hosted",
+              "enterprise-load"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "lease",
+          "load"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": true,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-main-full.yml",
+        "workflow_name": "Enterprise MAIN_FULL",
+        "triggers": [
+          "push",
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "full": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          }
+        },
+        "heavy_jobs": [
+          "full"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": false,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-pr-fast.yml",
+        "workflow_name": "Enterprise PR_FAST",
+        "triggers": [
+          "pull_request"
+        ],
+        "runs_on": {
+          "fast": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          },
+          "security-scanner-lease": {
+            "name": "PR_FAST / security scanner dependency lease",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "secret-scan": {
+            "name": "PR_FAST / mature secret scan",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": "needs.security-scanner-lease.outputs.granted == 'true'"
+          },
+          "dependency-review": {
+            "name": "PR_FAST / dependency review",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          }
+        },
+        "heavy_jobs": [
+          "fast",
+          "security-scanner-lease",
+          "secret-scan",
+          "dependency-review"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": true,
+        "uses_self_hosted": false,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-security.yml",
+        "workflow_name": "Enterprise Security",
+        "triggers": [
+          "pull_request",
+          "push",
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "scanner-lease": {
+            "name": "Security scanner dependency lease",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "codeql": {
+            "name": "CodeQL / ${{ matrix.language }}",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "open-source-scanners": {
+            "name": "Secret, dependency, license, SAST, and SBOM scans",
+            "runs_on": [
+              "self-hosted",
+              "enterprise-security"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.scanner-lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "scanner-lease",
+          "codeql",
+          "open-source-scanners"
+        ],
+        "uses_codeql": true,
+        "uses_github_hosted": true,
+        "uses_self_hosted": true,
+        "schedule": [
+          {
+            "cron": "23 3 * * 1"
+          }
+        ],
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/staging-orchestrator.yml",
+        "workflow_name": "Enterprise Staging Orchestrator",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "static-contract": {
+            "name": "static-contract",
+            "runs_on": "ubuntu-latest",
+            "runner_environment": "GITHUB_HOSTED",
+            "condition": null
+          },
+          "approved-staging": {
+            "name": "approved-staging",
+            "runs_on": [
+              "self-hosted",
+              "linux",
+              "staging"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          }
+        },
+        "heavy_jobs": [
+          "static-contract",
+          "approved-staging"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": true,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      },
+      {
+        "workflow_file": ".github/workflows/staging-release.yml",
+        "workflow_name": "Staging Release and Rollback",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "deploy": {
+            "name": "deploy",
+            "runs_on": [
+              "self-hosted",
+              "staging"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          }
+        },
+        "heavy_jobs": [
+          "deploy"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "FAIL"
+      }
+    ],
+    "errors": [
+      ".github/workflows/container-release.yml:source-contract: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/container-release.yml:scanner-lease: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/container-release.yml:build: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/container-release.yml:scan: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/container-release.yml:publish: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/container-release.yml:required-gate: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml: automatic heavy entry ['push']",
+      ".github/workflows/enterprise-ci.yml:lane-contract: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:postgres17-rls-worker-real-gate: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:readiness-provenance: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:backend-fast: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:backend-full: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:backend-full-windows: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:backend-document-ml: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:backend-desktop: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:frontend: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:enterprise-contract: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:enterprise-security-corpus: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:migrations: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:shadow-repair-contract: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:shadow-shard-coverage: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:shadow-required-gate: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:database-lease: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-ci.yml:rls: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-load.yml:lease: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-load.yml:load: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-main-full.yml: automatic heavy entry ['push']",
+      ".github/workflows/enterprise-pr-fast.yml: automatic heavy entry ['pull_request']",
+      ".github/workflows/enterprise-pr-fast.yml:security-scanner-lease: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-pr-fast.yml:secret-scan: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-pr-fast.yml:dependency-review: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-security.yml: automatic heavy entry ['pull_request', 'push', 'schedule']",
+      ".github/workflows/enterprise-security.yml:scanner-lease: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-security.yml:codeql: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/enterprise-security.yml:open-source-scanners: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/staging-orchestrator.yml:static-contract: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/staging-orchestrator.yml:approved-staging: must use exact approved self-hosted labels, even when disabled",
+      ".github/workflows/staging-release.yml:deploy: must use exact approved self-hosted labels, even when disabled"
+    ]
+  },
+  "after": {
+    "status": "PASS",
+    "counts": {
+      "all_workflow_count": 8,
+      "auto_github_compute_trigger_count": 0,
+      "heavy_auto_trigger_count": 0,
+      "github_hosted_job_count": 0,
+      "github_hosted_heavy_job_count": 0,
+      "self_hosted_job_count": 34,
+      "unknown_runner_job_count": 0
+    },
+    "workflows": [
+      {
+        "workflow_file": ".github/workflows/container-release.yml",
+        "workflow_name": "Container Build Scan Publish",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "source-contract": {
+            "name": "Bind final release to the exact promoted canonical source",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "quality": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          },
+          "scanner-lease": {
+            "name": "Container scanner dependency lease",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "build": {
+            "name": "Build four source-bound image candidates with Buildx",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "scan": {
+            "name": "Scan and SBOM / ${{ matrix.target }}",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "publish": {
+            "name": "Publish four verified images and immutable release package",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "required-gate": {
+            "name": "Require every final-release gate and publication result",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "always()"
+          }
+        },
+        "heavy_jobs": [
+          "source-contract",
+          "quality",
+          "scanner-lease",
+          "build",
+          "scan",
+          "publish",
+          "required-gate"
+        ],
+        "uses_codeql": true,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-ci.yml",
+        "workflow_name": "Enterprise reusable CI lanes",
+        "triggers": [
+          "workflow_call",
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "lane-contract": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / lane contract",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "github.ref != 'refs/heads/codex/e1-postgres17-real-gate-r1'"
+          },
+          "postgres17-rls-worker-real-gate": {
+            "name": "E1-02 / PostgreSQL 17.6 RLS and Worker real gate",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "github.event_name == 'push' && github.ref == 'refs/heads/codex/e1-postgres17-real-gate-r1'"
+          },
+          "readiness-provenance": {
+            "name": "${{ inputs.lane }} / GitHub-reachable readiness provenance",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-fast": {
+            "name": "PR_FAST / Backend / ${{ matrix.os }} / Python ${{ matrix.python }}",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST'"
+          },
+          "backend-full": {
+            "name": "MAIN_FULL / Backend core / Ubuntu 24.04 / Python ${{ matrix.python }}",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-full-windows": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / Backend core / Windows / Python ${{ matrix.python }} / shard ${{ matrix.shard }} of 6",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "${{ false }}"
+          },
+          "backend-document-ml": {
+            "name": "MAIN_FULL / Backend document and ML / Ubuntu 24.04 / Python 3.11",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "backend-desktop": {
+            "name": "MAIN_FULL / Backend desktop / Windows / Python 3.11",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "${{ false }}"
+          },
+          "frontend": {
+            "name": "${{ inputs.lane }} / Frontend / ${{ matrix.os }} / Node 22.20.0",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "enterprise-contract": {
+            "name": "${{ inputs.lane }} / frozen enterprise contract and tenant fixtures",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'"
+          },
+          "enterprise-security-corpus": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / enterprise security corpus",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "migrations": {
+            "name": "${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / migration round trip",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
+          },
+          "shadow-repair-contract": {
+            "name": "SHADOW_REPAIR_E107 / workflow and watchdog contract",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "${{ false }}"
+          },
+          "shadow-shard-coverage": {
+            "name": "SHADOW_REPAIR_E107 / deterministic shard coverage",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))"
+          },
+          "shadow-required-gate": {
+            "name": "SHADOW_REPAIR_E107 / required gate",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))"
+          },
+          "database-lease": {
+            "name": "MAIN_FULL / enterprise database dependency lease",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "inputs.lane == 'MAIN_FULL'"
+          },
+          "rls": {
+            "name": "MAIN_FULL / PostgreSQL RLS",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.database-lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "lane-contract",
+          "postgres17-rls-worker-real-gate",
+          "readiness-provenance",
+          "backend-fast",
+          "backend-full",
+          "backend-full-windows",
+          "backend-document-ml",
+          "backend-desktop",
+          "frontend",
+          "enterprise-contract",
+          "enterprise-security-corpus",
+          "migrations",
+          "shadow-repair-contract",
+          "shadow-shard-coverage",
+          "shadow-required-gate",
+          "database-lease",
+          "rls"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-load.yml",
+        "workflow_name": "Enterprise Load and Tenant Isolation",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "lease": {
+            "name": "lease",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "load": {
+            "name": "load",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "lease",
+          "load"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-main-full.yml",
+        "workflow_name": "Enterprise MAIN_FULL",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "full": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          }
+        },
+        "heavy_jobs": [
+          "full"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": false,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-pr-fast.yml",
+        "workflow_name": "Enterprise PR_FAST",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "fast": {
+            "uses": "./.github/workflows/enterprise-ci.yml",
+            "runner_environment": "REUSABLE_CALL"
+          },
+          "security-scanner-lease": {
+            "name": "PR_FAST / security scanner dependency lease",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "secret-scan": {
+            "name": "PR_FAST / mature secret scan",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.security-scanner-lease.outputs.granted == 'true'"
+          },
+          "dependency-review": {
+            "name": "PR_FAST / dependency review",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "${{ false }}"
+          }
+        },
+        "heavy_jobs": [
+          "fast",
+          "security-scanner-lease",
+          "secret-scan",
+          "dependency-review"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/enterprise-security.yml",
+        "workflow_name": "Enterprise Security",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "scanner-lease": {
+            "name": "Security scanner dependency lease",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "codeql": {
+            "name": "CodeQL / ${{ matrix.language }}",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.scanner-lease.outputs.granted == 'true'"
+          },
+          "open-source-scanners": {
+            "name": "Secret, dependency, license, SAST, and SBOM scans",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": "needs.scanner-lease.outputs.granted == 'true'"
+          }
+        },
+        "heavy_jobs": [
+          "scanner-lease",
+          "codeql",
+          "open-source-scanners"
+        ],
+        "uses_codeql": true,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/staging-orchestrator.yml",
+        "workflow_name": "Enterprise Staging Orchestrator",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "static-contract": {
+            "name": "static-contract",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          },
+          "approved-staging": {
+            "name": "approved-staging",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          }
+        },
+        "heavy_jobs": [
+          "static-contract",
+          "approved-staging"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      },
+      {
+        "workflow_file": ".github/workflows/staging-release.yml",
+        "workflow_name": "Staging Release and Rollback",
+        "triggers": [
+          "workflow_dispatch"
+        ],
+        "runs_on": {
+          "deploy": {
+            "name": "deploy",
+            "runs_on": [
+              "self-hosted",
+              "Linux",
+              "X64",
+              "mentorflow-e1",
+              "turkey-ci"
+            ],
+            "runner_environment": "SELF_HOSTED",
+            "condition": null
+          }
+        },
+        "heavy_jobs": [
+          "deploy"
+        ],
+        "uses_codeql": false,
+        "uses_github_hosted": false,
+        "uses_self_hosted": true,
+        "schedule": null,
+        "workflow_run_dependency": null,
+        "status": "PASS"
+      }
+    ],
+    "errors": []
+  },
+  "history": {
+    "integration_commit": "c9704f0cf628f96b73cf9cb06d9491ddce41c9c9",
+    "author": "Codex Recovery",
+    "author_date": "2026-08-27T01:15:27+08:00",
+    "committer_date": "2026-08-27T01:24:07+08:00",
+    "message": "feat(enterprise): 重建自包含安全负载与预发布资产",
+    "cherry_pick_source": "4d61b3547a8d0865a53634abd549be004c904ce1",
+    "employee_slot": "E1-07",
+    "delivery_id": "DLV-W07-20260826T172028Z-07",
+    "authority": "enterprise_e1/INTEGRATION_QUEUE.json",
+    "original_dispatch_id": "UNKNOWN",
+    "original_task_id": "UNKNOWN",
+    "follow_history_entries": 1,
+    "subsequent_trigger_changes_found": false,
+    "source_object_available": false,
+    "external_ready_receipt_available": false
+  },
+  "remote": {
+    "target_run": {
+      "date": "2026-09-07",
+      "local_time": "16:35 Asia/Shanghai",
+      "utc_time": "08:35Z",
+      "window": "07:30Z..10:00Z",
+      "matched_runs": 0,
+      "whole_utc_day_matched_runs": 0,
+      "event": "UNKNOWN",
+      "head_sha": "UNKNOWN",
+      "actor": "UNKNOWN",
+      "runner_environment": "UNKNOWN"
+    },
+    "latest_security_run": {
+      "id": 33273443300,
+      "event": "push",
+      "branch": "core-v2/integration",
+      "head_sha": "895632425889363631cd0e38c952ea94b0ffdcb6",
+      "actor": "tonyswift868",
+      "created_at": "2026-08-29T20:25:15Z",
+      "run_attempt": 1,
+      "path": ".github/workflows/enterprise-security.yml",
+      "jobs": [
+        {
+          "name": "CodeQL / python",
+          "runner_name": "GitHub Actions 1000000068",
+          "runner_group_name": "GitHub Actions",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "environment": "GITHUB_HOSTED",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Security scanner dependency lease",
+          "runner_name": "GitHub Actions 1000000065",
+          "runner_group_name": "GitHub Actions",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "environment": "GITHUB_HOSTED",
+          "conclusion": "failure"
+        },
+        {
+          "name": "CodeQL / javascript-typescript",
+          "runner_name": "GitHub Actions 1000000066",
+          "runner_group_name": "GitHub Actions",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "environment": "GITHUB_HOSTED",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Secret, dependency, license, SAST, and SBOM scans",
+          "runner_name": null,
+          "labels": [
+            "self-hosted",
+            "enterprise-security"
+          ],
+          "environment": "NOT_ALLOCATED",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    "codeql_default_setup": {
+      "status": "AUTHORITY_UNAVAILABLE",
+      "http_status": 403,
+      "message": "Code scanning is not enabled for this repository. Please enable code scanning in the repository settings.",
+      "state_verified": false
+    },
+    "runner": {
+      "name": "mentorflow-e1-turkey-01",
+      "status": "online",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "mentorflow-e1",
+        "turkey-ci"
+      ]
+    },
+    "additional_registered_workflows": [
+      ".github/workflows/e1-turkey-runner-smoke.yml",
+      "dynamic/dependabot/update-graph"
+    ],
+    "remote_mutations": 0
+  },
+  "local_tests": "45 passed; no Actions, scanners or live jobs started"
+}

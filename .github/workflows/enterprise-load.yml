@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   lease:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     outputs:
       granted: ${{ steps.gate.outputs.granted }}
     steps:
@@ -33,7 +33,7 @@ jobs:
   load:
     needs: lease
     if: needs.lease.outputs.granted == 'true'
-    runs-on: [self-hosted, enterprise-load]
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     environment: staging-load
     timeout-minutes: 45
     env:

@@ -1,20 +1,6 @@
 name: Enterprise reusable CI lanes
 
 on:
-  push:
-    branches:
-      - "codex/e1s1-shadow-repair-e107-ci-windows"
-      - "codex/e1-postgres17-real-gate-r1"
-    paths:
-      - .github/workflows/enterprise-ci.yml
-      - backend/tests/test_enterprise_tenant_persistence.py
-      - backend/tests/test_enterprise_postgres_worker_integration.py
-      - enterprise_e1/staging/e1_02/compose.yaml
-      - enterprise_e1/staging/e1_02/run.sh
-      - backend/app/enterprise/jobs_v1/postgres_schema.py
-      - backend/tests/test_enterprise_worker_runtime.py
-      - backend/app/enterprise/jobs_v1/repository.py
-      - backend/app/enterprise/worker_entry.py
   workflow_call:
     inputs:
       lane:
@@ -55,7 +41,7 @@ jobs:
   lane-contract:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / lane contract
     if: github.ref != 'refs/heads/codex/e1-postgres17-real-gate-r1'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - name: Validate lane and exact focused source
         shell: bash
@@ -78,7 +64,7 @@ jobs:
       github.event_name == 'push' &&
       github.ref == 'refs/heads/codex/e1-postgres17-real-gate-r1'
     timeout-minutes: 70
-    runs-on: [self-hosted, linux, x64, mentorflow-e1, turkey-ci]
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - name: Checkout exact trusted branch commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -147,7 +133,7 @@ jobs:
     name: ${{ inputs.lane }} / GitHub-reachable readiness provenance
     if: inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -176,9 +162,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
+        os: [Linux]
         python: ["3.12"]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -227,7 +213,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12", "3.13"]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -273,7 +259,8 @@ jobs:
 
   backend-full-windows:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / Backend core / Windows / Python ${{ matrix.python }} / shard ${{ matrix.shard }} of 6
-    if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')
+    # No authorized Windows self-hosted runner; retained for local execution, never run on Linux.
+    if: ${{ false }}
     needs: lane-contract
     timeout-minutes: 120
     strategy:
@@ -281,7 +268,7 @@ jobs:
       matrix:
         python: ["3.11", "3.12", "3.13"]
         shard: [1, 2, 3, 4, 5, 6]
-    runs-on: windows-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -351,7 +338,7 @@ jobs:
     name: MAIN_FULL / Backend document and ML / Ubuntu 24.04 / Python 3.11
     if: inputs.lane == 'MAIN_FULL'
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -374,10 +361,11 @@ jobs:
 
   backend-desktop:
     name: MAIN_FULL / Backend desktop / Windows / Python 3.11
-    if: inputs.lane == 'MAIN_FULL'
+    # No authorized Windows self-hosted runner; retained for local execution, never run on Linux.
+    if: ${{ false }}
     needs: lane-contract
     timeout-minutes: 120
-    runs-on: windows-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -412,8 +400,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
-    runs-on: ${{ matrix.os }}
+        os: [Linux]
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     defaults:
       run: {working-directory: frontend}
     steps:
@@ -437,7 +425,7 @@ jobs:
     name: ${{ inputs.lane }} / frozen enterprise contract and tenant fixtures
     if: inputs.lane == 'PR_FAST' || inputs.lane == 'MAIN_FULL'
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -453,7 +441,7 @@ jobs:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / enterprise security corpus
     if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -478,7 +466,7 @@ jobs:
     name: ${{ inputs.lane || 'SHADOW_REPAIR_E107' }} / migration round trip
     if: inputs.lane == 'MAIN_FULL' || inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -505,10 +493,11 @@ jobs:
 
   shadow-repair-contract:
     name: SHADOW_REPAIR_E107 / workflow and watchdog contract
-    if: inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')
+    # No authorized Windows self-hosted runner; retained for local execution, never run on Linux.
+    if: ${{ false }}
     needs: lane-contract
     timeout-minutes: 20
-    runs-on: windows-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -596,7 +585,7 @@ jobs:
     if: always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))
     needs: [lane-contract, backend-full-windows]
     timeout-minutes: 15
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -629,7 +618,7 @@ jobs:
     name: SHADOW_REPAIR_E107 / required gate
     if: always() && (inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows'))
     needs: [lane-contract, backend-full-windows, enterprise-security-corpus, migrations, shadow-repair-contract, shadow-shard-coverage]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - name: Reject failed, cancelled, missing, neutral, timed out, or skipped focused jobs
         shell: bash
@@ -652,7 +641,7 @@ jobs:
     name: MAIN_FULL / enterprise database dependency lease
     if: inputs.lane == 'MAIN_FULL'
     needs: lane-contract
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     outputs: {granted: "${{ steps.gate.outputs.granted }}"}
     steps:
       - id: gate
@@ -670,7 +659,7 @@ jobs:
     name: MAIN_FULL / PostgreSQL RLS
     needs: database-lease
     if: needs.database-lease.outputs.granted == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     services:
       postgres:
         image: postgres:17.6-bookworm

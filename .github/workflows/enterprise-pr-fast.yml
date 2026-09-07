@@ -1,7 +1,7 @@
 name: Enterprise PR_FAST
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ jobs:
 
   security-scanner-lease:
     name: PR_FAST / security scanner dependency lease
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     outputs:
       granted: ${{ steps.gate.outputs.granted }}
     steps:
@@ -35,7 +35,7 @@ jobs:
     name: PR_FAST / mature secret scan
     needs: security-scanner-lease
     if: needs.security-scanner-lease.outputs.granted == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
@@ -48,7 +48,10 @@ jobs:
 
   dependency-review:
     name: PR_FAST / dependency review
-    runs-on: ubuntu-latest
+    # PR-only action requires base/head context; no automatic PR entry is permitted.
+    # Retain its scanner configuration, but do not pretend manual dispatch has a PR payload.
+    if: ${{ false }}
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4

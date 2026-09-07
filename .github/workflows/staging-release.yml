@@ -18,7 +18,7 @@ permissions: {contents: read, packages: read}
 
 jobs:
   deploy:
-    runs-on: [self-hosted, staging]
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     environment: staging
     timeout-minutes: 45
     steps:

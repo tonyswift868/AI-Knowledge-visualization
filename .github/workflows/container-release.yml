@@ -36,7 +36,7 @@ permissions:
 jobs:
   source-contract:
     name: Bind final release to the exact promoted canonical source
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     outputs:
       source_tree: ${{ steps.source.outputs.tree }}
     steps:
@@ -71,7 +71,7 @@ jobs:
   scanner-lease:
     name: Container scanner dependency lease
     needs: quality
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     outputs:
       granted: ${{ steps.gate.outputs.granted }}
     steps:
@@ -91,7 +91,7 @@ jobs:
   build:
     name: Build four source-bound image candidates with Buildx
     needs: [source-contract, quality, scanner-lease]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -186,7 +186,7 @@ jobs:
   scan:
     name: Scan and SBOM / ${{ matrix.target }}
     needs: [build, scanner-lease]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     strategy:
       fail-fast: false
       matrix:
@@ -237,7 +237,7 @@ jobs:
   publish:
     name: Publish four verified images and immutable release package
     needs: [source-contract, quality, scanner-lease, build, scan]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -362,7 +362,7 @@ jobs:
     name: Require every final-release gate and publication result
     if: always()
     needs: [source-contract, quality, scanner-lease, build, scan, publish]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - name: Reject failed, cancelled, missing, neutral or skipped required jobs
         shell: bash

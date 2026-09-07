@@ -45,7 +45,7 @@ concurrency:
 
 jobs:
   static-contract:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
 
   approved-staging:
     needs: static-contract
-    runs-on: [self-hosted, linux, staging]
+    runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     environment: staging
     timeout-minutes: 120
     env:
