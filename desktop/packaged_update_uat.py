@@ -12,9 +12,8 @@ def fast_materialization():
     """Frozen real-payload performance only; no network/apply/install action."""
     if not getattr(sys,'frozen',False) or ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('standard-user frozen UAT required')
-    config=json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
-    root=Path(config['root'])
-    if root not in (Path('D:/MFU7'),Path('D:/MFU8')) or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe':
+    config, root, request = _legacy_context()
+    if Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe':
         raise RuntimeError('dispatch short isolated root required')
     from desktop.update_protocol import verify_release,make_plan,MANIFEST_PATH,digest,canonical
     from desktop.update_download import ObjectCache,UpdateTelemetry
@@ -30,7 +29,7 @@ def fast_materialization():
     if evidence.exists(): raise RuntimeError('existing fast evidence preserved')
     accepted_start=time.monotonic()
     receipt_start=time.monotonic()
-    receipt=json.loads((app.parent/'installation-receipt.json').read_bytes()) if root==Path('D:/MFU8') else None
+    receipt=json.loads((app.parent/'installation-receipt.json').read_bytes()) if (app.parent/'installation-receipt.json').exists() else None
     receipt_ms=(time.monotonic()-receipt_start)*1000
     with AcceptedApp(app,rows,digest(raw),receipt=receipt) as accepted:
         acceptance_ms=(time.monotonic()-accepted_start)*1000
@@ -61,78 +60,24 @@ def fast_materialization():
 
 
 def startup(python_entry):
-    """UAT-only event-loop health, not an install receipt/integrity authority.
+    from desktop.uat_health_contract import startup as relocated_startup
+    return relocated_startup(python_entry)
 
-    Full target verification remains in reconstruct and pre-apply. Repeating
-    the 2 GB scan before QApplication is neither startup health nor useful
-    evidence of a DLL/Qt failure.
-    """
-    if not getattr(sys, 'frozen', False):
-        raise RuntimeError('real frozen executable required')
+
+def _legacy_context():
+    """Old benchmark layouts are relative to a signed fixture, never a disk allowlist."""
+    from desktop.uat_health_contract import context
+    request, app, _ = context()
+    if request['purpose'] != 'legacy-benchmark' or request['fixture_root'] is None:
+        raise RuntimeError('signed legacy fixture required')
     config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
-    root = Path(config['root']).absolute()
-    if root not in (Path('D:/MFU7'),Path('D:/MFU8')) and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
-        raise RuntimeError('isolated UAT root required')
-    if ctypes.windll.shell32.IsUserAnAdmin():
-        raise RuntimeError('standard user required')
-    executable = Path(str(Path(sys.executable).absolute()).removeprefix('\\\\?\\'))
-    if not executable.is_relative_to(root) or executable.name != 'MentorFlow.exe':
-        raise RuntimeError('unexpected UAT executable location')
-    request = json.loads((root/'startup-request.json').read_bytes())
-    if set(request) != {'case'} or request['case'] not in {'base', 'direct', 'reconstructed', 'near-limit'}:
-        raise RuntimeError('invalid startup request')
-    output = root/('startup-'+request['case']+'.json')
-    if output.exists():
-        raise RuntimeError('existing startup evidence preserved')
-    marks = dict(PYTHON_ENTRY_READY=python_entry,
-                 PYINSTALLER_BOOTSTRAP_READY=python_entry)
-    # Python entry is the first observable post-bootloader point; do not claim
-    # an independently measured internal C bootloader timestamp.
-    result = dict(packaged=True, pid=os.getpid(), executable=str(executable),
-        sys_meipass=sys._MEIPASS, internal_root=str(executable.parent/'_internal'),
-        real_product_health=False, full_package_verify=False, marks=marks)
-    try:
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtCore import QTimer
-        marks['QT_IMPORT_READY'] = time.monotonic()
-        from desktop.update_panel import UpdatePanel
-        from desktop.version import VERSION_MANIFEST
-        if request['case'] != 'base':
-            from desktop.update_protocol import verify_release
-            release = verify_release((root/'release-happy.json').read_bytes(),
-                {config['key_id']:base64.b64decode(config['public_key'],validate=True)},current='1.1.0')
-            if VERSION_MANIFEST['version'] != release.version:
-                raise RuntimeError('runtime version differs from signed target')
-        app = QApplication([str(executable)])
-        marks['QAPPLICATION_READY'] = time.monotonic()
-        panel = UpdatePanel(service=None)
-        marks['WINDOW_CONSTRUCTED'] = time.monotonic()
-        panel.show()
-        def ready():
-            if not panel.isVisible():
-                result['fatal_error'] = 'window not visible'
-            else:
-                marks['WINDOW_READY'] = time.monotonic()
-                result.update(version=VERSION_MANIFEST['version'],
-                    version_label=panel.version_label.text(), qt_event_loop_ready=True,
-                    qtcore_module_path=sys.modules['PySide6.QtCore'].__file__)
-            output.write_text(json.dumps(result,indent=2),encoding='utf-8')
-            panel.shutdown(); panel.close(); app.quit()
-        QTimer.singleShot(200, ready)
-        return app.exec()
-    except Exception as exc:
-        result['fatal_error'] = type(exc).__name__ + ': ' + str(exc)
-        output.write_text(json.dumps(result,indent=2),encoding='utf-8')
-        raise
+    return config, Path(request['fixture_root']), request
 
 
 def main():
     if not getattr(sys, 'frozen', False):
         raise RuntimeError('real frozen executable required')
-    config = json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
-    root = Path(config['root']).absolute()
-    if root != Path('D:/MFU7') and not root.is_relative_to(Path('D:/CodexScratch/MentorFlow')):
-        raise RuntimeError('isolated UAT root required')
+    config, root, request = _legacy_context()
     if ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('UAT check/download must not be elevated')
     from desktop.update_download import HTTPTransport
@@ -241,9 +186,9 @@ def cross_volume():
     """Real frozen engine, D current/cache -> E temp/final; no apply authority."""
     if not getattr(sys,'frozen',False) or ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('standard-user frozen UAT required')
-    config=json.loads((Path(sys._MEIPASS)/'update-uat/public.json').read_bytes())
-    root=Path(config['root']); output=root/'cross-volume-result.json'
-    if root!=Path('D:/MFU8') or Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe' or output.exists():
+    config, root, request = _legacy_context()
+    output=root/'cross-volume-result.json'
+    if Path(sys.executable).absolute()!=root/'base/App/MentorFlow.exe' or output.exists():
         raise RuntimeError('dispatch-08 isolated executable/evidence required')
     from desktop.update_protocol import verify_release,make_plan,MANIFEST_PATH,digest,canonical
     from desktop.update_download import ObjectCache,UpdateTelemetry
@@ -253,7 +198,8 @@ def cross_volume():
     rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=digest(raw))
     release=verify_release((root/'subset/release.json').read_bytes(),
         {config['key_id']:base64.b64decode(config['public_key'])},current='1.1.0')
-    stage=Path('E:/Codex/Temp/MFU8-cross-volume')
+    if request['cross_volume_root'] is None: raise RuntimeError('signed cross-volume destination required')
+    stage=Path(request['cross_volume_root'])
     if stage.exists(): raise RuntimeError('existing cross-volume fixture preserved')
     stage.mkdir(parents=True)
     before={p:digest((app/p).read_bytes()) for p in rows}
