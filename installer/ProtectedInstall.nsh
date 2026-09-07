@@ -5,6 +5,15 @@
 !ifndef MANIFEST_SHA
  !error "MANIFEST_SHA required"
 !endif
+!ifndef INSTALL_SPACE_KIB
+ !error "INSTALL_SPACE_KIB required from verified payload inventory"
+!endif
+!if ${INSTALL_SPACE_KIB} <= 0
+ !error "INSTALL_SPACE_KIB must be positive"
+!endif
+!if ${INSTALL_SPACE_KIB} > 2147483647
+ !error "INSTALL_SPACE_KIB exceeds NSIS section-size range"
+!endif
 Name "MentorFlow"
 OutFile "${OUTPUT_FILE}"
 InstallDir "E:\MentorFlow"
@@ -24,6 +33,7 @@ Var PreviousRoot
 !define MUI_WELCOMEPAGE_TITLE "安装 MentorFlow"
 !define MUI_WELCOMEPAGE_TEXT "请选择程序安装目录。安装器需与上一级 MentorFlow UAT 程序文件一起保留。安装不修改学习或账号数据。"
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_DIRECTORYPAGE_TEXT_TOP "请选择 MentorFlow 的安装文件夹。下方所需空间为估算值（含临时空间预留）；安装前将按所选磁盘重新核验。"
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE ValidateDirectory
 !insertmacro MUI_PAGE_DIRECTORY
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallShow
@@ -95,6 +105,9 @@ Function UpdateStatus
 FunctionEnd
 
 Section "MentorFlow"
+ ; Payload copying occurs in the external helper, not NSIS File instructions.
+ ; Populate the native directory-page estimate without disabling disk checks.
+ AddSize ${INSTALL_SPACE_KIB}
  StrCpy $Installing 1
  GetDlgItem $0 $HWNDPARENT 2
  EnableWindow $0 1

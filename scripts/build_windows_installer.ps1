@@ -141,10 +141,25 @@ if ($ProtectedInstall) {
     $verifyArgs = @('-B', '-m', 'scripts.prepare_transactional_installer', '--payload', $payload, '--manifest-sha256', $manifestPin)
 }
 Push-Location $ProjectRoot
-try { & $PythonPath @verifyArgs; $verifyExit = $LASTEXITCODE }
+try {
+    if ($ProtectedInstall) {
+        $verificationOutput = & $PythonPath @verifyArgs
+        $verifyExit = $LASTEXITCODE
+        $verificationOutput | ForEach-Object { Write-Host $_ }
+    } else {
+        & $PythonPath @verifyArgs
+        $verifyExit = $LASTEXITCODE
+    }
+}
 finally { Pop-Location }
 if ($verifyExit -ne 0) {
     throw "Payload verification failed with exit code $verifyExit; installer build refused."
+}
+if ($ProtectedInstall) {
+    $verifiedInventory = ($verificationOutput -join "`n") | ConvertFrom-Json
+    $spaceKib = [string]$verifiedInventory.estimated_space_kib
+    if ($verifiedInventory.status -ne 'PASS' -or $spaceKib -notmatch '^[1-9][0-9]*$' -or
+        [decimal]$spaceKib -gt [int]::MaxValue) { throw 'Verified positive installer space estimate required' }
 }
 
 New-Item -ItemType Directory -Path $outputRootFull -Force | Out-Null
@@ -161,6 +176,7 @@ if ($ProtectedInstall) {
     $compileDefines.Add("/DMANIFEST_SHA=$manifestPin")
     $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
     $compileDefines.Add("/DSOURCE_TREE=$SourceTree")
+    $compileDefines.Add("/DINSTALL_SPACE_KIB=$spaceKib")
 }
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }
 if ($UninstallKey) { $compileDefines.Add("/DUNINSTALL_KEY=$UninstallKey") }

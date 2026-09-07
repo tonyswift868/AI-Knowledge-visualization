@@ -12,6 +12,36 @@ import shutil
 from scripts import verify_windows_package as v
 from scripts.windows_install_transaction import load_manifest, assert_no_alias, sha
 
+def estimate_install_space_kib(rows):
+    """Directory-page estimate, not the target-volume admission check.
+
+    Include the manifest itself (load_manifest supplies it), 4KiB allocation
+    rounding, directory/control reserve and the helper-bearing uninstaller.
+    The unchanged runtime preflight recalculates using the selected volume's
+    actual cluster size and generated uninstaller before any installation.
+    """
+    if not rows or 'MentorFlowInstallGate.exe' not in rows:
+        raise ValueError('verified protected payload inventory required')
+    cluster = 4096
+    directories = set()
+    allocated = 0
+    for key, row in rows.items():
+        size = row['size']
+        if type(size) is not int or size < 0:
+            raise ValueError('invalid payload size')
+        allocated += ((size + cluster - 1) // cluster) * cluster
+        directories.update(Path(key).parents)
+    helper_size = rows['MentorFlowInstallGate.exe']['size']
+    if helper_size <= 0:
+        raise ValueError('empty installer helper')
+    # The NSIS uninstaller embeds this helper plus a small executable stub.
+    estimated = allocated + (len(directories) + 4) * cluster
+    estimated += 64 * 1024**2 + helper_size + 1024**2
+    kib = (estimated + 1023) // 1024
+    if not 0 < kib <= 0x7fffffff:
+        raise ValueError('space estimate exceeds NSIS section-size range')
+    return kib
+
 def verify(root,pin):
     doc,rows=load_manifest(root,pin)
     actual=set()
@@ -67,7 +97,8 @@ def main():
     args=parser.parse_args()
     doc,rows=verify(args.payload,args.manifest_sha256)
     if not args.new_helper:
-        print(json.dumps(dict(status='PASS',files=len(rows),bytes=sum(r['size'] for r in rows.values())))); return
+        print(json.dumps(dict(status='PASS',files=len(rows),bytes=sum(r['size'] for r in rows.values()),
+            estimated_space_kib=estimate_install_space_kib(rows)))); return
     evidence=args.evidence
     if evidence is None or evidence.exists(): raise ValueError('new evidence directory required')
     assert_no_alias(args.new_helper)
