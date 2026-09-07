@@ -55,7 +55,7 @@ if ((Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) -a
 }
 if ($ProtectedInstall) {
     if ($SourceSha -notmatch '^[0-9a-f]{40}$' -or $SourceTree -notmatch '^[0-9a-f]{40}$') { throw 'Exact source identities required' }
-    if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected UAT uses its fixed installation contract' }
+    if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected installation paths are selected at runtime; build-time metadata overrides are prohibited' }
     if (-not $BuildScratch -or -not ([IO.Path]::GetFullPath($BuildScratch)).StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
     $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw | ConvertFrom-Json
     if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
@@ -134,9 +134,14 @@ $verifyArgs = @(
     '--no-data-check',
     '--no-smoke'
 )
-& $PythonPath @verifyArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Payload verification failed with exit code $LASTEXITCODE; installer build refused."
+if ($ProtectedInstall) {
+    $verifyArgs = @('-B', '-m', 'scripts.prepare_transactional_installer', '--payload', $payload, '--manifest-sha256', $manifestPin)
+}
+Push-Location $ProjectRoot
+try { & $PythonPath @verifyArgs; $verifyExit = $LASTEXITCODE }
+finally { Pop-Location }
+if ($verifyExit -ne 0) {
+    throw "Payload verification failed with exit code $verifyExit; installer build refused."
 }
 
 New-Item -ItemType Directory -Path $outputRootFull -Force | Out-Null
@@ -147,12 +152,9 @@ $compileDefines = [System.Collections.Generic.List[string]]::new()
 $compileDefines.Add("/DMAX_INSTALL_DIR_CHARS=$maxInstallDirChars")
 if ($ProtectedInstall) {
     New-Item -ItemType Directory -Path $BuildScratch -Force | Out-Null
-    $helperPath = Join-Path $BuildScratch 'PrepareMentorFlowRoot.exe'
-    $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    & $compiler /nologo /target:winexe "/out:$helperPath" "/win32manifest:$ProjectRoot\installer\nsis-helper.manifest" "$ProjectRoot\installer\ProtectedStage.cs" "$ProjectRoot\installer\PrepareNsisRoot.cs"
-    if ($LASTEXITCODE -ne 0) { throw 'NSIS root helper compilation failed' }
+    $helperPath = Join-Path $payload 'MentorFlowInstallGate.exe'
     $compileDefines.Add('/DPROTECTED_INSTALL=1')
-    $compileDefines.Add("/DROOT_HELPER=$helperPath")
+    $compileDefines.Add("/DTRANSACTION_HELPER=$helperPath")
     $compileDefines.Add("/DMANIFEST_SHA=$manifestPin")
     $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
     $compileDefines.Add("/DSOURCE_TREE=$SourceTree")

@@ -11,15 +11,24 @@ ROOT = Path(__file__).resolve().parents[1]
 class ProtectedNsisTests(unittest.TestCase):
     def test_order_and_no_elevated_product_launch(self):
         source=(ROOT/'installer/ProtectedInstall.nsh').read_text(encoding='utf-8')
-        order=['PrepareMentorFlowRoot.exe"\' $0','File /r',' protect --install-root',
-               ' activate --quiet-install','IfFileExists "$INSTDIR\\installation-receipt.json"','CreateShortCut']
+        order=['MUI_PAGE_WELCOME','MUI_PAGE_DIRECTORY','MUI_PAGE_INSTFILES','MUI_PAGE_FINISH']
         positions=[source.index(part) for part in order]
         self.assertEqual(positions,sorted(positions))
         self.assertIn('RequestExecutionLevel admin',source)
         self.assertNotIn('MUI_FINISHPAGE_RUN',source)
         self.assertNotIn('RMDir',source)
         self.assertNotIn('powershell.exe',source)
-        self.assertIn('StrCpy $INSTDIR "E:\\MentorFlow"',source)
+        self.assertIn('InstallDir "E:\\MentorFlow"',source)
+        self.assertNotIn('StrCpy $INSTDIR "E:\\MentorFlow"',source)
+        self.assertNotIn('File /r',source)
+        self.assertIn('ShowInstDetails hide',source)
+        self.assertIn('!define MUI_CUSTOMFUNCTION_ABORT RequestCancel',source)
+        self.assertIn('Function RequestCancel',source)
+        self.assertIn('EnableWindow $0 1',source)
+        self.assertIn('--cancel-file "$CancelFile"',source)
+        self.assertIn('ReadRegStr $PreviousRoot',source)
+        self.assertIn('recognise --install-root "$PreviousRoot"',source)
+        self.assertIn('uninstall-transaction --install-root "$INSTDIR"',source)
 
     def test_helper_is_windowed_as_invoker_and_nonadmin_refuses(self):
         with tempfile.TemporaryDirectory() as folder:

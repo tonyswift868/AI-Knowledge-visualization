@@ -341,12 +341,17 @@ def _check_entry_acls(paths):
             pass
 
 
-def _snapshot(root: Path):
+def _snapshot(root: Path, control_hashes=None, cancelled=lambda: None):
     from scripts import verify_windows_package as v
     assert_protected(root)
     rows, files, acl_paths = {}, {}, []
     for path, st, isdir, key in _walk(root):
+        cancelled()
         acl_paths.append(path)
+        # Reserved, admin-owned transaction workspace. It never participates
+        # in application loading. Still validate every entry and ACL below.
+        if key == '.install-staging' or key.startswith('.install-staging/'):
+            continue
         if key == RECEIPT:
             if isdir:
                 raise RepairRequired("receipt is not a file")
@@ -357,6 +362,10 @@ def _snapshot(root: Path):
             raise RepairRequired("static resource ChangeTime unavailable")
         rows[key] = ["dir" if isdir else "file", st.st_size if not isdir else 0, st.st_mtime_ns, st.st_ctime_ns, st.st_dev, st.st_ino, change_time]
         if not isdir:
+            if key in (control_hashes or {}):
+                if v.sha256_file(path) != control_hashes[key]:
+                    raise RepairRequired('installer control hash mismatch: ' + key)
+                continue
             if not key.startswith("App/"):
                 raise RepairRequired(f"unknown installation control file: {key}")
             files[key[4:]] = path
@@ -374,19 +383,30 @@ def _identity(rows) -> str:
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4, progress=None):
+def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tree_sha: str, activate: bool = False, workers: int = 4, progress=None, control_hashes=None, cancelled=lambda: None):
     from scripts import verify_windows_package as v
     start = time.perf_counter()
     for name, value, length in [("manifest", manifest_sha256, 64), ("source", source_sha, 40), ("tree", tree_sha, 40)]:
         if not re.fullmatch(r"[0-9a-f]{" + str(length) + "}", value):
             raise RepairRequired(f"invalid pinned {name} identity")
     root = _root(path)
+    if not activate and control_hashes is None and (root / RECEIPT).is_file():
+        assert_protected(root / RECEIPT)
+        if (root / RECEIPT).stat().st_size > 16 * 1024 * 1024:
+            raise RepairRequired('oversized receipt')
+        control_hashes = json.loads((root / RECEIPT).read_bytes()).get('control_hashes', {})
+    control_hashes = control_hashes or {}
+    if (not isinstance(control_hashes, dict) or set(control_hashes) - {'Uninstall.exe'} or
+            any(not re.fullmatch('[0-9a-f]{64}', value) for value in control_hashes.values())):
+        raise RepairRequired('invalid installer control identity')
     if activate and not c.WinDLL("shell32").IsUserAnAdmin():
         raise RepairRequired("receipt activation requires elevation")
     if activate and progress:
         progress("正在检查文件集合与安装权限…")
     with v._watch_gate_directory(root) as unchanged:
-        rows, files, root_id = _snapshot(root)
+        rows, files, root_id = _snapshot(root, control_hashes, cancelled)
+        if any(key not in rows for key in control_hashes):
+            raise RepairRequired('installer control file missing')
         package = root / "App"
         manifest_path = package / v.MANIFEST_RELATIVE
         if v.sha256_file(manifest_path) != manifest_sha256:
@@ -410,7 +430,10 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
                 if receipt_path.stat().st_size > 16 * 1024 * 1024:
                     raise ValueError("oversize")
                 prior = json.loads(receipt_path.read_bytes())
-                if set(prior) != {"binding", "inventory", "file_set_identity", "critical_hashes", "full_verified_at", "full_verified"} or prior["binding"] != binding or prior["inventory"] != rows or prior["file_set_identity"] != _identity(rows) or prior["full_verified"] is not True or type(prior["full_verified_at"]) not in (int, float) or not 0 < prior["full_verified_at"] <= time.time():
+                expected_fields = {"binding", "inventory", "file_set_identity", "critical_hashes", "full_verified_at", "full_verified"}
+                if 'control_hashes' in prior:
+                    expected_fields.add('control_hashes')
+                if set(prior) != expected_fields or prior.get('control_hashes', {}) != control_hashes or prior["binding"] != binding or prior["inventory"] != rows or prior["file_set_identity"] != _identity(rows) or prior["full_verified"] is not True or type(prior["full_verified_at"]) not in (int, float) or not 0 < prior["full_verified_at"] <= time.time():
                     raise ValueError("invalid receipt")
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise RepairRequired("installation receipt invalid; FULL VERIFY / REPAIR REQUIRED") from error
@@ -418,6 +441,7 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         critical, prefixes = {}, {}
         hash_start = time.perf_counter()
         for index, (key, digest, prefix) in enumerate(v._hash_gate_entries(package, keys, workers, validated_paths=files)):
+            cancelled()
             if activate and progress and index % 64 == 0:
                 progress(f"正在执行完整 SHA-256 验证：{index}/{len(keys)}")
             if digest != expected[key]["sha256"]:
@@ -440,6 +464,8 @@ def verify_installation(path: Path, *, manifest_sha256: str, source_sha: str, tr
         if progress:
             progress("完整验证已通过，正在保存受保护安装记录…")
         receipt = {"binding": binding, "inventory": rows, "file_set_identity": _identity(rows), "critical_hashes": critical, "full_verified_at": time.time(), "full_verified": True}
+        if control_hashes:
+            receipt['control_hashes'] = control_hashes
         # Receipt bytes are admin-owned from their first creation, not secured
         # after a potentially user-owned file has already been opened.
         import uuid

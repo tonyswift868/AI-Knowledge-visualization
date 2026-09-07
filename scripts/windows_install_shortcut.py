@@ -57,6 +57,33 @@ def _save_link(path, target, arguments, directory, icon):
         ole.CoUninitialize()
 
 
+def read_link(path):
+    """Read actual COM shortcut fields without activation."""
+    ole=c.WinDLL('ole32',use_last_error=True)
+    ole.CoInitializeEx.argtypes=[c.c_void_p,w.DWORD]; ole.CoInitializeEx.restype=c.c_long
+    ole.CoCreateInstance.argtypes=[c.POINTER(Guid),c.c_void_p,w.DWORD,c.POINTER(Guid),c.POINTER(c.c_void_p)]
+    ole.CoCreateInstance.restype=c.c_long
+    _check(ole.CoInitializeEx(None,2))
+    link,persist=c.c_void_p(),c.c_void_p()
+    try:
+        clsid=Guid.parse('00021401-0000-0000-c000-000000000046'); iid=Guid.parse('000214f9-0000-0000-c000-000000000046')
+        _check(ole.CoCreateInstance(c.byref(clsid),None,1,c.byref(iid),c.byref(link)))
+        iid_persist=Guid.parse('0000010b-0000-0000-c000-000000000046')
+        _check(_method(link,0,c.POINTER(Guid),c.POINTER(c.c_void_p))(link,c.byref(iid_persist),c.byref(persist)))
+        _check(_method(persist,5,w.LPCWSTR,w.DWORD)(persist,str(path),0))
+        target=c.create_unicode_buffer(32768); workdir=c.create_unicode_buffer(32768)
+        args=c.create_unicode_buffer(32768); icon=c.create_unicode_buffer(32768); index=c.c_int()
+        _check(_method(link,3,w.LPWSTR,c.c_int,c.c_void_p,w.DWORD)(link,target,len(target),None,4))
+        _check(_method(link,8,w.LPWSTR,c.c_int)(link,workdir,len(workdir)))
+        _check(_method(link,10,w.LPWSTR,c.c_int)(link,args,len(args)))
+        _check(_method(link,16,w.LPWSTR,c.c_int,c.POINTER(c.c_int))(link,icon,len(icon),c.byref(index)))
+        return dict(target=target.value,arguments=args.value,workdir=workdir.value,icon=icon.value)
+    finally:
+        if persist: _method(persist,2)(persist)
+        if link: _method(link,2)(link)
+        ole.CoUninitialize()
+
+
 def publish_shortcut(root: Path, destination: Path, **identities):
     from scripts import windows_install_trust as trust
     from scripts import verify_windows_package as v

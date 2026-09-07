@@ -1,84 +1,128 @@
-; Included only by the existing MentorFlow.nsi protected-payload branch.
-!ifndef ROOT_HELPER
- !error "ROOT_HELPER required"
+; Transactional installer: adjacent payload bytes are pinned by manifest.
+!ifndef TRANSACTION_HELPER
+ !error "TRANSACTION_HELPER required"
 !endif
 !ifndef MANIFEST_SHA
  !error "MANIFEST_SHA required"
 !endif
-!ifndef SOURCE_SHA
- !error "SOURCE_SHA required"
-!endif
-!ifndef SOURCE_TREE
- !error "SOURCE_TREE required"
-!endif
-Name "MentorFlow UAT"
+Name "MentorFlow"
 OutFile "${OUTPUT_FILE}"
 InstallDir "E:\MentorFlow"
 RequestExecutionLevel admin
-SetCompressor /SOLID lzma
-SetDatablockOptimize on
+SetCompressor lzma
+ShowInstDetails hide
+ShowUninstDetails hide
 ManifestSupportedOS "win10"
-BrandingText "MentorFlow — protected UAT installation"
-!define MUI_WELCOMEPAGE_TITLE "安装 MentorFlow UAT"
-!define MUI_WELCOMEPAGE_TEXT "程序将安装到 E:\MentorFlow\App。只在安装时需要管理员权限，不修改学习数据。安装后请通过桌面快捷方式正常启动。"
-!define MUI_FINISHPAGE_TEXT "安装和完整校验已完成。请关闭安装器，再双击桌面的 MentorFlow。日常启动不需要管理员权限。"
+BrandingText "MentorFlow"
+Var PayloadSource
+Var Installing
+Var StatusFile
+Var CancelFile
+Var HelperArgs
+Var PreviousRoot
+!define MUI_CUSTOMFUNCTION_ABORT RequestCancel
+!define MUI_WELCOMEPAGE_TITLE "安装 MentorFlow"
+!define MUI_WELCOMEPAGE_TEXT "请选择程序安装目录。安装器需与上一级 MentorFlow UAT 程序文件一起保留。安装不修改学习或账号数据。"
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE ValidateDirectory
+!insertmacro MUI_PAGE_DIRECTORY
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallShow
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_TEXT "程序安装与完整校验已完成。请关闭安装器后从桌面启动 MentorFlow，日常启动无需管理员权限。"
 !insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-Section "Protected MentorFlow installation"
- ; /D must never redirect this narrowly scoped UAT installer.
- StrCpy $INSTDIR "E:\MentorFlow"
+Function .onInit
  InitPluginsDir
  SetOutPath "$PLUGINSDIR"
- File /oname=PrepareMentorFlowRoot.exe "${ROOT_HELPER}"
- DetailPrint "正在检查 E: 路径并创建受保护的程序目录…"
- ExecWait '"$PLUGINSDIR\PrepareMentorFlowRoot.exe"' $0
+ File /oname=MentorFlowInstallGate.exe "${TRANSACTION_HELPER}"
+ WriteUninstaller "$PLUGINSDIR\Uninstall.exe"
+ ${GetParent} "$EXEDIR" $PayloadSource
+ StrCpy $StatusFile "$PLUGINSDIR\install-status.ini"
+ StrCpy $CancelFile "$PLUGINSDIR\cancel.request"
+ StrCpy $Installing 0
+ SetRegView 64
+ ReadRegStr $PreviousRoot HKLM "Software\MentorFlow" "InstallLocation"
+ ${If} $PreviousRoot != ""
+   ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" recognise --install-root "$PreviousRoot"' $0
+   ${If} $0 == 0
+     StrCpy $INSTDIR $PreviousRoot
+   ${EndIf}
+ ${EndIf}
+FunctionEnd
+
+Function ValidateDirectory
+ StrCpy $HelperArgs '--install-root "$INSTDIR" --payload-source "$PayloadSource" --manifest-sha256 ${MANIFEST_SHA} --source-sha ${SOURCE_SHA} --tree-sha ${SOURCE_TREE} --uninstaller-source "$PLUGINSDIR\Uninstall.exe" --status-file "$StatusFile"'
+ ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" preflight $HelperArgs' $0
  ${If} $0 != 0
-   MessageBox MB_ICONSTOP "无法创建受保护目录。现有 E:\MentorFlow 不会被覆盖；请保留现场并请求修复。"
-   SetErrorLevel 3
+   ReadINIStr $1 "$StatusFile" "install" "error"
+   MessageBox MB_ICONSTOP "安装前检查未通过：$1"
    Abort
  ${EndIf}
- SetOutPath "$INSTDIR\App"
- SetOverwrite off
- ClearErrors
- File /r /x "Installer" "${PAYLOAD_DIR}\*"
- ${If} ${Errors}
-   MessageBox MB_ICONSTOP "程序文件释放失败。未创建启动快捷方式，请保留现场并请求修复。"
-   SetErrorLevel 3
+ ReadINIStr $1 "$StatusFile" "install" "stage"
+ ReadINIStr $2 "$StatusFile" "install" "percent"
+ MessageBox MB_OKCANCEL "MentorFlow 将安装到：$INSTDIR$\r$\n所需新增空间（字节）：$1$\r$\n可用空间（字节）：$2" IDOK accepted
+ Abort
+ accepted:
+FunctionEnd
+
+Function InstallShow
+ GetDlgItem $0 $HWNDPARENT 2
+ EnableWindow $0 1
+FunctionEnd
+
+Function RequestCancel
+ ${If} $Installing == 1
+   FileOpen $0 "$CancelFile" w
+   FileWrite $0 "cancel"
+   FileClose $0
+   DetailPrint "已请求取消，正在安全回滚，请稍候…"
    Abort
  ${EndIf}
- DetailPrint "正在锁定文件继承权限…"
- ; Extraction already inherits RX-only user access. Canonicalize each new
- ; file's owner/protected DACL using the existing installer-only primitive.
- ExecWait '"$INSTDIR\App\MentorFlowInstallGate.exe" protect --install-root "$INSTDIR"' $0
+FunctionEnd
+
+Function UpdateStatus
+ ReadINIStr $0 "$StatusFile" "install" "stage"
+ ReadINIStr $1 "$StatusFile" "install" "percent"
+ FindWindow $2 "#32770" "" $HWNDPARENT
+ GetDlgItem $3 $2 1006
+ SendMessage $3 ${WM_SETTEXT} 0 "STR:$0"
+ GetDlgItem $3 $2 1004
+ SendMessage $3 ${PBM_SETPOS} $1 0
+FunctionEnd
+
+Section "MentorFlow"
+ StrCpy $Installing 1
+ GetDlgItem $0 $HWNDPARENT 2
+ EnableWindow $0 1
+ GetFunctionAddress $0 UpdateStatus
+ nsDialogs::CreateTimer $0 250
+ DetailPrint "正在安装 MentorFlow…"
+ ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" transaction $HelperArgs --cancel-file "$CancelFile" --shortcut-path "$DESKTOP\MentorFlow.lnk"' $4
+ GetFunctionAddress $0 UpdateStatus
+ nsDialogs::KillTimer $0
+ StrCpy $Installing 0
+ ${If} $4 != 0
+   ReadINIStr $1 "$StatusFile" "install" "error"
+   DetailPrint "$1"
+   MessageBox MB_ICONINFORMATION "安装未完成：$1"
+   SetErrorLevel $4
+   Abort
+ ${EndIf}
+ DetailPrint "完整验证通过，安装完成。"
+SectionEnd
+
+Section "Uninstall"
+ InitPluginsDir
+ SetOutPath "$PLUGINSDIR"
+ File /oname=MentorFlowInstallGate.exe "${TRANSACTION_HELPER}"
+ ExecWait '"$PLUGINSDIR\MentorFlowInstallGate.exe" uninstall-transaction --install-root "$INSTDIR" --shortcut-path "$DESKTOP\MentorFlow.lnk"' $0
  ${If} $0 != 0
-   MessageBox MB_ICONSTOP "程序权限检查失败。未创建启动快捷方式，请保留现场并请求修复。"
-   SetErrorLevel 3
+   MessageBox MB_ICONSTOP "卸载未完成，程序或恢复事务已保留。"
+   SetErrorLevel $0
    Abort
  ${EndIf}
- DetailPrint "正在执行完整文件校验并生成受保护安装回执，请稍候…"
- ; Windowed asInvoker helper inherits this installer's admin token only here.
- ExecWait '"$INSTDIR\App\MentorFlowInstallGate.exe" activate --quiet-install --install-root "$INSTDIR" --manifest-sha256 ${MANIFEST_SHA} --source-sha ${SOURCE_SHA} --tree-sha ${SOURCE_TREE}' $0
- ${If} $0 != 0
-   MessageBox MB_ICONSTOP "完整安装校验未通过。未创建启动快捷方式，请保留现场并请求修复。"
-   SetErrorLevel 3
-   Abort
- ${EndIf}
- IfFileExists "$INSTDIR\installation-receipt.json" +4
-   MessageBox MB_ICONSTOP "安装回执缺失，停止发布快捷方式。"
-   SetErrorLevel 3
-   Abort
- ClearErrors
- ; This is the explicitly requested user's desktop, not an alternate UAC account.
- CreateShortCut "C:\Users\21533\Desktop\MentorFlow.lnk" "$INSTDIR\App\MentorFlow.exe" '--install-root "$INSTDIR" --manifest-sha256 ${MANIFEST_SHA} --source-sha ${SOURCE_SHA} --tree-sha ${SOURCE_TREE}' "$INSTDIR\App\MentorFlow.exe" 0 SW_SHOWNORMAL
- ${If} ${Errors}
-   MessageBox MB_ICONSTOP "程序安装已完成，但桌面快捷方式创建失败。请保留安装目录并请求修复。"
-   SetErrorLevel 3
-   Abort
- ${EndIf}
- ; No elevated finish-page app launch, user-data deletion or legacy uninstaller.
- DetailPrint "安装完成。关闭安装器后从桌面正常启动 MentorFlow。"
 SectionEnd
