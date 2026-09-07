@@ -133,7 +133,10 @@ def version_doc(version,work,public,origin,*,bad=False):
 
 
 def prepare_base(args,identity):
-    work=args.work;result=work/'base-evidence.json'
+    work=args.work;build=configure(work,provision(work),identity);result=build/'base-evidence.json'
+    legacy=work/'base-evidence.json'
+    if not result.exists() and legacy.exists() and json.loads(legacy.read_bytes())['source']==identity:
+        result=legacy
     if result.exists():
         old=json.loads(result.read_bytes())
         if old['source']!=identity:raise ValueError('base source changed')
@@ -169,6 +172,69 @@ def prepare_base(args,identity):
     result_doc=dict(source=identity,version='1.2.0',app=str(target),exe_sha256=v.sha256_file(target/'MentorFlow.exe'),
         manifest_sha256=v.sha256_file(manifest),files=len(verified),bytes=sum(r['size'] for r in verified.values()))
     emit(result,result_doc);return result_doc
+
+
+def refresh_base(args,identity):
+    """Refresh only this unpublished candidate, retaining changed input bytes.
+
+    Avoid another full 2GB copy. Previous evidence/manifests remain immutable;
+    already published installer or release metadata makes this operation fail.
+    """
+    work=args.work;public=provision(work);build=configure(work,public,identity)
+    build_binaries(args,identity)
+    target=work/'release/base/App';pointer=work/'base-current.json'
+    previous_path=Path(json.loads(pointer.read_bytes())['evidence']) if pointer.exists() else work/'base-evidence.json'
+    if not previous_path.is_relative_to(work):raise ValueError('candidate evidence outside work root')
+    previous=json.loads(previous_path.read_bytes())
+    if previous['source']==identity:return prepare_base(args,identity)
+    if any((work/'release'/name).exists() for name in ('target.json','bad.json','asset-map.json')) or (target/'Installer').exists():
+        raise ValueError('published candidate is immutable; refresh prohibited')
+    if Path(previous['app'])!=target:raise ValueError('unexpected candidate root')
+    from scripts.prepare_transactional_installer import verify
+    _,old_rows=verify(target,previous['manifest_sha256'])
+    backup=build/'replaced-base-inputs'
+    if backup.exists():raise ValueError('partial prior refresh retained; inspect its exact journal before repair')
+    backup.mkdir()
+    desired={
+        'MentorFlow.exe':build/'app/MentorFlow.exe',
+        'MentorFlowInstallGate.exe':build/'native/MentorFlowInstallGate/MentorFlowInstallGate.exe',
+        'UpdateBridge.exe':build/'UpdateBridge.exe',
+        'SELF-CHECK/verify_windows_package.py':PROJECT/'scripts/verify_windows_package.py',
+        'SELF-CHECK/source-identity.json':canonical(identity),
+    }
+    for prefix,name in [('InstallRuntime','MentorFlowInstallGate'),('UpdateRuntime','UpdateRuntime')]:
+        runtime=build/'native'/name
+        for source in runtime.rglob('*'):
+            if source.is_file():desired[prefix+'/'+source.relative_to(runtime).as_posix()]=source
+    changes={}
+    for key,source in desired.items():
+        pin=digest(source) if isinstance(source,bytes) else v.sha256_file(source)
+        if key not in old_rows or old_rows[key]['sha256']!=pin:changes[key]=source
+    removed={key for key in old_rows if key.startswith(('InstallRuntime/','UpdateRuntime/')) and key not in desired}
+    preserved=set(changes)&set(old_rows)|removed|{v.MANIFEST_RELATIVE.as_posix()}
+    for key in sorted(preserved):
+        copy=backup/key;copy.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(target/key,copy)
+        if v.sha256_file(copy)!=old_rows[key]['sha256']:raise ValueError('candidate changed before archival')
+    emit(backup/'refresh-intent.json',dict(previous_evidence=str(previous_path),source=identity,
+        changes=sorted(changes),removed=sorted(removed),old_manifest_sha256=previous['manifest_sha256']))
+    for key,source in changes.items():
+        destination=target/key;destination.parent.mkdir(parents=True,exist_ok=True)
+        temp=destination.with_name(destination.name+'.candidate-pending')
+        if temp.exists():raise ValueError('unknown candidate temporary file preserved')
+        if isinstance(source,bytes):
+            with temp.open('xb') as stream:stream.write(source)
+        else:shutil.copyfile(source,temp)
+        temp.replace(destination)
+    for key in removed:(target/key).unlink()  # only exact old manifest-owned files, archived above
+    manifest=v.build_manifest(target);manifest.write_bytes(canonical(json.loads(manifest.read_bytes())))
+    _,rows=verify(target,v.sha256_file(manifest))
+    evidence=build/'base-evidence.json'
+    doc=dict(source=identity,version='1.2.0',app=str(target),exe_sha256=v.sha256_file(target/'MentorFlow.exe'),
+        manifest_sha256=v.sha256_file(manifest),files=len(rows),bytes=sum(row['size'] for row in rows.values()),
+        refreshed_from=str(previous_path),changed_inputs_archived=str(backup))
+    emit(evidence,doc)
+    temp=pointer.with_suffix('.pending');emit(temp,dict(evidence=str(evidence)));temp.replace(pointer)
+    return doc
 
 
 def releases(args,identity):
@@ -237,7 +303,7 @@ def installer(args,identity):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase',choices=['binaries','base','releases','installer'])
+    parser.add_argument('phase',choices=['binaries','base','refresh-base','releases','installer'])
     parser.add_argument('--work',type=Path,default=Path('D:/MF14W'))
     parser.add_argument('--install-root',type=Path,default=Path('D:/MF14I'))
     parser.add_argument('--payload',type=Path,default=Path('D:/MF13B/App'))
@@ -250,7 +316,7 @@ def main():
         raise ValueError('This explicit UAT delivery profile is bound to approved isolated roots')
     if args.origin!='http://127.0.0.1:48147':raise ValueError('compiled local UAT origin is fixed for this delivery')
     identity=source_identity()
-    {'binaries':build_binaries,'base':prepare_base,'releases':releases,'installer':installer}[args.phase](args,identity)
+    {'binaries':build_binaries,'base':prepare_base,'refresh-base':refresh_base,'releases':releases,'installer':installer}[args.phase](args,identity)
     print(json.dumps(dict(phase=args.phase,status='BUILT_NOT_INSTALLED',source=identity)))
 
 

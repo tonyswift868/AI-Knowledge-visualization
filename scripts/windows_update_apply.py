@@ -69,8 +69,7 @@ def apply_update(root, source, envelope, *, channel='stable', on_committed=None)
                 raise SecurityError('oversized health journal')
             if json.loads(path.read_bytes()).get('pending_update_health'):
                 raise RecoverableError('previous update still requires first-launch health qualification')
-        previous = tx.identities_from_receipt(root)
-        trust.verify_installation(root, **previous, workers=1)
+        verify_committed(root)
         old = json.loads((root/'App'/'mentorflow-version.json').read_bytes())
         release = verify_release(envelope, PRODUCTION_RELEASE_KEYS,
                                  current=old['version'], channel=channel,
@@ -124,7 +123,7 @@ def rollback_previous(root, attempt_name, *, registry=None, shortcut=None, _lock
             verify_committed(root)
             return {'status':'ROLLBACK_RECOVERED', 'root':str(root)}
         ids = tx.identities_from_receipt(root)
-        trust.verify_installation(root, **ids, workers=1)
+        verify_committed(root)
         attempt = root/tx.STAGING/tx.PREVIOUS/attempt_name
         tx.assert_no_alias(attempt); trust.assert_protected(attempt)
         journal_path = attempt/'journal.json'

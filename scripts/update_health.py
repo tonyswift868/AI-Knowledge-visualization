@@ -98,7 +98,8 @@ def reconcile_finalization(root):
         if (journal.get('root')!=str(root) or journal.get('schema')!='mentorflow.install-transaction.v1' or
                 receipt.get('state')!='HEALTHY' or receipt.get('health')!=journal.get('health_evidence')):
             raise SecurityError('inconsistent protected health finalization intent')
-        trust.verify_installation(root,**tx.identities_from_receipt(root),workers=1)
+        from scripts.windows_update_apply import verify_committed
+        verify_committed(root)
         journal['pending_update_health']=False
         journal['commit_receipt_sha256']=journal['health_receipt_sha256']
         atomic_record(journal_path,journal)

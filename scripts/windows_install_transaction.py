@@ -385,8 +385,14 @@ class Transaction:
         old=recognised(self.root)
         if self.retain_previous and not old:
             raise ValueError('update requires a verified existing installation')
-        if old: trust.verify_installation(self.root,**identities_from_receipt(self.root),workers=1,
-            cancelled=lambda:self.checkpoint('verify_old'))
+        if old:
+            # Protected witness/claim publication can deliver a delayed NTFS
+            # directory notification. Reuse the bounded whole-snapshot retry;
+            # never accept or filter a mutation from an interrupted snapshot.
+            old_check=Transaction(self.root/'App',self.root,identities_from_receipt(self.root),self.uninstaller,
+                registry=self.registry,shortcut=self.shortcut,cancel=self.cancel,
+                status=self.status,fault=lambda _:self.checkpoint('verify_old'))
+            old_check.verify(self.root,None,False)
         registry=self.registry.snapshot(); shortcut=self.shortcut.snapshot()
         created=not self.root.exists()
         stagebase=self.root/STAGING
