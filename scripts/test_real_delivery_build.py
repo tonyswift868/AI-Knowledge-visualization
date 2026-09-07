@@ -1,6 +1,9 @@
 """Offline release provisioning and build contract tests; no compiler/install."""
 import ast
 import base64
+import json
+import os
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -39,3 +42,29 @@ def test_spec_real_entry_and_onedir_nsis_contract():
     nsis=(build.PROJECT/'installer/ProtectedInstall.nsh').read_text(encoding='utf-8')
     assert 'File /r "${TRANSACTION_RUNTIME}\\*.*"' in nsis
     assert '"$PLUGINSDIR\\MentorFlowInstallGate.exe"' not in nsis
+
+
+def test_installer_build_only_repair_preserves_runtime_identity(tmp_path):
+    runtime=dict(source_sha='a'*40,tree_sha='b'*40,app_id=build.APP_ID)
+    builder={**runtime,'source_sha':'c'*40,'tree_sha':'d'*40}
+    app=tmp_path/'App';app.mkdir()
+    evidence=tmp_path/'base.json'
+    build.emit(evidence,dict(source=runtime,app=str(app)))
+    build.emit(tmp_path/'base-current.json',dict(evidence=str(evidence)))
+    args=SimpleNamespace(work=tmp_path,install_root=tmp_path/'Installed')
+    def run(command,cwd,log,env):
+        assert command[command.index('-SourceSha')+1]==runtime['source_sha']
+        assert env['PSModulePath'].endswith('/WindowsPowerShell/v1.0/Modules')
+        (app/'Installer').mkdir()
+        (app/'Installer/Setup.exe').write_bytes(b'test-only')
+    with patch.object(build,'git',lambda *a:'scripts/build_windows_installer.ps1' if a[0]=='diff' else ''),patch.object(build,'run',run):
+        build.installer(args,builder)
+    result=json.loads((tmp_path/'installer-evidence.json').read_bytes())
+    assert result['source']==runtime and result['builder_source']==builder
+    with patch.object(build,'git',lambda *a:'desktop_gui_entry.py' if a[0]=='diff' else ''),pytest.raises(ValueError,match='Runtime changed'):
+        build.installer(args,builder)
+
+
+def test_windows_powershell_reads_utf8_version_explicitly():
+    source=(build.PROJECT/'scripts/build_windows_installer.ps1').read_text(encoding='utf-8')
+    assert '$versionInput -Raw -Encoding UTF8 | ConvertFrom-Json' in source

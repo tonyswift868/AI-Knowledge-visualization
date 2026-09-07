@@ -72,7 +72,7 @@ if ($ProtectedInstall) {
     } elseif ($UatWorkRoot -or $UatDefaultInstallDir) { throw 'UAT paths require compiled UAT namespace' }
     if (-not $isolatedScratch -and -not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
         -not $scratchFull.Equals($runtimeQualificationScratch, [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
-    $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw | ConvertFrom-Json
+    $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
     if ($UatAppId -and $identity.app_id -ne $UatAppId) { throw 'Payload compiled namespace mismatch' }
     $manifestPin = (Get-FileHash -LiteralPath (Join-Path $payload 'SELF-CHECK\package-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -92,7 +92,7 @@ if (-not (Test-Path -LiteralPath $NsisPath -PathType Leaf)) {
 }
 
 $versionInput = if ($ProtectedInstall) { Join-Path $payload 'mentorflow-version.json' } else { $VersionFile }
-$versionManifest = Get-Content -LiteralPath $versionInput -Raw | ConvertFrom-Json
+$versionManifest = Get-Content -LiteralPath $versionInput -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($versionManifest.schema -ne 'mentorflow.version.v1' -or $versionManifest.product -ne 'MentorFlow') {
     throw "Unsupported MentorFlow version manifest: $VersionFile"
 }

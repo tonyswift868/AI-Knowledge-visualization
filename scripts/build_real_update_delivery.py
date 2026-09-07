@@ -288,16 +288,28 @@ def releases(args,identity):
 
 
 def installer(args,identity):
-    base=prepare_base(args,identity);app=Path(base['app']);output=app/'Installer'
+    current=args.work/'base-current.json'
+    base=json.loads(Path(json.loads(current.read_bytes())['evidence']).read_bytes()) if current.exists() else prepare_base(args,identity)
+    # Build-only repairs need not rewrite an already signed runtime release.
+    # Keep runtime and installer-builder identities separate and exact.
+    runtime_identity=base['source']
+    if runtime_identity!=identity:
+        git('merge-base','--is-ancestor',runtime_identity['source_sha'],identity['source_sha'])
+        changed=set(git('diff','--name-only',runtime_identity['source_sha'],identity['source_sha']).splitlines())
+        allowed={'scripts/build_real_update_delivery.py','scripts/build_windows_installer.ps1',
+                 'scripts/test_real_delivery_build.py','scripts/test_installer_space.py'}
+        if changed-allowed:raise ValueError('Runtime changed after signed BASE; rebuild runtime first')
+    app=Path(base['app']);output=app/'Installer'
     run([os.environ['SystemRoot']+'/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-File',
         PROJECT/'scripts/build_windows_installer.ps1','-ProtectedInstall','-PayloadRoot',app,'-OutputRoot',output,
-        '-PythonPath',sys.executable,'-BuildScratch',args.work/'build/nsis','-SourceSha',identity['source_sha'],
-        '-SourceTree',identity['tree_sha'],'-UatAppId',APP_ID,'-UatWorkRoot',args.work,
+        '-PythonPath',sys.executable,'-BuildScratch',args.work/'build/nsis','-SourceSha',runtime_identity['source_sha'],
+        '-SourceTree',runtime_identity['tree_sha'],'-UatAppId',APP_ID,'-UatWorkRoot',args.work,
         '-UatDefaultInstallDir',args.install_root],PROJECT,args.work/'build/installer.build.log',
-        {**os.environ,'TEMP':str(args.work),'TMP':str(args.work),'PYTHONDONTWRITEBYTECODE':'1'})
+        {**os.environ,'TEMP':str(args.work),'TMP':str(args.work),'PYTHONDONTWRITEBYTECODE':'1',
+         'PSModulePath':os.environ['SystemRoot']+'/System32/WindowsPowerShell/v1.0/Modules'})
     files=list(output.glob('*.exe'))
     if len(files)!=1:raise ValueError('exactly one final installer expected')
-    emit(args.work/'installer-evidence.json',dict(source=identity,path=str(files[0]),sha256=v.sha256_file(files[0]),
+    emit(args.work/'installer-evidence.json',dict(source=runtime_identity,builder_source=identity,path=str(files[0]),sha256=v.sha256_file(files[0]),
         authenticode='UNSIGNED',installed=False))
 
 
