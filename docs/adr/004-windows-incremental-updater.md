@@ -48,6 +48,62 @@ No Velopack/.NET/MSIX tools or dependencies installed; no lockfiles changed.
 Cryptography 46.0.7 and HTTPX 0.28.1 are already locked and available. Ed25519 uses
 the existing cryptography library, never a custom cryptographic implementation.
 
+Explicit qualification: VELOPACK_PYTHON_SUPPORTED=YES;
+VELOPACK_CUSTOM_INSTALL_LOCATION_SUPPORTED=YES;
+VELOPACK_PER_MACHINE_MSI_SUPPORTED=YES.
+VELOPACK=QUALIFIED_MATURE_REFERENCE_BUT_NOT_ADOPTED_IN_V1.
+Concrete migration cost: replace native entry/stub pins, change App-relative
+resource loading to current, migrate receipt/shortcut identities and pending
+transaction recovery, adopt package feed/retention and retest custom NSIS
+directory/cancel/UAC/ACL semantics. No in-place interoperability test proves
+those changes safe in the current layout; capability documentation is not that test.
+
+## Download transport qualification (continuation, same dispatch)
+
+V1_TRANSPORT=HTTP_RANGE, behind UpdateTransport Protocol (metadata fetch, bounded
+stream headers/bytes, origin validation, received-body byte accounting). Core
+signature/manifest/cache/transaction logic does not depend on HTTPX internals.
+
+| Qualification point | Current HTTP Range | Windows BITS candidate |
+| --- | --- | --- |
+| Bandwidth / cost | Bounded streamed objects; no automatic idle-bandwidth or metered policy in V1; manual download only. | OS congestion/idle-bandwidth and cost-aware transfer policies. |
+| Disconnect / application exit | Partial/completed objects persist; retry continues next invocation. No network job continues after App exits. | Service-owned jobs can outlive the creating App and resume interruptions/reboots, subject to owner logon/network policy. |
+| Reboot | Cache resume after next App launch; not continuous background service. | Durable job state managed by BITS; qualification must test job-owner logon and cost policy. |
+| Python / COM / frozen Qt | Existing locked HTTPX; no Qt blocking. | Requires per-thread COM initialization, job-GUID persistence/reconciliation, cancel/Complete semantics and PyInstaller COM packaging; never call COM synchronously on Qt main thread. |
+| Privilege | Ordinary-user cache only; apply separately elevated. | Create user-owned jobs to user-accessible cache; RunAs alone is not interactive logon. BITS service presence is not authority to write protected App; apply remains separate. |
+
+BITS_QUALIFICATION=PRODUCTION_CANDIDATE/FOLLOW_UP, documentation only, not runtime
+tested, no BITS jobs created. Do not rewrite Range for this bounded qualification.
+Official references:
+- https://learn.microsoft.com/en-us/windows/win32/bits/background-intelligent-transfer-service-portal
+- https://learn.microsoft.com/en-us/windows/win32/bits/best-practices-when-using-bits
+- https://learn.microsoft.com/en-us/windows/win32/bits/users-and-network-connections
+
+## Anti-replay and release operations
+
+Signed metadata_version is monotonic per app/channel; issued_at/expires_at bound
+freshness (maximum signed lifetime 31 days). The client stores a signed high-water
+witness before returning a release, rejects older epochs and rejects changed
+signed content with the same epoch. It reloads this witness on download/apply and
+across service restart. This addresses hostile/stale network feed replay, not
+malicious local-user deletion/rollback of their whole update-cache profile.
+The source helper additionally stores an independently signed high-water witness
+under protected .install-staging/update-metadata/<channel>.json. Fixture tests
+prove that deleting the ordinary cache does not reset this helper floor. Actual
+elevated production ACL/build/rotation deployment remains NOT_RUN; production
+apply stays disabled without build-provisioned trust. No whole TUF hierarchy added.
+
+Key rotation: build-provisioned overlapping public-key IDs; envelope key_id must
+match signed key_id. Never accept a key embedded in the feed. Old witness public
+verification material must remain available during rollover. Revocation/recovery
+requires reviewed trust-bundle deployment; no unsigned reset switch exists.
+
+Signed rollout_percentage/rollout_seed/version produce a deterministic per-install
+cohort locally, without transmitting account/workspace IDs. withdrawn prevents
+download/apply from the observed metadata; a higher epoch must be used for any
+withdraw/reissue/cohort change. Offline clients cannot know about a newly issued
+withdrawal until recheck; expiry bounds that window, not instantaneous revocation.
+
 ## Architecture and release boundary
 
 One existing update-service facade/cache root. Per-install subdirectories and OS
@@ -65,8 +121,11 @@ Cache checks/download/reconstruction are unprivileged and never mutate live App.
 Same-volume protected staging/apply and final signature validation must happen
 in a separately qualified elevated helper after explicit restart consent.
 
-Update state/cache/diagnostic logs stay in the update cache, outside the binary
-tree and outside learning/account data. Existing app state separation is retained.
+Updater objects/check/high-water state stay in the update cache, outside the
+binary tree and learning/account data. Exceptions use the existing Python logger;
+this change does not configure a new persistent log sink. Production durable log
+routing/rotation remains unqualified. Existing desktop preferences use QSettings;
+this round does not migrate or certify every legacy App storage path.
 Mandatory releases require security/protocol/data-compatibility reason; they do
 not introduce a new login/startup blocking gate here. Signed SemVer prevents
 production downgrade. Stable UI only, beta via build-provisioned advanced config.

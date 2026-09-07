@@ -192,13 +192,21 @@ class MatureUpdateService:
         from .update_protocol import digest, SecurityError
         self.install_root = Path(install_root).absolute()
         cache_root = Path(cache_root).absolute()
+        # Reject aliasing before overlap checks; lexical spelling must not make
+        # a user-data or live-App cache look like an unrelated directory.
+        from .update_download import safe_entry
+        safe_entry(self.install_root,self.install_root,directory=True)
+        safe_entry(cache_root,cache_root,directory=True)
         if (cache_root == self.install_root or cache_root.is_relative_to(self.install_root)
                 or self.install_root.is_relative_to(cache_root)
                 or cache_root == Path('E:/MentorFlowData') or cache_root.is_relative_to(Path('E:/MentorFlowData'))):
             raise SecurityError('update cache overlaps program/user data')
         identity = digest(os.path.normcase(str(self.install_root)).encode('utf-8'))
+        self.install_identity = identity
         self.cache = ObjectCache(cache_root / identity, transport or HTTPTransport(metadata_url))
         self.metadata_url, self.keys = metadata_url, dict(public_keys)
+        if channel not in ('stable', 'beta'):
+            raise SecurityError('unsupported update channel')
         self.current, self.channel = current, channel
         self.apply_bridge = apply_bridge
         self.cancel_event = threading.Event()
@@ -251,6 +259,9 @@ class MatureUpdateService:
         if not path.is_file():
             return None
         safe_entry(path, app, missing=False)
+        if path.stat().st_size > 16*1024**2:
+            from .update_protocol import SecurityError
+            raise SecurityError('installed manifest too large')
         raw = path.read_bytes()
         try:
             doc = strict_json(raw)
@@ -262,24 +273,56 @@ class MatureUpdateService:
         except (KeyError, TypeError, ValueError):
             return None
 
+    def _witness(self):
+        from .update_download import safe_entry
+        from .update_protocol import witness_version
+        path = self.cache.root / ('highest-metadata-' + self.channel + '.json')
+        if safe_entry(path, self.cache.root):
+            if path.stat().st_size > 16*1024**2:
+                from .update_protocol import SecurityError
+                raise SecurityError('high-water witness too large')
+            return witness_version(path.read_bytes(), self.keys, channel=self.channel)
+        return 0, ''
+
+    def _remember_release(self, release):
+        from .update_download import safe_entry
+        from .update_protocol import SecurityError, digest, canonical
+        import os
+        epoch, signed_hash = self._witness()
+        incoming = release.signed['metadata_version']
+        if incoming < epoch or incoming == epoch and signed_hash != digest(canonical(release.signed)):
+            raise SecurityError('metadata replay or same-version equivocation')
+        target = self.cache.root / ('highest-metadata-' + self.channel + '.json')
+        temporary = target.with_suffix('.pending')
+        safe_entry(target, self.cache.root); safe_entry(temporary, self.cache.root)
+        with temporary.open('wb') as stream:
+            stream.write(release.envelope); stream.flush(); os.fsync(stream.fileno())
+        temporary.replace(target)
+
     def check(self, *, manual=True):
         import logging
         import time
         from .update_download import InstallUpdateLock
-        from .update_protocol import MAX_METADATA, SecurityError, verify_release, make_plan
+        from .update_protocol import MAX_METADATA, SecurityError, verify_release, make_plan, rollout_eligible
         if not manual and time.time() < self._next_check:
             return dict(self.snapshot)
         try:
             with InstallUpdateLock(self.cache.root):
                 self._state('CHECKING', '正在检查更新…')
                 raw = self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA)
-                release = verify_release(raw, self.keys, current=self.current, channel=self.channel)
+                release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
+                                         highest_seen=self._witness()[0])
+                self._remember_release(release)
                 plan = make_plan(release, self._local_rows(), self.current)
+                eligible = rollout_eligible(release, self.install_identity)
+                plan['rollout_eligible'] = eligible
+                plan['withdrawn'] = release.signed['withdrawn']
+                plan['update'] = plan['update'] and eligible
                 self.release, self.plan, self.staged = release, plan, None
                 self._failures = 0
                 self._next_check = time.time() + 86400
                 self._state('UPDATE_AVAILABLE' if plan['update'] else 'UP_TO_DATE',
-                            '发现新版本' if plan['update'] else '当前已是最新版本',
+                            '发现新版本' if plan['update'] else ('当前已是最新版本' if eligible else '此版本暂未向本设备开放，继续使用当前版本。'),
                             **plan, last_checked=time.time())
                 self._persist_check()
         except Exception as exc:
@@ -302,7 +345,9 @@ class MatureUpdateService:
         before = self.cache.transport.bytes_received
         try:
             with InstallUpdateLock(self.cache.root):
-                release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel)
+                release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel,
+                                         highest_seen=self._witness()[0])
+                self._remember_release(release)
                 self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
                 def progress(_):
                     self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before}
@@ -325,12 +370,33 @@ class MatureUpdateService:
         self.cancel_event.set()
 
     def apply_and_restart(self):
+        from .update_protocol import SecurityError
+        import logging
+        try:
+            return self._apply_verified()
+        except Exception as exc:
+            logging.getLogger(__name__).exception('protected update handoff failed')
+            self._state('FAILED_SECURITY' if isinstance(exc,SecurityError) else 'FAILED_RECOVERABLE',
+                        '更新安全校验未通过，未继续应用。' if isinstance(exc,SecurityError) else '更新未完成，请继续使用或恢复已验证的旧版本。')
+            raise
+
+    def _apply_verified(self):
         from .update_protocol import RecoverableError, verify_release
         from .update_download import InstallUpdateLock
         if not self.staged or self.apply_bridge is None:
             raise RecoverableError('protected update/restart bridge is not qualified/configured')
         with InstallUpdateLock(self.cache.root):
-            release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel)
+            # Observe the latest signed withdrawal/rollout epoch before consented
+            # application. Offline is recoverable, never permission to bypass it.
+            from .update_protocol import MAX_METADATA, rollout_eligible, SecurityError, digest, canonical
+            fresh = verify_release(self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA),
+                self.keys, current=self.current, channel=self.channel, highest_seen=self._witness()[0])
+            self._remember_release(fresh)
+            if not rollout_eligible(fresh, self.install_identity) or digest(canonical(fresh.signed)) != digest(canonical(self.release.signed)):
+                raise SecurityError('release changed or withdrawn; recheck required')
+            release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel,
+                                     highest_seen=self._witness()[0])
+            self._remember_release(release)
             self.cache.verify_tree(self.staged, release)
             self._state('APPLYING', '正在准备受保护更新…')
             # Bridge must independently verify metadata after elevation, retain

@@ -27,6 +27,8 @@ REG_UNINSTALL = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\MentorFlow
 REG_FIELDS = {REG_PRODUCT: ('InstallLocation', 'Version'), REG_UNINSTALL:
     ('DisplayName','DisplayVersion','Publisher','InstallLocation','UninstallString','NoModify','NoRepair')}
 STAGING = '.install-staging'
+PREVIOUS = 'previous'
+UPDATE_METADATA = 'update-metadata'
 FAILED_ROOT = Path('E:/MentorFlow')
 FAILED_MANIFEST_SHA = 'a5a42fbfdabba7f1f000a3fcef5ac2ce8d3d665090e4c52f642594536d2f2e4a'
 
@@ -380,7 +382,7 @@ class Transaction:
             else: trust._set_protected(self.root)
             if not stagebase.exists():
                 trust._create_protected(stagebase,directory=True); setup_owned.append(stagebase)
-            elif any(stagebase.iterdir()): raise ValueError('存在可恢复的安装事务，保留现场，拒绝覆盖。')
+            elif any(p.name not in (PREVIOUS, UPDATE_METADATA) for p in stagebase.iterdir()): raise ValueError('存在可恢复的安装事务，保留现场，拒绝覆盖。')
             trust._create_protected(self.attempt,directory=True); setup_owned.append(self.attempt)
             self.save()
         except BaseException:
@@ -439,7 +441,9 @@ class Transaction:
         return {'status':'PASS','root':str(self.root)}
     def complete_transaction(self):
         if self.journal.get('retain_previous') and self.journal.get('old'):
-            previous=self.root/'.update-previous'
+            # Retain under the existing reserved, ACL-checked transaction root;
+            # no second unrecognised installation control namespace is created.
+            previous=self.root/STAGING/PREVIOUS
             if not previous.exists(): trust._create_protected(previous,directory=True)
             assert_no_alias(previous); trust.assert_protected(previous)
             self.journal['phase']='COMMITTED'
@@ -457,6 +461,9 @@ class Transaction:
         assert_no_alias(base); trust.assert_protected(base)
         for attempt in list(base.iterdir()):
             assert_no_alias(attempt); trust.assert_protected(attempt)
+            if attempt.name in (PREVIOUS, UPDATE_METADATA):
+                if not attempt.is_dir(): raise ValueError('update control is not a directory')
+                continue
             if len(attempt.name)==32 and all(ch in '0123456789abcdef' for ch in attempt.name) and not any(attempt.iterdir()):
                 attempt.rmdir(); continue
             path=attempt/'journal.json'; assert_no_alias(path); trust.assert_protected(path)

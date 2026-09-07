@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 from urllib.parse import urlsplit
+from typing import Protocol, Iterator, Callable
 
 import httpx
 
@@ -58,6 +59,15 @@ class InstallUpdateLock:
 
     def __exit__(self, *_):
         self.stream.close()
+
+
+class UpdateTransport(Protocol):
+    """HTTP or future BITS adapter; callers own integrity and release policy."""
+    bytes_received: int
+    def validate_url(self, url: str) -> None: ...
+    def fetch_metadata(self, url: str, maximum: int) -> bytes: ...
+    def stream(self, url: str, *, offset: int = 0,
+               cancel: Callable[[], bool] = ...) -> Iterator[tuple[str, object]]: ...
 
 
 class HTTPTransport:
@@ -159,7 +169,7 @@ class HTTPTransport:
 
 
 class ObjectCache:
-    def __init__(self, root: Path, transport: HTTPTransport):
+    def __init__(self, root: Path, transport: UpdateTransport):
         cache_root = Path(root).absolute()
         if os.name == 'nt':
             # Hash-addressed cache + a deep package path can exceed MAX_PATH.
@@ -271,16 +281,24 @@ class ObjectCache:
             # Never hardlink live App: its bytes and ACL must remain independent.
             safe_entry(destination.parent, self.root, directory=True)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            with source.open('rb') as incoming, destination.open('xb') as outgoing:
+            copying = self.root / 'copying'
+            safe_entry(copying, self.root, directory=True)
+            copying.mkdir(exist_ok=True)
+            temporary = copying / (row['sha256'] + '.part')
+            safe_entry(temporary, self.root)
+            # Only this single owned incomplete-copy name is restarted. Completed
+            # cache objects and live App are never removed after interruption.
+            with source.open('rb') as incoming, temporary.open('wb') as outgoing:
                 while block := incoming.read(65536):
                     if cancel():
-                        # This is exclusively our incomplete new file, not live App.
-                        outgoing.close(); destination.unlink()
                         raise DownloadCancelled('reconstruction cancelled')
                     outgoing.write(block)
                 outgoing.flush(); os.fsync(outgoing.fileno())
-            if hash_file(destination) != row['sha256']:
+            if hash_file(temporary) != row['sha256']:
                 raise SecurityError('reconstructed file hash mismatch')
+            safe_entry(destination, self.root)
+            if destination.exists(): raise SecurityError('staging destination changed during copy')
+            temporary.rename(destination)
         self.verify_tree(target, release)
         return target
 

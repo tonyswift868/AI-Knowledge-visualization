@@ -4,7 +4,7 @@ import logging
 import threading
 from datetime import datetime
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QCheckBox)
 from .version import VERSION_MANIFEST
@@ -36,6 +36,7 @@ class UpdatePanel(QFrame):
         self.checked_label = QLabel('最近检查：尚未检查')
         layout.addWidget(self.checked_label)
         self.notes = QLabel('默认只下载变化文件；学习资料和账号数据不参与程序更新。')
+        self.notes.setTextFormat(Qt.TextFormat.PlainText)
         self.notes.setWordWrap(True); layout.addWidget(self.notes)
         self.sizes = QLabel('最新版本：— · 完整版本大小：— · 预计下载：— · 实际下载：—')
         self.sizes.setWordWrap(True); layout.addWidget(self.sizes)

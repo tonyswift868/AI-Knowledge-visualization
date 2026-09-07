@@ -108,7 +108,7 @@ class Release:
 
 
 def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
-                   channel: str = 'stable', now=None) -> Release:
+                   channel: str = 'stable', now=None, highest_seen=0) -> Release:
     """Trust comes only from caller-provisioned public keys, never the envelope."""
     doc = strict_json(raw)
     try:
@@ -123,11 +123,20 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         required = {'schema_version', 'app_id', 'channel', 'version', 'published_at', 'expires_at',
                     'min_supported_version', 'min_updater_version', 'mandatory', 'mandatory_reason',
                     'release_notes', 'full_release', 'incremental_assets', 'file_manifest',
-                    'hash_algorithm', 'signature_algorithm', 'source_sha', 'tree_sha', 'base_versions'}
+                    'hash_algorithm', 'signature_algorithm', 'source_sha', 'tree_sha', 'base_versions',
+                    'metadata_version', 'issued_at', 'key_id', 'rollout_percentage', 'rollout_seed', 'withdrawn'}
         if not isinstance(signed, dict) or set(signed) != required:
             raise SecurityError('unsupported release fields')
-        if signed['schema_version'] != 1 or signed['app_id'] != APP_ID:
+        if type(signed['schema_version']) is not int or signed['schema_version'] != 1 or signed['app_id'] != APP_ID:
             raise SecurityError('wrong release identity/schema')
+        epoch = integer(signed['metadata_version'], 2**53-1)
+        if epoch < 1 or epoch < highest_seen:
+            raise SecurityError('metadata replay/rollback refused')
+        if signed['key_id'] != doc['key_id']:
+            raise SecurityError('signed key identity mismatch')
+        integer(signed['rollout_percentage'], 100)
+        if type(signed['withdrawn']) is not bool or not isinstance(signed['rollout_seed'], str) or not 1 <= len(signed['rollout_seed']) <= 128:
+            raise SecurityError('invalid rollout policy')
         if channel not in ('stable', 'beta') or signed['channel'] != channel:
             raise SecurityError('wrong update channel')
         if signed['hash_algorithm'] != 'sha256' or signed['signature_algorithm'] != 'ed25519':
@@ -148,8 +157,9 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
             raise SecurityError('invalid release notes')
         now = now or datetime.now(timezone.utc)
         published = datetime.fromisoformat(signed['published_at'].replace('Z', '+00:00'))
+        issued = datetime.fromisoformat(signed['issued_at'].replace('Z', '+00:00'))
         expires = datetime.fromisoformat(signed['expires_at'].replace('Z', '+00:00'))
-        if published.tzinfo is None or expires.tzinfo is None or published > now + timedelta(minutes=5) or expires <= now or expires <= published:
+        if published.tzinfo is None or issued.tzinfo is None or expires.tzinfo is None or issued > now + timedelta(minutes=5) or published > issued or expires <= now or expires <= issued or expires-issued > timedelta(days=31):
             raise SecurityError('expired/future release')
         for name in ('source_sha', 'tree_sha'):
             if not re.fullmatch('[0-9a-f]{40}', signed[name]):
@@ -159,7 +169,7 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         for base in signed['base_versions']:
             version_key(base)
         manifest = signed['file_manifest']
-        if manifest['schema'] != 'mentorflow.windows-package-manifest.v1' or manifest['product'] != APP_ID or manifest['version'] != signed['version']:
+        if manifest['schema'] != 'mentorflow.windows-package-manifest.v1' or manifest['product'] != APP_ID or manifest['version'] != signed['version'] or manifest.get('executable') != 'MentorFlow.exe':
             raise SecurityError('manifest identity mismatch')
         if not 1 <= len(manifest['files']) <= 50000:
             raise SecurityError('invalid file count')
@@ -179,6 +189,8 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         for path in rows:
             if any(str(p).casefold() in seen for p in PurePosixPath(path).parents if str(p) != '.'):
                 raise SecurityError('file/directory conflict')
+        if 'MentorFlow.exe' not in rows:
+            raise SecurityError('application executable missing')
         manifest_bytes = canonical(manifest)
         rows[MANIFEST_PATH] = dict(path=MANIFEST_PATH, size=len(manifest_bytes), sha256=digest(manifest_bytes))
         full = signed['full_release']
@@ -205,13 +217,45 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         raise SecurityError('release authenticity/contract rejected') from exc
 
 
+def rollout_eligible(release: Release, install_identity: str) -> bool:
+    """No user/account identifier is sent; deterministic per-install cohort."""
+    if release.signed['withdrawn']:
+        return False
+    key = canonical([release.signed['app_id'], release.signed['channel'],
+                     release.signed['rollout_seed'], release.version, install_identity])
+    cohort = int(digest(key)[:16], 16) % 10000
+    return cohort < release.signed['rollout_percentage'] * 100
+
+
+def witness_version(raw: bytes, keys: dict[str, bytes], *, channel: str) -> tuple[int, str]:
+    """Verify saved signed high-water evidence, even after its release expires.
+
+    It never authorizes apply; current release must still pass expiry/version.
+    The cache protects network replay, not a privileged/local profile rollback.
+    """
+    doc = strict_json(raw)
+    try:
+        signed = doc['signed']
+        Ed25519PublicKey.from_public_bytes(keys[doc['key_id']]).verify(
+            base64.b64decode(doc['signature'], validate=True), canonical(signed))
+        if signed['app_id'] != APP_ID or signed['channel'] != channel or signed['key_id'] != doc['key_id']:
+            raise SecurityError('invalid high-water witness identity')
+        epoch = integer(signed['metadata_version'], 2**53-1)
+        if not epoch: raise SecurityError('invalid high-water witness version')
+        return epoch, digest(canonical(signed))
+    except (KeyError, TypeError, ValueError, InvalidSignature) as exc:
+        raise SecurityError('invalid high-water witness') from exc
+
+
 def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
     full = release.signed['full_release']['size']
     changed = [path for path, row in release.rows.items()
                if not local_rows or local_rows.get(path, {}).get('sha256') != row['sha256']
                or local_rows.get(path, {}).get('size') != row['size']]
     size = sum(release.rows[p]['size'] for p in changed)
-    supported = current in release.signed['base_versions'] and version_key(current) >= version_key(release.signed['min_supported_version'])
+    supported = (current in release.signed['base_versions']
+                 and version_key(current) >= version_key(release.signed['min_supported_version'])
+                 and set(changed).issubset(release.signed['incremental_assets']))
     fallback = not local_rows or not supported or size >= full
     paths = list(release.rows) if fallback else changed
     return dict(update=version_key(release.version) > version_key(current), current=current,

@@ -26,6 +26,7 @@ class Feed:
         self.raw = b''
         self.no_range = self.corrupt = False
         self.delay = 0
+        self.disconnect_once = False
         self.sent = 0
         fixture = self
         class Handler(BaseHTTPRequestHandler):
@@ -49,6 +50,10 @@ class Feed:
                         if fixture.delay and self.path != '/stable.json': time.sleep(fixture.delay)
                         block = data[start:start+16384]
                         self.wfile.write(block); self.wfile.flush(); fixture.sent += len(block)
+                        if fixture.disconnect_once and self.path != '/stable.json':
+                            fixture.disconnect_once=False
+                            self.close_connection=True
+                            return
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError): pass
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
@@ -85,11 +90,14 @@ class Feed:
             assets.append(dict(path=path,size=len(data),sha256=digest(data),url=self.origin+key))
         now = datetime.now(timezone.utc)
         signed = dict(schema_version=1,app_id='MentorFlow',channel='stable',version=version,
+            metadata_version=1, issued_at=now.isoformat(), key_id='fixture',
+            rollout_percentage=100,rollout_seed='fixture-v1',withdrawn=False,
             published_at=now.isoformat(),expires_at=(now+timedelta(days=7)).isoformat(),
             min_supported_version='1.0.0',min_updater_version='1.0.0',mandatory=False,mandatory_reason='',
             release_notes='Small frontend fix',full_release=dict(format='file-set-v1',size=sum(len(d) for d in files.values()),assets=assets),
             incremental_assets=[a['path'] for a in assets],file_manifest=manifest,hash_algorithm='sha256',
             signature_algorithm='ed25519',source_sha='a'*40,tree_sha='b'*40,base_versions=['1.1.0'])
+        self.signed=signed
         self.sign(signed); return signed
 
     def service(self, suffix='cache'):
@@ -250,3 +258,185 @@ def test_https_and_origin_not_bypassable():
     transport=HTTPTransport('https://updates.example.com')
     for url in ('http://updates.example.com','https://other.example.com/file','https://user:secret@updates.example.com/file'):
         with pytest.raises(SecurityError): transport.validate_url(url)
+
+
+def test_expired_metadata_refused(feed):
+    now=datetime.now(timezone.utc)
+    feed.signed.update(issued_at=(now-timedelta(days=3)).isoformat(),
+        published_at=(now-timedelta(days=3)).isoformat(), expires_at=(now-timedelta(days=1)).isoformat())
+    feed.sign(feed.signed)
+    assert feed.service().check()['state']=='FAILED_SECURITY'
+
+
+def test_metadata_replay_refused_across_service_restart(feed):
+    feed.signed['metadata_version']=2; feed.sign(feed.signed)
+    service=feed.service(); assert service.check()['state']=='UPDATE_AVAILABLE'
+    feed.signed['metadata_version']=1; feed.sign(feed.signed)
+    restarted=feed.service()
+    assert restarted.check()['state']=='FAILED_SECURITY'
+    assert restarted._witness()[0]==2
+
+
+def test_same_metadata_version_equivocation_refused(feed):
+    service=feed.service(); service.check()
+    feed.signed['release_notes']='different signed payload, same epoch'; feed.sign(feed.signed)
+    assert service.check()['state']=='FAILED_SECURITY'
+
+
+def test_unknown_key_and_provisioned_rotation(feed):
+    new_key=Ed25519PrivateKey.generate()
+    feed.signed['key_id']='rotation-2'
+    feed.raw=canonical(dict(signed=feed.signed,key_id='rotation-2',signature=base64.b64encode(new_key.sign(canonical(feed.signed))).decode()))
+    with pytest.raises(SecurityError): verify_release(feed.raw,feed.keys,current='1.1.0')
+    keys={**feed.keys,'rotation-2':new_key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw)}
+    assert verify_release(feed.raw,keys,current='1.1.0').version=='1.1.1'
+
+
+def test_deterministic_rollout_and_withdrawal(feed):
+    from desktop.update_protocol import rollout_eligible
+    feed.signed['rollout_percentage']=30; feed.sign(feed.signed)
+    release=verify_release(feed.raw,feed.keys,current='1.1.0')
+    first=[rollout_eligible(release,str(i)) for i in range(1000)]
+    assert first==[rollout_eligible(release,str(i)) for i in range(1000)]
+    assert 200<sum(first)<400
+    feed.signed['withdrawn']=True; feed.sign(feed.signed)
+    service=feed.service(); assert service.check()['update'] is False
+    assert service.download()['state']=='UP_TO_DATE'
+
+
+def test_unfinished_reconstruction_copy_can_restart(feed):
+    service=feed.service(); service.check()
+    source=service.release.rows['_internal/runtime.dll']
+    copying=service.cache.root/'copying'; copying.mkdir()
+    (copying/(source['sha256']+'.part')).write_bytes(b'interrupted partial copy')
+    assert service.download()['state']=='READY_TO_APPLY'
+
+
+def test_download_timeout_does_not_block_qt_event_loop(feed):
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+    from desktop.update_panel import UpdatePanel
+    import socket
+    # Real TCP peer accepts then blackholes HTTP, without touching product hosts.
+    listener=socket.socket(); listener.bind(('127.0.0.1',0)); listener.listen(1)
+    stop=threading.Event()
+    def peer():
+        connection,_=listener.accept()
+        with connection: stop.wait(2)
+    worker=threading.Thread(target=peer,daemon=True); worker.start()
+    origin=f'http://127.0.0.1:{listener.getsockname()[1]}'
+    service=feed.service('offline-cache'); service.metadata_url=origin+'/stable.json'
+    service.cache.transport=HTTPTransport(origin,fixture_http=True,connect=.1,read=.2,total=.4)
+    panel=UpdatePanel(service=service,auto_delay_ms=0)
+    panel.show(); app=QApplication.instance(); ticks=[]
+    timer=QTimer(); timer.setInterval(10); timer.timeout.connect(lambda:ticks.append(1)); timer.start()
+    start=time.monotonic()
+    try:
+        while time.monotonic()-start<1 and service.snapshot['state']!='FAILED_RECOVERABLE':
+            app.processEvents(); time.sleep(.005)
+        assert panel.isVisible() and len(ticks)>5
+        assert service.snapshot['state']=='FAILED_RECOVERABLE'
+        assert time.monotonic()-start<1
+    finally:
+        timer.stop(); panel.shutdown(); panel.close(); stop.set(); listener.close(); worker.join(2)
+
+
+def test_no_feed_ui_does_not_offer_full_setup():
+    from desktop.update_panel import UpdatePanel
+    panel=UpdatePanel(service=None)
+    assert not panel.apply_button.isEnabled() and not panel.download_button.isEnabled()
+    assert '完整安装器' in panel.status.text()
+    panel.shutdown(); panel.close()
+
+
+def test_real_disconnect_resume_preserves_verified_object(feed):
+    payload=b'disconnect-object\0'*65536
+    feed.publish('1.1.1',{**feed.old_files,'_internal/frontend/ui.txt':payload})
+    service=feed.service(); service.check()
+    manifest_asset=service.release.assets[MANIFEST_PATH]
+    service.cache.download(manifest_asset)
+    asset=service.release.assets['_internal/frontend/ui.txt']
+    feed.disconnect_once=True
+    with pytest.raises(RecoverableError): service.cache.download(asset)
+    # Small abrupt responses may be buffered by HTTPX; regardless, only the
+    # interrupted object may restart, the completed manifest must be reused.
+    before=sum(1 for path,_ in feed.requests if path==url_path(manifest_asset['url']))
+    service.cache.download(asset); service.cache.download(manifest_asset)
+    assert before==sum(1 for path,_ in feed.requests if path==url_path(manifest_asset['url']))
+    assert service.cache.complete(asset).read_bytes()==payload
+
+
+def test_withdraw_after_download_prevents_apply(feed):
+    service=feed.service(); service.check(); service.download()
+    calls=[]; service.apply_bridge=lambda *args:calls.append(args)
+    feed.signed['metadata_version']=2; feed.signed['withdrawn']=True; feed.sign(feed.signed)
+    with pytest.raises(SecurityError): service.apply_and_restart()
+    assert calls==[] and service._witness()[0]==2
+
+
+def test_unchanged_deleted_and_new_file_plan(feed):
+    files={p:d for p,d in feed.old_files.items() if p!='_internal/runtime.dll'}
+    files['_internal/new.txt']=b'new file'
+    feed.publish('1.1.1',files)
+    service=feed.service(); plan=service.check()
+    assert '_internal/runtime.dll' in plan['deleted']
+    assert service.download()['state']=='READY_TO_APPLY'
+    assert not (service.staged/'_internal/runtime.dll').exists()
+    assert (feed.app/'_internal/runtime.dll').exists()
+    assert (service.staged/'_internal/new.txt').read_bytes()==b'new file'
+
+
+def test_corrupt_old_file_only_refetches_that_asset(feed):
+    service=feed.service(); service.check()
+    (feed.app/'_internal/runtime.dll').write_bytes(b'corrupted old binary fixture')
+    result=service.download()
+    assert result['state']=='READY_TO_APPLY'
+    assert (service.staged/'_internal/runtime.dll').read_bytes()==feed.old_files['_internal/runtime.dll']
+    assert (feed.app/'_internal/runtime.dll').read_bytes()==b'corrupted old binary fixture'
+
+
+def test_actual_settings_card_uses_single_updater_and_offline_safe(feed,monkeypatch,tmp_path):
+    from PySide6.QtWidgets import QApplication
+    from desktop.system_page import SystemPage
+    service=feed.service(); service.metadata_url=feed.origin+'/missing-feed'
+    monkeypatch.setenv('MENTORFLOW_USER_DATA_ROOT',str(tmp_path/'data'))
+    monkeypatch.setattr('desktop.update_panel.configured_mature_service',lambda:service)
+    page=SystemPage({},'http://127.0.0.1:0',lambda:None,object())
+    try:
+        page.show(); QApplication.instance().processEvents()
+        assert len(page.findChildren(type(page.update_panel)))==1
+        page.check_for_updates()
+        deadline=time.monotonic()+2
+        while service.snapshot['state'] not in ('FAILED_RECOVERABLE','FAILED_SECURITY') and time.monotonic()<deadline:
+            QApplication.instance().processEvents(); time.sleep(.005)
+        assert page.isVisible() and service.snapshot['state']=='FAILED_RECOVERABLE'
+    finally: page.close()
+
+
+def test_uneconomic_incremental_selects_full(feed):
+    release=verify_release(feed.raw,feed.keys,current='1.1.0')
+    obsolete={path:{**row,'sha256':'0'*64} for path,row in release.rows.items()}
+    plan=make_plan(release,obsolete,'1.1.0')
+    assert plan['update_path']=='FULL_FALLBACK'
+    assert plan['expected_download_bytes']==plan['full_bytes']
+
+
+def test_missing_incremental_object_selects_full(feed):
+    feed.signed['incremental_assets']=[]; feed.sign(feed.signed)
+    assert feed.service().check()['update_path']=='FULL_FALLBACK'
+
+
+def test_beta_advanced_channel_and_stable_prerelease_refusal(feed):
+    feed.publish('1.1.1-beta.1',{**feed.old_files,'_internal/frontend/ui.txt':b'beta'})
+    feed.signed['channel']='beta'; feed.sign(feed.signed)
+    assert verify_release(feed.raw,feed.keys,current='1.1.0',channel='beta').version=='1.1.1-beta.1'
+    with pytest.raises(SecurityError): verify_release(feed.raw,feed.keys,current='1.1.0',channel='stable')
+    feed.signed['channel']='stable'; feed.sign(feed.signed)
+    with pytest.raises(SecurityError): verify_release(feed.raw,feed.keys,current='1.1.0',channel='stable')
+
+
+def test_invalid_cache_alias_or_overlap_rejected(feed):
+    with pytest.raises(SecurityError):
+        MatureUpdateService(install_root=feed.install,cache_root=feed.app/'cache',
+            metadata_url=feed.origin+'/stable.json',public_keys=feed.keys,current='1.1.0',
+            transport=HTTPTransport(feed.origin,fixture_http=True))
