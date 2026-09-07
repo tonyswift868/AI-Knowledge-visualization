@@ -33,6 +33,8 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             hwnd_hex=f'{int(gate.winId()):016x}'
             panel.service.apply_bridge=lambda root,stage,envelope:handoff(root,stage,envelope,hwnd_hex=hwnd_hex)
             panel.refresh()
+            if configured().uat:
+                attach_uat_measurements(panel)
         about.finished.connect(panel.shutdown)
         about.finished.connect(lambda _:dialogs.clear())
         application.aboutToQuit.connect(panel.shutdown)
@@ -54,6 +56,37 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         QTimer.singleShot(100,lambda:notify_health(gate,root,attempt_id=attempt_id,nonce=nonce))
     timer.timeout.connect(ready);timer.start()
     application.aboutToQuit.connect(timer.stop)
+
+
+def attach_uat_measurements(panel):
+    """Bounded local diagnostics, never receipt/health authority or account I/O."""
+    import time
+    import uuid
+    from mentorflow_delivery_authority import WORK_ROOT
+    from desktop.update_protocol import canonical
+    from scripts import verify_windows_package as v
+    directory=Path(WORK_ROOT)/'measurements'
+    v._validate_existing_parent_chain(directory,label='isolated update measurements')
+    directory.mkdir(exist_ok=True)
+    path=directory/(f'update-ui-{os.getpid()}-'+uuid.uuid4().hex+'.json')
+    last=[None,0.0]
+    def record():
+        service=panel.service;now=time.monotonic();state=service.snapshot.get('state')
+        if state==last[0] and now-last[1]<1:return
+        last[:]=[state,now]
+        fields=('state','latest','full_bytes','expected_download_bytes','actual_downloaded_bytes','update_path')
+        doc=dict(schema='mentorflow.uat-update-ui-measurement.v1',pid=os.getpid(),current_version=service.current,
+            observed_monotonic=now,snapshot={key:service.snapshot[key] for key in fields if key in service.snapshot})
+        if getattr(service,'telemetry',None):doc['trace']=service.telemetry.report()
+        if service.cache.accepted_app is not None:doc['source_acceptance']=dict(service.cache.accepted_app.profile)
+        if getattr(service.cache,'telemetry',None):doc['reconstruction']=service.cache.telemetry
+        try:
+            temporary=path.with_suffix('.pending')
+            v._validate_staging_entry(temporary,directory,directory=False,allow_missing=True)
+            temporary.write_bytes(canonical(doc));temporary.replace(path)
+        except OSError:pass  # Missing diagnostics can never fabricate health.
+    panel.timer.timeout.connect(record)
+    record()
 
 
 def notify_health(gate,root,*,attempt_id=None,nonce=None,_tries=0):

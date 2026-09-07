@@ -299,10 +299,14 @@ class Transaction:
         self.fault=fault; self.attempt=None; self.journal=None
         self.retain_previous=retain_previous
         self.signed_source=signed_source
+        self.timings={'started':time.monotonic()}
     def checkpoint(self,point):
+        if point in ('preflight','copy_begin','before_verify','before_commit','after_swap','before_receipt_publish','receipt_published'):
+            self.timings.setdefault(point,time.monotonic())
         self.fault(point)
         if self.cancel(): raise Cancelled('安装已取消，正在回滚。')
     def save(self):
+        self.journal['timings']=dict(self.timings)
         target=self.attempt/'journal.json'; temp=self.attempt/'journal.pending'
         try:
             with trust._create_protected(temp,directory=False) as stream:

@@ -95,8 +95,10 @@ class HelperTransport:
 
 
 def apply(root,path,pin):
+    started=time.monotonic()
     root=require_self(root,True)
     doc,release=update_preflight.accept(root,path,pin,verify_staging=False)
+    helper_preflight_ms=(time.monotonic()-started)*1000
     with Listener(doc['attempt_id'],'control') as control,Listener(doc['attempt_id'],'health') as health:
         pid=control.accept(timeout=30)
         if pid!=doc['coordinator_pid']:raise SecurityError('wrong coordinator IPC peer')
@@ -116,7 +118,7 @@ def apply(root,path,pin):
             from scripts import windows_update_apply as engine
             engine.PRODUCTION_RELEASE_KEYS=update_preflight.trusted_keys()
             return engine.apply_update(root,Path(doc['staged_app']),release.envelope,
-                on_committed=lambda transaction,result:update_handoff.committed(transaction,result,
+                on_committed=lambda transaction,result:update_handoff.committed(transaction,{**result,'helper_preflight_ms':helper_preflight_ms},
                     attempt_id=doc['attempt_id'],nonce=doc['nonce'],transport=transport))
 
 
@@ -172,7 +174,9 @@ def coordinate(root,intent_path,pin):
     doc,_=update_preflight.accept(root,request_path,request_pin,verify_staging=False)
     evidence_path=request_path.with_suffix('.coordinator.json')
     state=dict(schema='mentorflow.coordinator-result.v2',attempt_id=doc['attempt_id'],UPDATE_UAC_PROMPT_COUNT=0,
-               status='PREFLIGHT_PASS',request_sha256=request_pin)
+               status='PREFLIGHT_PASS',request_sha256=request_pin,events=[])
+    def mark(event):state['events'].append(dict(event=event,monotonic=time.monotonic()))
+    mark('COORDINATOR_PREFLIGHT_COMPLETE')
     def save():
         temp=evidence_path.with_suffix('.pending')
         with temp.open('wb') as stream:stream.write(canonical(state));stream.flush();os.fsync(stream.fileno())
@@ -188,8 +192,9 @@ def coordinate(root,intent_path,pin):
             while base.alive() and time.monotonic()<deadline:time.sleep(.05)
             if base.alive():raise RuntimeError('BASE did not close; no UAC requested')
             base_closed=True
-        state['UPDATE_UAC_PROMPT_COUNT']=1;state['status']='UAC_REQUESTED';save()
+        state['UPDATE_UAC_PROMPT_COUNT']=1;state['status']='UAC_REQUESTED';mark('UAC_REQUESTED');save()
         helper=runas_once(root/'UpdateBridge.exe',request_path,request_pin)
+        mark('UAC_LAUNCH_RETURNED');save()
         with connect(doc['attempt_id'],'control',timeout=120) as control:
             with ProcessPeer(control.peer_pid()) as peer:
                 peer.require(executable=root/'UpdateRuntime/UpdateRuntime.exe',integrity_rid=12288)
@@ -204,11 +209,12 @@ def coordinate(root,intent_path,pin):
                         try:child=launch_app(root,actual,doc=doc,suspended=True)
                         except OSError:
                             control.send(message(doc,'TARGET_START_FAILED'));continue
-                        state['target_pid']=child.pid;state['status']=kind;save()
+                        state['target_pid']=child.pid;state['status']=kind;mark(kind);save()
                         control.send(message(doc,'TARGET_STARTED',pid=child.pid))
                     elif kind=='RESUME_TARGET':
                         if child is None or payload!={'pid':child.pid}:raise SecurityError('foreign target resume refused')
                         child.resume()
+                        mark('TARGET_RESUMED');save()
                     elif kind=='STOP_TARGET':
                         if child is None or payload!={'pid':child.pid}:raise SecurityError('foreign target stop refused')
                         if child.poll() is None:child.terminate()
@@ -216,7 +222,7 @@ def coordinate(root,intent_path,pin):
                         control.send(message(doc,'TARGET_STOPPED',pid=child.pid))
                     elif kind in ('TARGET_HEALTHY','PREVIOUS_HEALTHY'):
                         if payload!={'receipt_sha256':tx.sha(root/trust.RECEIPT)}:raise SecurityError('health receipt acknowledgement mismatch')
-                        state['status']=kind;save();return state
+                        state['status']=kind;mark(kind);save();return state
                     else:raise SecurityError('unknown helper operation')
     except Exception as error:
         state['status']='FAILED';state['error_type']=type(error).__name__;save()

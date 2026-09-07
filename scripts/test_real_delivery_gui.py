@@ -45,3 +45,17 @@ def test_uat_environment_never_reads_formal_profile(tmp_path):
         env,_=startup_connection.prepare_environment(tmp_path/'installed')
     assert Path(env['MENTORFLOW_DB']).is_relative_to(tmp_path/'data')
     assert Path(env['TEMP']).is_relative_to(tmp_path/'data')
+
+
+def test_local_measurement_whitelist_does_not_capture_account_fields(tmp_path):
+    import json
+    authority=SimpleNamespace(APP_ID='MentorFlow.UAT.MF14',WORK_ROOT=str(tmp_path))
+    service=SimpleNamespace(current='1.2.0',snapshot=dict(state='READY_TO_APPLY',latest='1.2.1',
+        full_bytes=1000,expected_download_bytes=10,token='SHOULD_NOT_BE_CAPTURED'),
+        cache=SimpleNamespace(accepted_app=None),telemetry=None)
+    panel=SimpleNamespace(service=service,timer=SimpleNamespace(timeout=SimpleNamespace(connect=lambda _:None)))
+    with patch.dict(sys.modules,mentorflow_delivery_authority=authority):gui_update_runtime.attach_uat_measurements(panel)
+    files=list((tmp_path/'measurements').glob('*.json'));assert len(files)==1
+    record=json.loads(files[0].read_bytes())
+    assert record['snapshot']['latest']=='1.2.1'
+    assert 'SHOULD_NOT_BE_CAPTURED' not in files[0].read_text()

@@ -33,7 +33,8 @@ def committed(transaction,result,*,attempt_id,nonce,transport):
         record['events'].append(dict(event=name,ms=round((time.monotonic()-started)*1000,3),**values))
         update_health.atomic_record(evidence,record)
 
-    phase('APPLY_COMMITTED')
+    phase('APPLY_COMMITTED',transaction_timings=transaction.journal.get('timings',{}),
+          helper_preflight_ms=result.get('helper_preflight_ms'))
     target=None
     try:
         # This message must be observable while the helper is still alive.
