@@ -129,7 +129,12 @@ def run(case):
             except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError): pass
             finally:
                 if stream: stream.close()
-    server=ThreadingHTTPServer(('127.0.0.1',0),Handler); server.daemon_threads=True
+    port_file=ROOT/'feed-port.json'
+    port=json.loads(port_file.read_bytes())['port'] if port_file.exists() else 0
+    if type(port) is not int or port and not 1024 <= port <= 65535:
+        raise ValueError('invalid local feed port')
+    server=ThreadingHTTPServer(('127.0.0.1',port),Handler); server.daemon_threads=True
+    if not port_file.exists(): port_file.write_bytes(canonical(dict(port=server.server_port)))
     origin=f'http://127.0.0.1:{server.server_port}'
     now=datetime.now(timezone.utc)
     signed=dict(schema_version=1,app_id='MentorFlow',channel='stable',version='1.1.1',metadata_version=2,
@@ -141,6 +146,15 @@ def run(case):
             assets=[dict(**r,url=origin+'/objects/'+r['sha256']) for r in rows.values()]),
         incremental_assets=list(rows),file_manifest=target,hash_algorithm='sha256',signature_algorithm='ed25519',
         base_versions=[] if case=='fallback' else [base['version']],**identities())
+    # A feed cannot reissue different signed bytes at the same epoch merely
+    # because its host restarted. Keep source URLs and timestamps immutable
+    # across cancel/resume; security cases deliberately derive new invalid data.
+    template=ROOT/'release-template.json'
+    if template.exists():
+        signed=json.loads(template.read_bytes())
+    else:
+        template.write_bytes(canonical(signed))
+    if case=='fallback': signed['base_versions']=[]
     if case=='expired': signed['expires_at']=(now-timedelta(seconds=1)).isoformat()
     if case=='replay': signed['metadata_version']=1
     envelope=dict(signed=signed,key_id=public['key_id'],signature=base64.b64encode(key.sign(canonical(signed))).decode())

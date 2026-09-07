@@ -29,7 +29,34 @@ def main():
     # separate build-selected entry handles the qualification argument.
     executable = Path(sys.executable).absolute()
     if executable != root/'base/App/MentorFlow.exe':
-        raise RuntimeError('unexpected UAT executable location')
+        # The reconstructed target is a complete second packaged version, not
+        # another source-Python fixture. This mode proves frozen loading only;
+        # it does NOT publish an installation receipt or report product health.
+        normalized = Path(str(executable).removeprefix('\\\\?\\'))
+        if not normalized.is_relative_to(root/'cache-happy') or executable.name != 'MentorFlow.exe':
+            raise RuntimeError('unexpected UAT executable location')
+        from desktop.update_download import ObjectCache
+        from desktop.update_protocol import verify_release
+        signed = verify_release((root/'release-happy.json').read_bytes(),
+            {config['key_id']:base64.b64decode(config['public_key'],validate=True)},current='1.1.0')
+        cache = ObjectCache(normalized.parent.parent, None)
+        cache.verify_tree(executable.parent, signed)
+        from desktop.version import VERSION_MANIFEST
+        if VERSION_MANIFEST['version'] != signed.version:
+            raise RuntimeError('target visible version differs from signed release')
+        target_app=QApplication([str(executable)])
+        target_panel=UpdatePanel(service=None); target_panel.show()
+        target_result=root/'target-start.json'
+        if target_result.exists(): raise RuntimeError('existing target evidence preserved')
+        def target_ready():
+            target_result.write_bytes(canonical(dict(packaged=True,pid=os.getpid(),
+                elevation='STANDARD_USER',version=VERSION_MANIFEST['version'],
+                version_label=target_panel.version_label.text(),qtcore_module_path=sys.modules['PySide6.QtCore'].__file__,
+                executable=str(executable),app_exe_sha256=digest(executable.read_bytes()),
+                real_product_health=False,scope='signed reconstructed target frozen UpdatePanel startup')))
+            target_panel.shutdown(); target_panel.close(); target_app.quit()
+        QTimer.singleShot(200,target_ready)
+        return target_app.exec()
     request = json.loads((root/'request.json').read_bytes())
     if set(request) != {'port', 'case'} or type(request['port']) is not int or not 1024 <= request['port'] <= 65535:
         raise RuntimeError('invalid local UAT request')
@@ -54,6 +81,7 @@ def main():
     output=root/('result-'+case+'.json')
     if output.exists(): raise RuntimeError('existing UAT evidence preserved')
     result=dict(packaged=True, executable=str(executable), pid=os.getpid(),
+        qtcore_module_path=sys.modules['PySide6.QtCore'].__file__,
         elevation='STANDARD_USER', case=case, main_requested_execution_level='asInvoker',
         ui_scope='real frozen UpdatePanel; not authenticated product main window',
         system_page_import=SystemPage.__name__, apply_module_import=windows_update_apply.__name__,
@@ -80,6 +108,7 @@ def main():
         if phase=='check' and not running:
             check_total=transport.bytes_received
             if service.snapshot['state']=='UPDATE_AVAILABLE' and case not in {'tampered','expired','replay','offline'}:
+                panel.refresh()  # publish enabled state before clicking the real button
                 phase='download'; panel.download_button.click()
             else: finish('CHECK_FINISHED')
         elif phase=='download':
