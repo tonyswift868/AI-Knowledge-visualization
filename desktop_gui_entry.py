@@ -16,13 +16,19 @@ def main(argv=None):
     started = time.perf_counter()
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--install-root', type=Path, required=True)
-    parser.add_argument('--manifest-sha256', required=True)
-    parser.add_argument('--source-sha', required=True)
-    parser.add_argument('--tree-sha', required=True)
+    parser.add_argument('--install-root', type=Path)
+    parser.add_argument('--install-mode', choices=('per_user', 'per_machine'))
+    parser.add_argument('--manifest-sha256')
+    parser.add_argument('--source-sha')
+    parser.add_argument('--tree-sha')
     parser.add_argument('--update-attempt')
     parser.add_argument('--update-nonce')
     args = parser.parse_args(argv)
+    # Existing protected shortcuts carry all three pins. New consumer shortcuts
+    # and direct EXE launches use the per-user path without elevation/ACL gates.
+    per_user = args.install_mode == 'per_user' or (args.install_mode is None and not args.manifest_sha256)
+    if args.install_root is None:
+        args.install_root = Path(sys.executable).absolute().parent.parent
     if bool(args.update_attempt) != bool(args.update_nonce):
         raise ValueError('incomplete update health correlation')
     if args.update_attempt:
@@ -31,10 +37,17 @@ def main(argv=None):
             raise ValueError('invalid update health correlation')
     from scripts.gui_bootstrap_trust import verify_gui_bootstrap, protected_gui_location
     identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
-    package = protected_gui_location(args.install_root, executable=sys.executable)
+    if per_user:
+        from scripts import per_user_install
+        per_user_install.installed(args.install_root)
+        package = per_user_install.plain(args.install_root / 'App')
+        if Path(sys.executable).absolute() != package / 'MentorFlow.exe':
+            raise ValueError('per-user executable location mismatch')
+    else:
+        package = protected_gui_location(args.install_root, executable=sys.executable)
     args.install_root = package.parent
     from desktop.startup_connection import prepare_environment, ConnectionPreparation
-    env, certificate = prepare_environment(args.install_root)
+    env, certificate = prepare_environment(args.install_root, per_user=per_user)
     os.environ.clear()
     os.environ.update(env)
     os.environ['QT_QPA_PLATFORM'] = 'windows'
@@ -76,7 +89,10 @@ def main(argv=None):
     product = []
 
     def verify():
-        verify_gui_bootstrap(args.install_root, executable=sys.executable, **identities)
+        if per_user:
+            per_user_install.verify_gui(args.install_root, executable=sys.executable)
+        else:
+            verify_gui_bootstrap(args.install_root, executable=sys.executable, **identities)
         return {'verification': 'PASS', 'scope': 'gui-bootstrap-closure'}
 
     def attach(window):

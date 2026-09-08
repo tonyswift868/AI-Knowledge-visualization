@@ -444,7 +444,7 @@ class MatureUpdateService:
                                      highest_seen=self._witness()[0])
             self._remember_release(release)
             self.cache.verify_tree(self.staged, release)
-            self._state('APPLYING', '正在准备受保护更新…')
+            self._state('APPLYING', '正在准备更新…')
             # Bridge must independently verify metadata after elevation, retain
             # previous known-good and restart via ordinary-user shell, not Setup.
             result = self.apply_bridge(self.install_root, self.staged, release.envelope)
@@ -468,9 +468,16 @@ def configured_mature_service(*, version_manifest=None, install_root=None):
     from .update_tree_security import AcceptedApp
     from .update_download import HTTPTransport
     from scripts.install_product import configured
+    from scripts.per_user_install import is_install
+    per_user = is_install(root)
+    if per_user:
+        from scripts.per_user_install import keys as compiled_keys
+        public_keys = compiled_keys()
+    else:
+        public_keys = {k:base64.b64decode(v,validate=True) for k,v in keys.items()}
     return MatureUpdateService(install_root=root,
-        cache_root=config.get('staging_root', r'E:\MentorFlowUpdates'),
-        metadata_url=config['metadata_url'], public_keys={k:base64.b64decode(v,validate=True) for k,v in keys.items()},
+        cache_root=config.get('staging_root') or Path(__import__('os').environ['LOCALAPPDATA'])/'MentorFlowUpdates',
+        metadata_url=config['metadata_url'], public_keys=public_keys,
         current=manifest['version'], channel=manifest.get('channel','stable'),
         transport=HTTPTransport(config['metadata_url'],fixture_http=configured().uat),
-        accepted_source_factory=lambda:AcceptedApp.protected(root))
+        accepted_source_factory=None if per_user else lambda:AcceptedApp.protected(root))

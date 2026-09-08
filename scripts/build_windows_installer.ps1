@@ -14,6 +14,7 @@ param(
     [string]$DataRootLocalAppData = '',
     [string]$InstallDir = '',
     [switch]$ProtectedInstall,
+    [string]$SignedRelease = '',
     [string]$BuildScratch = '',
     [string]$SourceSha = '',
     [string]$SourceTree = '',
@@ -53,6 +54,16 @@ function Assert-ExistingDirectory([string]$Path, [string]$Label) {
 # receive direct-to-product shortcuts. Keep this fail-closed until a qualified
 # elevated outer bootstrap replaces this entry; never elevate the old uninstaller.
 $payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
+if (-not $ProtectedInstall -and (Test-Path -LiteralPath (Join-Path $payload 'UserRuntime\UserRuntime.exe'))) {
+    if (-not $SignedRelease -or -not (Test-Path -LiteralPath $SignedRelease -PathType Leaf)) { throw 'PERUSER_SIGNED_RELEASE_REQUIRED: signed release metadata must accompany the consumer payload' }
+    if (-not $PythonPath) { throw 'Explicit existing PythonPath required for verified consumer installer build' }
+    Push-Location $ProjectRoot
+    try {
+        & $PythonPath -B -m scripts.build_signed_per_user_installer --payload $payload --release $SignedRelease --output $OutputRoot --nsis $NsisPath
+        if ($LASTEXITCODE) { throw 'Signed consumer installer build failed' }
+    } finally { Pop-Location }
+    return
+}
 if ((Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) -and -not $ProtectedInstall) {
     throw 'PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user NSIS installer. Use the qualified protected-installation bootstrap; do not build or distribute this installer.'
 }

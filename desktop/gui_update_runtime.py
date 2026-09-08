@@ -10,6 +10,10 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
     from desktop.version import VERSION_MANIFEST,version_display
     from scripts.install_product import configured
     dialogs=[]
+    from scripts.per_user_install import is_install
+    if is_install(root):
+        from scripts.per_user_update_core import attach_shutdown_guard
+        attach_shutdown_guard(application)
 
     def show_about():
         if not controller.results.get('SECURITY_GATE'):return
@@ -27,7 +31,11 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             layout.addWidget(QLabel('预览版：账号服务暂未连接，您仍可查看软件版本。'))
         panel=UpdatePanel(about,auto_delay_ms=60000);layout.addWidget(panel)
         if panel.service is not None:
-            from desktop.update_bridge import handoff
+            from scripts.per_user_install import is_install
+            if is_install(root):
+                from scripts.per_user_install import handoff
+            else:
+                from desktop.update_bridge import handoff
             # Capture WId on the GUI thread; the apply callback itself runs in
             # the existing update worker, without touching QWidget cross-thread.
             hwnd_hex=f'{int(gate.winId()):016x}'
@@ -90,6 +98,10 @@ def attach_uat_measurements(panel):
 
 
 def notify_health(gate,root,*,attempt_id=None,nonce=None,_tries=0):
+    from scripts.per_user_install import is_install
+    if is_install(root):
+        from scripts.per_user_install import notify_health as notify_per_user
+        return notify_per_user(Path(root),gate,attempt_id,nonce)
     from desktop.update_protocol import strict_json,digest
     from desktop.windows_identity import read_directory
     from scripts import windows_install_trust as trust

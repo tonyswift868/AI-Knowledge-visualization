@@ -14,12 +14,16 @@ import time
 from scripts.windows_installed_launch import ISSUER, CA_SHA, SPKI, clean_environment, read_profile
 
 
-def prepare_environment(root: Path):
+def prepare_environment(root: Path, *, per_user=False):
     from scripts import verify_windows_package as v
     from scripts import windows_install_trust as trust
     certificate = root / "App/Config/edge-tls-ca.crt"
-    trust.assert_safe_parents(certificate)
-    trust.assert_protected(certificate)
+    if per_user:
+        from scripts.per_user_install import plain
+        plain(certificate)
+    else:
+        trust.assert_safe_parents(certificate)
+        trust.assert_protected(certificate)
     if v.sha256_file(certificate) != CA_SHA:
         raise trust.RepairRequired("TLS certificate pin mismatch")
     from scripts.install_product import configured
