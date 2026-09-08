@@ -10,19 +10,18 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import functools
+from contextlib import contextmanager
 import json
 import os
 import re
 import shutil
-import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -185,11 +184,28 @@ def load_version(path: Path) -> dict[str, Any]:
     return payload
 
 
-def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+_hash_buffers = threading.local()
+
+
+def sha256_file(path: Path, *, chunk_size: int = 256 * 1024, prefix: bytearray | None = None) -> str:
+    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+        raise ValueError("hash chunk size must be a positive integer")
+    # One reusable buffer per reader, not a new large allocation for each of
+    # the thousands of tiny package files. Raw readinto also avoids buffering
+    # and copying the same bytes twice. This never reuses a digest or file data.
+    buffer = getattr(_hash_buffers, "buffer", None)
+    if buffer is None or len(buffer) != chunk_size:
+        buffer = _hash_buffers.buffer = bytearray(chunk_size)
+    view = memoryview(buffer)
     digest = hashlib.sha256()
+    if prefix is not None:
+        prefix.clear()
     try:
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(chunk_size), b""):
+        with path.open("rb", buffering=0) as handle:
+            while size := handle.readinto(view):
+                chunk = view[:size]
+                if prefix is not None and len(prefix) < len(SQLITE_MAGIC):
+                    prefix.extend(chunk[:len(SQLITE_MAGIC) - len(prefix)])
                 digest.update(chunk)
     except OSError as exc:
         raise PackageError(f"cannot hash {path}: {exc}") from exc
@@ -219,6 +235,11 @@ def _is_application_managed_path(relative: str) -> bool:
     trigger a private-path finding by themselves.
     """
     parts = tuple(part.casefold() for part in Path(relative).parts)
+    return _application_managed_parts(parts)
+
+
+def _application_managed_parts(parts: tuple[str, ...]) -> bool:
+    """Pure rule over already normalized/casefolded path components."""
     if not parts or parts[0] != "_internal":
         return True
     return len(parts) > 1 and parts[1] in APPLICATION_MANAGED_INTERNAL_ROOTS
@@ -339,17 +360,29 @@ def _validate_staging_entry(
     return True
 
 
-def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool) -> None:
+def _validate_package_entry(candidate: Path, package_root: Path, *, directory: bool, resolve_path: bool = True, cached_stat=None, cached_relative: str | None = None) -> None:
     """Fail closed for links, reparse points, special files, and escapes."""
     try:
-        relative = _relative(candidate, package_root)
-        resolved = candidate.resolve(strict=False)
-        metadata = candidate.lstat()
+        relative = _relative(candidate, package_root) if cached_relative is None else cached_relative
+        relative_path = Path(relative)
+        # Windows rooted-relative names ('/outside') have a root but no drive;
+        # is_absolute() alone misses them and joining discards package_root.
+        if relative_path.drive or relative_path.root or ".." in relative_path.parts:
+            raise ValueError("parent traversal is not a package entry")
+        if cached_relative is not None and package_root / relative_path != candidate:
+            raise ValueError("cached relative path does not identify candidate")
+        resolved = candidate.resolve(strict=False) if resolve_path else candidate
+        metadata = cached_stat if cached_stat is not None else candidate.lstat()
     except (OSError, RuntimeError, ValueError) as exc:
         raise PackageError(f"cannot inspect package path {candidate}: {exc}") from exc
-    if not _is_within(resolved, package_root):
+    # The caller supplies the validated, resolved package root. Do not resolve
+    # both paths again for every file: this is a lexical comparison of the
+    # already resolved path, not a weaker mtime/size trust decision.
+    # The relative-path check above proves lexical containment. Only a resolved
+    # path needs a second containment check (e.g. an alias escaping the root).
+    if resolve_path and not resolved.is_relative_to(package_root):
         raise PackageError(f"package path resolves outside package root: {relative} -> {resolved}")
-    if candidate.is_symlink():
+    if stat.S_ISLNK(metadata.st_mode):
         raise PackageError(f"package contains symlink/reparse path: {relative}")
     attributes = int(getattr(metadata, "st_file_attributes", 0) or 0)
     reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
@@ -363,16 +396,16 @@ def _validate_package_entry(candidate: Path, package_root: Path, *, directory: b
             raise PackageError(f"package contains a special/non-regular file: {relative}")
         if int(getattr(metadata, "st_nlink", 1) or 1) != 1:
             raise PackageError(f"package contains a hardlink; copy the file instead: {relative}")
-    parts = tuple(part.casefold() for part in Path(relative).parts)
+    parts = tuple(part.casefold() for part in relative_path.parts)
     if any(part in STALE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains stale Python bytecode path: {relative}")
-    if _is_application_managed_path(relative) and any(part in PRIVATE_PATH_COMPONENTS for part in parts):
+    if _application_managed_parts(parts) and any(part in PRIVATE_PATH_COMPONENTS for part in parts):
         raise PackageError(f"package contains a private/development path: {relative}")
-    if Path(relative).suffix.casefold() in STALE_BYTECODE_SUFFIXES:
+    if relative_path.suffix.casefold() in STALE_BYTECODE_SUFFIXES:
         raise PackageError(f"package contains stale Python bytecode: {relative}")
 
 
-def _iter_package_entries(package_root: Path) -> Iterable[tuple[Path, bool]]:
+def _iter_package_entries(package_root: Path, *, resolve_paths: bool = True) -> Iterable[tuple[Path, bool]]:
     """Yield package entries without ever following links or reparse points."""
     pending = [package_root]
     while pending:
@@ -387,7 +420,7 @@ def _iter_package_entries(package_root: Path) -> Iterable[tuple[Path, bool]]:
                 is_directory = entry.is_dir(follow_symlinks=False)
             except OSError as exc:
                 raise PackageError(f"cannot inspect package path {candidate}: {exc}") from exc
-            _validate_package_entry(candidate, package_root, directory=is_directory)
+            _validate_package_entry(candidate, package_root, directory=is_directory, resolve_path=resolve_paths)
             if is_directory:
                 pending.append(candidate)
             else:
@@ -479,9 +512,12 @@ def _config_contains_secret(candidate: Path) -> bool:
     return _text_has_secret_value(text)
 
 
-def _find_user_data_files(package_root: Path) -> list[str]:
+def _find_user_data_files(package_root: Path, *, validated_files: list[Path] | None = None, hashed_prefixes: dict[str, bytes] | None = None) -> list[str]:
     found: list[str] = []
-    for candidate, _ in _iter_package_entries(package_root):
+    files = validated_files if validated_files is not None else (
+        candidate for candidate, _ in _iter_package_entries(package_root)
+    )
+    for candidate in files:
         relative = _relative(candidate, package_root)
         if _is_application_managed_path(relative) and (
             candidate.name.casefold() in USER_DATA_NAMES
@@ -496,11 +532,16 @@ def _find_user_data_files(package_root: Path) -> list[str]:
             found.append(relative)
         # Do not trust an extension: a private SQLite database can be renamed
         # to an innocuous-looking asset before it reaches the package.
-        try:
-            with candidate.open("rb") as handle:
-                magic = handle.read(len(SQLITE_MAGIC))
-        except OSError as exc:
-            raise PackageError(f"cannot inspect package file {relative}: {exc}") from exc
+        if hashed_prefixes is not None:
+            if relative not in hashed_prefixes:
+                raise PackageError(f"missing hashed file prefix: {relative}")
+            magic = hashed_prefixes[relative]
+        else:
+            try:
+                with candidate.open("rb") as handle:
+                    magic = handle.read(len(SQLITE_MAGIC))
+            except OSError as exc:
+                raise PackageError(f"cannot inspect package file {relative}: {exc}") from exc
         if magic == SQLITE_MAGIC and relative not in PACKAGED_STATIC_DATABASES:
             found.append(relative)
     return sorted(set(found))
@@ -582,7 +623,11 @@ def verify_package(package_root: Path, *, data_root: Path | None, check_data: bo
     missing = [str(path) for path in required if not (package_root / path).is_file()]
     if missing:
         raise PackageError("required package files are missing: " + ", ".join(missing))
-    user_data = _find_user_data_files(package_root)
+    # One complete resolved security traversal per verification. Reuse its
+    # inventory for privacy checks; every listed payload is still
+    # read and SHA-256 checked on every launch.
+    validated_files = [candidate for candidate, _ in _iter_package_entries(package_root)]
+    user_data = _find_user_data_files(package_root, validated_files=validated_files)
     if user_data:
         raise PackageError("package contains user data, database, or secret configuration files: " + ", ".join(user_data))
     mismatches: list[str] = []
@@ -616,9 +661,15 @@ def verify_package(package_root: Path, *, data_root: Path | None, check_data: bo
         actual = sha256_file(candidate)
         if actual != expected:
             mismatches.append(f"tampered:{entry['path']}")
+    # Re-enumerate after hashing to reject late additions/replaced links. This
+    # walk checks every component with lstat before descending, never follows
+    # reparse points, and checks lexical containment under the revalidated root.
+    # It needs no repeat filesystem resolution of every ancestor of every file.
+    _validate_package_root(package_root)
     actual_paths = {
         _relative(candidate, package_root)
-        for candidate in _iter_package_files(package_root, manifest_path)
+        for candidate, _ in _iter_package_entries(package_root, resolve_paths=False)
+        if candidate != manifest_path
     }
     for extra in sorted(actual_paths - listed_paths):
         mismatches.append(f"unexpected:{extra}")
@@ -700,6 +751,7 @@ def _iter_data_entries(data_root: Path) -> Iterable[tuple[Path, bool]]:
 
 
 def check_sqlite_root(data_root: Path, *, package_root: Path | None = None) -> dict[str, Any]:
+    import sqlite3
     data_root = data_root.expanduser()
     if _path_exists(data_root):
         _validate_data_entry(data_root, data_root.parent.resolve(strict=False), directory=True)
@@ -795,6 +847,7 @@ def _sqlite_count(connection: sqlite3.Connection, table: str) -> int:
 
 def _fresh_install_report(data_root: Path, *, package_root: Path) -> dict[str, Any]:
     """Inspect a disposable install without ever opening a DB read/write."""
+    import sqlite3
     data_root = data_root.expanduser()
     report = check_sqlite_root(data_root, package_root=package_root)
     data_root = Path(report["root"])
@@ -1028,6 +1081,8 @@ def _read_bounded_response(response: Any, *, limit: int, label: str) -> bytes:
 
 
 def _github_release(owner: str, repo: str) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repo):
         raise PackageError("GitHub owner/repo must contain only letters, digits, '.', '_' or '-'")
     url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
@@ -1075,6 +1130,8 @@ def _find_release_asset(release: dict[str, Any], *, version: str, pattern: str) 
 
 
 def stage_update(version_file: Path, *, owner: str | None, repo: str | None, release_json: Path | None, staging_root: Path | None, download: bool) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
     current = load_version(version_file)
     config = current.get("update") if isinstance(current.get("update"), dict) else {}
     owner_value = (owner or os.getenv("MENTORFLOW_GITHUB_OWNER") or config.get("owner") or "").strip()
@@ -1230,6 +1287,271 @@ def stage_update(version_file: Path, *, owner: str | None, repo: str | None, rel
     return result
 
 
+_GATE_SCHEMA = "mentorflow.protected-package-gate.v1"
+_RESOURCE_SUFFIXES = frozenset({".png", ".webp", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".woff", ".woff2", ".ttf", ".otf", ".mp3", ".wav", ".mp4", ".qm", ".sqlite", ".csv", ".txt", ".md"})
+
+
+def package_file_category(relative: str) -> str:
+    """Deny by default: code, loaders, configs and unknown formats stay critical."""
+    path = Path(relative)
+    if path.suffix.casefold() in _RESOURCE_SUFFIXES and path.parts[0].casefold() not in {"self-check", "config"}:
+        return "IMMUTABLE_RESOURCE"
+    return "CRITICAL_EXECUTABLE"
+
+
+@functools.lru_cache(maxsize=1)
+def _windows_gate_api():
+    if os.name != "nt":
+        raise PackageError("protected verification state requires Windows")
+    import ctypes as c
+    from ctypes import wintypes as w
+    class Blob(c.Structure):
+        _fields_ = [("size", w.DWORD), ("data", c.POINTER(c.c_ubyte))]
+    class Basic(c.Structure):
+        _fields_ = [("creation", c.c_longlong), ("access", c.c_longlong), ("write", c.c_longlong), ("change", c.c_longlong), ("attributes", w.DWORD)]
+    crypt = c.WinDLL("crypt32", use_last_error=True)
+    kernel = c.WinDLL("kernel32", use_last_error=True)
+    crypt.CryptProtectData.argtypes = [c.POINTER(Blob), w.LPCWSTR, c.POINTER(Blob), c.c_void_p, c.c_void_p, w.DWORD, c.POINTER(Blob)]
+    crypt.CryptProtectData.restype = w.BOOL
+    crypt.CryptUnprotectData.argtypes = [c.POINTER(Blob), c.c_void_p, c.POINTER(Blob), c.c_void_p, c.c_void_p, w.DWORD, c.POINTER(Blob)]
+    crypt.CryptUnprotectData.restype = w.BOOL
+    kernel.LocalFree.argtypes = [c.c_void_p]
+    kernel.LocalFree.restype = c.c_void_p
+    kernel.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, c.c_void_p, w.DWORD, w.DWORD, w.HANDLE]
+    kernel.CreateFileW.restype = w.HANDLE
+    kernel.GetFileInformationByHandleEx.argtypes = [w.HANDLE, c.c_int, c.c_void_p, w.DWORD]
+    kernel.GetFileInformationByHandleEx.restype = w.BOOL
+    kernel.CloseHandle.argtypes = [w.HANDLE]
+    kernel.CloseHandle.restype = w.BOOL
+    return c, Blob, Basic, crypt, kernel
+
+
+def _protect_gate_state(data: bytes, *, decrypt: bool = False) -> bytes:
+    """Current-user DPAPI authenticated state; no plaintext PASS flag or key."""
+    c, Blob, _basic, crypt, kernel = _windows_gate_api()
+    buffer = c.create_string_buffer(data)
+    source = Blob(len(data), c.cast(buffer, c.POINTER(c.c_ubyte)))
+    output = Blob()
+    operation = crypt.CryptUnprotectData if decrypt else crypt.CryptProtectData
+    if not operation(c.byref(source), None, None, None, None, 1, c.byref(output)):
+        raise PackageError("verification state protection failed")
+    try:
+        return c.string_at(output.data, output.size)
+    finally:
+        kernel.LocalFree(c.cast(output.data, c.c_void_p))
+
+
+def _resource_change_time(path: Path) -> int:
+    """Include NTFS ChangeTime: restoring LastWriteTime is not a cache hit."""
+    c, _blob, Basic, _crypt, kernel = _windows_gate_api()
+    handle = kernel.CreateFileW(str(path), 0x80, 7, None, 3, 0x00200000, None)
+    if handle == c.c_void_p(-1).value:
+        raise PackageError(f"cannot inspect resource change time: {path.name}")
+    try:
+        info = Basic()
+        if not kernel.GetFileInformationByHandleEx(handle, 0, c.byref(info), c.sizeof(info)):
+            raise PackageError("cannot inspect resource change time")
+        if info.attributes & 0x400:
+            raise PackageError("resource became a reparse point")
+        return info.change
+    finally:
+        kernel.CloseHandle(handle)
+
+
+@contextmanager
+def _watch_gate_directory(root: Path):
+    """Fail closed on any in-flight mutation without a second directory walk."""
+    c, _blob, _basic, _crypt, kernel = _windows_gate_api()
+    from ctypes import wintypes as w
+    class Overlapped(c.Structure):
+        _fields_ = [("internal", c.c_size_t), ("internal_high", c.c_size_t), ("offset", w.DWORD), ("offset_high", w.DWORD), ("event", w.HANDLE)]
+    kernel.CreateEventW.argtypes = [c.c_void_p, w.BOOL, w.BOOL, w.LPCWSTR]
+    kernel.CreateEventW.restype = w.HANDLE
+    kernel.ReadDirectoryChangesW.argtypes = [w.HANDLE, c.c_void_p, w.DWORD, w.BOOL, w.DWORD, c.c_void_p, c.POINTER(Overlapped), c.c_void_p]
+    kernel.ReadDirectoryChangesW.restype = w.BOOL
+    kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+    kernel.WaitForSingleObject.restype = w.DWORD
+    kernel.CancelIoEx.argtypes = [w.HANDLE, c.POINTER(Overlapped)]
+    kernel.CancelIoEx.restype = w.BOOL
+    kernel.GetOverlappedResult.argtypes = [w.HANDLE, c.POINTER(Overlapped), c.POINTER(w.DWORD), w.BOOL]
+    kernel.GetOverlappedResult.restype = w.BOOL
+    directory = kernel.CreateFileW(str(root), 1, 7, None, 3, 0x42000000, None)
+    if directory == c.c_void_p(-1).value:
+        raise PackageError("cannot watch immutable package directory")
+    event = kernel.CreateEventW(None, True, False, None)
+    if not event:
+        kernel.CloseHandle(directory)
+        raise PackageError("cannot protect package enumeration")
+    overlapped = Overlapped(event=event)
+    buffer = c.create_string_buffer(65536)
+    pending = False
+    try:
+        if not kernel.ReadDirectoryChangesW(directory, buffer, len(buffer), True, 0x15f, None, c.byref(overlapped), None):
+            raise PackageError("cannot protect package enumeration")
+        pending = True
+        def unchanged():
+            if kernel.WaitForSingleObject(event, 0) != 258:
+                raise PackageError("package changed during security verification")
+        yield unchanged
+        unchanged()
+    finally:
+        if pending:
+            kernel.CancelIoEx(directory, c.byref(overlapped))
+            transferred = w.DWORD()
+            kernel.GetOverlappedResult(directory, c.byref(overlapped), c.byref(transferred), True)
+        kernel.CloseHandle(event)
+        kernel.CloseHandle(directory)
+
+
+def verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, hash_workers: int = 1) -> dict[str, Any]:
+    started = time.perf_counter()
+    if hash_workers not in {1, 2, 4}:
+        raise PackageError("unsupported bounded hash worker count")
+    root = _validate_package_root(package_root).resolve()
+    with _watch_gate_directory(root) as unchanged:
+        report = _verify_launch_gate(root, state_path=state_path, expected_manifest_sha256=expected_manifest_sha256, unchanged=unchanged, hash_workers=hash_workers)
+    report["total_seconds"] = time.perf_counter() - started
+    return report
+
+
+def _hash_gate_entries(root: Path, keys: list[str], workers: int, *, validated_paths=None):
+    # Only a completed namespace/metadata validation may supply this per-run
+    # mapping. It is not manifest input and never survives a gate invocation.
+    # Reuse the actual Path objects already checked by the snapshot and ACL pass.
+    def hash_one(key):
+        prefix = bytearray()
+        path = root / key if validated_paths is None else validated_paths[key]
+        digest = sha256_file(path, prefix=prefix)
+        return key, digest, bytes(prefix)
+    if workers == 1:
+        yield from map(hash_one, keys)
+    else:
+        # Opt-in only after a small disk benchmark; one process, bounded reads.
+        from concurrent.futures import ThreadPoolExecutor
+        def hash_batch(batch):
+            return list(map(hash_one, batch))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # Keep the caller's order and every per-file digest, but avoid one
+            # Future/queue operation per tiny file. Readers remain bounded by
+            # workers, and an error in any batch still aborts verification.
+            batches = (keys[index:index + 32] for index in range(0, len(keys), 32))
+            for result in pool.map(hash_batch, batches):
+                yield from result
+
+
+def _verify_launch_gate(package_root: Path, *, state_path: Path, expected_manifest_sha256: str, unchanged, hash_workers: int) -> dict[str, Any]:
+    """Single enumeration and full payload hashes with a diagnostic receipt.
+
+    Invoke only from the launcher which pins this helper and manifest. DPAPI
+    state is not evidence of trusted creator provenance and never skips hashes.
+    """
+    started = time.perf_counter()
+    package_root = _validate_package_root(package_root).resolve()
+    state_path = Path(os.path.abspath(state_path))
+    if state_path.is_relative_to(package_root):
+        raise PackageError("verification state must remain outside immutable package")
+    _validate_existing_parent_chain(state_path.parent, label="verification state")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    _validate_staging_entry(state_path.parent, state_path.parent, directory=True, allow_missing=False)
+    _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
+    manifest_path = package_root / MANIFEST_RELATIVE
+    _validate_package_entry(manifest_path, package_root, directory=False)
+    manifest_hash = sha256_file(manifest_path)
+    if not SHA256_RE.fullmatch(expected_manifest_sha256.lower()) or manifest_hash != expected_manifest_sha256.lower():
+        raise PackageError("manifest trust anchor mismatch")
+    manifest = _json_load(manifest_path)
+    if manifest.get("schema") != MANIFEST_SCHEMA or manifest.get("product") != "MentorFlow":
+        raise PackageError("unsupported package manifest")
+    expected = {}
+    for entry in manifest.get("files", []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise PackageError("invalid manifest file entry")
+        relative = Path(entry["path"])
+        key = relative.as_posix()
+        if relative.is_absolute() or relative.drive or ".." in relative.parts or key in expected or not SHA256_RE.fullmatch(str(entry.get("sha256", ""))) or type(entry.get("size")) is not int:
+            raise PackageError("unsafe manifest entry")
+        expected[key] = entry
+    inventory = {}
+    categories = {"CRITICAL_EXECUTABLE": {"files": 0, "bytes": 0}, "IMMUTABLE_RESOURCE": {"files": 0, "bytes": 0}}
+    pending = [package_root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                metadata = entry.stat(follow_symlinks=False)
+                # On Windows DirEntry.stat deliberately omits file identity and
+                # link count (zeros). One real lstat is required, then reused.
+                if not metadata.st_ino or not metadata.st_nlink:
+                    metadata = path.lstat()
+                is_directory = stat.S_ISDIR(metadata.st_mode)
+                _validate_package_entry(path, package_root, directory=is_directory, resolve_path=False, cached_stat=metadata)
+                if is_directory:
+                    pending.append(path)
+                    continue
+                key = _relative(path, package_root)
+                if path == manifest_path:
+                    continue
+                if key not in expected:
+                    raise PackageError(f"unexpected package file: {key}")
+                if metadata.st_size != expected[key]["size"]:
+                    raise PackageError(f"package size mismatch: {key}")
+                category = package_file_category(key)
+                categories[category]["files"] += 1
+                categories[category]["bytes"] += metadata.st_size
+                inventory[key] = [metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_dev, metadata.st_ino,
+                    _resource_change_time(path) if category == "IMMUTABLE_RESOURCE" else 0]
+    if set(inventory) != set(expected):
+        raise PackageError("package file set mismatch: missing payload")
+    required = {"MentorFlow.exe", VERSION_FILE_NAME, "SELF-CHECK/MentorFlowSelfCheck.exe", "SELF-CHECK/verify_windows_package.py", "SELF-CHECK/mentorflow-check.bat", "SELF-CHECK/mentorflow-update.bat"}
+    if not required.issubset(inventory):
+        raise PackageError("required package files missing")
+    version = load_version(package_root / VERSION_FILE_NAME)
+    if version["version"] != manifest.get("version"):
+        raise PackageError("package version mismatch")
+    root_stat = package_root.stat()
+    binding = {"schema": _GATE_SCHEMA, "manifest_sha256": manifest_hash, "root": str(package_root), "root_identity": [root_stat.st_dev, root_stat.st_ino], "version": version["version"]}
+    # DPAPI authenticates the Windows user, not the creator of a verification
+    # receipt. The same user can re-seal forged inventory after changing a file.
+    # Until an independent trusted authority exists, this record is diagnostic
+    # only: never consume it to authorize skipping any payload hash.
+    inventory_seconds = time.perf_counter() - started
+    hash_started = time.perf_counter()
+    critical_hashes = {}
+    hashed_prefixes = {}
+    to_hash = sorted(inventory)
+    for key, digest, prefix in _hash_gate_entries(package_root, to_hash, hash_workers):
+        if digest != expected[key]["sha256"]:
+            raise PackageError(f"package tampered: {key}")
+        hashed_prefixes[key] = prefix
+        if package_file_category(key) == "CRITICAL_EXECUTABLE":
+            critical_hashes[key] = digest
+    hash_seconds = time.perf_counter() - hash_started
+    private = _find_user_data_files(package_root, validated_files=[package_root / key for key in inventory], hashed_prefixes=hashed_prefixes)
+    # The manifest is separately pinned and is not a payload hash entry.
+    private += _find_user_data_files(package_root, validated_files=[manifest_path])
+    if private:
+        raise PackageError("package contains private data/configuration")
+    # A watch follows the directory handle, not a replacement at its old name.
+    # Check the root identity again without performing another enumeration.
+    final_root = _validate_package_root(package_root).stat()
+    if (final_root.st_dev, final_root.st_ino) != (root_stat.st_dev, root_stat.st_ino):
+        raise PackageError("package root identity changed during verification")
+    unchanged()
+    state = {"binding": binding, "inventory": inventory, "critical_hashes": critical_hashes, "full_verified_at": time.time()}
+    encrypted = _protect_gate_state(json.dumps(state, sort_keys=True, separators=(",", ":")).encode())
+    # Replace atomically; do not leave a plaintext snapshot on disk.
+    with tempfile.NamedTemporaryFile(dir=state_path.parent, prefix="gate-", delete=False) as temporary:
+        temporary.write(encrypted)
+        temp_path = Path(temporary.name)
+    try:
+        _validate_staging_entry(state_path, state_path.parent, directory=False, allow_missing=True)
+        temp_path.replace(state_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    return {"verification": "PASS", "mode": "FULL", "hash_workers": hash_workers, "inventory_seconds": inventory_seconds, "hash_seconds": hash_seconds, "total_seconds": time.perf_counter() - started, "categories": categories, "files": len(inventory)}
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MentorFlow Windows package integrity and update helper")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1242,6 +1564,11 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--no-data-check", action="store_true")
     verify.add_argument("--no-smoke", action="store_true")
     verify.add_argument("--smoke-seconds", type=float, default=5.0)
+    gate = subparsers.add_parser("launch-gate", help="full Windows launch verification with a diagnostic receipt")
+    gate.add_argument("--package-root", type=Path, required=True)
+    gate.add_argument("--state-path", type=Path, required=True)
+    gate.add_argument("--expected-manifest-sha256", required=True)
+    gate.add_argument("--hash-workers", type=int, choices=(1, 2, 4), default=1)
     update = subparsers.add_parser("check-update", help="check and optionally stage a GitHub release")
     update.add_argument("--version-file", type=Path)
     update.add_argument("--owner")
@@ -1255,6 +1582,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
+        if args.command == "launch-gate":
+            report = verify_launch_gate(args.package_root, state_path=args.state_path, expected_manifest_sha256=args.expected_manifest_sha256, hash_workers=args.hash_workers)
+            print(json.dumps(report, ensure_ascii=False))
+            print("MENTORFLOW_PACKAGE_CHECK=PASS")
+            return 0
         if args.command == "build-manifest":
             path = build_manifest(args.package_root, version_file=args.version_file)
             print(f"PACKAGE_MANIFEST={path}")

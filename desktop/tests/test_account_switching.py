@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,97 @@ def _identity(subject: str, name: str) -> AccountIdentity:
         subject=subject,
         display_name=name,
     )
+
+
+@pytest.mark.parametrize("states, expected", [
+    (("AVAILABLE", "RELINKED"), "全部 2 项资料已有效关联"),
+    (("MISSING_ON_THIS_DEVICE",), "0 项资料已关联，1 项缺少本机文件"),
+    (("AVAILABLE", "MISSING_ON_THIS_DEVICE"), "1 项资料已关联，1 项缺少本机文件"),
+    (("UNRECOGNIZED",), "状态尚待核验"),
+])
+def test_device_indicator_uses_reconciled_binding_not_empty_vault(vault_root, states, expected):
+    from desktop.main_window import MainWindow
+    from PySide6.QtWidgets import QPushButton
+
+    app = QApplication.instance() or QApplication([])
+    identity = _identity("binding-indicator", "Binding account")
+    manager = AccountVaultManager(VaultLayout(vault_root))
+    manager.mount(identity.profile())
+    page = AccountSettingsPage(
+        profile=identity.profile(), vault_manager=manager,
+        credential_vault=_CredentialRecorder(), switch_account=lambda _: None,
+        logout_account=lambda: None,
+    )
+    window = SimpleNamespace(account_settings_page=page,
+        device_recovery_button=QPushButton(), _open_recovery_center_callback=lambda: None)
+    try:
+        resources = tuple(SimpleNamespace(state=state) for state in states)
+        MainWindow.set_device_recovery_snapshot(window, SimpleNamespace(resources=resources))
+        assert manager.current.list_assets() == []
+        assert expected in page.device_state_label.text()
+        page.refresh()
+        assert expected in page.device_state_label.text()
+        assert window.device_recovery_button.isHidden() == ("MISSING_ON_THIS_DEVICE" not in states)
+        # A refresh after correct relink must replace the missing projection.
+        MainWindow.set_device_recovery_snapshot(window, SimpleNamespace(
+            resources=(SimpleNamespace(state="RELINKED"),)))
+        assert "全部 1 项资料已有效关联" in page.device_state_label.text()
+        assert window.device_recovery_button.isHidden()
+        manager.unmount()
+        other = _identity("other-binding-account", "Other")
+        manager.mount(other.profile())
+        page.set_profile(other.profile())
+        assert "有效关联" not in page.device_state_label.text()
+    finally:
+        page.close()
+        manager.unmount()
+        app.processEvents()
+
+
+def test_device_indicator_tracks_real_file_binding_without_vault_asset(vault_root):
+    import hashlib
+    from desktop.account_metadata_sync import AccountMetadataSyncService
+    from desktop.local_asset_lifecycle import LocalAssetLifecycle
+
+    app = QApplication.instance() or QApplication([])
+    identity = _identity("real-binding", "Synthetic binding account")
+    manager = AccountVaultManager(VaultLayout(vault_root / "v"))
+    vault = manager.mount(identity.profile())
+    lifecycle = LocalAssetLifecycle(vault, account_identity={
+        "issuer": identity.issuer, "subject": identity.subject})
+    source = vault_root / "synthetic-resource.txt"
+    source.write_bytes(b"synthetic resource")
+    metadata = {
+        "schema_version": "mentorflow.account-core-metadata.v1",
+        "account": {"issuer": identity.issuer, "subject_id": identity.subject},
+        "tenant": {"organization_id": "org", "workspace_id": "workspace"},
+        "workspace": {"workspace_id": "workspace"}, "plans": [], "progress": [],
+        "resource_manifest": {"assets": [{"asset_id": "resource-one",
+            "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}]},
+    }
+    sync = AccountMetadataSyncService(SimpleNamespace(account_metadata=lambda: metadata),
+        lifecycle, account_identity=identity)
+    page = AccountSettingsPage(profile=identity.profile(), vault_manager=manager,
+        credential_vault=_CredentialRecorder(), switch_account=lambda _: None,
+        logout_account=lambda: None)
+    try:
+        page.set_resource_device_states(sync.sync().resources)
+        assert "1 项缺少本机文件" in page.device_state_label.text()
+        page.set_resource_device_states(sync.relink(resource_id="resource-one",
+            expected_fingerprint_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+            selected_file=source).snapshot.resources)
+        assert vault.list_assets() == []
+        assert "全部 1 项资料已有效关联" in page.device_state_label.text()
+        page.set_resource_device_states(sync.refresh_device_state().resources)
+        assert "全部 1 项资料已有效关联" in page.device_state_label.text()
+        # Mutate only synthetic bytes, never delete real user material.
+        source.write_bytes(b"wrong content")
+        page.set_resource_device_states(sync.refresh_device_state().resources)
+        assert "1 项缺少本机文件" in page.device_state_label.text()
+    finally:
+        page.close()
+        manager.unmount()
+        app.processEvents()
 
 
 @pytest.fixture
@@ -458,7 +550,7 @@ def test_account_presentation_switches_a_b_a_and_shows_new_device_state(
     assert page.account_label.text() == "CURRENT_ACCOUNT = Account A on Device 2"
     assert page.assets.rowCount() == 0
     assert "NEW_DEVICE" not in page.device_state_label.text()
-    assert "重新关联" in page.device_state_label.text()
+    assert "尚待核验" in page.device_state_label.text()
 
     page.logout_button.click()
     assert logout_calls == ["CURRENT_ACCOUNT = Account A on Device 2"]

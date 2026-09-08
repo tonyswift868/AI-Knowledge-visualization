@@ -654,7 +654,7 @@ class MainWindow(QMainWindow):
             if str(getattr(getattr(item, "state", ""), "value", getattr(item, "state", "")))
             == "MISSING_ON_THIS_DEVICE"
         )
-        self.account_settings_page.set_synced_resource_count(len(resources))
+        self.account_settings_page.set_resource_device_states(resources if snapshot is not None else None)
         if missing and self._open_recovery_center_callback is not None:
             self.device_recovery_button.setText(f"需要恢复 {missing} 项资料")
             self.device_recovery_button.setVisible(True)

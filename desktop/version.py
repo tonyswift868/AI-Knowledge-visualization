@@ -11,6 +11,7 @@ from typing import Any, Iterable
 def _roots() -> Iterable[Path]:
     frozen = getattr(sys, "_MEIPASS", None)
     if frozen:
+        yield Path(sys.executable).absolute().parent
         yield Path(frozen)
     here = Path(__file__).resolve()
     yield here.parents[1]

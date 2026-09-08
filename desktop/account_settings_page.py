@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -84,6 +84,7 @@ class AccountSettingsPage(QWidget):
         self.begin_account_switch = begin_account_switch
         self.open_recovery_center = open_recovery_center
         self._synced_resource_count = 0
+        self._resource_device_states: tuple[str, ...] | None = None
         self._oidc_thread: threading.Thread | None = None
         self._oidc_succeeded.connect(self._finish_oidc)
         self._oidc_failed.connect(self._oidc_failed_safely)
@@ -177,12 +178,22 @@ class AccountSettingsPage(QWidget):
     def set_profile(self, profile: AccountProfile) -> None:
         self.profile = profile
         self._synced_resource_count = 0
+        self._resource_device_states = None
+        self.refresh()
+
+    def set_resource_device_states(self, resources: Iterable[object] | None) -> None:
+        """Consume the current account's reconciled binding snapshot, not Vault counts."""
+        self._resource_device_states = None if resources is None else tuple(
+            str(getattr(getattr(item, "state", ""), "value", getattr(item, "state", "")))
+            for item in resources
+        )
         self.refresh()
 
     def set_synced_resource_count(self, count: int) -> None:
         """Present E1-05 metadata without retaining a server Manifest in the UI."""
 
         self._synced_resource_count = max(0, int(count))
+        self._resource_device_states = None
         current = self.vault_manager.current
         local_asset_count = (
             len(current.list_assets())
@@ -259,13 +270,28 @@ class AccountSettingsPage(QWidget):
             self.device_state_label.hide()
             return
         self.device_state_label.show()
-        if local_asset_count is None:
+        states = self._resource_device_states
+        if states is not None:
+            available = sum(state in {"AVAILABLE", "RELINKED"} for state in states)
+            missing = states.count("MISSING_ON_THIS_DEVICE")
+            unknown = len(states) - available - missing
+            if not states:
+                message = "当前账号暂无已同步资料。"
+            elif missing:
+                message = (
+                    f"当前设备 {available} 项资料已关联，{missing} 项缺少本机文件；"
+                    "请打开“本机资料恢复”重新关联。"
+                )
+            elif unknown:
+                message = f"当前设备 {available} 项资料已关联；其余资料状态尚待核验。"
+            else:
+                message = f"当前设备全部 {available} 项资料已有效关联。"
+            if missing and unknown:
+                message += f"另有 {unknown} 项状态尚待核验。"
+        elif local_asset_count is None:
             message = "当前设备正在等待此企业账号的本机 Vault。"
-        elif local_asset_count == 0 and self._synced_resource_count:
-            message = (
-                "学习记录已经恢复；这台电脑还缺少本机资料，"
-                "请打开“本机资料恢复”重新关联。"
-            )
+        elif self._synced_resource_count:
+            message = "资料元数据已同步；本机关联状态尚待核验。"
         elif local_asset_count == 0:
             message = "当前设备尚无此企业账号的本地资料。"
         else:

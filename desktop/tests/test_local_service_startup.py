@@ -55,9 +55,16 @@ def test_start_and_stop_are_deterministic(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setenv("MENTORFLOW_ORM_DB", str(tmp_path / "mentorflow_v2.db"))
     monkeypatch.setenv("MENTORFLOW_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", str(tmp_path))
+    # Other collected tests may already have imported the canonical backend.
+    # Environment changes alone cannot rebind its cached ORM engine/legacy path.
+    from app import db, orm
+    previous_orm = orm.ORM_DB
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.db")
+    monkeypatch.setattr(db, "DATA_DIR", tmp_path)
+    orm.configure_orm(tmp_path / "mentorflow_v2.db")
     service = LocalService()
-    service.start()
     try:
+        service.start()
         deadline = time.monotonic() + 20
         response: httpx.Response | None = None
         while time.monotonic() < deadline:
@@ -75,6 +82,7 @@ def test_start_and_stop_are_deterministic(tmp_path: Path, monkeypatch: pytest.Mo
         assert service.thread is not None and service.thread.is_alive()
     finally:
         service.stop()
+        orm.configure_orm(previous_orm)
 
     assert service.thread is not None and not service.thread.is_alive()
     assert service.health_thread is not None and not service.health_thread.is_alive()

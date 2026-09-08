@@ -76,14 +76,25 @@ function New-CleanProcess([string]$Executable) {
 
 # Existing preview transport only; no deployment, dynamic destinations or credentials.
 $script:ownedTunnel = $null
+$progressWindow = $null
 function Test-SupportedEndpoint {
     $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-    $document = & $curl --silent --fail --noproxy '*' --connect-timeout 2 --max-time 4 --cacert $certificate 'https://localhost:18080/realms/mentorflow/.well-known/openid-configuration' 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    # Use the owned process exit code, never ambient $LASTEXITCODE under StrictMode.
+    $probeInfo = New-CleanProcess $curl
+    $probeInfo.Arguments = '--silent --fail --noproxy * --connect-timeout 2 --max-time 4 --cacert "' + $certificate + '" https://localhost:18080/realms/mentorflow/.well-known/openid-configuration'
+    $probeInfo.RedirectStandardOutput = $true
+    $probeInfo.RedirectStandardError = $true
+    $probe = $null
     try {
-        $discovery = ($document -join "`n") | ConvertFrom-Json
+        $probe = [Diagnostics.Process]::Start($probeInfo)
+        $document = $probe.StandardOutput.ReadToEndAsync()
+        $probeErrors = $probe.StandardError.ReadToEndAsync()
+        if (-not $probe.WaitForExit(5000)) { $probe.Kill(); $probe.WaitForExit(); return $false }
+        if ($probe.ExitCode -ne 0) { return $false }
+        $discovery = $document.Result | ConvertFrom-Json
         return ($discovery.issuer -ceq 'https://localhost:18080/realms/mentorflow')
     } catch { return $false }
+    finally { if ($null -ne $probe) { $probe.Dispose() } }
 }
 function Ensure-SupportedTunnel {
     if (Test-SupportedEndpoint) { Write-Output 'TUNNEL_TLS=EXISTING_PINNED_ENDPOINT'; return }
@@ -126,10 +137,32 @@ try {
     New-Item -ItemType Directory -Path $runtimeTemp -Force | Out-Null
     Assert-NoAlias $runtimeTemp
 
-    # Verify every immutable payload file with the unchanged, shipped helper.
-    # Never run its optional database inspection or direct-EXE smoke path.
+    # Source template for the next integrated release: rebind the frozen helper
+    # and manifest anchors when building that release. The preserved old launcher
+    # is not modified. launch-gate never opens a database or runs application code.
+    # DPAPI state is diagnostic only; every payload is hashed on every launch.
+    $progressWindow = $null
+    if (-not $ValidateOnly) {
+        Add-Type -AssemblyName System.Windows.Forms
+        $progressWindow = New-Object System.Windows.Forms.Form
+        $progressWindow.Text = 'MentorFlow — 安全检查'
+        $progressWindow.Width = 440
+        $progressWindow.Height = 125
+        $progressWindow.StartPosition = 'CenterScreen'
+        $progressWindow.ControlBox = $false
+        $progressLabel = New-Object System.Windows.Forms.Label
+        $progressLabel.Dock = 'Fill'
+        $progressLabel.TextAlign = 'MiddleCenter'
+        $progressLabel.Text = '正在验证程序完整性并准备安全连接。首次验证可能需要较长时间。'
+        $progressWindow.Controls.Add($progressLabel)
+        $progressWindow.Show()
+        [System.Windows.Forms.Application]::DoEvents()
+        Record-LaunchPhase 'security_feedback_visible_ms'
+    }
     $checkInfo = New-CleanProcess $verifier
-    $checkInfo.Arguments = 'verify --package-root "' + $program + '" --no-data-check --no-smoke'
+    # Four bounded readers beat serial in the 20260906 isolated-copy benchmark.
+    # The general helper still defaults to one reader on unmeasured machines.
+    $checkInfo.Arguments = 'launch-gate --package-root "' + $program + '" --state-path "' + (Join-Path $runtimeTemp 'verification-state.dpapi') + '" --hash-workers 4 --expected-manifest-sha256 ' + $expectedManifest
     $checkInfo.RedirectStandardOutput = $true
     $checkInfo.RedirectStandardError = $true
     Record-LaunchPhase 'integrity_started_ms'
@@ -143,12 +176,15 @@ try {
         Ensure-SupportedTunnel
         Record-LaunchPhase 'connection_ready_ms'
     }
-    $check.WaitForExit()
+    while (-not $check.WaitForExit(100)) {
+        if ($null -ne $progressWindow) { [System.Windows.Forms.Application]::DoEvents() }
+    }
     if ($check.ExitCode -ne 0 -or $output.Result -notmatch 'MENTORFLOW_PACKAGE_CHECK=PASS') {
         throw ('Package integrity check failed. ' + $errors.Result)
     }
     Write-Output 'LEGAL_CONFIG_ACCEPTED=true'
     Record-LaunchPhase 'integrity_pass_ms'
+    if ($null -ne $progressWindow) { $progressWindow.Close(); $progressWindow.Dispose(); $progressWindow = $null }
     Write-Output 'MENTORFLOW_PACKAGE_CHECK=PASS'
     if ($ValidateOnly) { exit 0 }
 
@@ -185,7 +221,12 @@ try {
     Close-OwnedTunnel
     exit $appExitCode
 } catch {
+    if ($null -ne $progressWindow) { $progressWindow.Close(); $progressWindow.Dispose() }
     Close-OwnedTunnel
     [Console]::Error.WriteLine('MENTORFLOW_LAUNCH_REJECTED: ' + $_.Exception.Message)
+    if (-not $ValidateOnly) {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show('MentorFlow could not complete secure startup. Please contact support. Do not bypass verification.', 'MentorFlow - Startup failed') | Out-Null
+    }
     exit 2
 }

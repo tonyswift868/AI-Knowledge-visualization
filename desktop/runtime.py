@@ -10,9 +10,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import uvicorn
 
 import httpx
-import uvicorn
 from PySide6.QtCore import QObject, QProcess, QSettings, Signal
 
 from .account_identity import (
@@ -322,6 +325,7 @@ class LocalService(QObject):
         if backend_root.is_dir() and str(backend_root) not in sys.path:
             sys.path.insert(0, str(backend_root))
         from app.main import app
+        import uvicorn
 
         if self.thread and self.thread.is_alive():
             return

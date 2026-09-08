@@ -1026,7 +1026,7 @@ def _import_development_data_once(app_root: Path, data_root: Path) -> None:
 
 
 class MentorFlowApplication:
-    def __init__(self) -> None:
+    def __init__(self, *, login_gate=None) -> None:
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.app.setApplicationName("MentorFlow")
         self.app.setOrganizationName("MentorFlow")
@@ -1034,11 +1034,11 @@ class MentorFlowApplication:
         self._startup_failed = False
         self._enterprise_login_required = False
         try:
-            _prepare_desktop_frontend()
             from .enterprise_oidc import DesktopOidcConfig
 
             self._enterprise_login_required = DesktopOidcConfig.is_configured()
             if not self._enterprise_login_required:
+                _prepare_desktop_frontend()
                 _prepare_desktop_storage()
         except StartupCancelled:
             self._startup_cancelled = True
@@ -1054,18 +1054,9 @@ class MentorFlowApplication:
         os.environ.setdefault("PYTHONUTF8", "1")
         # Backend/UI modules are imported only after the data-root decision;
         # this is what keeps first-start import from racing default DB setup.
-        global DesktopApi, MainWindow, LocalService, STYLE
-        from .api import DesktopApi as _DesktopApi
-        from .main_window import MainWindow as _MainWindow
-        from .runtime import LocalService as _LocalService
+        global STYLE
         from .style import STYLE as _STYLE
-
-        DesktopApi, MainWindow, LocalService, STYLE = (
-            _DesktopApi,
-            _MainWindow,
-            _LocalService,
-            _STYLE,
-        )
+        STYLE = _STYLE
         self.app.setWindowIcon(
             QIcon(str(PROJECT_ROOT / "frontend" / "public" / "teacher2d" / "tsubaki-live2d" / "icon.png"))
         )
@@ -1073,7 +1064,7 @@ class MentorFlowApplication:
         self.service: LocalService | None = None
         self.api: DesktopApi | None = None
         self.main: MainWindow | None = None
-        self.login_gate = None
+        self.login_gate = login_gate
         self.migration_center = None
         self.bootstrap_result = None
         self._last_login_result = None
@@ -1106,6 +1097,7 @@ class MentorFlowApplication:
         if self._enterprise_login_required:
             self._show_login_gate()
         else:
+            from .runtime import LocalService
             self.splash.show()
             self.service = LocalService()
             self.service.ready.connect(self._service_ready)
@@ -1116,7 +1108,8 @@ class MentorFlowApplication:
     def _show_login_gate(self) -> None:
         from .startup_flow import LoginGateState, LoginGateWindow
 
-        self.login_gate = LoginGateWindow()
+        if self.login_gate is None:
+            self.login_gate = LoginGateWindow()
         self.login_gate.login_requested.connect(self._begin_interactive_login)
         self.login_gate.retry_requested.connect(self._retry_login_or_bootstrap)
         self.login_gate.background_succeeded.connect(self._background_succeeded)
@@ -1204,6 +1197,10 @@ class MentorFlowApplication:
         try:
             pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True)
             self._auth_pane = pane
+            record = getattr(self, "_startup_record", None)
+            if record is not None:
+                pane.authorization_navigation_started.connect(lambda: record("KEYCLOAK_NAVIGATION_BEGIN"))
+                pane.authorization_document_loaded.connect(lambda ok: record("KEYCLOAK_DOCUMENT_LOADED" if ok else "KEYCLOAK_DOCUMENT_FAILED"))
             pane.authenticated.connect(lambda result: self._accept_login_result(result) if generation == self._login_generation else None)
             pane.authentication_failed.connect(lambda code, message: self._background_failed(f"{generation}:authenticate", "登录页面暂不可用，请检查网络或账号权限后重试。"))
             self.login_gate.set_auth_content(pane)
@@ -1396,6 +1393,7 @@ class MentorFlowApplication:
                 LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING,
                 detail="正在打开你的学习空间…",
             )
+        from .runtime import LocalService
         self.service = LocalService(resolved_profile=self.bootstrap_result.profile)
         service = self.service
         generation = self._login_generation
@@ -1406,6 +1404,7 @@ class MentorFlowApplication:
 
         def start_service() -> None:
             try:
+                _prepare_desktop_frontend()
                 service.start()
             except Exception:
                 service.failed.emit("本机学习服务暂时无法打开，请重新启动后重试。")
@@ -1417,6 +1416,7 @@ class MentorFlowApplication:
         ).start()
 
     def _service_ready(self, origin: str) -> None:
+        from .api import DesktopApi
         self.api = DesktopApi(origin)
         try:
             if self.bootstrap_result is not None:
@@ -1435,6 +1435,10 @@ class MentorFlowApplication:
     def _show_main(self, user: dict) -> None:
         if not self.api:
             return
+        # Business pages are not needed to authenticate. Keep their imports
+        # behind the verified login/bootstrap gate instead of delaying its form.
+        from .main_window import MainWindow
+
         if self.bootstrap_result is None:
             self.main = MainWindow(self.api, user, self.service.origin)
         else:

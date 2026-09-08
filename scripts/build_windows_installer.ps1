@@ -12,7 +12,14 @@ param(
     [string]$DesktopShortcutName = '',
     [string]$DataRootCanonical = '',
     [string]$DataRootLocalAppData = '',
-    [string]$InstallDir = ''
+    [string]$InstallDir = '',
+    [switch]$ProtectedInstall,
+    [string]$BuildScratch = '',
+    [string]$SourceSha = '',
+    [string]$SourceTree = '',
+    [string]$UatAppId = '',
+    [string]$UatWorkRoot = '',
+    [string]$UatDefaultInstallDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,6 +48,35 @@ function Assert-ExistingDirectory([string]$Path, [string]$Label) {
     return $full
 }
 
+# This NSIS entry is the legacy per-user installer. A payload containing the
+# protected-installation gate must not silently be installed user-writable or
+# receive direct-to-product shortcuts. Keep this fail-closed until a qualified
+# elevated outer bootstrap replaces this entry; never elevate the old uninstaller.
+$payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
+if ((Test-Path -LiteralPath (Join-Path $payload 'MentorFlowInstallGate.exe')) -and -not $ProtectedInstall) {
+    throw 'PROTECTED_INSTALLER_REQUIRED: native-gate payload cannot use the legacy per-user NSIS installer. Use the qualified protected-installation bootstrap; do not build or distribute this installer.'
+}
+if ($ProtectedInstall) {
+    if ($SourceSha -notmatch '^[0-9a-f]{40}$' -or $SourceTree -notmatch '^[0-9a-f]{40}$') { throw 'Exact source identities required' }
+    if ($InstallDir -or $ProductKey -or $UninstallKey -or $ShortcutFolder -or $ShortcutName -or $UninstallShortcutName -or $DesktopShortcutName -or $DataRootCanonical -or $DataRootLocalAppData) { throw 'Protected installation paths are selected at runtime; build-time metadata overrides are prohibited' }
+    $scratchFull = if ($BuildScratch) { [IO.Path]::GetFullPath($BuildScratch).TrimEnd('\') } else { '' }
+    $runtimeQualificationScratch = 'D:\CodexScratch\MentorFlowMF-E107-INSTALLER-RUNTIME-QUALIFY-20260907-03'
+    $isolatedScratch = $false
+    if ($UatAppId) {
+        if ($UatAppId -notmatch '^MentorFlow\.UAT\.[A-Za-z0-9-]{1,32}$' -or -not $UatWorkRoot) { throw 'Exact isolated UAT build namespace required' }
+        $uatWorkFull = [IO.Path]::GetFullPath($UatWorkRoot).TrimEnd('\')
+        if ($UatDefaultInstallDir) { throw 'Install defaults must be resolved from Windows at runtime, not supplied by the build' }
+        if ($uatWorkFull -notmatch '^D:\\[^\\]+$') { throw 'Dedicated short build scratch required' }
+        $isolatedScratch = $scratchFull.StartsWith($uatWorkFull+'\',[StringComparison]::OrdinalIgnoreCase)
+    } elseif ($UatWorkRoot -or $UatDefaultInstallDir) { throw 'UAT paths require compiled UAT namespace' }
+    if (-not $isolatedScratch -and -not $scratchFull.StartsWith('D:\CodexScratch\MentorFlow\', [StringComparison]::OrdinalIgnoreCase) -and
+        -not $scratchFull.Equals($runtimeQualificationScratch, [StringComparison]::OrdinalIgnoreCase)) { throw 'Protected installer requires dedicated D: scratch' }
+    $identity = Get-Content -LiteralPath (Join-Path $payload 'SELF-CHECK\source-identity.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($identity.source_sha -ne $SourceSha -or $identity.tree_sha -ne $SourceTree) { throw 'Payload source identity mismatch' }
+    if ($UatAppId -and $identity.app_id -ne $UatAppId) { throw 'Payload compiled namespace mismatch' }
+    $manifestPin = (Get-FileHash -LiteralPath (Join-Path $payload 'SELF-CHECK\package-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 if (-not (Test-Path -LiteralPath $VersionFile -PathType Leaf)) {
     throw "Single-source version manifest is missing: $VersionFile"
 }
@@ -54,7 +90,8 @@ if (-not (Test-Path -LiteralPath $NsisPath -PathType Leaf)) {
     throw "Verified NSIS 3.12 compiler is missing: $NsisPath"
 }
 
-$versionManifest = Get-Content -LiteralPath $VersionFile -Raw | ConvertFrom-Json
+$versionInput = if ($ProtectedInstall) { Join-Path $payload 'mentorflow-version.json' } else { $VersionFile }
+$versionManifest = Get-Content -LiteralPath $versionInput -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($versionManifest.schema -ne 'mentorflow.version.v1' -or $versionManifest.product -ne 'MentorFlow') {
     throw "Unsupported MentorFlow version manifest: $VersionFile"
 }
@@ -63,7 +100,6 @@ if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]
     throw "Invalid MentorFlow version: $version"
 }
 
-$payload = Assert-ExistingDirectory $PayloadRoot 'Payload root'
 $payloadExe = Join-Path $payload 'MentorFlow.exe'
 if (-not (Test-Path -LiteralPath $payloadExe -PathType Leaf)) {
     throw "Verified payload executable is missing: $payloadExe"
@@ -79,7 +115,8 @@ $longestPayloadRelativePath = (
         ForEach-Object { $_.FullName.Substring($payload.Length).TrimStart('\').Length } |
         Measure-Object -Maximum
 ).Maximum
-$maxInstallDirChars = 258 - 1 - [int]$longestPayloadRelativePath
+# Reserve the runtime .u\<12-hex>\App staging suffix and a legacy DLL margin.
+$maxInstallDirChars = 240 - 21 - [int]$longestPayloadRelativePath
 if ($maxInstallDirChars -lt 20) {
     throw "Payload paths leave no safe NSIS install-root budget: $maxInstallDirChars characters."
 }
@@ -114,16 +151,56 @@ $verifyArgs = @(
     '--no-data-check',
     '--no-smoke'
 )
-& $PythonPath @verifyArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Payload verification failed with exit code $LASTEXITCODE; installer build refused."
+if ($ProtectedInstall) {
+    $verifyArgs = @('-B', '-m', 'scripts.prepare_transactional_installer', '--payload', $payload, '--manifest-sha256', $manifestPin)
+}
+Push-Location $ProjectRoot
+try {
+    if ($ProtectedInstall) {
+        $verificationOutput = & $PythonPath @verifyArgs
+        $verifyExit = $LASTEXITCODE
+        $verificationOutput | ForEach-Object { Write-Host $_ }
+    } else {
+        & $PythonPath @verifyArgs
+        $verifyExit = $LASTEXITCODE
+    }
+}
+finally { Pop-Location }
+if ($verifyExit -ne 0) {
+    throw "Payload verification failed with exit code $verifyExit; installer build refused."
+}
+if ($ProtectedInstall) {
+    $verifiedInventory = ($verificationOutput -join "`n") | ConvertFrom-Json
+    $spaceKib = [string]$verifiedInventory.estimated_space_kib
+    if ($verifiedInventory.status -ne 'PASS' -or $spaceKib -notmatch '^[1-9][0-9]*$' -or
+        [decimal]$spaceKib -gt [int]::MaxValue) { throw 'Verified positive installer space estimate required' }
 }
 
 New-Item -ItemType Directory -Path $outputRootFull -Force | Out-Null
 $outputPath = Join-Path $outputRootFull ("MentorFlow-{0}-win-x64-Setup.exe" -f $version)
+if (Test-Path -LiteralPath $outputPath) { throw 'Existing installer output preserved' }
 $fileVersion = (($version -split '[+-]', 2)[0] + '.0')
 $compileDefines = [System.Collections.Generic.List[string]]::new()
 $compileDefines.Add("/DMAX_INSTALL_DIR_CHARS=$maxInstallDirChars")
+if ($ProtectedInstall) {
+    New-Item -ItemType Directory -Path $BuildScratch -Force | Out-Null
+    $helperPath = Join-Path $payload 'MentorFlowInstallGate.exe'
+    $compileDefines.Add('/DPROTECTED_INSTALL=1')
+    $compileDefines.Add("/DTRANSACTION_HELPER=$helperPath")
+    $transactionRuntime = Join-Path $payload 'InstallRuntime'
+    if (-not (Test-Path -LiteralPath (Join-Path $transactionRuntime 'MentorFlowInstallGate.exe') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $transactionRuntime '_internal\python313.dll') -PathType Leaf)) { throw 'Verified onedir installer runtime required; onefile elevation prohibited' }
+    $compileDefines.Add("/DTRANSACTION_RUNTIME=$transactionRuntime")
+    $compileDefines.Add("/DMANIFEST_SHA=$manifestPin")
+    $compileDefines.Add("/DSOURCE_SHA=$SourceSha")
+    $compileDefines.Add("/DSOURCE_TREE=$SourceTree")
+    $compileDefines.Add("/DINSTALL_SPACE_KIB=$spaceKib")
+    $compileDefines.Add("/DINSTALL_SPACE_MB=$([math]::Ceiling([double]$spaceKib/1024))")
+    if ($UatAppId) {
+        $compileDefines.Add("/DPROTECTED_APP_ID=$UatAppId")
+        $compileDefines.Add('/DPROTECTED_SHORTCUT_NAME=MentorFlow ' + [char]0x9884 + [char]0x89c8 + [char]0x7248 + '.lnk')
+    }
+}
 if ($ProductKey) { $compileDefines.Add("/DPRODUCT_KEY=$ProductKey") }
 if ($UninstallKey) { $compileDefines.Add("/DUNINSTALL_KEY=$UninstallKey") }
 if ($ShortcutFolder) { $compileDefines.Add("/DSHORTCUT_FOLDER=$ShortcutFolder") }

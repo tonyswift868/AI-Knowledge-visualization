@@ -34,6 +34,53 @@ def test_manifest_exclusion_needs_no_second_entry_resolution(tmp_path, monkeypat
         assert list(verifier._iter_package_files(root, manifest)) == [payload]
 
 
+def test_verification_reuses_one_security_inventory(tmp_path, monkeypatch):
+    root = _package(tmp_path)
+    verifier.build_manifest(root)
+    original = verifier._iter_package_entries
+    walks = []
+    def counted(package_root, *, resolve_paths=True):
+        walks.append(resolve_paths)
+        yield from original(package_root, resolve_paths=resolve_paths)
+    monkeypatch.setattr(verifier, "_iter_package_entries", counted)
+    verifier.verify_package(root, data_root=None, check_data=False, smoke=False, smoke_seconds=0)
+    assert walks == [True, False]
+    # Same length, unchanged timestamp: actual content remains mandatory.
+    exe = root / "MentorFlow.exe"
+    timestamp = exe.stat()
+    exe.write_bytes(b"X" * timestamp.st_size)
+    os.utime(exe, ns=(timestamp.st_atime_ns, timestamp.st_mtime_ns))
+    with pytest.raises(verifier.PackageError, match="tampered:MentorFlow.exe"):
+        verifier.verify_package(root, data_root=None, check_data=False, smoke=False, smoke_seconds=0)
+
+
+def test_late_extra_file_is_rejected_after_hashing(tmp_path, monkeypatch):
+    root = _package(tmp_path)
+    verifier.build_manifest(root)
+    original = verifier.sha256_file
+    def hash_and_add(path):
+        result = original(path)
+        (root / "unexpected.dll").write_bytes(b"late addition")
+        return result
+    monkeypatch.setattr(verifier, "sha256_file", hash_and_add)
+    with pytest.raises(verifier.PackageError, match="unexpected:unexpected.dll"):
+        verifier.verify_package(root, data_root=None, check_data=False, smoke=False, smoke_seconds=0)
+
+
+def test_package_entry_resolves_once(tmp_path, monkeypatch):
+    root = tmp_path.resolve()
+    payload = root / "payload.dll"
+    payload.write_bytes(b"protected")
+    original = Path.resolve
+    calls = []
+    def counted(path, *args, **kwargs):
+        calls.append(path)
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "resolve", counted)
+    verifier._validate_package_entry(payload, root, directory=False)
+    assert calls == [payload]
+
+
 def _run_cleanup_guard(root: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
     powershell = shutil.which("powershell.exe")
     if powershell is None:

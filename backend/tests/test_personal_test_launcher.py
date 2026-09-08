@@ -8,11 +8,13 @@ def test_connection_can_overlap_but_application_requires_integrity_pass():
     text = SOURCE.read_text(encoding='utf-8')
     body = text[text.index('\ntry {'):]
     assert body.index('Release trust anchor integrity check failed') < body.index('$check = [Diagnostics.Process]::Start')
-    assert body.index('$check = [Diagnostics.Process]::Start') < body.index('Ensure-SupportedTunnel') < body.index('$check.WaitForExit()')
+    assert body.index('$check = [Diagnostics.Process]::Start') < body.index('Ensure-SupportedTunnel') < body.index('$check.WaitForExit(100)')
     assert body.index('$check.ExitCode -ne 0') < body.index('$appProcess = [Diagnostics.Process]::Start')
     assert "if (-not $ValidateOnly)" in body
     assert 'Close-OwnedTunnel' in body[body.index('} catch {'):]
-    assert '--no-data-check --no-smoke' in body
+    assert 'launch-gate --package-root' in body
+    assert '--state-path' in body and '--expected-manifest-sha256' in body
+    assert 'security_feedback_visible_ms' in body
 
 
 def test_personal_launcher_preserves_fixed_trust_and_no_tenant_hint():

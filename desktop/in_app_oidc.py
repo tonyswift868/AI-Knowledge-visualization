@@ -194,6 +194,8 @@ class InAppOidcLoginDialog(QDialog):
     _failed_signal = Signal(str, str)
     authenticated = Signal(object)
     authentication_failed = Signal(str, str)
+    authorization_navigation_started = Signal()
+    authorization_document_loaded = Signal(bool)
     _worker_finished = Signal()
 
     def __init__(
@@ -326,6 +328,7 @@ class InAppOidcLoginDialog(QDialog):
             return
         if self._cancelled.is_set():
             return
+        self.authorization_document_loaded.emit(ok)
         if not ok:
             self._finish_with_error("ENTERPRISE_LOGIN_PAGE_UNAVAILABLE", "登录页面暂时无法加载，请重试。")
             return
@@ -438,6 +441,7 @@ class InAppOidcLoginDialog(QDialog):
         self.status.setText(
             "正在加载登录页面…"
         )
+        self.authorization_navigation_started.emit()
         self.view.setUrl(QUrl(value.authorization_url))
         self._page_ready.set()
 
