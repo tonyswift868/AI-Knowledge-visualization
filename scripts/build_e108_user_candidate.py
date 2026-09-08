@@ -173,12 +173,12 @@ def execute(args):
     manifest, _ = publisher.inventory(base, BASE_VERSION)
     (base / 'SELF-CHECK/package-manifest.json').write_bytes(canonical(manifest))
     target = args.work / 'TARGET'; target.mkdir()
-    # Unchanged files are immutable hardlinks within this new build only. Never
-    # rewrite a shared file; version/manifest paths are new independent files.
+    # The Inno payload gate requires independent regular files. Even a private
+    # TARGET hardlink would make the BASE input fail that gate via st_nlink.
     for path in base.rglob('*'):
         name = path.relative_to(base)
         if path.is_file() and name.as_posix() not in (*version_paths, 'SELF-CHECK/package-manifest.json'):
-            dest = target / name; dest.parent.mkdir(parents=True, exist_ok=True); os.link(path, dest)
+            dest = target / name; dest.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(path, dest)
     for name in version_paths: (target / name).write_bytes(canonical(version_doc(TARGET_VERSION)))
     manifest, _ = publisher.inventory(target, TARGET_VERSION)
     (target / 'SELF-CHECK/package-manifest.json').write_bytes(canonical(manifest))

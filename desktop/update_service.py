@@ -478,8 +478,18 @@ def configured_mature_service(*, version_manifest=None, install_root=None):
     local_profile = Path(__import__('os').environ['LOCALAPPDATA'])
     default_cache = (local_profile/configured().app_id/'Updates' if configured().uat
                      else local_profile/'MentorFlowUpdates')
+    runtime_staging = None
+    if configured().uat and not config.get('staging_root'):
+        # Metadata stays in the product namespace. The real package's long
+        # dependency paths need a shorter reconstruction root; retain both
+        # product and install identity without weakening the 240-unit gate.
+        import os
+        from .update_protocol import digest
+        identity = digest((configured().app_id + '\0' + os.path.normcase(str(root.absolute()))).encode())[:12]
+        runtime_staging = local_profile / '.mfu' / identity
     return MatureUpdateService(install_root=root,
         cache_root=config.get('staging_root') or default_cache,
+        runtime_staging_root=runtime_staging,
         metadata_url=config['metadata_url'], public_keys=public_keys,
         current=manifest['version'], channel=manifest.get('channel','stable'),
         transport=HTTPTransport(config['metadata_url'],fixture_http=configured().uat),
