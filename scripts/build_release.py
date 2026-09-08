@@ -168,6 +168,24 @@ def origin_value(value: str, development: bool):
     return value.rstrip('/')
 
 
+def publication_origin(args):
+    """A reusable external test key is needed by the compiled BASE and TARGET.
+
+    This explicit integration mode is restricted to a compiled UAT identity and
+    literal loopback. It cannot publish a production identity or claim platform
+    code signing. Normal external-key publications continue to require HTTPS.
+    """
+    uat = getattr(args, 'uat_loopback', False)
+    if uat:
+        if (not APP_ID.startswith('MentorFlow.UAT.') or not args.signing_key or
+                args.development_signing or args.certificate_thumbprint):
+            raise ValueError('loopback UAT requires a compiled UAT identity and an external test key only')
+        parsed = urlsplit(args.origin)
+        if parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', '::1'):
+            raise ValueError('loopback UAT requires a literal-loopback HTTP origin')
+    return origin_value(args.origin, args.development_signing or uat)
+
+
 def load_key(args):
     if args.development_signing:
         if args.signing_key:
@@ -243,13 +261,14 @@ def build(args):
             raise ValueError('exact packaged source SHA and tree SHA required')
     if not 1 <= args.expiry_days <= 31:
         raise ValueError('expiry days must be 1..31')
-    origin = origin_value(args.origin, args.development_signing)
+    origin = publication_origin(args)
     notes = args.notes.read_text(encoding='utf-8-sig')
     if len(notes.encode('utf-8')) > 65536:
         raise ValueError('release notes exceed 64 KiB')
     regular(args.output, directory=True)
     args.output.mkdir(parents=True, exist_ok=True)
     key, key_id, signing_mode = load_key(args)
+    if getattr(args, 'uat_loopback', False): signing_mode = 'EXTERNAL_UAT_ONLY'
     public = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     keys = {key_id: public}
     with publishing_lock(args.output):
@@ -418,6 +437,8 @@ def parser():
     p.add_argument('--key-id')
     p.add_argument('--key-password-env')
     p.add_argument('--development-signing', action='store_true')
+    p.add_argument('--uat-loopback', action='store_true',
+                   help='Compiled UAT identity only: reuse an external test key for a literal-loopback BASE/TARGET feed')
     p.add_argument('--min-supported-version', default='1.0.0')
     p.add_argument('--min-updater-version', default='1.0.0')
     p.add_argument('--mandatory', action='store_true')

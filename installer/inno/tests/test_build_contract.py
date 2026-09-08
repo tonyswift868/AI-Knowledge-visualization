@@ -27,7 +27,12 @@ class BuildContract(unittest.TestCase):
         (self.payload / 'SELF-CHECK/package-manifest.json').write_text('{"fixture":true}')
         self.output = self.root / 'output'
         self.args = argparse.Namespace(output=str(self.output), payload=str(self.payload),
-                                       fixture=False, appearance='dynamic', compiler='ISCC.exe')
+                                       fixture=False, appearance='dynamic', compiler='ISCC.exe',
+                                       release=str(self.root / 'base-release.json'))
+        Path(self.args.release).write_text('{"mock_signed_release":true}')
+        verifier = patch.object(BUILDER, 'verify_core_payload', return_value='MentorFlow.UAT.BuildTest')
+        verifier.start()
+        self.addCleanup(verifier.stop)
 
     def tearDown(self):
         self.assertTrue(self.root.resolve().is_relative_to(BASE.resolve()))
@@ -54,10 +59,13 @@ class BuildContract(unittest.TestCase):
         self.assertIn('/DProductVersion=9.8.7', compiler_command)
         self.assertIn('/DFixtureBuild=0', compiler_command)
         self.assertIn('/DAppearance=dynamic', compiler_command)
+        self.assertIn('/DProductAppId=MentorFlow.UAT.BuildTest', compiler_command)
         self.assertTrue((self.output / 'build-input/ownership.ini').read_bytes().startswith(b'\xff\xfe'))
         receipt = json.loads((self.output / 'build-receipt.json').read_text())
         self.assertEqual(receipt['file_count'], 3)
         self.assertFalse(receipt['fixture'])
+        self.assertEqual(receipt['install_mode'], 'per_user')
+        self.assertFalse(receipt['installer_executed'])
         self.assertEqual(len(receipt['package_manifest_sha256']), 64)
         self.assertGreaterEqual(len(receipt['source_sha256']), 5)
 
@@ -97,6 +105,21 @@ class BuildContract(unittest.TestCase):
         with patch.object(BUILDER, 'digest', side_effect=changing_digest), \
              patch.object(BUILDER.subprocess, 'run', return_value=subprocess.CompletedProcess('test', 0, '', '')):
             with self.assertRaisesRegex(RuntimeError, 'manifest changed'):
+                BUILDER.build(self.args)
+        self.assertFalse((self.output / 'build-receipt.json').exists())
+
+    def test_changed_signed_release_cannot_receive_receipt(self):
+        real_digest = BUILDER.digest
+        calls = 0
+        def changing_digest(path):
+            nonlocal calls
+            if Path(path).resolve() == Path(self.args.release).resolve():
+                calls += 1
+                if calls > 1: return '0' * 64
+            return real_digest(path)
+        with patch.object(BUILDER, 'digest', side_effect=changing_digest), \
+             patch.object(BUILDER.subprocess, 'run', return_value=subprocess.CompletedProcess('test', 0, '', '')):
+            with self.assertRaisesRegex(RuntimeError, 'Signed release changed'):
                 BUILDER.build(self.args)
         self.assertFalse((self.output / 'build-receipt.json').exists())
 

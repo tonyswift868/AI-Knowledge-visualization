@@ -19,7 +19,8 @@ def unsafe_teardown(reason='normal'):
     if reason not in ('normal', 'next_launch', 'shutdown', 'logoff', 'unsafe'):
         raise ValueError('unknown exit reason')
     import ctypes
-    return reason in ('shutdown', 'logoff', 'unsafe') or _ending.is_set() or bool(ctypes.windll.user32.GetSystemMetrics(0x2000))
+    from scripts.per_user_runtime_session import session_ending
+    return reason in ('shutdown', 'logoff', 'unsafe') or _ending.is_set() or session_ending() or bool(ctypes.windll.user32.GetSystemMetrics(0x2000))
 
 
 def attach_shutdown_guard(application):

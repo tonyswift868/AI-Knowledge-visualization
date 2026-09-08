@@ -60,6 +60,15 @@ begin
   if FileExists(Target) then Exit;
   if not DirExists(Target) then begin Result := True; Exit; end;
   if not SafeAncestors(Target) then Exit;
+#if !Int(FixtureBuild)
+  { Preview hint only. The embedded runtime verifies signatures/identity again
+    before any application directory creation or registry/shortcut write. }
+  if FileExists(AddBackslash(Target) + 'per-user-install.json') and
+     FileExists(AddBackslash(Target) + 'current-release.json') then begin
+    Result := True; Exit;
+  end;
+  Result := KnownTree(Target, '', '', False);
+#else
   Inventory := AddBackslash(Target) + '.mentorflow-install.ini';
   Known := GetIniString('Product', 'Id', '', Inventory) = 'MentorFlow.Inno.v1';
   if Known then begin
@@ -70,6 +79,7 @@ begin
     except Known := False; end;
   end;
   Result := KnownTree(Target, '', Inventory, Known);
+#endif
 end;
 
 function Writable(Directory: String): Boolean;

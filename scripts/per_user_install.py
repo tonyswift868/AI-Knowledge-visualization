@@ -387,6 +387,9 @@ def launch_health(root, release, *, timeout=45):
     process = None
     with Listener(attempt, 'health') as channel:
         try:
+            from scripts.per_user_update_core import unsafe_teardown
+            if unsafe_teardown():
+                raise RecoverableError('session ending: App launch deferred')
             process = subprocess.Popen([str(root / 'App/MentorFlow.exe'), '--install-mode', 'per_user',
                 '--install-root', str(root), '--update-attempt', attempt, '--update-nonce', nonce],
                 cwd=root / 'App', close_fds=True)
@@ -477,6 +480,45 @@ def coordinate(root, intent_path):
         raise
 
 
+def _execute(args, parser, progress):
+    if args.parent is not None:
+        if args.action not in ('preflight', 'install'): parser.error('parent is only valid for preflight/install')
+        args.root = validate_parent(args.parent)
+    if args.action == 'launch':
+        from scripts.per_user_launcher import launch
+        return launch(args.root)
+    if args.action == 'prepare-update':
+        from scripts.per_user_update_core import prepare_update
+        return prepare_update(args.root)
+    if args.action == 'apply-pending':
+        from scripts.per_user_update_core import apply_update
+        return apply_update(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
+    if args.action == 'update-status':
+        from scripts.per_user_update_core import status
+        return status(args.root)
+    if args.action == 'uninstall': return uninstall_per_user(args.root)
+    if args.action == 'shutdown':
+        request_app_shutdown(args.root, args.pid, args.hwnd_hex)
+        return dict(status='APP_CLOSED')
+    if args.action == 'apply': return coordinate(args.root, args.intent)
+    if args.action == 'recover': return dict(recovered=recover(args.root))
+    root = target(args.root, probe=True)
+    if root.exists() and any(root.iterdir()) and not is_install(root):
+        raise SecurityError('该文件夹中已有其他文件。请选择其他安装位置。')
+    if args.action == 'preflight':
+        if is_install(root): installed(root)
+        return dict(status='PASS', **validate_target(root), install_uac_count=0)
+    if args.source is None or args.release is None: parser.error('source and signed release required')
+    result = transact(root, args.source, read(args.release), repair=is_install(root), progress=progress)
+    if args.close_after_health:
+        # The branded shell owns the explicit Finish/Launch action. Close only
+        # the native peer the core just launched and independently validated.
+        proof = result['health']
+        request_app_shutdown(root, proof['pid'], proof['hwnd_hex'])
+        result['installer_finish'] = 'AWAITING_EXPLICIT_LAUNCH'
+    return result
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -490,6 +532,7 @@ def main():
     parser.add_argument('--result', type=Path)
     parser.add_argument('--status-file', type=Path)
     parser.add_argument('--cancel-file', type=Path)
+    parser.add_argument('--close-after-health', action='store_true')
     parser.add_argument('--pid', type=int); parser.add_argument('--hwnd-hex')
     parser.add_argument('--exit-reason', choices=('normal', 'next_launch', 'shutdown', 'logoff', 'unsafe'), default='normal')
     args = parser.parse_args()
@@ -506,37 +549,14 @@ def main():
             atomic(args.status_file, ('[install]\r\nstage=正在安装 MentorFlow…\r\npercent='+str(value)+'\r\nerror=\r\n').encode('utf-16'))
             last_progress[0] = value
     try:
-        if args.parent is not None:
-            if args.action not in ('preflight', 'install'): parser.error('parent is only valid for preflight/install')
-            args.root = validate_parent(args.parent)
-        if args.action == 'launch':
-            require_app_stopped(args.root)
-            result = dict(status='HEALTHY', health=launch_health(args.root, installed(args.root)))
-        elif args.action == 'prepare-update':
-            from scripts.per_user_update_core import prepare_update
-            result = prepare_update(args.root)
-        elif args.action == 'apply-pending':
-            from scripts.per_user_update_core import apply_update
-            result = apply_update(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
-        elif args.action == 'update-status':
-            from scripts.per_user_update_core import status
-            result = status(args.root)
-        elif args.action == 'uninstall': result = uninstall_per_user(args.root)
-        elif args.action == 'shutdown':
-            request_app_shutdown(args.root, args.pid, args.hwnd_hex)
-            result = dict(status='APP_CLOSED')
-        elif args.action == 'apply': result = coordinate(args.root, args.intent)
-        elif args.action == 'recover': result = dict(recovered=recover(args.root))
-        else:
-            root = target(args.root, probe=True)
-            if root.exists() and any(root.iterdir()) and not is_install(root):
-                raise SecurityError('该文件夹中已有其他文件。请选择其他安装位置。')
-            if args.action == 'preflight':
-                if is_install(root): installed(root)
-                result = dict(status='PASS', **validate_target(root), install_uac_count=0)
-            else:
-                if args.source is None or args.release is None: parser.error('source and signed release required')
-                result = transact(root, args.source, read(args.release), repair=is_install(root), progress=progress)
+        from contextlib import nullcontext
+        from scripts.per_user_runtime_session import runtime_session
+        pid = args.pid
+        if args.action == 'apply': pid = strict_json(read(args.intent))['pid']
+        scope = (runtime_session(pid) if args.action in
+                 ('install', 'apply', 'apply-pending', 'recover', 'launch', 'uninstall') else nullcontext())
+        with scope:
+            result = _execute(args, parser, progress)
         if args.result: atomic(args.result, canonical(result))
         return result
     except Exception as error:

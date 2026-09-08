@@ -90,7 +90,7 @@ class DesignContract(unittest.TestCase):
         self.assertIn('SetupMutex=MentorFlow.Installer', SHELL)
 
     def test_brand_source_is_not_repainted(self):
-        builder = (ROOT / 'scripts/build_inno_installer.py').read_text()
+        builder = (ROOT / 'scripts/build_inno_installer.py').read_text(encoding='utf-8')
         self.assertIn("frontend/public/teacher2d/tsubaki-live2d/icon.png", builder)
         self.assertIn("shutil.copyfile(source, stage / 'MentorFlow.png')", builder)
         for incorrect in ('MentorFLow', 'Mentor Flow', 'MentoFlow'):

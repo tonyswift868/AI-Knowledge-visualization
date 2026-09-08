@@ -23,7 +23,8 @@ extra=['desktop.gui_update_runtime','desktop.update_bridge','desktop.update_requ
        'desktop.windows_process_peer','desktop.windows_update_child','desktop.windows_update_pipe',
        'desktop.update_tree_security','scripts.install_product','scripts.install_receipt_state','scripts.runtime_path_budget',
        'scripts.update_health','scripts.update_source_reader','scripts.install_location','scripts.per_user_install',
-       'scripts.per_user_update_core']
+       'scripts.per_user_update_core','scripts.per_user_runtime_session','scripts.per_user_launcher',
+       'desktop.update_controller','desktop.update_lifecycle','desktop.update_session','desktop.update_panel']
 for name in extra:
     if name not in names:pure.append((name,str(root/(name.replace('.','/')+'.py')),'PYMODULE'))
 pure.append(('mentorflow_delivery_authority',str(work/'mentorflow_delivery_authority.py'),'PYMODULE'))
