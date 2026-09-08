@@ -103,7 +103,10 @@ def inventory(package: Path, version: str, objects: Path | None = None):
             relative = item.relative_to(package).as_posix()
             regular(item, directory=name in directories)
             safe_path(relative)
-            if name.casefold() in {'.git', '.env', '__pycache__'} or item.suffix.lower() in {'.pem', '.key', '.pfx', '.p12'}:
+            bundled_ca = relative in ('_internal/certifi/cacert.pem', 'UserRuntime/_internal/certifi/cacert.pem')
+            if (name.casefold() in {'.git', '.env', '__pycache__'} or
+                    item.suffix.lower() in {'.key', '.pfx', '.p12'} or
+                    item.suffix.lower() == '.pem' and (not bundled_ca or name in directories)):
                 raise ValueError('source/cache/private-key material in packaged target')
         for name in sorted(files):
             path = Path(folder) / name
@@ -126,6 +129,12 @@ def inventory(package: Path, version: str, objects: Path | None = None):
             pending = objects / 'incoming' if objects else None
             hasher, size = hashlib.sha256(), 0
             with source as stream:
+                if path.suffix.lower() == '.pem':
+                    # Public certifi CA bundles are required runtime assets,
+                    # not signing keys. Validate while holding the SAME source
+                    # lease used to hash/copy, preventing a validation/hash race.
+                    validate_public_ca_bundle(stream.read(1024 * 1024 + 1))
+                    stream.seek(0)
                 destination = pending.open('xb') if pending else None
                 try:
                     while block := stream.read(1024 * 1024):
@@ -155,6 +164,21 @@ def inventory(package: Path, version: str, objects: Path | None = None):
         write_new(objects / digest(raw), raw)
     return manifest, {r['path']: r for r in rows} | {
         MANIFEST_PATH: dict(path=MANIFEST_PATH, size=len(raw), sha256=digest(raw))}
+
+
+def validate_public_ca_bundle(data):
+    from cryptography import x509
+    if len(data) > 1024 * 1024 or b'PRIVATE KEY' in data.upper():
+        raise ValueError('private/oversized content in public CA bundle')
+    clean = b'\n'.join(line for line in data.splitlines() if not line.lstrip().startswith(b'#'))
+    grammar = rb'\s*(?:-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----\s*)+'
+    if not re.fullmatch(grammar, clean):
+        raise ValueError('non-certificate content in public CA bundle')
+    try:
+        certificates = x509.load_pem_x509_certificates(clean)
+    except ValueError as exc:
+        raise ValueError('invalid public CA certificate') from exc
+    if not certificates: raise ValueError('empty public CA bundle')
 
 
 def origin_value(value: str, development: bool):

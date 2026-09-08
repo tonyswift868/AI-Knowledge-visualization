@@ -39,3 +39,16 @@ def test_uat_does_not_mix_ephemeral_or_production_signing(monkeypatch, change):
 def test_external_production_key_still_requires_https():
     with pytest.raises(ValueError): publisher.publication_origin(options(uat_loopback=False))
     assert publisher.publication_origin(options(uat_loopback=False, origin='https://updates.example.com')) == 'https://updates.example.com'
+
+
+def test_real_certifi_public_ca_is_valid_runtime_content():
+    from pathlib import Path
+    import certifi
+    publisher.validate_public_ca_bundle(Path(certifi.where()).read_bytes())
+
+
+@pytest.mark.parametrize('data', [b'private key', b'-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----',
+    b'-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----', b'# comment only', b'x' * (1024 * 1024 + 1)],
+    ids=['private-text', 'private-pem', 'invalid-cert', 'comment-only', 'oversized'])
+def test_public_ca_content_gate_rejects_private_invalid_and_empty_data(data):
+    with pytest.raises(ValueError): publisher.validate_public_ca_bundle(data)

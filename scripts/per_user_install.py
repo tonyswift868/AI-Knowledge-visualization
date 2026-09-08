@@ -606,6 +606,9 @@ def _execute(args, parser, progress):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'serve-test-source':
+        from scripts.serve_signed_test_feed import main as serve_test_source
+        return serve_test_source(sys.argv[2:])
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=('preflight', 'install', 'apply', 'recover',

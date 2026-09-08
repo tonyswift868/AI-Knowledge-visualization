@@ -475,8 +475,11 @@ def configured_mature_service(*, version_manifest=None, install_root=None):
         public_keys = compiled_keys()
     else:
         public_keys = {k:base64.b64decode(v,validate=True) for k,v in keys.items()}
+    local_profile = Path(__import__('os').environ['LOCALAPPDATA'])
+    default_cache = (local_profile/configured().app_id/'Updates' if configured().uat
+                     else local_profile/'MentorFlowUpdates')
     return MatureUpdateService(install_root=root,
-        cache_root=config.get('staging_root') or Path(__import__('os').environ['LOCALAPPDATA'])/'MentorFlowUpdates',
+        cache_root=config.get('staging_root') or default_cache,
         metadata_url=config['metadata_url'], public_keys=public_keys,
         current=manifest['version'], channel=manifest.get('channel','stable'),
         transport=HTTPTransport(config['metadata_url'],fixture_http=configured().uat),
