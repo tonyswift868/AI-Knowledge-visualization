@@ -5,8 +5,22 @@ from pathlib import Path
 from PyInstaller.building.build_main import Analysis
 root=Path(os.environ['MF_DELIVERY_PROJECT'])
 work=Path(os.environ['MF_DELIVERY_BUILD'])
-saved=ast.literal_eval(Path(os.environ['MF_DELIVERY_ANALYSIS']).read_text(encoding='utf-8'))
-fields={definition[0]:value for definition,value in zip(Analysis._GUTS,saved)}
+if os.environ.get('MF_DELIVERY_ANALYSIS'):
+    saved=ast.literal_eval(Path(os.environ['MF_DELIVERY_ANALYSIS']).read_text(encoding='utf-8'))
+    fields={definition[0]:value for definition,value in zip(Analysis._GUTS,saved)}
+else:
+    # Frozen 07's PYZ/EXE TOCs retain the dependency closure even if an older
+    # Analysis scratch was retired. All project modules are rebound below.
+    pyz_seed=ast.literal_eval(Path(os.environ['MF_DELIVERY_SEED_PYZ_TOC']).read_text(encoding='utf-8'))
+    exe_seed=ast.literal_eval(Path(os.environ['MF_DELIVERY_SEED_EXE_TOC']).read_text(encoding='utf-8'))
+    def script_rows(value):
+        if isinstance(value,(list,tuple)):
+            if len(value)==3 and all(isinstance(v,str) for v in value) and value[2]=='PYSOURCE':
+                yield value
+            else:
+                for child in value:yield from script_rows(child)
+    fields={'pure':pyz_seed[1], 'scripts':list(script_rows(exe_seed))}
+    if not fields['pure'] or not fields['scripts']:raise ValueError('empty frozen dependency closure')
 blocked={'scripts.measure_installed_login_gate','scripts.test_login_form_probe','desktop_update_uat_entry',
          'mentorflow_uat_build_authority','mentorflow_delivery_authority'}
 pure=[]

@@ -7,7 +7,7 @@ from scripts.test_per_user_install import case, ready
 from scripts.test_per_user_core_contract import bootstrap
 from scripts import per_user_install as install, per_user_update_core as core
 from scripts import per_user_launcher as launcher, per_user_runtime_session as sessions
-from desktop.update_protocol import canonical, RecoverableError
+from desktop.update_protocol import canonical, strict_json, RecoverableError, SecurityError
 
 
 def test_stable_launch_resumes_before_app_without_duplicate(case, monkeypatch):
@@ -102,3 +102,25 @@ def test_session_event_also_gates_final_and_rollback_health_launch(monkeypatch, 
     monkeypatch.setattr(install.subprocess, 'Popen', lambda *a, **k: pytest.fail('App spawned during session exit'))
     with pytest.raises(RecoverableError, match='session ending'):
         install.launch_health(tmp_path, SimpleNamespace(version='1.3.0'))
+
+
+@pytest.mark.parametrize('bad_input', [False, True])
+def test_installer_wires_recovery_after_state_publication(case, monkeypatch, bad_input):
+    base, root, feed, publish = bootstrap(case, monkeypatch)
+    # Emulate process loss with a fully signed initial App and STATE already
+    # published, but no HEALTHY completion. No real process is killed/launched.
+    journal = strict_json(install.read(root / install.JOURNAL))
+    install.atomic(root / install.JOURNAL, canonical({**journal, 'phase': 'NEW_ACTIVE'}))
+    raw = install.read(root / install.CURRENT)
+    release_path = base / 'retry-release.json'
+    release_path.write_bytes(raw.replace(b'Small frontend fix', b'unsigned edit here') if bad_input else raw)
+    args = SimpleNamespace(parent=None, root=root, action='install', source=base / 'source-1.3.0',
+                           release=release_path, close_after_health=False)
+    monkeypatch.setattr(install, 'launch_health', ready)
+    before = install.read(root / install.JOURNAL)
+    if bad_input:
+        with pytest.raises(SecurityError): install._execute(args, None, lambda _: None)
+        assert install.read(root / install.JOURNAL) == before
+    else:
+        assert install._execute(args, None, lambda _: None)['status'] == 'HEALTHY'
+        assert strict_json(install.read(root / install.JOURNAL))['phase'] == 'HEALTHY'

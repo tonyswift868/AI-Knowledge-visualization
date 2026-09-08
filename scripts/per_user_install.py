@@ -580,7 +580,22 @@ def _execute(args, parser, progress):
         if is_install(root): installed(root)
         return dict(status='PASS', **validate_target(root), install_uac_count=0)
     if args.source is None or args.release is None: parser.error('source and signed release required')
-    result = transact(root, args.source, read(args.release), repair=is_install(root), progress=progress)
+    envelope = read(args.release)
+    if is_install(root) and (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
+        # A process interruption may leave STATE published before health. The
+        # shell coordinates the existing signed recovery API before retrying.
+        # Reject bad incoming input before performing any recovery mutation.
+        public_keys = keys()
+        _, release = admit(root, envelope, public_keys, repair=True)
+        verify_tree(args.source, release, subset=list(release.rows))
+        from desktop.update_download import InstallUpdateLock
+        with InstallUpdateLock(root):
+            require_app_stopped(root)
+            from scripts.per_user_update_core import unsafe_teardown
+            if unsafe_teardown(): raise RecoverableError('session ending: repair deferred')
+            recover(root, public_keys)
+    result = transact(root, args.source, envelope, repair=is_install(root), progress=progress,
+                      before_swap=lambda: require_app_stopped(root))
     if args.close_after_health:
         # The branded shell owns the explicit Finish/Launch action. Close only
         # the native peer the core just launched and independently validated.

@@ -23,13 +23,15 @@ def _recovery_health(root):
 
 
 def launch(root):
+    from desktop.update_download import InstallUpdateLock
     root = install.target(root)
-    install.require_app_stopped(root)
-    if core.unsafe_teardown('next_launch'):
-        raise RecoverableError('session ending: launch and update deferred')
-    # An interrupted swap is repaired by the existing signed recovery engine.
-    # It never trusts pending hints as release or executable authority.
-    install.recover(root)
+    with InstallUpdateLock(root):
+        install.require_app_stopped(root)
+        if core.unsafe_teardown('next_launch'):
+            raise RecoverableError('session ending: launch and update deferred')
+        # Recovery shares the core's writer mutex. Release it before calling
+        # apply, which acquires the same non-reentrant mutex itself.
+        install.recover(root)
     if (root / core.PENDING).exists():
         pending = core.read_pending(root)
         if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
@@ -44,7 +46,8 @@ def launch(root):
                 # validate its live identity instead of launching a duplicate.
                 if core.read_pending(root)['state'] == 'PREVIOUS_HEALTHY':
                     return dict(status='PREVIOUS_HEALTHY', health=_recovery_health(root))
-    if core.unsafe_teardown('next_launch'):
-        raise RecoverableError('session ending: launch and update deferred')
-    install.require_app_stopped(root)
-    return dict(status='HEALTHY', health=install.launch_health(root, install.installed(root)))
+    with InstallUpdateLock(root):
+        if core.unsafe_teardown('next_launch'):
+            raise RecoverableError('session ending: launch and update deferred')
+        install.require_app_stopped(root)
+        return dict(status='HEALTHY', health=install.launch_health(root, install.installed(root)))

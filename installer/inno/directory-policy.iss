@@ -67,6 +67,11 @@ begin
      FileExists(AddBackslash(Target) + 'current-release.json') then begin
     Result := True; Exit;
   end;
+  if FileExists(AddBackslash(Target) + 'highest-release.json') and
+     FileExists(AddBackslash(Target) + 'per-user-transaction.json') then begin
+    { Incomplete-install hint only; the signed core must prove repairability. }
+    Result := True; Exit;
+  end;
   Result := KnownTree(Target, '', '', False);
 #else
   Inventory := AddBackslash(Target) + '.mentorflow-install.ini';

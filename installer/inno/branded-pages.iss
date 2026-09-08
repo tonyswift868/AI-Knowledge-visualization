@@ -75,6 +75,9 @@ begin
   Problem := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
   PathCaption.Caption := Target;
   PathCaption.Hint := Target;
+  if FileExists(AddBackslash(Target) + 'per-user-transaction.json') then
+    ModeCaption.Caption := '检测到安装记录；继续前会验证是否可升级或修复。'
+  else ModeCaption.Caption := '仅为当前 Windows 用户安装，无需管理员权限。';
   if NeedsAdmin then Problem := '无法在这里安装，请选择您有写入权限的其他文件夹。';
   FeedbackCaption.Caption := Problem;
   if Pos('空间不足', Problem) = 1 then begin
