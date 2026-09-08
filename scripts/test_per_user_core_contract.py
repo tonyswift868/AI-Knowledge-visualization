@@ -1,7 +1,7 @@
 """Contract regressions. Packaged private-desktop qualification is separate."""
 from pathlib import Path
 import pytest
-from scripts.test_per_user_install import case, ready
+from scripts.test_per_user_install import case, ready, initial_failure, file_snapshot
 from scripts import per_user_install as engine
 from scripts import per_user_update_core as core
 from desktop.update_protocol import canonical, strict_json, SecurityError, RecoverableError
@@ -13,6 +13,36 @@ def test_consumer_keys_do_not_import_protected_preflight(monkeypatch):
     monkeypatch.setitem(sys.modules, 'scripts.update_preflight', None)
     monkeypatch.setitem(sys.modules, 'mentorflow_delivery_authority', SimpleNamespace(PUBLIC_KEYS={'compiled':b'x'*32}))
     assert engine.keys() == {'compiled':b'x'*32}
+
+
+def test_initial_repair_detection_is_read_only_not_success_or_launch(case, monkeypatch):
+    base, root, _, _ = case
+    source, raw = initial_failure(case, monkeypatch)
+    monkeypatch.setattr(engine, 'launch_health', lambda *_: pytest.fail('no App execution authorized'))
+    before = file_snapshot(root)
+    state = engine.detect_existing_install(root)
+    assert state == dict(root=str(root), existing=False, version='1.3.0', repairable=True)
+    assert file_snapshot(root) == before
+    assert not engine.is_install(root)
+    assert engine.install_per_user(base, source, raw, health=ready)['status'] == 'HEALTHY'
+    assert engine.detect_existing_install(root)['existing'] is True
+
+
+def test_initial_repair_cli_preflight_and_install_share_admission(case, monkeypatch):
+    import sys
+    from desktop.windows_process_peer import ProcessPeer
+    base, root, _, _ = case
+    source, raw = initial_failure(case, monkeypatch)
+    envelope_path = base / 'release-input.json'; envelope_path.write_bytes(raw)
+    monkeypatch.setattr(ProcessPeer, 'inspect', lambda _: dict(elevated=False, integrity_rid=8192))
+    monkeypatch.setattr(engine, 'launch_health', ready)  # inert contract test only
+    monkeypatch.setattr(sys, 'argv', ['per_user_install', 'preflight', '--parent', str(base)])
+    before = file_snapshot(root)
+    assert engine.main()['repairable'] is True
+    assert file_snapshot(root) == before
+    monkeypatch.setattr(sys, 'argv', ['per_user_install', 'install', '--parent', str(base),
+                                    '--source', str(source), '--release', str(envelope_path)])
+    assert engine.main()['status'] == 'HEALTHY'
 
 
 def bootstrap(case, monkeypatch):

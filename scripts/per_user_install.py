@@ -5,8 +5,10 @@ are user-writable recovery hints; they never supply keys, commands or hashes.
 The existing protected/per-machine engine remains a separate explicit mode.
 """
 from datetime import datetime, timedelta
+from dataclasses import replace
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -118,7 +120,8 @@ def validate_parent(parent):
 def validate_target(root):
     root = target(root, probe=True)
     if root.exists() and any(root.iterdir()) and not is_install(root):
-        raise SecurityError('unknown non-empty installation target')
+        release = _initial_repair_release(root, keys())
+        return dict(root=str(root), existing=False, version=release.version, repairable=True)
     return dict(root=str(root), existing=is_install(root),
                 version=installed(root).version if is_install(root) else None)
 
@@ -253,6 +256,66 @@ def admit(root, envelope, public_keys, *, repair=False):
     return current, release
 
 
+def _initial_repair_release(root, public_keys, expected=None):
+    """Read-only admission of an incomplete first install, never journal authority.
+
+    Require independently signed identity AND a complete matching local App.
+    Old staging/failed directories are evidence only: never delete, overwrite,
+    or follow a journal-supplied path. A retry still verifies fresh signed input
+    and copies it to a new stage. Unknown root neighbors are left untouched.
+    """
+    root = plain(root)
+    for name in (STATE, CURRENT, HIGHEST, JOURNAL, 'operation.lock', 'App', 'Updater'):
+        plain(root / name)
+    if (root / STATE).exists() or not (root / HIGHEST).is_file() or not (root / JOURNAL).is_file():
+        raise SecurityError('unknown non-empty installation target')
+    doc = strict_json(read(root / JOURNAL))
+    if (type(doc) is not dict or
+            set(doc) != {'schema', 'attempt', 'phase', 'target', 'base', 'base_manifest'} or
+            doc['schema'] != 'mentorflow.per-user-transaction.v1' or
+            type(doc['attempt']) is not str or re.fullmatch('[0-9a-f]{32}', doc['attempt']) is None or
+            doc['phase'] not in ('PREPARING', 'VERIFIED', 'NEW_ACTIVE', 'INITIAL_FAILED') or
+            doc['base'] is not None or doc['base_manifest'] is not None):
+        raise SecurityError('unproven initial-install recovery hint')
+    release = historical(read(root / HIGHEST), public_keys)
+    if release.signed['withdrawn'] or doc['target'] != release.version:
+        raise SecurityError('initial-install signed identity mismatch')
+    if expected is not None and canonical(release.signed) != canonical(expected.signed):
+        raise SecurityError('initial repair requires the same signed release')
+    if (root / CURRENT).exists():
+        current = historical(read(root / CURRENT), public_keys)
+        if canonical(current.signed) != canonical(release.signed):
+            raise SecurityError('initial-install current identity mismatch')
+    lock = root / 'operation.lock'
+    # Do not reread the locked byte through a second handle on Windows.
+    if lock.exists() and (not lock.is_file() or lock.stat().st_size != 1):
+        raise SecurityError('unknown initial-install lock file')
+    # A surviving executable location cannot be treated as arbitrary leftovers.
+    # Verify it fully before retaining/reusing it or moving App out of the way.
+    if (root / 'Updater').exists():
+        rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items()
+                if name.startswith('UserRuntime/')}
+        if not rows: raise SecurityError('unsigned initial-install updater')
+        verify_tree(root / 'Updater', replace(release, rows=rows))
+    candidates = []
+    if (root / 'App').exists():
+        verify_tree(root / 'App', release)
+        candidates.append(root / 'App')
+    stage = plain(root / ('staging-' + doc['attempt']))
+    if stage.is_dir(): candidates.append(plain(stage / 'App'))
+    for item in root.iterdir():
+        if re.fullmatch('failed-[0-9a-f]{32}', item.name):
+            candidates.append(plain(item))
+    for app in candidates:
+        try:
+            verify_tree(app, release)
+        except SecurityError:
+            # Incomplete/foreign evidence cannot authorize writes and stays put.
+            continue
+        return release
+    raise SecurityError('no independently verified initial-install App remains')
+
+
 def _copy(source, destination, release, progress):
     total = sum(row['size'] for row in release.rows.values()); copied = 0
     for name, row in release.rows.items():
@@ -302,9 +365,10 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     if source == root or source.is_relative_to(root) or root.is_relative_to(source):
         raise SecurityError('release source overlaps installed tree')
     exists = root.exists()
-    if exists and any(root.iterdir()) and not is_install(root):
-        raise SecurityError('该文件夹中已有其他文件。请选择其他安装位置。')
+    initial_repair = exists and any(root.iterdir()) and not is_install(root)
+    if initial_repair: _initial_repair_release(root, public_keys)
     current, release = admit(root, envelope, public_keys, repair=repair)
+    if initial_repair: _initial_repair_release(root, public_keys, release)
     # A distribution may contain a sibling Installer directory. Only signed
     # files are read/copied; the newly materialized tree must match exactly.
     verify_tree(source, release, subset=list(release.rows))
@@ -315,7 +379,8 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     from desktop.update_download import InstallUpdateLock
     with InstallUpdateLock(root):
         current, release = admit(root, envelope, public_keys, repair=repair)
-        if (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
+        if initial_repair: _initial_repair_release(root, public_keys, release)
+        if not initial_repair and (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
             raise RecoverableError('previous transaction requires recovery before new apply')
         attempt = uuid.uuid4().hex
         stage = root / ('staging-' + attempt); stage.mkdir()
@@ -324,7 +389,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
         atomic(root / JOURNAL, canonical(journal))
         def mark(phase):
             journal['phase'] = phase; atomic(root / JOURNAL, canonical(journal)); fault(phase)
-        moved = False; base_closed = False
+        moved = False; base_closed = False; activated = False
         try:
             _copy(source, stage / 'App', release, progress)
             # Cache/staging may be writable: recheck current signed metadata and
@@ -338,6 +403,13 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             base_closed = True
             verify_tree(stage / 'App', release)
             if unsafe_teardown(): raise RecoverableError('teardown: update remains pending')
+            if initial_repair: _initial_repair_release(root, public_keys, release)
+            if initial_repair and (root / 'App').exists():
+                # Interrupted before STATE publication: retain only a fully
+                # signed App, never move unknown content out of the user's way.
+                verify_tree(root / 'App', release)
+                require_app_stopped(root)
+                os.replace(root / 'App', root / ('failed-' + uuid.uuid4().hex))
             if current:
                 previous = root / 'previous'
                 if previous.exists():
@@ -345,7 +417,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                     os.replace(previous, root / ('retired-' + uuid.uuid4().hex))
                 previous.mkdir(); atomic(previous / 'release.json', current.envelope)
                 os.replace(root / 'App', previous / 'App'); moved = True; mark('OLD_MOVED')
-            os.replace(stage / 'App', root / 'App'); moved = True
+            os.replace(stage / 'App', root / 'App'); moved = True; activated = True
             atomic(root / CURRENT, release.envelope)
             atomic(root / STATE, canonical(dict(schema=SCHEMA, mode='per_user', app_id=configured().app_id)))
             if not (root / 'Updater').exists():
@@ -372,10 +444,11 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             else:
                 # Never publish a usable installation state after failed first
                 # health. Preserve only this attempt's generated files for repair.
-                if (root / 'App').exists():
+                if activated and (root / 'App').exists():
                     os.replace(root / 'App', root / ('failed-' + uuid.uuid4().hex))
-                (root / STATE).unlink(missing_ok=True)
-                (root / CURRENT).unlink(missing_ok=True)
+                if activated:
+                    (root / STATE).unlink(missing_ok=True)
+                    (root / CURRENT).unlink(missing_ok=True)
                 atomic(root / JOURNAL, canonical({**journal, 'phase': 'INITIAL_FAILED'}))
             raise
 
@@ -503,8 +576,6 @@ def _execute(args, parser, progress):
     if args.action == 'apply': return coordinate(args.root, args.intent)
     if args.action == 'recover': return dict(recovered=recover(args.root))
     root = target(args.root, probe=True)
-    if root.exists() and any(root.iterdir()) and not is_install(root):
-        raise SecurityError('该文件夹中已有其他文件。请选择其他安装位置。')
     if args.action == 'preflight':
         if is_install(root): installed(root)
         return dict(status='PASS', **validate_target(root), install_uac_count=0)
