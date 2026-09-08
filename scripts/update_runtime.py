@@ -132,7 +132,7 @@ def launch_app(root,binding,*,doc=None,suspended=False):
     return subprocess.Popen(args,cwd=root,close_fds=True)
 
 
-def runas_once(bridge,path,pin):
+def runas_once(bridge,path,pin,*,session=None):
     # ShellExecuteEx may wait for Secure Desktop. Bound that wait with an
     # independent thread; there is exactly ONE call and no cancellation retry.
     class SEI(c.Structure):
@@ -147,12 +147,16 @@ def runas_once(bridge,path,pin):
         try:
             info=SEI();info.size=c.sizeof(info);info.mask=0x40|0x100;info.verb='runas';info.file=str(bridge)
             info.parameters=subprocess.list2cmdline(['--apply',str(path),pin]);info.directory=str(bridge.parent);info.show=0
+            if session is not None:session.require_running()
             if not shell.ShellExecuteExW(c.byref(info)):
                 result['error']=c.get_last_error()
             else:result['handle']=info.process
+        except Exception as error:
+            result['exception']=error
         finally:ole.CoUninitialize();done.set()
     threading.Thread(target=launch,daemon=True).start()
     if not done.wait(120):raise TimeoutError('UAC consent session expired; not retried')
+    if 'exception' in result:raise result['exception']
     if 'error' in result:raise OSError(result['error'],'UAC not accepted or launch failed; not retried')
     return result['handle']
 
@@ -182,7 +186,11 @@ def coordinate(root,intent_path,pin):
         with temp.open('wb') as stream:stream.write(canonical(state));stream.flush();os.fsync(stream.fileno())
         temp.replace(evidence_path)
     save();child=None;helper=None;base_closed=False
+    # UI session signal survives BASE exit; deny only, never release authority.
+    from desktop.update_session import UpdateSession, SessionEnding, record_session_deferred
+    session=UpdateSession(pid=intent['base_pid'])
     try:
+        session.require_running()
         with ProcessPeer(intent['base_pid']) as base:
             base.require(executable=root/'App/MentorFlow.exe',integrity_rid=8192)
             base.visible_responsive_window(intent['base_hwnd_hex'])
@@ -192,8 +200,9 @@ def coordinate(root,intent_path,pin):
             while base.alive() and time.monotonic()<deadline:time.sleep(.05)
             if base.alive():raise RuntimeError('BASE did not close; no UAC requested')
             base_closed=True
+        session.require_running()
         state['UPDATE_UAC_PROMPT_COUNT']=1;state['status']='UAC_REQUESTED';mark('UAC_REQUESTED');save()
-        helper=runas_once(root/'UpdateBridge.exe',request_path,request_pin)
+        helper=runas_once(root/'UpdateBridge.exe',request_path,request_pin,session=session)
         mark('UAC_LAUNCH_RETURNED');save()
         with connect(doc['attempt_id'],'control',timeout=120) as control:
             with ProcessPeer(control.peer_pid()) as peer:
@@ -206,6 +215,7 @@ def coordinate(root,intent_path,pin):
                         actual=strict_json((root/trust.RECEIPT).read_bytes())['binding']
                         if payload!={'binding':actual}:raise SecurityError('committed binding differs from canonical receipt')
                         if child is not None:child.close();child=None
+                        session.require_running()
                         try:child=launch_app(root,actual,doc=doc,suspended=True)
                         except OSError:
                             control.send(message(doc,'TARGET_START_FAILED'));continue
@@ -213,6 +223,7 @@ def coordinate(root,intent_path,pin):
                         control.send(message(doc,'TARGET_STARTED',pid=child.pid))
                     elif kind=='RESUME_TARGET':
                         if child is None or payload!={'pid':child.pid}:raise SecurityError('foreign target resume refused')
+                        session.require_running()
                         child.resume()
                         mark('TARGET_RESUMED');save()
                     elif kind=='STOP_TARGET':
@@ -225,6 +236,8 @@ def coordinate(root,intent_path,pin):
                         state['status']=kind;mark(kind);save();return state
                     else:raise SecurityError('unknown helper operation')
     except Exception as error:
+        if isinstance(error,SessionEnding):
+            record_session_deferred(stage,intent['base_pid'],intent['release_sha256'])
         state['status']='FAILED';state['error_type']=type(error).__name__;save()
         if child is not None and child.poll() is None:
             published=strict_json((root/trust.RECEIPT).read_bytes())
@@ -232,12 +245,14 @@ def coordinate(root,intent_path,pin):
             if not (published.get('state')=='HEALTHY' and health.get('attempt_id')==doc['attempt_id'] and
                     health.get('nonce')==doc['nonce'] and health.get('process',{}).get('pid')==child.pid):
                 child.terminate();child.wait(timeout=8)
-        if base_closed and helper is None:
+        if base_closed and helper is None and not isinstance(error,SessionEnding):
             # Denied/expired consent is never retried. Restore ordinary BASE
             # usability, only if the unchanged protected receipt still matches.
+            session.require_running()
             if (root/trust.RECEIPT).read_bytes()==receipt:launch_app(root,binding)
         raise
     finally:
+        session.close()
         if child is not None:child.close()
         if helper:
             kernel=c.WinDLL('kernel32');kernel.CloseHandle.argtypes=[w.HANDLE];kernel.CloseHandle(helper)

@@ -50,7 +50,6 @@ from .classroom_theme import (
     normalize_classroom_theme,
 )
 from .local_migration import MigrationError
-from .version import VERSION_MANIFEST
 from .update_panel import UpdatePanel
 
 
@@ -343,11 +342,6 @@ class SystemPage(QWidget):
         settings_layout = QVBoxLayout(settings_card)
         settings_layout.setSpacing(12)
         settings_layout.addWidget(QLabel("版本与常用设置"))
-        settings_layout.addWidget(
-            QLabel(
-                f"MentorFlow {VERSION_MANIFEST.get('version') or 'unknown'} · 本地版"
-            )
-        )
         common_hint = QLabel("常用设置放在这里；换设备和本地数据检查在下方。")
         common_hint.setObjectName("pageSubtitle")
         common_hint.setWordWrap(True)

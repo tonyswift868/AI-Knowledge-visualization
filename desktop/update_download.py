@@ -135,6 +135,14 @@ class HTTPTransport:
         self.bytes_received = 0
         self.validate_url(origin)
 
+    @property
+    def busy(self):
+        """Read-only UI scheduling seam; cancellation can precede socket exit."""
+        if not self._active.acquire(blocking=False):
+            return True
+        self._active.release()
+        return False
+
     def validate_url(self, url):
         parsed = urlsplit(url)
         allowed_http = self.fixture_http and parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', '::1')

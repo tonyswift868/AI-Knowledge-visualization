@@ -31,15 +31,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             layout.addWidget(QLabel('预览版：账号服务暂未连接，您仍可查看软件版本。'))
         panel=UpdatePanel(about,auto_delay_ms=60000);layout.addWidget(panel)
         if panel.service is not None:
-            from scripts.per_user_install import is_install
-            if is_install(root):
-                from scripts.per_user_install import handoff
-            else:
-                from desktop.update_bridge import handoff
-            # Capture WId on the GUI thread; the apply callback itself runs in
-            # the existing update worker, without touching QWidget cross-thread.
-            hwnd_hex=f'{int(gate.winId()):016x}'
-            panel.service.apply_bridge=lambda root,stage,envelope:handoff(root,stage,envelope,hwnd_hex=hwnd_hex)
+            panel.controller.bind_window(gate)
             panel.refresh()
             if configured().uat:
                 attach_uat_measurements(panel)
@@ -53,6 +45,10 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
     def ready():
         if not controller.results.get('SECURITY_GATE') or not gate.isVisible():return
         timer.stop();gate.about_button.setEnabled(True)
+        from desktop.update_controller import application_updater
+        updater = application_updater()
+        updater.bind_window(gate)
+        QTimer.singleShot(5000, updater.start)
         if configured().uat:
             gate.setWindowTitle('MentorFlow · '+VERSION_MANIFEST['version'])
             # Only an explicitly compiled isolated UAT build honours this
