@@ -134,6 +134,7 @@ class HTTPTransport:
         if not all(0 < n <= 300 for n in (connect, read, total)):
             raise ValueError('invalid HTTP timeout')
         self._active = threading.BoundedSemaphore(1)
+        self._tls_context = None
         self.bytes_received = 0
         self.validate_url(origin)
 
@@ -173,11 +174,18 @@ class HTTPTransport:
         def network():
             failure = None
             try:
+                if self._tls_context is None:
+                    # Preserve HTTPX's trust_env=False / certifi trust exactly.
+                    # Initialize once on the network worker, not once per asset
+                    # or on Qt's thread. The existing semaphore serializes use.
+                    import ssl
+                    import certifi
+                    self._tls_context = ssl.create_default_context(cafile=certifi.where())
                 headers = {'Accept-Encoding': 'identity', 'User-Agent': 'MentorFlow-updater/1'}
                 if offset:
                     headers['Range'] = f'bytes={offset}-'
                 with httpx.Client(timeout=httpx.Timeout(self.read, connect=self.connect),
-                                  follow_redirects=False, trust_env=False) as client:
+                                  follow_redirects=False, trust_env=False, verify=self._tls_context) as client:
                     with client.stream('GET', url, headers=headers) as response:
                         put(('headers', (response.status_code, dict(response.headers))))
                         for block in response.iter_raw(chunk_size=65536):

@@ -22,6 +22,7 @@ from scripts.install_location import existing_parent, low_space_message
 from scripts.install_product import configured
 
 CURRENT = 'current-release.json'
+UPDATER_RELEASE = 'updater-release.json'
 HIGHEST = 'highest-release.json'
 STATE = 'per-user-install.json'
 JOURNAL = 'per-user-transaction.json'
@@ -133,6 +134,12 @@ def resolve_launch_root(executable, selected=None):
 
 def verify_recovery_runtime(root, release=None):
     release = release or installed(root)
+    # Updater is a stable independent runtime, not the new App's bundled copy.
+    # Its existing signed envelope stays pinned across App generations.
+    binding = Path(root) / UPDATER_RELEASE
+    if (Path(root) / 'Updater').exists() and binding.exists():
+        plain(binding)
+        release = historical(read(binding), keys())
     rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items() if name.startswith('UserRuntime/')}
     if not rows: raise SecurityError('signed repair runtime missing')
     runtime = Path(root) / 'Updater'
@@ -187,7 +194,7 @@ def verify_payload(root, release=None):
             raise SecurityError('incomplete installer-owned metadata')
     with (app/'unins000.exe').open('rb') as stream:
         if stream.read(2) != b'MZ': raise SecurityError('invalid Inno uninstaller')
-    controls = {CURRENT, STATE, HIGHEST, JOURNAL, 'pending-update.json', 'operation.lock'}
+    controls = {CURRENT, UPDATER_RELEASE, STATE, HIGHEST, JOURNAL, 'pending-update.json', 'operation.lock'}
     actual = set()
     for item in app.rglob('*'):
         plain(item)
@@ -479,6 +486,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
         if initial_repair: _initial_repair_release(root, public_keys, release)
         if not initial_repair and (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
             raise RecoverableError('previous transaction requires recovery before new apply')
+        if current and (root / 'Updater').exists() and not (root / UPDATER_RELEASE).exists():
+            verify_recovery_runtime(root, current)
+            atomic(root / UPDATER_RELEASE, current.envelope)
         attempt = uuid.uuid4().hex
         stage = root / ('staging-' + attempt); stage.mkdir()
         journal = dict(schema='mentorflow.per-user-transaction.v1', attempt=attempt, phase='PREPARING', target=release.version,
@@ -526,6 +536,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             atomic(root / STATE, canonical(dict(schema=SCHEMA, mode='per_user', app_id=configured().app_id)))
             if not (root / 'Updater').exists():
                 shutil.copytree(root / 'App/UserRuntime', root / 'Updater')
+                atomic(root / UPDATER_RELEASE, release.envelope)
             mark('NEW_ACTIVE'); progress(95)
             proof = (health or launch_health)(root, release)
             if not isinstance(proof, dict) or proof.get('ready') is not True:

@@ -233,3 +233,36 @@ def test_next_launch_recovers_interrupted_swap_before_gui_classification(case,mo
     assert launcher.launch(root)['health']['ready']
     assert install.installed(root).version==old.version
     service.close()
+
+
+def test_stable_recovery_runtime_uses_its_signed_binding_across_app_update(case,monkeypatch):
+    root,service=setup(case,monkeypatch)
+    old=install.installed(root);feed=case[2]
+    files={name:(root/'App'/name).read_bytes() for name in old.rows if name!='SELF-CHECK/package-manifest.json'}
+    files['UserRuntime/UserRuntime.exe']=b'MZ next bundled runtime'
+    feed.publish('1.4.1',files);feed.signed['metadata_version']=3;feed.sign(feed.signed)
+    source=case[0]/'new-runtime-payload';source.mkdir()
+    for row in feed.signed['full_release']['assets']:
+        path=source/row['path'];path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(feed.objects['/objects/'+row['sha256']])
+    install.transact(root,source,feed.raw,health=ready)
+    assert (root/install.UPDATER_RELEASE).read_bytes()==old.envelope
+    assert install.verify_recovery_runtime(root)==root/'Updater/UserRuntime.exe'
+    (root/install.UPDATER_RELEASE).write_bytes(b'forged')
+    with pytest.raises(SecurityError):install.verify_recovery_runtime(root)
+    service.close()
+
+
+def test_http_assets_reuse_validating_context_without_environment_trust(case,monkeypatch):
+    import ssl,certifi,threading
+    from desktop.update_download import HTTPTransport
+    feed=case[2];calls=[];create=ssl.create_default_context
+    def context(*args,**kwargs):
+        calls.append((threading.current_thread().name,kwargs))
+        return create(*args,**kwargs)
+    monkeypatch.setattr(ssl,'create_default_context',context)
+    transport=HTTPTransport(feed.origin,fixture_http=True)
+    assert not calls
+    for _ in range(3):assert transport.fetch_metadata(feed.origin+'/stable.json',16*1024**2)==feed.raw
+    assert calls==[('mentorflow-update-http',{'cafile':certifi.where()})]
+    assert transport._tls_context.check_hostname and transport._tls_context.verify_mode==ssl.CERT_REQUIRED

@@ -48,6 +48,9 @@ payload，最后使用 `update_protocol.startup_version_policy` 解释**已验�
 `RECOVERY_RELEASE_URL` 取固定签名描述，验证独立 runtime 后保存。INI 绝不替代签名。
 修复使用已有 full reconstruction + transact；平铺原文件和卸载记录原地保留，
 新 App 在规范 App 子目录提交，previous 由签名文件集合构建，不删除用户邻居。
+稳定 Updater 使用根部 `updater-release.json` 中的原 signed envelope 验证，不错用
+新版 App 中不同的 runtime 哈希；该文件不提供密钥、命令或路径。HTTP 资产请求只在
+工作线程首次初始化原有 certifi CA 上下文并复用，TLS/hostname 验证仍强制开启。
 
 `repair_installation` 明确允许同版本、同签名 manifest 的完整重建；拒绝降级、同版本
 换内容及撤回版本。下载后、提交前再次刷新签名 metadata，并走原有关闭/交换/health。
