@@ -1,0 +1,11 @@
+{
+  "SMTP_MODE": "REAL_RELAY",
+  "SMTP_HOST": "",
+  "SMTP_PORT": 587,
+  "SMTP_USER": "",
+  "SMTP_SECRET_FILE": "/opt/mentorflow/auth-email-security/e109/secrets/SMTP_SECRET",
+  "SMTP_SECRET_ENV": "SMTP_SECRET",
+  "SMTP_FROM": "",
+  "SMTP_STARTTLS": true,
+  "SMTP_SSL": false
+}
