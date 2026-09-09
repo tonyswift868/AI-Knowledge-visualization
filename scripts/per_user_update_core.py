@@ -4,6 +4,7 @@ UI calls run on its existing worker. No UI, credentials or elevation are created
 here. A downloaded update may be deferred and revalidated on a normal launch.
 """
 from pathlib import Path
+import os
 import threading
 
 from desktop.update_protocol import canonical, digest, strict_json, RecoverableError, SecurityError
@@ -50,6 +51,126 @@ def configured_service(root):
     return service
 
 
+def static_feed_url(manifest, *, test_fixture=False):
+    """The one-click endpoint is build-provisioned, never a browser/local server."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    config = manifest.get('update', {})
+    if not isinstance(config, dict): raise SecurityError('invalid update configuration')
+    url = config.get('UPDATE_FEED_URL') or config.get('metadata_url')
+    if config.get('UPDATE_FEED_URL') and config.get('metadata_url') and config['UPDATE_FEED_URL'] != config['metadata_url']:
+        raise SecurityError('conflicting update feed configuration')
+    if not isinstance(url, str) or not url:
+        raise RecoverableError('UPDATE_FEED_URL is not configured')
+    parsed = urlsplit(url)
+    if (parsed.scheme not in ('http', 'https') or not parsed.hostname or
+            parsed.username or parsed.password or parsed.query or parsed.fragment):
+        raise SecurityError('fixed HTTP(S) update feed required')
+    host = parsed.hostname.lower().rstrip('.')
+    try: address = ipaddress.ip_address(host)
+    except ValueError: address = None
+    local = host == 'localhost' or host.endswith('.localhost') or (address and (address.is_loopback or address.is_unspecified))
+    if local and not (test_fixture and install.configured().uat):
+        raise SecurityError('one-click update cannot depend on a localhost feed')
+    if parsed.scheme == 'http' and not install.configured().uat:
+        raise SecurityError('production update feed requires HTTPS')
+    if manifest.get('channel', 'stable') != 'stable':
+        raise SecurityError('one-click update requires stable channel')
+    return url
+
+
+def one_click_service(root):
+    root = install.target(root)
+    release = install.installed(root)
+    install.verify_tree(root / 'App', release, subset=['mentorflow-version.json'])
+    manifest = strict_json(install.read(root / 'App/mentorflow-version.json'))
+    if manifest.get('version') != release.version:
+        raise SecurityError('installed update configuration version mismatch')
+    try:
+        from mentorflow_delivery_authority import ONE_CLICK_TEST_FIXTURE
+    except ImportError:
+        ONE_CLICK_TEST_FIXTURE = False
+    fixture = ONE_CLICK_TEST_FIXTURE is True and install.configured().uat
+    url = static_feed_url(manifest, test_fixture=fixture)
+    if manifest['update'].get('protocol') != 'mentorflow.signed-file-release.v1':
+        raise SecurityError('signed file release protocol required')
+    from desktop.update_download import HTTPTransport
+    from desktop.update_service import MatureUpdateService
+    # Never compile a developer's staging path into the distribution. The cache
+    # is ordinary-user-local and separated per installation by MatureUpdateService.
+    local = Path(os.environ['LOCALAPPDATA'])
+    identity = digest((install.configured().app_id + '\0' + os.path.normcase(str(root))).encode())[:12]
+    return MatureUpdateService(install_root=root,
+        cache_root=local / install.configured().app_id / 'Updates',
+        runtime_staging_root=local / '.mfu' / identity,
+        metadata_url=url, public_keys=install.keys(), current=release.version,
+        channel='stable', transport=HTTPTransport(url, signed_static_http=install.configured().uat))
+
+
+def check_latest(root, *, service=None):
+    owned = service is None
+    try:
+        service = service if service is not None else one_click_service(root)
+        return service.check(manual=True)
+    except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
+    except (OSError, RuntimeError, ValueError) as error:
+        return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
+    finally:
+        if owned and service is not None: service.close()
+
+
+def download_latest(root, progress=None, cancel=None, *, service=None):
+    owned = service is None
+    try:
+        service = service if service is not None else one_click_service(root)
+        return prepare_update(root, service=service, progress=progress, cancel=cancel)
+    except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
+    except (OSError, RuntimeError, ValueError) as error:
+        return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
+    finally:
+        if owned and service is not None: service.close()
+
+
+def apply_and_relaunch(root, *, pid=None, hwnd_hex=None, reason='normal', service=None):
+    """In-App calls hand off before closing their own process; native callers wait.
+
+    The caller captures HWND on the GUI thread. An in-App result of APPLYING is
+    dispatch only, never a fabricated health PASS; the coordinator owns completion.
+    """
+    pid = os.getpid() if pid is None and reason == 'normal' else pid
+    if pid == os.getpid():
+        return install.handoff_pending(root, hwnd_hex=hwnd_hex, reason=reason)
+    return apply_update(root, pid=pid, hwnd_hex=hwnd_hex, reason=reason, service=service,
+                        service_factory=one_click_service)
+
+
+def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=None,
+                     reason='normal', service=None):
+    """One consent: signed stable discovery -> download -> apply -> relaunch.
+
+    Blocking work belongs on the UI's worker or the stable native coordinator,
+    never on the Qt event loop. There is no browser, shell script or Setup fallback.
+    """
+    owned = service is None
+    try:
+        service = service if service is not None else one_click_service(root)
+        prepared = download_latest(root, progress, cancel, service=service)
+        if prepared.get('state') != 'UPDATE_DOWNLOADED': return prepared
+        if cancel is not None and cancel():
+            pending = read_pending(root)
+            install.atomic(Path(root) / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
+            return {**prepared, 'state': 'PENDING_INSTALL', 'cancelled': True, 'destructive_apply': False}
+        if progress is not None: progress({**prepared, 'state': 'APPLYING'})
+        result = apply_and_relaunch(root, pid=pid, hwnd_hex=hwnd_hex, reason=reason, service=service)
+        return {**prepared, **result}
+    except SecurityError as error:
+        return dict(state='FAILED_SECURITY', error=type(error).__name__, message=str(error))
+    except (OSError, RuntimeError, ValueError) as error:
+        return dict(state='FAILED_RECOVERABLE', error=type(error).__name__, message=str(error))
+    finally:
+        if owned and service is not None: service.close()
+
+
 def remember_download(root, stage, envelope, *, state='UPDATE_DOWNLOADED'):
     if state not in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL'): raise ValueError('invalid pending state')
     root = install.target(root); stage = install.plain(stage)
@@ -84,7 +205,7 @@ def status(root):
     return result
 
 
-def prepare_update(root, *, service=None):
+def prepare_update(root, *, service=None, progress=None, cancel=None):
     """Existing signed downloader, Range/resume/cache/full-fallback unchanged.
 
     Passing an already configured service lets UI own progress, cancel and retry.
@@ -94,7 +215,7 @@ def prepare_update(root, *, service=None):
     try:
         snapshot = service.check(manual=True)
         if snapshot['state'] != 'UPDATE_AVAILABLE': return snapshot
-        snapshot = service.download()
+        snapshot = service.download(progress=progress, cancel=cancel)
         if snapshot['state'] != 'READY_TO_APPLY': return snapshot
         pending = remember_download(root, service.staged, service.release.envelope)
         return {**snapshot, **pending, 'ui_state': 'READY_TO_APPLY'}
@@ -102,7 +223,8 @@ def prepare_update(root, *, service=None):
         if owned: service.close()
 
 
-def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None):
+def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None,
+                 service_factory=None):
     """Fresh discovery + cache validation, then the existing real transaction.
 
     next_launch is called by the stable launcher BEFORE starting App. Normal
@@ -117,7 +239,7 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
     if bool(pid) != bool(hwnd_hex): raise ValueError('complete App identity required')
     if pid is None and reason != 'next_launch': raise ValueError('normal apply requires running App identity')
     if pid is None: install.require_app_stopped(root)
-    owned = service is None; service = service or configured_service(root)
+    owned = service is None; service = service or (service_factory or configured_service)(root)
     applied = False
     try:
         snapshot = service.check(manual=True)  # never trust a stale cached envelope
@@ -157,7 +279,9 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
         if owned: service.close()
 
 
-resume_pending_on_normal_launch = apply_update
+def resume_pending_on_normal_launch(root, *, service=None, **options):
+    options.setdefault('reason', 'next_launch')
+    return apply_update(root, service=service, service_factory=one_click_service, **options)
 launch_updated_app = install.launch_health
 record_health = install.notify_health
 rollback_previous = install.recover

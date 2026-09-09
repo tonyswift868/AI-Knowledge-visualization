@@ -526,6 +526,31 @@ def handoff(root, stage, envelope, *, hwnd_hex):
     return dict(coordinator_started=True, pid=process.pid, update_uac_count=0)
 
 
+def handoff_pending(root, *, hwnd_hex, reason='normal'):
+    """Continue one consent in the stable ordinary-token runtime, not this App."""
+    from scripts.per_user_update_core import read_pending, unsafe_teardown, PENDING
+    from desktop.windows_process_peer import ProcessPeer
+    root = target(root); pending = read_pending(root)
+    if unsafe_teardown(reason):
+        atomic(root / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
+        return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False)
+    with ProcessPeer(os.getpid()) as peer:
+        peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
+        peer.visible_responsive_window(hwnd_hex)
+    release = installed(root)
+    runtime_rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items()
+                    if name.startswith('UserRuntime/')}
+    if not runtime_rows: raise SecurityError('signed updater runtime missing')
+    verify_tree(root / 'Updater', replace(release, rows=runtime_rows))
+    result = root / ('one-click-' + uuid.uuid4().hex + '.json')
+    process = subprocess.Popen([str(root / 'Updater/UserRuntime.exe'), 'apply-latest',
+        '--root', str(root), '--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex,
+        '--result', str(result)], cwd=root, close_fds=True,
+        creationflags=subprocess.CREATE_NO_WINDOW)
+    return dict(state='APPLYING', coordinator_started=True, coordinator_pid=process.pid,
+                result_path=str(result), update_uac_count=0)
+
+
 def coordinate(root, intent_path):
     from desktop.windows_process_peer import ProcessPeer
     root = target(root); intent = strict_json(read(intent_path))
@@ -560,6 +585,15 @@ def _execute(args, parser, progress):
     if args.action == 'launch':
         from scripts.per_user_launcher import launch
         return launch(args.root)
+    if args.action in ('check-latest', 'download-latest', 'update-to-latest', 'apply-latest'):
+        from scripts import per_user_update_core as core
+        cancelled = lambda: bool(args.cancel_file and args.cancel_file.exists())
+        if args.action == 'check-latest': return core.check_latest(args.root)
+        if args.action == 'download-latest': return core.download_latest(args.root, cancel=cancelled)
+        if args.action == 'apply-latest':
+            return core.apply_and_relaunch(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
+        return core.update_to_latest(args.root, cancel=cancelled, pid=args.pid,
+                                     hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
     if args.action == 'prepare-update':
         from scripts.per_user_update_core import prepare_update
         return prepare_update(args.root)
@@ -612,7 +646,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=('preflight', 'install', 'apply', 'recover',
-        'prepare-update', 'apply-pending', 'update-status', 'uninstall', 'shutdown', 'launch'))
+        'prepare-update', 'apply-pending', 'update-status', 'uninstall', 'shutdown', 'launch',
+        'check-latest', 'download-latest', 'update-to-latest', 'apply-latest'))
     location = parser.add_mutually_exclusive_group(required=True)
     location.add_argument('--root', type=Path)
     location.add_argument('--parent', type=Path)
@@ -643,7 +678,8 @@ def main():
         pid = args.pid
         if args.action == 'apply': pid = strict_json(read(args.intent))['pid']
         scope = (runtime_session(pid) if args.action in
-                 ('install', 'apply', 'apply-pending', 'recover', 'launch', 'uninstall') else nullcontext())
+                 ('install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
+                  'recover', 'launch', 'uninstall') else nullcontext())
         with scope:
             result = _execute(args, parser, progress)
         if args.result: atomic(args.result, canonical(result))

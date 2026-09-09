@@ -21,17 +21,31 @@ else:
                 for child in value:yield from script_rows(child)
     fields={'pure':pyz_seed[1], 'scripts':list(script_rows(exe_seed))}
     if not fields['pure'] or not fields['scripts']:raise ValueError('empty frozen dependency closure')
+seed_pyz=os.environ.get('MF_DELIVERY_SEED_PYZ_TOC')
+if seed_pyz:
+    # Preserve the accepted desktop's actual module closure, not merely the
+    # older Analysis used to obtain the installed toolchain/runtime hooks.
+    fields['pure']=ast.literal_eval(Path(seed_pyz).read_text(encoding='utf-8'))[1]
+runtime_analysis=os.environ.get('MF_DELIVERY_RUNTIME_ANALYSIS')
+runtime_pure=[]
+if runtime_analysis:
+    runtime_saved=ast.literal_eval(Path(runtime_analysis).read_text(encoding='utf-8'))
+    runtime_fields={definition[0]:value for definition,value in zip(Analysis._GUTS,runtime_saved)}
+    runtime_pure=runtime_fields['pure']
 blocked={'scripts.measure_installed_login_gate','scripts.test_login_form_probe','desktop_update_uat_entry',
          'mentorflow_uat_build_authority','mentorflow_delivery_authority'}
 pure=[]
-for name,path,kind in fields['pure']:
+seen=set()
+for name,path,kind in [*fields['pure'],*runtime_pure]:
     if name in blocked:continue
+    if name in seen:continue
     if name.startswith('scripts.test_') or '.tests.' in name or name.endswith('.tests'):continue
     local=root/(name.replace('.','/')+'.py')
     package=root/name.replace('.','/')/'__init__.py'
     if local.is_file():path=str(local)
     elif package.is_file():path=str(package)
     pure.append((name,path,kind))
+    seen.add(name)
 names={row[0] for row in pure}
 extra=['desktop.gui_update_runtime','desktop.update_bridge','desktop.update_request','desktop.windows_identity',
        'desktop.windows_process_peer','desktop.windows_update_child','desktop.windows_update_pipe',

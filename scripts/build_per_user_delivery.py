@@ -19,6 +19,8 @@ APP_ID = 'MentorFlow.UAT.PerUserCore2'
 
 
 def build(args):
+    if args.one_click_fixture and not args.core_only:
+        raise ValueError('one-click loopback fixture can never build a distributable installer')
     work=args.work.absolute(); work.mkdir(exist_ok=True)
     shared.APP_ID=APP_ID
     identity=shared.source_identity()
@@ -40,6 +42,7 @@ def build(args):
         with keypath.open('xb') as stream:stream.write(private.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption()))
     public=private.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw)
     authority=(f"APP_ID={APP_ID!r}\nPUBLIC_KEYS={{'per-user-uat':{public!r}}}\n"
+        f"ONE_CLICK_TEST_FIXTURE={args.one_click_fixture!r}\n"
         "import os\nfrom pathlib import Path\n"
         "WORK_ROOT=str(Path(os.environ['LOCALAPPDATA'])/'MentorFlowPerUserCoreFreeze')\n"
         "DATA_ROOT=str(Path(WORK_ROOT)/'data')\n"
@@ -47,7 +50,9 @@ def build(args):
     (directory/'mentorflow_delivery_authority.py').write_text(authority,encoding='utf-8')
     env={**os.environ,'TEMP':str(work),'TMP':str(work),'PYTHONDONTWRITEBYTECODE':'1',
          'PYINSTALLER_CONFIG_DIR':'E:/Codex/Data/cache/pyinstaller',
-         'MF_DELIVERY_PROJECT':str(shared.PROJECT),'MF_DELIVERY_BUILD':str(directory),'MF_DELIVERY_ANALYSIS':str(args.analysis)}
+         'MF_DELIVERY_PROJECT':str(shared.PROJECT),'MF_DELIVERY_BUILD':str(directory),'MF_DELIVERY_ANALYSIS':str(args.analysis),
+         'MF_DELIVERY_SEED_PYZ_TOC':str(args.seed_pyz_toc) if args.seed_pyz_toc else '',
+         'MF_DELIVERY_RUNTIME_ANALYSIS':str(directory/'pyi-user/UserRuntime/Analysis-00.toc')}
     cmd=[sys.executable,'-B','-m','PyInstaller','--onedir','--windowed','--name','UserRuntime',
          '--paths',str(shared.PROJECT),'--paths',str(directory),'--hidden-import','mentorflow_delivery_authority',
          '--distpath',str(directory/'native'),'--workpath',str(directory/'pyi-user'),
@@ -96,6 +101,8 @@ def build(args):
         _,rows=verify(args.payload,args.manifest_sha256)
         app.mkdir(parents=True)
         for name,row in rows.items():
+            if name.startswith('UserRuntime/'):
+                continue  # rebuilt below; the signed input payload remains untouched
             destination=app/name; destination.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(args.payload/name,destination)
             if v.sha256_file(destination)!=row['sha256']:raise ValueError('source copy mismatch')
@@ -108,15 +115,18 @@ def build(args):
             desktop_notice='当前用户安装与增量更新。',
             **({'uat_recovery_fixture':'exit-before-health-v1'} if bad else {}),
             update=dict(protocol='mentorflow.signed-file-release.v1',enabled=True,
-                metadata_url=args.origin+'/stable.json',public_keys={'per-user-uat':base64.b64encode(public).decode()},staging_root=str(cache)))
+                UPDATE_FEED_URL=args.origin+'/stable.json',metadata_url=args.origin+'/stable.json',
+                public_keys={'per-user-uat':base64.b64encode(public).decode()},
+                **({} if args.one_click_fixture else {'staging_root':str(cache)})))
+    versions = ('1.4.0', '1.4.1', '1.4.2') if args.one_click_fixture else ('1.3.0', '1.3.1', '1.3.2')
     for name in ('mentorflow-version.json','_internal/mentorflow-version.json'):
-        (app/name).write_bytes(canonical(version_doc('1.3.0')))
+        (app/name).write_bytes(canonical(version_doc(versions[0])))
     from scripts.prepare_gui_bootstrap_closure import collect_closure
     (app/'SELF-CHECK/gui-bootstrap-closure.json').write_bytes(canonical(collect_closure(app)))
     manifest=v.build_manifest(app); manifest.write_bytes(canonical(json.loads(manifest.read_bytes())))
     verify(app,v.sha256_file(manifest))
     base=json.loads(manifest.read_bytes()); sources={}; evidence=[]
-    for epoch,(label,version,bad) in enumerate((('base','1.3.0',False),('target','1.3.1',False),('bad','1.3.2',True)),1):
+    for epoch,(label,version,bad) in enumerate((('base',versions[0],False),('target',versions[1],False),('bad',versions[2],True)),1):
         overlay=work/'release/overlays'/label; overlay.mkdir(parents=True)
         rows={r['path']:dict(r) for r in base['files']}
         changed={} if label=='base' else {name:canonical(version_doc(version,bad)) for name in ('mentorflow-version.json','_internal/mentorflow-version.json')}
@@ -135,11 +145,11 @@ def build(args):
         signed=dict(schema_version=1,app_id=APP_ID,channel='stable',version=version,metadata_version=epoch,
             issued_at=now.isoformat(),published_at=now.isoformat(),expires_at=(now+timedelta(days=7)).isoformat(),
             key_id='per-user-uat',rollout_percentage=100,rollout_seed='per-user-v1',withdrawn=False,
-            min_supported_version='1.3.0',min_updater_version='1.0.0',mandatory=False,mandatory_reason='',
+            min_supported_version=versions[0],min_updater_version='1.0.0',mandatory=False,mandatory_reason='',
             release_notes='隔离健康失败回滚测试。' if bad else '当前用户安装和更新，无需管理员权限。',
             full_release=dict(format='file-set-v1',size=sum(a['size'] for a in assets),assets=assets),
             incremental_assets=list(rows),file_manifest=doc,hash_algorithm='sha256',signature_algorithm='ed25519',
-            source_sha=identity['source_sha'],tree_sha=identity['tree_sha'],base_versions=['1.3.1'] if bad else ['1.3.0'])
+            source_sha=identity['source_sha'],tree_sha=identity['tree_sha'],base_versions=[versions[1]] if bad else [versions[0]])
         raw=canonical(dict(signed=signed,key_id='per-user-uat',signature=base64.b64encode(private.sign(canonical(signed))).decode()))
         (work/'release'/(label+'.json')).write_bytes(raw)
         evidence.append(dict(label=label,version=version,manifest_sha256=digest(canonical(doc)),release_sha256=digest(raw),full_bytes=signed['full_release']['size']))
@@ -164,8 +174,10 @@ def build(args):
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--work',type=Path,required=True);parser.add_argument('--analysis',type=Path,required=True)
+    parser.add_argument('--seed-pyz-toc',type=Path,help='Exact accepted desktop PYZ TOC; preserves its existing GUI module closure')
     parser.add_argument('--payload',type=Path,required=True);parser.add_argument('--manifest-sha256',required=True)
-    parser.add_argument('--origin',default='http://127.0.0.1:48208')
+    parser.add_argument('--origin',required=True,help='Explicit build-time feed origin; never a default developer endpoint')
+    parser.add_argument('--one-click-fixture',action='store_true',help='Core-only compiled UAT fixture; never a product distribution')
     parser.add_argument('--refresh',action='store_true',help='Retain and replace only this unpublished owned candidate')
     parser.add_argument('--core-only',action='store_true',help='Build packaged engines only; installer is owned by 02')
     parser.add_argument('--source-commit',help='Exact single-parent delivery identity; owned source must match')

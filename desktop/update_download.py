@@ -125,9 +125,11 @@ class HTTPTransport:
     even if OS DNS has not returned. At most one worker per transport is allowed;
     subsequent requests fail recoverably while a timed-out worker is finishing.
     """
-    def __init__(self, origin: str, *, fixture_http=False, connect=3.0, read=3.0, total=30.0):
+    def __init__(self, origin: str, *, fixture_http=False, signed_static_http=False,
+                 connect=3.0, read=3.0, total=30.0):
         self.origin = urlsplit(origin)
         self.fixture_http = fixture_http
+        self.signed_static_http = signed_static_http
         self.connect, self.read, self.total = connect, read, total
         if not all(0 < n <= 300 for n in (connect, read, total)):
             raise ValueError('invalid HTTP timeout')
@@ -146,7 +148,7 @@ class HTTPTransport:
     def validate_url(self, url):
         parsed = urlsplit(url)
         allowed_http = self.fixture_http and parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', '::1')
-        if parsed.scheme != 'https' and not allowed_http:
+        if parsed.scheme != 'https' and not allowed_http and not (self.signed_static_http and parsed.scheme == 'http'):
             raise SecurityError('HTTPS required')
         if parsed.username or parsed.password or parsed.fragment or parsed.query or not parsed.hostname:
             raise SecurityError('invalid update URL')

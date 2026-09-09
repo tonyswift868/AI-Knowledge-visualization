@@ -355,7 +355,7 @@ class MatureUpdateService:
             if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
         return dict(self.snapshot)
 
-    def download(self):
+    def download(self, *, progress=None, cancel=None):
         import logging
         from .update_download import InstallUpdateLock
         from .update_protocol import SecurityError, DownloadCancelled, verify_release
@@ -366,6 +366,9 @@ class MatureUpdateService:
         self.cancel_event.clear()
         before = self.cache.transport.bytes_received
         try:
+            def cancelled():
+                return self.cancel_event.is_set() or (cancel is not None and cancel())
+            if cancelled(): raise DownloadCancelled('download cancelled')
             with InstallUpdateLock(self.cache.root):
                 if self._closed: raise DownloadCancelled('update service closed')
                 self._state('PREPARING', '正在准备更新…')
@@ -378,10 +381,11 @@ class MatureUpdateService:
                                          highest_seen=self._witness()[0])
                 self._remember_release(release)
                 self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
-                def progress(_):
+                def report_progress(_):
                     self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before}
+                    if progress is not None: progress(dict(self.snapshot))
                 self.staged = self.cache.reconstruct(release, self.plan, self.install_root/'App',
-                    cancel=self.cancel_event.is_set, progress=progress,
+                    cancel=cancelled, progress=report_progress,
                     telemetry=getattr(self, 'telemetry', None))
                 actual = self.cache.transport.bytes_received-before
                 self._state('READY_TO_APPLY', '下载和校验完成，可稍后更新。',
@@ -390,6 +394,7 @@ class MatureUpdateService:
                             saving_percent=100 * max(0, 1-actual/max(1,self.plan['full_bytes'])))
                 if getattr(self, 'telemetry', None):
                     self.telemetry.mark('T14_READY_TO_APPLY')
+                if progress is not None: progress(dict(self.snapshot))
         except Exception as exc:
             logging.getLogger(__name__).exception('desktop incremental download failed')
             self.staged = None
