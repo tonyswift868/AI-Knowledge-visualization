@@ -38,10 +38,20 @@ class CoreUpdatePort:
         self._downloading = False
         self._original_bridge = service.apply_bridge if service else None
         self._closed = False
+        self._core_snapshot = {}
+        from scripts.per_user_install import is_install
+        self._per_user = bool(service is not None and is_install(service.install_root))
+        self._session = None
+        if self._per_user:
+            from .update_session import UpdateSession, UnavailableSession
+            try:
+                self._session = UpdateSession()
+            except OSError:
+                self._session = UnavailableSession()
 
     @property
     def snapshot(self):
-        raw = self.service.snapshot if self.service else {}
+        raw = self._core_snapshot or (self.service.snapshot if self.service else {})
         code = raw.get('state', 'IDLE')
         if code not in DEFERRED:
             code = self._outcome or code
@@ -64,14 +74,17 @@ class CoreUpdatePort:
 
     def _result(self, value):
         if isinstance(value, dict):
+            if self._per_user:
+                self._core_snapshot = dict(value)
             codes = (value.get('ui_state'), value.get('state'), value.get('status'))
             code = next((code for code in codes if code in DEFERRED), next((code for code in codes if code), None))
-            if code in DEFERRED or code in ('FAILED_SECURITY', 'FAILED_RECOVERABLE'):
+            if self._per_user or code in DEFERRED or code in ('FAILED_SECURITY', 'FAILED_RECOVERABLE'):
                 self._outcome = code
         return self.snapshot
 
     def _call(self, method):
         self._outcome = ''
+        self._core_snapshot = {}
         if not self.service or self._closed:
             return self.snapshot
         try:
@@ -85,10 +98,21 @@ class CoreUpdatePort:
         return self.snapshot
 
     def check_latest(self):
+        if self._per_user:
+            from scripts.per_user_update_core import check_latest
+            return self._call(lambda: check_latest(self.service.install_root, service=self.service))
         return self._call(lambda: self.service.check(manual=True))
 
     def download_latest(self, progress, cancel):
         def download():
+            if self._per_user:
+                from scripts.per_user_update_core import download_latest
+                def report(value):
+                    self._core_snapshot = dict(value)
+                    progress(self.snapshot)
+                return download_latest(self.service.install_root,
+                    progress=report, cancel=cancel.is_set,
+                    service=self.service)
             # Cancellation is observed by core. This monitor never reads bytes
             # or interprets assets; it only forwards progress/cancel callbacks.
             import threading
@@ -104,13 +128,6 @@ class CoreUpdatePort:
                 if cancel.is_set():
                     return {'state': 'DOWNLOAD_PAUSED_OR_INTERRUPTED'}
                 result = self.service.download()
-                if self.service.snapshot.get('state') in ('READY_TO_APPLY', 'UPDATE_DOWNLOADED'):
-                    from scripts.per_user_install import is_install
-                    if is_install(self.service.install_root):
-                        from scripts.per_user_update_core import remember_download
-                        pending = remember_download(self.service.install_root, self.service.staged, self.service.release.envelope)
-                        if pending.get('state') in DEFERRED:
-                            result = pending
                 return result
             finally:
                 stop.set()
@@ -140,6 +157,17 @@ class CoreUpdatePort:
 
     def apply_and_relaunch(self):
         def apply():
+            if self._per_user:
+                from scripts.per_user_update_core import apply_and_relaunch
+                reason = 'normal'
+                try:
+                    self._session.require_running()
+                    if not self.can_apply() or self._closed:
+                        raise SessionEnding('session or window unavailable')
+                except SessionEnding:
+                    reason = 'unsafe'
+                return apply_and_relaunch(self.service.install_root,
+                    hwnd_hex=self.window_id(), reason=reason, service=self.service)
             if not self.can_apply() or self._closed:
                 raise SessionEnding('Update deferred until next normal launch')
             def bridge(root, stage, envelope):
@@ -147,16 +175,36 @@ class CoreUpdatePort:
                     raise SessionEnding('Update deferred until next normal launch')
                 if self._original_bridge is not None:
                     return self._original_bridge(root, stage, envelope)
-                from scripts import per_user_install
-                if per_user_install.is_install(root):
-                    return per_user_install.handoff(root, stage, envelope, hwnd_hex=self.window_id())
                 from .update_bridge import handoff
                 return handoff(root, stage, envelope, hwnd_hex=self.window_id())
             self.service.apply_bridge = bridge
             return self.service.apply_and_restart()
         return self._call(apply)
 
+    def defer_session(self):
+        if self._session is not None:
+            self._session.defer()
+
     def close(self):
         self._closed = True
         if self.service:
             self.service.close()
+        if self._session is not None:
+            self._session.close()
+
+
+def configured_update_service():
+    """E108 uses 07's verified build config; no UI interpretation of a feed.
+
+    The older protected-install service remains for non-E108 installations only.
+    Never fall back to it if an existing per-user installation fails admission.
+    """
+    import sys
+    from pathlib import Path
+    from scripts.per_user_install import is_install
+    root = Path(sys.executable).absolute().parent.parent
+    if is_install(root):
+        from scripts.per_user_update_core import one_click_service
+        return one_click_service(root)
+    from .update_service import configured_mature_service
+    return configured_mature_service()

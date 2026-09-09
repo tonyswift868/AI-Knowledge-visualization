@@ -399,14 +399,14 @@ def test_core_failures_never_handoff(feed, kind):
 
 @pytest.mark.parametrize('code', ['DEFERRED_TO_NEXT_LAUNCH', 'PENDING_INSTALL'])
 def test_adapter_normalizes_core_deferral_without_private_state(feed, monkeypatch, code):
-    from scripts import per_user_install
+    from scripts import per_user_install, per_user_update_core
     service = feed.service(); service.check(); service.download()
     monkeypatch.setattr(per_user_install, 'is_install', lambda _: True)
     handoff = Mock(return_value={'state': code})
-    monkeypatch.setattr(per_user_install, 'handoff', handoff)
+    monkeypatch.setattr(per_user_update_core, 'apply_and_relaunch', handoff)
     port = CoreUpdatePort(service, window_id=lambda: 'a'*16)
     assert port.apply_and_relaunch()['state'] == 'DEFERRED_TO_NEXT_LAUNCH'
-    handoff.assert_called_once_with(service.install_root, service.staged, service.release.envelope, hwnd_hex='a'*16)
+    handoff.assert_called_once_with(service.install_root, hwnd_hex='a'*16, reason='normal', service=service)
     assert not {'release', 'stage', 'manifest', 'receipt', 'cache'}.intersection(port.snapshot)
     port.close()
 

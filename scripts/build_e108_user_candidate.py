@@ -18,7 +18,28 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = 'MentorFlow.UAT.E108Assembly1'
 KEY_ID = 'e108-user-test-only'
 BASE_VERSION, TARGET_VERSION = '1.4.0', '1.4.1'
-ORIGIN = 'http://127.0.0.1:48218'
+UPDATE_FEED_URL = None  # PENDING_04: no developer endpoint or local-server fallback.
+
+
+def require_update_feed_url(value):
+    """Bind only 04's final HTTPS slot, before creating any build/output paths."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    if not value:
+        raise ValueError('PENDING_04: HTTPS UPDATE_FEED_URL is required before final build')
+    parsed = urlsplit(value)
+    host = (parsed.hostname or '').lower().rstrip('.')
+    if (parsed.scheme != 'https' or not host or parsed.username or parsed.password or
+            parsed.query or parsed.fragment or not parsed.path.endswith('/stable.json') or
+            host == 'localhost' or host.endswith(('.localhost', '.local'))):
+        raise ValueError('04 public HTTPS stable.json feed is required')
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError('04 public HTTPS feed cannot use a local or private address')
+    return value
 
 
 def sha(path):
@@ -49,6 +70,7 @@ def identity():
 
 
 def initialize(args):
+    feed_url = require_update_feed_url(args.update_feed_url)
     source = identity()
     from scripts.prepare_transactional_installer import verify
     verify(args.seed_payload, args.seed_manifest_sha256)
@@ -64,7 +86,7 @@ def initialize(args):
     key = args.work / 'test-signing-key.pem'
     key.write_bytes(private.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
     public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    authority = (f'APP_ID={APP_ID!r}\nPUBLIC_KEYS={{{KEY_ID!r}:{public!r}}}\n'
+    authority = (f'APP_ID={APP_ID!r}\nPUBLIC_KEYS={{{KEY_ID!r}:{public!r}}}\nONE_CLICK_TEST_FIXTURE=False\n'
         'import os\nfrom pathlib import Path\n'
         f'WORK_ROOT=str(Path(os.environ["LOCALAPPDATA"])/{APP_ID!r})\n'
         'DATA_ROOT=str(Path(WORK_ROOT)/"data")\n'
@@ -72,7 +94,7 @@ def initialize(args):
     (generated / 'mentorflow_delivery_authority.py').write_text(authority, encoding='utf-8')
     emit(args.work / 'build-input.json', dict(source=source, seed_manifest_sha256=args.seed_manifest_sha256,
         seed_pyz_toc_sha256=sha(args.seed_pyz_toc), seed_exe_toc_sha256=sha(args.seed_exe_toc),
-        public_key=base64.b64encode(public).decode(), key_id=KEY_ID))
+        public_key=base64.b64encode(public).decode(), key_id=KEY_ID, UPDATE_FEED_URL=feed_url))
     env = {**os.environ, 'PYTHONPATH': str(generated) + os.pathsep + str(ROOT),
            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8',
            'TEMP': str(args.work), 'TMP': str(args.work),
@@ -98,7 +120,7 @@ def verify_binaries(app, runtime):
     for path, entry, filename, extra in (
         (app, 'desktop_gui_entry', 'desktop_gui_entry.py', ['desktop.update_panel', 'desktop.update_controller',
             'desktop.update_lifecycle', 'desktop.gui_update_runtime', 'desktop.system_page']),
-        (runtime, 'per_user_install', 'scripts/per_user_install.py', ['scripts.serve_signed_test_feed'])):
+        (runtime, 'per_user_install', 'scripts/per_user_install.py', [])):
         reader = CArchiveReader(str(path)); pyz = reader.open_embedded_archive('PYZ.pyz')
         if {'scripts.measure_installed_login_gate', 'scripts.test_login_form_probe'} & set(pyz.toc):
             raise ValueError('Unrelated observation module entered the candidate')
@@ -122,19 +144,24 @@ def verify_binaries(app, runtime):
 
 
 def execute(args):
+    feed_url = require_update_feed_url(args.update_feed_url)
+    origin = feed_url.rsplit('/', 1)[0]
     from desktop.update_protocol import canonical
     from scripts.prepare_transactional_installer import verify
     from scripts.prepare_gui_bootstrap_closure import collect_closure
     from scripts import build_release as publisher
     from mentorflow_delivery_authority import PUBLIC_KEYS
     inputs = json.loads((args.work / 'build-input.json').read_bytes())
+    if inputs.get('UPDATE_FEED_URL') != feed_url:
+        raise ValueError('04 feed changed after build admission')
     source = identity()
     if source != inputs['source']: raise ValueError('Source changed after build admission')
     for path, name in ((args.seed_pyz_toc, 'seed_pyz_toc_sha256'), (args.seed_exe_toc, 'seed_exe_toc_sha256')):
         if sha(path) != inputs[name]: raise ValueError('Frozen dependency closure changed')
     generated = args.work / 'generated'
     env = {**os.environ, 'MF_DELIVERY_PROJECT': str(ROOT), 'MF_DELIVERY_BUILD': str(generated),
-           'MF_DELIVERY_SEED_PYZ_TOC': str(args.seed_pyz_toc), 'MF_DELIVERY_SEED_EXE_TOC': str(args.seed_exe_toc)}
+           'MF_DELIVERY_SEED_PYZ_TOC': str(args.seed_pyz_toc), 'MF_DELIVERY_SEED_EXE_TOC': str(args.seed_exe_toc),
+           'MF_DELIVERY_RUNTIME_ANALYSIS': str(args.work / 'pyi-runtime/UserRuntime/Analysis-00.toc')}
     env.pop('MF_DELIVERY_ANALYSIS', None)
     run([sys.executable, '-B', '-m', 'scripts.build_desktop_icon'], args.work / 'icon.log', env)
     command = [sys.executable, '-B', '-m', 'PyInstaller', '--onedir', '--windowed', '--name', 'UserRuntime',
@@ -165,7 +192,8 @@ def execute(args):
     def version_doc(version):
         return dict(schema='mentorflow.version.v1', product='MentorFlow', version=version, channel='stable',
             desktop_notice='E108 用户测试候选，当前用户安装。',
-            update=dict(protocol='mentorflow.signed-file-release.v1', enabled=True, metadata_url=ORIGIN + '/stable.json',
+            update=dict(protocol='mentorflow.signed-file-release.v1', enabled=True,
+                        UPDATE_FEED_URL=feed_url, metadata_url=feed_url,
                         public_keys={key: base64.b64encode(value).decode() for key, value in PUBLIC_KEYS.items()}))
     version_paths = ('mentorflow-version.json', '_internal/mentorflow-version.json')
     for name in version_paths: (base / name).write_bytes(canonical(version_doc(BASE_VERSION)))
@@ -184,22 +212,21 @@ def execute(args):
     (target / 'SELF-CHECK/package-manifest.json').write_bytes(canonical(manifest))
     notes = args.work / 'release-notes.txt'
     notes.write_text('E108 安装、应用内增量下载和重启验证；不更改用户学习资料。', encoding='utf-8')
-    feed = args.output / 'Updates'
+    feed = args.work / 'feed-for-04-publication'
     receipts = []
     for package, version, prior in ((base, BASE_VERSION, None), (target, TARGET_VERSION, base)):
         opts = publisher.parser().parse_args(['--target', str(package), '--output', str(feed), '--version', version,
-            '--channel', 'stable', '--notes', str(notes), '--origin', ORIGIN, '--source-sha', source['source_sha'],
+            '--channel', 'stable', '--notes', str(notes), '--origin', origin, '--source-sha', source['source_sha'],
             '--tree-sha', source['tree_sha'], '--signing-key', str(args.work / 'test-signing-key.pem'), '--key-id', KEY_ID,
-            '--uat-loopback', '--min-supported-version', BASE_VERSION, '--expiry-days', '31'] +
+            '--min-supported-version', BASE_VERSION, '--expiry-days', '31'] +
             (['--base', str(prior)] if prior else []))
         receipts.append(publisher.build(opts))
     base_release = feed / BASE_VERSION / 'stable/release.json'
     run([sys.executable, '-B', '-m', 'scripts.build_inno_installer', '--payload', base,
-         '--release', base_release, '--output', args.output / 'Installer'], args.work / 'installer.log', env)
-    shutil.copytree(native, args.output / 'TestSource/Runtime')
-    (args.output / 'Start-Test-Update-Source.cmd').write_bytes((
-        '@echo off\r\nstart "" /b "%~dp0TestSource\\Runtime\\UserRuntime.exe" serve-test-source '
-        '--feed "%~dp0Updates" --port 48218 --seconds 7200\r\n').encode('ascii'))
+         '--release', base_release, '--output', args.output,
+         '--work-dir', args.work / 'inno-build'], args.work / 'installer.log', env)
+    if sorted(path.name for path in args.output.iterdir()) != ['MentorFlow-Setup.exe']:
+        raise ValueError('User output must contain only MentorFlow-Setup.exe')
     emit(args.work / 'assembled-artifacts.json', dict(source=source, binary_checks=binary_checks,
         app=str(base), target=str(target), releases=receipts, output=str(args.output),
         status='BUILT_PENDING_PACKAGED_CONSUMER_CHECK', private_key_packaged=False,
@@ -214,6 +241,8 @@ def main():
     parser.add_argument('--seed-manifest-sha256', required=True)
     parser.add_argument('--seed-pyz-toc', type=Path, required=True)
     parser.add_argument('--seed-exe-toc', type=Path, required=True)
+    parser.add_argument('--update-feed-url', default=UPDATE_FEED_URL,
+                        help='04 final public HTTPS stable.json URL; missing configuration blocks final builds')
     parser.add_argument('--execute', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     for name in ('work', 'output', 'seed_payload', 'seed_pyz_toc', 'seed_exe_toc'):

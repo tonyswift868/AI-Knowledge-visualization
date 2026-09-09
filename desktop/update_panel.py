@@ -7,7 +7,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar, QPlainTextEdit, QScrollArea
 
 from .version import VERSION_MANIFEST
-from .update_service import configured_mature_service
+from .update_lifecycle import configured_update_service as configured_mature_service
 from .update_controller import UpdateController, UpdateState, application_updater
 
 _AUTO = object()

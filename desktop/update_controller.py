@@ -186,6 +186,9 @@ class UpdateController(QObject):
 
     def _session_ending(self, _manager=None):
         self._ending = True
+        defer = getattr(self.port, 'defer_session', None)
+        if defer is not None:
+            defer()
         self.save_ui_state()
         self.cancel()
 
@@ -216,8 +219,8 @@ def application_updater(factory=None):
     existing = getattr(app, '_mentorflow_updater', None)
     if existing is None or existing._closed:
         if factory is None:
-            from .update_service import configured_mature_service
-            factory = configured_mature_service
+            from .update_lifecycle import configured_update_service
+            factory = configured_update_service
         try:
             service = factory()
         except Exception:
