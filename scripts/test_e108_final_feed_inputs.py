@@ -47,6 +47,16 @@ def test_retry_preserves_empty_output_but_never_overwrites_candidate(tmp_path):
     assert marker.read_text(encoding='utf-8') == 'preserve'
 
 
+def test_inno_keeps_required_literal_ooxml_filename(tmp_path):
+    from scripts.build_inno_installer import collect_payload
+    ooxml = tmp_path / '_internal/docx/templates/default-docx-template/[Content_Types].xml'
+    ooxml.parent.mkdir(parents=True)
+    ooxml.write_bytes(b'<Types/>')
+    files, directories = collect_payload(tmp_path)
+    assert (str(ooxml.relative_to(tmp_path)), 8) in files
+    assert directories
+
+
 @pytest.mark.parametrize('url', ['https://89.45.45.28/mentorflow/updates/e108/stable.json',
     'https://other.example/e108/', 'https://89.45.45.28/mentorflow/updates/e108/?key=a',
     'http://89.45.45.28/mentorflow/updates/e108/'])

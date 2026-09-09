@@ -37,7 +37,7 @@ def collect_payload(payload):
         if path.is_symlink() or path.is_junction():
             raise ValueError(f'Payload links are forbidden: {path}')
         rel = str(path.relative_to(payload))
-        if any(c in rel for c in '\n\r";=[]'):
+        if any(c in rel for c in '\n\r";='):
             raise ValueError('Unsupported payload filename')
         if path.is_dir():
             directories.append(rel)
@@ -96,6 +96,11 @@ def build(args):
         app_id = 'MentorFlow.Inno.SourceCheck'
         (payload / 'UserRuntime').mkdir()
         (payload / 'UserRuntime/UserRuntime.exe').write_bytes(b'INERT COMPILER INPUT')
+        # python-docx requires this valid literal OOXML filename. The compiler
+        # consumes the payload wildcard, not interpolated filename expressions.
+        ooxml = payload / '_internal/docx/templates/default-docx-template/[Content_Types].xml'
+        ooxml.parent.mkdir(parents=True)
+        ooxml.write_text('<Types/>', encoding='utf-8')
         release_path = stage / 'base-release.json'
         release_path.write_bytes(b'INERT COMPILER INPUT')
     else:
@@ -105,12 +110,12 @@ def build(args):
         release_path = Path(args.release).resolve(strict=True)
     files, directories = collect_payload(payload)
     exe_hash = digest(payload / 'MentorFlow.exe')
-    (stage / 'ownership.ini').write_text(
-        '[Product]\nId=MentorFlow.Inno.v1\nVersion=' + version +
-        '\nExecutableSHA256=' + exe_hash +
-        '\n[Files]\n' + '\n'.join(f'{rel}=1' for rel, _ in files) +
-        '\n[Directories]\n' + '\n'.join(f'{rel}=1' for rel in directories) + '\n',
-        encoding='utf-16')
+    # Diagnostic inventory only. The signed core owns App file lifecycle; an
+    # unused legacy INI must not constrain valid bracketed dependency names.
+    (stage / 'payload-inventory.json').write_text(json.dumps(dict(
+        schema='mentorflow.inno-input-inventory.v1', version=version,
+        executable_sha256=exe_hash, files=files, directories=directories),
+        ensure_ascii=False, indent=2), encoding='utf-8')
     (stage / 'shell.ini').write_text('[Shell]\nAppId=' + app_id +
         '\nMode=per_user\nEngine=UserRuntime\nLauncher=Updater\\UserRuntime.exe launch\n', encoding='utf-16')
     from PIL import Image

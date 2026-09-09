@@ -155,11 +155,15 @@ def finalize(work, output, source, binary_checks):
             environment={'PYTHONPATH': str(authority_path.parent) + os.pathsep + str(builder.ROOT),
                          'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8'},
             commands=[[str(Path(sys.executable).resolve()), '-B', '-m', 'scripts.build_release',
+                *builder.release_arguments(work / 'TARGET', builder.TARGET_VERSION, work / 'BASE', work, source)]],
+            initial_build_commands_for_audit_only=[[str(Path(sys.executable).resolve()), '-B', '-m', 'scripts.build_release',
                 *builder.release_arguments(work / label, version, work / 'BASE' if label == 'TARGET' else None, work, source)]
                 for label, version in (('BASE', builder.BASE_VERSION), ('TARGET', builder.TARGET_VERSION))],
             channel_copy={'from': str(feed / 'releases/stable.json'), 'to': str(feed / builder.METADATA_RELATIVE_PATH)},
             app_rebuild_required=False,
-            note='Existing output is immutable/idempotent. Preserve key and publisher epoch state; do not use development-signing.'),
+            note='Prepared signed feed is ready to deploy. commands only verify/reuse the existing TARGET; '
+                 'never replay BASE against a channel already advanced to TARGET. Initial build commands are an audit record, '
+                 'not a replay sequence. Preserve key and publisher epoch state; do not use development-signing.'),
         offline_evidence=dict(https_owner_receipt=file_fact(infra),
             payload_manifest_and_signed_objects='PASS', consumer_endpoint_binding='PASS',
             runtime_source_closure='PASS', install_execution_level='asInvoker',
