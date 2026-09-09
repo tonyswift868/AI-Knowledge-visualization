@@ -21,6 +21,8 @@
 
 `scripts/per_user_update_core.get_startup_update_state` 先检查独立修复 runtime，再检查
 payload，最后使用 `update_protocol.startup_version_policy` 解释**已验证**的 release。
+登录壳先显示，完整校验在工作线程；健康确认继续等待分类器，不以窗口出现冒充校验
+成功。14,300 文件真实包超出旧 45 秒 IPC 预算，现为有限的 180 秒；不是启动性能达标声明。
 
 | 状态 | 启动行为 |
 |---|---|

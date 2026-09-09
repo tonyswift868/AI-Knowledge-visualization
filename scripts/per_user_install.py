@@ -159,7 +159,10 @@ def verify_payload(root, release=None):
     parser = configparser.ConfigParser(interpolation=None)
     parser.optionxform = str
     raw = read(ini)
-    parser.read_string(raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'))
+    try:
+        parser.read_string(raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'))
+    except configparser.Error as error:
+        raise SecurityError('invalid legacy installer ownership format') from error
     if set(parser.sections()) != {'Product', 'Files', 'Directories'}:
         raise SecurityError('unknown legacy installer ownership format')
     product = dict(parser['Product'])
@@ -554,7 +557,14 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             raise
 
 
-def launch_health(root, release, *, timeout=45):
+# The login shell paints before the complete signed inventory finishes. Its
+# health proof must still wait for that SAME classifier, not bypass integrity.
+# Real 14,300-file packaged qualification exceeded the prior 45-second IPC gate.
+# Keep a finite budget for full verification plus public-feed timeout/Qt signal.
+STARTUP_HEALTH_TIMEOUT = 180
+
+
+def launch_health(root, release, *, timeout=STARTUP_HEALTH_TIMEOUT):
     from desktop.windows_update_pipe import Listener
     from desktop.windows_process_peer import ProcessPeer
     attempt = uuid.uuid4().hex; nonce = os.urandom(32).hex()

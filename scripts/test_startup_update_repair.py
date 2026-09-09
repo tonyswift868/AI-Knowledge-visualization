@@ -57,6 +57,35 @@ def test_flat_ownership_ini_never_authorizes_tampered_payload(case,monkeypatch):
     with pytest.raises(SecurityError):install.verify_payload(root)
 
 
+def test_malformed_inno_claim_is_repair_not_an_uncaught_parser_error(case,monkeypatch):
+    root,raw,release=flat(case,monkeypatch)
+    core.bootstrap_legacy_identity(root,envelope=raw)
+    (root/'.mentorflow-install.ini').write_bytes(b'not a valid installer ownership document')
+    monkeypatch.setattr(install,'verify_gui',lambda *a,**kw:None)
+    with pytest.raises(SecurityError):install.verify_payload(root)
+    state=core.get_startup_update_state(root,check_feed=False)
+    assert state['state']=='REPAIR_REQUIRED' and not state['login_allowed']
+
+
+def test_mandatory_policy_blocks_product_even_when_account_connection_is_ready():
+    os.environ['QT_QPA_PLATFORM']='offscreen'
+    from PySide6.QtWidgets import QApplication
+    from desktop.login_shell import LoginGateWindow
+    from desktop.startup_controller import StartupController
+    app=QApplication.instance() or QApplication([])
+    gate=LoginGateWindow();attached=[];closed=[]
+    connection=SimpleNamespace(close=lambda:closed.append(True))
+    controller=StartupController(gate,verify=lambda:None,connection_factory=lambda:connection,
+                                 attach=lambda _:attached.append(True))
+    controller.connection=connection
+    controller._accept(0,'TUNNEL',True)
+    controller._accept(0,'SECURITY_GATE',dict(verification='PASS',
+        startup_update=core._startup_result('MANDATORY_UPDATE')))
+    assert not attached and closed and not controller.attached
+    assert gate.state_detail.text()=='当前版本需要更新后才能继续'
+    controller.close();gate.close()
+
+
 def test_legacy_migration_preserves_original_flat_and_uninstaller(case,monkeypatch):
     root,raw,release=flat(case,monkeypatch)
     core.bootstrap_legacy_identity(root,envelope=raw)

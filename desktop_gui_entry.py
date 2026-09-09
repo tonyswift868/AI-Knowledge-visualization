@@ -1,8 +1,8 @@
 """Windowed protected entry: one LoginGate from first paint through login.
 
-The installer fully verifies the package. Daily UAT launch checks the protected
-location before Qt import, then verifies the bounded GUI closure after paint.
-Full inventory verification remains an install/manual operation, not daily UX.
+The installer fully verifies the package. Consumer startup verifies the GUI
+closure before Qt import, then classifies the full signed payload and update
+policy on a worker after paint. Login remains gated by that classification.
 """
 import json
 import os

@@ -104,8 +104,16 @@ def repair_update_shell(root):
     def work(action):
         try:
             if not install.is_install(root): core.bootstrap_legacy_identity(root)
-            if action in (100,101):
-                value = core.get_startup_update_state(root, check_feed=action==101)
+            if action == 100:
+                value = core.get_startup_update_state(root, check_feed=False)
+            elif action == 101:
+                value = core.check_latest(root)
+                value['message'] = {
+                    'UPDATE_AVAILABLE':'发现可用更新，可以选择“更新到最新版本”。',
+                    'UP_TO_DATE':'当前已是最新版本；如果安装损坏，仍可选择“修复安装”。',
+                }.get(value.get('state'), '暂时无法检查更新，请稍后重试。')
+                if value.get('no_feed'):
+                    value['message'] = '更新源尚未配置，当前安装和学习资料未更改。'
             else:
                 # Updating a corrupt App and same-version repair both need the
                 # full signed reconstruction, never bytes from the broken App.
