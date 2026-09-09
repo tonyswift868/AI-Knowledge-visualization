@@ -43,6 +43,7 @@ def build(args):
     public=private.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw)
     authority=(f"APP_ID={APP_ID!r}\nPUBLIC_KEYS={{'per-user-uat':{public!r}}}\n"
         f"ONE_CLICK_TEST_FIXTURE={args.one_click_fixture!r}\n"
+        f"RECOVERY_FEED_URL={args.origin+'/stable.json'!r}\nRECOVERY_RELEASE_URL={args.origin+'/base.json'!r}\n"
         "import os\nfrom pathlib import Path\n"
         "WORK_ROOT=str(Path(os.environ['LOCALAPPDATA'])/'MentorFlowPerUserCoreFreeze')\n"
         "DATA_ROOT=str(Path(WORK_ROOT)/'data')\n"

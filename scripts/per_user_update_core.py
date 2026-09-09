@@ -15,6 +15,124 @@ SCHEMA = 'mentorflow.per-user-pending.v1'
 STATES = frozenset(('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING', 'CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'))
 _ending = threading.Event()
 
+STARTUP_STATES = frozenset(('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE',
+                            'REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'))
+
+
+def _startup_result(state, **details):
+    messages = {
+        'HEALTHY': '可以正常登录。',
+        'OPTIONAL_UPDATE': '有新版本可用，您可以继续登录。',
+        'MANDATORY_UPDATE': '当前版本需要更新后才能继续',
+        'REPAIR_REQUIRED': '安装需要修复，您可以修复安装或更新到最新版本。',
+        'FATAL_UNRECOVERABLE': '修复运行时也无法安全加载。请使用可信的 MentorFlow 安装包修复，学习资料不会被删除。',
+    }
+    return dict(state=state, message=messages[state], login_allowed=state in ('HEALTHY', 'OPTIONAL_UPDATE'),
+                shell='login' if state in ('HEALTHY','OPTIONAL_UPDATE','MANDATORY_UPDATE') else 'repair', **details)
+
+
+def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
+    """Single authority for startup; no account API, token or UI dependency.
+
+    Feed uncertainty is not corruption or mandatory policy. Only fresh verified
+    signed metadata may change a healthy installation's login policy.
+    """
+    try:
+        root = install.target(root)
+        release = install.installed(root)
+        install.verify_recovery_runtime(root, release)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        return _startup_result('FATAL_UNRECOVERABLE', reason='recovery_runtime_unverified')
+    try:
+        install.verify_gui(root, executable=install.app_path(root)/'MentorFlow.exe')
+        if full: install.verify_payload(root, release)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        return _startup_result('REPAIR_REQUIRED', current=release.version, reason='payload_verification_failed')
+    if not check_feed:
+        return _startup_result('HEALTHY', current=release.version, feed='NOT_CHECKED')
+    owned = service is None
+    try:
+        service = service if service is not None else one_click_service(root)
+        result = service.check(manual=True)
+        if result.get('state') not in ('UPDATE_AVAILABLE','UP_TO_DATE') or service.release is None:
+            return _startup_result('HEALTHY', current=release.version, feed='UNAVAILABLE_RECOVERABLE')
+        from desktop.update_protocol import startup_version_policy
+        state = startup_version_policy(service.release, release.version)
+        if state == 'OPTIONAL_UPDATE' and not result.get('update'):
+            state = 'HEALTHY'
+        return _startup_result(state, current=release.version, latest=service.release.version, feed='VERIFIED')
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        return _startup_result('HEALTHY', current=release.version, feed='UNAVAILABLE_RECOVERABLE')
+    finally:
+        if owned and service is not None: service.close()
+
+
+def bootstrap_legacy_identity(root, *, envelope=None):
+    """Repair missing flat-Inno binding using signed release, NEVER the INI.
+
+    The corrected installer supplies current-release.json outside payload.
+    Older flat installs can obtain the exact build-provisioned BASE descriptor.
+    Offline failure leaves the installation untouched and remains recoverable.
+    """
+    root = install.target(root)
+    if install.is_install(root): return install.installed(root)
+    if install.app_path(root) != root: raise SecurityError('unrecognized legacy layout')
+    if envelope is None:
+        from mentorflow_delivery_authority import RECOVERY_RELEASE_URL, ONE_CLICK_TEST_FIXTURE
+        url = static_feed_url({'update':{'UPDATE_FEED_URL':RECOVERY_RELEASE_URL}}, test_fixture=ONE_CLICK_TEST_FIXTURE)
+        from desktop.update_download import HTTPTransport
+        from desktop.update_protocol import MAX_METADATA
+        envelope = HTTPTransport(url, signed_static_http=install.configured().uat).fetch_metadata(url, MAX_METADATA)
+    release = install.historical(envelope, install.keys())
+    # The signed recovery runtime is independent of any damaged App file.
+    install.verify_recovery_runtime(root, release)
+    install.atomic(root / install.CURRENT, envelope)
+    return release
+
+
+def repair_installation(root, progress=None, cancel=None, *, service=None, pid=None, hwnd_hex=None):
+    """Reuse signed downloader and transaction; same-version repair is explicit.
+
+    Full reconstruction never reuses corrupt installed bytes. Metadata is
+    independently refreshed immediately before the existing swap/health gate.
+    """
+    owned = service is None
+    try:
+        root = install.target(root)
+        if not install.is_install(root): bootstrap_legacy_identity(root)
+        import sys
+        if pid is None and Path(sys.executable).absolute() == install.app_path(root)/'MentorFlow.exe':
+            pid = os.getpid()
+        if unsafe_teardown(): return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False)
+        service = service if service is not None else one_click_service(root, repair=True)
+        snapshot = service.check(manual=True)
+        if service.release is None: return snapshot
+        from desktop.update_protocol import make_plan, rollout_eligible
+        if not rollout_eligible(service.release, service.install_identity):
+            raise RecoverableError('signed repair release is not available')
+        install.admit(root, service.release.envelope, install.keys(), repair=True)
+        service.plan = {**make_plan(service.release, None, service.current), 'update':True}
+        snapshot = service.download(progress=progress, cancel=cancel)
+        if snapshot.get('state') != 'READY_TO_APPLY': return snapshot
+        if cancel is not None and cancel(): return dict(state='PENDING_INSTALL', destructive_apply=False)
+        # In-App callers hand off before closing themselves, just like update.
+        if pid == os.getpid():
+            return install.handoff_repair(root, hwnd_hex=hwnd_hex)
+        if bool(pid) != bool(hwnd_hex): raise ValueError('complete App identity required')
+        def bridge(root, stage, envelope):
+            if unsafe_teardown(): raise RecoverableError('repair deferred during session teardown')
+            return install.transact(root, stage, envelope, repair=True,
+                before_swap=(lambda:install.request_app_shutdown(root,pid,hwnd_hex)) if pid else lambda:install.require_app_stopped(root))
+        service.apply_bridge = bridge
+        result = service.apply_and_restart()
+        return {**result, 'state':'CURRENT_HEALTHY', 'repair':True}
+    except SecurityError:
+        return dict(state='FAILED_SECURITY', message='修复文件未通过安全校验，未继续应用。')
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        return dict(state='FAILED_RECOVERABLE', message='修复暂未完成，请检查网络后重试。原有学习资料未更改。')
+    finally:
+        if owned and service is not None: service.close()
+
 
 def unsafe_teardown(reason='normal'):
     if reason not in ('normal', 'next_launch', 'shutdown', 'logoff', 'unsafe'):
@@ -81,11 +199,18 @@ def static_feed_url(manifest, *, test_fixture=False):
     return url + 'stable/stable.json' if parsed.path.endswith('/') else url
 
 
-def one_click_service(root):
+def one_click_service(root, *, repair=False):
     root = install.target(root)
     release = install.installed(root)
-    install.verify_tree(root / 'App', release, subset=['mentorflow-version.json'])
-    manifest = strict_json(install.read(root / 'App/mentorflow-version.json'))
+    app = install.app_path(root)
+    try:
+        install.verify_tree(app, release, subset=['mentorflow-version.json'])
+        manifest = strict_json(install.read(app / 'mentorflow-version.json'))
+    except (OSError, RuntimeError, ValueError):
+        if not repair: raise
+        from mentorflow_delivery_authority import RECOVERY_FEED_URL
+        manifest = dict(version=release.version, channel='stable', update=dict(
+            protocol='mentorflow.signed-file-release.v1', UPDATE_FEED_URL=RECOVERY_FEED_URL))
     if manifest.get('version') != release.version:
         raise SecurityError('installed update configuration version mismatch')
     try:
@@ -266,7 +391,7 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
         install.atomic(root/PENDING, canonical({**pending, 'state': 'CURRENT_HEALTHY'}))
         return {**result, 'state': 'CURRENT_HEALTHY'}
     except Exception:
-        journal = strict_json(install.read(root/install.JOURNAL))
+        journal = strict_json(install.read(root/install.JOURNAL)) if (root/install.JOURNAL).exists() else {}
         # A prior transaction's ROLLED_BACK journal must not consume a newly
         # downloaded pending update after an offline/fresh-metadata failure.
         recovery = root/'last-recovery.json'

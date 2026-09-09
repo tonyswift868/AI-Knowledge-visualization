@@ -21,8 +21,10 @@ def main():
             try:
                 if self.path=='/stable.json':
                     label=json.loads((args.work/'feed-selection.json').read_bytes())['release']
-                    if label not in ('base','target','bad'):raise ValueError('unknown fixture release')
+                    if label not in ('base','target','bad','mandatory'):raise ValueError('unknown fixture release')
                     path=root/(label+'.json');category='metadata'
+                elif self.path=='/base.json':
+                    path=root/'base.json';category='metadata'
                 elif re.fullmatch('/objects/[0-9a-f]{64}',self.path):
                     path=(root/mapping[self.path.rsplit('/',1)[1]]).absolute()
                     if not path.is_relative_to(root):raise ValueError('asset-map escape')

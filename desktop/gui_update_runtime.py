@@ -36,6 +36,26 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         from scripts.per_user_update_core import attach_shutdown_guard
         attach_shutdown_guard(application)
 
+    def request_update():
+        if not controller.results.get('SECURITY_GATE'): return
+        if (getattr(controller,'startup_policy',None) or {}).get('state') == 'REPAIR_REQUIRED':
+            request_repair()
+            return
+        from desktop.update_controller import application_updater
+        updater = application_updater()
+        updater.bind_window(gate)
+        updater.run('download')  # existing one-consent download/apply chain
+
+    def request_repair():
+        if not controller.results.get('SECURITY_GATE'): return
+        from scripts.per_user_install import handoff_repair
+        # The native coordinator closes this exact window only after a fully
+        # signed repair is prepared. The App never terminates its own worker.
+        handoff_repair(root, hwnd_hex=f'{int(gate.winId()):016x}')
+
+    gate.update_requested.connect(request_update)
+    gate.repair_requested.connect(request_repair)
+
     def show_about():
         if not controller.results.get('SECURITY_GATE'):return
         if dialogs:
@@ -70,9 +90,11 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         from desktop.update_controller import application_updater
         updater = application_updater()
         updater.bind_window(gate)
-        QTimer.singleShot(5000, updater.start)
+        if getattr(controller, 'startup_policy', None) is None:
+            QTimer.singleShot(5000, updater.start)
         if configured().uat:
-            gate.setWindowTitle('MentorFlow · '+VERSION_MANIFEST['version'])
+            if not (getattr(controller,'startup_policy',None) or {}).get('state') in ('MANDATORY_UPDATE','REPAIR_REQUIRED'):
+                gate.setWindowTitle('MentorFlow · '+VERSION_MANIFEST['version'])
             # Only an explicitly compiled isolated UAT build honours this
             # signed, manifest-governed bad release. No environment/CLI hook;
             # production ignores it. Exit before issuing any health message.

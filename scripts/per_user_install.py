@@ -99,6 +99,10 @@ def historical(raw, public_keys):
 
 def installed(root, public_keys=None):
     root = target(root)
+    # A legacy Inno flat installation has no core STATE. Its signed sidecar
+    # still has exactly the same release authority; Inno's INI is NOT authority.
+    if not (root / STATE).exists() and (root / CURRENT).is_file() and (root / 'MentorFlow.exe').is_file():
+        return historical(read(root / CURRENT), public_keys if public_keys is not None else keys())
     state = strict_json(read(root / STATE))
     if set(state) != {'schema', 'mode', 'app_id'} or state != {
             'schema': SCHEMA, 'mode': 'per_user', 'app_id': configured().app_id}:
@@ -107,7 +111,89 @@ def installed(root, public_keys=None):
 
 
 def is_install(root):
-    return (Path(root) / STATE).is_file()
+    return (Path(root) / STATE).is_file() or ((Path(root) / CURRENT).is_file() and (Path(root) / 'MentorFlow.exe').is_file())
+
+
+def app_path(root):
+    """Fixed layout only; no path is ever read from writable INI/receipts."""
+    root = target(root)
+    return root if not (root / STATE).exists() and (root / 'MentorFlow.exe').is_file() else root / 'App'
+
+
+def resolve_launch_root(executable, selected=None):
+    image = plain(executable)
+    if image.name.casefold() != 'mentorflow.exe':
+        raise SecurityError('unexpected desktop executable')
+    inferred = image.parent.parent if image.parent.name.casefold() == 'app' else image.parent
+    root = target(selected if selected is not None else inferred)
+    if image not in (root / 'App/MentorFlow.exe', root / 'MentorFlow.exe'):
+        raise SecurityError('desktop entry outside selected installation')
+    return root
+
+
+def verify_recovery_runtime(root, release=None):
+    release = release or installed(root)
+    rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items() if name.startswith('UserRuntime/')}
+    if not rows: raise SecurityError('signed repair runtime missing')
+    runtime = Path(root) / 'Updater'
+    if not runtime.exists(): runtime = app_path(root) / 'UserRuntime'
+    verify_tree(runtime, replace(release, rows=rows))
+    return runtime / 'UserRuntime.exe'
+
+
+def verify_payload(root, release=None):
+    """Separate signed payload from the observed Inno v1 install namespace.
+
+    The legacy INI is a typed ownership claim, never a hash/signature authority.
+    We neither execute nor delete uninstallers here. Canonical installs keep all
+    installer/runtime records outside App, so their payload set remains exact.
+    """
+    release = release or installed(root)
+    app = app_path(root)
+    if app != Path(root):
+        verify_tree(app, release)
+        return
+    import configparser
+    ini = app / '.mentorflow-install.ini'
+    plain(ini)
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    raw = read(ini)
+    parser.read_string(raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'))
+    if set(parser.sections()) != {'Product', 'Files', 'Directories'}:
+        raise SecurityError('unknown legacy installer ownership format')
+    product = dict(parser['Product'])
+    if product != dict(Id='MentorFlow.Inno.v1', Version=release.version,
+                       ExecutableSHA256=release.rows['MentorFlow.exe']['sha256']):
+        raise SecurityError('legacy installer claim differs from signed payload')
+    files = {name.replace('\\', '/'): value for name, value in parser['Files'].items()}
+    if set(files) != set(release.rows) or any(value != '1' for value in files.values()):
+        raise SecurityError('legacy installer file inventory differs from signed payload')
+    expected_dirs = set()
+    for name in release.rows:
+        expected_dirs.update(p.as_posix() for p in Path(name).parents if p.as_posix() != '.')
+    declared_dirs = {name.replace('\\', '/'): value for name,value in parser['Directories'].items()}
+    if set(declared_dirs) != expected_dirs or any(value != '1' for value in declared_dirs.values()):
+        raise SecurityError('legacy installer directory inventory differs from signed payload')
+    # Exact artifacts emitted by the audited Inno v1 installer, not a wildcard
+    # executable/DLL exemption. These inert uninstall records never load in App.
+    metadata = {'.mentorflow-install.ini', 'unins000.exe', 'unins000.dat'}
+    for name in ('unins000.exe', 'unins000.dat'):
+        item = plain(app / name)
+        if not item.is_file() or not item.stat().st_size:
+            raise SecurityError('incomplete installer-owned metadata')
+    with (app/'unins000.exe').open('rb') as stream:
+        if stream.read(2) != b'MZ': raise SecurityError('invalid Inno uninstaller')
+    controls = {CURRENT, STATE, HIGHEST, JOURNAL, 'pending-update.json', 'operation.lock'}
+    actual = set()
+    for item in app.rglob('*'):
+        plain(item)
+        name = item.relative_to(app).as_posix()
+        if item.is_file(): actual.add(name)
+        elif name not in expected_dirs: raise SecurityError('unknown flat installation directory')
+    if actual - metadata - controls != set(release.rows):
+        raise SecurityError('unknown flat payload content')
+    verify_tree(app, release, subset=list(release.rows))
 
 
 def validate_parent(parent):
@@ -167,7 +253,7 @@ def require_app_stopped(root):
             if entry.exe.casefold() == 'mentorflow.exe':
                 try:
                     with ProcessPeer(entry.pid) as peer:
-                        if Path(peer.inspect()['executable']) == Path(root)/'App/MentorFlow.exe':
+                        if Path(peer.inspect()['executable']) == app_path(root)/'MentorFlow.exe':
                             raise RecoverableError('close the current App before continuing')
                 except OSError as error:
                     if error.winerror != 87: raise  # exited PID is harmless
@@ -180,7 +266,7 @@ def request_app_shutdown(root, pid, hwnd_hex):
     import ctypes as c
     from ctypes import wintypes as w
     with ProcessPeer(pid) as peer:
-        peer.require(executable=Path(root)/'App/MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=app_path(root)/'MentorFlow.exe', integrity_rid=8192)
         peer.visible_responsive_window(hwnd_hex)
         user = c.WinDLL('user32'); user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
         if not user.PostMessageW(int(hwnd_hex, 16), 0x10, 0, 0): raise c.WinError()
@@ -231,12 +317,20 @@ def verify_tree(app, release, *, subset=None):
 
 def verify_gui(root, *, executable):
     release = installed(root)
-    app = Path(root) / 'App'
+    app = app_path(root)
     if Path(executable).absolute() != app / 'MentorFlow.exe':
         raise SecurityError('per-user entry outside selected installation')
     from scripts.gui_bootstrap_trust import CLOSURE, closure_paths
     verify_tree(app, release, subset=[CLOSURE])
     closure = closure_paths(strict_json(read(app / CLOSURE)))
+    # Qt scans all platform plugins, not just qwindows. The signed closure
+    # cannot be bypassed by placing an extra DLL or qt.conf beside it.
+    for item in (app / '_internal/PySide6/plugins/platforms').iterdir():
+        if not item.is_file() or item.relative_to(app).as_posix() not in closure:
+            raise SecurityError('unknown bootstrap platform plugin')
+    for name in ('qt.conf', '_internal/qt.conf', '_internal/PySide6/qt.conf'):
+        if (app / name).exists() and name not in closure:
+            raise SecurityError('unverified Qt loader configuration')
     verify_tree(app, release, subset=closure)
     return release
 
@@ -416,7 +510,14 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                     # Retain older known versions; cleanup is a later operation.
                     os.replace(previous, root / ('retired-' + uuid.uuid4().hex))
                 previous.mkdir(); atomic(previous / 'release.json', current.envelope)
-                os.replace(root / 'App', previous / 'App'); moved = True; mark('OLD_MOVED')
+                if app_path(root) == root:
+                    # Migrate only through the existing transaction. Preserve
+                    # ALL original flat files and Inno records at their original
+                    # paths; materialize a signed previous without deleting them.
+                    _copy(root, previous / 'App', current, lambda _: None)
+                else:
+                    os.replace(root / 'App', previous / 'App')
+                moved = True; mark('OLD_MOVED')
             os.replace(stage / 'App', root / 'App'); moved = True; activated = True
             atomic(root / CURRENT, release.envelope)
             atomic(root / STATE, canonical(dict(schema=SCHEMA, mode='per_user', app_id=configured().app_id)))
@@ -463,16 +564,17 @@ def launch_health(root, release, *, timeout=45):
             from scripts.per_user_update_core import unsafe_teardown
             if unsafe_teardown():
                 raise RecoverableError('session ending: App launch deferred')
-            process = subprocess.Popen([str(root / 'App/MentorFlow.exe'), '--install-mode', 'per_user',
+            app = app_path(root)
+            process = subprocess.Popen([str(app / 'MentorFlow.exe'), '--install-mode', 'per_user',
                 '--install-root', str(root), '--update-attempt', attempt, '--update-nonce', nonce],
-                cwd=root / 'App', close_fds=True)
+                cwd=app, close_fds=True)
             pid = channel.accept(timeout=timeout)
             if pid != process.pid: raise SecurityError('health came from another process')
             signal = channel.receive(timeout=5)
             if signal.get('attempt_id') != attempt or signal.get('nonce') != nonce or signal.get('version') != release.version or signal.get('manifest_sha256') != digest(release.manifest_bytes):
                 raise SecurityError('health release/correlation mismatch')
             with ProcessPeer(pid) as peer:
-                peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
+                peer.require(executable=app / 'MentorFlow.exe', integrity_rid=8192)
                 peer.visible_responsive_window(signal['hwnd_hex'])
             channel.send({'health_received': True})
             return dict(ready=True, pid=pid, version=release.version, hwnd_hex=signal['hwnd_hex'])
@@ -535,20 +637,29 @@ def handoff_pending(root, *, hwnd_hex, reason='normal'):
         atomic(root / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
         return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False)
     with ProcessPeer(os.getpid()) as peer:
-        peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=app_path(root) / 'MentorFlow.exe', integrity_rid=8192)
         peer.visible_responsive_window(hwnd_hex)
-    release = installed(root)
-    runtime_rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items()
-                    if name.startswith('UserRuntime/')}
-    if not runtime_rows: raise SecurityError('signed updater runtime missing')
-    verify_tree(root / 'Updater', replace(release, rows=runtime_rows))
+    runtime = verify_recovery_runtime(root)
     result = root / ('one-click-' + uuid.uuid4().hex + '.json')
-    process = subprocess.Popen([str(root / 'Updater/UserRuntime.exe'), 'apply-latest',
+    process = subprocess.Popen([str(runtime), 'apply-latest',
         '--root', str(root), '--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex,
         '--result', str(result)], cwd=root, close_fds=True,
         creationflags=subprocess.CREATE_NO_WINDOW)
     return dict(state='APPLYING', coordinator_started=True, coordinator_pid=process.pid,
                 result_path=str(result), update_uac_count=0)
+
+
+def handoff_repair(root, *, hwnd_hex=None, shell=False):
+    from desktop.windows_process_peer import ProcessPeer
+    runtime = verify_recovery_runtime(root)
+    command = [str(runtime), 'repair-update' if shell else 'repair-installation', '--root', str(root)]
+    if not shell:
+        with ProcessPeer(os.getpid()) as peer:
+            peer.require(executable=app_path(root)/'MentorFlow.exe', integrity_rid=8192)
+            peer.visible_responsive_window(hwnd_hex)
+        command += ['--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex]
+    process = subprocess.Popen(command, cwd=root, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    return dict(state='APPLYING', coordinator_started=True, coordinator_pid=process.pid, update_uac_count=0)
 
 
 def coordinate(root, intent_path):
@@ -585,6 +696,15 @@ def _execute(args, parser, progress):
     if args.action == 'launch':
         from scripts.per_user_launcher import launch
         return launch(args.root)
+    if args.action == 'repair-update':
+        from scripts.per_user_launcher import repair_update_shell
+        return repair_update_shell(args.root)
+    if args.action == 'startup-state':
+        from scripts.per_user_update_core import get_startup_update_state
+        return get_startup_update_state(args.root)
+    if args.action == 'repair-installation':
+        from scripts.per_user_update_core import repair_installation
+        return repair_installation(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex)
     if args.action in ('check-latest', 'download-latest', 'update-to-latest', 'apply-latest'):
         from scripts import per_user_update_core as core
         cancelled = lambda: bool(args.cancel_file and args.cancel_file.exists())
@@ -644,7 +764,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=('preflight', 'install', 'apply', 'recover',
         'prepare-update', 'apply-pending', 'update-status', 'uninstall', 'shutdown', 'launch',
-        'check-latest', 'download-latest', 'update-to-latest', 'apply-latest'))
+        'check-latest', 'download-latest', 'update-to-latest', 'apply-latest',
+        'startup-state', 'repair-update', 'repair-installation'))
     location = parser.add_mutually_exclusive_group(required=True)
     location.add_argument('--root', type=Path)
     location.add_argument('--parent', type=Path)
@@ -676,7 +797,7 @@ def main():
         if args.action == 'apply': pid = strict_json(read(args.intent))['pid']
         scope = (runtime_session(pid) if args.action in
                  ('install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
-                  'recover', 'launch', 'uninstall') else nullcontext())
+                  'recover', 'launch', 'uninstall', 'repair-installation') else nullcontext())
         with scope:
             result = _execute(args, parser, progress)
         if args.result: atomic(args.result, canonical(result))

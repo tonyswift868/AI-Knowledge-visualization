@@ -131,6 +131,7 @@ def initialize(args):
     key.write_bytes(private.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
     public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     authority = (f'APP_ID={APP_ID!r}\nPUBLIC_KEYS={{{KEY_ID!r}:{public!r}}}\nONE_CLICK_TEST_FIXTURE=False\n'
+        f'RECOVERY_FEED_URL={feed_url!r}\nRECOVERY_RELEASE_URL={feed_url+"releases/"+BASE_VERSION+"/stable/release.json"!r}\n'
         'import os\nfrom pathlib import Path\n'
         f'WORK_ROOT=str(Path(os.environ["LOCALAPPDATA"])/{APP_ID!r})\n'
         'DATA_ROOT=str(Path(WORK_ROOT)/"data")\n'

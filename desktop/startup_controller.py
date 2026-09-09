@@ -6,7 +6,7 @@ from .login_shell import LoginGateState
 
 
 class StartupController(QObject):
-    _finished = Signal(int, str, bool)
+    _finished = Signal(int, str, object)
 
     def __init__(self, gate, *, verify, connection_factory, attach, record=lambda name: None):
         super().__init__(gate)
@@ -20,6 +20,7 @@ class StartupController(QObject):
         self.attached = False
         self.results = {}
         self.connection = None
+        self.startup_policy = None
         self._finished.connect(self._accept)
         self.gate.first_paint_completed.connect(self.start)
         self.gate.retry_requested.connect(self.start)
@@ -58,7 +59,7 @@ class StartupController(QObject):
                 ok = False
             self.record(kind + ("_END" if ok else "_FAILED"))
             try:
-                self._finished.emit(generation, kind, ok)
+                self._finished.emit(generation, kind, result if ok and kind == 'SECURITY_GATE' else ok)
             except RuntimeError:
                 pass  # QApplication closed while a bounded worker finished.
 
@@ -68,10 +69,20 @@ class StartupController(QObject):
     def _accept(self, generation, kind, ok):
         if self.closed or self.attached or generation != self.generation:
             return
+        if kind == 'SECURITY_GATE' and isinstance(ok, dict):
+            self.startup_policy = ok.get('startup_update')
+            if self.startup_policy:
+                self.gate.set_startup_policy(self.startup_policy)
+            ok = ok.get('verification') == 'PASS'
         self.results[kind] = ok
         if kind == "SECURITY_GATE" and not ok:
             self.connection.close()
         if len(self.results) != 2:
+            return
+        if self.startup_policy and not self.startup_policy['login_allowed']:
+            self.connection.close()
+            self.gate.set_startup_policy(self.startup_policy)
+            self.record('STARTUP_' + self.startup_policy['state'])
             return
         if not all(self.results.values()):
             self.connection.close()

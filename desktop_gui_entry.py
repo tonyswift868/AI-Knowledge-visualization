@@ -23,11 +23,15 @@ def main(argv=None):
     parser.add_argument('--tree-sha')
     parser.add_argument('--update-attempt')
     parser.add_argument('--update-nonce')
+    parser.add_argument('--repair-update', action='store_true')
     args = parser.parse_args(argv)
     # Existing protected shortcuts carry all three pins. New consumer shortcuts
     # and direct EXE launches use the per-user path without elevation/ACL gates.
     per_user = args.install_mode == 'per_user' or (args.install_mode is None and not args.manifest_sha256)
-    if args.install_root is None:
+    if per_user:
+        from scripts import per_user_install
+        args.install_root = per_user_install.resolve_launch_root(sys.executable, args.install_root)
+    elif args.install_root is None:
         args.install_root = Path(sys.executable).absolute().parent.parent
     if bool(args.update_attempt) != bool(args.update_nonce):
         raise ValueError('incomplete update health correlation')
@@ -38,14 +42,25 @@ def main(argv=None):
     from scripts.gui_bootstrap_trust import verify_gui_bootstrap, protected_gui_location
     identities = dict(manifest_sha256=args.manifest_sha256, source_sha=args.source_sha, tree_sha=args.tree_sha)
     if per_user:
-        from scripts import per_user_install
-        per_user_install.installed(args.install_root)
-        package = per_user_install.plain(args.install_root / 'App')
+        from scripts import per_user_update_core as update_core
+        try:
+            if not per_user_install.is_install(args.install_root):
+                update_core.bootstrap_legacy_identity(args.install_root)
+            per_user_install.verify_gui(args.install_root, executable=sys.executable)
+        except (OSError, ValueError, RuntimeError, ImportError):
+            # Never load Qt from a corrupt App. The independently signed native
+            # runtime can still offer repair/update without account or App code.
+            per_user_install.handoff_repair(args.install_root, shell=True)
+            return 0
+        package = per_user_install.app_path(args.install_root)
+        if args.repair_update:
+            per_user_install.handoff_repair(args.install_root, shell=True)
+            return 0
         if Path(sys.executable).absolute() != package / 'MentorFlow.exe':
             raise ValueError('per-user executable location mismatch')
     else:
         package = protected_gui_location(args.install_root, executable=sys.executable)
-    args.install_root = package.parent
+    if not per_user: args.install_root = package.parent
     from desktop.startup_connection import prepare_environment, ConnectionPreparation
     env, certificate = prepare_environment(args.install_root, per_user=per_user)
     os.environ.clear()
@@ -90,7 +105,10 @@ def main(argv=None):
 
     def verify():
         if per_user:
-            per_user_install.verify_gui(args.install_root, executable=sys.executable)
+            policy = update_core.get_startup_update_state(args.install_root)
+            record('STARTUP_' + policy['state'])
+            return {'verification':'PASS' if policy['state'] != 'FATAL_UNRECOVERABLE' else 'FAIL',
+                    'startup_update':policy, 'scope':'startup-update-core'}
         else:
             verify_gui_bootstrap(args.install_root, executable=sys.executable, **identities)
         return {'verification': 'PASS', 'scope': 'gui-bootstrap-closure'}

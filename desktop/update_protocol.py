@@ -265,3 +265,13 @@ def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
                 update_path='FULL_FALLBACK' if fallback else 'FILE_LEVEL_INCREMENTAL',
                 full_bytes=full, expected_download_bytes=sum(release.rows[p]['size'] for p in paths),
                 download_paths=paths, deleted=sorted(set(local_rows or {}) - set(release.rows)))
+
+
+def startup_version_policy(release: Release, current: str) -> str:
+    """The startup view of the SAME verified release/version contract."""
+    if release.signed['withdrawn'] or version_key(current) >= version_key(release.version):
+        return 'HEALTHY'
+    if (version_key(current) < version_key(release.signed['min_supported_version'])
+            or release.signed['mandatory']):
+        return 'MANDATORY_UPDATE'
+    return 'OPTIONAL_UPDATE'

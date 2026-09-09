@@ -28,6 +28,8 @@ class LoginGateWindow(QWidget):
     cancel_requested = Signal()
     closed = Signal()
     about_requested = Signal()
+    update_requested = Signal()
+    repair_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -52,6 +54,7 @@ class LoginGateWindow(QWidget):
         self._retry_mode = False
         self._centered = False
         self._first_paint_scheduled = False
+        self.startup_update_state = None
         self._build()
         self.set_state(LoginGateState.LOGIN_READY)
 
@@ -123,6 +126,15 @@ class LoginGateWindow(QWidget):
         self.primary_button.setDefault(True)
         self.primary_button.clicked.connect(self._activate)
         card_layout.addWidget(self.primary_button)
+        self.update_button = QPushButton('更新到最新版本')
+        self.update_button.setObjectName('startupUpdateLatest')
+        self.update_button.clicked.connect(self.update_requested.emit)
+        self.repair_button = QPushButton('修复安装')
+        self.repair_button.setObjectName('startupRepairInstallation')
+        self.repair_button.clicked.connect(self.repair_requested.emit)
+        card_layout.addWidget(self.update_button)
+        card_layout.addWidget(self.repair_button)
+        self.update_button.hide(); self.repair_button.hide()
         outer.addWidget(card, 1)
         self.remember_box = QCheckBox("记住我（下次免输密码）")
         self.remember_box.setObjectName("rememberLoginCheckBox")
@@ -160,6 +172,9 @@ class LoginGateWindow(QWidget):
             self.auto_box.setChecked(False)
 
     def set_auth_content(self, content: QWidget | None) -> None:
+        if content is not None and self.startup_update_state and not self.startup_update_state['login_allowed']:
+            content.hide()
+            return
         if self.auth_content is not None:
             self.content_layout.removeWidget(self.auth_content)
             self.auth_content.hide()
@@ -173,6 +188,23 @@ class LoginGateWindow(QWidget):
         if content is not None:
             self.content_layout.addWidget(content, 1)
             content.show()
+
+    def set_startup_policy(self, snapshot):
+        self.startup_update_state = dict(snapshot)
+        state = snapshot['state']
+        blocked = not snapshot['login_allowed']
+        self.update_button.setVisible(state in ('OPTIONAL_UPDATE','MANDATORY_UPDATE','REPAIR_REQUIRED'))
+        self.repair_button.setVisible(state == 'REPAIR_REQUIRED')
+        if blocked:
+            if self.auth_content is not None: self.auth_content.hide()
+            self.state_title.show(); self.state_detail.show()
+            self.state_title.setText('修复与更新' if state == 'REPAIR_REQUIRED' else '需要更新')
+            self.state_detail.setText(snapshot['message'])
+            self.primary_button.hide()
+            self.remember_box.setEnabled(False); self.auto_box.setEnabled(False)
+            self.setWindowTitle('MentorFlow · 修复与更新' if state == 'REPAIR_REQUIRED' else 'MentorFlow · 登录与更新')
+        elif state == 'OPTIONAL_UPDATE':
+            self.notice_label.setText(snapshot['message'])
 
     def closeEvent(self, event) -> None:
         self.closed.emit()
@@ -200,6 +232,8 @@ class LoginGateWindow(QWidget):
             QTimer.singleShot(0, self.first_paint_completed.emit)
 
     def _activate(self) -> None:
+        if self.startup_update_state and not self.startup_update_state['login_allowed']:
+            return
         if self._retry_mode:
             self.retry_requested.emit()
         else:

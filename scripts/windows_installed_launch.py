@@ -111,4 +111,6 @@ def launch(root, verify):
 
 
 def show_repair(message):
-    ctypes.windll.user32.MessageBoxW(None, "安装验证失败，请运行安装器进行完整验证或修复。\n" + message, "MentorFlow — 需要修复安装", 0x10)
+    # Internal exceptions are diagnostics, not product error copy. This fallback
+    # is reserved for when even the independent repair runtime is unsafe.
+    ctypes.windll.user32.MessageBoxW(None, "MentorFlow 暂时无法安全启动。请使用可信的安装包修复程序；原有学习资料不会被删除。", "MentorFlow — 需要修复安装", 0x10)

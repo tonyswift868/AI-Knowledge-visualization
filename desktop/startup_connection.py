@@ -17,7 +17,8 @@ from scripts.windows_installed_launch import ISSUER, CA_SHA, SPKI, clean_environ
 def prepare_environment(root: Path, *, per_user=False):
     from scripts import verify_windows_package as v
     from scripts import windows_install_trust as trust
-    certificate = root / "App/Config/edge-tls-ca.crt"
+    from scripts.per_user_install import app_path
+    certificate = (app_path(root) if per_user else root / 'App') / 'Config/edge-tls-ca.crt'
     if per_user:
         from scripts.per_user_install import plain
         plain(certificate)

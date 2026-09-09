@@ -201,8 +201,9 @@ def configured_update_service():
     """
     import sys
     from pathlib import Path
-    from scripts.per_user_install import is_install
-    root = Path(sys.executable).absolute().parent.parent
+    from scripts.per_user_install import is_install, resolve_launch_root
+    image = Path(sys.executable).absolute()
+    root = resolve_launch_root(image) if image.name.casefold() == 'mentorflow.exe' else image.parent.parent
     if is_install(root):
         from scripts.per_user_update_core import one_click_service
         return one_click_service(root)

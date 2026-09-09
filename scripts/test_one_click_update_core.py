@@ -118,6 +118,9 @@ def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkey
     import sys
     from desktop.windows_process_peer import ProcessPeer
     root, service = setup(case, monkeypatch)
+    # This fixture deliberately contains inert bytes, not a GUI loader closure.
+    # Test the launch/pending seam without ever opening the native repair UI.
+    monkeypatch.setattr(install, 'verify_gui', lambda *a, **kw: None)
     assert core.download_latest(root, service=service)['state'] == 'UPDATE_DOWNLOADED'
     journal = strict_json((root/install.JOURNAL).read_bytes())
     (root/install.JOURNAL).write_bytes(canonical({**journal, 'phase':'ROLLED_BACK'}))
