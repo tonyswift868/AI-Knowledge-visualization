@@ -96,6 +96,7 @@ def test_native_dispatch_retains_session_scope(action, method, tmp_path, monkeyp
 
 
 def test_per_user_factory_cannot_fall_back_when_signed_feed_is_missing(monkeypatch, tmp_path):
+    tmp_path = tmp_path / 'MentorFlow'  # the real install-location contract
     monkeypatch.setattr(sys, 'executable', str(tmp_path / 'App/MentorFlow.exe'))
     monkeypatch.setattr(install, 'is_install', lambda root: root == tmp_path)
     from desktop.update_protocol import RecoverableError
@@ -127,11 +128,19 @@ def test_https_slot_and_single_installer_output_wiring():
     assert "['MentorFlow-Setup.exe']" in source and "'--work-dir', args.work / 'inno-build'" in source
 
 
-def test_frozen_core_algorithms_unchanged_by_integration():
+def test_unmodified_core_algorithms_remain_frozen_after_e109_repair():
     selections = {
         'scripts/per_user_install.py': ['transact', 'recover', 'validate_target', '_initial_repair_release', 'handoff_pending'],
         'scripts/per_user_update_core.py': ['check_latest', 'download_latest', 'update_to_latest',
             'apply_and_relaunch', 'apply_update', 'one_click_service', 'resume_pending_on_normal_launch'],
+    }
+    # E109 explicitly authorizes these bounded changes: typed flat migration,
+    # path-correct handoff, NO_FEED, repair config fallback and flat journal.
+    # Their behavior is covered by test_startup_update_repair, not AST equality.
+    authorized = {
+        'scripts/per_user_install.py': {'transact', 'handoff_pending'},
+        'scripts/per_user_update_core.py': {'check_latest', 'download_latest', 'update_to_latest',
+            'apply_update', 'one_click_service'},
     }
     for path, names in selections.items():
         frozen = subprocess.check_output(['git', 'show', FROZEN_07 + ':' + path], cwd=ROOT)
@@ -140,7 +149,8 @@ def test_frozen_core_algorithms_unchanged_by_integration():
             return {node.name: ast.dump(node, include_attributes=False) for node in ast.parse(source).body
                     if isinstance(node, ast.FunctionDef)}
         left, right = functions(frozen), functions(current)
-        for name in names: assert left[name] == right[name], (path, name)
+        for name in names:
+            if name not in authorized[path]: assert left[name] == right[name], (path, name)
 
 
 def test_real_signed_per_user_download_flows_through_ui_port(case, monkeypatch):

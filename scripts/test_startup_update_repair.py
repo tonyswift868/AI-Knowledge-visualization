@@ -184,3 +184,23 @@ def test_source_fixture_cannot_create_native_repair_dialog(case,monkeypatch):
 @pytest.mark.parametrize('config',[{'enabled':'false'},{'enabled':1},{'enabled':None}])
 def test_invalid_feed_enabled_flag_rejected(config):
     with pytest.raises(SecurityError):core.static_feed_url({'update':config})
+
+
+def test_next_launch_recovers_interrupted_swap_before_gui_classification(case,monkeypatch):
+    from scripts import per_user_launcher as launcher
+    root,service=setup(case,monkeypatch)
+    old=install.installed(root)
+    previous=root/'previous';previous.mkdir()
+    (previous/'release.json').write_bytes(old.envelope)
+    (root/'App').rename(previous/'App')
+    (root/install.JOURNAL).write_bytes(canonical(dict(schema='mentorflow.per-user-transaction.v1',
+        phase='OLD_MOVED',attempt='a'*32,base=old.version,base_manifest=core.digest(old.manifest_bytes))))
+    def classify(*args,**kwargs):
+        install.verify_tree(root/'App',old)
+        return core._startup_result('HEALTHY')
+    monkeypatch.setattr(core,'get_startup_update_state',classify)
+    monkeypatch.setattr(install,'launch_health',ready)
+    monkeypatch.setattr(launcher,'repair_update_shell',lambda *a:pytest.fail('recovery must precede GUI gate'))
+    assert launcher.launch(root)['health']['ready']
+    assert install.installed(root).version==old.version
+    service.close()

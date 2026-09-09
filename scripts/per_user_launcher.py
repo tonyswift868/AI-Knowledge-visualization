@@ -29,8 +29,9 @@ def launch(root):
         try: core.bootstrap_legacy_identity(root)
         except (OSError, RuntimeError, ValueError, ImportError):
             return repair_update_shell(root)
-    state = core.get_startup_update_state(root, check_feed=False, full=False)
-    if state['state'] in ('REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'):
+    try:
+        install.verify_recovery_runtime(root)
+    except (OSError, RuntimeError, ValueError):
         return repair_update_shell(root)
     with InstallUpdateLock(root):
         install.require_app_stopped(root)
@@ -39,6 +40,11 @@ def launch(root):
         # Recovery shares the core's writer mutex. Release it before calling
         # apply, which acquires the same non-reentrant mutex itself.
         install.recover(root)
+    # A crash may leave App temporarily missing between the owned swaps.
+    # Restore the verified previous generation BEFORE classifying its GUI.
+    state = core.get_startup_update_state(root, check_feed=False, full=False)
+    if state['state'] in ('REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'):
+        return repair_update_shell(root)
     if (root / core.PENDING).exists():
         pending = core.read_pending(root)
         if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
