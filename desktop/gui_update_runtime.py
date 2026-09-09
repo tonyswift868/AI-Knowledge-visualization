@@ -33,6 +33,8 @@ def attach_update_entry(application, gate, *, defer_service=False):
     from desktop.update_panel import UpdatePanel
     updater = application_updater((lambda: None) if defer_service else None)
     gate.bind_update_controller(updater)
+    from desktop.version import account_capabilities
+    gate.set_account_capabilities(None if defer_service else account_capabilities())
     entry = UpdatePanel(gate, controller=updater, compact=True,
                         auto_delay_ms=60000 if defer_service else 5000)
     gate.update_entry = entry
@@ -51,6 +53,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
     previous = getattr(application, '_mentorflow_updater', None)
     needs_service = previous is None or previous._closed
     entry = attach_update_entry(application, gate, defer_service=True)
+    gate.set_account_capabilities(None)  # No account actions before verified startup.
     updater = entry.controller
     gate.about_button.setText('关于 MentorFlow 与更新')
     gate.about_button.setAccessibleName('关于 MentorFlow 与更新')
@@ -110,6 +113,8 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
     def ready():
         if 'SECURITY_GATE' not in controller.results or not gate.isVisible():return
         verified = controller.results['SECURITY_GATE'] is True
+        if not verified:
+            gate.set_account_capabilities(None)
         updater.set_installation_verified(verified)
         entry.setEnabled(True)
         gate.about_button.setEnabled(True)
@@ -117,7 +122,9 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         entry.refresh()
         if not verified or ready_once[0]:return
         ready_once[0] = True
-        gate.set_account_capabilities(account_capabilities)
+        from desktop.version import account_capabilities as configured_account_capabilities
+        gate.set_account_capabilities(configured_account_capabilities()
+                                      if account_capabilities is None else account_capabilities)
         if not service_initialized[0]:
             from desktop.update_lifecycle import configured_update_service
             try: service = configured_update_service(install_root=root)

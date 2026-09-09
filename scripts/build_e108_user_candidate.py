@@ -20,6 +20,7 @@ KEY_ID = 'e108-user-test-only'
 BASE_VERSION, TARGET_VERSION = '1.4.0', '1.4.1'
 # Build input only. No development/staging host is a product default.
 UPDATE_FEED_URL = ''
+ACCOUNT_CAPABILITIES_CONFIG = ROOT / 'release/account-capabilities.json'
 METADATA_RELATIVE_PATH = 'stable/stable.json'
 TARGET_RELEASE_NOTES = ('关于页面新增“本版本更新”，断网时也能查看已安装版本说明。\n'
                         '新增“复制版本信息”，可复制版本、渠道和本版说明，便于反馈问题；不含账号或本机路径。')
@@ -46,10 +47,24 @@ def require_update_feed_url(value):
     return value
 
 
+def load_build_account_capabilities(path=None):
+    """Explicit public build switches, never SMTP credentials or UI constants."""
+    payload = json.loads(Path(path or ACCOUNT_CAPABILITIES_CONFIG).read_text(encoding='utf-8'))
+    if (not isinstance(payload, dict) or set(payload) != {'schema', 'account_capabilities'} or
+            payload['schema'] != 'mentorflow.account-capabilities.v1'):
+        raise ValueError('invalid account capability build configuration')
+    values = payload['account_capabilities']
+    if (not isinstance(values, dict) or set(values) != {'register', 'forgot_password'} or
+            any(type(value) is not bool for value in values.values())):
+        raise ValueError('account capabilities require exactly two boolean values')
+    return dict(values)
+
+
 def version_document(version, public_keys, feed_url=UPDATE_FEED_URL):
     import base64
     if feed_url: require_update_feed_url(feed_url)
     doc = dict(schema='mentorflow.version.v1', product='MentorFlow', version=version, channel='stable',
+        account_capabilities=load_build_account_capabilities(),
         desktop_notice='当前用户安装；应用内一键更新，学习资料保留在原位置。',
         update=dict(protocol='mentorflow.signed-file-release.v1', enabled=bool(feed_url),
                     UPDATE_FEED_URL=feed_url, metadata_url=feed_url,
@@ -117,6 +132,7 @@ def is_project_namespace(pyz, name):
 
 def initialize(args):
     feed_url = require_update_feed_url(args.update_feed_url)
+    capabilities = load_build_account_capabilities()
     source = identity()
     from scripts.prepare_transactional_installer import verify
     verify(args.seed_payload, args.seed_manifest_sha256)
@@ -141,7 +157,8 @@ def initialize(args):
     (generated / 'mentorflow_delivery_authority.py').write_text(authority, encoding='utf-8')
     emit(args.work / 'build-input.json', dict(source=source, seed_manifest_sha256=args.seed_manifest_sha256,
         seed_pyz_toc_sha256=sha(args.seed_pyz_toc), seed_exe_toc_sha256=sha(args.seed_exe_toc),
-        public_key=base64.b64encode(public).decode(), key_id=KEY_ID, UPDATE_FEED_URL=feed_url))
+        public_key=base64.b64encode(public).decode(), key_id=KEY_ID, UPDATE_FEED_URL=feed_url,
+        account_capabilities=capabilities, account_capabilities_config_sha256=sha(ACCOUNT_CAPABILITIES_CONFIG)))
     env = {**os.environ, 'PYTHONPATH': str(generated) + os.pathsep + str(ROOT),
            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8',
            'TEMP': str(args.work), 'TMP': str(args.work),

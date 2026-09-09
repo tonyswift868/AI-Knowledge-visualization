@@ -45,6 +45,18 @@ def load_version_manifest() -> dict[str, Any]:
 VERSION_MANIFEST = load_version_manifest()
 
 
+def account_capabilities(manifest: dict[str, Any] | None = None) -> dict[str, bool]:
+    """Read public switches from verified package metadata; absent means disabled.
+
+    This is presentation capability, not server authorization. The packaged
+    startup binds it only after the existing installation security gate passes.
+    """
+    payload = VERSION_MANIFEST if manifest is None else manifest
+    values = payload.get('account_capabilities') if isinstance(payload, dict) else None
+    return {key: isinstance(values, dict) and values.get(key) is True
+            for key in ('register', 'forgot_password')}
+
+
 def version_display(manifest: dict[str, Any] | None = None) -> str:
     payload = manifest or VERSION_MANIFEST
     product = str(payload.get("product") or "MentorFlow")
@@ -66,4 +78,4 @@ def installed_release_details(manifest: dict[str, Any] | None = None) -> str | N
     return version_display(payload) + "\n\n" + notes.strip()
 
 
-__all__ = ["VERSION_MANIFEST", "load_version_manifest", "version_display", "installed_release_details"]
+__all__ = ["VERSION_MANIFEST", "load_version_manifest", "version_display", "installed_release_details", "account_capabilities"]
