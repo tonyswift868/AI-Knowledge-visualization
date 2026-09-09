@@ -1,0 +1,7 @@
+{
+  "schema": "mentorflow.account-capabilities.v1",
+  "account_capabilities": {
+    "register": false,
+    "forgot_password": false
+  }
+}

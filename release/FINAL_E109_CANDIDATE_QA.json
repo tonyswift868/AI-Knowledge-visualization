@@ -1,0 +1,41 @@
+{
+  "schema": "mentorflow.final-e109-candidate-qa.v1",
+  "dispatch_id": "MF-E109-INTEGRATION-CONTROL-20260910-01",
+  "status": "PENDING_QA",
+  "candidate_status": "NOT_BUILT_WAITING_REAL_SMTP",
+  "candidate_sha256": null,
+  "w07_exact_commit": "beaec25ab8e8c1f281790bf8dc5548f35b341791",
+  "w07_qa_status": "PENDING_QA",
+  "verification_owner": "FINAL_UNIQUE_E109_CANDIDATE_QA",
+  "items_from_07": [
+    {
+      "id": "mandatory_update_final_package",
+      "status": "PENDING_QA",
+      "acceptance": "Final signed candidate blocks login below min-supported version, updates through the delivered core, and admits login only after real startup health."
+    },
+    {
+      "id": "bad_target_recovery_final_package",
+      "status": "PENDING_QA",
+      "acceptance": "Final candidate with a failing target restores the last verified healthy release and next normal launch works; user data is unchanged."
+    },
+    {
+      "id": "canonical_identity_recovery",
+      "status": "PENDING_QA",
+      "known_finding": "Earlier exact W07 package misclassified corrupt/missing CURRENT and missing STATE as fatal despite an independently verifiable signed recovery runtime. No repair is claimed here.",
+      "acceptance": "Exercise canonical identity loss/corruption on the final candidate; validate signed recovery authority, no untrusted fallback, and safe data-preserving recovery."
+    },
+    {
+      "id": "same_version_repair",
+      "status": "PENDING_QA",
+      "acceptance": "Final candidate restores damaged application content at the same version using the signed core and verifies real startup health without deleting user data."
+    }
+  ],
+  "prior_package_evidence": "Earlier isolated 1.4.x phase-one checks are not final E109 candidate acceptance.",
+  "separate_w07_retest_dispatch": false,
+  "other_final_gates": [
+    "real external SMTP delivery and verification/reset links",
+    "final installer native finish options, cancellation and uninstall",
+    "integrated pre-login/account/update UI on the final package"
+  ],
+  "build_authorized_in_current_step": false
+}
