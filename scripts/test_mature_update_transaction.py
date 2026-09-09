@@ -203,20 +203,20 @@ def test_update_card_check_download_apply_fixture_handoff(case):
         results.append(result); return result
     service.apply_bridge=bridge
     panel=UpdatePanel(service=service,auto_delay_ms=60000); panel.show()
-    def finish():
+    def finish(expected):
         deadline=time.monotonic()+10
-        while panel._thread and panel._thread.is_alive() and time.monotonic()<deadline:
+        while time.monotonic()<deadline:
             application.processEvents(); time.sleep(.01)
-        assert not panel._thread.is_alive()
+            if expected() and not panel.controller.busy: break
+        assert expected() and not panel.controller.busy
         panel.refresh(); application.processEvents()
     try:
         with patch.object(apply,'PRODUCTION_RELEASE_KEYS',feed.keys), \
              patch.object(tx,'Registry',lambda:Registry(base)),patch.object(tx,'Shortcut',lambda _:Shortcut(base)):
-            panel.check_button.click(); finish()
+            panel.check_button.click(); finish(lambda: service.snapshot['state']=='UPDATE_AVAILABLE')
             assert panel.download_button.isEnabled()
-            panel.download_button.click(); finish()
-            assert service.snapshot['state']=='READY_TO_APPLY' and panel.apply_button.isEnabled()
-            panel.apply_button.click(); finish()
+            panel.download_button.click(); finish(lambda: bool(results))
+            assert not hasattr(panel, 'apply_button')
             assert results[0]['fixture_restart_version']=='1.1.1'
             assert service.snapshot['state']=='RESTART_REQUIRED'
     finally: panel.shutdown(); panel.close()

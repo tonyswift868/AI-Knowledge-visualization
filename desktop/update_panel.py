@@ -1,11 +1,10 @@
 """User-facing update card; package/transaction diagnostics stay outside the UI."""
 from __future__ import annotations
 
-from datetime import datetime
 import re
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar, QCheckBox, QScrollArea
+from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar, QPlainTextEdit, QScrollArea
 
 from .version import VERSION_MANIFEST
 from .update_service import configured_mature_service
@@ -14,39 +13,55 @@ from .update_controller import UpdateController, UpdateState, application_update
 _AUTO = object()
 
 
-def release_summary(text):
+def release_details(text):
     """Plain, bounded release prose; technical diagnostics are not release notes."""
     lines = [line.strip() for line in str(text or '').splitlines() if line.strip()]
     lines = [line for line in lines if not re.search(
-        r'manifest|hardlink|receipt|source.acceptance|helper|\b[0-9a-f]{40,}\b', line, re.I)]
-    return '\n'.join(lines[:3])[:400] or '此更新包含功能改进与问题修复。'
+        r'manifest|hardlink|receipt|source.acceptance|helper|\bsha(?:256)?\b|traceback|http\s+stack|https?://|\b[0-9a-f]{40,}\b', line, re.I)]
+    return '\n'.join(lines)[:4000] or '此更新包含功能改进与问题修复。'
+
+
+def release_summary(text):
+    return '\n'.join(release_details(text).splitlines()[:3])[:240]
 
 
 class UpdatePanel(QFrame):
-    def __init__(self, parent=None, *, service=_AUTO, auto_delay_ms=5000):
+    def __init__(self, parent=None, *, service=_AUTO, port=None, auto_delay_ms=5000):
         super().__init__(parent)
         self.setObjectName('updateCenter')
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._shared = service is _AUTO
+        self._shared = service is _AUTO and port is None
         self.controller = (application_updater(configured_mature_service) if self._shared
-                           else UpdateController(service, self))
+                           else UpdateController(None if service is _AUTO else service, self, port=port))
         self.service = self.controller.service
         self._closed = False
         self._restored = False
+        self._notes_text = ''
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(10)
         layout.addWidget(QLabel('软件版本与更新'))
-        version = self.service.current if self.service else VERSION_MANIFEST.get('version', '—')
+        version = self.controller.port.snapshot.get('current') or VERSION_MANIFEST.get('version', '—')
         self.version_label = QLabel(f'当前版本：{version}')
+        self.version_label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.version_label)
-        self.checked_label = QLabel('最近检查：尚未检查')
-        layout.addWidget(self.checked_label)
         self.notes = QLabel('学习资料和账号数据不参与程序更新。')
         self.notes.setTextFormat(Qt.TextFormat.PlainText)
         self.notes.setWordWrap(True)
         layout.addWidget(self.notes)
+        self.notes_more = QPushButton('查看更新内容')
+        self.notes_more.setProperty('secondary', True)
+        self.notes_more.setAccessibleName('查看更新内容')
+        layout.addWidget(self.notes_more, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.details = QPlainTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setAccessibleName('更新内容')
+        self.details.setMaximumHeight(160)
+        self.details.hide()
+        layout.addWidget(self.details)
+        self.notes_more.clicked.connect(self._toggle_notes)
         self.sizes = QLabel('')
+        self.sizes.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.sizes)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
@@ -59,23 +74,18 @@ class UpdatePanel(QFrame):
         layout.addWidget(self.status)
         actions = QHBoxLayout()
         self.check_button = QPushButton('检查更新')
-        self.download_button = QPushButton('更新')
-        self.cancel_button = QPushButton('取消下载')
-        self.apply_button = QPushButton('重启并更新')
-        self.later_button = QPushButton('稍后')
-        for button in (self.check_button, self.download_button, self.cancel_button, self.apply_button, self.later_button):
+        self.download_button = QPushButton('更新到最新版本')
+        self.download_button.setObjectName('primaryButton')
+        self.download_button.setProperty('primary', True)
+        self.cancel_button = QPushButton('取消')
+        for button in (self.check_button, self.download_button, self.cancel_button):
             button.setAccessibleName(button.text())
             actions.addWidget(button)
         actions.addStretch()
         layout.addLayout(actions)
-        # Hidden compatibility attribute; never start an installer from quit.
-        self.on_exit = QCheckBox('退出时更新', self)
-        self.on_exit.hide()
         self.check_button.clicked.connect(lambda: self._run('check'))
         self.download_button.clicked.connect(lambda: self._run('download'))
         self.cancel_button.clicked.connect(self._cancel)
-        self.apply_button.clicked.connect(lambda: self._run('apply_and_restart'))
-        self.later_button.clicked.connect(self._later)
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.refresh)
@@ -102,11 +112,11 @@ class UpdatePanel(QFrame):
         if not self._closed:
             self.controller.start()
 
-    def _run(self, action, **kwargs):
+    def _run(self, action):
         if not self._closed:
             self.setFocus(Qt.FocusReason.OtherFocusReason)
             self._bind()
-            self.controller.run(action, **kwargs)
+            self.controller.run(action)
             self.refresh()
             QTimer.singleShot(0, self._keep_card_visible)
 
@@ -124,9 +134,11 @@ class UpdatePanel(QFrame):
                 return
             parent = parent.parentWidget()
 
-    def _later(self):
-        self.controller.remember_pending()
-        self.controller._resume = False
+    def _toggle_notes(self):
+        expanded = not self.details.isVisible()
+        self.details.setVisible(expanded)
+        self.notes_more.setText('收起更新内容' if expanded else '查看更新内容')
+        self.notes_more.setAccessibleName(self.notes_more.text())
 
     @staticmethod
     def _size(value):
@@ -137,61 +149,65 @@ class UpdatePanel(QFrame):
         focus = QApplication.focusWidget()
         owned_focus = focus is self or focus is not None and self.isAncestorOf(focus)
         previous_state = self.property('updateState')
-        service = self.service
-        snap = dict(service.snapshot) if service else {}
+        snap = dict(self.controller.port.snapshot)
+        self.version_label.setText(f"当前版本 {snap.get('current') or VERSION_MANIFEST.get('version', '—')}")
         state = self.controller.state
         self.setProperty('updateState', state.value)
-        busy = self.controller.busy or state == UpdateState.APPLYING
-        raw_state = snap.get('state')
-        ready = state == UpdateState.READY_TO_RESTART
+        preparing = state == UpdateState.PREPARING
+        busy = self.controller.busy or preparing
         failed = state == UpdateState.RECOVERABLE_ERROR
         downloading = state == UpdateState.DOWNLOADING
-        security = raw_state == 'FAILED_SECURITY'
-        can_download = bool(service and service.plan and service.plan.get('update')) and not security
-        self.check_button.setVisible(not downloading and not ready and state != UpdateState.APPLYING)
-        self.check_button.setEnabled(bool(service) and not busy)
+        security = snap.get('error_kind') == 'validation'
+        can_download = bool(snap.get('has_update')) and not (failed and security)
+        available = state == UpdateState.UPDATE_AVAILABLE or failed and can_download
+        self.check_button.setVisible(state in (UpdateState.UP_TO_DATE, UpdateState.CHECKING) or failed and not can_download)
+        self.check_button.setEnabled(snap.get('available', True) and not busy)
         self.check_button.setText('重试' if failed and not can_download else '检查更新')
-        self.download_button.setVisible(can_download and not ready and not downloading and state != UpdateState.APPLYING)
-        self.download_button.setEnabled(can_download and not busy)
-        self.download_button.setText('重试下载' if failed else '更新')
+        self.download_button.setVisible(available)
+        self.download_button.setEnabled(available and not busy)
         self.check_button.setAccessibleName(self.check_button.text())
         self.download_button.setAccessibleName(self.download_button.text())
         self.cancel_button.setVisible(downloading)
         self.cancel_button.setEnabled(downloading)
-        self.apply_button.setVisible(ready or state == UpdateState.APPLYING)
-        self.apply_button.setEnabled(ready and not busy and service is not None and service.apply_bridge is not None)
-        self.later_button.setVisible(ready)
-        self.later_button.setEnabled(not busy)
-        checked = snap.get('last_checked')
-        self.checked_label.setText('最近检查：' + (datetime.fromtimestamp(checked).strftime('%Y-%m-%d %H:%M') if checked else '尚未检查'))
-        actual = max(0, snap.get('actual_downloaded_bytes', 0))
-        expected = max(0, snap.get('expected_download_bytes', 0))
-        self.sizes.setText(f"新版本：{snap.get('latest', '—')} · 下载大小：{self._size(expected)}" if can_download else '')
-        self.notes.setText(release_summary(snap.get('release_notes')) if can_download else '学习资料和账号数据不参与程序更新。')
-        preparing = raw_state == 'PREPARING' or downloading and actual >= expected
-        self.progress.setVisible(downloading or ready)
-        self.progress.setRange(0, 0 if preparing else 100)
-        percent = 100 if ready else min(99, int(actual * 100 / max(1, expected)))
+        actual = max(0, snap.get('downloaded', 0))
+        expected = max(0, snap.get('total', 0))
+        self.sizes.setText(f"新版本 {snap.get('latest', '—')}\n预计下载 {self._size(expected)}" if can_download else '')
+        full_notes = release_details(snap.get('notes'))
+        summary = release_summary(snap.get('notes'))
+        self.notes.setText(summary if can_download else '学习资料和账号数据不参与程序更新。')
+        if full_notes != self._notes_text:
+            self._notes_text = full_notes
+            self.details.setPlainText(full_notes)
+            self.details.hide()
+            self.notes_more.setText('查看更新内容')
+            self.notes_more.setAccessibleName('查看更新内容')
+        more = can_download and full_notes != summary
+        self.notes_more.setVisible(more)
+        if not more:
+            self.details.hide()
+        self.progress.setVisible(downloading)
+        self.progress.setRange(0, 100)
+        percent = min(100, round(actual * 100 / max(1, expected)))
         self.progress.setValue(percent)
-        self.transfer_label.setVisible(downloading or ready)
-        self.transfer_label.setText(f'{percent}% · {self._size(actual)} / {self._size(max(actual, expected))}')
+        self.transfer_label.setVisible(downloading)
+        self.transfer_label.setText(f'{self._size(actual)} / {self._size(max(actual, expected))}')
         messages = {
             UpdateState.CHECKING: '正在检查更新…',
-            UpdateState.UPDATE_AVAILABLE: '发现新版本，准备好后点击“更新”。',
-            UpdateState.DOWNLOADING: '正在准备更新…' if preparing else '正在下载更新…',
-            UpdateState.READY_TO_RESTART: '更新已下载。重启后即可使用新版本；也可以稍后继续。',
-            UpdateState.APPLYING: '正在重启并更新，完成后会自动打开 MentorFlow…',
-            UpdateState.UP_TO_DATE: '已是最新版本',
-            UpdateState.RECOVERABLE_ERROR: ('更新校验未通过，请重新检查。当前版本可继续使用。' if security
-                else '下载已暂停，可重试。当前版本可继续使用。' if raw_state == 'DOWNLOAD_PAUSED_OR_INTERRUPTED'
-                else '暂时无法完成更新，请重试。当前版本可继续使用。'),
+            UpdateState.UPDATE_AVAILABLE: '下载完成后将自动更新并重新启动。',
+            UpdateState.DOWNLOADING: '正在下载更新',
+            UpdateState.PREPARING: '正在准备更新…\nMentorFlow 将自动重新启动',
+            UpdateState.UP_TO_DATE: '✓ 已是最新版本',
+            UpdateState.DEFERRED_TO_NEXT_LAUNCH: '更新已下载，将在下次启动时完成。',
+            UpdateState.RECOVERABLE_ERROR: ('更新文件验证失败，当前版本不会受到影响。' if security
+                else '下载已取消，可重新更新。' if self.controller._cancelled or snap.get('error_kind') == 'cancelled'
+                else '暂时无法检查更新，请稍后重试。'),
         }
-        self.status.setText(self.controller._error or messages[state])
+        self.status.setText(messages[state])
         # Hiding a focused action must not transfer focus to controls farther
         # down Settings and scroll the progress out of the user's viewport.
         if owned_focus and self.isVisible():
             if focus is self or not focus.isVisible() or not focus.isEnabled():
-                target = next((button for button in (self.cancel_button, self.apply_button,
+                target = next((button for button in (self.cancel_button,
                     self.download_button, self.check_button) if button.isVisible() and button.isEnabled()), self)
                 target.setFocus(Qt.FocusReason.OtherFocusReason)
             if previous_state != state.value:

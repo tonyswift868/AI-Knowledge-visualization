@@ -1,35 +1,162 @@
-"""UI adapter to frozen per-user/protected lifecycle interfaces; no transaction."""
-import os
-from pathlib import Path
-import subprocess
+"""Thin port for the frozen core; no manifest parser, downloader or transaction.
+
+07's final high-level implementation binds here without changing panel/controller.
+The old core's prepared result maps to PREPARING, never another user confirmation.
+"""
+from typing import Protocol
+
+from .update_session import SessionEnding
+
+CORE_STATES = {
+    'IDLE': 'CHECKING', 'CHECKING': 'CHECKING',
+    'UP_TO_DATE': 'UP_TO_DATE', 'CURRENT_HEALTHY': 'UP_TO_DATE',
+    'UPDATE_AVAILABLE': 'UPDATE_AVAILABLE',
+    'DOWNLOADING': 'DOWNLOADING', 'PREPARING': 'PREPARING',
+    'READY_TO_APPLY': 'PREPARING', 'UPDATE_DOWNLOADED': 'PREPARING',
+    'APPLYING': 'PREPARING', 'RESTART_REQUIRED': 'PREPARING',
+    'DEFERRED_TO_NEXT_LAUNCH': 'DEFERRED_TO_NEXT_LAUNCH',
+    'PENDING_INSTALL': 'DEFERRED_TO_NEXT_LAUNCH',
+}
+DEFERRED = ('DEFERRED_TO_NEXT_LAUNCH', 'PENDING_INSTALL')
 
 
-def remember_download(service):
-    from scripts.per_user_install import is_install
-    if is_install(service.install_root):
-        from scripts.per_user_update_core import remember_download as remember
-        return remember(service.install_root, service.staged, service.release.envelope)
+class UpdatePort(Protocol):
+    @property
+    def snapshot(self) -> dict: ...
+    def check_latest(self) -> dict: ...
+    def download_latest(self, progress, cancel) -> dict: ...
+    def update_to_latest(self, progress=None, cancel=None, before_apply=None) -> dict: ...
+    def apply_and_relaunch(self) -> dict: ...
+    def close(self) -> None: ...
 
 
-def handoff(root, stage, envelope, *, hwnd_hex):
-    from scripts import per_user_install as install
-    if not install.is_install(root):
-        from .update_bridge import handoff as protected_handoff
-        return protected_handoff(root, stage, envelope, hwnd_hex=hwnd_hex)
-    from scripts import per_user_update_core as core
-    from .update_session import SessionEnding
-    from .windows_process_peer import ProcessPeer
-    root = install.target(root)
-    core.remember_download(root, stage, envelope)
-    if core.unsafe_teardown():
-        raise SessionEnding('Update deferred until next normal launch')
-    with ProcessPeer(os.getpid()) as peer:
-        peer.require(executable=root/'App/MentorFlow.exe', integrity_rid=8192)
-        peer.visible_responsive_window(hwnd_hex)
-    runtime = install.plain(Path(root)/'Updater/UserRuntime.exe')
-    # Never run a transaction in the App worker: normal App exit would kill it.
-    # The frozen CLI repeats discovery/hash checks and owns apply/health/relaunch.
-    process = subprocess.Popen([str(runtime), 'apply-pending', '--root', str(root),
-        '--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex], cwd=root,
-        close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
-    return dict(coordinator_started=True, bridge_pid=process.pid, update_uac_count=0)
+class CoreUpdatePort:
+    def __init__(self, service, *, window_id=lambda: None, can_apply=lambda: True):
+        self.service = service
+        self.window_id, self.can_apply = window_id, can_apply
+        self._outcome = ''
+        self._downloading = False
+        self._original_bridge = service.apply_bridge if service else None
+        self._closed = False
+
+    @property
+    def snapshot(self):
+        raw = self.service.snapshot if self.service else {}
+        code = raw.get('state', 'IDLE')
+        if code not in DEFERRED:
+            code = self._outcome or code
+        state = CORE_STATES.get(code, 'RECOVERABLE_ERROR') if self.service else 'RECOVERABLE_ERROR'
+        if code == 'PREPARING' and self._downloading:
+            state = 'DOWNLOADING'  # Frozen core's pre-download preparation.
+        error_kind = ('validation' if code == 'FAILED_SECURITY' else
+            'cancelled' if code == 'USER_CANCELLED' else 'network')
+        # Frozen 7235a440 already exposes this read-only scheduling seam:
+        # cancellation may return before the socket worker releases ownership.
+        # Keep that legacy binding here, never in the panel/controller.
+        transport = getattr(getattr(self.service, 'cache', None), 'transport', None)
+        # Only presentation values cross the port; no release envelope/cache/paths.
+        return dict(state=state, current=getattr(self.service, 'current', ''),
+            latest=raw.get('latest', ''), notes=raw.get('release_notes', ''),
+            downloaded=raw.get('actual_downloaded_bytes', 0), total=raw.get('expected_download_bytes', 0),
+            has_update=bool(raw.get('update', code == 'UPDATE_AVAILABLE')),
+            error_kind=error_kind, busy=bool(getattr(transport, 'busy', False)),
+            available=self.service is not None)
+
+    def _result(self, value):
+        if isinstance(value, dict):
+            codes = (value.get('ui_state'), value.get('state'), value.get('status'))
+            code = next((code for code in codes if code in DEFERRED), next((code for code in codes if code), None))
+            if code in DEFERRED or code in ('FAILED_SECURITY', 'FAILED_RECOVERABLE'):
+                self._outcome = code
+        return self.snapshot
+
+    def _call(self, method):
+        self._outcome = ''
+        if not self.service or self._closed:
+            return self.snapshot
+        try:
+            return self._result(method())
+        except SessionEnding:
+            # A local/session guard cannot promise persisted next-launch work.
+            self._outcome = 'FAILED_RECOVERABLE'
+        except Exception as error:
+            from .update_protocol import SecurityError
+            self._outcome = 'FAILED_SECURITY' if isinstance(error, SecurityError) else 'FAILED_RECOVERABLE'
+        return self.snapshot
+
+    def check_latest(self):
+        return self._call(lambda: self.service.check(manual=True))
+
+    def download_latest(self, progress, cancel):
+        def download():
+            # Cancellation is observed by core. This monitor never reads bytes
+            # or interprets assets; it only forwards progress/cancel callbacks.
+            import threading
+            stop = threading.Event()
+            def monitor():
+                while not stop.wait(.025):
+                    if cancel.is_set():
+                        self.service.cancel_download()
+                    progress(self.snapshot)
+            watcher = threading.Thread(target=monitor, daemon=True, name='mentorflow-update-progress')
+            watcher.start()
+            try:
+                if cancel.is_set():
+                    return {'state': 'DOWNLOAD_PAUSED_OR_INTERRUPTED'}
+                result = self.service.download()
+                if self.service.snapshot.get('state') in ('READY_TO_APPLY', 'UPDATE_DOWNLOADED'):
+                    from scripts.per_user_install import is_install
+                    if is_install(self.service.install_root):
+                        from scripts.per_user_update_core import remember_download
+                        pending = remember_download(self.service.install_root, self.service.staged, self.service.release.envelope)
+                        if pending.get('state') in DEFERRED:
+                            result = pending
+                return result
+            finally:
+                stop.set()
+                watcher.join(timeout=1)
+        self._downloading = True
+        try:
+            result = self._call(download)
+        finally:
+            self._downloading = False
+        if cancel.is_set():
+            self._outcome = 'USER_CANCELLED'
+            result = self.snapshot
+        progress(result)
+        return result
+
+    def update_to_latest(self, progress=None, cancel=None, before_apply=None):
+        import threading
+        progress = progress or (lambda _: None)
+        cancel = cancel if cancel is not None else threading.Event()
+        before_apply = before_apply or (lambda: None)
+        result = self.download_latest(progress, cancel)
+        if result['state'] == 'PREPARING' and not cancel.is_set():
+            before_apply()
+            if not cancel.is_set():
+                return self.apply_and_relaunch()
+        return result
+
+    def apply_and_relaunch(self):
+        def apply():
+            if not self.can_apply() or self._closed:
+                raise SessionEnding('Update deferred until next normal launch')
+            def bridge(root, stage, envelope):
+                if not self.can_apply() or self._closed:
+                    raise SessionEnding('Update deferred until next normal launch')
+                if self._original_bridge is not None:
+                    return self._original_bridge(root, stage, envelope)
+                from scripts import per_user_install
+                if per_user_install.is_install(root):
+                    return per_user_install.handoff(root, stage, envelope, hwnd_hex=self.window_id())
+                from .update_bridge import handoff
+                return handoff(root, stage, envelope, hwnd_hex=self.window_id())
+            self.service.apply_bridge = bridge
+            return self.service.apply_and_restart()
+        return self._call(apply)
+
+    def close(self):
+        self._closed = True
+        if self.service:
+            self.service.close()

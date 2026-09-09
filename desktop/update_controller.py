@@ -1,59 +1,55 @@
-"""UI orchestration; verification/download/transaction authority stays in the service."""
+"""One-click UI orchestration. Core owns validation, pending work and restart."""
 from __future__ import annotations
 
-import hashlib
-import logging
-import os
 import threading
-import time
 from enum import StrEnum
 
 from PySide6.QtCore import QObject, QEvent, QSettings, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
-from .update_session import UpdateSession, UnavailableSession, SessionEnding, was_session_deferred
+from .update_lifecycle import CoreUpdatePort
 
 
 class UpdateState(StrEnum):
     CHECKING = 'CHECKING'
     UPDATE_AVAILABLE = 'UPDATE_AVAILABLE'
     DOWNLOADING = 'DOWNLOADING'
-    READY_TO_RESTART = 'READY_TO_RESTART'
-    APPLYING = 'APPLYING'
+    PREPARING = 'PREPARING'
     UP_TO_DATE = 'UP_TO_DATE'
+    DEFERRED_TO_NEXT_LAUNCH = 'DEFERRED_TO_NEXT_LAUNCH'
     RECOVERABLE_ERROR = 'RECOVERABLE_ERROR'
 
 
 STATE_MAP = {
     'IDLE': UpdateState.CHECKING, 'CHECKING': UpdateState.CHECKING,
     'UPDATE_AVAILABLE': UpdateState.UPDATE_AVAILABLE,
-    'PREPARING': UpdateState.DOWNLOADING, 'DOWNLOADING': UpdateState.DOWNLOADING,
-    'READY_TO_APPLY': UpdateState.READY_TO_RESTART,
-    'APPLYING': UpdateState.APPLYING, 'RESTART_REQUIRED': UpdateState.APPLYING,
-    'UP_TO_DATE': UpdateState.UP_TO_DATE,
+    'PREPARING': UpdateState.PREPARING, 'DOWNLOADING': UpdateState.DOWNLOADING,
+    'UP_TO_DATE': UpdateState.UP_TO_DATE, 'CURRENT_HEALTHY': UpdateState.UP_TO_DATE,
+    'DEFERRED_TO_NEXT_LAUNCH': UpdateState.DEFERRED_TO_NEXT_LAUNCH,
+    'PENDING_INSTALL': UpdateState.DEFERRED_TO_NEXT_LAUNCH,
 }
+DEFERRED = frozenset(('DEFERRED_TO_NEXT_LAUNCH', 'PENDING_INSTALL'))
 
 
 class UpdateController(QObject):
     finished = Signal(str)
 
-    def __init__(self, service, parent=None, *, settings=None, session=None):
+    def __init__(self, service=None, parent=None, *, settings=None, port=None):
         super().__init__(parent)
         self.service = service
         self.settings = settings if settings is not None else QSettings('MentorFlow', 'MentorFlow')
-        try:
-            self.session = session if session is not None else UpdateSession()
-        except OSError:
-            self.session = UnavailableSession()
         self.key = f"updater/{getattr(service, 'install_identity', 'unconfigured')}/"
         self.window = None
         self._thread = None
-        self._closed = self._started = self._resume = False
-        self._error = ''
-        self._deferred = False
-        self._action = ''
-        self._bridge = self._window_id = None
-        self._handoff_peer = None
+        self._closed = self._started = self._chain = self._ending = False
+        self._cancelled = False
+        self._outcome = self._action = ''
+        self._window_id = None
+        self._window_available = False
+        self._cancel = threading.Event()
+        self.port = port if port is not None else CoreUpdatePort(service,
+            window_id=lambda: self._window_id,
+            can_apply=lambda: self._window_available and not self._closed and not self._ending)
         self.finished.connect(self._finished)
         app = QApplication.instance()
         app.commitDataRequest.connect(self._session_ending)
@@ -61,19 +57,22 @@ class UpdateController(QObject):
 
     @property
     def busy(self):
-        transport = getattr(getattr(self.service, 'cache', None), 'transport', None)
-        return bool(self._thread and self._thread.is_alive()) or bool(getattr(transport, 'busy', False))
+        return bool(self._thread and self._thread.is_alive()) or bool(self.port.snapshot.get('busy', False))
+
+    @property
+    def raw_state(self):
+        raw = self.port.snapshot.get('state', 'CHECKING')
+        return raw if raw in DEFERRED else self._outcome or raw
 
     @property
     def state(self):
-        if self._error or self.service is None:
-            return UpdateState.RECOVERABLE_ERROR
+        if self.raw_state in DEFERRED:
+            return UpdateState.DEFERRED_TO_NEXT_LAUNCH
         if self.busy and self._action == 'apply_and_restart':
-            return UpdateState.APPLYING
-        return STATE_MAP.get(self.service.snapshot['state'], UpdateState.RECOVERABLE_ERROR)
+            return UpdateState.PREPARING
+        return STATE_MAP.get(self.raw_state, UpdateState.RECOVERABLE_ERROR)
 
     def bind_window(self, window):
-        """After parenting, including while the Settings page is hidden."""
         if self._closed or window is None:
             return
         if self.window is not window:
@@ -90,81 +89,59 @@ class UpdateController(QObject):
             if geometry is not None and hasattr(geometry, 'data'):
                 window.restoreGeometry(geometry)
         self._window_id = f'{int(window.winId()):016x}'
-        if self.service and (self._bridge is None or self.service.apply_bridge is not self._bridge):
-            bridge = self.service.apply_bridge
-            if bridge is None:
-                from .update_lifecycle import handoff
-                bridge = lambda root, stage, envelope: handoff(root, stage, envelope, hwnd_hex=self._window_id)
-            def guarded_bridge(*args):
-                self.session.require_running()
-                if self._closed:
-                    raise SessionEnding('Update deferred until next normal launch')
-                return bridge(*args)
-            self._bridge = guarded_bridge
-            self.service.apply_bridge = guarded_bridge
+        self._window_available = window.isVisible()
 
     def _forget_window(self, token):
         if id(getattr(self, 'window', None)) == token:
             self.window = None
+            self._window_id = None
+            self._window_available = self._chain = False
 
     def start(self):
-        if self._started or self._closed or self.service is None:
-            return
-        self._started = True
-        pending = self.settings.value(self.key + 'pending_release', '')
-        # A denied/failed handoff can relaunch the old version. Never turn that
-        # recovery into an automatic retry/UAC loop for the same release.
-        attempted = pending == self.settings.value(self.key + 'attempted_release', '')
-        deferred = pending and attempted and was_session_deferred(
-            self.service.cache.runtime_root, pending,
-            self.settings.value(self.key + 'attempted_pid', 0),
-            self.settings.value(self.key + 'attempted_at_ns', 0))
-        self._resume = bool(pending and (not attempted or deferred))
-        self.run('check')  # Fresh async check; cached backoff cannot authorize apply.
+        if not self._started and not self._closed:
+            self._started = True
+            self.run('check')  # Core, not UI cache state, decides pending behavior.
 
-    def run(self, action, **kwargs):
-        if self._closed or self.service is None or self.busy:
+    def run(self, action):
+        if self._closed or not self.port.snapshot.get('available', True) or self.busy:
+            return
+        if action not in ('check', 'download', 'apply_and_restart'):
+            raise ValueError('unknown update UI action')
+        if self._ending:
             return
         if action == 'apply_and_restart':
-            try:
-                self.session.require_running()
-                if self.window is None or not self.window.isVisible() or QApplication.instance().isSavingSession():
-                    raise SessionEnding('Update deferred until next normal launch')
-                self.save_ui_state()
-                self.remember_pending()
-                self.settings.setValue(self.key + 'attempted_release', self.settings.value(self.key + 'pending_release', ''))
-                self.settings.setValue(self.key + 'attempted_pid', os.getpid())
-                self.settings.setValue(self.key + 'attempted_at_ns', str(time.time_ns()))
-                self.settings.sync()
-            except Exception:
-                self._error = '更新已保留，将在下次正常启动时重新检查。'
+            if self.window is None or not self.window.isVisible() or QApplication.instance().isSavingSession():
+                # Only an explicit core result may promise next-launch apply.
+                self._outcome = 'RECOVERABLE_ERROR'
+                self._chain = False
                 return
-        self._error = ''
-        self._deferred = False
+            self.save_ui_state()
+        else:
+            self._chain = action == 'download'
+            self._cancelled = False
+            self._cancel.clear()
+        self._outcome = ''
         self._action = action
         def work():
             try:
-                result = getattr(self.service, action)(**kwargs)
-                if action == 'download' and self.service.snapshot['state'] == 'READY_TO_APPLY':
-                    from .update_lifecycle import remember_download
-                    remember_download(self.service)
-                if action == 'apply_and_restart' and isinstance(result, dict) and result.get('bridge_pid'):
-                    from .windows_process_peer import ProcessPeer
-                    self._handoff_peer = ProcessPeer(result['bridge_pid'])
-                    if self._closed:
-                        self._handoff_peer.close()
-                        self._handoff_peer = None
-            except SessionEnding:
-                self._deferred = True
-                self._error = '更新已保留，将在下次正常启动时重新检查。'
+                if action == 'check':
+                    result = self.port.check_latest()
+                elif action == 'download':
+                    result = self.port.download_latest(lambda _: None, self._cancel)
+                else:
+                    result = self.port.apply_and_relaunch()
+                if isinstance(result, dict):
+                    code = result.get('state')
+                    if code in DEFERRED or code == 'RECOVERABLE_ERROR':
+                        self._outcome = code
             except Exception:
-                logging.getLogger(__name__).warning('Update action did not finish: %s', action)
-                self._error = '暂时无法完成更新，请重试。当前版本可继续使用。'
+                self._outcome = 'RECOVERABLE_ERROR'
+                # Never display or log arbitrary exception/HTTP/credential text.
             finally:
                 try:
                     self.finished.emit(action)
                 except RuntimeError:
-                    pass  # Its owning window may already have been destroyed.
+                    pass
         self._thread = threading.Thread(target=work, daemon=True, name='mentorflow-update-ui')
         self._thread.start()
 
@@ -174,53 +151,14 @@ class UpdateController(QObject):
         if self.busy:
             QTimer.singleShot(10, lambda: self._finished(action))
             return
-        snap = self.service.snapshot
-        if self._deferred:
-            self._clear_attempt()
-        if self._error:
+        if self._cancelled:
+            self._outcome = 'RECOVERABLE_ERROR'
+        if self.state in (UpdateState.RECOVERABLE_ERROR, UpdateState.DEFERRED_TO_NEXT_LAUNCH):
+            self._chain = False
             return
-        if snap['state'] == 'UP_TO_DATE':
-            self.settings.remove(self.key + 'pending_release')
-            self._clear_attempt()
-        if action == 'apply_and_restart' and self._handoff_peer is not None:
-            QTimer.singleShot(250, self._poll_handoff)
-        if action == 'check' and self._resume:
-            self._resume = False
-            expected = self.settings.value(self.key + 'pending_release', '')
-            release = getattr(self.service, 'release', None)
-            if (snap['state'] == 'UPDATE_AVAILABLE' and release is not None and
-                    hashlib.sha256(release.envelope).hexdigest() == expected):
-                self._resume = True
-                self.run('download')  # Existing cache revalidation/reconstruction.
-                return
-            if snap['state'] == 'UPDATE_AVAILABLE':
-                self.settings.remove(self.key + 'pending_release')
-                self.settings.sync()
-        if snap['state'] == 'READY_TO_APPLY':
-            self.remember_pending()
-            if self._resume:
-                self._resume = False
-                self.run('apply_and_restart')  # Fresh metadata/signature/tree hashes again.
-
-    def _poll_handoff(self):
-        if self._closed or self._handoff_peer is None:
-            return
-        if self._handoff_peer.alive():
-            QTimer.singleShot(250, self._poll_handoff)
-            return
-        self._handoff_peer.close()
-        self._handoff_peer = None
-        self._error = '重启更新未完成，可重新检查。当前版本可继续使用。'
-
-    def remember_pending(self):
-        if self.service and self.service.staged and self.service.release:
-            self.settings.setValue(self.key + 'pending_release', hashlib.sha256(self.service.release.envelope).hexdigest())
-            self.settings.sync()
-
-    def _clear_attempt(self):
-        for field in ('attempted_release', 'attempted_pid', 'attempted_at_ns'):
-            self.settings.remove(self.key + field)
-        self.settings.sync()
+        if action == 'download' and self.raw_state == 'PREPARING' and self._chain:
+            self._chain = False  # Consume once before scheduling apply.
+            self.run('apply_and_restart')
 
     def save_ui_state(self):
         if self.window is not None:
@@ -242,39 +180,26 @@ class UpdateController(QObject):
 
     def eventFilter(self, watched, event):
         if watched is getattr(self, 'window', None) and event.type() == QEvent.Type.Close:
-            if QApplication.instance().isSavingSession():
-                self.session.defer()
+            self._window_available = self._chain = False
             self.save_ui_state()
-            self.remember_pending()
-            # Normal close and OS close only persist intent. Never apply here.
         return False
 
     def _session_ending(self, _manager=None):
-        self.session.defer()
-        self._resume = False
-        self._clear_attempt()
+        self._ending = True
         self.save_ui_state()
-        self.remember_pending()
-        if self.service:
-            self.service.cancel_download()
+        self.cancel()
 
     def cancel(self):
-        self._resume = False
-        if self.service:
-            self.service.cancel_download()
+        self._chain = False
+        self._cancelled = True
+        self._cancel.set()
 
     def shutdown(self):
         if self._closed:
             return
         self._closed = True
-        self.remember_pending()
         self.cancel()
-        if self.service and hasattr(self.service, 'close'):
-            self.service.close()
-        self.session.close()
-        if self._handoff_peer is not None:
-            self._handoff_peer.close()
-            self._handoff_peer = None
+        self.port.close()
         if self.window is not None:
             try:
                 self.window.removeEventFilter(self)

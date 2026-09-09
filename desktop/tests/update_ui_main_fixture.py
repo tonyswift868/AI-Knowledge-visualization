@@ -1,4 +1,4 @@
-"""Visible real MainWindow, isolated data and signed localhost feed.
+"""Offscreen real MainWindow, isolated data and signed localhost feed.
 
 The supervisor/bridge is a TEST replacement for the installed coordinator.
 It proves GUI exit/relaunch only, not protected package install/UAC acceptance.
@@ -31,7 +31,7 @@ def environment(root):
         (path.parent if path.suffix == '.db' else path).mkdir(parents=True, exist_ok=True)
     os.environ['MENTORFLOW_DEPLOYMENT_MODE'] = 'PERSONAL_LOCAL'
     os.environ['MENTORFLOW_DISABLE_PROVIDER_AUTORESTORE'] = '1'
-    os.environ['QT_QPA_PLATFORM'] = 'windows'
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 
 def supervise(root, exercise=''):
@@ -58,10 +58,6 @@ def supervise(root, exercise=''):
             if request.exists():
                 current = json.loads(request.read_text())['version']
                 request.unlink()
-                continue
-            if exercise == 'next-start' and launch == 0:
-                # Simulate a later normal user launch, without changing the
-                # signing key/feed/cache or reading a pending flag as authority.
                 continue
             break
         return 0
@@ -139,7 +135,7 @@ def ui(root, version, exercise='', launch_index=0):
     timer = QTimer(app); timer.setInterval(250); timer.timeout.connect(record); timer.start()
     QTimer.singleShot(0, record)
     if exercise:
-        # In-process Qt integration test of the real, visible MainWindow.
+        # In-process, offscreen Qt integration test of the real MainWindow.
         # No operating-system input injection or authentication is performed.
         from PySide6.QtCore import Qt
         from PySide6.QtTest import QTest
@@ -159,7 +155,7 @@ def ui(root, version, exercise='', launch_index=0):
                 failure.append('UI cycle timed out'); window.close(); return
             if version == '1.1.1':
                 if state == 'UP_TO_DATE':
-                    assert panel.status.text() == '已是最新版本'
+                    assert panel.status.text() == '✓ 已是最新版本'
                     assert window._tutorial_overlay is None
                     assert window.pages.currentIndex() == 9
                     evidence('up-to-date'); window.close()
@@ -179,14 +175,10 @@ def ui(root, version, exercise='', launch_index=0):
                 evidence('cancelled')
                 QTest.mouseClick(panel.download_button, Qt.MouseButton.LeftButton)
                 phase[0] = 'retrying'
-            elif phase[0] == 'retrying' and state == 'READY_TO_RESTART' and not controller.busy:
-                assert panel.apply_button.isEnabled()
-                evidence('ready')
+            elif phase[0] == 'retrying' and state == 'PREPARING':
+                assert not hasattr(panel, 'apply_button')
+                evidence('preparing')
                 phase[0] = 'finished'
-                if exercise == 'next-start':
-                    window.close()
-                else:
-                    QTest.mouseClick(panel.apply_button, Qt.MouseButton.LeftButton)
         exercise_timer = QTimer(app); exercise_timer.setInterval(100)
         exercise_timer.timeout.connect(exercise_tick); exercise_timer.start()
     code = app.exec()
@@ -201,7 +193,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--ui', action='store_true')
     parser.add_argument('--version', default='1.1.0')
-    parser.add_argument('--exercise', choices=('', 'restart', 'next-start'), default='')
+    parser.add_argument('--exercise', choices=('', 'restart'), default='')
     parser.add_argument('--launch-index', type=int, default=0)
     args = parser.parse_args()
     root = args.root.resolve()
