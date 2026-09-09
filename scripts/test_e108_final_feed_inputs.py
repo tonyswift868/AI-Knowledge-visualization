@@ -17,6 +17,25 @@ from desktop.version import installed_release_details
 from desktop.update_protocol import canonical, verify_release
 
 
+def test_e109_final_versions_match_authority_without_changing_install_identity():
+    assert (build.BASE_VERSION, build.TARGET_VERSION) == ('1.5.0', '1.5.1')
+    assert build.APP_ID == 'MentorFlow.UAT.E108Assembly1'
+    assert build.UPDATE_FEED_URL == ''  # Still requires explicit publisher input.
+
+
+def test_handoff_replay_explicitly_preserves_admitted_feed_url():
+    import ast
+    import inspect
+    from scripts.e108_release_input import finalize
+    # Source-only assertion: no finalize/build invocation or candidate fabrication.
+    tree = ast.parse(inspect.getsource(finalize))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute) and node.func.attr == 'release_arguments']
+    assert len(calls) == 2
+    assert all(len(call.args) == 6 and isinstance(call.args[-1], ast.Name)
+               and call.args[-1].id == 'feed_url' for call in calls)
+
+
 def test_exact_https_base_resolves_to_explicit_stable_file():
     base = 'https://updates.example.org/mentorflow/'
     assert build.require_update_feed_url(base) == base
@@ -93,10 +112,10 @@ def test_target_has_functional_offline_notes_and_copy_action_without_windows(mon
     clipboard = Mock()
     application = SimpleNamespace(clipboard=lambda: clipboard)
     layout = SimpleNamespace(addWidget=widgets.append)
-    base = build.version_document('1.4.0', {'key': bytes(32)})
+    base = build.version_document(build.BASE_VERSION, {'key': bytes(32)})
     assert add_installed_release_details(layout, application, base) is None
     assert widgets == []
-    target = build.version_document('1.4.1', {'key': bytes(32)})
+    target = build.version_document(build.TARGET_VERSION, {'key': bytes(32)})
     target['update']['secret'] = 'MUST_NOT_COPY_CONFIG'
     button = add_installed_release_details(layout, application, target)
     assert button.text == '复制版本信息'
@@ -105,7 +124,7 @@ def test_target_has_functional_offline_notes_and_copy_action_without_windows(mon
     button.click()
     assert button.text == '已复制版本信息'
     copied = clipboard.setText.call_args.args[0]
-    assert 'MentorFlow 1.4.1' in copied and 'stable' in copied and build.TARGET_RELEASE_NOTES in copied
+    assert 'MentorFlow ' + build.TARGET_VERSION in copied and 'stable' in copied and build.TARGET_RELEASE_NOTES in copied
     assert 'MUST_NOT_COPY_CONFIG' not in copied and 'https://' not in copied
 
 

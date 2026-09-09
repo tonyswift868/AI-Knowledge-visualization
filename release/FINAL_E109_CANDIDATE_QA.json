@@ -3,6 +3,8 @@
   "dispatch_id": "MF-E109-INTEGRATION-CONTROL-20260910-01",
   "status": "PENDING_QA",
   "candidate_status": "NOT_BUILT_WAITING_REAL_SMTP",
+  "expected_base_version": "1.5.0",
+  "expected_target_version": "1.5.1",
   "candidate_sha256": null,
   "w07_exact_commit": "beaec25ab8e8c1f281790bf8dc5548f35b341791",
   "w07_qa_status": "PENDING_QA",

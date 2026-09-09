@@ -1,4 +1,4 @@
-"""Assemble one E108 Inno user candidate from a clean final Git source.
+"""Assemble the E109 Inno candidate using the existing build/identity pipeline.
 
 No installer/App/UAC execution, production deployment, push or dependency
 installation. Reuses only verified dependency files and frozen dependency TOCs;
@@ -17,7 +17,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 APP_ID = 'MentorFlow.UAT.E108Assembly1'
 KEY_ID = 'e108-user-test-only'
-BASE_VERSION, TARGET_VERSION = '1.4.0', '1.4.1'
+# Advance release versions without changing the installed identity/data namespace.
+BASE_VERSION, TARGET_VERSION = '1.5.0', '1.5.1'
 # Build input only. No development/staging host is a product default.
 UPDATE_FEED_URL = ''
 ACCOUNT_CAPABILITIES_CONFIG = ROOT / 'release/account-capabilities.json'

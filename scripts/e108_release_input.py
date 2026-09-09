@@ -156,9 +156,9 @@ def finalize(work, output, source, binary_checks):
             environment={'PYTHONPATH': str(authority_path.parent) + os.pathsep + str(builder.ROOT),
                          'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8'},
             commands=[[str(Path(sys.executable).resolve()), '-B', '-m', 'scripts.build_release',
-                *builder.release_arguments(work / 'TARGET', builder.TARGET_VERSION, work / 'BASE', work, source)]],
+                *builder.release_arguments(work / 'TARGET', builder.TARGET_VERSION, work / 'BASE', work, source, feed_url)]],
             initial_build_commands_for_audit_only=[[str(Path(sys.executable).resolve()), '-B', '-m', 'scripts.build_release',
-                *builder.release_arguments(work / label, version, work / 'BASE' if label == 'TARGET' else None, work, source)]
+                *builder.release_arguments(work / label, version, work / 'BASE' if label == 'TARGET' else None, work, source, feed_url)]
                 for label, version in (('BASE', builder.BASE_VERSION), ('TARGET', builder.TARGET_VERSION))],
             channel_copy={'from': str(feed / 'releases/stable.json'), 'to': str(feed / builder.METADATA_RELATIVE_PATH)},
             app_rebuild_required=False,
