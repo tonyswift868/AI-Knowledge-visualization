@@ -1,4 +1,9 @@
-{ Shared production/fixture policy. No shell, recursive mkdir or broad grants. }
+{ Product directory policy. No shell, recursive mkdir or broad grants. }
+type
+  TTargetKind = (tkUnknown, tkNew, tkRepair, tkUpgrade);
+var
+  ValidatedTargetKind: TTargetKind;
+
 function ReadAttributes(Name: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
 function TempFile(const Directory, Prefix: String; Unique: LongWord; Buffer: String): LongWord;
@@ -53,38 +58,40 @@ begin
   finally FindClose(Find); end;
 end;
 
-function ValidTarget(Target: String): Boolean;
-var Inventory, Expected: String; Known: Boolean;
+function ExistingKnownParent: String;
 begin
-  Result := False;
+  { Resolve on the user's machine. Never restore a development /PARENT value. }
+  Result := ExpandConstant('{localappdata}');
+  if DirExists(Result) then Exit;
+  Result := ExpandConstant('{userappdata}');
+  if DirExists(Result) then Exit;
+  Result := ExpandConstant('{userdocs}');
+  if DirExists(Result) then Exit;
+  Result := ''; { Fail closed; the location page requests a real folder. }
+end;
+
+function ClassifyTarget(Target: String): TTargetKind;
+begin
+  Result := tkUnknown;
   if FileExists(Target) then Exit;
-  if not DirExists(Target) then begin Result := True; Exit; end;
+  if not DirExists(Target) then begin Result := tkNew; Exit; end;
   if not SafeAncestors(Target) then Exit;
-#if !Int(FixtureBuild)
-  { Preview hint only. The embedded runtime verifies signatures/identity again
-    before any application directory creation or registry/shortcut write. }
+  { UI hints only, never install authority. InstallThroughCore always performs
+    signed core preflight/admission before creating or changing the App tree. }
   if FileExists(AddBackslash(Target) + 'per-user-install.json') and
      FileExists(AddBackslash(Target) + 'current-release.json') then begin
-    Result := True; Exit;
+    Result := tkUpgrade;
+    try
+      if CompareText(GetSHA256OfFile(AddBackslash(Target) + 'App\MentorFlow.exe'),
+                     '{#PayloadExeSHA256}') = 0 then Result := tkRepair;
+    except Result := tkUnknown; end;
+    Exit;
   end;
   if FileExists(AddBackslash(Target) + 'highest-release.json') and
      FileExists(AddBackslash(Target) + 'per-user-transaction.json') then begin
-    { Incomplete-install hint only; the signed core must prove repairability. }
-    Result := True; Exit;
+    Result := tkRepair; Exit; { Core proves complete signed repair evidence. }
   end;
-  Result := KnownTree(Target, '', '', False);
-#else
-  Inventory := AddBackslash(Target) + '.mentorflow-install.ini';
-  Known := GetIniString('Product', 'Id', '', Inventory) = 'MentorFlow.Inno.v1';
-  if Known then begin
-    Expected := GetIniString('Product', 'ExecutableSHA256', '', Inventory);
-    Known := (Length(Expected) = 64) and FileExists(AddBackslash(Target) + 'MentorFlow.exe');
-    if Known then try
-      Known := CompareText(Expected, GetSHA256OfFile(AddBackslash(Target) + 'MentorFlow.exe')) = 0;
-    except Known := False; end;
-  end;
-  Result := KnownTree(Target, '', Inventory, Known);
-#endif
+  if KnownTree(Target, '', '', False) then Result := tkNew;
 end;
 
 function Writable(Directory: String): Boolean;
@@ -103,9 +110,12 @@ function ValidateParent(Input: String; var Target: String; var NeedsAdmin: Boole
   CheckSpace: Boolean): String;
 var Parent: String; Free, Total, Required: Int64; I: Integer;
 begin
-  Result := ''; Target := ''; NeedsAdmin := False;
+  Result := ''; Target := ''; NeedsAdmin := False; ValidatedTargetKind := tkUnknown;
   Parent := Trim(Input);
-  if (Length(Parent) < 3) or (Parent[2] <> ':') or (Parent[3] <> '\') then begin
+  if Length(Parent) < 3 then begin
+    Result := '请选择本机已存在的完整文件夹路径。'; Exit;
+  end;
+  if (Parent[2] <> ':') or (Parent[3] <> '\') then begin
     Result := '请选择本机已存在的完整文件夹路径。'; Exit;
   end;
   if (Pos('"', Parent) > 0) or (Pos('*', Parent) > 0) or (Pos('?', Parent) > 0) or
@@ -120,7 +130,8 @@ begin
   Parent := RemoveBackslashUnlessRoot(ExpandFileName(Parent));
   Target := AddBackslash(Parent) + 'MentorFlow';
   if not SafeAncestors(Parent) then begin Result := '请选择直接位于磁盘上的文件夹。'; Exit; end;
-  if not ValidTarget(Target) then begin
+  ValidatedTargetKind := ClassifyTarget(Target);
+  if ValidatedTargetKind = tkUnknown then begin
     Result := '这个文件夹里已经有其他文件，请换一个位置。'; Exit;
   end;
   Required := {#RequiredBytes};
@@ -128,9 +139,6 @@ begin
     if not GetSpaceOnDisk64(Parent, Free, Total) then begin
       Result := '无法读取此磁盘的可用空间，请选择其他位置。'; Exit;
     end;
-#if Int(FixtureBuild)
-    if ExpandConstant('{param:UXLOWDISK|0}') = '1' then Free := 1048576;
-#endif
     if Free < Required then begin
       Result := '空间不足：MentorFlow 需要约 ' + HumanSize(Required) + '，当前这个磁盘只有 ' + HumanSize(Free) + ' 可用。'; Exit;
     end;

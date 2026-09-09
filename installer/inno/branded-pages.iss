@@ -7,12 +7,10 @@ var
   BrandName, BrandTagline, PageTitle, PageSubtitle: TNewStaticText;
   PathCaption, SpaceCaption, FeedbackCaption, ModeCaption: TNewStaticText;
   ProgressCaption, PercentCaption, SuccessCaption: TNewStaticText;
-  BrowseButton, SecondaryButton, DetailsButton: TNewButton;
+  BrowseButton, SecondaryButton: TNewButton;
   PrimaryButton: TBitmapButton;
-  DetailMemo: TNewMemo;
   CopyProgress: TNewProgressBar;
   BackColor, CardColor, InkColor, MutedColor, AccentColor, AccentInk: TColor;
-  LastDetail: String;
   EngineNext: TNotifyEvent;
 
 function BitmapRect(W, H: Integer): TRect;
@@ -73,7 +71,7 @@ procedure RefreshLocation(Sender: TObject);
 var Target, Problem: String; NeedsAdmin: Boolean;
 begin
   Problem := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
-  PathCaption.Caption := Target;
+  PathCaption.Caption := MinimizePathName(Target, PathCaption.Font, PathCaption.Width);
   PathCaption.Hint := Target;
   if FileExists(AddBackslash(Target) + 'per-user-transaction.json') then
     ModeCaption.Caption := '检测到安装记录；继续前会验证是否可升级或修复。'
@@ -91,6 +89,17 @@ begin
   else BrowseButton.Caption := '浏览…';
   PrimaryButton.Enabled := Problem = '';
   WizardForm.NextButton.Enabled := PrimaryButton.Enabled;
+  if IsAdminInstallMode then ModeCaption.Caption := '为所有用户安装'
+  else ModeCaption.Caption := '为当前用户安装';
+  if Problem = '' then begin
+    if ValidatedTargetKind = tkRepair then begin
+      ModeCaption.Caption := '已安装，可修复应用';
+      PaintPrimary('修复');
+    end else if ValidatedTargetKind = tkUpgrade then begin
+      ModeCaption.Caption := '已安装，可更新应用';
+      PaintPrimary('更新');
+    end else PaintPrimary('安装');
+  end else PaintPrimary('安装');
 end;
 
 procedure BrowseParent(Sender: TObject);
@@ -107,7 +116,7 @@ end;
 
 procedure PrimaryClick(Sender: TObject);
 begin
-  if not PrimaryButton.Enabled then Exit;
+  if (WizardForm.CurPageID = LocationPage.ID) and not PrimaryButton.Enabled then Exit;
   if WizardForm.CurPageID = wpFinished then WizardForm.RunList.Checked[0] := True;
   { Inno retains installation, cancellation, launch and finalization ownership. }
   EngineNext(WizardForm.NextButton);
@@ -122,15 +131,8 @@ begin
     WizardForm.CancelButton.OnClick(WizardForm.CancelButton);
 end;
 
-procedure ToggleDetails(Sender: TObject);
-begin
-  DetailMemo.Visible := not DetailMemo.Visible;
-  if DetailMemo.Visible then DetailsButton.Caption := '隐藏详细信息'
-  else DetailsButton.Caption := '详细信息';
-end;
-
 procedure UpdateBrandedProgress(Current, Maximum: Integer);
-var Percent: Integer; Detail: String;
+var Percent, Position: Integer;
 begin
   WizardForm.FilenameLabel.Visible := False;
   WizardForm.StatusLabel.Visible := False;
@@ -139,15 +141,12 @@ begin
   Percent := Round((Current * 100.0) / Maximum);
   if Percent < 0 then Percent := 0;
   if Percent > 100 then Percent := 100;
-  CopyProgress.Position := Percent;
+  Position := Round((Current * 1000.0) / Maximum);
+  if Position < 0 then Position := 0;
+  if Position > 1000 then Position := 1000;
+  CopyProgress.Position := Position;
   PercentCaption.Caption := IntToStr(Percent) + '%';
-  { Observe the engine's real extraction callback, never a simulated timer. }
-  Detail := WizardForm.FilenameLabel.Caption;
-  if (Detail <> '') and (Detail <> LastDetail) then begin
-    if DetailMemo.Lines.Count >= 100 then DetailMemo.Lines.Delete(0);
-    DetailMemo.Lines.Add(Detail);
-    LastDetail := Detail;
-  end;
+  { Technical filenames remain in Inno's file log, never in the product UI. }
 end;
 
 procedure ShowBrandedPage(PageID: Integer);
@@ -182,8 +181,6 @@ begin
   ProgressCaption.Visible := Installing;
   PercentCaption.Visible := Installing;
   CopyProgress.Visible := Installing;
-  DetailsButton.Visible := Installing;
-  DetailMemo.Visible := False;
   SuccessCaption.Visible := Finished;
   PrimaryButton.Visible := not Installing;
   SecondaryButton.Visible := True;
@@ -274,19 +271,10 @@ begin
   CopyProgress := TNewProgressBar.Create(WizardForm);
   CopyProgress.Parent := BrandSurface;
   Bounds(CopyProgress, 36, 236, 576, 10);
+  CopyProgress.Max := 1000;
   PercentCaption := LabelAt('0%', 624, 226, 60, 28, 13, InkColor, True);
   PercentCaption.Alignment := taRightJustify;
   ProgressCaption := LabelAt('正在准备应用…', 36, 267, 420, 26, 10, MutedColor, False);
-  DetailsButton := TNewButton.Create(WizardForm);
-  DetailsButton.Parent := BrandSurface;
-  Bounds(DetailsButton, 552, 267, 132, 30);
-  DetailsButton.Caption := '详细信息';
-  DetailsButton.OnClick := @ToggleDetails;
-  DetailMemo := TNewMemo.Create(WizardForm);
-  DetailMemo.Parent := BrandSurface;
-  Bounds(DetailMemo, 36, 310, 648, 72);
-  DetailMemo.ReadOnly := True;
-  DetailMemo.ScrollBars := ssVertical;
   SuccessCaption := LabelAt('✓', 36, 208, 648, 100, 48, AccentColor, True);
   SuccessCaption.Font.Name := 'Segoe UI Symbol';
   SuccessCaption.Alignment := taCenter;

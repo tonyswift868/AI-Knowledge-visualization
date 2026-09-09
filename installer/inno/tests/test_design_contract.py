@@ -19,7 +19,7 @@ def luminance(color):
 
 class DesignContract(unittest.TestCase):
     def test_official_dynamic_style_and_no_legacy_sidebar(self):
-        self.assertIn('WizardStyle=modern {#Appearance} windows11 hidebevels includetitlebar', SHELL)
+        self.assertIn('WizardStyle=modern dynamic windows11 hidebevels includetitlebar', SHELL)
         self.assertIn('WizardImageFile=\n', SHELL)
         self.assertIn('WizardImageFileDynamicDark=\n', SHELL)
         self.assertIn("LocationPage := CreateCustomPage(", SHELL)
@@ -68,11 +68,14 @@ class DesignContract(unittest.TestCase):
     def test_progress_driven_only_by_engine_callback(self):
         self.assertIn('UpdateBrandedProgress(CurProgress, MaxProgress)', SHELL)
         self.assertIn('(Current * 100.0) / Maximum', UI)
-        self.assertIn('CopyProgress.Position := Percent', UI)
+        self.assertIn('CopyProgress.Position := Position', UI)
+        self.assertIn('CopyProgress.Max := 1000', UI)
+        self.assertIn('(Current * 1000.0) / Maximum', UI)
         self.assertNotRegex(UI, r'(?i)SetTimer|Sleep\(|random\(')
-        self.assertIn('DetailMemo.Visible := False', UI)
+        self.assertNotIn('DetailMemo', UI)
+        self.assertNotIn('DetailsButton', UI)
         self.assertIn('WizardForm.FilenameLabel.Visible := False', UI)
-        self.assertIn('DetailMemo.Lines.Count >= 100', UI)
+        self.assertNotIn('WizardForm.FilenameLabel.Caption', UI)
 
     def test_finish_launch_is_explicit_close_does_not_launch(self):
         self.assertIn('runasoriginaluser unchecked', SHELL)
@@ -85,7 +88,8 @@ class DesignContract(unittest.TestCase):
         self.assertIn("Chosen, False)", UI)
         self.assertNotIn("ShellExec('runas'", SHELL + UI)
         self.assertNotRegex(SHELL + UI, r'(?i)AppsUseLightTheme|SetProcessDpi|RegWrite|DisplayConfig')
-        self.assertIn("if not CreateDir(Target)", SHELL)
+        self.assertIn("InstallThroughCore(Target)", SHELL)
+        self.assertNotIn("PrivilegesRequiredOverridesAllowed", SHELL)
         self.assertNotIn('ForceDirectories(', SHELL + UI)
         self.assertIn('SetupMutex=MentorFlow.Installer', SHELL)
 

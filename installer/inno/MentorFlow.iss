@@ -1,5 +1,5 @@
-#if Ver < EncodeVer(7, 0, 0)
-  #error Inno Setup 7 or newer is required.
+#if Ver < EncodeVer(7, 1, 0)
+  #error Inno Setup 7.1 or newer is required.
 #endif
 #ifndef PayloadDir
   #error Use scripts/build_inno_installer.py with a verified payload.
@@ -10,7 +10,7 @@ AppId={#ProductAppId}
 AppName=MentorFlow
 AppVersion={#ProductVersion}
 AppPublisher=MentorFlow
-DefaultDirName={localappdata}\Programs\MentorFlow
+DefaultDirName={localappdata}\MentorFlow
 DefaultGroupName=MentorFlow
 SetupArchitecture=x64
 ArchitecturesAllowed=x64compatible
@@ -18,7 +18,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UsePreviousPrivileges=no
 UsePreviousAppDir=no
-WizardStyle=modern {#Appearance} windows11 hidebevels includetitlebar
+WizardStyle=modern dynamic windows11 hidebevels includetitlebar
 WizardBackColor=#fffdf8
 WizardBackColorDynamicDark=#242127
 SetupIconFile={#BuildInput}\MentorFlow.ico
@@ -38,7 +38,7 @@ AllowUNCPath=no
 UninstallDisplayIcon={app}\App\MentorFlow.exe
 UninstallFilesDir={app}\Maintenance
 OutputDir={#OutputDir}
-OutputBaseFilename={#OutputName}
+OutputBaseFilename=MentorFlow-Setup
 Compression=lzma2/fast
 SolidCompression=no
 DiskSpanning=no
@@ -47,10 +47,6 @@ RestartApplications=no
 SetupLogging=yes
 SetupMutex=MentorFlow.Installer
 ShowLanguageDialog=no
-#if Int(FixtureBuild)
-Uninstallable=no
-CreateUninstallRegKey=no
-#endif
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -72,28 +68,17 @@ ButtonCancel=取消
 ButtonFinish=启动 MentorFlow
 
 [Files]
-#if Int(FixtureBuild)
-Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#BuildInput}\ownership.ini"; DestDir: "{app}"; DestName: ".mentorflow-install.ini"; Flags: ignoreversion
-#else
-; Only the signed core owns App/Updater/receipts. Inno owns maintenance files.
+Source: "{#BuildInput}\MentorFlow.png"; Flags: dontcopy
+; The signed core alone owns App/Updater/receipts; the shell owns Maintenance.
 Source: "{#PayloadDir}\*"; DestDir: "{tmp}\payload"; Flags: dontcopy recursesubdirs createallsubdirs
 Source: "{#SignedRelease}"; DestDir: "{tmp}"; DestName: "base-release.json"; Flags: dontcopy
 Source: "{#BuildInput}\shell.ini"; DestDir: "{app}\Maintenance"; Flags: ignoreversion
-#endif
-Source: "{#BuildInput}\MentorFlow.png"; Flags: dontcopy
 
-#if !Int(FixtureBuild)
 [Icons]
 Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"
-#endif
 
 [Run]
-#if Int(FixtureBuild)
-Filename: "{app}\MentorFlow.exe"; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked
-#else
 Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked
-#endif
 
 [Code]
 var
@@ -106,15 +91,12 @@ var
 #include "directory-policy.iss"
 
 #include "branded-pages.iss"
-
-#if !Int(FixtureBuild)
 #include "per-user-core.iss"
-#endif
 
 procedure InitializeWizard;
 begin
   LocationPage := CreateCustomPage(wpWelcome, '选择安装位置', '');
-  SelectedParent := ExpandConstant('{param:PARENT|{localappdata}\Programs}');
+  SelectedParent := ExistingKnownParent;
   CreateBrandedPages;
   RefreshLocation(nil);
 end;
@@ -139,19 +121,10 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Target: String; NeedsAdmin: Boolean;
 begin
   Result := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
-#if Int(FixtureBuild)
-  if (Result = '') and (Pos('e:\codex\temp\', Lowercase(Target)) <> 1) then
-    Result := '预览安装请选择 E:\Codex\Temp 中已有的文件夹。';
-#endif
   if (Result = '') and (CompareText(Target, WizardDirValue) <> 0) then
     Result := '安装位置已改变，请返回重新选择。';
-#if Int(FixtureBuild)
-  { Legacy inert UX fixture only. Production directory creation belongs to core. }
-  if (Result = '') and not DirExists(Target) then
-    if not CreateDir(Target) then Result := '无法创建 MentorFlow 文件夹，请选择其他位置。';
-#else
+  { Core validates again and creates only the final component before copying. }
   if Result = '' then Result := InstallThroughCore(Target);
-#endif
 end;
 
 procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
@@ -172,7 +145,6 @@ begin
   if CurPageID = LocationPage.ID then Confirm := False;
 end;
 
-#if !Int(FixtureBuild)
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var Code: Integer;
 begin
@@ -184,8 +156,3 @@ begin
     SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
       RaiseException('卸载未完成。请先关闭 MentorFlow 后重试；资料不会被删除。');
 end;
-#endif
-
-#if Int(FixtureBuild)
-#include "probe.iss"
-#endif

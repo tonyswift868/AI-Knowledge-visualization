@@ -1,107 +1,88 @@
-# V2 candidate verification — 2026-09-08
+# Final source verification — 2026-09-09
 
-Dispatch: `MF-E108-MODERN-INSTALLER-VISUAL-REWORK-20260908-02`.
-`MODERN_UI_READY = NO`. Native acceptance is incomplete; this is not a release.
+Dispatch: MF-E108-W02-SINGLE-POLISHED-INSTALLER-20260909-03.
+Base delivery: 5a03eb36fbde8eaa3dfc2bbc3c92334421b650de.
 
-## Current authority boundary
+## Result
 
-The host must remain at 100% scaling. No Windows theme/DPI/settings changes.
-Following the user's objection, no installer window, silent fixture installer,
-product runtime or installation was launched during this V2 continuation.
-No prior sandbox-install approval is assumed. No NSIS build was performed.
-A new explicit agreement is needed before native UI acceptance resumes.
+**MODERN_UI_SOURCE_READY = YES** for this source-only dispatch.
+This supersedes the previous visual-acceptance task's scope, not its missing
+runtime evidence. No old 1.2.3 payload or historical EXE is a final candidate here.
 
-## Evidence acquired
+33 focused checks pass, none skipped:
 
-| Requirement | Evidence | Limit |
-| --- | --- | --- |
-| Real product, not inert UX payload | Existing manifest verifier passed on MentorFlow 1.2.3, 14,198 listed files; manifest itself makes packed count 14,199 | No product smoke/installation |
-| Single user artifact | Old named UAT NSIS candidate recoverably archived with matching SHA-256 | Final directory readback and exact hash recorded in delivery JSON after build |
-| Branded pages | CreateCustomPage + native Inno controls; official icon copied byte-for-byte; product palette, strong hierarchy, location card, progress and finish | Source/compile, not native screenshots |
-| Location contract | Existing parent validation retained; final-child-only CreateDir, unknown target rejection, human space errors | V2 compiled-policy runtime not executed |
-| Launch/close | Run defaults unchecked; Launch selects it, Close deselects it; original Inno engine handlers retained | Source and compile, not runtime |
-| Progress | Original CurInstallProgressChanged callback; real percentage calculation; bounded opt-in details | No actual extraction progression measured |
-| Theme | Dynamic Windows 11 style; separate dark palette; contrast checks include card/body/primary; high-contrast fallback | Native light/dark appearance unverified |
-| 100/125/150/200% | Source-geometry bounds and in-memory native Win32 font measurement at four virtual DPI values | Not live VCL layout; long paths and native control rendering still require review |
-| Default UI removal | Normal pages overlay native branded surface; no large images, no bevels, template headings replaced | Actual screenshots pending |
-| Single-instance defense | Official SetupMutex in compiled source | Duplicate-launch behavior not exercised |
-| Scope | NSIS hash unchanged; no updater/feed/trust/account/database/server edits | Unrelated pre-existing untracked documentation preserved |
+| Check | Count | Evidence and scope |
+| --- | ---: | --- |
+| Build boundary | 12 | Mocked compiler/verifier; one user output file, separate private evidence, required explicit payload, rejected alternate modes/old outputs/nested candidates, immutable source/manifest gates |
+| Actual ISCC compilation | 3 | Production source with --output=no at 256 MiB, >2 GiB and >4 GiB required-space values; no warnings; no installer emitted |
+| Design contract | 7 | Dynamic Windows 11, no legacy sidebar, real callback progress, no technical detail controls, explicit launch/close, source geometry, palette contrast and asset reuse |
+| Directory source contract | 9 | Existing known folders, drive/parent rejection, final-child-only creation, unknown tree rejection, identity-based repair/update, overlay ownership retention, reparse fail-closed, no debug dialogs, display path separated from actual path |
+| Memory-only native font metrics | 2 | Four virtual DPI values (96/120/144/192); no window, host setting or process DPI-awareness changes |
 
-Focused checks on the final source:
+Command:
+`python -m unittest discover -s installer/inno/tests -v`
 
-- Build wrapper: **5 passed**, including changed-source/changed-manifest refusal.
-- Design contract: **7 passed**.
-- Native font metrics: **2 passed**; no window was created.
-- Production-sections compilation with small fixture input: **1 passed**.
-- Total: **15 passed**; no full test suite.
-- Full real-payload build, exact hash and source-hash readback: see final receipt.
+The compiler check uses the **same production source**, not a separate styled
+installer or test-shell variant. ISCC's log explicitly reports that output was
+disabled. The temporary .exe-named payload input is non-PE data, not executable
+software. No old artifact or payload is needed to run these checks.
 
-The metric checks found and corrected two genuine issues: small text contrast on
-the location card, and insufficient wordmark height. A compile attempted while
-the latter changed was rejected by the source-hash guard and is not deliverable.
-A mistakenly selected full-product input to the small compile-profile test hit
-its 60-second timeout; the test now refuses non-fixture receipts. The correctly
-selected small-profile check passes. These are recorded, not silently relabeled
-as successful runs. No installer was executed in either case.
+A read-only Windows known-folder lookup confirmed LocalApplicationData exists
+on the current machine. The installer independently resolves it on its user's
+machine and checks DirExists; no path from this workstation is frozen into UI.
 
-## Missing native acceptance
+## Requirement traceability
 
-All of these are **NOT_CAPTURED**, not blank placeholders or simulated images:
+| Requirement | Authoritative source |
+| --- | --- |
+| Exactly MentorFlow-Setup.exe | Constant OutputBaseFilename in MentorFlow.iss; OUTPUT_NAME and empty-output guards in build_inno_installer.py |
+| No normal/beautified/NSIS/test alternative | Fixture/appearance CLI and runtime probes removed; NSIS is not invoked; source check has --output=no |
+| No two windows | No automatic launch or elevation; official SetupMutex in product setup |
+| Existing parent; one new root component | ValidateParent and PrepareToInstall/CreateDir(Target) |
+| Unknown nonempty rejected | ClassifyTarget + KnownTree + matching executable/ownership checks |
+| Legal existing install recognized | tkRepair/tkUpgrade classification for the stable Inno.v1 identity; old no-Version records supported |
+| Default actual Windows known folder | ExistingKnownParent checks LocalAppData/AppData/Documents; no param fallback |
+| Three branded stages | CreateCustomPage + ShowBrandedPage; original logo, whitespace, native primary action |
+| Enough disk → no confirmation/debug popup | Int64 free-space guard, inline feedback, DirExistsWarning=no, no MsgBox/TaskDialogMsgBox call in owned code |
+| Smooth engine-derived progress | CurInstallProgressChanged → UpdateBrandedProgress; 1,000 bar steps, no synthetic timer |
+| Launch on finish | Explicit RunList selection + original Inno handler; Close deselects |
+| No raw technical display | Raw filename copy/detail panel removed; diagnostics remain file-only |
+| Source/config only | No product build/installer execution/publication in this dispatch; explicit input required for A's later build |
 
-- `01-location-light.png`
-- `02-progress-light.png`
-- `03-finish-light.png`
-- `04-location-dark.png`
-- `05-progress-dark.png`
-- `06-finish-dark.png`
-- At least one 150% screenshot of the same exact product candidate.
+Depth=1 is the application root under the user's selected parent. Inno may unpack
+normal product-owned nested subdirectories inside that root. It does not create
+missing parent ancestors.
 
-Also pending: native keyboard/accessibility behavior, long-path presentation,
-actual extraction progress, completion Launch versus Close, and visual error
-recovery. No old V1 screenshot proves V2 acceptance. No HTML, mock image, forced
-second binary or changed desktop setting has been used to manufacture evidence.
+Repair/update recognition covers the validated existing Inno.v1 shell contract,
+not unverified NSIS folders. Overlay update preserves owned paths without
+deleting stale payload files or restoring old Product identity fields.
 
-Consequently the visual hard gate, native light/dark claims, screenshot gate,
-and full end-to-end acceptance remain unproven. Do not set MODERN_UI_READY=YES
-or mark the goal complete from these offline tests.
+## Deliberately not claimed
 
-## Artifact and recovery provenance
+- No native screenshots, foreground user test, installation, repair, updater
+  migration or actual application launch was performed.
+- Source invariant tests do not simulate a successful real filesystem install.
+- Compilation of >2/4 GiB arithmetic does not prove extraction of a large payload.
+- Virtual geometry/font metrics do not establish live VCL rendering at all DPIs.
+- Final payload/signing/licensing/runtime acceptance belongs to A after integration.
+- Historical native-policy tests used a separate executable UX probe. That entry
+  point is retired; their prior runtime pass claims are not reused or silently
+  converted to today's source checks. Base Git history preserves them.
 
-The frozen product build succeeded without compiler warnings. Its 912,052,432
-byte EXE was copied (not launched) to the final folder and independently hashed:
-`8008b7512278ea0132b86d9a321e3a526baea294597bf68c269a26d5e8178a47`.
-Directory readback found exactly one EXE. This real product build packs
-2,166,463,248 payload bytes and reserves 2,434,898,704 target bytes. The original
-829 × 797 product PNG is copied unchanged, not an invented or upscaled logo.
+These are release-stage limits, not a block on the explicitly requested
+source/config freeze. Source ready and final product ready are separate claims.
 
-Final candidate and all output fields are in
-`E:\Downloads\MentorFlow-UAT-Current\Installer\acceptance.json`.
-The final build receipt binds the EXE to source/brand and input-manifest hashes.
-Temporary build directories are not user-facing alternatives.
+## Scope and safety
 
-Archived original:
-`E:\Codex\Temp\mf-modern-installer-20260908\v2-retired-uat\MentorFlow-1.2.3-win-x64-Setup.exe.archived`
+Only installer/inno and scripts/build_inno_installer.py change.
+No account/database/server/updater/feed/trust/core change.
+No dependency, desktop DPI/theme or foreground-window change.
+No NSIS build or installer process started, including silent tests.
+No old 1.2.3 product packaging or final output-directory mutation.
 
-SHA-256:
-`0cc09509415f3715fb821d74e556fef4e5b4feba710ac6a61cadc28f9c07af34`.
-Original file was 23,305,631 bytes in the user-designated UAT Installer folder.
-No unrelated file was moved or deleted. Recovery instructions are beside it.
+Unchanged NSIS SHA-256:
+`6ad0608cb162a7fdacd6b7aa221f83b643db5b63a845857d836278cc2926c678`.
 
-Unchanged NSIS source SHA-256:
-`6ad0608cb162a7fdacd6b7aa221f83b643db5b63a845857d836278cc2926c678`
-
-
-## Safety accounting
-
-REMOTE_PUSH=NOT_RUN; GITHUB_ACTIONS_EXECUTED=0; SERVER_MUTATIONS=0;
-FORMAL_USER_DATA_WRITES=0; HOST_SETTINGS_MUTATIONS=0;
-V2_INSTALLER_LAUNCHES=0; NSIS_USER_ARTIFACT_BUILT=NO;
-NSIS_USER_ARTIFACT_LAUNCHED=NO.
-
-Only installer/inno and scripts/build_inno_installer.py are included in the
-source delivery. The unrelated untracked docs/windows-distribution-reference-v1.md
-is preserved; do not claim the whole worktree is clean while it remains.
-
-V1 history is not V2 evidence: the earlier host scaling change and concurrent
-installer windows were operator mistakes. The user objected; they are not an
-approved testing method and were not repeated in this continuation.
+The existing unrelated untracked docs/windows-distribution-reference-v1.md is
+preserved and excluded from delivery. Owned paths must be clean after commit;
+do not claim the entire worktree is clean while that unrelated file remains.
