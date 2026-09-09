@@ -183,11 +183,16 @@ def validate_public_ca_bundle(data):
 
 def origin_value(value: str, development: bool):
     parsed = urlsplit(value)
+    # A public HTTPS feed may live under a reverse-proxy mount. Accept only
+    # literal safe segments, never encoded traversal, query routing or aliases.
+    mount = parsed.path.rstrip('/')
+    safe_mount = not mount or re.fullmatch(r'(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)+', mount)
     if (parsed.username or parsed.password or parsed.query or parsed.fragment or
-            not parsed.hostname or parsed.path.rstrip('/') or
+            not parsed.hostname or not safe_mount or '\\' in value or
+            (development and mount) or
             (parsed.scheme != 'https' and not (development and parsed.scheme == 'http' and
                                                parsed.hostname in ('127.0.0.1', '::1')))):
-        raise ValueError('origin must be an HTTPS origin (literal-loopback HTTP only with development signing)')
+        raise ValueError('origin must be a safe HTTPS publication mount (development loopback remains origin-only)')
     _ = parsed.port
     return value.rstrip('/')
 

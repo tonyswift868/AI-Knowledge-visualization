@@ -53,4 +53,17 @@ def version_display(manifest: dict[str, Any] | None = None) -> str:
     return f"{product} {version} · 渠道：{channel}"
 
 
-__all__ = ["VERSION_MANIFEST", "load_version_manifest", "version_display"]
+def installed_release_details(manifest: dict[str, Any] | None = None) -> str | None:
+    """Offline, plain-text installed release notes; never copy configuration.
+
+    Present only when this release ships bounded notes. BASE has no notes;
+    TARGET 1.4.1 introduces the installed-notes and copy-version affordance.
+    """
+    payload = VERSION_MANIFEST if manifest is None else manifest
+    notes = payload.get("installed_release_notes")
+    if not isinstance(notes, str) or not notes.strip() or len(notes) > 2000:
+        return None
+    return version_display(payload) + "\n\n" + notes.strip()
+
+
+__all__ = ["VERSION_MANIFEST", "load_version_manifest", "version_display", "installed_release_details"]

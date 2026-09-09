@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -77,7 +78,8 @@ def build(args):
             raise ValueError('User output must be empty; do not overwrite or retain alternate candidates')
         subprocess.run([sys.executable, str(ROOT / 'scripts/verify_windows_package.py'),
                         'verify', '--package-root', str(payload), '--no-smoke',
-                        '--no-data-check'], check=True)
+                        '--no-data-check'], check=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         if not (payload / 'MentorFlow.exe').is_file():
             raise ValueError('Payload must contain MentorFlow.exe')
 
@@ -138,7 +140,8 @@ def build(args):
     manifest = payload / 'SELF-CHECK/package-manifest.json'
     manifest_hash = None if check_source else digest(manifest)
     release_hash = None if check_source else digest(release_path)
-    result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace')
+    result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     (stage / 'compile.log').write_text(result.stdout + result.stderr, encoding='utf-8')
     if result.returncode:
         print(result.stdout + result.stderr)

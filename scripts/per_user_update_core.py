@@ -76,7 +76,9 @@ def static_feed_url(manifest, *, test_fixture=False):
         raise SecurityError('production update feed requires HTTPS')
     if manifest.get('channel', 'stable') != 'stable':
         raise SecurityError('one-click update requires stable channel')
-    return url
+    # A signed directory binding names the public mount, not a JSON response.
+    # Keep legacy exact-file bindings unchanged; never probe or guess endpoints.
+    return url + 'stable/stable.json' if parsed.path.endswith('/') else url
 
 
 def one_click_service(root):

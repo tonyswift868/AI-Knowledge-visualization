@@ -4,6 +4,27 @@ from pathlib import Path
 import threading
 
 
+def add_installed_release_details(layout, application, manifest):
+    """Render installed information offline; copy only the bounded public text."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel, QPushButton
+    from desktop.version import installed_release_details
+    details=installed_release_details(manifest)
+    if not details: return None
+    heading=QLabel('本版本更新');heading.setObjectName('installedReleaseHeading')
+    layout.addWidget(heading)
+    summary=QLabel(details);summary.setObjectName('installedReleaseDetails')
+    summary.setTextFormat(Qt.TextFormat.PlainText);summary.setWordWrap(True)
+    summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(summary)
+    copy=QPushButton('复制版本信息');copy.setObjectName('copyInstalledVersion')
+    def copy_version():
+        application.clipboard().setText(details)
+        copy.setText('已复制版本信息')
+    copy.clicked.connect(copy_version);layout.addWidget(copy)
+    return copy
+
+
 def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None):
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QDialog,QVBoxLayout,QLabel
@@ -27,6 +48,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         if isinstance(notice,str) and 0<len(notice)<=200:
             label=QLabel(notice);label.setObjectName('desktopReleaseNotice');label.setWordWrap(True)
             layout.addWidget(label)
+        add_installed_release_details(layout, application, VERSION_MANIFEST)
         if configured().uat:
             layout.addWidget(QLabel('预览版：账号服务暂未连接，您仍可查看软件版本。'))
         panel=UpdatePanel(about,auto_delay_ms=60000);layout.addWidget(panel)
