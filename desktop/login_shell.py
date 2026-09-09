@@ -30,6 +30,9 @@ class LoginGateWindow(QWidget):
     about_requested = Signal()
     update_requested = Signal()
     repair_requested = Signal()
+    register_requested = Signal()
+    forgot_password_requested = Signal()
+    update_blocked = Signal(bool)
 
     def __init__(self) -> None:
         super().__init__()
@@ -55,6 +58,9 @@ class LoginGateWindow(QWidget):
         self._centered = False
         self._first_paint_scheduled = False
         self.startup_update_state = None
+        self.update_controller = None
+        self._login_enabled = True
+        self.account_capabilities = {}
         self._build()
         self.set_state(LoginGateState.LOGIN_READY)
 
@@ -74,7 +80,7 @@ class LoginGateWindow(QWidget):
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 16, 20, 16)
-        outer.setSpacing(14)
+        outer.setSpacing(8)
         self.brand_widgets = []
         brand = QFrame()
         brand.setObjectName("loginBrandMark")
@@ -101,12 +107,13 @@ class LoginGateWindow(QWidget):
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(subtitle)
         self.brand_widgets.append(subtitle)
-        outer.addSpacing(14)
+        outer.addSpacing(4)
         card = QFrame()
         card.setObjectName("loginCard")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(26, 24, 26, 24)
         card_layout.setSpacing(11)
+        card.setMinimumHeight(230)
         self.content_layout = card_layout
         self.auth_content = None
         self.state_title = QLabel()
@@ -146,6 +153,7 @@ class LoginGateWindow(QWidget):
         outer.addWidget(self.auto_box)
         self.cancel_button = QPushButton("取消并选择其他账号")
         self.cancel_button.setObjectName("loginCancelButton")
+        self.cancel_button.setStyleSheet('min-height: 24px; padding: 3px;')
         self.cancel_button.clicked.connect(self.cancel_requested)
         outer.addWidget(self.cancel_button)
         self.notice_label = QLabel()
@@ -160,11 +168,68 @@ class LoginGateWindow(QWidget):
         outer.addWidget(privacy)
         self.about_button = QPushButton('关于与检查更新')
         self.about_button.setObjectName('loginAboutUpdates')
+        self.about_button.setStyleSheet('min-height: 22px; padding: 2px; border: 0; background: transparent;')
         self.about_button.setAccessibleName('关于与检查更新')
         self.about_button.clicked.connect(self.about_requested.emit)
         self.about_button.setEnabled(False)
         outer.addWidget(self.about_button)
+        self.update_entry_layout = QVBoxLayout()
+        outer.addLayout(self.update_entry_layout)
+        account_actions = QHBoxLayout()
+        self.register_button = QPushButton('注册账号')
+        self.forgot_password_button = QPushButton('忘记密码')
+        for button in (self.register_button, self.forgot_password_button):
+            button.setAccessibleName(button.text())
+            button.setStyleSheet('QPushButton {min-height: 24px; padding: 2px; border: 0; background: transparent;}'
+                                'QPushButton:disabled {color: #a69ba2;}')
+            button.setEnabled(False)
+            account_actions.addWidget(button)
+        self.register_button.clicked.connect(lambda: self._account_action('register'))
+        self.forgot_password_button.clicked.connect(lambda: self._account_action('forgot_password'))
+        outer.addLayout(account_actions)
         self.cancel_button.hide()
+
+    @property
+    def login_is_blocked(self):
+        if self.update_controller is not None:
+            return self.update_controller.login_blocked
+        return bool(self.startup_update_state and not self.startup_update_state['login_allowed'])
+
+    def bind_update_controller(self, controller):
+        if self.update_controller is controller:
+            return
+        if self.update_controller is not None:
+            self.update_controller.login_policy_changed.disconnect(self._update_login_policy)
+        self.update_controller = controller
+        # Leave enough room for the identity provider's form and direct footer.
+        self.brand_widgets[0].hide()
+        controller.login_policy_changed.connect(self._update_login_policy)
+        if self.startup_update_state:
+            self.set_startup_policy(self.startup_update_state)
+        self._update_login_policy(controller.login_blocked)
+
+    def _update_login_policy(self, blocked):
+        self.primary_button.setEnabled(self._login_enabled and not blocked)
+        if self.auth_content is not None:
+            self.auth_content.setEnabled(not blocked)
+        self.set_account_capabilities(self.account_capabilities)
+        self.update_blocked.emit(blocked)
+
+    def set_account_capabilities(self, capabilities):
+        # Explicit 05 capability only. Missing/string/unknown values do not
+        # advertise registration or reset support for the current realm.
+        self.account_capabilities = {key: isinstance(capabilities, dict) and capabilities.get(key) is True
+                                     for key in ('register', 'forgot_password')}
+        blocked = self.update_controller is not None and self.update_controller._last_login_blocked
+        self.register_button.setEnabled(self.account_capabilities['register'] and not blocked)
+        self.forgot_password_button.setEnabled(self.account_capabilities['forgot_password'] and not blocked)
+        self.register_button.setToolTip('' if self.account_capabilities['register'] else '当前账号服务尚未开放注册')
+        self.forgot_password_button.setToolTip('' if self.account_capabilities['forgot_password'] else '当前账号服务暂未开放密码找回')
+
+    def _account_action(self, action):
+        if self.login_is_blocked or self.account_capabilities.get(action) is not True:
+            return
+        (self.register_requested if action == 'register' else self.forgot_password_requested).emit()
 
     def _remember_toggled(self, enabled: bool) -> None:
         self.auto_box.setEnabled(enabled)
@@ -172,7 +237,7 @@ class LoginGateWindow(QWidget):
             self.auto_box.setChecked(False)
 
     def set_auth_content(self, content: QWidget | None) -> None:
-        if content is not None and self.startup_update_state and not self.startup_update_state['login_allowed']:
+        if content is not None and self.login_is_blocked:
             content.hide()
             return
         if self.auth_content is not None:
@@ -180,17 +245,24 @@ class LoginGateWindow(QWidget):
             self.auth_content.hide()
         self.auth_content = content
         # Keep native identity framing in place while only the form area changes.
-        for widget in self.brand_widgets:
-            widget.setVisible(True)
+        for index, widget in enumerate(self.brand_widgets):
+            widget.setVisible(index != 0 or self.update_controller is None)
         self.state_title.setVisible(content is None)
         self.state_detail.setVisible(content is None)
         self.primary_button.setVisible(content is None)
         if content is not None:
             self.content_layout.addWidget(content, 1)
+            content.setEnabled(not self.login_is_blocked)
             content.show()
 
     def set_startup_policy(self, snapshot):
         self.startup_update_state = dict(snapshot)
+        if self.update_controller is not None:
+            # Project an already verified 07 result through the single adapter.
+            self.update_controller.port.set_startup_state(snapshot)
+            self.update_controller.refresh_login_policy()
+            self.update_button.hide(); self.repair_button.hide()
+            return
         state = snapshot['state']
         blocked = not snapshot['login_allowed']
         self.update_button.setVisible(state in ('OPTIONAL_UPDATE','MANDATORY_UPDATE','REPAIR_REQUIRED'))
@@ -232,7 +304,7 @@ class LoginGateWindow(QWidget):
             QTimer.singleShot(0, self.first_paint_completed.emit)
 
     def _activate(self) -> None:
-        if self.startup_update_state and not self.startup_update_state['login_allowed']:
+        if self.login_is_blocked:
             return
         if self._retry_mode:
             self.retry_requested.emit()
@@ -280,7 +352,8 @@ class LoginGateWindow(QWidget):
         self.state_title.setText(title)
         self.state_detail.setText(message)
         self.primary_button.setText(button)
-        self.primary_button.setEnabled(enabled)
+        self._login_enabled = enabled
+        self.primary_button.setEnabled(enabled and not self.login_is_blocked)
         preparing = state in {LoginGateState.STARTING, LoginGateState.SECURE_CONNECTION, LoginGateState.LOADING_AUTH}
         self.remember_box.setEnabled(not preparing)
         self.auto_box.setEnabled(not preparing and self.remember_box.isChecked())

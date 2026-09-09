@@ -1110,7 +1110,12 @@ class MentorFlowApplication:
 
         if self.login_gate is None:
             self.login_gate = LoginGateWindow()
+        from .gui_update_runtime import attach_update_entry
+        attach_update_entry(self.app, self.login_gate)
         self.login_gate.login_requested.connect(self._begin_interactive_login)
+        self.login_gate.register_requested.connect(lambda: self._begin_account_action('register'))
+        self.login_gate.forgot_password_requested.connect(lambda: self._begin_account_action('forgot_password'))
+        self.login_gate.update_blocked.connect(self._update_login_blocked)
         self.login_gate.retry_requested.connect(self._retry_login_or_bootstrap)
         self.login_gate.background_succeeded.connect(self._background_succeeded)
         self.login_gate.background_failed.connect(self._background_failed)
@@ -1160,7 +1165,7 @@ class MentorFlowApplication:
 
     def _begin_remembered_login(self) -> None:
         from .startup_flow import LoginGateState
-        if self._closing or self._remembered_profile is None:
+        if self._closing or self._remembered_profile is None or self.login_gate.login_is_blocked:
             return
         self._invalidate_login_jobs()
         generation, cancelled = self._login_generation, self._login_cancelled
@@ -1181,12 +1186,25 @@ class MentorFlowApplication:
                 gate.background_failed.emit(f"{generation}:{job}", "登录已失效，请重新登录。" if reauthenticate else "暂时无法恢复登录，请检查网络或账号权限后重试。")
         threading.Thread(target=restore, name="mentorflow-session-restore", daemon=True).start()
 
-    def _begin_interactive_login(self) -> None:
+    def _update_login_blocked(self, blocked):
+        if blocked:
+            self._invalidate_login_jobs()
+            self._last_login_result = None
+            from .startup_flow import LoginGateState
+            self.login_gate.set_state(LoginGateState.LOGIN_READY)
+
+    def _begin_account_action(self, intent):
+        if self.login_gate.login_is_blocked or self.login_gate.account_capabilities.get(intent) is not True:
+            return
+        self._remembered_profile = None
+        self._begin_interactive_login(intent=intent)
+
+    def _begin_interactive_login(self, *, intent='login') -> None:
         from .enterprise_oidc import DesktopOidcConfig
         from .in_app_oidc import InAppOidcLoginDialog
         from .startup_flow import LoginGateState
 
-        if self.login_gate is None or self._closing:
+        if self.login_gate is None or self._closing or self.login_gate.login_is_blocked:
             return
         if self._remembered_profile is not None:
             self._begin_remembered_login()
@@ -1195,7 +1213,8 @@ class MentorFlowApplication:
         generation = self._login_generation
         self.login_gate.set_state(LoginGateState.AUTHENTICATING)
         try:
-            pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True)
+            options = {} if intent == 'login' else dict(intent=intent, capabilities=self.login_gate.account_capabilities)
+            pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True, **options)
             self._auth_pane = pane
             record = getattr(self, "_startup_record", None)
             if record is not None:
@@ -1216,6 +1235,8 @@ class MentorFlowApplication:
         from .runtime import record_enterprise_account_session
         from .startup_flow import LoginGateState
 
+        if self.login_gate is not None and self.login_gate.login_is_blocked:
+            return
         if self.login_gate is None or not isinstance(result, EnterpriseOidcLoginResult):
             if self.login_gate is not None:
                 self.login_gate.set_state(
@@ -1243,7 +1264,7 @@ class MentorFlowApplication:
     def _start_account_bootstrap(self) -> None:
         from .startup_flow import LoginGateState, bootstrap_enterprise_account
 
-        if self.login_gate is None or self._last_login_result is None:
+        if self.login_gate is None or self._last_login_result is None or self.login_gate.login_is_blocked:
             return
         self.login_gate.set_state(
             LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING,
@@ -1289,6 +1310,10 @@ class MentorFlowApplication:
             self._finish_return_to_login_gate(result)
             return
         if job != "bootstrap":
+            return
+        if self.login_gate is not None and self.login_gate.login_is_blocked:
+            if hasattr(result, 'close'):
+                result.close()
             return
         from .startup_flow import (
             AccountBootstrapResult,
@@ -1384,7 +1409,7 @@ class MentorFlowApplication:
     def _start_enterprise_local_service(self) -> None:
         from .startup_flow import LoginGateState
 
-        if self.bootstrap_result is None:
+        if self.bootstrap_result is None or self.login_gate is not None and self.login_gate.login_is_blocked:
             return
         if self.service is not None:
             return
@@ -1433,7 +1458,7 @@ class MentorFlowApplication:
             self._service_failed(str(exc))
 
     def _show_main(self, user: dict) -> None:
-        if not self.api:
+        if not self.api or self.login_gate is not None and self.login_gate.login_is_blocked:
             return
         # Business pages are not needed to authenticate. Keep their imports
         # behind the verified login/bootstrap gate instead of delaying its form.

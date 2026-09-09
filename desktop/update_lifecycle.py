@@ -10,7 +10,9 @@ from .update_session import SessionEnding
 CORE_STATES = {
     'IDLE': 'CHECKING', 'CHECKING': 'CHECKING',
     'UP_TO_DATE': 'UP_TO_DATE', 'CURRENT_HEALTHY': 'UP_TO_DATE',
-    'UPDATE_AVAILABLE': 'UPDATE_AVAILABLE',
+    'HEALTHY': 'UP_TO_DATE',
+    'UPDATE_AVAILABLE': 'OPTIONAL_UPDATE', 'OPTIONAL_UPDATE': 'OPTIONAL_UPDATE',
+    'MANDATORY_UPDATE': 'MANDATORY_UPDATE', 'REPAIR_REQUIRED': 'REPAIR_REQUIRED',
     'DOWNLOADING': 'DOWNLOADING', 'PREPARING': 'PREPARING',
     'READY_TO_APPLY': 'PREPARING', 'UPDATE_DOWNLOADED': 'PREPARING',
     'APPLYING': 'PREPARING', 'RESTART_REQUIRED': 'PREPARING',
@@ -27,6 +29,7 @@ class UpdatePort(Protocol):
     def download_latest(self, progress, cancel) -> dict: ...
     def update_to_latest(self, progress=None, cancel=None, before_apply=None) -> dict: ...
     def apply_and_relaunch(self) -> dict: ...
+    def repair_and_check(self, progress, cancel) -> dict: ...
     def close(self) -> None: ...
 
 
@@ -39,8 +42,11 @@ class CoreUpdatePort:
         self._original_bridge = service.apply_bridge if service else None
         self._closed = False
         self._core_snapshot = {}
+        self._startup_state = {}
+        self._repair_dispatched = False
         from scripts.per_user_install import is_install
-        self._per_user = bool(service is not None and is_install(service.install_root))
+        install_root = getattr(service, 'install_root', None)
+        self._per_user = bool(install_root is not None and is_install(install_root))
         self._session = None
         if self._per_user:
             from .update_session import UpdateSession, UnavailableSession
@@ -51,11 +57,11 @@ class CoreUpdatePort:
 
     @property
     def snapshot(self):
-        raw = self._core_snapshot or (self.service.snapshot if self.service else {})
+        raw = self._core_snapshot or self._startup_state or (self.service.snapshot if self.service else {})
         code = raw.get('state', 'IDLE')
         if code not in DEFERRED:
             code = self._outcome or code
-        state = CORE_STATES.get(code, 'RECOVERABLE_ERROR') if self.service else 'RECOVERABLE_ERROR'
+        state = CORE_STATES.get(code, 'RECOVERABLE_ERROR') if raw else 'RECOVERABLE_ERROR'
         if code == 'PREPARING' and self._downloading:
             state = 'DOWNLOADING'  # Frozen core's pre-download preparation.
         error_kind = ('validation' if code == 'FAILED_SECURITY' else
@@ -72,13 +78,22 @@ class CoreUpdatePort:
             error_kind=error_kind, busy=bool(getattr(transport, 'busy', False)),
             available=self.service is not None)
 
+    def set_startup_state(self, value):
+        from scripts.per_user_update_core import STARTUP_STATES
+        if not isinstance(value, dict) or value.get('state') not in STARTUP_STATES:
+            raise ValueError('verified startup state required')
+        self._startup_state = dict(value)
+        self._core_snapshot = {}
+        self._outcome = ''
+
     def _result(self, value):
         if isinstance(value, dict):
             if self._per_user:
                 self._core_snapshot = dict(value)
             codes = (value.get('ui_state'), value.get('state'), value.get('status'))
             code = next((code for code in codes if code in DEFERRED), next((code for code in codes if code), None))
-            if self._per_user or code in DEFERRED or code in ('FAILED_SECURITY', 'FAILED_RECOVERABLE'):
+            if self._per_user or code in DEFERRED or code in ('FAILED_SECURITY', 'FAILED_RECOVERABLE',
+                'MANDATORY_UPDATE', 'REPAIR_REQUIRED', 'OPTIONAL_UPDATE', 'UP_TO_DATE', 'CURRENT_HEALTHY', 'PREPARING'):
                 self._outcome = code
         return self.snapshot
 
@@ -99,9 +114,47 @@ class CoreUpdatePort:
 
     def check_latest(self):
         if self._per_user:
-            from scripts.per_user_update_core import check_latest
-            return self._call(lambda: check_latest(self.service.install_root, service=self.service))
+            from scripts.per_user_update_core import get_startup_update_state
+            def check():
+                policy = get_startup_update_state(self.service.install_root, service=self.service)
+                self.set_startup_state(policy)
+                return {**self.service.snapshot, **policy}
+            return self._call(check)
         return self._call(lambda: self.service.check(manual=True))
+
+    def repair_and_check(self, progress, cancel):
+        if self._repair_dispatched:
+            return self.snapshot
+        if self._per_user:
+            from scripts.per_user_update_core import repair_installation
+            import os
+            def repair():
+                self._session.require_running()
+                if not self.can_apply() or self._closed:
+                    raise SessionEnding('session or window unavailable')
+                if cancel.is_set():
+                    return {'state': 'USER_CANCELLED'}
+                def report(value):
+                    self._core_snapshot = dict(value)
+                    progress(self.snapshot)
+                value = repair_installation(self.service.install_root, progress=report,
+                    cancel=lambda: cancel.is_set() or self._closed or not self.can_apply(),
+                    service=self.service, pid=os.getpid(), hwnd_hex=self.window_id())
+                self._repair_dispatched = (value.get('state') == 'APPLYING' and
+                                           value.get('coordinator_started') is True)
+                return value
+            return self._call(repair)
+        # The UI may request repair, never implement it or fall back to Setup.
+        # A core without this capability fails safely and keeps login blocked.
+        operation = getattr(self.service, 'repair_and_check', None)
+        if not callable(operation):
+            self._outcome = 'FAILED_RECOVERABLE'
+            return self.snapshot
+        result = self._call(lambda: operation(progress=progress, cancel=cancel.is_set))
+        if cancel.is_set():
+            self._outcome = 'USER_CANCELLED'
+            return self.snapshot
+        return result
 
     def download_latest(self, progress, cancel):
         def download():
@@ -156,6 +209,10 @@ class CoreUpdatePort:
         return result
 
     def apply_and_relaunch(self):
+        if self._repair_dispatched:
+            # repair_installation already handed off to the native coordinator.
+            # 03's prepared-result chain must not start a second transaction.
+            return self.snapshot
         def apply():
             if self._per_user:
                 from scripts.per_user_update_core import apply_and_relaunch
@@ -193,7 +250,7 @@ class CoreUpdatePort:
             self._session.close()
 
 
-def configured_update_service():
+def configured_update_service(*, install_root=None):
     """E108 uses 07's verified build config; no UI interpretation of a feed.
 
     The older protected-install service remains for non-E108 installations only.
@@ -201,11 +258,12 @@ def configured_update_service():
     """
     import sys
     from pathlib import Path
-    from scripts.per_user_install import is_install, resolve_launch_root
+    from scripts.per_user_install import is_install, resolve_launch_root, target
     image = Path(sys.executable).absolute()
-    root = resolve_launch_root(image) if image.name.casefold() == 'mentorflow.exe' else image.parent.parent
+    root = target(install_root) if install_root is not None else (
+        resolve_launch_root(image) if image.name.casefold() == 'mentorflow.exe' else image.parent.parent)
     if is_install(root):
         from scripts.per_user_update_core import one_click_service
         return one_click_service(root)
     from .update_service import configured_mature_service
-    return configured_mature_service()
+    return configured_mature_service(install_root=root) if install_root is not None else configured_mature_service()

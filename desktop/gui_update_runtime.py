@@ -25,11 +25,35 @@ def add_installed_release_details(layout, application, manifest):
     return copy
 
 
-def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None):
+def attach_update_entry(application, gate, *, defer_service=False):
+    """One assembly path for packaged and ordinary Desktop login shells."""
+    if hasattr(gate, 'update_entry'):
+        return gate.update_entry
+    from desktop.update_controller import application_updater
+    from desktop.update_panel import UpdatePanel
+    updater = application_updater((lambda: None) if defer_service else None)
+    gate.bind_update_controller(updater)
+    entry = UpdatePanel(gate, controller=updater, compact=True,
+                        auto_delay_ms=60000 if defer_service else 5000)
+    gate.update_entry = entry
+    gate.update_entry_layout.addWidget(entry)
+    entry.setEnabled(not defer_service)
+    application.aboutToQuit.connect(entry.shutdown)
+    return entry
+
+
+def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None,account_capabilities=None):
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QDialog,QVBoxLayout,QLabel
     from desktop.version import VERSION_MANIFEST,version_display
     from scripts.install_product import configured
+    from desktop.update_panel import UpdatePanel
+    previous = getattr(application, '_mentorflow_updater', None)
+    needs_service = previous is None or previous._closed
+    entry = attach_update_entry(application, gate, defer_service=True)
+    updater = entry.controller
+    gate.about_button.setText('关于 MentorFlow 与更新')
+    gate.about_button.setAccessibleName('关于 MentorFlow 与更新')
     dialogs=[]
     from scripts.per_user_install import is_install
     if is_install(root):
@@ -48,19 +72,16 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
 
     def request_repair():
         if not controller.results.get('SECURITY_GATE'): return
-        from scripts.per_user_install import handoff_repair
-        # The native coordinator closes this exact window only after a fully
-        # signed repair is prepared. The App never terminates its own worker.
-        handoff_repair(root, hwnd_hex=f'{int(gate.winId()):016x}')
+        updater.bind_window(gate)
+        updater.run('repair')  # Same 03 adapter used by the compact panel.
 
     gate.update_requested.connect(request_update)
     gate.repair_requested.connect(request_repair)
 
     def show_about():
-        if not controller.results.get('SECURITY_GATE'):return
+        if 'SECURITY_GATE' not in controller.results:return
         if dialogs:
             dialogs[0].show();dialogs[0].raise_();return
-        from desktop.update_panel import UpdatePanel
         about=QDialog(gate);about.setWindowTitle('关于 MentorFlow 与更新')
         about.setObjectName('mentorflowRealAboutUpdates');about.resize(780,440)
         layout=QVBoxLayout(about);layout.addWidget(QLabel(version_display()))
@@ -71,7 +92,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
         add_installed_release_details(layout, application, VERSION_MANIFEST)
         if configured().uat:
             layout.addWidget(QLabel('预览版：账号服务暂未连接，您仍可查看软件版本。'))
-        panel=UpdatePanel(about,auto_delay_ms=60000);layout.addWidget(panel)
+        panel=UpdatePanel(about,controller=updater,auto_delay_ms=60000);layout.addWidget(panel)
         if panel.service is not None:
             panel.controller.bind_window(gate)
             panel.refresh()
@@ -84,13 +105,31 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
 
     gate.about_requested.connect(show_about)
     timer=QTimer(gate);timer.setInterval(100)
+    ready_once = [False]
+    service_initialized = [not needs_service]
     def ready():
-        if not controller.results.get('SECURITY_GATE') or not gate.isVisible():return
-        timer.stop();gate.about_button.setEnabled(True)
-        from desktop.update_controller import application_updater
-        updater = application_updater()
+        if 'SECURITY_GATE' not in controller.results or not gate.isVisible():return
+        verified = controller.results['SECURITY_GATE'] is True
+        updater.set_installation_verified(verified)
+        entry.setEnabled(True)
+        gate.about_button.setEnabled(True)
         updater.bind_window(gate)
-        if getattr(controller, 'startup_policy', None) is None:
+        entry.refresh()
+        if not verified or ready_once[0]:return
+        ready_once[0] = True
+        gate.set_account_capabilities(account_capabilities)
+        if not service_initialized[0]:
+            from desktop.update_lifecycle import configured_update_service
+            try: service = configured_update_service(install_root=root)
+            except Exception: service = None
+            updater.configure_service(service)
+            entry.service = service
+            service_initialized[0] = True
+        policy = getattr(controller, 'startup_policy', None)
+        if policy is not None:
+            gate.set_startup_policy(policy)
+            entry.refresh()
+        else:
             QTimer.singleShot(5000, updater.start)
         if configured().uat:
             if not (getattr(controller,'startup_policy',None) or {}).get('state') in ('MANDATORY_UPDATE','REPAIR_REQUIRED'):
@@ -101,9 +140,11 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             if VERSION_MANIFEST.get('uat_recovery_fixture')=='exit-before-health-v1':
                 os._exit(86)
         # A queued callback runs after the real shell is visible and verified.
-        QTimer.singleShot(100,lambda:notify_health(gate,root,attempt_id=attempt_id,nonce=nonce))
+        QTimer.singleShot(100,lambda:notify_health(gate,root,attempt_id=attempt_id,nonce=nonce)
+            if gate.isVisible() and controller.results.get('SECURITY_GATE') is True else None)
     timer.timeout.connect(ready);timer.start()
     application.aboutToQuit.connect(timer.stop)
+    gate.closed.connect(timer.stop)
 
 
 def attach_uat_measurements(panel):

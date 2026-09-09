@@ -157,6 +157,7 @@ def app_context(monkeypatch, tmp_path):
     import desktop.main as main
     from desktop.runtime import clear_enterprise_account_session
     application = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(application, '_mentorflow_updater', None, raising=False)
     settings = Settings()
     for name, value in {
         'MENTORFLOW_DESKTOP_OIDC_ISSUER': ISSUER, 'MENTORFLOW_DESKTOP_OIDC_CLIENT_ID': 'mentorflow-desktop',
@@ -175,6 +176,9 @@ def app_context(monkeypatch, tmp_path):
     yield target, application, settings
     target._shutdown()
     if target.login_gate is not None: target.login_gate.close()
+    updater = getattr(application, '_mentorflow_updater', None)
+    if updater is not None:
+        updater.shutdown()
     clear_enterprise_account_session()
     application.processEvents()
 

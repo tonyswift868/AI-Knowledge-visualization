@@ -10,9 +10,9 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit
 
 from PySide6.QtCore import QThread, QUrl, Signal, Qt
 from PySide6.QtGui import QColor
@@ -47,6 +47,31 @@ from .enterprise_oidc import (
 AUTH_DIALOG_OBJECT_NAME = "mentorflowInAppOidcDialog"
 AUTH_VIEW_OBJECT_NAME = "mentorflowInAppOidcView"
 _retiring_dialogs: set[object] = set()
+
+
+def authorization_request_for_intent(prepared, intent, capabilities):
+    """Supported Keycloak OIDC entry points; preserve the existing PKCE flow.
+
+    Registration: prompt=create. Reset: the documented OIDC forgot-credentials
+    endpoint, never an internal login-actions URL or an UPDATE_PASSWORD action
+    which requires the user to know their old password.
+    """
+    if intent == 'login':
+        return prepared
+    if intent not in ('register', 'forgot_password') or not isinstance(capabilities, dict) or capabilities.get(intent) is not True:
+        raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_ACTION_UNAVAILABLE', '当前账号服务暂未开放此功能。')
+    endpoint = urlsplit(prepared.discovery.authorization_endpoint)
+    request = urlsplit(prepared.authorization_url)
+    if (request.scheme, request.netloc, request.path) != (endpoint.scheme, endpoint.netloc, endpoint.path) or endpoint.scheme != 'https' or not endpoint.path.endswith('/protocol/openid-connect/auth'):
+        raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_ACTION_UNAVAILABLE', '当前账号服务暂不支持此操作。')
+    parameters = dict(parse_qsl(request.query, keep_blank_values=True))
+    if intent == 'register':
+        parameters['prompt'] = 'create'
+        path = endpoint.path
+    else:
+        parameters['prompt'] = 'login'
+        path = endpoint.path[:-len('/auth')] + '/forgot-credentials'
+    return replace(prepared, authorization_url=urlunsplit((request.scheme, request.netloc, path, urlencode(parameters), '')))
 
 
 def _origin(value: str) -> tuple[str, str, int]:
@@ -205,6 +230,8 @@ class InAppOidcLoginDialog(QDialog):
         parent: QWidget | None = None,
         client_factory: Callable[[DesktopOidcConfig], _OidcClient] = EnterpriseOidcClient,
         embedded: bool = False,
+        intent: str = 'login',
+        capabilities: dict | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(AUTH_DIALOG_OBJECT_NAME)
@@ -218,6 +245,7 @@ class InAppOidcLoginDialog(QDialog):
             self.setWindowFlags(Qt.WindowType.Widget)
             self.setModal(False)
         self._config = config
+        self._intent, self._capabilities = intent, dict(capabilities or {})
         self._client_factory = client_factory
         self._cancelled = threading.Event()
         self._page_ready = threading.Event()
@@ -392,6 +420,7 @@ class InAppOidcLoginDialog(QDialog):
             prepared: PreparedOidcLogin | None = None
             try:
                 prepared = await client.prepare_login(force_reauthentication=True)
+                prepared = authorization_request_for_intent(prepared, self._intent, self._capabilities)
                 self._prepared_signal.emit(prepared)
                 page_ready = await asyncio.to_thread(self._page_ready.wait, 10.0)
                 if not page_ready or self._cancelled.is_set():

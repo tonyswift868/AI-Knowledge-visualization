@@ -12,7 +12,10 @@ from .update_lifecycle import CoreUpdatePort
 
 class UpdateState(StrEnum):
     CHECKING = 'CHECKING'
-    UPDATE_AVAILABLE = 'UPDATE_AVAILABLE'
+    OPTIONAL_UPDATE = 'OPTIONAL_UPDATE'
+    UPDATE_AVAILABLE = 'OPTIONAL_UPDATE'  # Compatibility name, one state.
+    MANDATORY_UPDATE = 'MANDATORY_UPDATE'
+    REPAIR_REQUIRED = 'REPAIR_REQUIRED'
     DOWNLOADING = 'DOWNLOADING'
     PREPARING = 'PREPARING'
     UP_TO_DATE = 'UP_TO_DATE'
@@ -23,6 +26,9 @@ class UpdateState(StrEnum):
 STATE_MAP = {
     'IDLE': UpdateState.CHECKING, 'CHECKING': UpdateState.CHECKING,
     'UPDATE_AVAILABLE': UpdateState.UPDATE_AVAILABLE,
+    'OPTIONAL_UPDATE': UpdateState.OPTIONAL_UPDATE,
+    'MANDATORY_UPDATE': UpdateState.MANDATORY_UPDATE,
+    'REPAIR_REQUIRED': UpdateState.REPAIR_REQUIRED,
     'PREPARING': UpdateState.PREPARING, 'DOWNLOADING': UpdateState.DOWNLOADING,
     'UP_TO_DATE': UpdateState.UP_TO_DATE, 'CURRENT_HEALTHY': UpdateState.UP_TO_DATE,
     'DEFERRED_TO_NEXT_LAUNCH': UpdateState.DEFERRED_TO_NEXT_LAUNCH,
@@ -33,6 +39,7 @@ DEFERRED = frozenset(('DEFERRED_TO_NEXT_LAUNCH', 'PENDING_INSTALL'))
 
 class UpdateController(QObject):
     finished = Signal(str)
+    login_policy_changed = Signal(bool)
 
     def __init__(self, service=None, parent=None, *, settings=None, port=None):
         super().__init__(parent)
@@ -43,6 +50,10 @@ class UpdateController(QObject):
         self._thread = None
         self._closed = self._started = self._chain = self._ending = False
         self._cancelled = False
+        self._requirement = ''
+        self._installation_verified = None
+        self._last_login_blocked = False
+        self._operation_pending = False
         self._outcome = self._action = ''
         self._window_id = None
         self._window_available = False
@@ -70,7 +81,38 @@ class UpdateController(QObject):
             return UpdateState.DEFERRED_TO_NEXT_LAUNCH
         if self.busy and self._action == 'apply_and_restart':
             return UpdateState.PREPARING
+        if self._installation_verified is False and not self.busy and not self._outcome:
+            return UpdateState.REPAIR_REQUIRED
         return STATE_MAP.get(self.raw_state, UpdateState.RECOVERABLE_ERROR)
+
+    @property
+    def login_blocked(self):
+        self.refresh_login_policy()
+        return self._last_login_blocked
+
+    def refresh_login_policy(self):
+        state = STATE_MAP.get(self.raw_state)
+        if state in (UpdateState.MANDATORY_UPDATE, UpdateState.REPAIR_REQUIRED):
+            self._requirement = state.value
+        elif state in (UpdateState.UP_TO_DATE, UpdateState.OPTIONAL_UPDATE) and not self._outcome and not self._operation_pending:
+            self._requirement = ''
+        blocked = bool(self._requirement or self._installation_verified is False)
+        if blocked != self._last_login_blocked:
+            self._last_login_blocked = blocked
+            self.login_policy_changed.emit(blocked)
+
+    def set_installation_verified(self, value):
+        self._installation_verified = value
+        self.refresh_login_policy()
+
+    def configure_service(self, service):
+        if self.busy or self._closed:
+            return
+        self.port.close()
+        self.service = service
+        self.key = f"updater/{getattr(service, 'install_identity', 'unconfigured')}/"
+        self.port = CoreUpdatePort(service, window_id=lambda: self._window_id,
+            can_apply=lambda: self._window_available and not self._closed and not self._ending)
 
     def bind_window(self, window):
         if self._closed or window is None:
@@ -103,10 +145,14 @@ class UpdateController(QObject):
             self.run('check')  # Core, not UI cache state, decides pending behavior.
 
     def run(self, action):
-        if self._closed or not self.port.snapshot.get('available', True) or self.busy:
+        if self._closed or self.busy:
             return
-        if action not in ('check', 'download', 'apply_and_restart'):
+        if action not in ('check', 'download', 'repair', 'apply_and_restart'):
             raise ValueError('unknown update UI action')
+        if self._installation_verified is False and action not in ('repair', 'apply_and_restart'):
+            return
+        if action != 'repair' and not self.port.snapshot.get('available', True):
+            return
         if self._ending:
             return
         if action == 'apply_and_restart':
@@ -117,9 +163,10 @@ class UpdateController(QObject):
                 return
             self.save_ui_state()
         else:
-            self._chain = action == 'download'
+            self._chain = action in ('download', 'repair')
             self._cancelled = False
             self._cancel.clear()
+        self._operation_pending = True
         self._outcome = ''
         self._action = action
         def work():
@@ -128,11 +175,13 @@ class UpdateController(QObject):
                     result = self.port.check_latest()
                 elif action == 'download':
                     result = self.port.download_latest(lambda _: None, self._cancel)
+                elif action == 'repair':
+                    result = self.port.repair_and_check(lambda _: None, self._cancel)
                 else:
                     result = self.port.apply_and_relaunch()
                 if isinstance(result, dict):
                     code = result.get('state')
-                    if code in DEFERRED or code == 'RECOVERABLE_ERROR':
+                    if code in DEFERRED or code in ('RECOVERABLE_ERROR', 'MANDATORY_UPDATE', 'REPAIR_REQUIRED'):
                         self._outcome = code
             except Exception:
                 self._outcome = 'RECOVERABLE_ERROR'
@@ -151,12 +200,14 @@ class UpdateController(QObject):
         if self.busy:
             QTimer.singleShot(10, lambda: self._finished(action))
             return
+        self._operation_pending = False
         if self._cancelled:
             self._outcome = 'RECOVERABLE_ERROR'
         if self.state in (UpdateState.RECOVERABLE_ERROR, UpdateState.DEFERRED_TO_NEXT_LAUNCH):
             self._chain = False
             return
-        if action == 'download' and self.raw_state == 'PREPARING' and self._chain:
+        self.refresh_login_policy()
+        if action in ('download', 'repair') and self.raw_state == 'PREPARING' and self._chain:
             self._chain = False  # Consume once before scheduling apply.
             self.run('apply_and_restart')
 
