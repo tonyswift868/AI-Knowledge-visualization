@@ -96,6 +96,23 @@ def identity():
     return dict(source_sha=git('rev-parse', 'HEAD'), tree_sha=git('rev-parse', 'HEAD^{tree}'), app_id=APP_ID)
 
 
+def prepare_empty_output(path):
+    from scripts.build_release import regular
+    regular(path, directory=True)
+    if path.exists() and any(path.iterdir()):
+        raise ValueError('User output must be empty; earlier candidates are never overwritten')
+    # A stopped build may have reserved an empty user folder. Preserve it;
+    # exclusive artifact creation still rejects races/nonempty destinations.
+    path.mkdir(parents=False, exist_ok=True)
+
+
+def is_project_namespace(pyz, name):
+    # PYZ kind 3 is PEP 420 namespace-only (no executable code to compare).
+    directory = ROOT / name.replace('.', '/')
+    return (pyz.toc[name][0] == 3 and pyz.extract(name) is None and
+            directory.is_dir() and not (directory / '__init__.py').exists())
+
+
 def initialize(args):
     feed_url = require_update_feed_url(args.update_feed_url)
     source = identity()
@@ -105,7 +122,7 @@ def initialize(args):
         if not path.is_file(): raise ValueError('Frozen dependency TOC is missing')
     # Never overwrite an earlier full package or incomplete build.
     args.work.mkdir(parents=False, exist_ok=False)
-    args.output.mkdir(parents=False, exist_ok=False)
+    prepare_empty_output(args.output)
     generated = args.work / 'generated'; generated.mkdir()
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
@@ -157,11 +174,16 @@ def verify_binaries(app, runtime):
         if {'scripts.measure_installed_login_gate', 'scripts.test_login_form_probe'} & set(pyz.toc):
             raise ValueError('Unrelated observation module entered the candidate')
         project_modules = []
+        project_namespaces = []
         for name in pyz.toc:
             if name.split('.')[0] not in ('desktop', 'scripts', 'backend'): continue
             source = ROOT / (name.replace('.', '/') + '.py')
             if not source.is_file(): source = ROOT / name.replace('.', '/') / '__init__.py'
-            if not source.is_file(): raise ValueError('Packaged project module has no current source: ' + name)
+            if not source.is_file():
+                if is_project_namespace(pyz, name):
+                    project_namespaces.append(name)
+                    continue
+                raise ValueError('Packaged project module has no current source: ' + name)
             if normalize(pyz.extract(name)) != normalize(compile(source.read_bytes(), str(source), 'exec')):
                 raise ValueError('Stale project module in binary: ' + name)
             project_modules.append(name)
@@ -181,7 +203,8 @@ def verify_binaries(app, runtime):
                 raise ValueError('Consumer runtime execution level is not asInvoker')
         finally: pe.close()
         checks.append(dict(path=str(path), sha256=sha(path), modules=common + extra,
-                           all_project_modules=sorted(project_modules), as_invoker=True))
+                           all_project_modules=sorted(project_modules),
+                           namespace_packages=sorted(project_namespaces), as_invoker=True))
     return checks
 
 

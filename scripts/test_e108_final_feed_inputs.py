@@ -27,6 +27,26 @@ def test_exact_https_base_resolves_to_explicit_stable_file():
     assert publisher.origin_value(base + 'releases', False) == base + 'releases'
 
 
+def test_namespace_gate_accepts_only_real_codeless_project_namespaces():
+    pyz = SimpleNamespace(toc={'scripts': (3, 0, 0)}, extract=lambda _: None)
+    assert build.is_project_namespace(pyz, 'scripts')
+    pyz.extract = lambda _: compile('pass', '<unexpected>', 'exec')
+    assert not build.is_project_namespace(pyz, 'scripts')
+    pyz.extract = lambda _: None
+    pyz.toc = {'scripts': (0, 0, 0)}
+    assert not build.is_project_namespace(pyz, 'scripts')
+
+
+def test_retry_preserves_empty_output_but_never_overwrites_candidate(tmp_path):
+    output = tmp_path / 'user'
+    build.prepare_empty_output(output)
+    build.prepare_empty_output(output)
+    marker = output / 'keep.txt'
+    marker.write_text('preserve', encoding='utf-8')
+    with pytest.raises(ValueError): build.prepare_empty_output(output)
+    assert marker.read_text(encoding='utf-8') == 'preserve'
+
+
 @pytest.mark.parametrize('url', ['https://89.45.45.28/mentorflow/updates/e108/stable.json',
     'https://other.example/e108/', 'https://89.45.45.28/mentorflow/updates/e108/?key=a',
     'http://89.45.45.28/mentorflow/updates/e108/'])
