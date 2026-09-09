@@ -1,4 +1,32 @@
-# MentorFlow single installer — final source contract
+# MentorFlow single installer — E109 finish UX
+
+Current dispatch: `MF-E109-W02-INSTALLER-FINISH-UX-20260910-01`.
+Base delivery: `b362c22a6025fd76a5387b4842efc249a2b895ef`.
+This is a **source-only** handoff: no app rebuild, user-package build or
+foreground installer test. A owns the final integrated build.
+Integration binds normal launch and repair to the delivered stable
+`Updater/UserRuntime.exe launch|repair-update --root` entry. The signed core
+still owns installation and removal; optional settings live in Maintenance.
+See [finish-ux-verification.md](finish-ux-verification.md) for the historical
+owner evidence and current binding. Final package QA and real SMTP are pending.
+The only user-facing document added is
+`docs/user/INSTALL_AND_UPDATE_GUIDE.zh-CN.md`.
+
+## Historical E108 parent selection / close fix
+
+Historical dispatch: `MF-E108-W02-INSTALL-PARENT-UX-CLOSEFIX-20260910-04`.
+Installer base: `4bc33f0165bcf882f996a5c3d5b343f3ffad33b3`.
+Reuse the supplied **1.4.0 BASE**, app source
+`d05909fa4c20a978184d701addc0bb8c536de28a`, without rebuilding the application.
+The output is `E:\Downloads\MentorFlow-E108-User-Test-20260910\Installer\MentorFlow-Setup.exe`.
+No installer launch (including silent launch), host DPI/theme mutation, app
+execution or updater/feed change is permitted in this dispatch.
+
+Current behavior and evidence are in [parent-close-verification.md](parent-close-verification.md).
+The `source-freeze.json` receipt and the source-only delivery below are historical;
+they describe the 2026-09-09 commit, not the current binary or its acceptance.
+
+## Historical source-only delivery — 2026-09-09
 
 Dispatch: `MF-E108-W02-SINGLE-POLISHED-INSTALLER-20260909-03`.
 Task: `MENTORFLOW_SINGLE_POLISHED_INSTALLER_FINAL_SOURCE_V1`.

@@ -18,6 +18,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UsePreviousPrivileges=no
 UsePreviousAppDir=no
+UsePreviousTasks=no
 WizardStyle=modern dynamic windows11 hidebevels includetitlebar
 WizardBackColor=#fffdf8
 WizardBackColorDynamicDark=#242127
@@ -35,6 +36,7 @@ DirExistsWarning=no
 AllowRootDirectory=no
 AllowNetworkDrive=no
 AllowUNCPath=no
+AllowCancelDuringInstall=yes
 UninstallDisplayIcon={app}\App\MentorFlow.exe
 UninstallFilesDir={app}\Maintenance
 OutputDir={#OutputDir}
@@ -76,9 +78,18 @@ Source: "{#BuildInput}\shell.ini"; DestDir: "{app}\Maintenance"; Flags: ignoreve
 
 [Icons]
 Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"
+Name: "{autoprograms}\{#ShortcutName} 修复与更新"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "repair-update --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"
+Name: "{autoprograms}\卸载 {#ShortcutName}"; Filename: "{uninstallexe}"
+
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked checkablealone
+Name: "startup"; Description: "开机时启动 MentorFlow"; Flags: unchecked checkablealone
 
 [Run]
-Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked
+Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked; Check: CanLaunchMentorFlow
+
+[UninstallDelete]
+Type: files; Name: "{app}\Maintenance\finish-options.ini"
 
 [Code]
 var
@@ -89,6 +100,8 @@ var
   CoreAttempt: Integer;
 
 #include "directory-policy.iss"
+
+#include "finish-options.iss"
 
 #include "branded-pages.iss"
 #include "per-user-core.iss"
@@ -104,6 +117,12 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   ShowBrandedPage(CurPageID);
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  { Inno still constructs its task controls; only the separate page is skipped. }
+  Result := PageID = wpSelectTasks;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -123,8 +142,16 @@ begin
   Result := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
   if (Result = '') and (CompareText(Target, WizardDirValue) <> 0) then
     Result := '安装位置已改变，请返回重新选择。';
+  if Result = '' then CapturePreviousFinishOptions(Target);
   { Core validates again and creates only the final component before copying. }
   if Result = '' then Result := InstallThroughCore(Target);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then begin
+    RestorePreviousFinishOptions;
+  end;
 end;
 
 procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
@@ -155,4 +182,5 @@ begin
     'uninstall --root ' + AddQuotes(ExpandConstant('{app}')), ExpandConstant('{app}'),
     SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
       RaiseException('卸载未完成。请先关闭 MentorFlow 后重试；资料不会被删除。');
+  RemoveOwnedFinishOptions;
 end;

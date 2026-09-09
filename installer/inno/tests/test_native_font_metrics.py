@@ -11,6 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
 UI = (ROOT / 'installer/inno/branded-pages.iss').read_text(encoding='utf-8-sig')
+SHELL = (ROOT / 'installer/inno/MentorFlow.iss').read_text(encoding='utf-8-sig')
 GDI = ctypes.WinDLL('gdi32', use_last_error=True)
 USER = ctypes.WinDLL('user32', use_last_error=True)
 GDI.CreateCompatibleDC.argtypes = [wintypes.HDC]
@@ -71,6 +72,20 @@ class NativeFontMetrics(unittest.TestCase):
             w, h = measure('启动 MentorFlow', 10, 148, dpi, True)
             self.assertLessEqual(w, round(148*dpi/96))
             self.assertLessEqual(h, round(40*dpi/96))
+
+    def test_finish_task_labels_fit_in_native_rows(self):
+        task_section = SHELL.split('[Tasks]', 1)[1].split('[Run]', 1)[0]
+        labels = re.findall(r'Description: "([^"]+)"', task_section)
+        self.assertEqual(len(labels), 2)
+        match = re.search(r'Bounds\(WizardForm.TasksList, \d+, \d+, (\d+), (\d+)\)', UI)
+        width, height = map(int, match.groups())
+        font_size = int(re.search(r'DialogFontSize=(\d+)', SHELL)[1])
+        for dpi in (96, 120, 144, 192):
+            for label in labels:
+                with self.subTest(dpi=dpi, label=label):
+                    w, h = measure(label, font_size, width - 32, dpi)
+                    self.assertLessEqual(w, round((width - 32)*dpi/96))
+                    self.assertLessEqual(h, round((height / len(labels))*dpi/96))
 
 
 if __name__ == '__main__':

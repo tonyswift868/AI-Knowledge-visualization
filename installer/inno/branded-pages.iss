@@ -7,11 +7,13 @@ var
   BrandName, BrandTagline, PageTitle, PageSubtitle: TNewStaticText;
   PathCaption, SpaceCaption, FeedbackCaption, ModeCaption: TNewStaticText;
   ProgressCaption, PercentCaption, SuccessCaption: TNewStaticText;
+  OptionsCaption, OptionsFeedback: TNewStaticText;
   BrowseButton, SecondaryButton: TNewButton;
   PrimaryButton: TBitmapButton;
   CopyProgress: TNewProgressBar;
   BackColor, CardColor, InkColor, MutedColor, AccentColor, AccentInk: TColor;
   EngineNext: TNotifyEvent;
+  FinishOptionsShown: Boolean;
 
 function BitmapRect(W, H: Integer): TRect;
 begin
@@ -85,8 +87,7 @@ begin
     PageTitle.Caption := '选择安装位置';
     PageSubtitle.Caption := '请选择一个这台电脑上已经存在的文件夹。';
   end;
-  if Problem <> '' then BrowseButton.Caption := '选择其他位置'
-  else BrowseButton.Caption := '浏览…';
+  BrowseButton.Caption := '选择其他位置';
   PrimaryButton.Enabled := Problem = '';
   WizardForm.NextButton.Enabled := PrimaryButton.Enabled;
   if IsAdminInstallMode then ModeCaption.Caption := '为所有用户安装'
@@ -117,7 +118,19 @@ end;
 procedure PrimaryClick(Sender: TObject);
 begin
   if (WizardForm.CurPageID = LocationPage.ID) and not PrimaryButton.Enabled then Exit;
-  if WizardForm.CurPageID = wpFinished then WizardForm.RunList.Checked[0] := True;
+  if WizardForm.CurPageID = wpFinished then begin
+    if not CanLaunchMentorFlow then begin
+      OptionsFeedback.Caption := '请关闭安装器，再从开始菜单以普通用户身份打开 MentorFlow。';
+      Exit;
+    end;
+    if WizardForm.RunList.Items.Count = 0 then begin
+      OptionsFeedback.Caption := '请关闭安装器，再从开始菜单打开 MentorFlow。';
+      Exit;
+    end;
+    OptionsFeedback.Caption := ApplyFinishOptions;
+    if OptionsFeedback.Caption <> '' then Exit;
+    WizardForm.RunList.Checked[0] := True;
+  end;
   { Inno retains installation, cancellation, launch and finalization ownership. }
   EngineNext(WizardForm.NextButton);
 end;
@@ -125,7 +138,9 @@ end;
 procedure SecondaryClick(Sender: TObject);
 begin
   if WizardForm.CurPageID = wpFinished then begin
-    WizardForm.RunList.Checked[0] := False;
+    OptionsFeedback.Caption := ApplyFinishOptions;
+    if OptionsFeedback.Caption <> '' then Exit;
+    if WizardForm.RunList.Items.Count > 0 then WizardForm.RunList.Checked[0] := False;
     EngineNext(WizardForm.NextButton);
   end else if WizardForm.CancelButton.Enabled then
     WizardForm.CancelButton.OnClick(WizardForm.CancelButton);
@@ -169,7 +184,9 @@ begin
   WizardForm.Bevel.Visible := False;
   WizardForm.BackButton.Visible := False;
   WizardForm.NextButton.Visible := False;
-  WizardForm.CancelButton.Visible := False;
+  { Native title-bar close depends on this control remaining focusable. }
+  WizardForm.CancelButton.Visible := True;
+  WizardForm.CancelButton.TabStop := False;
   BrandSurface.BringToFront;
   LocationCard.Visible := Location;
   FolderIcon.Visible := Location;
@@ -182,8 +199,11 @@ begin
   PercentCaption.Visible := Installing;
   CopyProgress.Visible := Installing;
   SuccessCaption.Visible := Finished;
+  OptionsCaption.Visible := Finished;
+  OptionsFeedback.Visible := Finished;
+  WizardForm.TasksList.Visible := Finished;
   PrimaryButton.Visible := not Installing;
-  SecondaryButton.Visible := True;
+  SecondaryButton.Visible := not Location;
   SecondaryButton.Enabled := (not Installing) or WizardForm.CancelButton.Enabled;
   if Location then begin
     PageTitle.Caption := '选择安装位置';
@@ -194,13 +214,22 @@ begin
   end else if Installing then begin
     PageTitle.Caption := '正在安装 MentorFlow';
     PageSubtitle.Caption := '只需片刻，即可开始新的学习。';
-    SecondaryButton.Caption := '取消';
+    SecondaryButton.Caption := '取消安装';
+    SecondaryButton.Left := (BrandSurface.ClientWidth - SecondaryButton.Width) div 2;
+    SecondaryButton.Anchors := [akBottom];
   end else begin
     PageTitle.Caption := 'MentorFlow 已安装';
     PageSubtitle.Caption := '现在可以开始学习。';
     PrimaryButton.Enabled := True;
     PaintPrimary('启动 MentorFlow');
     SecondaryButton.Caption := '关闭';
+    Bounds(SecondaryButton, 416, 396, 104, 40);
+    SecondaryButton.Anchors := [akLeft, akTop];
+    if not FinishOptionsShown then begin
+      { Ignore previous installer task state: finish choices always start off. }
+      WizardSelectTasks('');
+      FinishOptionsShown := True;
+    end;
   end;
 end;
 
@@ -275,9 +304,18 @@ begin
   PercentCaption := LabelAt('0%', 624, 226, 60, 28, 13, InkColor, True);
   PercentCaption.Alignment := taRightJustify;
   ProgressCaption := LabelAt('正在准备应用…', 36, 267, 420, 26, 10, MutedColor, False);
-  SuccessCaption := LabelAt('✓', 36, 208, 648, 100, 48, AccentColor, True);
+  SuccessCaption := LabelAt('✓', 36, 196, 648, 58, 32, AccentColor, True);
   SuccessCaption.Font.Name := 'Segoe UI Symbol';
   SuccessCaption.Alignment := taCenter;
+  OptionsCaption := LabelAt('可选设置', 220, 268, 280, 22, 10, InkColor, True);
+  WizardForm.TasksList.Parent := BrandSurface;
+  Bounds(WizardForm.TasksList, 220, 296, 320, 56);
+  WizardForm.TasksList.Color := BackColor;
+  WizardForm.TasksList.Font.Color := InkColor;
+  WizardForm.TasksList.StyleElements := WizardForm.TasksList.StyleElements - [seClient, seFont];
+  WizardForm.TasksList.BorderStyle := bsNone;
+  WizardForm.TasksList.Visible := False;
+  OptionsFeedback := LabelAt('', 36, 355, 648, 32, 9, InkColor, False);
   SecondaryButton := TNewButton.Create(WizardForm);
   SecondaryButton.Parent := BrandSurface;
   Bounds(SecondaryButton, 416, 396, 104, 40);
