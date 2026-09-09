@@ -154,3 +154,33 @@ def test_user_error_does_not_expose_python_exception(monkeypatch):
     monkeypatch.setattr(windows_installed_launch.ctypes.windll.user32,'MessageBoxW',lambda *args:called.append(args))
     windows_installed_launch.show_repair('ValueError: secret path')
     assert 'ValueError' not in called[0][1] and 'secret path' not in called[0][1]
+
+
+def test_unbound_feed_is_explicit_and_never_launches(case,monkeypatch):
+    from scripts import build_e108_user_candidate as builder
+    root,service=setup(case,monkeypatch)
+    monkeypatch.setattr(install,'verify_gui',lambda *a,**kw:None)
+    def no_feed(*args,**kwargs):
+        core.static_feed_url(builder.version_document('1.4.0',{}))
+    monkeypatch.setattr(core,'one_click_service',no_feed)
+    monkeypatch.setattr(install,'launch_health',lambda *a,**kw:pytest.fail('no feed must not start any process'))
+    assert builder.UPDATE_FEED_URL == ''
+    for operation in (core.check_latest,core.download_latest,core.update_to_latest,core.repair_installation):
+        result=operation(root)
+        assert result['state']=='FAILED_RECOVERABLE' and result['code']=='NO_FEED' and result['no_feed']
+    result=core.get_startup_update_state(root)
+    assert result['state']=='HEALTHY' and result['feed']=='NO_FEED' and result['login_allowed']
+    service.close()
+
+
+def test_source_fixture_cannot_create_native_repair_dialog(case,monkeypatch):
+    import sys
+    from scripts.per_user_launcher import repair_update_shell
+    monkeypatch.delattr(sys,'frozen',raising=False)
+    with pytest.raises(RecoverableError,match='packaged runtime'):
+        repair_update_shell(case[1])
+
+
+@pytest.mark.parametrize('config',[{'enabled':'false'},{'enabled':1},{'enabled':None}])
+def test_invalid_feed_enabled_flag_rejected(config):
+    with pytest.raises(SecurityError):core.static_feed_url({'update':config})

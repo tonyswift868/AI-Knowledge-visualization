@@ -50,7 +50,8 @@ def finalize(work, output, source, binary_checks):
         raise ValueError('Incorrect final product authority')
     feed = work / 'feed-for-04-publication'
     packages, releases = {}, {}
-    metadata_url = builder.UPDATE_FEED_URL + builder.METADATA_RELATIVE_PATH
+    feed_url = builder.require_update_feed_url(strict_json((work / 'build-input.json').read_bytes()).get('UPDATE_FEED_URL'))
+    metadata_url = feed_url + builder.METADATA_RELATIVE_PATH
     for label, version in (('BASE', builder.BASE_VERSION), ('TARGET', builder.TARGET_VERSION)):
         package = work / label
         release_path = feed / 'releases' / version / 'stable/release.json'
@@ -64,7 +65,7 @@ def finalize(work, output, source, binary_checks):
             if path.is_file() and path.stat().st_nlink != 1:
                 raise ValueError('BASE/TARGET payload must have independent regular files')
         document = strict_json((package / 'mentorflow-version.json').read_bytes())
-        if document != builder.version_document(version, PUBLIC_KEYS):
+        if document != builder.version_document(version, PUBLIC_KEYS, feed_url):
             raise ValueError('Installed version/feed/notes differ from final inputs')
         if (package / 'mentorflow-version.json').read_bytes() != (package / '_internal/mentorflow-version.json').read_bytes():
             raise ValueError('Frozen version manifests differ')
@@ -73,7 +74,7 @@ def finalize(work, output, source, binary_checks):
         if strict_json((package / 'SELF-CHECK/source-identity.json').read_bytes()) != source:
             raise ValueError('Payload source identity differs')
         for asset in release.assets.values():
-            expected = builder.UPDATE_FEED_URL + 'releases/objects/' + asset['sha256']
+            expected = feed_url + 'releases/objects/' + asset['sha256']
             if asset['url'] != expected: raise ValueError('Asset escapes the public release mount')
         packages[label] = dict(app_dir=str(package), version=version,
             executable=file_fact(package / 'MentorFlow.exe'),
@@ -121,8 +122,8 @@ def finalize(work, output, source, binary_checks):
     handoff = dict(schema='mentorflow.e108-final-release-input.v1', status='READY_FOR_04_FINAL_DEPLOY',
         app_id=APP_ID, base_version=builder.BASE_VERSION, target_version=builder.TARGET_VERSION,
         source_root=str(builder.ROOT), source_sha=source['source_sha'], source_tree=source['tree_sha'],
-        channel='stable', STAGING_UPDATE_BASE_URL=builder.UPDATE_FEED_URL,
-        UPDATE_FEED_URL=builder.UPDATE_FEED_URL, metadata_url=metadata_url,
+        channel='stable', STAGING_UPDATE_BASE_URL=feed_url,
+        UPDATE_FEED_URL=feed_url, metadata_url=metadata_url,
         BASE=packages['BASE'], TARGET=packages['TARGET'],
         BASE_APP_DIR=packages['BASE']['app_dir'], TARGET_APP_DIR=packages['TARGET']['app_dir'],
         BASE_MANIFEST=packages['BASE']['manifest']['path'], TARGET_MANIFEST=packages['TARGET']['manifest']['path'],

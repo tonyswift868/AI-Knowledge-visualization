@@ -15,6 +15,14 @@ SCHEMA = 'mentorflow.per-user-pending.v1'
 STATES = frozenset(('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING', 'CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'))
 _ending = threading.Event()
 
+class NoFeedConfigured(RecoverableError):
+    """An unbound product is usable, but cannot discover updates yet."""
+
+
+def _no_feed_result():
+    return dict(state='FAILED_RECOVERABLE', code='NO_FEED', no_feed=True,
+                message='更新源尚未配置，您可以继续使用当前版本。')
+
 STARTUP_STATES = frozenset(('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE',
                             'REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'))
 
@@ -61,6 +69,8 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
         if state == 'OPTIONAL_UPDATE' and not result.get('update'):
             state = 'HEALTHY'
         return _startup_result(state, current=release.version, latest=service.release.version, feed='VERIFIED')
+    except NoFeedConfigured:
+        return _startup_result('HEALTHY', current=release.version, feed='NO_FEED')
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('HEALTHY', current=release.version, feed='UNAVAILABLE_RECOVERABLE')
     finally:
@@ -126,6 +136,8 @@ def repair_installation(root, progress=None, cancel=None, *, service=None, pid=N
         service.apply_bridge = bridge
         result = service.apply_and_restart()
         return {**result, 'state':'CURRENT_HEALTHY', 'repair':True}
+    except NoFeedConfigured:
+        return _no_feed_result()
     except SecurityError:
         return dict(state='FAILED_SECURITY', message='修复文件未通过安全校验，未继续应用。')
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
@@ -175,11 +187,15 @@ def static_feed_url(manifest, *, test_fixture=False):
     from urllib.parse import urlsplit
     config = manifest.get('update', {})
     if not isinstance(config, dict): raise SecurityError('invalid update configuration')
+    if 'enabled' in config and type(config['enabled']) is not bool:
+        raise SecurityError('invalid update enabled flag')
+    if config.get('enabled') is False:
+        raise NoFeedConfigured('UPDATE_FEED_URL is disabled')
     url = config.get('UPDATE_FEED_URL') or config.get('metadata_url')
     if config.get('UPDATE_FEED_URL') and config.get('metadata_url') and config['UPDATE_FEED_URL'] != config['metadata_url']:
         raise SecurityError('conflicting update feed configuration')
     if not isinstance(url, str) or not url:
-        raise RecoverableError('UPDATE_FEED_URL is not configured')
+        raise NoFeedConfigured('UPDATE_FEED_URL is not configured')
     parsed = urlsplit(url)
     if (parsed.scheme not in ('http', 'https') or not parsed.hostname or
             parsed.username or parsed.password or parsed.query or parsed.fragment):
@@ -239,6 +255,7 @@ def check_latest(root, *, service=None):
     try:
         service = service if service is not None else one_click_service(root)
         return service.check(manual=True)
+    except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
     except (OSError, RuntimeError, ValueError) as error:
         return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
@@ -251,6 +268,7 @@ def download_latest(root, progress=None, cancel=None, *, service=None):
     try:
         service = service if service is not None else one_click_service(root)
         return prepare_update(root, service=service, progress=progress, cancel=cancel)
+    except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
     except (OSError, RuntimeError, ValueError) as error:
         return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
@@ -290,6 +308,8 @@ def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=Non
         if progress is not None: progress({**prepared, 'state': 'APPLYING'})
         result = apply_and_relaunch(root, pid=pid, hwnd_hex=hwnd_hex, reason=reason, service=service)
         return {**prepared, **result}
+    except NoFeedConfigured:
+        return _no_feed_result()
     except SecurityError as error:
         return dict(state='FAILED_SECURITY', error=type(error).__name__, message=str(error))
     except (OSError, RuntimeError, ValueError) as error:

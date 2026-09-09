@@ -62,6 +62,8 @@ def build(args):
         cmd+=['--exclude-module',module]
     cmd.append(str(shared.PROJECT/'scripts/per_user_install.py'))
     shared.run(cmd,shared.PROJECT,directory/'runtime.log',env)
+    if not (shared.PROJECT/'release/native/MentorFlow.ico').is_file():
+        shared.run([sys.executable,'-B','-m','scripts.build_desktop_icon'],shared.PROJECT,directory/'icon.log',env)
     shared.run([sys.executable,'-B','-m','PyInstaller','--distpath',directory/'app','--workpath',directory/'pyi-app',
         shared.PROJECT/'release/real-delivery-app.spec'],shared.PROJECT,directory/'app.log',env)
     compiled=directory/'pyi-app/real-delivery-app/MentorFlow.exe'

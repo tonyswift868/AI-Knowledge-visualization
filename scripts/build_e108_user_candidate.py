@@ -18,14 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = 'MentorFlow.UAT.E108Assembly1'
 KEY_ID = 'e108-user-test-only'
 BASE_VERSION, TARGET_VERSION = '1.4.0', '1.4.1'
-UPDATE_FEED_URL = 'https://89.45.45.28/mentorflow/updates/e108/'
+# Build input only. No development/staging host is a product default.
+UPDATE_FEED_URL = ''
 METADATA_RELATIVE_PATH = 'stable/stable.json'
 TARGET_RELEASE_NOTES = ('关于页面新增“本版本更新”，断网时也能查看已安装版本说明。\n'
                         '新增“复制版本信息”，可复制版本、渠道和本版说明，便于反馈问题；不含账号或本机路径。')
 
 
 def require_update_feed_url(value):
-    """Bind only 04's final HTTPS slot, before creating any build/output paths."""
+    """Validate an explicitly supplied public HTTPS mount before any writes."""
     import ipaddress
     from urllib.parse import urlsplit
     if not value:
@@ -33,7 +34,7 @@ def require_update_feed_url(value):
     parsed = urlsplit(value)
     host = (parsed.hostname or '').lower().rstrip('.')
     if (parsed.scheme != 'https' or not host or parsed.username or parsed.password or
-            parsed.query or parsed.fragment or value != UPDATE_FEED_URL or
+            parsed.query or parsed.fragment or not parsed.path.endswith('/') or
             host == 'localhost' or host.endswith(('.localhost', '.local'))):
         raise ValueError('the authorized 04 public HTTPS base URL is required')
     try:
@@ -47,10 +48,10 @@ def require_update_feed_url(value):
 
 def version_document(version, public_keys, feed_url=UPDATE_FEED_URL):
     import base64
-    require_update_feed_url(feed_url)
+    if feed_url: require_update_feed_url(feed_url)
     doc = dict(schema='mentorflow.version.v1', product='MentorFlow', version=version, channel='stable',
         desktop_notice='当前用户安装；应用内一键更新，学习资料保留在原位置。',
-        update=dict(protocol='mentorflow.signed-file-release.v1', enabled=True,
+        update=dict(protocol='mentorflow.signed-file-release.v1', enabled=bool(feed_url),
                     UPDATE_FEED_URL=feed_url, metadata_url=feed_url,
                     public_keys={key: base64.b64encode(value).decode() for key, value in public_keys.items()}))
     if version == TARGET_VERSION:
@@ -58,12 +59,13 @@ def version_document(version, public_keys, feed_url=UPDATE_FEED_URL):
     return doc
 
 
-def release_arguments(package, version, prior, work, source):
+def release_arguments(package, version, prior, work, source, feed_url=UPDATE_FEED_URL):
     """Exact reproducible 04 publisher invocation; App rebuild is never needed."""
+    feed_url = require_update_feed_url(feed_url)
     result = ['--target', str(package), '--output', str(work / 'feed-for-04-publication/releases'),
         '--version', version, '--channel', 'stable', '--notes',
         str(work / ('base-release-notes.txt' if version == BASE_VERSION else 'release-notes.txt')),
-        '--origin', UPDATE_FEED_URL + 'releases', '--source-sha', source['source_sha'],
+        '--origin', feed_url + 'releases', '--source-sha', source['source_sha'],
         '--tree-sha', source['tree_sha'], '--signing-key', str(work / 'test-signing-key.pem'),
         '--key-id', KEY_ID, '--min-supported-version', BASE_VERSION, '--expiry-days', '31']
     return result + (['--base', str(prior)] if prior else [])
@@ -276,7 +278,7 @@ def execute(args):
     feed = args.work / 'feed-for-04-publication'
     receipts = []
     for package, version, prior in ((base, BASE_VERSION, None), (target, TARGET_VERSION, base)):
-        opts = publisher.parser().parse_args(release_arguments(package, version, prior, args.work, source))
+        opts = publisher.parser().parse_args(release_arguments(package, version, prior, args.work, source, feed_url))
         receipts.append(publisher.build(opts))
     (feed / 'stable').mkdir()
     shutil.copyfile(feed / 'releases/stable.json', feed / METADATA_RELATIVE_PATH)

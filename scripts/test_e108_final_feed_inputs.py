@@ -18,10 +18,10 @@ from desktop.update_protocol import canonical, verify_release
 
 
 def test_exact_https_base_resolves_to_explicit_stable_file():
-    base = build.UPDATE_FEED_URL
+    base = 'https://updates.example.org/mentorflow/'
     assert build.require_update_feed_url(base) == base
     for version in (build.BASE_VERSION, build.TARGET_VERSION):
-        doc = build.version_document(version, {'public': bytes(32)})
+        doc = build.version_document(version, {'public': bytes(32)},base)
         assert doc['update']['UPDATE_FEED_URL'] == base
         assert static_feed_url(doc) == base + 'stable/stable.json'
     assert publisher.origin_value(base + 'releases', False) == base + 'releases'
@@ -58,7 +58,7 @@ def test_inno_keeps_required_literal_ooxml_filename(tmp_path):
 
 
 @pytest.mark.parametrize('url', ['https://89.45.45.28/mentorflow/updates/e108/stable.json',
-    'https://other.example/e108/', 'https://89.45.45.28/mentorflow/updates/e108/?key=a',
+    'https://localhost/e108/', 'https://89.45.45.28/mentorflow/updates/e108/?key=a',
     'http://89.45.45.28/mentorflow/updates/e108/'])
 def test_final_build_cannot_drift_from_authorized_endpoint(url):
     with pytest.raises(ValueError): build.require_update_feed_url(url)
@@ -120,8 +120,9 @@ def test_publisher_pair_matches_final_consumer_paths_and_public_allowlist(tmp_pa
     packages = [package(tmp_path / 'BASE', build.BASE_VERSION),
                 package(tmp_path / 'TARGET', build.TARGET_VERSION, target=True)]
     source = dict(source_sha='a' * 40, tree_sha='b' * 40)
+    feed_url = 'https://updates.example.org/mentorflow/'
     for index, (root, version) in enumerate(zip(packages, (build.BASE_VERSION, build.TARGET_VERSION))):
-        args = build.release_arguments(root, version, packages[0] if index else None, tmp_path, source)
+        args = build.release_arguments(root, version, packages[0] if index else None, tmp_path, source, feed_url)
         publisher.build(publisher.parser().parse_args(args))
     feed = tmp_path / 'feed-for-04-publication'
     pointer = feed / build.METADATA_RELATIVE_PATH
@@ -134,7 +135,7 @@ def test_publisher_pair_matches_final_consumer_paths_and_public_allowlist(tmp_pa
     entries = public_uploads(feed)
     mapping = {row['relative_path']: row for row in entries}
     for asset in release.assets.values():
-        relative = asset['url'].removeprefix(build.UPDATE_FEED_URL)
+        relative = asset['url'].removeprefix(feed_url)
         assert relative.startswith('releases/objects/')
         assert mapping[relative]['sha256'] == asset['sha256']
     assert entries[-1]['relative_path'] == build.METADATA_RELATIVE_PATH

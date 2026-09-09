@@ -118,7 +118,7 @@ def test_unbound_or_local_feed_blocks_build_before_output_mutation(url, monkeypa
 
 def test_https_slot_and_single_installer_output_wiring():
     url = 'https://89.45.45.28/mentorflow/updates/e108/'
-    assert builder.UPDATE_FEED_URL == url
+    assert builder.UPDATE_FEED_URL == ''  # endpoint is an explicit build input
     assert builder.require_update_feed_url(url) == url
     source = Path(builder.__file__).read_text(encoding='utf-8')
     assert 'Start-Test-Update-Source.cmd' not in source and 'TestSource/Runtime' not in source

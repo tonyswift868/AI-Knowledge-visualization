@@ -51,5 +51,10 @@ payload，最后使用 `update_protocol.startup_version_policy` 解释**已验�
 换内容及撤回版本。下载后、提交前再次刷新签名 metadata，并走原有关闭/交换/health。
 禁止在 UI 线程下载或在 shutdown/logoff 时开始破坏性应用。公开更新 feed 无需登录 token。
 
+`UPDATE_FEED_URL` 是正式构建参数，写入受签名保护的版本配置；不从任意环境变量
+覆盖，不默认开发机或 localhost。未绑定/禁用返回 `NO_FEED` 可恢复状态，完整性通过
+仍可正常登录，不打开网页或命令行。本轮 `STATIC_FEED_BINDING=PENDING_04`；loopback
+只允许编译为 UAT fixture 的核心测试，不能生成产品安装包或充当静态服务器部署证据。
+
 程序完整性失败不会被 catch 后放行。无法安全加载 Qt 时只运行已验证的独立修复入口，
 二者均无法验证才显示最终人话错误。真实验收必须使用隔离桌面发布包，而非源码成功。
