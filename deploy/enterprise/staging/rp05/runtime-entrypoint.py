@@ -162,24 +162,36 @@ def _bounded_json(response: object, *, label: str) -> dict[str, object]:
 def _oidc_ready() -> int:
     public_issuer = _required_https_url("MENTORFLOW_KEYCLOAK_ISSUER")
     transport_issuer = _required_https_url("MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER")
+    from app.enterprise.identity.issuer_migration import (
+        IssuerMigration, OLD_ISSUER, NEW_ISSUER, accepts_issuer, validate_binding,
+    )
+    try:
+        migration = IssuerMigration.from_json(os.environ.get("MENTORFLOW_KEYCLOAK_ISSUER_MIGRATION_JSON"))
+        validate_binding(public_issuer, os.environ.get("MENTORFLOW_KEYCLOAK_IDENTITY_ISSUER"), migration)
+    except ValueError as exc:
+        raise SystemExit("OIDC migration authority is invalid") from exc
     public = urlparse(public_issuer)
     transport = urlparse(transport_issuer)
-    if (
+    paired_transport = migration is not None and public_issuer == NEW_ISSUER and transport_issuer == OLD_ISSUER
+    if not paired_transport and (
         transport.scheme != public.scheme
         or transport.hostname != public.hostname
         or transport.path.rstrip("/") != public.path.rstrip("/")
     ):
         raise SystemExit("OIDC transport issuer may change only the public issuer port")
 
-    expected = {
-        "issuer": public_issuer,
-        "authorization_endpoint": f"{public_issuer}/protocol/openid-connect/auth",
-        "token_endpoint": f"{public_issuer}/protocol/openid-connect/token",
-        "jwks_uri": f"{public_issuer}/protocol/openid-connect/certs",
-    }
     discovery_url = f"{transport_issuer}/.well-known/openid-configuration"
     with urlopen(discovery_url, timeout=5) as response:
         discovery = _bounded_json(response, label="OIDC discovery")
+    discovered_issuer = discovery.get("issuer")
+    if not accepts_issuer(discovered_issuer, public_issuer, migration, time.time()):
+        raise SystemExit("OIDC discovery issuer is not in the active exact authority")
+    expected = {
+        "issuer": discovered_issuer,
+        "authorization_endpoint": f"{discovered_issuer}/protocol/openid-connect/auth",
+        "token_endpoint": f"{discovered_issuer}/protocol/openid-connect/token",
+        "jwks_uri": f"{discovered_issuer}/protocol/openid-connect/certs",
+    }
     if any(discovery.get(key) != value for key, value in expected.items()):
         raise SystemExit("OIDC discovery authority or endpoint contract is invalid")
 

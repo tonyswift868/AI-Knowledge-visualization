@@ -483,7 +483,7 @@ def build_enterprise_identity_runtime(
     assert config.keycloak is not None
     directory = PostgresIdentityDirectory(
         engine,
-        issuer=config.keycloak.issuer,
+        issuer=config.keycloak.canonical_identity_issuer,
         service_grants=service_identity_grants_from_env(env),
     )
     return EnterpriseIdentityRuntime(

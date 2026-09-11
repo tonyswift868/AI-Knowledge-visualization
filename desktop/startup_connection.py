@@ -57,7 +57,22 @@ def prepare_environment(root: Path, *, per_user=False):
         "SSL_CERT_FILE": str(certificate), "REQUESTS_CA_BUNDLE": str(certificate),
         "QTWEBENGINE_CHROMIUM_FLAGS": "--ignore-certificate-errors-spki-list=" + SPKI,
     })
-    return env, certificate
+    from desktop.enterprise_oidc import bind_auth_authority
+    from desktop.version import VERSION_MANIFEST
+    return bind_auth_authority(env, VERSION_MANIFEST.get('auth_authority')), certificate
+
+
+def preview_discovery_issuer_allowed(value, env=None):
+    """The old API tunnel remains independent of the new public auth frontend."""
+    from desktop.enterprise_oidc import DesktopOidcConfig, bind_auth_authority
+    from desktop.version import VERSION_MANIFEST
+    source = {'MENTORFLOW_DESKTOP_OIDC_ISSUER': ISSUER,
+              'MENTORFLOW_DESKTOP_OIDC_CLIENT_ID': 'mentorflow-desktop',
+              'MENTORFLOW_DESKTOP_OIDC_AUDIENCE': 'mentorflow-api',
+              'MENTORFLOW_ENTERPRISE_API_BASE_URL': 'https://localhost:18080'}
+    source.update(env or {})
+    config = DesktopOidcConfig.from_env(bind_auth_authority(source, VERSION_MANIFEST.get('auth_authority')))
+    return config.accepts_issuer(value)
 
 
 class ConnectionPreparation:
@@ -87,7 +102,8 @@ class ConnectionPreparation:
                 self._owned.append(process)
             output, _ = process.communicate(timeout=5)
             document = json.loads(output) if process.returncode == 0 else None
-            return isinstance(document, dict) and document.get("issuer") == ISSUER and not self.cancelled.is_set()
+            return (isinstance(document, dict) and preview_discovery_issuer_allowed(document.get('issuer'), self.env)
+                    and not self.cancelled.is_set())
         except (OSError, ValueError, subprocess.TimeoutExpired):
             return False
         finally:

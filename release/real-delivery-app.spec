@@ -55,6 +55,14 @@ extra=['desktop.gui_update_runtime','desktop.update_bridge','desktop.update_requ
        'desktop.update_controller','desktop.update_lifecycle','desktop.update_session','desktop.update_panel']
 for name in extra:
     if name not in names:pure.append((name,str(root/(name.replace('.','/')+'.py')),'PYMODULE'))
+# The seed contains old app.* paths outside root; bind only this delivery's
+# authentication modules explicitly, including the newly added migration module.
+import sys
+sys.path.insert(0, str(root))
+from scripts.build_e108_user_candidate import auth_source_modules
+auth_sources = auth_source_modules()
+pure = [row for row in pure if row[0] not in auth_sources]
+pure.extend((name, str(path), 'PYMODULE') for name, path in auth_sources.items())
 pure.append(('mentorflow_delivery_authority',str(work/'mentorflow_delivery_authority.py'),'PYMODULE'))
 hooks=[row for row in fields['scripts'] if Path(row[1]).name.startswith('pyi_rth_')]
 scripts=hooks+[('desktop_gui_entry',str(root/'desktop_gui_entry.py'),'PYSOURCE')]

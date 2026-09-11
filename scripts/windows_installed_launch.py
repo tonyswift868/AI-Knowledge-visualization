@@ -69,7 +69,8 @@ def launch(root, verify):
     def endpoint():
         try:
             response = subprocess.run([str(system / "curl.exe"), "--silent", "--fail", "--noproxy", "*", "--connect-timeout", "2", "--max-time", "4", "--cacert", str(certificate), ISSUER + "/.well-known/openid-configuration"], capture_output=True, timeout=5, env=env, cwd=system, creationflags=subprocess.CREATE_NO_WINDOW)
-            return response.returncode == 0 and json.loads(response.stdout).get("issuer") == ISSUER
+            from desktop.startup_connection import preview_discovery_issuer_allowed
+            return response.returncode == 0 and preview_discovery_issuer_allowed(json.loads(response.stdout).get('issuer'))
         except (OSError, ValueError, subprocess.TimeoutExpired):
             return False
 
@@ -102,6 +103,9 @@ def launch(root, verify):
             "QTWEBENGINE_CHROMIUM_FLAGS": "--ignore-certificate-errors-spki-list=" + SPKI,
         })
         # No organization/workspace hints. The server controls post-login scope.
+        from desktop.enterprise_oidc import bind_auth_authority
+        from desktop.version import VERSION_MANIFEST
+        env = bind_auth_authority(env, VERSION_MANIFEST.get('auth_authority'))
         return subprocess.call([str(app / "MentorFlow.exe")], env=env, cwd=app, creationflags=subprocess.CREATE_NO_WINDOW)
     finally:
         for process in owned:

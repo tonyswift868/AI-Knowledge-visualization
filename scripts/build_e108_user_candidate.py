@@ -22,6 +22,7 @@ BASE_VERSION, TARGET_VERSION = '1.5.0', '1.5.1'
 # Build input only. No development/staging host is a product default.
 UPDATE_FEED_URL = ''
 ACCOUNT_CAPABILITIES_CONFIG = ROOT / 'release/account-capabilities.json'
+AUTH_AUTHORITY_CONFIG = ROOT / 'release/auth-authority.json'
 METADATA_RELATIVE_PATH = 'stable/stable.json'
 TARGET_RELEASE_NOTES = ('关于页面新增“本版本更新”，断网时也能查看已安装版本说明。\n'
                         '新增“复制版本信息”，可复制版本、渠道和本版说明，便于反馈问题；不含账号或本机路径。')
@@ -72,7 +73,39 @@ def version_document(version, public_keys, feed_url=UPDATE_FEED_URL):
                     public_keys={key: base64.b64encode(value).decode() for key, value in public_keys.items()}))
     if version == TARGET_VERSION:
         doc['installed_release_notes'] = TARGET_RELEASE_NOTES
+    authority = load_build_auth_authority()
+    if authority is not None:
+        doc['auth_authority'] = authority
     return doc
+
+
+def load_build_auth_authority():
+    value = json.loads(AUTH_AUTHORITY_CONFIG.read_text(encoding='utf-8'))
+    if (not isinstance(value, dict) or set(value) != {'schema', 'status', 'auth_base_url', 'issuer', 'identity_issuer', 'migration'} or
+            value['schema'] != 'mentorflow.auth-authority-build.v1' or
+            value['auth_base_url'] != 'https://auth.clannad.win' or
+            value['issuer'] != 'https://auth.clannad.win/realms/mentorflow' or
+            value['identity_issuer'] != 'https://localhost:18080/realms/mentorflow'):
+        raise ValueError('Unapproved auth build authority')
+    if value['status'] == 'PREPARED_NOT_ACTIVE' and value['migration'] is None:
+        return None
+    if value['status'] != 'ACTIVE':
+        raise ValueError('Unknown auth authority activation state')
+    from desktop.enterprise_oidc import bind_auth_authority, DesktopOidcConfig
+    result = {key: value[key] for key in ('issuer', 'identity_issuer', 'migration')}
+    env = bind_auth_authority({'MENTORFLOW_DESKTOP_OIDC_CLIENT_ID': 'mentorflow-desktop',
+        'MENTORFLOW_DESKTOP_OIDC_AUDIENCE': 'mentorflow-api',
+        'MENTORFLOW_ENTERPRISE_API_BASE_URL': 'https://localhost:18080'}, result)
+    import time
+    if not DesktopOidcConfig.from_env(env).issuer_migration.active(time.time()):
+        raise ValueError('Auth migration window is not active')
+    return result
+
+
+def auth_source_modules():
+    """Exact current authentication code, never stale paths from a seed PYZ."""
+    return {'app.enterprise.identity.' + name: ROOT / 'backend/app/enterprise/identity' / (name + '.py')
+            for name in ('config', 'issuer_migration', 'oidc', 'keycloak', 'runtime')}
 
 
 def release_arguments(package, version, prior, work, source, feed_url=UPDATE_FEED_URL):
@@ -134,6 +167,7 @@ def is_project_namespace(pyz, name):
 def initialize(args):
     feed_url = require_update_feed_url(args.update_feed_url)
     capabilities = load_build_account_capabilities()
+    load_build_auth_authority()  # Validate activation before any build writes.
     source = identity()
     from scripts.prepare_transactional_installer import verify
     verify(args.seed_payload, args.seed_manifest_sha256)
@@ -159,7 +193,8 @@ def initialize(args):
     emit(args.work / 'build-input.json', dict(source=source, seed_manifest_sha256=args.seed_manifest_sha256,
         seed_pyz_toc_sha256=sha(args.seed_pyz_toc), seed_exe_toc_sha256=sha(args.seed_exe_toc),
         public_key=base64.b64encode(public).decode(), key_id=KEY_ID, UPDATE_FEED_URL=feed_url,
-        account_capabilities=capabilities, account_capabilities_config_sha256=sha(ACCOUNT_CAPABILITIES_CONFIG)))
+        account_capabilities=capabilities, account_capabilities_config_sha256=sha(ACCOUNT_CAPABILITIES_CONFIG),
+        auth_authority_config_sha256=sha(AUTH_AUTHORITY_CONFIG)))
     env = {**os.environ, 'PYTHONPATH': str(generated) + os.pathsep + str(ROOT),
            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8',
            'TEMP': str(args.work), 'TMP': str(args.work),
@@ -194,6 +229,10 @@ def verify_binaries(app, runtime):
             raise ValueError('Compiled delivery trust/configuration differs from final authority')
         if {'scripts.measure_installed_login_gate', 'scripts.test_login_form_probe'} & set(pyz.toc):
             raise ValueError('Unrelated observation module entered the candidate')
+        if entry == 'desktop_gui_entry':
+            for name, source in auth_source_modules().items():
+                if name not in pyz.toc or normalize(pyz.extract(name)) != normalize(compile(source.read_bytes(), str(source), 'exec')):
+                    raise ValueError('Missing or stale authentication source in binary: ' + name)
         project_modules = []
         project_namespaces = []
         for name in pyz.toc:

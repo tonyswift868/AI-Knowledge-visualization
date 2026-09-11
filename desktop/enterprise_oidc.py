@@ -17,6 +17,7 @@ import json
 import os
 import secrets
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -40,6 +41,15 @@ from .account_identity import (
 
 MAX_JSON_BYTES = 1_048_576
 DEFAULT_CALLBACK_PATH = "/oauth/callback"
+
+
+def _migration_contract():
+    # Same existing server verifier/config package used by BackendOidcTokenValidator.
+    backend_root = Path(__file__).resolve().parents[1] / 'backend'
+    if str(backend_root) not in sys.path:
+        sys.path.insert(0, str(backend_root))
+    from app.enterprise.identity import issuer_migration
+    return issuer_migration
 
 
 class EnterpriseOidcError(RuntimeError):
@@ -138,9 +148,15 @@ class DesktopOidcConfig:
     request_timeout_seconds: float = 10.0
     callback_timeout_seconds: float = 180.0
     allow_loopback_api_http: bool = False
+    issuer_migration: Any = None
+    identity_issuer: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "issuer", canonicalize_issuer(self.issuer))
+        try:
+            _migration_contract().validate_binding(self.issuer, self.identity_issuer, self.issuer_migration)
+        except ValueError as exc:
+            raise EnterpriseOidcError('ENTERPRISE_OIDC_CONFIG_INVALID', str(exc)) from exc
         object.__setattr__(self, "client_id", _required(self.client_id, "client_id", limit=300))
         object.__setattr__(self, "audience", _required(self.audience, "audience", limit=300))
         if self.client_id == self.audience:
@@ -218,6 +234,13 @@ class DesktopOidcConfig:
             )
 
     @property
+    def canonical_identity_issuer(self) -> str:
+        return self.identity_issuer or self.issuer
+
+    def accepts_issuer(self, value: str) -> bool:
+        return _migration_contract().accepts_issuer(value, self.issuer, self.issuer_migration, time.time())
+
+    @property
     def discovery_url(self) -> str:
         return f"{self.issuer}/.well-known/openid-configuration"
 
@@ -281,6 +304,8 @@ class DesktopOidcConfig:
                 env.get("MENTORFLOW_DESKTOP_OIDC_CALLBACK_TIMEOUT_SECONDS") or 180
             ),
             allow_loopback_api_http=allow_http,
+            issuer_migration=_migration_contract().IssuerMigration.from_json(env.get('MENTORFLOW_DESKTOP_ISSUER_MIGRATION_JSON')),
+            identity_issuer=env.get('MENTORFLOW_DESKTOP_IDENTITY_ISSUER') or None,
         )
 
 
@@ -290,6 +315,25 @@ class OidcDiscovery:
     authorization_endpoint: str
     token_endpoint: str
     jwks_uri: str
+
+
+def bind_auth_authority(environment, authority):
+    """Apply only signed build auth configuration, leaving API/callback untouched."""
+    result = dict(environment)
+    if authority is None:
+        return result
+    contract = _migration_contract()
+    if (not isinstance(authority, dict) or set(authority) != {'issuer', 'identity_issuer', 'migration'} or
+            authority['issuer'] != contract.NEW_ISSUER or authority['identity_issuer'] != contract.OLD_ISSUER):
+        raise EnterpriseOidcError('ENTERPRISE_OIDC_CONFIG_INVALID', 'Unapproved auth authority')
+    migration = contract.IssuerMigration.from_json(json.dumps(authority['migration']))
+    if migration is None:
+        raise EnterpriseOidcError('ENTERPRISE_OIDC_CONFIG_INVALID', 'Explicit migration window required')
+    result.update(MENTORFLOW_DESKTOP_OIDC_ISSUER=contract.NEW_ISSUER,
+                  MENTORFLOW_DESKTOP_IDENTITY_ISSUER=contract.OLD_ISSUER,
+                  MENTORFLOW_DESKTOP_ISSUER_MIGRATION_JSON=json.dumps(authority['migration']))
+    DesktopOidcConfig.from_env(result)  # Validate before a consumer can use it.
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,11 +380,16 @@ class BackendOidcTokenValidator:
             redirect_uri=redirect_uri,
             allow_loopback_http=True,
             http_timeout_seconds=config.request_timeout_seconds,
+            issuer_migration=config.issuer_migration,
+            identity_issuer=config.identity_issuer,
+            transport_issuer=discovery.issuer if discovery.issuer != config.issuer else None,
         )
+        if not config.accepts_issuer(discovery.issuer):
+            raise EnterpriseOidcError('ENTERPRISE_OIDC_DISCOVERY_INVALID', 'Unapproved discovery issuer')
         if (
-            discovery.authorization_endpoint != keycloak.authorization_endpoint
-            or discovery.token_endpoint != keycloak.token_endpoint
-            or discovery.jwks_uri != keycloak.jwks_uri
+            discovery.authorization_endpoint != discovery.issuer + '/protocol/openid-connect/auth'
+            or discovery.token_endpoint != discovery.issuer + '/protocol/openid-connect/token'
+            or discovery.jwks_uri != discovery.issuer + '/protocol/openid-connect/certs'
         ):
             raise EnterpriseOidcError(
                 "ENTERPRISE_OIDC_DISCOVERY_INVALID",
@@ -718,6 +767,8 @@ class EnterpriseOidcClient:
         self._http = http_client or httpx.AsyncClient(
             timeout=config.request_timeout_seconds,
             follow_redirects=False,
+            # OS/public roots plus the existing pinned preview CA; no TLS bypass.
+            verify=ssl.create_default_context() if config.issuer_migration is not None else True,
         )
         self._owns_http = http_client is None
         self._token_validator = token_validator
@@ -736,13 +787,13 @@ class EnterpriseOidcClient:
                 "Enterprise identity discovery is unavailable",
             ) from exc
         value = _json_object(response, "OIDC discovery")
-        discovered_issuer = canonicalize_issuer(_required(value.get("issuer"), "issuer"))
-        if discovered_issuer != self.config.issuer:
+        discovered_issuer = value.get("issuer")
+        if not self.config.accepts_issuer(discovered_issuer):
             raise EnterpriseOidcError(
                 "ENTERPRISE_OIDC_DISCOVERY_INVALID",
                 "OIDC discovery issuer does not match configuration",
             )
-        return OidcDiscovery(
+        result = OidcDiscovery(
             issuer=discovered_issuer,
             authorization_endpoint=_trusted_provider_endpoint(
                 value.get("authorization_endpoint"),
@@ -760,6 +811,13 @@ class EnterpriseOidcClient:
                 discovered_issuer,
             ),
         )
+        if self.config.issuer_migration is not None and (
+            result.authorization_endpoint != discovered_issuer + '/protocol/openid-connect/auth'
+            or result.token_endpoint != discovered_issuer + '/protocol/openid-connect/token'
+            or result.jwks_uri != discovered_issuer + '/protocol/openid-connect/certs'
+        ):
+            raise EnterpriseOidcError('ENTERPRISE_OIDC_DISCOVERY_INVALID', 'Unexpected migration realm endpoint')
+        return result
 
     def _validator(
         self,
@@ -788,7 +846,7 @@ class EnterpriseOidcClient:
             discovery = await self._discovery()
             transaction = OidcLoginTransaction(
                 redirect_uri=receiver.redirect_uri,
-                expected_issuer=self.config.issuer,
+                expected_issuer=discovery.issuer,
             )
             authorization_url = transaction.authorization_url(
                 endpoint=discovery.authorization_endpoint,
@@ -908,7 +966,7 @@ class EnterpriseOidcClient:
             "Accept": "application/json",
             "Authorization": f"Bearer {access_token}",
         }
-        if canonicalize_issuer(validated.issuer) != self.config.issuer:
+        if canonicalize_issuer(validated.issuer) != self.config.canonical_identity_issuer:
             raise EnterpriseOidcError("ENTERPRISE_OIDC_ISSUER_INVALID", "登录身份来源不匹配。")
         selected = await self._discover_workspace(access_token)
         headers["X-MentorFlow-Organization-ID"] = selected["organization_id"]
@@ -1024,7 +1082,7 @@ class EnterpriseOidcClient:
                 "ENTERPRISE_ACCOUNT_PROFILE_REQUIRED",
                 "Enterprise Account profile is required",
             )
-        if profile.issuer_hash != issuer_hash(self.config.issuer):
+        if profile.issuer_hash != issuer_hash(self.config.canonical_identity_issuer):
             raise EnterpriseOidcError(
                 "ENTERPRISE_ACCOUNT_ISSUER_CHANGED", "登录服务已变更，请重新登录。",
             )

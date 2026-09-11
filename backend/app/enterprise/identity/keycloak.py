@@ -327,6 +327,7 @@ class KeycloakOidcClient(IdentityProviderPort):
         self._http = http_client or httpx.AsyncClient(
             timeout=self.config.http_timeout_seconds,
             follow_redirects=False,
+            verify=self.config.tls_verification,
         )
         self._owns_http = http_client is None
         self._owns_oidc = oidc is None

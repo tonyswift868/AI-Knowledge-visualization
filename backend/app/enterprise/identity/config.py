@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import ssl
 from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.parse import urlparse
 
 from app.enterprise.contracts_v1 import TenantMode
+from .issuer_migration import IssuerMigration, accepts_issuer, validate_binding, OLD_ISSUER, NEW_ISSUER
 
 
 class IdentityConfigurationError(ValueError):
@@ -102,8 +104,14 @@ class KeycloakOidcConfig:
     max_token_lifetime_seconds: int = 86_400
     allow_loopback_http: bool = False
     transport_issuer: str | None = None
+    issuer_migration: IssuerMigration | None = None
+    identity_issuer: str | None = None
 
     def __post_init__(self) -> None:
+        try:
+            validate_binding(self.issuer, self.identity_issuer, self.issuer_migration)
+        except ValueError as exc:
+            raise IdentityConfigurationError(str(exc)) from exc
         _validated_url(
             self.issuer,
             field="issuer",
@@ -117,7 +125,9 @@ class KeycloakOidcConfig:
             )
             public = urlparse(self.issuer)
             routed = urlparse(transport)
-            if (
+            paired_transport = (self.issuer_migration is not None and
+                                self.issuer == NEW_ISSUER and transport == OLD_ISSUER)
+            if not paired_transport and (
                 routed.scheme != public.scheme
                 or routed.hostname != public.hostname
                 or routed.path.rstrip("/") != public.path.rstrip("/")
@@ -158,6 +168,19 @@ class KeycloakOidcConfig:
             raise IdentityConfigurationError("OIDC token lifetime limit must be between 60 seconds and 1 day")
         if self.introspection_enabled and not self.client_secret:
             raise IdentityConfigurationError("OIDC introspection requires a confidential client secret")
+
+    @property
+    def tls_verification(self):
+        # Keep platform trust roots as well as an existing private preview CA.
+        # Never turn off certificate or hostname verification for migration.
+        return ssl.create_default_context() if self.issuer_migration is not None else True
+
+    @property
+    def canonical_identity_issuer(self) -> str:
+        return self.identity_issuer or self.issuer
+
+    def accepts_issuer(self, value: str, now: float) -> bool:
+        return accepts_issuer(value, self.issuer, self.issuer_migration, now)
 
     @property
     def authorization_endpoint(self) -> str:
@@ -354,6 +377,8 @@ class EnterpriseIdentityConfig:
             ),
             allow_loopback_http=allow_http,
             transport_issuer=transport_issuer,
+            issuer_migration=IssuerMigration.from_json(env.get('MENTORFLOW_KEYCLOAK_ISSUER_MIGRATION_JSON')),
+            identity_issuer=env.get('MENTORFLOW_KEYCLOAK_IDENTITY_ISSUER') or None,
         )
         cookie_secure = not (allow_http and urlparse(redirect_uri).scheme == "http")
         redirect = urlparse(redirect_uri)

@@ -191,6 +191,7 @@ class HttpJwksSigningKeyResolver:
         self._http = http_client or httpx.AsyncClient(
             timeout=config.http_timeout_seconds,
             follow_redirects=False,
+            verify=config.tls_verification,
         )
         self._owns_http = http_client is None
         self._clock = monotonic_clock
@@ -360,7 +361,10 @@ class OidcIdentityAdapter:
             if name not in parsed.claims:
                 raise IdentityError("OIDC_CLAIM_REQUIRED", f"OIDC {name} claim is required")
         issuer = _required_text(parsed.claims, "iss")
-        if issuer != self.config.issuer:
+        current = self._clock()
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise RuntimeError("OIDC validation clock must include a UTC offset")
+        if issuer != parsed.claims['iss'] or not self.config.accepts_issuer(issuer, current.timestamp()):
             raise IdentityError("OIDC_ISSUER_INVALID", "OIDC token issuer is invalid")
         audiences = _audiences(parsed.claims.get("aud"))
         if expected_audience not in audiences:
@@ -371,9 +375,6 @@ class OidcIdentityAdapter:
         if authorized_party is not None and authorized_party != self.config.client_id:
             raise IdentityError("OIDC_AUTHORIZED_PARTY_INVALID", "OIDC authorized party is invalid")
 
-        current = self._clock()
-        if current.tzinfo is None or current.utcoffset() is None:
-            raise RuntimeError("OIDC validation clock must include a UTC offset")
         skew = timedelta(seconds=self.config.clock_skew_seconds)
         issued_at = _numeric_date(parsed.claims, "iat")
         assert issued_at is not None
@@ -410,7 +411,8 @@ class OidcIdentityAdapter:
             and preferred_username == f"service-account-{client_id}"
         )
         return AuthenticatedPrincipal(
-            issuer=_required_text(claims, "iss"),
+            # Only after signature and registered-claim verification above.
+            issuer=self.config.canonical_identity_issuer,
             audiences=_audiences(claims.get("aud")),
             token_id=_required_text(claims, "jti", max_length=300),
             subject=_required_text(claims, "sub", max_length=300),
