@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mentorflow.dev.test-target.v1",
+  "title": "MentorFlow approved developer test target",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "test_id", "title", "status", "source_sha", "source_tree", "product_version", "build_id", "artifact_type", "artifact_path", "artifact_sha256", "launch_type", "launch_target", "environment", "deployment_identity", "purpose", "user_action", "success_criteria", "receipt_path", "log_path", "test_username", "secret_ref", "created_at", "supersedes_test_id", "identity_evidence_path", "identity_evidence_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "test_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 160},
+    "status": {"enum": ["CURRENT", "WAITING_FOR_ARTIFACT", "PASS", "FAIL", "SUPERSEDED"]},
+    "source_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "source_tree": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "product_version": {"type": ["string", "null"], "minLength": 1, "maxLength": 80},
+    "build_id": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"},
+    "artifact_type": {"enum": ["DESKTOP_EXE", "INSTALLER", "SCRIPT_INPUT", null]},
+    "artifact_path": {"$ref": "#/$defs/path"},
+    "artifact_sha256": {"$ref": "#/$defs/hash"},
+    "launch_type": {"enum": ["DESKTOP_EXE", "INSTALLER", "SCRIPT_ID", null]},
+    "launch_target": {"$ref": "#/$defs/text"},
+    "environment": {"enum": ["LOCAL", "STAGING", "TEST", null]},
+    "deployment_identity": {"$ref": "#/$defs/text"},
+    "purpose": {"$ref": "#/$defs/text"},
+    "user_action": {"$ref": "#/$defs/text"},
+    "success_criteria": {"$ref": "#/$defs/text"},
+    "receipt_path": {"$ref": "#/$defs/path"},
+    "log_path": {"$ref": "#/$defs/path"},
+    "test_username": {"type": ["string", "null"], "maxLength": 80, "pattern": "^[A-Za-z0-9_.@-]+$"},
+    "secret_ref": {"type": ["string", "null"], "maxLength": 500, "pattern": "^(secret://[A-Za-z0-9_./:-]+|[A-Za-z]:[/\\\\][^\\r\\n]+)$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "supersedes_test_id": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"},
+    "identity_evidence_path": {"$ref": "#/$defs/path"},
+    "identity_evidence_sha256": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "path": {"type": ["string", "null"], "minLength": 1, "maxLength": 1000},
+    "hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "text": {"type": ["string", "null"], "minLength": 1, "maxLength": 1500}
+  },
+  "allOf": [{"if": {"properties": {"status": {"const": "CURRENT"}}}, "then": {"properties": {
+    "source_sha": {"type": "string"}, "source_tree": {"type": "string"},
+    "product_version": {"type": "string"}, "build_id": {"type": "string"},
+    "artifact_type": {"type": "string"}, "artifact_path": {"type": "string"},
+    "artifact_sha256": {"type": "string"}, "launch_type": {"type": "string"},
+    "launch_target": {"type": "string"}, "environment": {"type": "string"},
+    "deployment_identity": {"type": "string"}, "purpose": {"type": "string"},
+    "user_action": {"type": "string"}, "success_criteria": {"type": "string"},
+    "receipt_path": {"type": "string"}, "log_path": {"type": "string"},
+    "identity_evidence_path": {"type": "string"}, "identity_evidence_sha256": {"type": "string"}
+  }}}]
+}
