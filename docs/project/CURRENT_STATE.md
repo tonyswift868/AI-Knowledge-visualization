@@ -16,94 +16,68 @@ KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
 ```
 
-main2 是冻结的 canonical source baseline；MAIN3 是 active development generation。
-本轮 authority：`MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`。
-知识 exact commit 已在隔离 worktree fast-forward 集成，原 commit/tree 未重造。
-本轮只改知识文档、控制面和 context tools，不改产品代码，不变更 main2。
+main2 是冻结的 canonical source baseline；integration/main3 是施工集成线。
+正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
+本轮 authority：`MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03`。
+起点 `404bc1a7794582dd6bde3a5db48d15ded0041a25`，tree
+`139b26d0231e234fd63c04145ba38abfb2cac847`。知识原交付保持原 SHA/tree。
 
-## MAIN3 控制面快照
+## 控制面与 exact delivery
 
-- B06 repository setup DONE；六个相关 ref 的 branch picker 已由用户截图确认。
-  证据来自本轮用户 dispatch 的明确陈述；本轮未重新读取截图，也不由此推导 checkout 隔离。
-- B=SILENT。A 接到本 dispatch 时任务进行中；知识集成与 handoff 检查完成后 SILENT。
-- active slots = A/01/02/03/04；01–04 本轮新 dispatch 已发布，详细 task/dispatch ID
-  未包含于本任务包，运行/完成状态 UNKNOWN，不臆造分工，不直接通信、不轮询。
-- actual worktree isolation 必须逐员工用 Phase 0 receipt 收证。A 已实测隔离：独立
-  worktree git-dir/HEAD/index，starting HEAD 等于 baseline，安全 attach integration/main3。
-  01–04 的 isolation receipt 尚未提供；branch picker 不能代替这些证据。
-- 本轮只读远端 preflight 观察 GitHub default=main2；外部服务今日状态 UNKNOWN。
-  远端发布 exact HEAD 由本轮最终 immutable
-  receipt / 远端 ref 回读证明，不在可提交文件中自引用其最终提交 SHA。
-- 长期要求 authority 已覆盖 12/12，入口见 [web contract](../handoff/README.md)。
-  Repository knowledge COMPLETE 仅表示知识交付；product acceptance 仍 PENDING。
+A 接单时 RUNNING，完成本轮收口后 SILENT；01–04 和 B 均 SILENT。
+所有 Phase0 worktree isolation = VERIFIED（本轮用户 authority）；A 已重新实测
+独立 managed worktree、HEAD/index、clean 起点与 integration/main3 绑定。
+B06 setup DONE，branch picker 证据不替代 worktree 验证。未联系、轮询或等待 01–04。
 
-## 已存在并已接入的主要源码
-
-- Windows Qt desktop、账户壳与账户资料隔离、证据/知识地图/计划/教师模块。
-- 07 core → 03 单一 UI adapter → 02 Inno → 05 capability config 的 E109 集成。
-- A 的 issuer migration source/config binding，旧账户 identity namespace 保留。
-- Enterprise identity、tenant persistence、durable jobs、观测与发布配置；各 runtime 门禁单独验收。
-
-来源：[E109 integration](../E109_INTEGRATION_MAP.md)、
-[code map](../E109_CODE_LEARNING_MAP.md)、[auth migration](../E109_AUTH_ISSUER_MIGRATION.md)。
-“已接入源码”不表示所有操作已在最终包或真实服务成功执行。
-
-## 收口事项 / release blockers
-
-现有正式材料没有统一 P0/P1 数字分级：`P0/P1_CLASSIFICATION = UNKNOWN`。
-下列事项具有明确的验收阻塞证据，保留原含义，不自行提升或降低严重度。
-
-| 事项 | 已知状态 | 缺少的证据 |
+| 槽位 | 已接受的 source delivery | 尚未完成 |
 | --- | --- | --- |
-| canonical identity recovery | PENDING_QA，已知 CURRENT/STATE 损坏分类缺陷 | 最终签名候选安全恢复与资料不丢失 |
-| 强制更新 / 坏版本恢复 / 同版本修复 | PENDING_QA | 最终唯一候选的包级验证 |
-| 新 issuer | PREPARED_NOT_ACTIVE | 兼容 backend/desktop 部署回读、旧登录、cutover、新登录 |
-| Windows System Browser 登录 | REQUIREMENT_GAP | 当前源码仍有内嵌授权；系统浏览器 PKCE、动态 IPv4 callback 与 bootstrap 的最终候选证据 |
-| 真实邮件与账号入口 | register=false，forgot_password=false | 真实 verify/reset 邮件与新 issuer 登录验收 |
-| 最终用户候选 | NOT_BUILT_WAITING_REAL_SMTP | 最终安装器、原生操作、用户人工 QA |
-| Interview + Acceptance bundle | PENDING_MANDATORY_MILESTONE | 业务/架构 rationale、exact 源码和候选哈希、分层测试及用户验收/未过门清单 |
+| 01 | SOURCE_DELIVERY_ACCEPTED_FOR_INTEGRATION | LIVE_ACTIVATION_PENDING；backend 未部署，desktop 未构建/安装，迁移窗口未启动 |
+| 02 | SOURCE_REPAIR_ACCEPTED | LIVE_INSTALL_QA_PENDING；不声称最终 1.5.0→1.5.1 PASS |
+| 03 | SOURCE_UX_CLOSEOUT_ACCEPTED | REAL_INSTALL_QA_PENDING；不声称最终产品 PASS |
+| 04 | SOURCE_FIX_ACCEPTED | SECURITY_ACCEPTANCE_PARTIAL_PENDING；原生令牌、严格单次使用、public issuer、RLS、限流、反枚举、真实 SMTP 未过门 |
 
-门禁数据：[FINAL_E109_CANDIDATE_QA](../../release/FINAL_E109_CANDIDATE_QA.json)、
-[auth-authority](../../release/auth-authority.json)、
-[account-capabilities](../../release/account-capabilities.json)。
-服务器今天是否改变：UNKNOWN；本轮未访问服务器，旧 dated UAT 不作今天的真值。
-上述缺口不可推断已被 01–04 某个 dispatch 解决；只接纳后续正式 immutable receipt。
+Exact source 与 cherry-pick 映射见 [board](../governance/ACTIVE_BOARD.json)，
+审计、组合回归及证据范围见 [batch01 receipt](../governance/receipts/20260912-main3-batch01-integration.json)。
+应用顺序 02→03→01→04；文本冲突 0。01/04 auth/capability、02/03 repair/UI 的
+语义耦合均登记并新增组合测试。旧 prelogin 测试显式传入 capability，同时验证缺省拒绝。
 
-## 人工验收仍缺什么
+## 当前 source 与产品边界
 
-真实新 issuer 登录与原账户数据连续性；真实收信/验证/重置；最终安装、启动、
-强制更新、损坏恢复、同版本修复、取消/卸载/快捷方式；用户资料保持；最终使用体验。
-已有 1.4.x 阶段包验证不替代 E109 1.5.0/1.5.1 最终候选。
+| 事项 | 本轮证据 | 仍需验收 |
+| --- | --- | --- |
+| canonical identity recovery | 四类 CURRENT/STATE 缺失或损坏的签名恢复、篡改拒绝、rollback/下次启动与 UI gate 组合回归 | 最终签名候选原生恢复、资料保持、旧版本可启动 |
+| Windows System Browser | E109 NEW 配置走系统浏览器；PKCE/state/nonce、动态 IPv4 callback、issuer/API 分离 source PASS | 最终构建与真实登录；legacy/PREPARED 路径仍按原合同 |
+| issuer migration | bounded acceptance、strict oidc-ready 与 identity continuity source PASS | 兼容消费者部署、TLS、获批 <=48h 窗口、旧登录/refresh，再 cutover 与新登录 |
+| account/security | capability boundary、默认 LEARNER、bootstrap、跨租户及已有 token/policy source tests | native PostgreSQL RLS、public issuer、verification/reset token runtime、strict single-use、反枚举、限流、真实邮件 |
+| installer/update UX | progress/cancel/finish-X/默认 OFF/error masking/parent semantics 与 core/adapter 回归 | 最终 exact 1.5.0→1.5.1、增量、UAC、apply/restart/health、人工 QA |
+| Interview + Acceptance | PENDING_MANDATORY_MILESTONE | rationale、业务→代码→测试、exact source/candidate、分层证据和用户结论 |
 
-## Authority pointers（不复制原回执）
+[auth-authority](../../release/auth-authority.json) 仍 PREPARED_NOT_ACTIVE / migration=null；
+[account-capabilities](../../release/account-capabilities.json) 仍 register=false / forgot_password=false。
+两个文件相对 frozen main2 字节未变。未写 live dates，未发送真实邮件，未启用入口。
+[历史 final candidate QA](../../release/FINAL_E109_CANDIDATE_QA.json) 是旧候选证据，
+不替代本轮 source receipt 或后续最终候选验收。
 
-本轮 [knowledge intake evidence](../governance/receipts/20260912-repository-knowledge-intake.json)
-记录 Phase 0 与 exact 原交付复验；不包含本文件自身的最终提交 SHA。
+## 下一波 gate（只定义，不执行）
 
-MAIN2 freeze dispatch：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`。
-回执：`MAIN2_CANONICAL_FREEZE_RESULT.v1.json`，外部 Coordination archive，SHA-256
-`d59f685a08d07422196262553272598396cd31af8745536f8849cf5290f55f8f`。
-E109 registry：`E109_INTEGRATION_REGISTRY.json`，SHA-256
-`2a1b0e022376b7479d838ae2a653f63b90728f7b48ec48281db870212bc52726`。
-这些是历史审计指针，不要求网页端访问本机绝对路径；exact 源码中的专项合同可直接阅读。
+- Gate A：AUTH LIVE ACTIVATION，兼容 backend/desktop、TLS、批准共享窗口、旧登录连续性后才 cutover。
+- Gate B：ACCOUNT SECURITY，native RLS/public issuer/令牌 runtime 与单次使用/反枚举/限流/真实 SMTP。
+- Gate C：UPDATE FINAL CANDIDATE，精确版本、增量、UAC、重启健康、恢复和失败时旧版本可启动。
 
-56bcc 历史远端归 MAIN1_HISTORY；a198 包含排除的 21337c1 import ancestry，
-QUARANTINED_NOT_CANONICAL；04faf 是保留的 MAIN2 source。不得从隔离分支 tip 导入旧 WIP。
+详见 [MAIN3 plan](../exec-plans/active/MAIN3.md) 和 [queue](../governance/DEPENDENCY_QUEUE.json)。
+NOT_DISPATCHED 表示 source prerequisites 已满足且可规划；不代表 live 执行授权。
+外部服务今天状态未探测；旧 dated UAT 不作为今天真值。
 
-## 文档冲突与阅读范围
+## 长期 authority 与历史
 
-- README 原先宣称登录已删除，与 E109 源码冲突。本轮只更正入口文案；历史主上下文仍是旧快照。
-- [旧架构](../ARCHITECTURE.md) 只覆盖早期 local/web 路径；补读根架构和 Enterprise 合同。
-- [Enterprise 架构证据](../enterprise/architecture.md) 的 NOT_RUN 与租约是其交付快照；
-  不能用它否定后续正式运行回执，也不能凭配置文件存在宣称部署 PASS。
-- [ADR-002](../adr/002-video-collection-v1.md) 描述目录/字幕能力；上传视频媒体支持不由该 ADR 推导。
-- [旧 worktree layout](../project-management/WORKTREE_LAYOUT.md) 和 E1 01–08 规则只作历史证据；
-  MAIN3 员工槽位/refs 规则由 [新 workflow](../governance/DEVELOPMENT_WORKFLOW.md) 约束。
-- 旧 W05/W07 不自动成为新 01–04；新分工由架构师明确派发。
-- 旧内嵌登录 receipt 是源码事实；长期系统浏览器要求以
-  [auth contract](../E109_AUTH_ISSUER_MIGRATION.md) 为准，本轮不改登录实现。
-- root GPT_WEB / READ_FIRST / HANDOFF 历史路径登记见
-  [LEGACY registry](../handoff/README.md#legacy--superseded)，不作为新会话默认入口。
+`13_DURABLE_REQUIREMENTS_BRIDGE_UNTIL_REPO_KNOWLEDGE_LANDS.md` =
+SUPERSEDED / BRIDGE CLOSED。历史文件不删除；当前 repo-native authority 的 12/12
+索引见 [handoff contract](../handoff/README.md)，新会话不再依赖临时 bridge。
+知识 COMPLETE 与 batch01 source PASS 均不表示产品验收完成。
 
-未来每次 accepted source、QA、部署或 promotion 变化时，更新相关状态与证据指针；
-保留未验证项，生成新 handoff，不复制聊天记录。
+原知识 [intake receipt](../governance/receipts/20260912-repository-knowledge-intake.json)
+保留 Phase0 与 exact 195fb241 source 证据。
+MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 canonical baseline。
+56bcc 属 MAIN1_HISTORY；a198 含排除的 21337c1 ancestry，QUARANTINED_NOT_CANONICAL。
+旧 GPT_WEB/READ_FIRST/HANDOFF 与旧员工编号仅作历史，登记见 handoff legacy registry。
+最终 publication commit 由 immutable receipt 和 remote ref 回读绑定，避免文档自引用 SHA。

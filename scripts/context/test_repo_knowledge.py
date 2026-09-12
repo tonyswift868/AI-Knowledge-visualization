@@ -35,6 +35,14 @@ class KnowledgeBoundaryTests(unittest.TestCase):
         del self.board["workers"]["A"]["dispatch_id"]
         self.assert_rejected()
 
+    def test_accepted_delivery_cannot_omit_pending_acceptance(self):
+        del self.board['workers']['04']['acceptance_state']
+        self.assert_rejected()
+
+    def test_accepted_delivery_requires_exact_integration_pointer(self):
+        self.board['workers']['01']['integrated_commit'] = 'short-sha'
+        self.assert_rejected()
+
     def test_current_state_disagreement_rejected(self):
         self.board["baseline_sha"] = "0" * 40
         self.assert_rejected()
@@ -145,6 +153,11 @@ class WebHandoffBoundaryTests(unittest.TestCase):
         self.assertNotEqual(publication, self.snapshot)
         self.assertIn(f"CURRENT_INTEGRATION_COMMIT = {self.snapshot}".encode(), output)
         self.assertIn(b"DERIVED / NOT SOURCE OF TRUTH", output)
+        self.assertIn(b"04_DELIVERY = SOURCE_FIX_ACCEPTED; SECURITY_ACCEPTANCE_PARTIAL_PENDING", output)
+        self.assertIn(b"FORMAL_MAIN3 = NOT_CREATED", output)
+        self.assertIn(b"BRIDGE = SUPERSEDED / BRIDGE CLOSED", output)
+        self.assertNotIn(b"01:UNKNOWN", output)
+        self.assertNotIn(b"04:UNKNOWN", output)
         self.assertLessEqual(len(output), 4096)
         self.assertEqual(output, handoff.build_web(self.root))
         handoff.check_output(self.root, handoff.WEB_OUTPUT, handoff.build_web(self.root))

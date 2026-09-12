@@ -99,3 +99,13 @@ Older dated GPT_WEB documents under docs are likewise historical pointers; follo
 their date/scope only when needed. Raw chat transcripts, passwords, tokens, SMTP
 keys, private signing/SSH keys and formal user data must never enter the repo.
 Existing legacy retention does not authorize adding new sensitive content.
+
+### Temporary durable-requirements bridge
+
+`13_DURABLE_REQUIREMENTS_BRIDGE_UNTIL_REPO_KNOWLEDGE_LANDS.md` is
+**SUPERSEDED / BRIDGE CLOSED** under batch01 dispatch. It is not present among
+tracked paths in this checkout; this registry records the external historical
+name without inventing a repository link or deleting history. The 12/12
+repo-native authority index above is the current entry point; CURRENT_STATE,
+board, queue and the MAIN3 plan own current state. New sessions do not require
+the temporary bridge. No full external inbound-reference audit is claimed.

@@ -42,3 +42,11 @@
 
 历史 `reports`/`artifacts` 只按专项合同中的 exact pointer 读取；不要全量装入上下文。
 `data`、用户资料库、credentials、模型缓存与实际运行日志不是知识库输入。
+
+## Batch01 integration seams
+
+[组合回归](../../desktop/tests/test_main3_batch01_integration.py) 连接 01 的 System Browser
+与 04 capability boundary，以及 02 signed recovery、03 adapter 和 login update gate。
+其 synthetic OIDC、inert signed files 与 offscreen Qt 不代表 live/native 验收。
+具体执行计数、exact commit/tree 映射和未运行门禁见
+[batch01 receipt](../governance/receipts/20260912-main3-batch01-integration.json)。

@@ -163,7 +163,10 @@ def test_supported_oidc_actions_preserve_pkce_state_nonce_and_loopback(intent):
         assert after[field] == before[field]
     assert selected.transaction is prepared.transaction and selected.receiver is prepared.receiver
     assert 'login-actions' not in selected.authorization_url
-    assert InAppOidcNavigationPolicy.from_prepared(selected).allows(selected.authorization_url)
+    # Account-action selection and navigation must receive the same explicit
+    # authority. The default policy remains fail-closed after batch01/04.
+    assert not InAppOidcNavigationPolicy.from_prepared(selected).allows(selected.authorization_url)
+    assert InAppOidcNavigationPolicy.from_prepared(selected, {intent: True}).allows(selected.authorization_url)
     if intent == 'register':
         assert after['prompt'] == ['create'] and urlsplit(selected.authorization_url).path.endswith('/auth')
     else:

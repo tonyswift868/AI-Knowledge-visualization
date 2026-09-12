@@ -50,6 +50,9 @@ status = IDLE/RUNNING/READY/BLOCKED/SILENT，额外允许 UNKNOWN 作为明确�
 UNKNOWN 不被当作可派发、正在工作或交付完成。RUNNING/READY 必须有 dispatch_id/task_id。
 dispatch_id/task_id/delivery_commit 可为 null，表示没有已绑定的正式值；字段本身不得省略。
 delivery_commit 非空必须是完整 SHA；不写自引用的本提交 SHA，外部 immutable receipt 补齐。
+Batch01 增加约束：非空 delivery_commit 同时要求 integrated_commit 完整 SHA，及
+delivery_state / acceptance_state / worktree_isolation。Web 逐槽输出 source acceptance
+与 live acceptance；SILENT 是运行状态，不能抹掉已接受交付或未通过的安全门禁。
 baseline_branch/sha/tree 和 integration_branch 必须与 CURRENT_STATE 一致。
 
 DEPENDENCY_QUEUE 的 state = READY/BLOCKED/NOT_DISPATCHED/DONE/UNKNOWN。
@@ -61,6 +64,7 @@ snapshot_kind 强调这是可提交快照；生成器不监控 worker 或验证�
 MAIN3 增加 repository_url、knowledge_delivery（exact ref/commit/tree）及 control_plane。
 knowledge commit/tree 与 CURRENT_STATE 一致，并实际验证 Git object/tree/ancestry。
 control_plane 记录 B06、用户截图确认、active slots、A intake 状态、Phase 0 证据和用户动作。
+formal_main3 与 bridge_status 必须明确，由 control_plane 派生到 Web，不硬编码为验收结论。
 01–04 dispatch_state=PUBLISHED 与 status=UNKNOWN 可以同时成立：已派发不证明进程在跑。
 最终 board 的 A=SILENT 是本轮 closeout 快照；其 a_status_at_dispatch=RUNNING 保留入口事件。
 详细 dispatch/task IDs 未提供时为 null，不凭截图或旧员工角色补全。

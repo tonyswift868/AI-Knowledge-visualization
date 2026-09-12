@@ -2,34 +2,56 @@
 
 MAIN3_BASE = main2
 
-Authority: MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02。
-B06 DONE；用户已确认 branch picker 六个相关 ref。01–04 新 dispatch 已发布，
-详细分工和 Phase 0 receipt 未随本任务提供；本计划不重复派发或猜测槽位映射。
-源码基线与当前未通过的产品门见 [CURRENT_STATE](../../project/CURRENT_STATE.md)。
+Authority: MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03。
+integration/main3 是施工集成线，formal main3 = NOT_CREATED，main2 = FROZEN。
+Batch01 exact 02→03→01→04 已集成；A 完成后 SILENT，01–04/B 均 SILENT；
+所有 Phase0 isolation VERIFIED。Receipt-derived states 见 [board](../../governance/ACTIVE_BOARD.json)。
 
-| 方向 | STATUS | OWNER | DEPENDENCY | ACCEPTANCE |
-| --- | --- | --- | --- | --- |
-| Repository knowledge + web handoff | COMPLETE_SOURCE_SCOPE | A | exact 195fb241 delivery 已集成；12 项长期 authority | lint/links/JSON/bad-input/secret scope PASS；两种 handoff 各 ≤4096 bytes；远端 exact receipt |
-| Windows System Browser login | REQUIREMENT_GAP | 新槽位映射 UNKNOWN | 后续正式 source receipt 和实现授权 | System Browser code+PKCE、动态 IPv4 callback、三个 authority 分离、bootstrap 后进入主界面 |
-| Auth issuer / email account closure | PENDING_LIVE_ACCEPTANCE | 新槽位 UNKNOWN，架构师分配 | 兼容消费者部署、旧登录、same signing authority、迁移窗口、真实 SMTP | 新 issuer 登录、账户连续性、真实 verify/reset；之后才启用 capabilities |
-| Update/install final QA | PENDING_E109_FINAL_QA | 新槽位 UNKNOWN；A 最终集成 | identity repair 的正式交付、最终唯一候选 | mandatory update / bad target recovery / identity recovery / same-version repair；数据保留 |
-| Final user candidate | BLOCKED_ON_ACCEPTANCE_INPUTS | A assembly；QA owner UNKNOWN；user acceptance | auth/login/update 合格输入及新打包授权 | 一个精确签名候选、原生安装/账户/更新操作与人工验收 |
-| Interview + Acceptance bundle | PENDING_MANDATORY | A assembly；各域提供正式证据 | 最终候选与 QA/user acceptance | exact SHA/tree/候选哈希；业务链→代码→测试；ADR/rationale；source/offline/live/package/user 分栏；剩余缺口与正式验收结论 |
-| Governance cleanup / promotion | PENDING_AUTHORITY | B ON-DEMAND，当前 SILENT | QA/user acceptance + Interview/Acceptance bundle + exact promotion authority | B 创建 main3/default 操作；旧 main 冻结；board/queue 更新 |
+| 方向 | STATUS | OWNER / 下一步 |
+| --- | --- | --- |
+| Repository Knowledge / Web | COMPLETE_SOURCE_SCOPE；bridge CLOSED | A，更新 exact source snapshot 与分层状态 |
+| Auth consumer source | ACCEPTED；LIVE_ACTIVATION_PENDING | 01 source 已接受；Gate A 另行授权 |
+| Canonical identity recovery | SOURCE_REPAIR_ACCEPTED；LIVE_INSTALL_QA_PENDING | 02 source 已接受；Gate C 原生验证 |
+| Installer/update UX | SOURCE_UX_CLOSEOUT_ACCEPTED；REAL_INSTALL_QA_PENDING | 03 source 已接受；Gate C 最终候选 |
+| Account/email security | SOURCE_FIX_ACCEPTED；SECURITY_PARTIAL_PENDING | 04 source 可集成，Gate B 安全验收未完成 |
+| Interview + Acceptance bundle | PENDING_MANDATORY | A assembly；最终用户验收后提供完整 bundle |
+| Formal main3 promotion | BLOCKED / NOT_AUTHORIZED | B SILENT；仅后续明确 exact promotion authority |
 
-产品方向须依正式 dispatch 执行；本轮仅授权知识维护和受审后的 origin/integration/main3
-普通 push，不授予部署、邮件、Actions 或打包权限。A 在本轮检查/发布回执后 SILENT。
-无可执行工作时 SILENT；不轮询其他 worker 或长期等待。
+## Gate A — Auth live activation
 
-## 判断完成
+仅规划，NOT_RUN / NOT_DISPATCHED。需明确 service writer 和执行授权：
+1. Build/deploy 兼容 backend；build/install 兼容 desktop。
+2. 复核 authority、TLS、签名及旧账户 identity namespace。
+3. 明确批准双方共享的 <=48h migration window；本轮不写日期。
+4. 旧 issuer login/refresh/account continuity 实测通过。
+5. 之后才 hostname cutover；实测 NEW issuer System Browser code+PKCE、动态 IPv4 callback、bootstrap。
 
-- source、offline checks、live environment、packaged QA、user acceptance 分列证据。
-- 已知恢复缺陷和真实邮件未完成前，不因文档和配置齐备宣称产品 PASS。
-- Interview + Acceptance bundle 是必交大里程碑，不可因源码/单测 PASS 省略。
-  [历史 interview evidence](../../enterprise/INTERVIEW_ENGINEERING_EVIDENCE.md) 可复用 rationale，
-  其 PARTIAL 和旧员工状态不替代最终 bundle 的新证据。
-- Promotion 由 [workflow](../../governance/DEVELOPMENT_WORKFLOW.md) 管理。
-- 本代完成后归档计划到 [completed](../completed/)，保留小型结果与 exact pointers。
+## Gate B — Account security
 
-事件驱动依赖见 [queue](../../governance/DEPENDENCY_QUEUE.json)，实际分派快照见
-[board](../../governance/ACTIVE_BOARD.json)。
+仅规划，NOT_RUN / NOT_DISPATCHED；public issuer 与 SMTP 阶段依赖 Gate A：
+native PostgreSQL RLS（独立租户及连接池 fail-closed）；真实/public issuer；
+verification/reset token expiry、wrong/replayed/concurrent token、严格单次使用；
+runtime anti-enumeration 与 rate limit；真实 SMTP verification/reset。
+04 的 offline preflight 与 source 修复不能替代这些证据。register/forgot_password 均保持 false。
+
+## Gate C — Update final candidate
+
+仅规划，NOT_RUN / NOT_DISPATCHED。授权后构建一个 integrated installer/updater 候选，
+绑定 exact source/tree、签名和 artifact hashes，验收 exact 1.5.0→1.5.1：
+incremental path、UAC/apply/restart/health、canonical recovery、rollback，失败后旧版本仍可启动。
+同时验证 parent semantics、progress/cancel、completion-X、raw-error masking、
+shortcut/autostart 默认 OFF、pre/post-login repair 及 optional/mandatory update。
+Inert/offscreen 与编译检查不能声称真实安装完成。
+
+## 最终里程碑
+
+三个 gate 完成后，合并一个最终候选的包级与用户验收证据；PRODUCT ACCEPTANCE 当前 PENDING。
+Interview + Acceptance bundle 必交：业务链→代码→测试、架构/ADR rationale、exact source/tree/
+candidate hashes，source/offline/live/package/user 证据分列，剩余缺口和明确验收结论。
+[历史 engineering evidence](../../enterprise/INTERVIEW_ENGINEERING_EVIDENCE.md) 可复用 rationale，
+不替代最终 bundle。然后才可申请 B 的正式 main3/default promotion；本轮禁止该操作。
+
+状态与下一步由 [CURRENT_STATE](../../project/CURRENT_STATE.md)、
+[queue](../../governance/DEPENDENCY_QUEUE.json) 和 [workflow](../../governance/DEVELOPMENT_WORKFLOW.md) 管理。
+本轮唯一发布权限是通过门禁后的 origin/integration/main3 普通 push。
+无 live deploy、SMTP、native QA、manual Actions 或 worker 派发授权。

@@ -21,107 +21,80 @@
       "dependencies": [
         "KNOWLEDGE_INTEGRATION_REVIEW"
       ],
-      "unlocks": [],
-      "user_action_required": null,
-      "reason": "Existing generator extended for a committed derived web entry; 12 durable authorities indexed. Final receipt binds check counts and exact publication HEAD."
-    },
-    {
-      "task_id": "AUTH_CONSUMER_DEPLOYMENT",
-      "owner": "UNASSIGNED",
-      "state": "UNKNOWN",
-      "dependencies": [],
       "unlocks": [
-        "AUTH_ISSUER_CUTOVER"
+        "BATCH01_EXACT_INTEGRATION"
       ],
       "user_action_required": null,
-      "reason": "New 01-04 dispatches exist, mapping/leases unavailable here. Requires compatible consumers, old-login live readback and a unique authorized service writer."
+      "reason": "Repo-native durable authorities replace the temporary bridge; receipt-derived source/acceptance states and exact source snapshot generate the web handoff."
     },
     {
-      "task_id": "AUTH_ISSUER_CUTOVER",
-      "owner": "UNASSIGNED",
-      "state": "BLOCKED",
-      "dependencies": [
-        "AUTH_CONSUMER_DEPLOYMENT"
-      ],
-      "unlocks": [
-        "REAL_EMAIL_ACCOUNT_ACCEPTANCE"
-      ],
-      "user_action_required": null,
-      "reason": "Requires shared bounded migration window, signing authority recheck and old-login acceptance."
-    },
-    {
-      "task_id": "REAL_EMAIL_ACCOUNT_ACCEPTANCE",
-      "owner": "UNASSIGNED",
-      "state": "BLOCKED",
-      "dependencies": [
-        "AUTH_ISSUER_CUTOVER"
-      ],
-      "unlocks": [
-        "FINAL_E109_CANDIDATE"
-      ],
-      "user_action_required": null,
-      "reason": "Mailpit evidence is insufficient; capabilities remain false until live criteria pass."
-    },
-    {
-      "task_id": "UPDATE_IDENTITY_REPAIR_REVIEW",
-      "owner": "UNASSIGNED",
-      "state": "UNKNOWN",
-      "dependencies": [],
-      "unlocks": [
-        "FINAL_E109_CANDIDATE"
-      ],
-      "user_action_required": null,
-      "reason": "Known identity corruption defect remains a product gate; new-slot scope and exact accepted source receipt are not supplied."
-    },
-    {
-      "task_id": "FINAL_E109_CANDIDATE",
+      "task_id": "BATCH01_EXACT_INTEGRATION",
       "owner": "A",
-      "state": "BLOCKED",
+      "state": "DONE",
       "dependencies": [
-        "REAL_EMAIL_ACCOUNT_ACCEPTANCE",
-        "UPDATE_IDENTITY_REPAIR_REVIEW",
-        "WINDOWS_SYSTEM_BROWSER_LOGIN"
+        "COMPACT_REPO_HANDOFF"
+      ],
+      "unlocks": [
+        "GATE_A_AUTH_LIVE_ACTIVATION",
+        "GATE_B_ACCOUNT_SECURITY",
+        "GATE_C_UPDATE_FINAL_CANDIDATE"
+      ],
+      "user_action_required": null,
+      "reason": "Exact 02/03/01/04 cherry-picks and combined offline regression accepted. Native/live/product acceptance is excluded; see batch01 receipt."
+    },
+    {
+      "task_id": "GATE_A_AUTH_LIVE_ACTIVATION",
+      "owner": "01",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "BATCH01_EXACT_INTEGRATION"
       ],
       "unlocks": [
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "Final packaging requires fresh authority and accepted source/config; not authorized by knowledge bootstrap."
+      "reason": "PLANNING ONLY / NOT_RUN: compatible backend deployment and desktop build/install; authority/TLS; explicitly approved shared <=48h window; old issuer login/refresh/account continuity; only then hostname cutover and NEW issuer real system-browser login."
+    },
+    {
+      "task_id": "GATE_B_ACCOUNT_SECURITY",
+      "owner": "04",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "BATCH01_EXACT_INTEGRATION"
+      ],
+      "unlocks": [
+        "FINAL_QA_USER_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "PLANNING ONLY / NOT_RUN: isolated native PostgreSQL RLS; public issuer gate; native verification/reset expiry, wrong/replayed/concurrent token and strict single-use; anti-enumeration; runtime rate limit; real SMTP verify/reset. Public-issuer/SMTP steps also require Gate A. Capabilities remain false."
+    },
+    {
+      "task_id": "GATE_C_UPDATE_FINAL_CANDIDATE",
+      "owner": "A",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "BATCH01_EXACT_INTEGRATION"
+      ],
+      "unlocks": [
+        "FINAL_QA_USER_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "PLANNING ONLY / NOT_RUN: explicitly authorized integrated installer/updater candidate; exact 1.5.0 -> 1.5.1; incremental path; UAC/apply/restart/health; canonical recovery, rollback and old-version launchability on failure. 02/03 source evidence does not satisfy package QA."
     },
     {
       "task_id": "FINAL_QA_USER_ACCEPTANCE",
-      "owner": "UNASSIGNED",
+      "owner": "A",
       "state": "BLOCKED",
       "dependencies": [
-        "FINAL_E109_CANDIDATE"
+        "GATE_A_AUTH_LIVE_ACTIVATION",
+        "GATE_B_ACCOUNT_SECURITY",
+        "GATE_C_UPDATE_FINAL_CANDIDATE"
       ],
       "unlocks": [
         "INTERVIEW_ACCEPTANCE_BUNDLE"
       ],
       "user_action_required": null,
-      "reason": "One exact candidate, artifact hash and retained data evidence; no separate W07 retest dispatch implied."
-    },
-    {
-      "task_id": "MAIN3_PROMOTION",
-      "owner": "B",
-      "state": "BLOCKED",
-      "dependencies": [
-        "INTERVIEW_ACCEPTANCE_BUNDLE"
-      ],
-      "unlocks": [],
-      "user_action_required": null,
-      "reason": "B06 setup is DONE, B is SILENT. Only a later explicit exact promotion approval permits B to create frozen main3/change default; knowledge publication does not."
-    },
-    {
-      "task_id": "WINDOWS_SYSTEM_BROWSER_LOGIN",
-      "owner": "UNASSIGNED",
-      "state": "BLOCKED",
-      "dependencies": [],
-      "unlocks": [
-        "FINAL_E109_CANDIDATE"
-      ],
-      "user_action_required": null,
-      "reason": "Durable System Browser PKCE requirement differs from embedded-auth source. Await an authorized exact implementation/acceptance receipt; no new dispatch inferred."
+      "reason": "One exact signed candidate, retained user data and user acceptance. Offline suites do not satisfy native/live/package gates."
     },
     {
       "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
@@ -134,9 +107,20 @@
         "MAIN3_PROMOTION"
       ],
       "user_action_required": null,
-      "reason": "Mandatory final milestone: architecture/ADR rationale, business-to-code/tests, exact source/candidate identities, scoped offline/live/package/user results and explicit gaps/acceptance."
+      "reason": "Mandatory final milestone: business-to-code/tests, ADR rationale, exact source/tree/candidate hashes; source/offline/live/package/user evidence separately; remaining gaps and explicit acceptance."
+    },
+    {
+      "task_id": "MAIN3_PROMOTION",
+      "owner": "B",
+      "state": "BLOCKED",
+      "dependencies": [
+        "INTERVIEW_ACCEPTANCE_BUNDLE"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen."
     }
   ],
-  "authority": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
-  "assignment_scope": "01-04 dispatches are published; their exact mappings to the product dependencies below are UNKNOWN until formal receipts arrive."
+  "authority": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
+  "assignment_scope": "Exact 01-04 deliveries accepted; all slots SILENT. Gate owners are planning domains, not new dispatches or live writer leases."
 }

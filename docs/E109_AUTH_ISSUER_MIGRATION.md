@@ -11,10 +11,13 @@ another. Enter the main application only after verified login and successful
 [workspace bootstrap](account-core-workspace-bootstrap-v1.md).
 
 The retained [September 6 source receipt](enterprise/login-final-integration-v1.md)
-describes embedded authorization content. That is a historical implementation
-fact, not satisfaction of this System Browser requirement. MAIN3 records the
-gap in [CURRENT_STATE](project/CURRENT_STATE.md); this knowledge integration
-changes no login code, browser launch behavior, identity service or capability.
+describes historical embedded authorization. Batch01 integrates 01's E109
+system-browser consumer and 04's explicit capability boundary; combined source
+tests preserve PKCE/state/nonce, dynamic callback and disabled account actions.
+Legacy/PREPARED behavior remains governed by the configuration contract. This
+source acceptance is not a backend deployment, desktop build/install, public
+issuer gate or migration-window start. Current limits are in
+[CURRENT_STATE](project/CURRENT_STATE.md).
 The E109 migration contract below continues to govern issuer/data continuity.
 
 Scope: `MF-E109-INTEGRATION-CONTROL-20260910-01 / AUTH_ISSUER_MIGRATION_BIND`.

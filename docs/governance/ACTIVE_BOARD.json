@@ -6,62 +6,75 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "USER_SCREENSHOT_CONFIRMED_SIX_REFS_NOT_WORKTREE_PROOF",
+  "refs_verified": "EXACT_LOCAL_OBJECTS_AND_REMOTE_REFS_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+  "authority": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
-      "task_id": "MENTORFLOW_REPO_KNOWLEDGE_INTEGRATE_AND_WEB_HANDOFF_V1",
+      "dispatch_id": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
+      "task_id": "MENTORFLOW_MAIN3_EXACT_WORKER_INTEGRATION_AND_COMBINED_REGRESSION_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Knowledge integration closeout; final immutable receipt binds exact publication commit. Resume only on supplied authorized receipts; no polling."
+      "next_action": "Batch01 source integration closeout. Final immutable receipt binds publication HEAD; live gates require subsequent explicit authority.",
+      "worktree_isolation": "VERIFIED"
     },
     "01": {
-      "status": "UNKNOWN",
+      "status": "SILENT",
       "dispatch_id": null,
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": null,
-      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
-      "dispatch_state": "PUBLISHED",
-      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+      "delivery_commit": "f5eab83483c827ef9be03e67800dba14af7d8e74",
+      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "dispatch_state": "EXACT_DELIVERY_CONSUMED",
+      "worktree_isolation": "VERIFIED",
+      "integrated_commit": "1ef0dcb2fb60d06c16cbc62d99f32a7c0e4db9aa",
+      "delivery_state": "SOURCE_DELIVERY_ACCEPTED_FOR_INTEGRATION",
+      "acceptance_state": "LIVE_ACTIVATION_PENDING"
     },
     "02": {
-      "status": "UNKNOWN",
+      "status": "SILENT",
       "dispatch_id": null,
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": null,
-      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
-      "dispatch_state": "PUBLISHED",
-      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+      "delivery_commit": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
+      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "dispatch_state": "EXACT_DELIVERY_CONSUMED",
+      "worktree_isolation": "VERIFIED",
+      "integrated_commit": "21a879dd682e0dc31136529701c7b7a67862db2b",
+      "delivery_state": "SOURCE_REPAIR_ACCEPTED",
+      "acceptance_state": "LIVE_INSTALL_QA_PENDING"
     },
     "03": {
-      "status": "UNKNOWN",
+      "status": "SILENT",
       "dispatch_id": null,
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": null,
-      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
-      "dispatch_state": "PUBLISHED",
-      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+      "delivery_commit": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
+      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "dispatch_state": "EXACT_DELIVERY_CONSUMED",
+      "worktree_isolation": "VERIFIED",
+      "integrated_commit": "c9964e996a3cb661e250aebe3fd4f971c329e2bf",
+      "delivery_state": "SOURCE_UX_CLOSEOUT_ACCEPTED",
+      "acceptance_state": "REAL_INSTALL_QA_PENDING"
     },
     "04": {
-      "status": "UNKNOWN",
+      "status": "SILENT",
       "dispatch_id": null,
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": null,
-      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
-      "dispatch_state": "PUBLISHED",
-      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+      "delivery_commit": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
+      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "dispatch_state": "EXACT_DELIVERY_CONSUMED",
+      "worktree_isolation": "VERIFIED",
+      "integrated_commit": "aadac381f8b4945f8dad3bd876ba443ae7ab4ca9",
+      "delivery_state": "SOURCE_FIX_ACCEPTED",
+      "acceptance_state": "SECURITY_ACCEPTANCE_PARTIAL_PENDING"
     },
     "B": {
       "status": "SILENT",
@@ -70,7 +83,8 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "B06 setup DONE per current dispatch; ON-DEMAND ONLY. No promotion or default-branch operation authorized here."
+      "next_action": "B06 setup DONE per current dispatch; ON-DEMAND ONLY. No promotion or default-branch operation authorized here.",
+      "worktree_isolation": "VERIFIED"
     }
   },
   "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
@@ -80,7 +94,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+    "evidence": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -92,11 +106,14 @@
       "04"
     ],
     "a_status_at_dispatch": "RUNNING",
-    "a_isolation": "PHASE0_VERIFIED",
-    "worker_dispatches": "01-04_PUBLISHED_DETAILS_NOT_SUPPLIED",
-    "worker_isolation": "01-04_AWAITING_PHASE0_RECEIPTS",
+    "a_isolation": "VERIFIED",
+    "worker_dispatches": "01-04_EXACT_DELIVERIES_INTEGRATED_SILENT",
+    "worker_isolation": "01-04_VERIFIED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Knowledge delivery closeout; external final receipt supplies publication HEAD. Product acceptance remains pending."
+    "snapshot_scope": "Batch01 source integration closeout. All slots SILENT. Phase0 isolation VERIFIED per user authority; A also rechecked locally. Live gates NOT_RUN.",
+    "formal_main3": "NOT_CREATED",
+    "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
+    "product_acceptance": "PENDING"
   }
 }

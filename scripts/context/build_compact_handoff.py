@@ -109,7 +109,8 @@ def load_state(root: Path):
     require(isinstance(control, dict), "control-plane snapshot missing")
     require(control.get("active_slots") == ["A", "01", "02", "03", "04"], "active slot scope mismatch")
     for key in ("repository_setup", "branch_picker", "a_status_at_dispatch", "a_isolation",
-                "worker_dispatches", "worker_isolation", "main2", "user_action_required", "evidence"):
+                "worker_dispatches", "worker_isolation", "main2", "user_action_required", "evidence",
+                "formal_main3", "bridge_status"):
         require(text_field(control.get(key)), "control-plane field absent/invalid")
     require(isinstance(board.get("workers"), dict) and set(board["workers"]) == WORKERS, "worker slots mismatch")
     for worker in board["workers"].values():
@@ -117,6 +118,10 @@ def load_state(root: Path):
         require(worker["status"] in STATES, "unknown worker status value")
         require(all(text_field(worker[k], nullable=True) for k in ("dispatch_id", "task_id", "delivery_commit")), "invalid worker identity")
         require(worker["delivery_commit"] is None or bool(SHA.fullmatch(worker["delivery_commit"])), "short/invalid delivery SHA")
+        if worker["delivery_commit"] is not None:
+            require(all(text_field(worker.get(k)) for k in ("delivery_state", "acceptance_state", "worktree_isolation")),
+                    "accepted delivery requires explicit source/acceptance/isolation states")
+            require(bool(SHA.fullmatch(worker.get("integrated_commit", ""))), "integrated delivery SHA missing")
         require(string_list(worker["depends_on"]) and string_list(worker["unlocks"]) and text_field(worker["next_action"]), "invalid worker dependency/action")
         if worker["status"] in {"READY", "RUNNING"}:
             require(worker["dispatch_id"] is not None and worker["task_id"] is not None, "active worker has no dispatch/task")
@@ -227,6 +232,9 @@ def build_web(root: Path) -> bytes:
             f"ISOLATION = A:{control['a_isolation']}; {control['worker_isolation']}",
             f"MAIN2 = {control['main2']}; {fields['MAIN2_CANONICAL_SHA']}",
             f"PRODUCT_ACCEPTANCE = {fields['PRODUCT_ACCEPTANCE']}"]
+    rows += [f"{slot}_DELIVERY = {worker['delivery_state']}; {worker['acceptance_state']}"
+             for slot, worker in board["workers"].items() if worker["delivery_commit"] is not None]
+    rows += [f"FORMAL_MAIN3 = {control['formal_main3']}", f"BRIDGE = {control['bridge_status']}"]
     blockers = [key for key, task in tasks.items() if task["state"] in {"BLOCKED", "UNKNOWN"}]
     actions = [f"{key}: {task['user_action_required']}" for key, task in tasks.items()
                if task["state"] != "DONE" and task["user_action_required"]]
@@ -235,7 +243,7 @@ def build_web(root: Path) -> bytes:
     rows += ["BLOCKERS = " + (", ".join(blockers) or "NONE"),
              "USER_ACTION_REQUIRED = " + ("; ".join(actions) or "NONE"),
              "```",
-             "Details/owner authority remain in the queue; unknown does not authorize dispatch.",
+             "Next live gates are planning only; no execution is authorized by this snapshot.",
              "", "READ_FIRST:"]
     for path in ("docs/handoff/README.md", *READ_FIRST, "docs/PRODUCT_FLOW.md", "docs/project/COMPONENT_MAP.md"):
         target = "../" + path[len("docs/"):] if path.startswith("docs/") else "../../" + path
