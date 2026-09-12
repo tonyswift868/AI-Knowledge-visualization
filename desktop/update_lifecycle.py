@@ -13,6 +13,7 @@ CORE_STATES = {
     'HEALTHY': 'UP_TO_DATE',
     'UPDATE_AVAILABLE': 'OPTIONAL_UPDATE', 'OPTIONAL_UPDATE': 'OPTIONAL_UPDATE',
     'MANDATORY_UPDATE': 'MANDATORY_UPDATE', 'REPAIR_REQUIRED': 'REPAIR_REQUIRED',
+    'FATAL_UNRECOVERABLE': 'REPAIR_REQUIRED',
     'DOWNLOADING': 'DOWNLOADING', 'PREPARING': 'PREPARING',
     'READY_TO_APPLY': 'PREPARING', 'UPDATE_DOWNLOADED': 'PREPARING',
     'APPLYING': 'PREPARING', 'RESTART_REQUIRED': 'PREPARING',
@@ -57,11 +58,18 @@ class CoreUpdatePort:
 
     @property
     def snapshot(self):
-        raw = self._core_snapshot or self._startup_state or (self.service.snapshot if self.service else {})
+        # Startup policy can be sparse. Preserve the core's presentation fields
+        # without letting release-level optional metadata replace its gate state.
+        raw = {**(self.service.snapshot if self.service else {}),
+               **self._startup_state, **self._core_snapshot}
         code = raw.get('state', 'IDLE')
         if code not in DEFERRED:
             code = self._outcome or code
         state = CORE_STATES.get(code, 'RECOVERABLE_ERROR') if raw else 'RECOVERABLE_ERROR'
+        if code == 'HEALTHY' and raw.get('feed') in ('UNAVAILABLE_RECOVERABLE', 'NO_FEED'):
+            # Healthy files do not revoke a previously known mandatory gate.
+            # Core explicitly reports that this policy check was unavailable.
+            state = 'RECOVERABLE_ERROR'
         if code == 'PREPARING' and self._downloading:
             state = 'DOWNLOADING'  # Frozen core's pre-download preparation.
         error_kind = ('validation' if code == 'FAILED_SECURITY' else
@@ -76,6 +84,7 @@ class CoreUpdatePort:
             mandatory_reason=(raw.get('mandatory_reason') or 'support_floor') if state == 'MANDATORY_UPDATE' else '',
             min_supported_version=raw.get('min_supported_version', ''),
             downloaded=raw.get('actual_downloaded_bytes', 0), total=raw.get('expected_download_bytes', 0),
+            mandatory_reason=raw.get('mandatory_reason', ''), update_path=raw.get('update_path', ''),
             has_update=bool(raw.get('update', code == 'UPDATE_AVAILABLE')),
             error_kind=error_kind, busy=bool(getattr(transport, 'busy', False)),
             available=self.service is not None)

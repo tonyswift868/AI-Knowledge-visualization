@@ -129,7 +129,7 @@ def attach_updates(application,gate,controller,root,*,attempt_id=None,nonce=None
             from desktop.update_lifecycle import configured_update_service
             try: service = configured_update_service(install_root=root)
             except Exception: service = None
-            updater.configure_service(service)
+            updater.configure_service(service, factory=lambda: configured_update_service(install_root=root))
             entry.service = service
             service_initialized[0] = True
         policy = getattr(controller, 'startup_policy', None)

@@ -69,6 +69,7 @@ class UpdatePanel(QFrame):
         self.notes_more.clicked.connect(self._toggle_notes)
         self.sizes = QLabel('')
         self.sizes.setTextFormat(Qt.TextFormat.PlainText)
+        self.sizes.setWordWrap(True)
         layout.addWidget(self.sizes)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
@@ -85,7 +86,11 @@ class UpdatePanel(QFrame):
         self.download_button.setObjectName('primaryButton')
         self.download_button.setProperty('primary', True)
         self.cancel_button = QPushButton('取消')
-        for button in (self.check_button, self.download_button, self.cancel_button):
+        self.later_button = QPushButton('稍后')
+        self.exit_update_button = QPushButton('退出时更新')
+        self.exit_button = QPushButton('退出 MentorFlow')
+        for button in (self.check_button, self.later_button, self.download_button,
+                       self.exit_update_button, self.cancel_button, self.exit_button):
             button.setAccessibleName(button.text())
             actions.addWidget(button)
         actions.addStretch()
@@ -101,6 +106,9 @@ class UpdatePanel(QFrame):
         self.check_button.clicked.connect(lambda: self._run('check'))
         self.download_button.clicked.connect(self._primary_action)
         self.cancel_button.clicked.connect(self._cancel)
+        self.later_button.clicked.connect(self._later)
+        self.exit_update_button.clicked.connect(self._schedule_exit_update)
+        self.exit_button.clicked.connect(self.controller.exit_application)
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.refresh)
@@ -136,10 +144,17 @@ class UpdatePanel(QFrame):
             QTimer.singleShot(0, self._keep_card_visible)
 
     def _primary_action(self):
-        repair = self.controller.state == UpdateState.REPAIR_REQUIRED or (
-            self.controller.state == UpdateState.RECOVERABLE_ERROR and
-            (self.controller._requirement == 'REPAIR_REQUIRED' or self.controller._installation_verified is False))
+        repair = self.controller.repair_required
         self._run('repair' if repair else 'download')
+
+    def _later(self):
+        self.controller.later()
+        self.refresh()
+
+    def _schedule_exit_update(self):
+        self._bind()
+        self.controller.schedule_on_exit()
+        self.refresh()
 
     def _cancel(self):
         self.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -170,47 +185,60 @@ class UpdatePanel(QFrame):
         focus = QApplication.focusWidget()
         owned_focus = focus is self or focus is not None and self.isAncestorOf(focus)
         previous_state = self.property('updateState')
-        snap = dict(self.controller.port.snapshot)
+        snap = self.controller.presentation
         prefix = '版本' if self._compact else '当前版本'
         self.version_label.setText(f"{prefix} {snap.get('current') or VERSION_MANIFEST.get('version', '—')}" + (' ·' if self._compact else ''))
         self.controller.refresh_login_policy()
         state = self.controller.state
         self.setProperty('updateState', state.value)
+        mandatory = self.controller.mandatory_required
+        repair = self.controller.repair_required
+        required = mandatory or repair
+        optional = state == UpdateState.OPTIONAL_UPDATE and not required
         preparing = state == UpdateState.PREPARING
         busy = self.controller.busy or preparing
         failed = state == UpdateState.RECOVERABLE_ERROR
         downloading = state == UpdateState.DOWNLOADING
         security = snap.get('error_kind') == 'validation'
-        repair = state == UpdateState.REPAIR_REQUIRED or failed and (
-            self.controller._requirement == 'REPAIR_REQUIRED' or self.controller._installation_verified is False)
         can_download = bool(snap.get('has_update')) and not (failed and security)
-        available = state in (UpdateState.OPTIONAL_UPDATE, UpdateState.MANDATORY_UPDATE) or repair or failed and can_download
-        self.check_button.setVisible(state in (UpdateState.UP_TO_DATE, UpdateState.CHECKING,
-            UpdateState.OPTIONAL_UPDATE, UpdateState.MANDATORY_UPDATE) or failed and not repair)
-        self.check_button.setEnabled(snap.get('available', True) and not busy)
+        postponed = optional and self.controller.postponed
+        scheduled = optional and self.controller.update_on_exit
+        available = (required or optional and not postponed or failed and can_download) and not busy
+        self.check_button.setVisible(not required and (state in (UpdateState.UP_TO_DATE, UpdateState.CHECKING)
+            or postponed or failed))
+        self.check_button.setEnabled((snap.get('available', True) or self.controller.can_retry_connection) and not busy)
         self.check_button.setText('重试' if failed and not can_download else '检查更新')
         self.download_button.setVisible(available)
         self.download_button.setEnabled(available and not busy)
-        self.download_button.setText('修复并检查更新' if repair else '更新到最新版本')
+        self.download_button.setText('重试' if failed and required else '修复并检查更新' if repair
+                                    else '更新到最新版本' if mandatory else '更新并重启')
+        self.later_button.setVisible(optional and not postponed and not busy)
+        self.exit_update_button.setVisible(optional and not postponed and not scheduled and not busy)
+        self.exit_button.setVisible(required)
+        self.exit_button.setEnabled(True)
         self.check_button.setAccessibleName(self.check_button.text())
         self.download_button.setAccessibleName(self.download_button.text())
         self.cancel_button.setVisible(downloading)
         self.cancel_button.setEnabled(downloading)
         actual = max(0, snap.get('downloaded', 0))
         expected = max(0, snap.get('total', 0))
-        self.sizes.setText(f"新版本 {snap.get('latest', '—')}\n预计下载 {self._size(expected)}" if can_download else '')
+        release_visible = bool(snap.get('latest')) and not postponed and (can_download or required or optional or downloading)
+        path_text = {'FILE_LEVEL_INCREMENTAL': '仅下载有变化的文件。',
+                     'FULL_FALLBACK': '将下载完整更新，以确保安装完整。'}.get(snap.get('update_path'), '')
+        estimate = self._size(expected) if expected else '检查后确认'
+        self.sizes.setText(f"最新版本 {snap.get('latest', '—')} · 预计下载 {estimate}\n{path_text}" if release_visible else '')
         full_notes = release_details(snap.get('notes'))
         summary = release_summary(snap.get('notes'))
-        self.notes.setText(summary if can_download else '学习资料和账号数据不参与程序更新。')
-        self.notes.setVisible(not self._compact)
-        self.sizes.setVisible(not self._compact)
+        self.notes.setText(summary if release_visible else '学习资料和账号数据不参与程序更新。')
+        self.notes.setVisible(release_visible or not self._compact)
+        self.sizes.setVisible(release_visible)
         if full_notes != self._notes_text:
             self._notes_text = full_notes
             self.details.setPlainText(full_notes)
             self.details.hide()
             self.notes_more.setText('查看更新内容')
             self.notes_more.setAccessibleName('查看更新内容')
-        more = not self._compact and can_download and full_notes != summary
+        more = release_visible and full_notes != summary
         self.notes_more.setVisible(more)
         if not more:
             self.details.hide()
@@ -222,8 +250,8 @@ class UpdatePanel(QFrame):
         self.transfer_label.setText(f'{self._size(actual)} / {self._size(max(actual, expected))}')
         messages = {
             UpdateState.CHECKING: '正在检查更新…',
-            UpdateState.UPDATE_AVAILABLE: '下载完成后将自动更新并重新启动。',
-            UpdateState.MANDATORY_UPDATE: '当前版本需要更新后才能继续',
+            UpdateState.UPDATE_AVAILABLE: f"有新版本 {snap.get('latest') or '可用'}，您可以继续登录和使用。",
+            UpdateState.MANDATORY_UPDATE: '此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。',
             UpdateState.REPAIR_REQUIRED: 'MentorFlow 需要修复',
             UpdateState.DOWNLOADING: '正在下载更新',
             UpdateState.PREPARING: '正在准备更新…\nMentorFlow 将自动重新启动',
@@ -234,11 +262,27 @@ class UpdatePanel(QFrame):
                 else '暂时无法检查更新，请稍后重试。'),
         }
         text = messages[state]
-        if self._compact and state == UpdateState.OPTIONAL_UPDATE:
-            text = f"发现 {snap.get('latest') or '新版本'}"
+        if postponed:
+            text = '已选择稍后更新，您可以继续登录和使用。'
+        if scheduled:
+            text = '已安排退出时更新；更新完成后 MentorFlow 将重新启动。'
+        if mandatory:
+            reason = {'security': '此更新包含必要的安全修复。',
+                      'protocol': '需要此更新才能继续连接服务。',
+                      'data_compatibility': '需要此更新以兼容当前学习资料格式。'}.get(
+                          snap.get('mandatory_reason'), '当前版本已低于受支持的版本要求。')
+            gate_text = ('此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。\n'
+                         f"必须更新到最新版本 {snap.get('latest') or '（检查后确认）'}。\n{reason}")
+            text = gate_text + ('\n' + text if state != UpdateState.MANDATORY_UPDATE else '')
+            if repair and state != UpdateState.REPAIR_REQUIRED:
+                text = '安装需要修复。\n' + text
         if repair and failed:
-            text = '暂时无法修复，请稍后重试。'
+            text = ('安装需要修复。暂时无法修复，请重试或退出。' +
+                    (f"\n修复后仍须更新到最新版本 {snap.get('latest') or ''}，才能继续使用。" if mandatory else ''))
         self.status.setText(text)
+        # A compact panel may have been laid out with a shorter previous state.
+        # Reserve every explicit gate/failure line before Qt redistributes space.
+        self.status.setMinimumHeight(self.status.minimumSizeHint().height())
         self.status.setVisible(not self._compact or state != UpdateState.CHECKING)
         # Hiding a focused action must not transfer focus to controls farther
         # down Settings and scroll the progress out of the user's viewport.

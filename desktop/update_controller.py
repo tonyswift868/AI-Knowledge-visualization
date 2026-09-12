@@ -51,6 +51,16 @@ class UpdateController(QObject):
         self._closed = self._started = self._chain = self._ending = False
         self._cancelled = False
         self._requirement = ''
+        self._mandatory_required = False
+        self._repair_required = False
+        self._presentation = {}
+        self._later = False
+        self._update_on_exit = False
+        self._exit_update_running = False
+        self._service_factory = None
+        self._pending_service = None
+        self._service_lock = threading.Lock()
+        self._connect_action = ''
         self._installation_verified = None
         self._last_login_blocked = False
         self._operation_pending = False
@@ -91,25 +101,89 @@ class UpdateController(QObject):
         return self._last_login_blocked
 
     def refresh_login_policy(self):
+        snapshot = self.port.snapshot
+        if snapshot.get('latest') and snapshot['latest'] != self._presentation.get('latest'):
+            self._presentation.clear()  # A different offer; no version ordering or policy calculation.
+            self._later = False
+        for key in ('latest', 'notes', 'total', 'update_path', 'mandatory_reason'):
+            if snapshot.get(key):
+                self._presentation[key] = snapshot[key]
         state = STATE_MAP.get(self.raw_state)
         if state in (UpdateState.MANDATORY_UPDATE, UpdateState.REPAIR_REQUIRED):
             self._requirement = state.value
+            if state == UpdateState.MANDATORY_UPDATE:
+                self._mandatory_required = True
+            else:
+                self._repair_required = True
+            self._later = self._update_on_exit = False
         elif state in (UpdateState.UP_TO_DATE, UpdateState.OPTIONAL_UPDATE) and not self._outcome and not self._operation_pending:
             self._requirement = ''
-        blocked = bool(self._requirement or self._installation_verified is False)
+            self._mandatory_required = False
+            self._repair_required = False
+            if state == UpdateState.UP_TO_DATE:
+                self._update_on_exit = False
+        blocked = bool(self._requirement or self._mandatory_required or self._installation_verified is False)
         if blocked != self._last_login_blocked:
             self._last_login_blocked = blocked
             self.login_policy_changed.emit(blocked)
+
+    @property
+    def presentation(self):
+        self.refresh_login_policy()
+        return {**self.port.snapshot, **self._presentation}
+
+    @property
+    def repair_required(self):
+        self.refresh_login_policy()
+        return self._repair_required or self._installation_verified is False
+
+    @property
+    def mandatory_required(self):
+        self.refresh_login_policy()
+        return self._mandatory_required
+
+    @property
+    def update_on_exit(self):
+        return self._update_on_exit
+
+    @property
+    def postponed(self):
+        return self._later
+
+    @property
+    def can_retry_connection(self):
+        return self._service_factory is not None and not self._closed and not self._ending
+
+    def later(self):
+        if self.login_blocked or self.busy:
+            return
+        self._later = True
+        self._update_on_exit = False
+
+    def schedule_on_exit(self):
+        if self.login_blocked or self.busy or self._ending or self._closed:
+            return
+        if self.state != UpdateState.OPTIONAL_UPDATE:
+            return
+        self._later = False
+        self._update_on_exit = True  # User consent only; never a core receipt.
+
+    def exit_application(self):
+        self._update_on_exit = False
+        self.cancel()
+        QApplication.instance().quit()
 
     def set_installation_verified(self, value):
         self._installation_verified = value
         self.refresh_login_policy()
 
-    def configure_service(self, service):
+    def configure_service(self, service, *, factory=None):
         if self.busy or self._closed:
             return
         self.port.close()
         self.service = service
+        if factory is not None:
+            self._service_factory = factory
         self.key = f"updater/{getattr(service, 'install_identity', 'unconfigured')}/"
         self.port = CoreUpdatePort(service, window_id=lambda: self._window_id,
             can_apply=lambda: self._window_available and not self._closed and not self._ending)
@@ -142,19 +216,51 @@ class UpdateController(QObject):
     def start(self):
         if not self._started and not self._closed:
             self._started = True
-            self.run('check')  # Core, not UI cache state, decides pending behavior.
+            self.run('check', manual=False)  # Core, not UI cache state, decides pending behavior.
 
-    def run(self, action):
+    def _connect_then_run(self, action):
+        self._operation_pending = True
+        self._cancelled = False
+        self._cancel.clear()
+        self._action = 'connect'
+        self._connect_action = action
+        self._outcome = ''
+        def connect():
+            service = None
+            try:
+                service = self._service_factory()
+            except Exception:
+                pass
+            finally:
+                with self._service_lock:
+                    if not self._closed:
+                        self._pending_service, service = service, None
+                if service is not None:
+                    service.close()
+                try:
+                    self.finished.emit('connect')
+                except RuntimeError:
+                    pass
+        self._thread = threading.Thread(target=connect, daemon=True, name='mentorflow-update-connect')
+        self._thread.start()
+
+    def run(self, action, *, manual=True):
         if self._closed or self.busy:
             return
+        self.refresh_login_policy()  # Capture a required gate before transient work.
         if action not in ('check', 'download', 'repair', 'apply_and_restart'):
             raise ValueError('unknown update UI action')
         if self._installation_verified is False and action not in ('repair', 'apply_and_restart'):
             return
-        if action != 'repair' and not self.port.snapshot.get('available', True):
-            return
         if self._ending:
             return
+        if not self.port.snapshot.get('available', True):
+            if self._service_factory is not None and action != 'apply_and_restart':
+                self._connect_then_run(action)
+                return
+            if action != 'repair':
+                self._outcome = 'RECOVERABLE_ERROR'
+                return
         if action == 'apply_and_restart':
             if self.window is None or not self.window.isVisible() or QApplication.instance().isSavingSession():
                 # Only an explicit core result may promise next-launch apply.
@@ -163,6 +269,11 @@ class UpdateController(QObject):
                 return
             self.save_ui_state()
         else:
+            if action == 'check' and manual:
+                self._later = False
+            if action in ('download', 'repair'):
+                self._later = False
+                self._update_on_exit = False
             self._chain = action in ('download', 'repair')
             self._cancelled = False
             self._cancel.clear()
@@ -200,16 +311,41 @@ class UpdateController(QObject):
         if self.busy:
             QTimer.singleShot(10, lambda: self._finished(action))
             return
+        if action == 'connect':
+            with self._service_lock:
+                service, self._pending_service = self._pending_service, None
+            if service is None or self._ending or self._cancelled:
+                if service is not None:
+                    service.close()
+                self._operation_pending = False
+                self._outcome = 'RECOVERABLE_ERROR'
+                self._exit_update_running = self._chain = False
+                return
+            self.configure_service(service)
+            # Keep the old gate latched until the requested core operation,
+            # including discovery/validation, has actually completed.
+            self.run(self._connect_action)
+            return
         self._operation_pending = False
         if self._cancelled:
             self._outcome = 'RECOVERABLE_ERROR'
         if self.state in (UpdateState.RECOVERABLE_ERROR, UpdateState.DEFERRED_TO_NEXT_LAUNCH):
             self._chain = False
+            self._exit_update_running = False
+            self._update_on_exit = False
             return
         self.refresh_login_policy()
+        if action == 'check' and self._exit_update_running and not self.login_blocked:
+            if self.state == UpdateState.OPTIONAL_UPDATE:
+                self.run('download')
+                return
         if action in ('download', 'repair') and self.raw_state == 'PREPARING' and self._chain:
             self._chain = False  # Consume once before scheduling apply.
             self.run('apply_and_restart')
+        elif self._exit_update_running and action != 'apply_and_restart':
+            self._exit_update_running = self._chain = False
+            if self.state == UpdateState.UP_TO_DATE and self.window is not None:
+                self.window.close()
 
     def save_ui_state(self):
         if self.window is not None:
@@ -231,6 +367,19 @@ class UpdateController(QObject):
 
     def eventFilter(self, watched, event):
         if watched is getattr(self, 'window', None) and event.type() == QEvent.Type.Close:
+            if (self._update_on_exit and not self.login_blocked and not self._ending
+                    and not self._closed and not QApplication.instance().isSavingSession()
+                    and not getattr(watched, '_account_switch_in_progress', False)):
+                # Keep the live window/identity until the canonical core takes
+                # ownership of close -> apply -> relaunch -> health confirmation.
+                event.ignore()
+                self._exit_update_running = True
+                if not self.busy:
+                    self.run('download')
+                return True
+            if self._exit_update_running and self._action != 'apply_and_restart' and not self._ending:
+                event.ignore()
+                return True
             self._window_available = self._chain = False
             self.save_ui_state()
         return False
@@ -245,6 +394,8 @@ class UpdateController(QObject):
 
     def cancel(self):
         self._chain = False
+        self._exit_update_running = False
+        self._update_on_exit = False
         self._cancelled = True
         self._cancel.set()
 
@@ -254,6 +405,10 @@ class UpdateController(QObject):
         self._closed = True
         self.cancel()
         self.port.close()
+        with self._service_lock:
+            pending_service, self._pending_service = self._pending_service, None
+        if pending_service is not None:
+            pending_service.close()
         if self.window is not None:
             try:
                 self.window.removeEventFilter(self)
@@ -277,5 +432,6 @@ def application_updater(factory=None):
         except Exception:
             service = None
         existing = UpdateController(service, app)
+        existing._service_factory = factory
         app._mentorflow_updater = existing
     return existing

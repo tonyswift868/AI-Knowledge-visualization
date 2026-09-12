@@ -441,18 +441,22 @@ def test_actual_settings_card_uses_single_updater_and_offline_safe(feed,monkeypa
     from PySide6.QtWidgets import QApplication
     from desktop.system_page import SystemPage
     service=feed.service(); service.metadata_url=feed.origin+'/missing-feed'
+    monkeypatch.setattr(QApplication.instance(), '_mentorflow_updater', None, raising=False)
     monkeypatch.setenv('MENTORFLOW_USER_DATA_ROOT',str(tmp_path/'data'))
     monkeypatch.setattr('desktop.update_panel.configured_mature_service',lambda:service)
     page=SystemPage({},'http://127.0.0.1:0',lambda:None,object())
     try:
         page.show(); QApplication.instance().processEvents()
         assert len(page.findChildren(type(page.update_panel)))==1
+        assert page.update_panel.controller.service is service
         page.check_for_updates()
         deadline=time.monotonic()+2
         while service.snapshot['state'] not in ('FAILED_RECOVERABLE','FAILED_SECURITY') and time.monotonic()<deadline:
             QApplication.instance().processEvents(); time.sleep(.005)
         assert page.isVisible() and service.snapshot['state']=='FAILED_RECOVERABLE'
-    finally: page.close()
+    finally:
+        page.update_panel.controller.shutdown()
+        page.close()
 
 
 def test_uneconomic_incremental_selects_full(feed):

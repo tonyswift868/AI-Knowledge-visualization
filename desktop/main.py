@@ -1190,8 +1190,20 @@ class MentorFlowApplication:
         if blocked:
             self._invalidate_login_jobs()
             self._last_login_result = None
+            if self.main is not None:
+                self._main_suspended_for_update = True
+                self.main.setEnabled(False)
+                self.main.hide()
+                self.login_gate.show()
+                self.login_gate.update_controller.bind_window(self.login_gate)
             from .startup_flow import LoginGateState
             self.login_gate.set_state(LoginGateState.LOGIN_READY)
+        elif getattr(self, '_main_suspended_for_update', False) and self.main is not None:
+            self._main_suspended_for_update = False
+            self.main.setEnabled(True)
+            self.main.show()
+            self.login_gate.hide()
+            self.login_gate.update_controller.bind_window(self.main)
 
     def _begin_account_action(self, intent):
         if self.login_gate.login_is_blocked or self.login_gate.account_capabilities.get(intent) is not True:
@@ -1458,7 +1470,9 @@ class MentorFlowApplication:
             self._service_failed(str(exc))
 
     def _show_main(self, user: dict) -> None:
-        if not self.api or self.login_gate is not None and self.login_gate.login_is_blocked:
+        updater = getattr(self.app, '_mentorflow_updater', None)
+        if (not self.api or self.login_gate is not None and self.login_gate.login_is_blocked
+                or updater is not None and updater.login_blocked):
             return
         # Business pages are not needed to authenticate. Keep their imports
         # behind the verified login/bootstrap gate instead of delaying its form.
@@ -1483,7 +1497,12 @@ class MentorFlowApplication:
         # Keep MentorFlow a normal desktop window.  In particular, it must
         # release focus and z-order when the user clicks another application.
         self.main.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        if updater is not None and updater.login_blocked:
+            self._update_login_blocked(True)
+            return
         self.main.show()
+        if updater is not None:
+            updater.bind_window(self.main)
         if self._enterprise_login_required:
             if self.login_gate is not None:
                 self.login_gate.hide()

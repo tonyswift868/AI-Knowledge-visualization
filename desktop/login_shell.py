@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from enum import Enum
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox
+from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
 
@@ -109,6 +109,7 @@ class LoginGateWindow(QWidget):
         self.brand_widgets.append(subtitle)
         outer.addSpacing(4)
         card = QFrame()
+        self.login_card = card
         card.setObjectName("loginCard")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(26, 24, 26, 24)
@@ -209,9 +210,19 @@ class LoginGateWindow(QWidget):
         self._update_login_policy(controller.login_blocked)
 
     def _update_login_policy(self, blocked):
+        self.login_card.setVisible(not blocked)
         self.primary_button.setEnabled(self._login_enabled and not blocked)
+        self.primary_button.setVisible(not blocked and self.auth_content is None)
+        self.remember_box.setEnabled(not blocked)
+        self.auto_box.setEnabled(not blocked and self.remember_box.isChecked())
+        self.cancel_button.setEnabled(not blocked)
+        self.remember_box.setVisible(not blocked)
+        self.auto_box.setVisible(not blocked)
+        self.cancel_button.setVisible(not blocked and self.state in {
+            LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED})
         if self.auth_content is not None:
             self.auth_content.setEnabled(not blocked)
+            self.auth_content.setVisible(not blocked)
         self.set_account_capabilities(self.account_capabilities)
         self.update_blocked.emit(blocked)
 
@@ -223,6 +234,8 @@ class LoginGateWindow(QWidget):
         blocked = self.update_controller is not None and self.update_controller._last_login_blocked
         self.register_button.setEnabled(self.account_capabilities['register'] and not blocked)
         self.forgot_password_button.setEnabled(self.account_capabilities['forgot_password'] and not blocked)
+        self.register_button.setVisible(not blocked)
+        self.forgot_password_button.setVisible(not blocked)
         self.register_button.setToolTip('' if self.account_capabilities['register'] else '当前账号服务尚未开放注册')
         self.forgot_password_button.setToolTip('' if self.account_capabilities['forgot_password'] else '当前账号服务暂未开放密码找回')
 
@@ -281,6 +294,12 @@ class LoginGateWindow(QWidget):
     def closeEvent(self, event) -> None:
         self.closed.emit()
         super().closeEvent(event)
+        if self.login_is_blocked:
+            # Other windows or keep-alive policy must never turn X into a skip.
+            if self.update_controller is not None:
+                self.update_controller.exit_application()
+            else:
+                QApplication.instance().quit()
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
@@ -358,5 +377,11 @@ class LoginGateWindow(QWidget):
         self.remember_box.setEnabled(not preparing)
         self.auto_box.setEnabled(not preparing and self.remember_box.isChecked())
         self.cancel_button.setVisible(state in {LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED})
+        if self.login_is_blocked:
+            self.primary_button.hide()
+            self.remember_box.setEnabled(False)
+            self.auto_box.setEnabled(False)
+            self.cancel_button.setEnabled(False)
+            self.cancel_button.hide()
         if enabled:
             self.primary_button.setFocus(Qt.FocusReason.OtherFocusReason)

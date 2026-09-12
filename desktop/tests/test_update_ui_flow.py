@@ -97,7 +97,7 @@ def visible_actions(panel):
 
 def test_one_primary_click_downloads_then_applies_once_and_saves_ui(panel):
     view, port = panel
-    assert visible_actions(view) == ['检查更新', '更新到最新版本']
+    assert visible_actions(view) == ['稍后', '更新并重启', '退出时更新']
     assert sum(b.isVisible() and bool(b.property('primary')) for b in view.findChildren(QPushButton)) == 1
     assert not hasattr(view, 'apply_button')
     assert '新版本 1.4.1' in view.sizes.text() and '预计下载 8.7 MB' in view.sizes.text()
@@ -262,7 +262,7 @@ def test_about_uses_same_one_click_port_and_no_dialog_for_release_notes(tmp_path
         gate.about_button.click(); app.processEvents()
         view = gate.findChild(QDialog, 'mentorflowRealAboutUpdates').findChild(UpdatePanel)
         assert view is not None and view.controller is controller
-        assert visible_actions(view) == ['检查更新', '更新到最新版本']
+        assert visible_actions(view) == ['稍后', '更新并重启', '退出时更新']
         view.download_button.click(); until(port.entered.is_set); port.release.set()
         until(lambda: port.calls.count('apply') == 1 and not controller.busy)
     finally: gate.close(); controller.shutdown()

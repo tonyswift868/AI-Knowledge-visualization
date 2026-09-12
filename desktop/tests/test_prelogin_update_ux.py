@@ -44,16 +44,16 @@ def test_prelogin_footer_is_direct_optional_entry_and_login_remains_enabled(prel
     entry = gate.update_entry
     assert entry.controller is controller and gate.update_controller is controller
     assert entry.version_label.text() == '版本 1.4.0 ·'
-    assert entry.check_button.isVisible() and entry.check_button.text() == '检查更新'
-    assert entry.status.text() == '发现 1.4.1'
-    assert entry.download_button.text() == '更新到最新版本'
+    assert entry.later_button.isVisible() and entry.exit_update_button.isVisible()
+    assert entry.status.text() == '有新版本 1.4.1，您可以继续登录和使用。'
+    assert entry.download_button.text() == '更新并重启'
     assert gate.isVisible() and gate.primary_button.isEnabled() and not gate.login_is_blocked
     requested = Mock(); gate.login_requested.connect(requested)
     gate.primary_button.click(); requested.assert_called_once()
 
 
 @pytest.mark.parametrize('state,text,button', [
-    ('MANDATORY_UPDATE', '当前版本需要更新后才能继续', '更新到最新版本'),
+    ('MANDATORY_UPDATE', '此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。', '更新到最新版本'),
     ('REPAIR_REQUIRED', 'MentorFlow 需要修复', '修复并检查更新'),
 ])
 def test_required_states_keep_shell_open_and_deny_login_even_after_auth_state_changes(prelogin, state, text, button):
@@ -61,7 +61,7 @@ def test_required_states_keep_shell_open_and_deny_login_even_after_auth_state_ch
     port.snapshot['state'] = state
     gate.update_entry.refresh()
     assert gate.isVisible() and gate.login_is_blocked
-    assert gate.update_entry.status.text() == text
+    assert text in gate.update_entry.status.text()
     assert gate.update_entry.download_button.text() == button
     gate.set_state(LoginGateState.AUTH_READY)
     assert not gate.primary_button.isEnabled()
@@ -129,12 +129,12 @@ def test_real_logged_in_about_card_shares_prelogin_presenter(prelogin, tmp_path,
         panel = page.update_panel
         assert panel.controller is gate.update_entry.controller is controller
         assert len(page.findChildren(UpdatePanel)) == 1
-        for state, text in [('OPTIONAL_UPDATE', '下载完成后将自动更新并重新启动。'),
-                            ('MANDATORY_UPDATE', '当前版本需要更新后才能继续'),
+        for state, text in [('OPTIONAL_UPDATE', '有新版本 1.4.1，您可以继续登录和使用。'),
+                            ('MANDATORY_UPDATE', '此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。'),
                             ('REPAIR_REQUIRED', 'MentorFlow 需要修复')]:
             port.snapshot['state'] = state
             panel.refresh(); gate.update_entry.refresh()
-            assert panel.status.text() == text
+            assert text in panel.status.text()
             assert panel.property('updateState') == gate.update_entry.property('updateState')
         assert panel.heading.text() == '关于 MentorFlow 与更新'
     finally: page.close()
@@ -256,9 +256,9 @@ def test_shell_paints_before_service_and_failed_trust_never_configures_network(t
 def test_mandatory_return_without_snapshot_mutation_is_enforced(prelogin):
     gate, port, controller, *_ = prelogin
     port.check_latest = lambda: {'state': 'MANDATORY_UPDATE'}
-    gate.update_entry.check_button.click(); until(lambda: not controller.busy)
+    controller.run('check'); until(lambda: not controller.busy)
     gate.update_entry.refresh()
-    assert gate.login_is_blocked and gate.update_entry.status.text() == '当前版本需要更新后才能继续'
+    assert gate.login_is_blocked and '必须更新到最新版本 1.4.1' in gate.update_entry.status.text()
 
 
 @pytest.mark.parametrize('action', ['check', 'download'])
