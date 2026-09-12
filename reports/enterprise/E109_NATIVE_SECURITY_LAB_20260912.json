@@ -1,0 +1,662 @@
+{
+  "schema": "mentorflow.e109-native-security-lab-delivery.v1",
+  "dispatch_id": "MF-MAIN3-04-NATIVE-SECURITY-LAB-20260912-03",
+  "task_id": "E109_NATIVE_POSTGRES_KEYCLOAK_SECURITY_LAB_V1",
+  "lease": "E109_SECURITY_EPHEMERAL_FIXTURE_04",
+  "status": "PARTIAL",
+  "office_reused": true,
+  "worktree": "E:\\Codex\\Data\\worktrees\\b18c\\MentorFlow",
+  "branch": "worker/main3/04",
+  "start_head": "6adf672872a4d839be8f12ebca7a91eab783b8ad",
+  "phase0": {
+    "git_dir": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow4",
+    "common_dir": "E:/Codex/Projects/MentorFlow/.git",
+    "index": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow4/index",
+    "clean_at_admission": true,
+    "branch_collision": false,
+    "office_continuity": "PASS",
+    "integration_read_only_sha": "15f6d0dda0968be1b39295577a139a9017615e82",
+    "main2_read_only_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82"
+  },
+  "admission_capacity": {
+    "free_memory_kib": 3741320,
+    "logical_processors": 32,
+    "free_disk_bytes": 336412368896,
+    "docker_or_podman_available": false,
+    "fixture_selection": "NATIVE_WINDOWS_EXISTING_POSTGRES_BINARIES_OFFICIAL_KEYCLOAK_ZIP"
+  },
+  "tool_archives": {
+    "keycloak_zip_sha256": "27a6535553c3cdcd083872ba40629efafb3475e3b758e0c6f691395561dd0f1f",
+    "jdk_zip_sha256": "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+    "java_version": "Temurin 21.0.12.1+1"
+  },
+  "final_native_run": {
+    "fixture": "mf-e109-sec04-15df052cc2a2",
+    "fixture_type": "NATIVE_WINDOWS_POSTGRES_KEYCLOAK",
+    "isolated": true,
+    "production_data": false,
+    "ports": {
+      "postgres": 61302,
+      "keycloak_http": 61303,
+      "keycloak_https": 61304
+    },
+    "limits": {
+      "postgres_shared_buffers_mb": 64,
+      "postgres_max_connections": 30,
+      "keycloak_heap_mb": 512,
+      "keycloak_active_processors": 2
+    },
+    "smtp_send": 0,
+    "production_mutation": 0,
+    "secret_values_emitted": 0,
+    "checks": {
+      "tenant_select": "PASS",
+      "tenant_insert": "PASS",
+      "tenant_update": "PASS",
+      "tenant_delete": "PASS",
+      "with_check": "PASS",
+      "native_resource_probes": 120,
+      "bidirectional": true,
+      "pool_a_b_a": "PASS",
+      "resource_tables": 8,
+      "missing_context": "PASS",
+      "invalid_context": "PASS",
+      "transaction_rollback": "PASS",
+      "exception_context_cleanup": "PASS",
+      "workspace_bootstrap_native": "PASS",
+      "fixture_signer_access_guard": "PASS",
+      "verification_valid": "PASS",
+      "verification_wrong": "PASS",
+      "verification_wrong_signature": "PASS",
+      "verification_malformed": "PASS",
+      "verification_expired": "PASS",
+      "verification_replay": "PASS",
+      "verification_used_after_rearm": "FAIL",
+      "verification_concurrent_graceful_rejection": "PASS",
+      "verification_concurrent": "FAIL",
+      "reset_valid": "PASS",
+      "reset_wrong": "PASS",
+      "reset_wrong_signature": "PASS",
+      "reset_malformed": "PASS",
+      "reset_expired": "PASS",
+      "reset_replay": "PASS",
+      "reset_used_after_rearm": "PASS",
+      "reset_concurrent_graceful_rejection": "FAIL",
+      "reset_concurrent": "PASS",
+      "token_cross_purpose": "PASS",
+      "default_role_learner_native": "PASS",
+      "anti_enumeration_native_credentials": "PASS",
+      "brute_force_native_boundary": "PASS",
+      "rate_limit_encoding_bypass_native": "PASS",
+      "release_capabilities_fail_closed": "PASS"
+    },
+    "cleaned_up": true,
+    "source_sha256": {
+      "scripts/e109_native_lab/keycloak_checks.py": "67da8ded2362598867bbcb607192841b2e11fa2737292bf35d0d5abd236c0451",
+      "scripts/e109_native_lab/postgres_checks.py": "f03ae4101af94ada6e89eb97131fcd0939d3600bfcc7c7e3d52789496ffa66e6",
+      "scripts/e109_native_lab/run.py": "b591a5e30441fcfd5823ee64ecae2cfbe3a21b85e3c1dd680a387ee2c486ce11",
+      "scripts/e109_native_lab/__init__.py": "1f9497d72f7a62d158da6382dd71499289f942a16c009b609104de7248a4c8c6",
+      "scripts/e109_native_lab/NativeTokenFixture.java": "f59a4174ed02ea3dc1ec93c5a6be8e2f8db41a9a8ed6089461eb14217e06973f",
+      "backend/tests/test_e109_security_native_stage2.py": "5c3416a8efdf831fa967b2e48d486c7654bda8663668c9f8c392d38808599fe4",
+      "release/account-capabilities.json": "bc2fe593f99e7fd88ab6064a0f100e3cc02f9029eb06a236cc26d7c02f126deb",
+      "deploy/enterprise/auth-email-security/realm-policy.json": "efc10456dde553866013369d5a05c8c195a433f31306379042131b6a85c7ad49",
+      "deploy/enterprise/auth-email-security/nginx.edge.conf": "145e34bb48cd9d6651c7844f55a355ed1cca377b9c2633da0fc60b4ebed38082"
+    },
+    "binary_sha256": {
+      "postgres": "54e7e05939e61f3462e3fd295bc12292623ad3cf010c02ae9cc3295a64b0770f",
+      "java": "82051fdab26319d77d20cc0065045d05ec00b3e3d05f44935d7c06b96b621d55",
+      "nginx": "1e8ece22ddfa93c5ef99e50a1bc9060bb6e2e42b8a44843cf2df9bc5c12ee44f",
+      "keycloak_runner": "fd96c9c8d84256229f3b78b714a181aa4f1bdc5813506caedf461db3bde1eb79"
+    },
+    "postgres_pid": 59720,
+    "postgres_version": "17.6",
+    "table_owners": {
+      "organizations": "mentorflow_migrator",
+      "organization_memberships": "mentorflow_migrator",
+      "workspaces": "mentorflow_migrator",
+      "workspace_memberships": "mentorflow_migrator",
+      "workspace_role_bindings": "mentorflow_migrator",
+      "resource_scopes": "mentorflow_migrator",
+      "documents": "mentorflow_migrator",
+      "evidence": "mentorflow_migrator",
+      "knowledge_maps": "mentorflow_migrator",
+      "learning_plans": "mentorflow_migrator",
+      "teacher_sessions": "mentorflow_migrator",
+      "review_campaigns": "mentorflow_migrator",
+      "student_events": "mentorflow_migrator",
+      "cost_events": "mentorflow_migrator",
+      "workspace_profiles": "mentorflow_migrator",
+      "workspace_goals": "mentorflow_migrator",
+      "asset_revisions": "mentorflow_migrator",
+      "asset_manifests": "mentorflow_migrator"
+    },
+    "application_role": {
+      "current_user": "mentorflow_app",
+      "session_user": "mentorflow_app",
+      "superuser": false,
+      "bypassrls": false,
+      "owned_tables": 0,
+      "forced_rls_tables": 18
+    },
+    "tls_certificate_sha256": "59027be75adb184afff380152de84e4529ef42f35678c6d7388922b0e6a064bc",
+    "keycloak_pid": 87092,
+    "keycloak_version": "26.7.3",
+    "realm_policy": {
+      "registrationAllowed": false,
+      "resetPasswordAllowed": true,
+      "actionTokenGeneratedByUserLifespan": 600,
+      "smtp_configured": false
+    },
+    "token_results": {
+      "verification_valid": {
+        "result": "PASS",
+        "native_success_events": 1,
+        "responses": [
+          {
+            "status": 302,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_wrong": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_wrong_signature": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_malformed": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_expired": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_replay": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 302,
+            "password_form": false
+          },
+          {
+            "status": 200,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_used_after_rearm": {
+        "result": "FAIL",
+        "native_success_events": 1,
+        "responses": [
+          {
+            "status": 302,
+            "password_form": false
+          },
+          {
+            "status": 200,
+            "password_form": false
+          }
+        ]
+      },
+      "verification_concurrent": {
+        "result": "FAIL",
+        "native_success_events": 2,
+        "responses": [
+          {
+            "status": 302
+          },
+          {
+            "status": 302
+          }
+        ],
+        "same_token_concurrent_requests": 2,
+        "server_errors": 0
+      },
+      "reset_valid": {
+        "result": "PASS",
+        "native_success_events": 1,
+        "responses": [
+          {
+            "status": 200,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_wrong": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_wrong_signature": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_malformed": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_expired": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_replay": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 200,
+            "password_form": false
+          },
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_used_after_rearm": {
+        "result": "PASS",
+        "native_success_events": 0,
+        "responses": [
+          {
+            "status": 200,
+            "password_form": false
+          },
+          {
+            "status": 400,
+            "password_form": false
+          }
+        ]
+      },
+      "reset_concurrent": {
+        "result": "PASS",
+        "native_success_events": 1,
+        "responses": [
+          {
+            "status": 500,
+            "challenge": false
+          },
+          {
+            "status": 200,
+            "challenge": true
+          }
+        ],
+        "same_token_concurrent_requests": 2,
+        "server_errors": 1
+      }
+    },
+    "anti_enumeration_observation": [
+      {
+        "status": 400,
+        "error": "invalid_grant",
+        "description": "Invalid user credentials"
+      },
+      {
+        "status": 400,
+        "error": "invalid_grant",
+        "description": "Invalid user credentials"
+      }
+    ],
+    "brute_force_observation": {
+      "disabled": true,
+      "num_failures": 2,
+      "failure_factor": 5,
+      "external_response_unchanged": true
+    },
+    "native_rate_observation": {
+      "statuses": [
+        400,
+        400,
+        400,
+        400,
+        429
+      ],
+      "encoded_statuses": [
+        429,
+        429,
+        429,
+        429
+      ],
+      "upstream": "NATIVE_KEYCLOAK_26.7.3",
+      "email_rate_per_minute": 3,
+      "email_burst": 3
+    },
+    "keycloak_exception_classes": [
+      "jakarta.persistence.OptimisticLockException",
+      "org.hibernate.StaleObjectStateException",
+      "org.hibernate.StaleStateException",
+      "org.hibernate.internal.ExceptionConverterImpl.wrapStaleStateException",
+      "org.keycloak.email.EmailException",
+      "org.keycloak.models.ModelIllegalStateException",
+      "org.keycloak.transaction.JtaTransactionWrapper.handleException",
+      "org.keycloak.transaction.JtaTransactionWrapper.lambda$handleException"
+    ],
+    "keycloak_stack_locations": [
+      "org.keycloak.connections.jpa.support.EntityManagerProxy.convert(EntityManagerProxy.java:142)",
+      "org.keycloak.connections.jpa.PersistenceExceptionConverter.convert(PersistenceExceptionConverter.java:30)",
+      "org.keycloak.connections.jpa.JpaExceptionConverter.convert(JpaExceptionConverter.java:31)",
+      "org.keycloak.transaction.JtaTransactionWrapper.lambda$handleException$0(JtaTransactionWrapper.java:79)",
+      "org.keycloak.transaction.JtaTransactionWrapper.handleException(JtaTransactionWrapper.java:81)",
+      "org.keycloak.transaction.JtaTransactionWrapper.commit(JtaTransactionWrapper.java:106)",
+      "org.keycloak.services.DefaultKeycloakTransactionManager.lambda$commitWithTracing$1(DefaultKeycloakTransactionManager.java:195)",
+      "org.keycloak.tracing.NoopTracingProvider.trace(NoopTracingProvider.java:59)",
+      "org.keycloak.tracing.NoopTracingProvider.trace(NoopTracingProvider.java:69)",
+      "org.keycloak.services.DefaultKeycloakTransactionManager.commitWithTracing(DefaultKeycloakTransactionManager.java:194)",
+      "org.keycloak.services.DefaultKeycloakTransactionManager.lambda$commit$0(DefaultKeycloakTransactionManager.java:161)",
+      "org.keycloak.services.DefaultKeycloakTransactionManager.commit(DefaultKeycloakTransactionManager.java:146)"
+    ],
+    "ports_closed": true,
+    "failed_checks": [
+      "verification_used_after_rearm",
+      "verification_concurrent",
+      "reset_concurrent_graceful_rejection"
+    ]
+  },
+  "final_native_receipt_sha256": "6199acc9f576a885e56d2be7575c8bb5459024dcf83b6964e33a2b94b2178862",
+  "counterexample": {
+    "fixture": "mf-e109-sec04-dad02fbec6cb",
+    "receipt_sha256": "10408a2ffd09b339b4fcd6617a96bd450a847105b65ddb1db0f036b928bf5fab",
+    "verification_concurrent": {
+      "result": "FAIL",
+      "native_success_events": 2,
+      "responses": [
+        {
+          "status": 302
+        },
+        {
+          "status": 302
+        }
+      ],
+      "same_token_concurrent_requests": 2,
+      "server_errors": 0
+    },
+    "verification_used_after_rearm": {
+      "result": "FAIL",
+      "native_success_events": 1,
+      "responses": [
+        {
+          "status": 302,
+          "password_form": false
+        },
+        {
+          "status": 200,
+          "password_form": false
+        }
+      ]
+    },
+    "cleaned_up": true,
+    "verdict": "FAIL_STRICT_SINGLE_USE_NOT_ERASED_BY_LATER_PASSING_RACE"
+  },
+  "verification_concurrent_single_use": "FAIL_TWO_COMMITTED_NATIVE_SUCCESS_EVENTS",
+  "verification_used_rejection": "FAIL_REARMED_ACTION_ACCEPTS_CONSUMED_TOKEN",
+  "reset_concurrent_single_use": "PASS_AT_MOST_ONE_SUCCESS_WITH_HTTP500_LOSER",
+  "cross_worker_dependency": {
+    "status": "CROSS_WORKER_DEPENDENCY",
+    "owner": "01_AUTH_ISSUER",
+    "needed_behavior": [
+      "Atomic purpose-bound verification consume before effect; at most one committed success.",
+      "Consumed verification nonce stays consumed through expiry after a later required action.",
+      "Controlled stale/used-token response for concurrent losers instead of JPA HTTP 500.",
+      "Bind reviewed corrected native artifact/provider in issuer-owned Keycloak deployment; rerun exact artifact."
+    ],
+    "native_paths": [
+      "org.keycloak.authentication.actiontoken.verifyemail.VerifyEmailActionTokenHandler",
+      "org.keycloak.services.resources.LoginActionsService.handleActionToken",
+      "org.keycloak.authentication.actiontoken.resetcred.ResetCredentialsActionTokenHandler"
+    ],
+    "deployment_binding_path": "deploy/enterprise/staging/rp05/compose.account-core-mvp.yml:keycloak",
+    "ownership_paths_edited": false,
+    "owner_contacted": false
+  },
+  "regression_tests": {
+    "existing_stage2_suite": {
+      "passed": 109,
+      "failed": 0,
+      "skipped": 0
+    },
+    "native_nginx_helper_after_health_path_edit": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "final_native_named_checks": {
+      "passed": 33,
+      "failed": 3,
+      "skipped": 0
+    },
+    "resource_denial_probes": 120,
+    "resource_table_kinds": 8,
+    "token_scenarios": 16,
+    "final_native_exit_code": 1,
+    "source_hashes_match_final_run": true
+  },
+  "cleanup": {
+    "overall": "PARTIAL_AUTOMATIC_APPROVAL_REJECTION",
+    "owned_processes_remaining": 0,
+    "all_test_ports_closed": true,
+    "latest_fixture_cleaned_up": true,
+    "residual_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5072a026f73a",
+    "residual_manifest": "E:\\Codex\\Temp\\mf-e109-sec04-5072a026f73a-manifest.json",
+    "residual_state": "STOPPED_INITIALIZED_CLUSTER_ONLY_NO_APPLICATION_SCHEMA_OR_KEYCLOAK",
+    "residual_sensitive_material": "SYNTHETIC_POSTGRES_SCRAM_VERIFIER; INIT_PASSWORD_FILE_REMOVED",
+    "cleanup_rejection_reason": "blocked by policy",
+    "approved_mechanism_required": true,
+    "manifests": [
+      {
+        "identity": "mf-e109-sec04-13d61aa9ed88",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-13d61aa9ed88",
+        "ports": {
+          "postgres": 56542,
+          "keycloak_http": 56543,
+          "keycloak_https": 56544
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-15df052cc2a2",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-15df052cc2a2",
+        "ports": {
+          "postgres": 61302,
+          "keycloak_http": 61303,
+          "keycloak_https": 61304
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-384559655d37",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-384559655d37",
+        "ports": {
+          "postgres": 53718,
+          "keycloak": 53721
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-492a4e7af29f",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-492a4e7af29f",
+        "ports": {
+          "postgres": 57085,
+          "keycloak": 57086
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-5072a026f73a",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5072a026f73a",
+        "ports": {
+          "postgres": 54004,
+          "keycloak": 54005
+        }
+      },
+      {
+        "identity": "mf-e109-sec04-5b380a64b9b9",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5b380a64b9b9",
+        "ports": {
+          "postgres": 49670,
+          "keycloak_http": 49671,
+          "keycloak_https": 49672
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-5e065ca5c7e8",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5e065ca5c7e8",
+        "ports": {
+          "postgres": 54493,
+          "keycloak_http": 54494,
+          "keycloak_https": 54495
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-5ee931df71eb",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5ee931df71eb",
+        "ports": {
+          "postgres": 57177,
+          "keycloak_http": 57178,
+          "keycloak_https": 57179
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-5f0dbaead43f",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-5f0dbaead43f",
+        "ports": {
+          "postgres": 62460,
+          "keycloak_http": 62461,
+          "keycloak_https": 62462
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-6fae8085d810",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-6fae8085d810",
+        "ports": {
+          "postgres": 61495,
+          "keycloak": 61496
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-7960b94acc63",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-7960b94acc63",
+        "ports": {
+          "postgres": 51565,
+          "keycloak": 51566
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-8617f817a43b",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-8617f817a43b",
+        "ports": {
+          "postgres": 58886,
+          "keycloak": 58887
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-b8c0800f4158",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-b8c0800f4158",
+        "ports": {
+          "postgres": 64139,
+          "keycloak": 64140
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-c99d41124be8",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-c99d41124be8",
+        "ports": {
+          "postgres": 55172,
+          "keycloak": 55173
+        },
+        "cleaned_up": true
+      },
+      {
+        "identity": "mf-e109-sec04-dad02fbec6cb",
+        "owned_directory": "E:\\Codex\\Temp\\mf-e109-sec04-dad02fbec6cb",
+        "ports": {
+          "postgres": 59225,
+          "keycloak_http": 59226,
+          "keycloak_https": 59227
+        },
+        "cleaned_up": true
+      }
+    ]
+  },
+  "register_capability": false,
+  "forgot_password_capability": false,
+  "public_new_issuer": "PENDING_GATE_A",
+  "real_smtp": "PENDING_GATE_A",
+  "production_data_touched": false,
+  "real_smtp_send": 0,
+  "live_canonical_service_mutation": 0,
+  "secret_values_emitted": 0,
+  "github_actions_executed": 0,
+  "remote_push": 0,
+  "open_children": 0,
+  "active_children": 0,
+  "worker_status": "SILENT",
+  "files_changed": [
+    "backend/tests/test_e109_security_native_stage2.py",
+    "docs/E109_NATIVE_SECURITY_LAB.md",
+    "reports/enterprise/E109_NATIVE_SECURITY_LAB_20260912.json",
+    "scripts/e109_native_lab/__init__.py",
+    "scripts/e109_native_lab/NativeTokenFixture.java",
+    "scripts/e109_native_lab/run.py",
+    "scripts/e109_native_lab/postgres_checks.py",
+    "scripts/e109_native_lab/keycloak_checks.py"
+  ],
+  "next_gate": "ISSUER_STRICT_SINGLE_USE_FIX_AND_APPROVED_RESIDUAL_CLEANUP_THEN_GATE_A_REAL_ISSUER_SMTP"
+}

@@ -114,7 +114,7 @@ def rate_contract():
 
 
 @contextmanager
-def native_nginx(tmp_path, upstream_port):
+def native_nginx(tmp_path, upstream_port, *, health_path='/health/live'):
     configured = os.environ.get('E109_TEST_NGINX_EXE', '')
     if not configured:
         pytest.skip('NATIVE_NGINX_NOT_CONFIGURED')
@@ -146,7 +146,7 @@ def native_nginx(tmp_path, upstream_port):
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
             try:
-                if request(port, '/health/live')[0] == 200:
+                if request(port, health_path)[0] == 200:
                     break
             except OSError:
                 time.sleep(.02)
