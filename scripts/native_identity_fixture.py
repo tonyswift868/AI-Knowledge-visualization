@@ -408,6 +408,11 @@ def run(args):
             if correct.status_code != 200 or correct.json().get('outcome') != 'authenticated':
                 raise AssertionError('Real credential validation did not authenticate: '+correct.text)
             checks['real_password_provider'] = True
+            assert identity.post(control+'/mutate', json={'operation': 'default-actions', 'username': 'configured-mfa'}).status_code == 200
+            checks['fulfilled_default_actions_allow_existing_user'] = auth('valid').json().get('outcome') == 'authenticated'
+            for name in ('temporary', 'email', 'mfa'):
+                checks[name+'_outstanding_action_with_defaults_closed'] = auth(name).json().get('outcome') == 'challenge_required'
+            assert identity.post(control+'/mutate', json={'operation': 'restore-default-actions', 'username': 'configured-mfa'}).status_code == 200
             failed = [auth('wrong', 'incorrect'), auth('missing', 'incorrect'), auth('disabled')]
             checks['wrong_unknown_disabled_anti_enumeration'] = all(r.status_code == 401 and r.content == failed[0].content for r in failed)
             for name in ('temporary', 'email', 'mfa'):

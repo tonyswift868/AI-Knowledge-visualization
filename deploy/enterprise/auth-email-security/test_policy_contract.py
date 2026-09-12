@@ -32,11 +32,11 @@ class PolicyContractTest(unittest.TestCase):
 
     def test_password_policy(self):
         password = self.policy['realm_settings']['passwordPolicy']
-        for required in ['hashAlgorithm(argon2)', 'length(15)', 'maxLength(128)']:
+        for required in ['hashAlgorithm(argon2)', 'length(8)', 'maxLength(128)']:
             self.assertIn(required, password)
         for forbidden in ['upperCase(', 'lowerCase(', 'digits(', 'specialChars(', 'forceExpiredPasswordChange(']:
             self.assertNotIn(forbidden, password)
-        pattern = password.split('regexPattern(', 1)[1][:-1]
+        pattern = password.split('regexPattern(', 1)[1].split(') and passwordBlacklist(', 1)[0]
         regex = re.compile(pattern)
         self.assertIsNone(regex.fullmatch('password' * 2))
         self.assertIsNone(regex.fullmatch(('password' * 2).upper()))
@@ -111,6 +111,30 @@ class PolicyContractTest(unittest.TestCase):
         self.assertTrue(config['SMTP_STARTTLS'])
         for source in ROOT.glob('*.py'):
             ast.parse(source.read_text(encoding='utf-8'), filename=str(source))
+
+
+    def test_full_common_password_list_remains_required_at_eight_characters(self):
+        spec = self.policy['password_denylist']
+        self.assertTrue(spec['native_file_provider_enabled'])
+        self.assertEqual(spec['source_count'], 100000)
+        self.assertIn('passwordBlacklist(' + spec['file_name'] + ')',
+                      self.policy['realm_settings']['passwordPolicy'])
+        compose = (ROOT.parent / 'staging/rp05/compose.account-core-mvp.yml').read_text(encoding='utf-8')
+        self.assertIn('/opt/keycloak/data/password-blacklists:ro', compose)
+
+    def test_username_is_unique_without_composition_constraints(self):
+        username = self.policy['username_policy']
+        self.assertTrue(username['unique'])
+        self.assertTrue(username['trim_input'])
+        self.assertEqual(username['validations']['length'], {'min': 1, 'max': 255})
+        self.assertEqual(set(username['validations']), {'length', 'pattern'})
+        self.assertEqual(username['validations']['pattern']['pattern'], r'^[^\p{Cc}]+$')
+        self.assertEqual(username['duplicate_message'], '该账号已被使用，请换一个。')
+
+    def test_atomic_reset_uses_the_realm_password_policy(self):
+        source = (ROOT.parent / 'native-identity-verifier/AtomicResetPassword.java').read_text(encoding='utf-8')
+        self.assertIn('getProvider(PasswordPolicyManagerProvider.class)', source)
+        self.assertIn('.validate(context.getRealm(), context.getUser(), password)', source)
 
 
 if __name__ == '__main__':

@@ -154,7 +154,9 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
             AuthenticatorUtil.addAuthCredential(auth, "password");
             try {
                 for (var model : realm.getRequiredActionProvidersStream().filter(RequiredActionProviderModel::isEnabled).toList()) {
-                    if (model.isDefaultAction()) return true;
+                    // Default actions are assigned when an account is created. Their
+                    // realm flag is not an outstanding action for every existing user.
+                    // Check the user's actions above and evaluate native triggers below.
                     var config = new RequiredActionConfigModel();
                     config.setConfig(model.getConfig()); config.setProviderId(model.getProviderId()); config.setAlias(model.getAlias());
                     RequiredActionContext context = (RequiredActionContext) Proxy.newProxyInstance(

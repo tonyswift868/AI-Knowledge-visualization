@@ -206,7 +206,7 @@ def run():
     us,up,_=absent.submit({'username':PREFIX+'-absent','password':secrets.token_urlsafe(24)})
     visible=lambda p:' '.join(' '.join(p.text).split())
     mark('LOGIN_UNKNOWN_AND_LOCKED_GENERIC',us==ls and visible(up)==visible(lp))
-    for name,value in [('PASSWORD_UNDER_15_REJECTED',secrets.token_urlsafe(6)),('COMMON_PASSWORD_REJECTED','password'*2)]:
+    for name,value in [('PASSWORD_UNDER_8_REJECTED',secrets.token_urlsafe(5)),('COMMON_PASSWORD_REJECTED','password'*2)]:
         try: api(REALM+'/users/'+u['id']+'/reset-password','PUT',{'type':'password','value':value,'temporary':False})
         except RuntimeError as e: mark(name,'HTTP_400' in str(e))
         else: raise AssertionError(name)

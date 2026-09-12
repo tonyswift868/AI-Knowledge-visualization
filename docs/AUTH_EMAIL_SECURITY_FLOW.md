@@ -32,12 +32,14 @@ Mailpit 仅接收 `@e109-uat.invalid` 的合成测试邮件，其他收件人被
 
 密码仍只交给 Keycloak；MentorFlow backend 不新增密码或 hash 存储。
 
-- Argon2；新密码长度 15–128，已接受 15、64、128 字符的纯小写密码。
+- Argon2；新密码长度 **8–128**（2026-09-13 产品规则）。唯一配置 authority 是 `deploy/enterprise/auth-email-security/realm-policy.json` 的 realm `passwordPolicy`；注册、改密、重置密码和管理员凭据初始化都使用 Keycloak 的同一 PasswordPolicyManager。
 - 不要求大小写、数字、特殊字符组合，不定期强制改密。
-- 拒绝用户名/邮箱本身，以及固定版本公开常见密码词表。10 万项中 99,928 项由长度边界拒绝；其余 72 项与少量产品相关补充项使用原生 `regexPattern` 做大小写不敏感的完整字符串拒绝匹配，76 项均经 Keycloak 实测拒绝。它不是字符组合规则，也不是在线泄漏查询。
-- 当前只读镜像没有 password-blacklists 挂载，故没有启用文件型 blacklist provider，也没有为此再重启 Keycloak。
+- 拒绝用户名/邮箱本身，以及固定版本公开常见密码词表。完整 10 万项通过 Keycloak 原生 `passwordBlacklist` 文件 provider 校验；保留既有大小写不敏感完整匹配的 76 项补充防护。降到 8 位后不再依靠旧 15 位下限过滤常见短密码。没有在线泄漏查询。
+- 部署前运行 `prepare_password_denylist.py` 校验固定 SHA-256 并生成 `password-blacklists/mentorflow-common-100k.txt`，按 compose 只读挂载；缺失文件不得应用新策略。该文件不含用户密码，不进入 Git。
+- Backend / Desktop / mTLS verifier 只验证登录请求的大小和必填字段，再把凭据交给 Keycloak；1024 是防滥用的登录传输上限，不是新密码的产品长度规则，也不在登录时重新套用创建规则锁住旧凭据。
+- 用户名可自定义且在 realm 内唯一，不要求邮箱、前缀或字符组合；创建/更新只限制非空、最长 255 字符及控制字符。登录去除首尾空白，存储和唯一比较由 Keycloak 统一使用小写。冲突提示：“该账号已被使用，请换一个。”
 
-密码策略依据 [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html)；拒绝词表的固定版本和校验值见 `realm-policy.json`，来源为 [SecLists](https://github.com/danielmiessler/SecLists/blob/c205c36a445bff37f8e58a9ec829105cd4975c58/Passwords/Common-Credentials/xato-net-10-million-passwords-100000.txt)。
+词表固定来源、文件名和校验值见 `realm-policy.json`。历史 `acceptance-evidence.json` 记录的是旧策略 UAT，不能作为当前 8 位策略的验收结果。新测试账号预置 `emailVerified=true` 也不代表真实邮箱验证通过。
 
 暴力破解防护使用临时锁定：
 

@@ -140,6 +140,7 @@ services:
       MENTORFLOW_KEYCLOAK_PUBLIC_ORIGIN: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
     volumes:
       - ../../config/keycloak-realm.json:/opt/keycloak/data/import/mentorflow-realm.json:ro
+      - ${MENTORFLOW_PASSWORD_BLACKLIST_DIR:-../../auth-email-security/password-blacklists}:/opt/keycloak/data/password-blacklists:ro
       - ../../themes/mentorflow-desktop-v1:/opt/keycloak/themes/mentorflow-desktop-v1:ro
       - keycloak_secrets:/run/secrets:ro
     tmpfs:

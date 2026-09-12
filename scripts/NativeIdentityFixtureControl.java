@@ -68,6 +68,13 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
             var user = session.users().getUserByUsername(realm, name);
             if (user == null) throw new BadRequestException();
             switch (body.get("operation")) {
+                case "default-actions", "restore-default-actions" -> {
+                    for (String alias : Set.of("VERIFY_EMAIL", "UPDATE_PASSWORD")) {
+                        var action = realm.getRequiredActionProviderByAlias(alias);
+                        action.setDefaultAction("default-actions".equals(body.get("operation")));
+                        realm.updateRequiredActionProvider(action);
+                    }
+                }
                 case "password" -> user.credentialManager().updateCredential(UserCredentialModel.password(body.get("password")));
                 case "disable" -> user.setEnabled(false);
                 case "otp" -> user.credentialManager().createStoredCredential(

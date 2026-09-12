@@ -87,6 +87,14 @@ Authority references: [single-use atomic provider](https://github.com/keycloak/k
 
 ## Private contract
 
+Realm default required-action flags apply when accounts are created. They do not
+mean that every existing account still owes that action. The verifier rejects
+the user's outstanding actions, unverified email, unsupported MFA/flows and native
+policy triggers, including password expiry. A verified user with a permanent
+credential can authenticate while VERIFY_EMAIL and UPDATE_PASSWORD remain defaults
+for future registrations. The real Keycloak fixture tests both the fulfilled and
+outstanding cases with those realm defaults enabled.
+
 `POST /realms/<exact-realm>/mentorflow-native-identity/v1` accepts only JSON:
 
 * Authenticate: `operation`, `username`, `password`.

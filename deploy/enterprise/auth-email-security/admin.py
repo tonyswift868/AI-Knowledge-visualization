@@ -96,6 +96,14 @@ def apply_policy(policy_path):
     assert policy['schema_version'] == 'mentorflow.auth-email-security.v1'
     assert policy['realm'] == 'mentorflow'
     assert policy['realm_settings']['registrationAllowed'] is False
+    denylist = policy['password_denylist']
+    if denylist.get('native_file_provider_enabled'):
+        # Do not activate the shorter minimum until the full pinned list is mounted.
+        mounted = subprocess.check_output([
+            'docker', 'exec', 'mentorflow-e1-preview-keycloak-1', 'sha256sum',
+            '/opt/keycloak/data/password-blacklists/' + denylist['file_name'],
+        ], text=True).split()[0]
+        assert mounted == denylist['source_sha256'], 'PASSWORD_DENYLIST_MOUNT_REQUIRED'
     # Always retain a rollback baseline before administrative writes.
     audit()
     original_users = json.loads((BASE/'backup/users.json').read_text())
@@ -117,7 +125,9 @@ def apply_policy(policy_path):
     profile = api(root+'/users/profile')
     profile.pop('unmanagedAttributePolicy', None)
     for attr in profile['attributes']:
-        if attr['name'] == 'email':
+        if attr['name'] == 'username':
+            attr['validations'] = policy['username_policy']['validations']
+        elif attr['name'] == 'email':
             attr['required'] = {'roles': policy['email_required_roles']}
         elif attr['name'] in ['firstName', 'lastName']:
             attr.pop('required', None)
@@ -157,6 +167,7 @@ def apply_policy(policy_path):
         generic = old.get('invalidUserMessage') or ('账号或密码不正确，请重试。' if locale.startswith('zh') else 'Invalid username or password.')
         keys = ['invalidUserMessage', 'invalidUsernameMessage', 'accountDisabledMessage', 'accountTemporarilyDisabledMessage', 'accountPermanentlyDisabledMessage']
         values = {key: generic for key in keys}
+        values['usernameExistsMessage'] = policy['username_policy']['duplicate_message'] if locale.startswith('zh') else 'This account is already in use. Choose another.'
         values['invalidPasswordRegexPatternMessage'] = '该密码过于常见，请换一个不同的密码。' if locale.startswith('zh') else 'This password is too common. Choose a different password.'
         api(root+'/localization/'+locale, 'POST', values)
     print('POLICY_APPLIED_PUBLIC_REGISTRATION_OFF_NO_USER_WRITES')
