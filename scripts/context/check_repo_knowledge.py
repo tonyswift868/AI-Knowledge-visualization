@@ -12,7 +12,7 @@ import json
 
 LIMITS = {"AGENTS.md": 120, "ARCHITECTURE.md": 300, "docs/project/CURRENT_STATE.md": 180, "docs/exec-plans/active/MAIN3.md": 200}
 KNOWLEDGE_DIRS = ("docs/project", "docs/governance", "docs/decisions", "docs/exec-plans", "docs/handoff", "scripts/context")
-EXTRA_KNOWLEDGE = ("docs/PRODUCT_FLOW.md", "docs/E109_AUTH_ISSUER_MIGRATION.md",
+EXTRA_KNOWLEDGE = ("docs/PRODUCT_FLOW.md", "docs/E109_AUTH_ISSUER_MIGRATION.md", "docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md",
                    "docs/windows-update-release-contract-v1.md", "installer/inno/README.md",
                    "docs/enterprise/staging-orchestrator.md")
 

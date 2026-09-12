@@ -72,7 +72,7 @@ This index assigns authority, not another copy of the contracts or a product PAS
 | --- | --- | --- |
 | 1 | Evidence-based learning loop; Free Chat write isolation | [PRODUCT_FLOW](../PRODUCT_FLOW.md) |
 | 2 | Open-source-first; preserve working systems | [Workflow](../governance/DEVELOPMENT_WORKFLOW.md), [ADRs](../decisions/index.md) |
-| 3 | System Browser OIDC/PKCE, IPv4 callback, authority separation, bootstrap | [Auth contract](../E109_AUTH_ISSUER_MIGRATION.md) |
+| 3 | Native username/password → authenticated backend-only verifier → Keycloak → session → bootstrap; no normal browser or password grant/storage | [Native auth ADR](../ADR_NATIVE_CREDENTIAL_AUTH_V1.md); [legacy issuer contract](../E109_AUTH_ISSUER_MIGRATION.md) retains protocol/infrastructure scope only |
 | 4 | Channels/notes/checks/restart/defer/rollback/incremental fallback | [Update contract](../windows-update-release-contract-v1.md) |
 | 5 | One installer, parent semantics, optional defaults OFF, repair/errors | [Installer contract](../../installer/inno/README.md) |
 | 6 | Explain QA actions; no surprise windows, DPI changes or repeated configuration | [Workflow](../governance/DEVELOPMENT_WORKFLOW.md) |

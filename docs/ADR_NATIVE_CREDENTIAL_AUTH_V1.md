@@ -4,6 +4,13 @@ Date: 2026-09-12. Status: **identity SPI implemented; live deployment remains ga
 Authority: `MF-MAIN3-01-NATIVE-CREDENTIAL-LOGIN-20260912-04` /
 `MENTORFLOW_NATIVE_USERNAME_PASSWORD_LOGIN_CONTRACT_V1`.
 
+Batch02 integration authority: `MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`.
+`NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD`;
+`NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO`. This also supersedes Batch01's
+System Browser normal-login requirement. The [Batch02 receipt](governance/receipts/20260913-main3-batch02-integration.json)
+binds integrated native fixture results and independent action-token confirmation;
+production login, SMTP and installed-candidate acceptance remain separate gates.
+
 ## Decision and current ownership
 
 Normal login is MentorFlow's own username/password form. The desktop sends credentials

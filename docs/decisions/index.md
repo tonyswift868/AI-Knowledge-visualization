@@ -12,6 +12,7 @@
 | [Native classroom ADR-003](../adr/003-native-classroom-theme-system.md) | 原生课堂/主题系统 |
 | [Updater ADR-004](../adr/004-windows-incremental-updater.md) | 历史增量方案；当前接线读 E109 integration，不恢复旧安装布局 |
 | [Per-user trust](../PER_USER_INSTALL_TRUST.md) | 安装/签名/用户数据 authority 分离 |
+| [Native credential auth](../ADR_NATIVE_CREDENTIAL_AUTH_V1.md) | Batch02 正常登录 authority；原生表单、私有 authenticated verifier、Keycloak credential provider、session/bootstrap；supersedes Batch01/03d979 浏览器正常 UX |
 | [E109 auth migration](../E109_AUTH_ISSUER_MIGRATION.md) | 精确 issuer 窗口及旧 identity namespace；prepared 不等于 live |
 | [Shared contracts](../../backend/app/enterprise/contracts_v1/README.md) | enterprise-context.v1 的类型权威 |
 

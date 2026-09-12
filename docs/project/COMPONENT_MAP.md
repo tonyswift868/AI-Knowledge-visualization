@@ -43,10 +43,28 @@
 历史 `reports`/`artifacts` 只按专项合同中的 exact pointer 读取；不要全量装入上下文。
 `data`、用户资料库、credentials、模型缓存与实际运行日志不是知识库输入。
 
-## Batch01 integration seams
+## Batch02 integration seams
+
+正常登录：[native form/client](../../desktop/native_auth.py) →
+[backend verifier/session](../../backend/app/enterprise/identity/native.py) →
+[Keycloak SPI/action tokens](../../deploy/enterprise/native-identity-verifier/README.md)。
+[native tests](../../desktop/tests/test_native_login.py)、[backend tests](../../backend/tests/test_native_auth.py)
+与 [真实本地 fixture](../../scripts/native_identity_fixture.py) 对应
+[native auth ADR](../ADR_NATIVE_CREDENTIAL_AUTH_V1.md) 的身份、session 和 bootstrap 边界。
+
+[Batch02 组合测试](../../desktop/tests/test_main3_batch02_integration.py) 把真实签名 floor、
+core、adapter、reason UI 和 native login gate 接在一起，覆盖既知 floor 的断网/取消拒绝、
+latest 目标、optional 可继续及修复后原生表单恢复。更新检查与应用使用 inert signed bytes。
+[native edge tests](../../backend/tests/test_e109_security_native_stage2.py) 运行本地 nginx 编码/限流检查；
+[RLS harness](../../scripts/e109_native_lab/postgres_checks.py) 的独立原生 PostgreSQL 证据保留原执行者范围。
+exact 11-commit 映射、本轮检查与保留的独立证据见
+[Batch02 receipt](../governance/receipts/20260913-main3-batch02-integration.json)。
+
+## Batch01 integration seams（历史）
 
 [组合回归](../../desktop/tests/test_main3_batch01_integration.py) 连接 01 的 System Browser
 与 04 capability boundary，以及 02 signed recovery、03 adapter 和 login update gate。
+其浏览器正常 UX 已被 Batch02 native authority supersede；协议检查保留 legacy 范围。
 其 synthetic OIDC、inert signed files 与 offscreen Qt 不代表 live/native 验收。
 具体执行计数、exact commit/tree 映射和未运行门禁见
 [batch01 receipt](../governance/receipts/20260912-main3-batch01-integration.json)。

@@ -1,14 +1,14 @@
 # MentorFlow architecture map
 
-范围：MAIN2 源码 `04faf2a9fbb50c5f9403dad5abf46354c9b53d82` 的阅读地图。
+范围：冻结 MAIN2 基线之上的 MAIN3 Batch02 集成源码阅读地图。
 产品与部署的验收状态见 [CURRENT_STATE](docs/project/CURRENT_STATE.md)。
 本文件说明已经存在的模块；不据此宣布某个服务器、安装包或学习全链路已经合格。
 
 ## 一次用户会话穿过哪些边界
 
 1. Inno 外壳请求稳定 UserRuntime 安装/启动；签名核心决定能否运行 App。
-2. Desktop 登录壳先接更新策略，再由 OIDC 完成身份认证；受限更新状态会阻止登录。
-3. 已认证账户发现/初始化可见 workspace，选择组织/空间后访问受保护 API。
+2. Desktop 先接更新策略，再以原生用户名/密码调用 backend；mandatory 同时阻止登录与 main。
+3. Backend 经私有 mTLS verifier 调用 Keycloak credential provider，签发 MentorFlow opaque session；workspace bootstrap 与本地服务就绪后才显示 main。
 4. 导入材料经过能力判断、解析、证据提取和引用；知识地图候选经确认才激活。
 5. 计划预览与激活分离，教师、评估、复习与进度反馈共享工作区证据。
 6. 后台任务、数据库和 telemetry 分别保存执行状态、业务事实和脱敏运行信息。
@@ -42,11 +42,20 @@ Desktop → `gui_update_runtime` → controller → `CoreUpdatePort` → 已交�
 
 ## Auth / Keycloak
 
-Keycloak 管理身份、验证邮件和重置动作；backend 验证 JWT 并结合 membership 授权。
-Desktop [enterprise_oidc.py](desktop/enterprise_oidc.py) 负责 code + S256 PKCE、state、
-nonce 与 IPv4 loopback callback；应用内认证呈现位于 `desktop/in_app_oidc.py`。
-MAIN3 的长期目标是 System Browser 登录；当前内嵌呈现与此目标的差距已登记到
-[CURRENT_STATE](docs/project/CURRENT_STATE.md)，源码导航不表示该要求已经通过。
+正常登录 authority 是 [native credential ADR](docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md)。
+[native_auth.py](desktop/native_auth.py) 将原生表单输入经 TLS 交给
+[native backend](backend/app/enterprise/identity/native.py)，后者只通过 backend-only
+authenticated [Keycloak SPI](deploy/enterprise/native-identity-verifier/README.md)
+验证身份，再签发有界 opaque access/rotating refresh session 并重验 membership。
+不使用 password grant、Keycloak direct grant，不持久化密码，不回退外部浏览器。
+Keycloak 继续拥有密码、账号状态、required action、MFA 与验证/重置 token authority。
+Atomic action handlers 使用原生 single-use/revocation authority；已消费 token 不可 re-arm。
+
+`enterprise_oidc.py` 的 code + S256 PKCE、state、nonce、IPv4 callback 及
+`in_app_oidc.py` 保留显式 legacy 消费者；它们与 Batch01/03d979 的正常浏览器 UX
+已被 Batch02 原生登录 authority supersede。历史协议检查不代表默认登录验收。
+当前 backend session/限流有单进程边界；分布式 session/revocation、实际集群 token
+authority 与生产拓扑必须另行验收。本地 fixture PASS 不授权 live activation。
 
 当前新 auth host 已准备在 [auth-authority.json](release/auth-authority.json)，状态为
 PREPARED_NOT_ACTIVE。[迁移合同](docs/E109_AUTH_ISSUER_MIGRATION.md) 约束两个 exact
@@ -102,6 +111,10 @@ document ingestion、knowledge pipeline、plan creation；EXPORT / ACCOUNT_DELET
 [build_e108_user_candidate.py](scripts/build_e108_user_candidate.py) 保留历史文件名，
 当前 E109 最终版本目标见 QA JSON；它和 Inno 构建器消费冻结版本/能力/签名输入。
 发布对象签名、不可变路径、上传白名单与安装事务独立于 branch promotion。
+已验证的历史 mandatory floor 单调不下降；current 低于 floor 时，目标直接为当前
+latest（例如 1.0 → 历史 mandatory 1.2 → latest optional 1.4，必须更新至 1.4）。
+断网、稍后、取消和 reason 文案不能解除既知强制门；optional 允许继续使用。
+reason 仅作中文解释，状态由 core 决定；UI 不重算版本和签名策略。
 [发布合同](docs/windows-update-release-contract-v1.md) 与
 [不可变路径](docs/update-immutable-path-contract.md) 是查证入口。
 `deploy/`、`.github/` 的配置存在不代表容器、Actions 或 staging 已运行；执行需独立授权。
@@ -121,7 +134,7 @@ Provider 使用 credential reference / secret resolver；原始 secret 不进 re
 ## 权威与查证
 
 - 当前源码：CURRENT_STATE 冻结的 exact SHA/tree；不是工作目录名或远端默认分支猜测。
-- 当前产品门禁：E109 QA JSON、auth migration 合同及带 source/candidate 的正式回执。
+- 当前产品门禁：CURRENT_STATE、native auth ADR、更新合同及带 source/candidate 的正式回执；E109 QA JSON 保留历史候选范围。
 - 当前协作规则：[workflow](docs/governance/DEVELOPMENT_WORKFLOW.md)；历史 E1 员工编号不自动映射 MAIN3。
 - 全目录导航与测试：[COMPONENT_MAP](docs/project/COMPONENT_MAP.md)。
 - 旧 `docs/ARCHITECTURE.md` 和 dated reports 保留，适用范围/冲突见 CURRENT_STATE。

@@ -20,6 +20,20 @@ Free Chat 是独立工具：不得偷偷写 mastery、plan 或 score；任何学
 本节是持续有效的要求，不是当前全链路 PASS 声明；当前缺口和最终用户验收看
 [CURRENT_STATE](project/CURRENT_STATE.md)。短期测试结果不能静默删减长期要求。
 
+## 启动、登录与更新
+
+Batch02 authority：`MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`。
+Launch MentorFlow → native login gate → username/password → secure backend
+verification → MentorFlow session → workspace bootstrap → main window。
+正常用户无需外部浏览器；密码只用于本次认证，不持久化。身份、安全和生产启用门
+复用 [native auth ADR](ADR_NATIVE_CREDENTIAL_AUTH_V1.md)。
+
+OPTIONAL update 允许继续登录/使用、稍后、更新并重启或退出时更新。
+MANDATORY update 同时阻止登录与主窗口，只能更新至当前 latest 或退出。
+历史签名 floor 不下降，断网或取消不能绕过；例如 current 1.0、历史 mandatory 1.2、
+latest optional 1.4，结果仍为强制更新至 1.4。原因仅作解释，详见
+[更新 authority](windows-update-release-contract-v1.md)。本节不声明真实安装或生产登录已验收。
+
 ## 新建学习空间
 
 1. Demo 入口明确创建 demo Workspace；“创建真实学习计划”创建 real Workspace，未验证 ProviderSession 时只允许保存草稿信息，不允许生成。

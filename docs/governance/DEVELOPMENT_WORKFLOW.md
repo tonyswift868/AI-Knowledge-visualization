@@ -2,7 +2,7 @@
 
 Authority: `MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01`，2026-09-12；
 知识补充授权 `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`；
-本轮 exact integration 授权 `MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03`。
+本轮 Batch02 授权 `MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`；Batch01 授权保留在其历史回执。
 治理规则与实际 ref/worktree 状态分离，后者由 CURRENT_STATE / board 和 exact receipts 记录。
 
 ## Roles and refs
@@ -49,7 +49,7 @@ Worker deliveries → A integration → QA/user acceptance → Interview + Accep
 → exact promotion candidate SHA/tree
 → B 按批准创建 main(N+1) → GitHub default switch → 旧 main 保持冻结。
 Promotion 的 branch/ref/default 操作由 B 执行，A 的 source delivery 不等于 promotion。
-本轮 A 集成四份获授权 exact worker commits、运行组合离线回归并维护知识/handoff，
+本轮 A 按完整连续历史集成 11 个 exact worker commits，运行组合回归与安全本地 native fixture，并维护知识/handoff，
 通过全部门禁后获准普通非 force push 到 `origin/integration/main3`。发布前只读审 workflow；任何自动 hosted compute
 入口风险必须阻止发布。此授权不包含 main2/main1/default/tags/worker refs 或 Actions 执行。
 
@@ -62,9 +62,11 @@ decision rationale、替代方案与证据，不仅列库名。产品特有状�
 追到代码和测试。
 
 用户 QA 开始前先说明将发生什么、用户是否需要操作和成功标准。不要无预告或
-重复弹出安装器、UAC、浏览器；系统浏览器登录也须由明确登录动作触发。
+重复弹出安装器、UAC、浏览器。正常登录使用原生用户名/密码，不启动外部浏览器；
+显式 legacy 协议测试不改变该产品 authority。
 不改主机 DPI，不让用户反复填写已有配置；按现有授权从受控 resolver 读取配置。
-本轮只做 source/offline 回归与知识校验；不运行真实安装、UAC、真实账号或邮件流程。
+本轮允许隔离本机 Keycloak/PostgreSQL/nginx fixture、集成 verifier JAR 构建及 Qt 回归；
+不运行真实安装、UAC、生产账号登录或真实 SMTP。fixture 使用一次性身份和数据，结束后停止进程并清理临时 secrets。
 CI 遵守 [现有 compute policy](../github-actions-compute-policy.md)：本地/自有 VPS
 优先，不新增 push / pull_request / schedule 的 GitHub-hosted 自动消耗。
 Staging 分域 writer 和恢复责任见 [staging contract](../enterprise/staging-orchestrator.md)。

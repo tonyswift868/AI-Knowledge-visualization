@@ -25,7 +25,8 @@ MentorFlow 是 Windows 桌面学习系统，组合资料证据、知识地图、
 | 长期产品闭环 | [PRODUCT_FLOW](docs/PRODUCT_FLOW.md)，其余长期要求索引在 Web read order |
 | 已冻结决定及历史边界 | [Decisions](docs/decisions/index.md) |
 | E109 更新、安装、UI 接线 | [E109 integration](docs/E109_INTEGRATION_MAP.md) |
-| Auth issuer 迁移 | [E109 auth migration](docs/E109_AUTH_ISSUER_MIGRATION.md) |
+| 正常原生登录 / verifier / session | [Native auth ADR](docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md) |
+| 旧 issuer 协议 / 基础设施迁移 | [E109 auth migration](docs/E109_AUTH_ISSUER_MIGRATION.md)（正常登录 UX 已 superseded） |
 | 资料证据与教师 | [Knowledge map](docs/knowledge-map-teacher-v1.md) |
 
 ## 不变量
@@ -33,7 +34,9 @@ MentorFlow 是 Windows 桌面学习系统，组合资料证据、知识地图、
 - SOURCE_BASELINE 不等于 PRODUCT_ACCEPTANCE；源码、离线测试、真实环境、最终包分开验收。
 - 更新核心拥有签名校验、事务和健康恢复；UI 只经现有 adapter 接线。
 - 账户/学习资料在程序内容之外；升级、修复、卸载不得默认删除用户数据。
-- issuer、signature、audience、expiry、state、nonce、PKCE 不得绕过。
+- 正常登录是原生用户名/密码 → backend-only authenticated verifier → Keycloak → session → workspace bootstrap → main；不启动外部浏览器。
+- 密码 grant、Keycloak direct grant、密码持久化均禁止；issuer/session 校验及旧协议 signature/audience/expiry/state/nonce/PKCE 不得绕过。
+- 已建立的签名 mandatory floor 单调不下降；低于 floor 必须直接更新当前 latest，reason 只用于解释。
 - 当前账号 capability 默认关闭；开启条件见 auth 合同和 CURRENT_STATE。
 - Provider 生成必须遵守会话验证、材料能力、引用与用户确认合同。
 - 共享 Actor/Tenant 合同复用现有定义；受保护操作失败时拒绝执行。

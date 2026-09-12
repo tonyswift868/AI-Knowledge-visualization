@@ -27,7 +27,8 @@ GROUPS = {
     ],
     'policy_contract': ['deploy/enterprise/auth-email-security/test_policy_contract.py'],
 }
-EXPECTED_COUNTS = {'runtime': 7, 'backend_capability': 5, 'desktop_capability': 88,
+# Batch02 covers both native-switch availability and fail-closed absence.
+EXPECTED_COUNTS = {'runtime': 7, 'backend_capability': 5, 'desktop_capability': 89,
                    'policy_contract': 9}
 
 

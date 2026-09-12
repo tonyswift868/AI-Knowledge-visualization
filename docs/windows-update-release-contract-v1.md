@@ -3,6 +3,14 @@
 ## Durable product update contract
 
 Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
+Batch02 policy/UX authority: `MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`.
+OPTIONAL permits login and continued use, later, update/restart or update on exit.
+MANDATORY blocks both login and main: update directly to CURRENT LATEST or quit;
+there is no skip, cancellation or network-loss escape from a known signed floor.
+The cumulative floor below owns this decision. `mandatory_reason` only explains
+it in Chinese (`security`, `protocol`, `data_compatibility`, `support_floor`);
+unknown reasons use generic copy and never reveal an internal enum or change policy.
+
 The product must provide stable/beta channels, readable release notes, manual,
 background and startup checks, update + restart, deferred update on exit or
 next launch, and rollback/recovery with user data preserved. Prefer file-level

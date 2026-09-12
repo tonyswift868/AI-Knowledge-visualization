@@ -35,51 +35,64 @@
         "COMPACT_REPO_HANDOFF"
       ],
       "unlocks": [
+        "BATCH02_EXACT_INTEGRATION"
+      ],
+      "user_action_required": null,
+      "reason": "Exact 02/03/01/04 cherry-picks and combined offline regression accepted. Native/live/product acceptance is excluded; see batch01 receipt."
+    },
+    {
+      "task_id": "BATCH02_EXACT_INTEGRATION",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "BATCH01_EXACT_INTEGRATION"
+      ],
+      "unlocks": [
         "GATE_A_AUTH_LIVE_ACTIVATION",
         "GATE_B_ACCOUNT_SECURITY",
         "GATE_C_UPDATE_FINAL_CANDIDATE"
       ],
       "user_action_required": null,
-      "reason": "Exact 02/03/01/04 cherry-picks and combined offline regression accepted. Native/live/product acceptance is excluded; see batch01 receipt."
+      "reason": "11 exact commits audited and integrated 02 -> 03 -> 04 -> 01. Combined native login/update/edge regression, local native token fixture, knowledge authority correction; independent 04 RLS evidence retained. No live/package acceptance."
     },
     {
       "task_id": "GATE_A_AUTH_LIVE_ACTIVATION",
       "owner": "01",
       "state": "NOT_DISPATCHED",
       "dependencies": [
-        "BATCH01_EXACT_INTEGRATION"
+        "BATCH02_EXACT_INTEGRATION"
       ],
       "unlocks": [
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: compatible backend deployment and desktop build/install; authority/TLS; explicitly approved shared <=48h window; old issuer login/refresh/account continuity; only then hostname cutover and NEW issuer real system-browser login."
+      "reason": "PLANNING ONLY / NOT_RUN: qualify exact Keycloak SPI, private backend-only mTLS, compatible backend/desktop candidate and actual session/revocation topology; native username/password -> session -> workspace bootstrap -> main. Any issuer cutover retains continuity and requires separate approved bounded window; normal login has no browser fallback."
     },
     {
       "task_id": "GATE_B_ACCOUNT_SECURITY",
       "owner": "04",
       "state": "NOT_DISPATCHED",
       "dependencies": [
-        "BATCH01_EXACT_INTEGRATION"
+        "BATCH02_EXACT_INTEGRATION"
       ],
       "unlocks": [
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: isolated native PostgreSQL RLS; public issuer gate; native verification/reset expiry, wrong/replayed/concurrent token and strict single-use; anti-enumeration; runtime rate limit; real SMTP verify/reset. Public-issuer/SMTP steps also require Gate A. Capabilities remain false."
+      "reason": "PLANNING ONLY / NOT_RUN: production-topology RLS/session/token authority qualification; public issuer, real SMTP verification/reset and native account-action capability acceptance. Retain 04 native PostgreSQL RLS PASS and independent token confirmation; A reran local native auth/tokens and edge. Capabilities remain false; real SMTP send=0."
     },
     {
       "task_id": "GATE_C_UPDATE_FINAL_CANDIDATE",
       "owner": "A",
       "state": "NOT_DISPATCHED",
       "dependencies": [
-        "BATCH01_EXACT_INTEGRATION"
+        "BATCH02_EXACT_INTEGRATION"
       ],
       "unlocks": [
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: explicitly authorized integrated installer/updater candidate; exact 1.5.0 -> 1.5.1; incremental path; UAC/apply/restart/health; canonical recovery, rollback and old-version launchability on failure. 02/03 source evidence does not satisfy package QA."
+      "reason": "PLANNING ONLY / NOT_RUN: one explicitly authorized integrated signed installer/updater; exact 1.5.0 -> 1.5.1, incremental/latest or full/latest, UAC/apply/restart/health, canonical recovery and rollback with data/old-version launchability. Optional can continue; mandatory blocks login/main and requires current latest."
     },
     {
       "task_id": "FINAL_QA_USER_ACCEPTANCE",
@@ -94,7 +107,7 @@
         "INTERVIEW_ACCEPTANCE_BUNDLE"
       ],
       "user_action_required": null,
-      "reason": "One exact signed candidate, retained user data and user acceptance. Offline suites do not satisfy native/live/package gates."
+      "reason": "One exact signed candidate, retained user data and user acceptance. Source, synthetic regression, local native fixture, retained independent evidence and production/package/user gates stay separate."
     },
     {
       "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
@@ -121,6 +134,6 @@
       "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen."
     }
   ],
-  "authority": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
-  "assignment_scope": "Exact 01-04 deliveries accepted; all slots SILENT. Gate owners are planning domains, not new dispatches or live writer leases."
+  "authority": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
+  "assignment_scope": "Batch02 complete exact 01-04 stages integrated; all slots SILENT. Future gate owners are planning domains, not new dispatches or live writer leases."
 }

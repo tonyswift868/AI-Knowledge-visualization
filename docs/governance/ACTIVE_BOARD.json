@@ -6,18 +6,18 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "EXACT_LOCAL_OBJECTS_AND_REMOTE_REFS_VERIFIED",
+  "refs_verified": "BATCH02_EXACT_LOCAL_OBJECTS_AND_REMOTE_START_REFS_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
+  "authority": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
-      "task_id": "MENTORFLOW_MAIN3_EXACT_WORKER_INTEGRATION_AND_COMBINED_REGRESSION_V1",
+      "dispatch_id": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
+      "task_id": "MENTORFLOW_MAIN3_BATCH02_EXACT_STAGE_INTEGRATION_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Batch01 source integration closeout. Final immutable receipt binds publication HEAD; live gates require subsequent explicit authority.",
+      "next_action": "Batch02 integrated closeout; SILENT. Final immutable receipt binds publication HEAD/tree. No follow-up or live dispatch implied.",
       "worktree_isolation": "VERIFIED"
     },
     "01": {
@@ -26,13 +26,21 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "f5eab83483c827ef9be03e67800dba14af7d8e74",
-      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "delivery_commit": "69e68c86e21403bb8c5a365483bda62b074a9ea2",
+      "next_action": "SILENT. Complete Batch02 exact stage consumed; source/local fixture acceptance is scoped in the receipt. No polling or automatic follow-up dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
-      "worktree_isolation": "VERIFIED",
-      "integrated_commit": "1ef0dcb2fb60d06c16cbc62d99f32a7c0e4db9aa",
-      "delivery_state": "SOURCE_DELIVERY_ACCEPTED_FOR_INTEGRATION",
-      "acceptance_state": "LIVE_ACTIVATION_PENDING"
+      "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
+      "integrated_commit": "97b15a64de5184753415bda4a46754085d7640fc",
+      "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
+      "acceptance_state": "LIVE_PRODUCTION_LOGIN_NOT_RUN",
+      "ordered_source_commits": [
+        "5079681154c0ca34ba2427e072962fe69024bef5",
+        "03d979710a4cde44917c4f10c2f08d2390c8426d",
+        "5eaeff56d8cf494a4d262348efbc5a3ed88bcbc2",
+        "1d78c0b19f63bd8fe7cfb18df181779b7fb1a728",
+        "69e68c86e21403bb8c5a365483bda62b074a9ea2"
+      ],
+      "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74"
     },
     "02": {
       "status": "SILENT",
@@ -40,13 +48,18 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
-      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "delivery_commit": "521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb",
+      "next_action": "SILENT. Complete Batch02 exact stage consumed; source/local fixture acceptance is scoped in the receipt. No polling or automatic follow-up dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
-      "worktree_isolation": "VERIFIED",
-      "integrated_commit": "21a879dd682e0dc31136529701c7b7a67862db2b",
-      "delivery_state": "SOURCE_REPAIR_ACCEPTED",
-      "acceptance_state": "LIVE_INSTALL_QA_PENDING"
+      "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
+      "integrated_commit": "8ac07d75ac2534ff48f05746d06e7ac1551c21e4",
+      "delivery_state": "MANDATORY_FLOOR_PASS",
+      "acceptance_state": "REAL_INSTALL_QA_NOT_RUN",
+      "ordered_source_commits": [
+        "d2f13b4413cb5f85e3ddafe0343ca9c37a6356e0",
+        "521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb"
+      ],
+      "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994"
     },
     "03": {
       "status": "SILENT",
@@ -54,13 +67,18 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
-      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "delivery_commit": "3eba9c3e0198d6b485226737e59d594cb773a12c",
+      "next_action": "SILENT. Complete Batch02 exact stage consumed; source/local fixture acceptance is scoped in the receipt. No polling or automatic follow-up dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
-      "worktree_isolation": "VERIFIED",
-      "integrated_commit": "c9964e996a3cb661e250aebe3fd4f971c329e2bf",
-      "delivery_state": "SOURCE_UX_CLOSEOUT_ACCEPTED",
-      "acceptance_state": "REAL_INSTALL_QA_PENDING"
+      "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
+      "integrated_commit": "ab63fac6d756370d7dbf7e4c0a5372d516e8bad9",
+      "delivery_state": "MANDATORY_REASON_UX_PASS",
+      "acceptance_state": "REAL_INSTALL_QA_NOT_RUN",
+      "ordered_source_commits": [
+        "3443f84130c0b114c24f68997c5a23958f1e27a5",
+        "3eba9c3e0198d6b485226737e59d594cb773a12c"
+      ],
+      "batch01_consumed_source": "b4c34ab592ce98a7e7abf13fad73e152073c9008"
     },
     "04": {
       "status": "SILENT",
@@ -68,13 +86,18 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
-      "next_action": "SILENT. Source accepted by batch01 integration; live acceptance remains pending. No polling or automatic follow-up dispatch.",
+      "delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
+      "next_action": "SILENT. Complete Batch02 exact stage consumed; source/local fixture acceptance is scoped in the receipt. No polling or automatic follow-up dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
-      "worktree_isolation": "VERIFIED",
-      "integrated_commit": "aadac381f8b4945f8dad3bd876ba443ae7ab4ca9",
-      "delivery_state": "SOURCE_FIX_ACCEPTED",
-      "acceptance_state": "SECURITY_ACCEPTANCE_PARTIAL_PENDING"
+      "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
+      "integrated_commit": "928d58f9e7ca35fbe716157703c9d51ad5b04bc6",
+      "delivery_state": "NATIVE_RLS_PASS_EVIDENCE_RETAINED",
+      "acceptance_state": "REAL_SMTP_NOT_RUN",
+      "ordered_source_commits": [
+        "6adf672872a4d839be8f12ebca7a91eab783b8ad",
+        "f9634e24d759eb268c56d45b301046dc503ef714"
+      ],
+      "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd"
     },
     "B": {
       "status": "SILENT",
@@ -94,7 +117,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-WORKER-BATCH01-INTEGRATION-20260912-03",
+    "evidence": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -107,13 +130,31 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "01-04_EXACT_DELIVERIES_INTEGRATED_SILENT",
-    "worker_isolation": "01-04_VERIFIED",
+    "worker_dispatches": "BATCH02_INTEGRATED_01-04_SILENT",
+    "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Batch01 source integration closeout. All slots SILENT. Phase0 isolation VERIFIED per user authority; A also rechecked locally. Live gates NOT_RUN.",
+    "snapshot_scope": "Batch02 closeout; all slots SILENT. A Phase0 locally rechecked. Native auth/token fixture and edge runtime rerun by A; 04 native RLS PASS evidence retained, not rerun by A. Production/SMTP/install gates NOT_RUN.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING"
+  },
+  "batch02_receipt": "docs/governance/receipts/20260913-main3-batch02-integration.json",
+  "acceptance_boundaries": {
+    "normal_desktop_login_ux": "NATIVE_IN_APP_USERNAME_PASSWORD",
+    "normal_login_external_browser_required": false,
+    "password_grant_used": false,
+    "direct_grant_used": false,
+    "password_persisted": false,
+    "real_smtp_send": 0,
+    "real_smtp_verify": "NOT_RUN",
+    "real_smtp_reset": "NOT_RUN",
+    "real_install_qa": "NOT_RUN",
+    "final_1_5_0_to_1_5_1": "NOT_RUN",
+    "live_production_login": "NOT_RUN",
+    "production_keycloak_mutation": 0,
+    "native_rls": "04_PASS_EVIDENCE_RETAINED_NOT_RERUN_BY_A",
+    "formal_main3": "NOT_CREATED",
+    "main2": "FROZEN"
   }
 }

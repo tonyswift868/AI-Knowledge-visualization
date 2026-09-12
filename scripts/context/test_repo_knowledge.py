@@ -153,7 +153,10 @@ class WebHandoffBoundaryTests(unittest.TestCase):
         self.assertNotEqual(publication, self.snapshot)
         self.assertIn(f"CURRENT_INTEGRATION_COMMIT = {self.snapshot}".encode(), output)
         self.assertIn(b"DERIVED / NOT SOURCE OF TRUTH", output)
-        self.assertIn(b"04_DELIVERY = SOURCE_FIX_ACCEPTED; SECURITY_ACCEPTANCE_PARTIAL_PENDING", output)
+        for slot in ('01', '02', '03', '04'):
+            worker = self.board['workers'][slot]
+            expected = f"{slot}_DELIVERY = {worker['delivery_state']}; {worker['acceptance_state']}"
+            self.assertIn(expected.encode(), output)
         self.assertIn(b"FORMAL_MAIN3 = NOT_CREATED", output)
         self.assertIn(b"BRIDGE = SUPERSEDED / BRIDGE CLOSED", output)
         self.assertNotIn(b"01:UNKNOWN", output)

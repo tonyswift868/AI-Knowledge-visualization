@@ -1,0 +1,1143 @@
+{
+  "schema": "mentorflow.main3.batch02.integration.v1",
+  "status": "PASS_MAIN3_BATCH02_INTEGRATED",
+  "scope": "Source/local native fixture acceptance; remote publication HEAD/tree supplied by final external receipt. Product final acceptance is pending.",
+  "dispatch_id": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
+  "task_id": "MENTORFLOW_MAIN3_BATCH02_EXACT_STAGE_INTEGRATION_V1",
+  "office": {
+    "top_level": "E:/Codex/Data/worktrees/2735/MentorFlow",
+    "git_dir": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow",
+    "common_dir": "E:/Codex/Projects/MentorFlow/.git",
+    "head_path": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow/HEAD",
+    "index": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow/index",
+    "head": "15f6d0dda0968be1b39295577a139a9017615e82",
+    "branch": "integration/main3",
+    "status": "",
+    "worktrees": "worktree E:/Codex/Projects/MentorFlow\nHEAD 04faf2a9fbb50c5f9403dad5abf46354c9b53d82\nbranch refs/heads/main2\n\nworktree E:/Codex/Data/worktrees/08ac/MentorFlow\nHEAD 521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb\nbranch refs/heads/worker/main3/02\n\nworktree E:/Codex/Data/worktrees/2735/MentorFlow\nHEAD 15f6d0dda0968be1b39295577a139a9017615e82\nbranch refs/heads/integration/main3\n\nworktree E:/Codex/Data/worktrees/8831/MentorFlow\nHEAD 69e68c86e21403bb8c5a365483bda62b074a9ea2\nbranch refs/heads/worker/main3/01\n\nworktree E:/Codex/Data/worktrees/b18c/MentorFlow\nHEAD f9634e24d759eb268c56d45b301046dc503ef714\nbranch refs/heads/worker/main3/04\n\nworktree E:/Codex/Data/worktrees/bb70/MentorFlow\nHEAD 3eba9c3e0198d6b485226737e59d594cb773a12c\nbranch refs/heads/worker/main3/03",
+    "remote_tracking": "15f6d0dda0968be1b39295577a139a9017615e82",
+    "remote": "ref: refs/heads/main2\tHEAD\n04faf2a9fbb50c5f9403dad5abf46354c9b53d82\tHEAD\n15f6d0dda0968be1b39295577a139a9017615e82\trefs/heads/integration/main3\n04faf2a9fbb50c5f9403dad5abf46354c9b53d82\trefs/heads/main2"
+  },
+  "office_reused": true,
+  "worktree_created": false,
+  "start_head": "15f6d0dda0968be1b39295577a139a9017615e82",
+  "start_tree": "53ed1867beb9afcb3944045cc837b52563d0f3b5",
+  "product_code_validation_commit": "079f1efc9d8f7300aeabbe5f499cb169027e564c",
+  "ordered_stages": [
+    "02",
+    "03",
+    "04",
+    "01"
+  ],
+  "stages": {
+    "01": {
+      "batch01_already_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
+      "stage_final_head": "69e68c86e21403bb8c5a365483bda62b074a9ea2",
+      "stage_final_tree": "c58ee2d6a1768891e20a5b10445095e4ffd68d4b",
+      "ordered_commits": [
+        {
+          "source_commit": "5079681154c0ca34ba2427e072962fe69024bef5",
+          "source_parent": "f5eab83483c827ef9be03e67800dba14af7d8e74",
+          "source_tree": "cc5425427b6f66b930ba2491d8ceff49a53698ec",
+          "changed_paths": [
+            "reports/enterprise/e109-auth-precutover-stage2-main3-01-20260912.json",
+            "reports/enterprise/e109-auth-precutover-stage2-main3-01-20260912.md"
+          ],
+          "integrated_commit": "ceac118d19a020f529e43d3d89c2c0650d42f3dd",
+          "integrated_parent": "928d58f9e7ca35fbe716157703c9d51ad5b04bc6",
+          "integrated_tree": "72bd9a171bbdd7e399f55ee4cf20bf1030725c09"
+        },
+        {
+          "source_commit": "03d979710a4cde44917c4f10c2f08d2390c8426d",
+          "source_parent": "5079681154c0ca34ba2427e072962fe69024bef5",
+          "source_tree": "99fc8a71c7da9d36be4cc0253bb6d9c46fddc24b",
+          "changed_paths": [
+            "desktop/enterprise_oidc.py",
+            "desktop/tests/test_e109_system_browser.py",
+            "docs/E109_AUTH_ISSUER_MIGRATION.md",
+            "reports/enterprise/e109-old-prepared-system-browser-main3-01-20260912.md"
+          ],
+          "integrated_commit": "12e7797a55e66901f0658f0aae70eee4d47f304e",
+          "integrated_parent": "ceac118d19a020f529e43d3d89c2c0650d42f3dd",
+          "integrated_tree": "809d0118fd93df17ad6cc6e2adcd6b883718de72"
+        },
+        {
+          "source_commit": "5eaeff56d8cf494a4d262348efbc5a3ed88bcbc2",
+          "source_parent": "03d979710a4cde44917c4f10c2f08d2390c8426d",
+          "source_tree": "af59b6df0f2ef466b5eb8a0957ee86d5f351b5a8",
+          "changed_paths": [
+            "backend/app/enterprise/account_workspaces.py",
+            "backend/app/enterprise/identity/native.py",
+            "backend/app/enterprise/identity/runtime.py",
+            "backend/tests/test_account_core_mvp_runtime.py",
+            "backend/tests/test_native_auth.py",
+            "desktop/account_settings_page.py",
+            "desktop/enterprise_oidc.py",
+            "desktop/in_app_oidc.py",
+            "desktop/login_session.py",
+            "desktop/login_shell.py",
+            "desktop/main.py",
+            "desktop/native_auth.py",
+            "desktop/tests/test_login_smooth.py",
+            "desktop/tests/test_native_login.py",
+            "desktop/tests/test_prelogin_update_ux.py",
+            "docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md",
+            "docs/E109_AUTH_ISSUER_MIGRATION.md",
+            "release/real-delivery-app.spec",
+            "reports/enterprise/native-credential-login-main3-01-20260912.md",
+            "scripts/build_e108_user_candidate.py",
+            "scripts/test_e109_auth_source_binding.py"
+          ],
+          "integrated_commit": "746c91be3ba241ff9a25a80149113df946a1b6fe",
+          "integrated_parent": "12e7797a55e66901f0658f0aae70eee4d47f304e",
+          "integrated_tree": "d77c96d9bd1450cc793a0cabfe0311693d330d4a"
+        },
+        {
+          "source_commit": "1d78c0b19f63bd8fe7cfb18df181779b7fb1a728",
+          "source_parent": "5eaeff56d8cf494a4d262348efbc5a3ed88bcbc2",
+          "source_tree": "d7d6b9b440b072542715cbd5057a7ae566141300",
+          "changed_paths": [
+            "backend/app/enterprise/identity/native.py",
+            "backend/tests/test_native_auth.py",
+            "deploy/enterprise/native-identity-verifier/NativeIdentityVerifier.java",
+            "deploy/enterprise/native-identity-verifier/README.md",
+            "docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md",
+            "reports/enterprise/native-credential-verifier-main3-01-20260912.md",
+            "scripts/NativeIdentityFixtureControl.java",
+            "scripts/build_native_identity_verifier.py",
+            "scripts/native_identity_fixture.py"
+          ],
+          "integrated_commit": "89a8c136b08bbd771db756f57a2d20ce46095bed",
+          "integrated_parent": "746c91be3ba241ff9a25a80149113df946a1b6fe",
+          "integrated_tree": "a60c0bc7d70556cc5cdd689d1d500b5c7ab3215a"
+        },
+        {
+          "source_commit": "69e68c86e21403bb8c5a365483bda62b074a9ea2",
+          "source_parent": "1d78c0b19f63bd8fe7cfb18df181779b7fb1a728",
+          "source_tree": "c58ee2d6a1768891e20a5b10445095e4ffd68d4b",
+          "changed_paths": [
+            "deploy/enterprise/native-identity-verifier/AtomicActionTokens.java",
+            "deploy/enterprise/native-identity-verifier/AtomicResetCredentialsActionTokenHandler.java",
+            "deploy/enterprise/native-identity-verifier/AtomicResetPassword.java",
+            "deploy/enterprise/native-identity-verifier/AtomicVerifyEmailActionTokenHandler.java",
+            "deploy/enterprise/native-identity-verifier/README.md",
+            "reports/enterprise/action-token-atomicity-main3-01-20260912.md",
+            "scripts/NativeIdentityFixtureControl.java",
+            "scripts/action_token_fixture_checks.py",
+            "scripts/build_native_identity_verifier.py",
+            "scripts/native_identity_fixture.py"
+          ],
+          "integrated_commit": "97b15a64de5184753415bda4a46754085d7640fc",
+          "integrated_parent": "89a8c136b08bbd771db756f57a2d20ce46095bed",
+          "integrated_tree": "4beed6feedd808af76d2ee6e28401d37b633594c"
+        }
+      ],
+      "branch_tip_equals_exact_at_admission": true
+    },
+    "02": {
+      "batch01_already_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
+      "stage_final_head": "521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb",
+      "stage_final_tree": "4668b8b6e823b4e0c5164e8d292958e7c18639b7",
+      "ordered_commits": [
+        {
+          "source_commit": "d2f13b4413cb5f85e3ddafe0343ca9c37a6356e0",
+          "source_parent": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
+          "source_tree": "5d7369a8f20f294d18daa95c192ade32152aced4",
+          "changed_paths": [
+            "desktop/update_protocol.py",
+            "desktop/update_service.py",
+            "docs/windows-update-release-contract-v1.md",
+            "scripts/build_release.ps1",
+            "scripts/build_release.py",
+            "scripts/per_user_install.py",
+            "scripts/per_user_update_core.py",
+            "scripts/test_build_release.py",
+            "scripts/test_mature_update_transaction.py",
+            "scripts/test_signed_mandatory_floor.py",
+            "scripts/windows_update_apply.py"
+          ],
+          "integrated_commit": "318782a30e5be7e19846ec2aa2fb6895fbacd69c",
+          "integrated_parent": "15f6d0dda0968be1b39295577a139a9017615e82",
+          "integrated_tree": "50a8ad9adb067c21f7592c7cfe1990fb4458b3b6"
+        },
+        {
+          "source_commit": "521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb",
+          "source_parent": "d2f13b4413cb5f85e3ddafe0343ca9c37a6356e0",
+          "source_tree": "4668b8b6e823b4e0c5164e8d292958e7c18639b7",
+          "changed_paths": [
+            "desktop/update_lifecycle.py",
+            "desktop/update_protocol.py",
+            "docs/windows-update-release-contract-v1.md",
+            "scripts/per_user_update_core.py",
+            "scripts/test_mandatory_reason_public_seam.py"
+          ],
+          "integrated_commit": "8ac07d75ac2534ff48f05746d06e7ac1551c21e4",
+          "integrated_parent": "318782a30e5be7e19846ec2aa2fb6895fbacd69c",
+          "integrated_tree": "5c378edae6d5d779fd45d9a127c578e0359c7065"
+        }
+      ],
+      "branch_tip_equals_exact_at_admission": true
+    },
+    "03": {
+      "batch01_already_consumed_source": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
+      "stage_final_head": "3eba9c3e0198d6b485226737e59d594cb773a12c",
+      "stage_final_tree": "1e6c2a1eb1ac37e3c0ca0e6315873c34b9e0a594",
+      "ordered_commits": [
+        {
+          "source_commit": "3443f84130c0b114c24f68997c5a23958f1e27a5",
+          "source_parent": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
+          "source_tree": "c2d04e5e1fd70242f5fb7036c69e3c157c2946b8",
+          "changed_paths": [
+            "desktop/gui_update_runtime.py",
+            "desktop/login_shell.py",
+            "desktop/main.py",
+            "desktop/optional-mandatory-update-ux-closeout.md",
+            "desktop/tests/test_mature_update.py",
+            "desktop/tests/test_optional_mandatory_update_ux.py",
+            "desktop/tests/test_prelogin_update_ux.py",
+            "desktop/tests/test_update_ui_flow.py",
+            "desktop/update_controller.py",
+            "desktop/update_lifecycle.py",
+            "desktop/update_panel.py"
+          ],
+          "integrated_commit": "a5cc449706e3a9643bb49cc076098544baa7e820",
+          "integrated_parent": "8ac07d75ac2534ff48f05746d06e7ac1551c21e4",
+          "integrated_tree": "314d415ee57ec98d791250c5007d7a3e0987dfc0"
+        },
+        {
+          "source_commit": "3eba9c3e0198d6b485226737e59d594cb773a12c",
+          "source_parent": "3443f84130c0b114c24f68997c5a23958f1e27a5",
+          "source_tree": "1e6c2a1eb1ac37e3c0ca0e6315873c34b9e0a594",
+          "changed_paths": [
+            "desktop/mandatory-reason-ux-closeout.md",
+            "desktop/tests/test_mandatory_reason_ux.py",
+            "desktop/tests/test_optional_mandatory_update_ux.py",
+            "desktop/tests/test_prelogin_update_ux.py",
+            "desktop/update_controller.py",
+            "desktop/update_panel.py"
+          ],
+          "integrated_commit": "ab63fac6d756370d7dbf7e4c0a5372d516e8bad9",
+          "integrated_parent": "a5cc449706e3a9643bb49cc076098544baa7e820",
+          "integrated_tree": "2e99f012241813e81c6cf5a8507ba0f188befcc7"
+        }
+      ],
+      "branch_tip_equals_exact_at_admission": true
+    },
+    "04": {
+      "batch01_already_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
+      "stage_final_head": "f9634e24d759eb268c56d45b301046dc503ef714",
+      "stage_final_tree": "007e0081e1d775f59d57039c3c90a5377bed9122",
+      "ordered_commits": [
+        {
+          "source_commit": "6adf672872a4d839be8f12ebca7a91eab783b8ad",
+          "source_parent": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
+          "source_tree": "cd485e6c545e9ff45804d253e5e80d9568c06664",
+          "changed_paths": [
+            "backend/tests/test_e109_security_native_stage2.py",
+            "deploy/enterprise/auth-email-security/nginx.edge.conf",
+            "deploy/enterprise/auth-email-security/test_policy_contract.py",
+            "docs/E109_ACCOUNT_SECURITY_NATIVE_STAGE2.md",
+            "reports/enterprise/E109_ACCOUNT_SECURITY_NATIVE_STAGE2_20260912.json",
+            "scripts/e109_security_native_stage2.py"
+          ],
+          "integrated_commit": "da349841718fc2bed7e94b0416877f0101acfe75",
+          "integrated_parent": "d813c08b1a21e41d98e359a3632dbfb079312524",
+          "integrated_tree": "0f7d1b40a88a8cda3ab6f47eeebdb2a8cb9b5c01"
+        },
+        {
+          "source_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
+          "source_parent": "6adf672872a4d839be8f12ebca7a91eab783b8ad",
+          "source_tree": "007e0081e1d775f59d57039c3c90a5377bed9122",
+          "changed_paths": [
+            "backend/tests/test_e109_security_native_stage2.py",
+            "docs/E109_NATIVE_SECURITY_LAB.md",
+            "reports/enterprise/E109_NATIVE_SECURITY_LAB_20260912.json",
+            "scripts/e109_native_lab/NativeTokenFixture.java",
+            "scripts/e109_native_lab/__init__.py",
+            "scripts/e109_native_lab/keycloak_checks.py",
+            "scripts/e109_native_lab/postgres_checks.py",
+            "scripts/e109_native_lab/run.py"
+          ],
+          "integrated_commit": "928d58f9e7ca35fbe716157703c9d51ad5b04bc6",
+          "integrated_parent": "da349841718fc2bed7e94b0416877f0101acfe75",
+          "integrated_tree": "5e94e494dddff549e265f9ffe570a2b611b1a1d0"
+        }
+      ],
+      "branch_tip_equals_exact_at_admission": true
+    }
+  },
+  "unknown_commits": [],
+  "ancestry_audit_sha256": "792b7e68cd87e0e8392df44d468ea6270443b94b7a5369a03ca16ecac5e13565",
+  "overlap_matrix": [
+    {
+      "pair": "01/02",
+      "paths": []
+    },
+    {
+      "pair": "01/03",
+      "paths": [
+        "desktop/login_shell.py",
+        "desktop/main.py",
+        "desktop/tests/test_prelogin_update_ux.py"
+      ]
+    },
+    {
+      "pair": "01/04",
+      "paths": []
+    },
+    {
+      "pair": "02/03",
+      "paths": [
+        "desktop/update_lifecycle.py"
+      ]
+    },
+    {
+      "pair": "02/04",
+      "paths": []
+    },
+    {
+      "pair": "03/04",
+      "paths": []
+    }
+  ],
+  "semantic_authorities": [
+    {
+      "pair": "02/03",
+      "authority": "02 policy/core; 03 presentation",
+      "boundary": "Public verified mandatory floor/reason -> adapter, login and main-window restrictions. Reasons never establish policy."
+    },
+    {
+      "pair": "01/03",
+      "authority": "01 identity; 03 update gating",
+      "boundary": "Native username/password form must obey mandatory gate before/after session and bootstrap. Optional updates permit use. Preserve both changes."
+    },
+    {
+      "pair": "01/04",
+      "authority": "01 identity/action tokens; 04 edge/RLS tests",
+      "boundary": "Atomic SPI supersedes independently reproduced upstream race gaps; preserve negative historical reports and retain later independent native PASS with exact JAR binding."
+    },
+    {
+      "pair": "A Batch01/01",
+      "authority": "Current user Batch02 dispatch supersedes earlier normal-login UX",
+      "boundary": "Legacy OIDC remains historical/compatibility; native desktop is normal UX. No password/direct grant or persistence."
+    }
+  ],
+  "text_conflict_count": 3,
+  "text_conflict_unit": "FILES",
+  "resolutions": [
+    {
+      "id": "R1",
+      "pair": "02/03",
+      "type": "SEMANTIC",
+      "files": [
+        "desktop/update_lifecycle.py"
+      ],
+      "problem": "Both stages added mandatory_reason; conflict-free cherry-pick created duplicate keyword SyntaxError.",
+      "resolution": "Keep 02 normalized policy fields and 03 update_path; remove only duplicate keyword.",
+      "commit": "d813c08b1a21e41d98e359a3632dbfb079312524",
+      "checks": "smoke03-fixed and final update/desktop lanes PASS"
+    },
+    {
+      "id": "R2",
+      "pair": "01/03",
+      "type": "TEXT",
+      "files": [
+        "desktop/login_shell.py"
+      ],
+      "resolution": "Union QApplication with QLineEdit imports; preserve native controls and mandatory UI.",
+      "commit": "746c91be3ba241ff9a25a80149113df946a1b6fe"
+    },
+    {
+      "id": "R3",
+      "pair": "01/03",
+      "type": "TEXT",
+      "files": [
+        "desktop/main.py"
+      ],
+      "resolution": "Keep password clearing, mandatory main hide/disable/service suspend/resume, and independent successful-bootstrap guard.",
+      "commit": "746c91be3ba241ff9a25a80149113df946a1b6fe"
+    },
+    {
+      "id": "R4",
+      "pair": "01/A knowledge",
+      "type": "TEXT_AND_AUTHORITY",
+      "files": [
+        "docs/E109_AUTH_ISSUER_MIGRATION.md"
+      ],
+      "resolution": "Current user authority supersedes Batch01 and 03d979 normal browser UX. Preserve historical legacy protocol/infrastructure contract and current native ADR."
+    },
+    {
+      "id": "R5",
+      "pair": "01/03",
+      "type": "SEMANTIC",
+      "files": [
+        "desktop/login_shell.py",
+        "desktop/tests/test_main3_batch02_integration.py"
+      ],
+      "problem": "Mandatory update completion cleared gate but left native credential inputs disabled.",
+      "resolution": "Recompute enabled state from auth/retry/update gate. Add 15 real signed-core/native-login/presentation composition cases.",
+      "commit": "079f1efc9d8f7300aeabbe5f499cb169027e564c",
+      "checks": "439 final desktop tests PASS"
+    },
+    {
+      "id": "R6",
+      "pair": "01/03/04 tests",
+      "type": "TEST_PREMISE",
+      "files": [
+        "desktop/tests/test_in_app_oidc.py",
+        "desktop/tests/test_optional_mandatory_update_ux.py",
+        "scripts/e109_security_native_stage2.py"
+      ],
+      "resolution": "Legacy tests now check native account switch or fail-closed absence; update race follows successful bootstrap; stage2 desktop expected count 88 -> 89 bound to final JUnit. New composition fixture disables its automatic second check and uses isolated settings, fixing one teardown lock race."
+    }
+  ],
+  "unresolved_semantic_conflicts": [],
+  "final_worker_path_differences": [
+    {
+      "slot": "01",
+      "path": "desktop/in_app_oidc.py"
+    },
+    {
+      "slot": "01",
+      "path": "desktop/login_shell.py"
+    },
+    {
+      "slot": "01",
+      "path": "desktop/main.py"
+    },
+    {
+      "slot": "01",
+      "path": "desktop/tests/test_prelogin_update_ux.py"
+    },
+    {
+      "slot": "01",
+      "path": "docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md"
+    },
+    {
+      "slot": "01",
+      "path": "docs/E109_AUTH_ISSUER_MIGRATION.md"
+    },
+    {
+      "slot": "02",
+      "path": "desktop/update_lifecycle.py"
+    },
+    {
+      "slot": "02",
+      "path": "docs/windows-update-release-contract-v1.md"
+    },
+    {
+      "slot": "03",
+      "path": "desktop/login_shell.py"
+    },
+    {
+      "slot": "03",
+      "path": "desktop/main.py"
+    },
+    {
+      "slot": "03",
+      "path": "desktop/tests/test_optional_mandatory_update_ux.py"
+    },
+    {
+      "slot": "03",
+      "path": "desktop/tests/test_prelogin_update_ux.py"
+    },
+    {
+      "slot": "03",
+      "path": "desktop/update_lifecycle.py"
+    },
+    {
+      "slot": "04",
+      "path": "scripts/e109_security_native_stage2.py"
+    }
+  ],
+  "difference_scope": "Only composed login/main/adapter/tests, native authority docs, inherited Batch01 capability guard in legacy in_app_oidc, and explicitly adjusted stage2 test count differ from owning worker finals. Identity backend/SPI/token/build source is exact; no policy weakening.",
+  "smokes": {
+    "02": {
+      "lane": "smoke02",
+      "cases": 24,
+      "junit_sha256": "d76d1204a846d3f66babc5dfd0b6bb033f8f19d79dd55d469e8efd5c0001ca77",
+      "selectors": [
+        "scripts/test_mandatory_reason_public_seam.py"
+      ]
+    },
+    "03": {
+      "lane": "smoke03-fixed",
+      "cases": 22,
+      "junit_sha256": "f8ec4af8413617a161c853757f605efd7690c71dbfdafcfd793052a08fc35b68",
+      "selectors": [
+        "desktop/tests/test_mandatory_reason_ux.py"
+      ]
+    },
+    "04": {
+      "lane": "smoke04",
+      "cases": 9,
+      "junit_sha256": "e8c0a83c7e4c8cc951993acc8f5854d4f43754b294ae8dd2716ae3c0649ad12f",
+      "selectors": [
+        "deploy/enterprise/auth-email-security/test_policy_contract.py"
+      ]
+    },
+    "01": {
+      "lane": "smoke01",
+      "cases": 19,
+      "junit_sha256": "234624d44d108ae3e4faf28cd0afc412f73440caedc5065d22d20362419b39a7",
+      "selectors": [
+        "desktop/tests/test_native_login.py"
+      ]
+    }
+  },
+  "combined_regression": {
+    "lanes": {
+      "backend-combined": {
+        "passed": 140,
+        "skipped": 2,
+        "xml_sha256": "e671ad742e8392bfe50b7c40fea92bf737d05c5ccf6017290c97a64b2d7baba1",
+        "selectors": [
+          "backend/tests/test_native_auth.py",
+          "backend/tests/test_enterprise_identity_compatibility.py",
+          "backend/tests/test_enterprise_identity_runtime.py",
+          "backend/tests/test_account_core_mvp_runtime.py",
+          "backend/tests/test_e109_issuer_migration.py",
+          "backend/tests/test_e109_consumer_continuity.py",
+          "backend/tests/test_account_workspace_bootstrap.py",
+          "backend/tests/test_enterprise_account_core_api.py",
+          "backend/tests/test_enterprise_authorization_negative_pack.py",
+          "backend/tests/test_enterprise_tenant_persistence.py",
+          "backend/tests/test_e109_account_email_security_preflight.py"
+        ],
+        "interpreter": "E:/Codex/Temp/mf-account-core-r1-venv/Scripts/python.exe",
+        "invocation": "backend-combined-invocation.json"
+      },
+      "update-core": {
+        "passed": 315,
+        "xml_sha256": "e461a66b644cae9cda2b587f0f186e323a66cb0c64a328be7435114cdca71897",
+        "selectors": [
+          "scripts/test_signed_mandatory_floor.py",
+          "scripts/test_mandatory_reason_public_seam.py",
+          "scripts/test_build_release.py",
+          "scripts/test_mature_update_transaction.py",
+          "scripts/test_startup_update_repair.py",
+          "scripts/test_one_click_update_core.py",
+          "scripts/test_canonical_identity_recovery.py",
+          "scripts/test_per_user_install.py",
+          "scripts/test_per_user_core_contract.py",
+          "installer/inno/tests"
+        ],
+        "interpreter": "E:/Codex/Temp/mf-e1-02b-verify-py313/Scripts/python.exe",
+        "invocation": "update-core-invocation.json"
+      },
+      "desktop-final-clean": {
+        "passed": 439,
+        "xml_sha256": "07a151e890eff3d60067cf9359f65940c3729b2a0a72e2fac7facb8d0d3f173a",
+        "selectors": [
+          "desktop/tests/test_native_login.py",
+          "desktop/tests/test_login_gate_bootstrap.py",
+          "desktop/tests/test_enterprise_account_shell.py",
+          "desktop/tests/test_mandatory_reason_ux.py",
+          "desktop/tests/test_optional_mandatory_update_ux.py",
+          "desktop/tests/test_prelogin_update_ux.py",
+          "desktop/tests/test_update_ui_flow.py",
+          "desktop/tests/test_update_ui_core_regression.py",
+          "desktop/tests/test_login_smooth.py",
+          "desktop/tests/test_e109_integration_binding.py",
+          "desktop/tests/test_e109_capability_config.py",
+          "desktop/tests/test_mature_update.py",
+          "desktop/tests/test_enterprise_oidc.py",
+          "desktop/tests/test_in_app_oidc.py",
+          "desktop/tests/test_e109_system_browser.py",
+          "desktop/tests/test_e109_account_action_boundary.py",
+          "desktop/tests/test_main3_batch01_integration.py",
+          "scripts/test_e109_auth_source_binding.py",
+          "scripts/test_e108_candidate_paths.py",
+          "desktop/tests/test_main3_batch02_integration.py"
+        ],
+        "interpreter": "E:/Codex/Temp/mf-e1-02b-verify-py313/Scripts/python.exe",
+        "invocation": "desktop-final-clean-invocation.json"
+      },
+      "edge-runtime": {
+        "passed": 16,
+        "xml_sha256": "206dea9158e6764635339d600fd787b11777ee1fa0b705a35e66047c8cd4f344",
+        "selectors": [
+          "backend/tests/test_e109_security_native_stage2.py",
+          "deploy/enterprise/auth-email-security/test_policy_contract.py"
+        ],
+        "interpreter": "E:/Codex/Temp/mf-account-core-r1-venv/Scripts/python.exe",
+        "invocation": "edge-runtime-invocation.json"
+      }
+    },
+    "totals": {
+      "passed": 910,
+      "skipped": 2
+    },
+    "skipped": [
+      {
+        "classname": "backend.tests.test_account_workspace_bootstrap",
+        "name": "test_real_isolated_postgres_first_use_rls_if_provisioned",
+        "reason": "NOT_RUN: no explicitly provisioned isolated PostgreSQL bootstrap database"
+      },
+      {
+        "classname": "backend.tests.test_enterprise_tenant_persistence",
+        "name": "test_real_postgres_rls_is_fail_closed_and_pool_safe",
+        "reason": "real PostgreSQL RLS runs only in the dedicated -m rls DSN-aware gate"
+      }
+    ],
+    "harness_count_binding": {
+      "runtime": {
+        "expected": 7,
+        "observed_in_final_combined_junit": 7
+      },
+      "backend_capability": {
+        "expected": 5,
+        "observed_in_final_combined_junit": 5
+      },
+      "desktop_capability": {
+        "expected": 89,
+        "observed_in_final_combined_junit": 89
+      },
+      "policy_contract": {
+        "expected": 9,
+        "observed_in_final_combined_junit": 9
+      }
+    },
+    "counting": "Unique JUnit classname/name across final successful lanes only. Smoke, initial failed lanes, repair reruns excluded. Knowledge tests and native fixture checks separately counted."
+  },
+  "initial_findings": {
+    "desktop_combined": "420 passed / 3 stale test premise failures; corrected and final lane passed",
+    "cross_cutting_initial": "14 passed / 1 failure exposed disabled native inputs after required update; fixed",
+    "desktop_final_initial": "439 assertions passed / 1 fixture teardown operation-lock error; isolated automatic check/settings and final cleanup passed",
+    "counting": "Only final successful deduplicated JUnit lanes contribute 910 pass, 0 fail, 2 skip; no inflation from reruns."
+  },
+  "native_fixture": {
+    "executed_by": "A",
+    "fixture_scope": "Disposable local Keycloak 26.7.3 / PostgreSQL 17.6; mTLS backend and offscreen native Qt form; Windows Credential Locker holds disposable session only; no production identity or SMTP.",
+    "source_commit": "079f1efc9d8f7300aeabbe5f499cb169027e564c",
+    "receipt_file": "mf-native-c7cfdb975597-receipt.json",
+    "receipt_sha256": "3ee8f5e5c428fa5cb0d47b0dadd93f196235eb81849262e01abe80d9e062cfb2",
+    "status": "PASS",
+    "check_count": 61,
+    "checks": {
+      "real_keycloak_discovery": true,
+      "anonymous_verifier_denied": true,
+      "unapproved_service_certificate_denied": true,
+      "atomic_handlers_selected": true,
+      "verification_sequential": true,
+      "verification_replay": true,
+      "verification_old_after_rearm": true,
+      "verification_new_after_resend": true,
+      "verification_concurrent_2": true,
+      "verification_concurrent_5": true,
+      "verification_concurrent_10": true,
+      "verification_expired": true,
+      "verification_wrong_email": true,
+      "verification_wrong_signature": true,
+      "verification_malformed": true,
+      "reset_sequential": true,
+      "reset_replay": true,
+      "reset_old_after_rearm": true,
+      "reset_new_after_resend": true,
+      "reset_concurrent_2": true,
+      "reset_concurrent_5": true,
+      "reset_concurrent_10": true,
+      "reset_incomplete_profile_concurrent_2": true,
+      "reset_incomplete_profile_concurrent_5": true,
+      "reset_validation_retry": true,
+      "reset_after_validation_correction": true,
+      "reset_same_form_concurrent_2": true,
+      "reset_same_form_concurrent_5": true,
+      "reset_same_form_concurrent_10": true,
+      "reset_expired": true,
+      "reset_wrong_email": true,
+      "reset_wrong_signature": true,
+      "reset_malformed": true,
+      "action_cross_purpose": true,
+      "verification_consumed_after_restart": true,
+      "reset_consumed_after_restart": true,
+      "real_password_provider": true,
+      "wrong_unknown_disabled_anti_enumeration": true,
+      "temporary_required_action_closed": true,
+      "email_required_action_closed": true,
+      "mfa_required_action_closed": true,
+      "keycloak_brute_force_locked": true,
+      "identity_password_age_policy_closed": true,
+      "configured_otp_mfa_closed": true,
+      "realm_mandatory_mfa_flow_closed": true,
+      "real_tls_backend_session": true,
+      "native_form_wrong_unknown_disabled_uniform": true,
+      "native_form_real_tls_verifier": true,
+      "workspace_bootstrap": true,
+      "existing_membership_continuity": true,
+      "main_window_gate": true,
+      "windows_credential_locker_session_only": true,
+      "restore_logout_revocation": true,
+      "password_never_persisted": true,
+      "real_password_change_revokes_refresh": true,
+      "real_disabled_identity_revokes_refresh": true,
+      "real_session_access_expiry": true,
+      "real_session_refresh_expiry": true,
+      "unconfigured_verifier_closed": true,
+      "real_mtls_timeout_closed": true,
+      "real_identity_unavailable_closed": true
+    },
+    "action_token_observations": {
+      "verification_sequential": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200
+        ],
+        "http500": false
+      },
+      "verification_replay": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "verification_old_after_rearm": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "verification_new_after_resend": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200
+        ],
+        "http500": false
+      },
+      "verification_concurrent_2": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200,
+          400
+        ],
+        "http500": false
+      },
+      "verification_concurrent_5": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200,
+          400,
+          400,
+          400,
+          400
+        ],
+        "http500": false
+      },
+      "verification_concurrent_10": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          400,
+          400,
+          400,
+          200,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "http500": false
+      },
+      "verification_expired": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "verification_wrong_email": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "verification_wrong_signature": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "verification_malformed": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_sequential": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200
+        ],
+        "http500": false
+      },
+      "reset_replay": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_old_after_rearm": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_new_after_resend": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200
+        ],
+        "http500": false
+      },
+      "reset_concurrent_2": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          200
+        ],
+        "http500": false
+      },
+      "reset_concurrent_5": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          200,
+          400,
+          400,
+          400
+        ],
+        "http500": false
+      },
+      "reset_concurrent_10": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          200,
+          400,
+          400
+        ],
+        "http500": false
+      },
+      "reset_incomplete_profile_concurrent_2": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          200
+        ],
+        "http500": false
+      },
+      "reset_incomplete_profile_concurrent_5": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          400,
+          400,
+          200,
+          400
+        ],
+        "http500": false
+      },
+      "reset_after_validation_correction": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          200
+        ],
+        "http500": false
+      },
+      "reset_same_form_concurrent_2": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          200
+        ],
+        "http500": false
+      },
+      "reset_same_form_concurrent_5": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          400,
+          400,
+          200,
+          400
+        ],
+        "http500": false
+      },
+      "reset_same_form_concurrent_10": {
+        "pass": true,
+        "success_count": 1,
+        "statuses": [
+          400,
+          400,
+          200,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "http500": false
+      },
+      "reset_expired": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_wrong_email": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_wrong_signature": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_malformed": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "cross_purpose": {
+        "pass": true
+      },
+      "verification_consumed_after_restart": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      },
+      "reset_consumed_after_restart": {
+        "pass": true,
+        "success_count": 0,
+        "statuses": [
+          400
+        ],
+        "http500": false
+      }
+    },
+    "qualification": {
+      "status": "PASS",
+      "source_commit": "079f1efc9d8f7300aeabbe5f499cb169027e564c",
+      "identity_source_exact": "69e68c86e21403bb8c5a365483bda62b074a9ea2",
+      "source_sha256": {
+        "scripts/build_native_identity_verifier.py": "7c9f517495dc3e254274548ba6ad24fae5e14a413bd5868ee6cc35ed1c5cc687",
+        "deploy/enterprise/native-identity-verifier/NativeIdentityVerifier.java": "608fb33fb800ba8a4fa82e0fb8d28ed160ec953354f10704951ff372bfcadd37",
+        "deploy/enterprise/native-identity-verifier/AtomicActionTokens.java": "7c3878ac504a3b7b2bc26339e7fec8db7c0ba24e1f574349de38c9af6389b3b5",
+        "deploy/enterprise/native-identity-verifier/AtomicVerifyEmailActionTokenHandler.java": "fbc62312b3cd7f17c70aa4a292e9c7c63793f3793727d553f60ef60be0d9cbe3",
+        "deploy/enterprise/native-identity-verifier/AtomicResetCredentialsActionTokenHandler.java": "e3b49d012e71619ce2a2beef5c81e1b44d370fc5cbf3e76e7c09abdbefcb88b4",
+        "deploy/enterprise/native-identity-verifier/AtomicResetPassword.java": "5ba3367673a283f91d7732cc92240193f43f7ab000069526a82cbe4e57e10387"
+      },
+      "integrated_jar_sha256": "17705d5980ada83e8147c09d5c58a9ce0d60e50f20219e3f87870a1f8416b112",
+      "independently_tested_jar_sha256": "43657662bc85497734e99a9aeb86fd2db3a3307ec12b438c9ffe0834c170269a",
+      "all_jar_entries_equal": true,
+      "note": "ZIP timestamps may change the container hash; every class/resource entry is identical.",
+      "native_fixture_artifact_bindings": [
+        {
+          "fixture": "mf-native-d5278c885a44",
+          "tested_jar_sha256": "67cdeb2ac21dc9fd71ea0c52bb70b3dd105d70c517a6d4d1f2ad2b87eb17ec09",
+          "all_jar_entries_equal": true,
+          "receipt_sha256": "17d325eed5b41fbe9296595e2a23ae36993e05694c33208e87663b171302a388"
+        },
+        {
+          "fixture": "mf-native-c7cfdb975597",
+          "tested_jar_sha256": "b6533e1927b208c8c2492c6a0cfcefc3f8222b08832f207b5331fd3839c9f540",
+          "all_jar_entries_equal": true,
+          "receipt_sha256": "3ee8f5e5c428fa5cb0d47b0dadd93f196235eb81849262e01abe80d9e062cfb2"
+        }
+      ]
+    },
+    "cleanup": [
+      {
+        "fixture": "E:\\Codex\\Temp\\mf-native-d5278c885a44",
+        "processes_matching": 0,
+        "private_key_files": 0,
+        "postmaster_pid_files": 0,
+        "fixture_cleanup": {
+          "keycloak_stopped": true,
+          "api_stopped": true,
+          "fixture_private_keys_removed": true,
+          "postgres_stopped": true
+        },
+        "directory_removed": false,
+        "directory_retention_reason": "Automatic approval review rejected recursive directory cleanup: blocked by policy; no more specific reason returned. No deletion workaround attempted."
+      },
+      {
+        "fixture": "E:\\Codex\\Temp\\mf-native-c7cfdb975597",
+        "processes_matching": 0,
+        "private_key_files": 0,
+        "postmaster_pid_files": 0,
+        "fixture_cleanup": {
+          "keycloak_stopped": true,
+          "api_stopped": true,
+          "fixture_private_keys_removed": true,
+          "postgres_stopped": true
+        },
+        "directory_removed": false,
+        "directory_retention_reason": "Automatic approval review rejected recursive directory cleanup: blocked by policy; no more specific reason returned. No deletion workaround attempted."
+      }
+    ]
+  },
+  "independent_04_confirmation": {
+    "executed_by": "04",
+    "status": "PASS_01_TOKEN_FIX_INDEPENDENTLY_CONFIRMED",
+    "source_commit": "69e68c86e21403bb8c5a365483bda62b074a9ea2",
+    "source_tree": "c58ee2d6a1768891e20a5b10445095e4ffd68d4b",
+    "tested_jar_sha256": "43657662bc85497734e99a9aeb86fd2db3a3307ec12b438c9ffe0834c170269a",
+    "receipt_sha256": "86ad1de58cac20b317e628026143629bab0dbcec2df28da5881fa1175e92124b",
+    "native_checks_pass": 23,
+    "verification_max_success": 1,
+    "reset_max_success": 1,
+    "loser_response": "HTTP400",
+    "http500": false,
+    "rls_smoke": "PASS; A cannot read B; missing context zero rows; direct nonprivileged application login",
+    "anti_enumeration": "PASS; known-wrong and absent credentials identical HTTP400/body",
+    "rate_limit_encoding_bypass": "PASS; all four variants HTTP429",
+    "scope": "Independent receipt contains no new source commit. Its native PASS is retained; A separately reran native identity/tokens and edge, not RLS."
+  },
+  "native_rls_evidence": {
+    "status": "PASS_EVIDENCE_RETAINED",
+    "executed_by": "04",
+    "rerun_by_a": false,
+    "source_receipt": "reports/enterprise/E109_NATIVE_SECURITY_LAB_20260912.json",
+    "receipt_sha256": "86c1770bbf4d0c250f82ec477e423aba9628d65461a4464d06577ebbed232fd8",
+    "original_overall_status": "PARTIAL",
+    "native_postgresql_version": "17.6",
+    "checks": {
+      "tenant_select": "PASS",
+      "tenant_insert": "PASS",
+      "tenant_update": "PASS",
+      "tenant_delete": "PASS",
+      "with_check": "PASS",
+      "native_resource_probes": 120,
+      "bidirectional": true,
+      "pool_a_b_a": "PASS",
+      "resource_tables": 8,
+      "missing_context": "PASS",
+      "invalid_context": "PASS",
+      "transaction_rollback": "PASS",
+      "exception_context_cleanup": "PASS",
+      "workspace_bootstrap_native": "PASS"
+    },
+    "supersession": "Original report is retained PARTIAL. Its token re-arm/concurrency failures are superseded only by the exact 69e68 independent retest and A native fixture evidence; RLS PASS scope is retained."
+  },
+  "product_authority": {
+    "normal_desktop_login_ux": "NATIVE_IN_APP_USERNAME_PASSWORD",
+    "external_browser_normal_login": false,
+    "password_grant": false,
+    "keycloak_direct_grant": false,
+    "password_persisted": false,
+    "path": [
+      "native username/password",
+      "MentorFlow backend",
+      "backend-only authenticated verifier",
+      "Keycloak credential provider",
+      "MentorFlow opaque session",
+      "workspace bootstrap",
+      "main window"
+    ],
+    "optional_update": "Continue/later/update-restart/update-on-exit permitted",
+    "mandatory_update": "Block login and main; current latest or quit; no skip/cancel/network escape",
+    "monotonic_signed_floor": true,
+    "historical_example": {
+      "current": "1.0",
+      "historical_mandatory": "1.2",
+      "latest_optional": "1.4",
+      "result": "MANDATORY",
+      "target": "1.4"
+    },
+    "mandatory_reason": "Presentation only: security/protocol/data_compatibility/support_floor Chinese; unknown generic; does not decide state"
+  },
+  "not_run": {
+    "real_smtp_send": 0,
+    "real_smtp_verify": "NOT_RUN",
+    "real_smtp_reset": "NOT_RUN",
+    "real_install_qa": "NOT_RUN",
+    "final_1_5_0_to_1_5_1": "NOT_RUN",
+    "live_production_login": "NOT_RUN",
+    "production_keycloak_mutation": 0,
+    "formal_main3": "NOT_CREATED",
+    "main2": "FROZEN",
+    "product_acceptance": "PENDING"
+  },
+  "knowledge": {
+    "authority_refresh": "Batch02 native auth/current update authority and receipt-derived board/queue/plan; WEB handoff remains derived.",
+    "boundary_tests": {
+      "passed": 18,
+      "failed": 0,
+      "scope": "offline unittest knowledge/link/schema/provenance/overflow/secret-negative checks"
+    },
+    "secret_scan": {
+      "scope": "All Batch02 added/changed current files since 15f6d0 plus release authority/capability configs; obvious patterns, no entire repository/history/live-environment audit.",
+      "file_count_before_receipt": 89,
+      "pattern_hits": 65,
+      "review": "All 65 locations inspected with literal values redacted: production variable/parameter flow, protocol field names, generated fixture secrets or synthetic test values; no real secret value detected. Extended final knowledge lint recorded externally.",
+      "limitations": "Obvious patterns plus focused manual review; no entire-history/live security certification."
+    }
+  },
+  "runtime_limits": [
+    "Single-process backend session/rate limits; production distributed revocation and long-session renewal unqualified.",
+    "Actual Keycloak deployment version/provider/MFA/federation/topology and shared single-use authority require deployment qualification.",
+    "Register and forgot_password release capabilities remain false; native account-action product contract remains separately gated.",
+    "Two disposable fixture data directories retained because automatic approval review rejected recursive cleanup; processes stopped and private keys removed."
+  ],
+  "closeout": {
+    "workers": "A/01/02/03/04/B SILENT after completion",
+    "open_children": 0,
+    "active_children": 0,
+    "worker_tasks_contacted": 0,
+    "publication_authority": "Normal non-force integration/main3 push only after combined/knowledge/clean/workflow gates; final external receipt supplies remote proof."
+  }
+}
