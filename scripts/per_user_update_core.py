@@ -39,6 +39,61 @@ def _startup_result(state, **details):
                 shell='login' if state in ('HEALTHY','OPTIONAL_UPDATE','MANDATORY_UPDATE') else 'repair', **details)
 
 
+def _installed_identity(root):
+    # A migrated Inno install retains its flat executable. Losing STATE must
+    # not silently reinterpret that canonical installation as the old layout.
+    if (root / 'App').exists() and not (root / install.STATE).is_file():
+        raise SecurityError('canonical installation state missing')
+    return install.installed(root)
+
+
+def _canonical_identity_candidate(root):
+    """Read-only recovery evidence, never directory/receipt authority.
+
+    Fixed signed sidecars must bind the surviving App manifest (and its version
+    configuration when present). Updater's older pinned release can identify
+    App only if it passes that same binding. Other payload damage is repaired
+    through the existing full reconstruction, never accepted as healthy here.
+    """
+    from desktop.update_protocol import MANIFEST_PATH
+    app = install.plain(root / 'App')
+    if not app.is_dir(): raise SecurityError('canonical App identity missing')
+    names = (install.CURRENT, install.HIGHEST, 'previous/release.json', install.UPDATER_RELEASE)
+    for name in (*names, install.STATE):
+        path = install.plain(root / name)
+        if path.exists() and not path.is_file():
+            raise SecurityError('identity record is not a regular file')
+    public_keys = install.keys()
+    # This remains the transaction's anti-replay witness. Never discard a bad
+    # witness or overwrite a higher epoch while restoring current identity.
+    if (root / install.HIGHEST).exists():
+        install.historical(install.read(root / install.HIGHEST), public_keys)
+    for name in names:
+        try:
+            release = install.historical(install.read(root / name), public_keys)
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            continue
+        try:
+            if release.signed['withdrawn']:
+                raise SecurityError('withdrawn identity candidate')
+            subset = [MANIFEST_PATH]
+            if 'mentorflow-version.json' in release.rows:
+                subset.append('mentorflow-version.json')
+            install.verify_tree(app, release, subset=subset)
+            if len(subset) > 1:
+                manifest = strict_json(install.read(app / 'mentorflow-version.json'))
+                if not isinstance(manifest, dict) or manifest.get('version') != release.version:
+                    raise SecurityError('recovery configuration version mismatch')
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            # A surviving authentic CURRENT cannot be replaced by another
+            # generation just because a different sidecar happens to match.
+            if name == install.CURRENT: raise
+            continue
+        install.verify_recovery_runtime(root, release)
+        return release
+    raise SecurityError('no signed candidate binds the canonical App identity')
+
+
 def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
     """Single authority for startup; no account API, token or UI dependency.
 
@@ -47,7 +102,12 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
     """
     try:
         root = install.target(root)
-        release = install.installed(root)
+        try:
+            release = _installed_identity(root)
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            release = _canonical_identity_candidate(root)
+            return _startup_result('REPAIR_REQUIRED', current=release.version,
+                                   reason='canonical_identity_recovery_required')
         install.verify_recovery_runtime(root, release)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('FATAL_UNRECOVERABLE', reason='recovery_runtime_unverified')
@@ -78,14 +138,26 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
 
 
 def bootstrap_legacy_identity(root, *, envelope=None):
-    """Repair missing flat-Inno binding using signed release, NEVER the INI.
+    """Restore signed identity for canonical or older flat-Inno installations.
 
     The corrected installer supplies current-release.json outside payload.
     Older flat installs can obtain the exact build-provisioned BASE descriptor.
     Offline failure leaves the installation untouched and remains recoverable.
     """
     root = install.target(root)
-    if install.is_install(root): return install.installed(root)
+    try:
+        return _installed_identity(root)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        if not (root / 'App').exists() and install.is_install(root): raise
+    if (root / 'App').exists():
+        _canonical_identity_candidate(root)  # reject before even creating a lock
+        from desktop.update_download import InstallUpdateLock
+        with InstallUpdateLock(root):
+            release = _canonical_identity_candidate(root)
+            install.atomic(root / install.CURRENT, release.envelope)
+            install.atomic(root / install.STATE, canonical(dict(
+                schema=install.SCHEMA, mode='per_user', app_id=install.configured().app_id)))
+        return release
     if install.app_path(root) != root: raise SecurityError('unrecognized legacy layout')
     if envelope is None:
         from mentorflow_delivery_authority import RECOVERY_RELEASE_URL, ONE_CLICK_TEST_FIXTURE
@@ -109,7 +181,7 @@ def repair_installation(root, progress=None, cancel=None, *, service=None, pid=N
     owned = service is None
     try:
         root = install.target(root)
-        if not install.is_install(root): bootstrap_legacy_identity(root)
+        bootstrap_legacy_identity(root)
         import sys
         if pid is None and Path(sys.executable).absolute() == install.app_path(root)/'MentorFlow.exe':
             pid = os.getpid()
