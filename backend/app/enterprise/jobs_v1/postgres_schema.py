@@ -4,7 +4,7 @@ Alembic revision 0030 already owns MentorFlow's ``enterprise_jobs`` tables.
 Procrastinate owns a separate set of public-schema queue objects.  This module
 never runs from the worker command: an explicit init job applies the upstream
 schema with the migration-owner URL, grants only the required objects to the
-non-owner application role, and leaves Alembic at canonical revision 0031.
+non-owner application role, and leaves Alembic at the canonical repository head.
 """
 
 from __future__ import annotations
@@ -213,6 +213,8 @@ def apply_worker_schema(
 ) -> None:
     """Apply Procrastinate 3.9 and narrow grants under the migration owner."""
 
+    from app.enterprise_tenancy.import_ledger_schema import require_account_import_ledger_schema
+
     _require_migration_owner(migration_database_url)
     options = dict(engine_options or {})
     engine = sa.create_engine(migration_database_url, future=True, **options)
@@ -224,6 +226,8 @@ def apply_worker_schema(
                 raise WorkerSchemaError(
                     "worker schema bootstrap requires canonical Alembic head"
                 )
+
+            require_account_import_ledger_schema(connection)
 
         connector = procrastinate.PsycopgConnector(
             conninfo=_conninfo(migration_database_url), min_size=1, max_size=1
@@ -238,6 +242,7 @@ def apply_worker_schema(
                 raise WorkerSchemaError(
                     "worker schema bootstrap requires canonical Alembic head"
                 )
+            require_account_import_ledger_schema(connection)
             _grant_runtime_objects(connection)
     finally:
         engine.dispose()

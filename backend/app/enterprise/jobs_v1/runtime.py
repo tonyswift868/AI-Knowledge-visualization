@@ -179,6 +179,8 @@ def load_worker_dependencies(
 def verify_worker_database(engine: Engine) -> None:
     """Require canonical Alembic, safe role, grants, and Procrastinate schema."""
 
+    from app.enterprise_tenancy.import_ledger_schema import require_account_import_ledger_schema
+
     if engine.dialect.name != "postgresql":
         raise WorkerConfigurationError("production worker requires PostgreSQL")
     try:
@@ -189,6 +191,7 @@ def verify_worker_database(engine: Engine) -> None:
                 raise WorkerConfigurationError(
                     "worker database is not at canonical Alembic head"
                 )
+            require_account_import_ledger_schema(connection)
             connection.execute(sa.text("SELECT job_id FROM enterprise_jobs.jobs LIMIT 0"))
             connection.execute(sa.text("SELECT id FROM procrastinate_jobs LIMIT 0"))
             connection.execute(sa.text("SELECT id FROM procrastinate_workers LIMIT 0"))

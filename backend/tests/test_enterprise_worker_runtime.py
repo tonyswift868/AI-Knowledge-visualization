@@ -534,6 +534,10 @@ def test_worker_schema_bootstrap_owns_procrastinate_app_lifecycle(
         return "connector"
 
     engine = _Engine()
+    from app.enterprise_tenancy import import_ledger_schema
+    # This test isolates connector lifecycle; the real schema gate is covered
+    # by the owned native PostgreSQL 0036 matrix.
+    monkeypatch.setattr(import_ledger_schema, "require_account_import_ledger_schema", lambda connection: None)
     monkeypatch.setattr(
         postgres_schema.sa,
         "create_engine",

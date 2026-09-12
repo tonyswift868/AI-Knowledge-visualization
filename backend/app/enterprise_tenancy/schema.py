@@ -9,7 +9,7 @@ from .models import RESOURCE_TABLE_BY_KIND
 
 
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
-ENTERPRISE_MIGRATION_REVISION = "0035_account_workspace_bootstrap"
+ENTERPRISE_MIGRATION_REVISION = "0036_account_import_ledger"
 TENANT_CONTEXT_SETTINGS = (
     "mentorflow.organization_id",
     "mentorflow.workspace_id",
@@ -31,12 +31,14 @@ ASSET_MANIFEST_TABLES = (
     "asset_manifests",
     "asset_revisions",
 )
+ACCOUNT_IMPORT_LEDGER_TABLES = ("account_import_ledger",)
 RESOURCE_SCOPE_TABLE = "resource_scopes"
 RESOURCE_TABLES = tuple(RESOURCE_TABLE_BY_KIND.values())
 TENANT_SCOPED_TABLES = (
     *IDENTITY_TABLES,
     *WORKSPACE_PERSISTENCE_TABLES,
     *ASSET_MANIFEST_TABLES,
+    *ACCOUNT_IMPORT_LEDGER_TABLES,
     RESOURCE_SCOPE_TABLE,
     *RESOURCE_TABLES,
 )
@@ -73,6 +75,14 @@ def resource_scope_predicate() -> str:
 
 
 def rls_predicate_for(table: str) -> str:
+    if table in ACCOUNT_IMPORT_LEDGER_TABLES:
+        return " AND ".join(
+            f"{column} = NULLIF(current_setting('mentorflow.{setting}', true), '')"
+            for column, setting in (
+                ("issuer", "actor_issuer"), ("subject_id", "actor_subject"),
+                ("organization_id", "organization_id"), ("workspace_id", "workspace_id"),
+            )
+        )
     if table == "organizations":
         return organization_predicate(organization_column="id")
     if table == "organization_memberships":
@@ -127,6 +137,7 @@ def detect_enterprise_schema_version(connection: Connection) -> str | None:
 
 
 __all__ = [
+    "ACCOUNT_IMPORT_LEDGER_TABLES",
     "APPLICATION_DATABASE_ROLE",
     "ASSET_MANIFEST_TABLES",
     "ENTERPRISE_MIGRATION_REVISION",

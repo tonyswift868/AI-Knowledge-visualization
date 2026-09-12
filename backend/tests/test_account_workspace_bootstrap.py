@@ -266,7 +266,7 @@ def test_forward_backfill_is_idempotent_preserves_existing_and_history(tmp_path)
         for name in ("missing", "complete"):
             connection.execute(text("INSERT INTO workspaces(id,organization_id,slug,name,status) VALUES (:id,'legacy',:id,:id,'active')"), {"id": name})
         connection.execute(text("INSERT INTO workspace_profiles(workspace_id,organization_id,description) VALUES ('complete','legacy','keep')"))
-    command.upgrade(config, "head")
+    command.upgrade(config, "0035_account_workspace_bootstrap")
     spec = importlib.util.spec_from_file_location("bootstrap_migration", Path(__file__).parents[1] / "alembic/versions/0035_account_workspace_bootstrap.py")
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
@@ -304,7 +304,7 @@ def test_real_isolated_postgres_first_use_rls_if_provisioned():
     engine = create_engine(dsn)
     with engine.connect() as connection:
         require_safe_application_role(connection)
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0035_account_workspace_bootstrap"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0036_account_import_ledger"
     service = AccountWorkspaceBootstrap(engine, issuer=ISSUER)
     a = _principal("bootstrap-test-" + uuid.uuid4().hex, "test-a")
     b = _principal("bootstrap-test-" + uuid.uuid4().hex, "test-b")

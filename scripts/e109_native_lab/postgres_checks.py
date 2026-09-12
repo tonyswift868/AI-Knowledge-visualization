@@ -67,7 +67,7 @@ def run(lab):
                 session_user=security.session_user, superuser=security.is_superuser,
                 bypassrls=security.bypasses_rls, owned_tables=security.owned_tenant_table_count,
                 forced_rls_tables=security.forced_rls_table_count)
-            assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0035_account_workspace_bootstrap'
+            assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0036_account_import_ledger'
         a = context('synthetic-org-1','synthetic-org-1-workspace-1','synthetic-user-01')
         b = context('synthetic-org-2','synthetic-org-2-workspace-1','synthetic-user-08')
         pids = []

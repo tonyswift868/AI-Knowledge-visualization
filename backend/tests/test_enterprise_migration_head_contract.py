@@ -55,12 +55,12 @@ def test_enterprise_migration_revision_tracks_real_single_alembic_head() -> None
     assert len(heads) == 1
     current_head = scripts.get_current_head()
     assert current_head == heads[0]
-    assert current_head == "0034_enterprise_asset_manifests"
+    assert current_head == "0036_account_import_ledger"
     assert ENTERPRISE_MIGRATION_REVISION == current_head
 
     head_revision = scripts.get_revision(current_head)
     assert head_revision is not None
-    assert head_revision.down_revision == "0033_enterprise_workspace_persistence"
+    assert head_revision.down_revision == "0035_account_workspace_bootstrap"
 
 
 def test_rp05_runtime_upgrade_target_is_symbolic_repository_head(
@@ -123,4 +123,4 @@ def test_database_at_0032_advances_through_0033_to_repository_head(
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone() == (head_revision.revision,)
+        ).fetchone() == (scripts.get_current_head(),)

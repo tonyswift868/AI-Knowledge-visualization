@@ -41,6 +41,7 @@ def run_migrations_online():
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
+            before_heads = context.get_context().get_current_heads()
             if connection.dialect.name == "postgresql":
                 current_user = str(
                     connection.execute(text("SELECT current_user")).scalar_one()
@@ -61,7 +62,9 @@ def run_migrations_online():
                         {"role": APPLICATION_DATABASE_ROLE},
                     ).scalar_one()
                 )
-                if role_exists:
+                # Read-only commands and an already-current upgrade must not
+                # repeat a GRANT. Grant version visibility only after migration.
+                if role_exists and context.get_context().get_current_heads() != before_heads:
                     connection.execute(
                         text(
                             "GRANT SELECT ON TABLE alembic_version "

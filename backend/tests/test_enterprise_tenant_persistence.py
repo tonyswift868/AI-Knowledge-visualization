@@ -79,8 +79,10 @@ COMPLETION_MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
 PROVIDER_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
 WORKSPACE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
 ASSET_MIGRATION_REVISION = "0034_enterprise_asset_manifests"
-MIGRATION_REVISION = "0035_account_workspace_bootstrap"
+BOOTSTRAP_MIGRATION_REVISION = "0035_account_workspace_bootstrap"
+MIGRATION_REVISION = "0036_account_import_ledger"
 CANONICAL_TABLES = {
+    "account_import_ledger",
     "organizations",
     "organization_memberships",
     "workspaces",
@@ -800,7 +802,7 @@ def test_synthetic_fixture_and_isolation_corpus_cover_every_resource_and_operati
     assert corpus.unauthorized_success_expected == 0
 
 
-def test_canonical_migrations_form_one_linear_head_through_0035() -> None:
+def test_canonical_migrations_form_one_linear_head_through_0036() -> None:
     completion_path = (
         BACKEND_ROOT
         / "alembic"
@@ -859,7 +861,9 @@ def test_canonical_migrations_form_one_linear_head_through_0035() -> None:
     assert head is not None
     assert assets is not None
     assert assets.down_revision == WORKSPACE_MIGRATION_REVISION
-    assert head.down_revision == ASSET_MIGRATION_REVISION
+    bootstrap = ScriptDirectory.from_config(config).get_revision(BOOTSTRAP_MIGRATION_REVISION)
+    assert bootstrap.down_revision == ASSET_MIGRATION_REVISION
+    assert head.down_revision == BOOTSTRAP_MIGRATION_REVISION
     assert ENTERPRISE_MIGRATION_REVISION == MIGRATION_REVISION
     assert "workspace_memberships" in source
     assert "learning_plans" in source
@@ -882,12 +886,14 @@ def test_0035_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
 ) -> None:
     database = tmp_path / "enterprise-migration.db"
     config = _alembic_config(database)
-    command.upgrade(config, "head")
-    assert CANONICAL_TABLES <= _tables(database)
+    # Preserve historical reversible coverage; recovered 0036 is forward-only.
+    historical_tables = CANONICAL_TABLES - {"account_import_ledger"}
+    command.upgrade(config, BOOTSTRAP_MIGRATION_REVISION)
+    assert historical_tables <= _tables(database)
     assert "plans" not in _tables(database)
-    assert _version(database) == MIGRATION_REVISION
+    assert _version(database) == BOOTSTRAP_MIGRATION_REVISION
     with create_engine(f"sqlite:///{database.as_posix()}").connect() as connection:
-        assert detect_enterprise_schema_version(connection) == MIGRATION_REVISION
+        assert detect_enterprise_schema_version(connection) == BOOTSTRAP_MIGRATION_REVISION
         inspector = inspect(connection)
         plan_indexes = {
             item["name"] for item in inspector.get_indexes("learning_plans")
@@ -903,16 +909,16 @@ def test_0035_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
     assert "learning_plans" not in _tables(database)
     assert "plans" in _tables(database)
     assert _version(database) == JOBS_MIGRATION_REVISION
-    command.upgrade(config, "head")
-    assert CANONICAL_TABLES <= _tables(database)
+    command.upgrade(config, BOOTSTRAP_MIGRATION_REVISION)
+    assert historical_tables <= _tables(database)
     command.downgrade(config, "0028_video_collection_v1")
     assert CANONICAL_TABLES.isdisjoint(_tables(database))
     assert "plans" not in _tables(database)
     assert _version(database) == "0028_video_collection_v1"
-    command.upgrade(config, "head")
+    command.upgrade(config, BOOTSTRAP_MIGRATION_REVISION)
     with sqlite3.connect(database) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-    assert _version(database) == MIGRATION_REVISION
+    assert _version(database) == BOOTSTRAP_MIGRATION_REVISION
 
 
 def test_synthetic_seed_is_idempotent_on_offline_schema(tmp_path: Path) -> None:
@@ -994,7 +1000,7 @@ def test_0031_preserves_existing_0029_membership_and_plan_rows(tmp_path: Path) -
         )
         connection.commit()
 
-    command.upgrade(config, "head")
+    command.upgrade(config, BOOTSTRAP_MIGRATION_REVISION)
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT status FROM workspace_memberships WHERE organization_id = 'org-existing'"
