@@ -12,6 +12,20 @@ from .update_controller import UpdateController, UpdateState, application_update
 
 _AUTO = object()
 
+_MANDATORY_REASON_TEXT = {
+    'security': '当前版本存在必须修复的安全问题，需要更新到最新版本后才能继续使用 MentorFlow。',
+    'protocol': '当前版本已无法兼容最新服务，需要更新到最新版本后才能继续使用 MentorFlow。',
+    'data_compatibility': '当前版本的数据兼容性已发生变化，需要更新到最新版本后才能继续使用 MentorFlow。',
+    'support_floor': '当前版本已停止支持，需要更新到最新版本后才能继续使用 MentorFlow。',
+}
+_MANDATORY_REASON_FALLBACK = '当前版本需要更新到最新版本后才能继续使用 MentorFlow。'
+
+
+def mandatory_reason_text(reason):
+    """Explain a public core reason without deriving policy or exposing enums."""
+    return (_MANDATORY_REASON_TEXT.get(reason, _MANDATORY_REASON_FALLBACK)
+            if isinstance(reason, str) else _MANDATORY_REASON_FALLBACK)
+
 
 def release_details(text):
     """Plain, bounded release prose; technical diagnostics are not release notes."""
@@ -267,12 +281,8 @@ class UpdatePanel(QFrame):
         if scheduled:
             text = '已安排退出时更新；更新完成后 MentorFlow 将重新启动。'
         if mandatory:
-            reason = {'security': '此更新包含必要的安全修复。',
-                      'protocol': '需要此更新才能继续连接服务。',
-                      'data_compatibility': '需要此更新以兼容当前学习资料格式。'}.get(
-                          snap.get('mandatory_reason'), '当前版本已低于受支持的版本要求。')
-            gate_text = ('此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。\n'
-                         f"必须更新到最新版本 {snap.get('latest') or '（检查后确认）'}。\n{reason}")
+            reason = mandatory_reason_text(snap.get('mandatory_reason'))
+            gate_text = f"必须更新到最新版本 {snap.get('latest') or '（检查后确认）'}。\n{reason}"
             text = gate_text + ('\n' + text if state != UpdateState.MANDATORY_UPDATE else '')
             if repair and state != UpdateState.REPAIR_REQUIRED:
                 text = '安装需要修复。\n' + text

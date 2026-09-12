@@ -85,8 +85,8 @@ def test_optional_failure_keeps_current_app_and_login_usable(prelogin, failure):
     assert 'apply' not in port.calls
 
 
-@pytest.mark.parametrize('reason,copy', [('security', '安全修复'), ('protocol', '连接服务'),
-                                      ('data_compatibility', '学习资料格式')])
+@pytest.mark.parametrize('reason,copy', [('security', '安全问题'), ('protocol', '兼容最新服务'),
+                                      ('data_compatibility', '数据兼容性')])
 def test_mandatory_targets_latest_not_historical_floor_or_release_flag(prelogin, reason, copy):
     gate, port, controller, *_ = prelogin
     port.snapshot.update(state='MANDATORY_UPDATE', current='1.1.0', latest='1.9.0',

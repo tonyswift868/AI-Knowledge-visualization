@@ -53,7 +53,7 @@ def test_prelogin_footer_is_direct_optional_entry_and_login_remains_enabled(prel
 
 
 @pytest.mark.parametrize('state,text,button', [
-    ('MANDATORY_UPDATE', '此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。', '更新到最新版本'),
+    ('MANDATORY_UPDATE', '必须更新到最新版本 1.4.1。', '更新到最新版本'),
     ('REPAIR_REQUIRED', 'MentorFlow 需要修复', '修复并检查更新'),
 ])
 def test_required_states_keep_shell_open_and_deny_login_even_after_auth_state_changes(prelogin, state, text, button):
@@ -130,7 +130,7 @@ def test_real_logged_in_about_card_shares_prelogin_presenter(prelogin, tmp_path,
         assert panel.controller is gate.update_entry.controller is controller
         assert len(page.findChildren(UpdatePanel)) == 1
         for state, text in [('OPTIONAL_UPDATE', '有新版本 1.4.1，您可以继续登录和使用。'),
-                            ('MANDATORY_UPDATE', '此版本已停止支持，必须更新到最新版本后才能继续使用 MentorFlow。'),
+                            ('MANDATORY_UPDATE', '必须更新到最新版本 1.4.1。'),
                             ('REPAIR_REQUIRED', 'MentorFlow 需要修复')]:
             port.snapshot['state'] = state
             panel.refresh(); gate.update_entry.refresh()

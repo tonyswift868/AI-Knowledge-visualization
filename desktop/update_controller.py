@@ -105,9 +105,13 @@ class UpdateController(QObject):
         if snapshot.get('latest') and snapshot['latest'] != self._presentation.get('latest'):
             self._presentation.clear()  # A different offer; no version ordering or policy calculation.
             self._later = False
-        for key in ('latest', 'notes', 'total', 'update_path', 'mandatory_reason'):
+        for key in ('latest', 'notes', 'total', 'update_path'):
             if snapshot.get(key):
                 self._presentation[key] = snapshot[key]
+        if snapshot.get('state') == 'MANDATORY_UPDATE':
+            # A fresh public gate owns its explanation, including an unknown or
+            # empty reason. Transient snapshots may omit it; keep that gate's text.
+            self._presentation['mandatory_reason'] = snapshot.get('mandatory_reason', '')
         state = STATE_MAP.get(self.raw_state)
         if state in (UpdateState.MANDATORY_UPDATE, UpdateState.REPAIR_REQUIRED):
             self._requirement = state.value
