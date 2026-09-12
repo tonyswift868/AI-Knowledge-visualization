@@ -152,7 +152,7 @@ def test_identity_bridge_exact_contract_never_uses_oauth_grant(reply):
             assert body == {'operation': 'authenticate', 'username': 'known', 'password': 'synthetic-test-only'}
             value = {'schema': 'mentorflow.native-identity.v1', 'outcome': 'authenticated',
                      'issuer': ISSUER, 'subject': 'user-a', 'display_name': 'A',
-                     'authentication_strength': 'password_verified'}
+                     'authentication_strength': 'password_verified', 'verification_handle': 'v' * 43}
             if reply == 'wrong-issuer': value['issuer'] = 'https://evil.test'
             if reply == 'challenge': value['outcome'] = 'challenge_required'
             return httpx.Response(302 if reply == 'redirect' else 503 if reply == 'unavailable' else 200, json=value)
@@ -170,6 +170,63 @@ def test_unconfigured_is_off_and_bridge_requires_verified_mtls_and_single_proces
     with pytest.raises(ValueError): from_env({'MENTORFLOW_NATIVE_IDENTITY_ENDPOINT': 'https://identity.internal/mentorflow-native-identity/v1'}, ISSUER)
     with pytest.raises(ValueError): MtlsIdentityVerifier('https://identity.internal/mentorflow-native-identity/v1', ISSUER)
     with pytest.raises(ValueError): MtlsIdentityVerifier('http://identity.internal/mentorflow-native-identity/v1', ISSUER)
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'connection', 'malformed', 'oversized', 'missing-handle', 'wrong-handle', 'wrong-subject'])
+def test_real_bridge_refresh_contract_fails_closed_and_revokes_family(failure):
+    async def run():
+        def handler(request):
+            body = json.loads(request.content)
+            value = {'schema': 'mentorflow.native-identity.v1', 'outcome': 'authenticated',
+                     'issuer': ISSUER, 'subject': 'user-a', 'display_name': 'A',
+                     'authentication_strength': 'password_verified', 'verification_handle': 'v' * 43}
+            if body['operation'] == 'revalidate':
+                assert body == {'operation': 'revalidate', 'issuer': ISSUER, 'subject': 'user-a', 'verification_handle': 'v' * 43}
+                if failure == 'timeout': raise httpx.ReadTimeout('private detail')
+                if failure == 'connection': raise httpx.ConnectError('private detail')
+                if failure == 'malformed': return httpx.Response(200, text='invalid JSON')
+                if failure == 'oversized': return httpx.Response(200, content=b'x' * 8193)
+                if failure == 'missing-handle': value.pop('verification_handle')
+                if failure == 'wrong-handle': value['verification_handle'] = 'z' * 43
+                if failure == 'wrong-subject': value['subject'] = 'other'
+            return httpx.Response(200, json=value)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            verifier = MtlsIdentityVerifier(ISSUER + '/mentorflow-native-identity/v1', ISSUER, http_client=http)
+            service = NativeSessions(verifier, ISSUER)
+            pair = await service.login('known', 'synthetic-test-only', 'peer')
+            assert 'verification_handle' not in json.dumps(pair)
+            with pytest.raises(IdentityError) as error: await service.refresh(pair['refresh_token'])
+            assert 'private detail' not in str(error.value)
+            with pytest.raises(IdentityError): service.authenticate(pair['access_token'])
+            assert not service.families
+    asyncio.run(run())
+
+
+def test_direct_spi_endpoint_is_bound_to_the_exact_identity_realm():
+    with pytest.raises(ValueError):
+        MtlsIdentityVerifier('https://identity.internal/realms/other/mentorflow-native-identity/v1', ISSUER)
+
+
+def test_bridge_issuance_does_not_round_a_fractional_clock_into_the_future(monkeypatch):
+    from app.enterprise.identity import native
+    instant = 1789234567.9999998
+    class RoundedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None): return datetime.fromtimestamp(instant, timezone.utc)
+    assert RoundedDatetime.now().timestamp() > instant  # Reproduces the Windows boundary.
+    monkeypatch.setattr(native, 'datetime', RoundedDatetime)
+    monkeypatch.setattr(native.time, 'time', lambda: instant)
+    async def run():
+        value = {'schema': 'mentorflow.native-identity.v1', 'outcome': 'authenticated',
+                 'issuer': ISSUER, 'subject': 'user-a', 'display_name': 'A',
+                 'authentication_strength': 'password_verified', 'verification_handle': 'v' * 43}
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=value))) as http:
+            service = NativeSessions(MtlsIdentityVerifier(ISSUER+'/mentorflow-native-identity/v1', ISSUER, http_client=http),
+                                     ISSUER, clock=lambda: instant)
+            pair = await service.login('known', 'synthetic-test-only', 'peer')
+            trusted = service.authenticate(pair['access_token'])
+            assert trusted.issued_at.timestamp() <= instant < trusted.expires_at.timestamp() <= instant+300
+    asyncio.run(run())
 
 
 def test_native_token_uses_existing_membership_and_old_token_validation():

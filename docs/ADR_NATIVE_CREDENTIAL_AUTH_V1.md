@@ -1,6 +1,6 @@
 # ADR: native credential authentication v1
 
-Date: 2026-09-12. Status: **source contract implemented; identity adapter deployment gate open**.
+Date: 2026-09-12. Status: **identity SPI implemented; live deployment remains gated**.
 Authority: `MF-MAIN3-01-NATIVE-CREDENTIAL-LOGIN-20260912-04` /
 `MENTORFLOW_NATIVE_USERNAME_PASSWORD_LOGIN_CONTRACT_V1`.
 
@@ -13,11 +13,14 @@ issues opaque first-party sessions. No OAuth password grant, Keycloak Direct Acc
 Grant, provider-page automation, browser fallback, new password database, or database
 migration is introduced.
 
-**The repository does not contain the required Keycloak-side credential verifier.**
-`MtlsIdentityVerifier` implements its caller and strict response contract, not the
-provider extension itself. No real existing-account login is qualified by this ADR.
+Follow-up authority: `MF-MAIN3-01-NATIVE-CREDENTIAL-VERIFIER-20260912-05`.
+The repository now contains a Keycloak 26.7.3 `RealmResourceProvider` in
+`deploy/enterprise/native-identity-verifier/NativeIdentityVerifier.java`.
+It calls Keycloak's credential manager inside the identity authority. The bridge
+caller remains `MtlsIdentityVerifier`; this is the same native login architecture.
+The isolated acceptance receipt, rather than this ADR alone, establishes tested behavior.
 Without explicit bridge configuration, native endpoints return `503 NATIVE_AUTH_NOT_READY`.
-This delivery must be reported as `PARTIAL_ARCHITECTURE_GATE`, not a deployable authentication success.
+No installed candidate or live deployment is qualified by source/fixture acceptance.
 
 Ownership audit at `03d979710a4cde44917c4f10c2f08d2390c8426d`:
 
@@ -30,7 +33,7 @@ Ownership audit at `03d979710a4cde44917c4f10c2f08d2390c8426d`:
 | `backend/app/enterprise/identity` | Keycloak JWT/cookie validation and trusted identity directory | Add a separately gated native session boundary |
 | `backend/app/enterprise/account_workspaces.py` | Account discovery/initialization before tenant selection | Same issuer+subject and existing authorization |
 | Retired local auth modules/tables | Historical local login | Remain retired; no identity duplication |
-| Keycloak realm | Passwords, account status, required actions, MFA | Retains credential ownership; bridge implementation still required |
+| Keycloak realm | Passwords, account status, required actions, MFA | Identity SPI uses existing credential and required-action providers |
 
 The former normal path was LoginGate → `InAppOidcLoginDialog` → provider credentials
 in QWebEngine, or system browser for OLD/NEW E109 issuers → dynamic IPv4 callback →
@@ -100,19 +103,31 @@ without userinfo, query, fragment, or redirects. The backend uses a verified CA 
 its own client certificate/private key; no secret enters the desktop or build input.
 
 Authenticate request: exact `operation=authenticate`, `username`, `password`.
-Refresh revalidation request: `operation=revalidate`, canonical `issuer`, `subject`.
+Refresh revalidation request: `operation=revalidate`, canonical `issuer`, `subject`,
+and a private `verification_handle` issued by a successful password verification.
 Success response has exactly `schema=mentorflow.native-identity.v1`,
 `outcome=authenticated`, `issuer`, `subject`, `display_name`,
-`authentication_strength=password_verified`. The latter certifies that the
+`authentication_strength=password_verified`, `verification_handle`. The strength certifies that the
 identity-owned policy has passed; it is **not** a client-controlled claim.
 `401` means a generic credential rejection. `outcome=challenge_required` is a hard
 stop, not authorization; no password-only success is allowed for accounts requiring
 MFA, required actions, federation steps, or recovery.
 
-The bridge must be implemented in the identity system's supported extension boundary
-and must enforce enabled status, credentials, lockout, required actions, MFA and
-policy before returning success. Revalidation must check current status/policy and
-session eligibility. Refresh preserves the original authentication time. Account
+The implemented SPI enforces raw TLS client-certificate pinning, exact realm/version,
+bounded rate limits, Keycloak password validation and its brute-force protector.
+It supports the stock password/conditional-2FA flow for local password-only accounts;
+custom flows, enabled organizations, client consent, federation, extra credential types,
+required actions and policy-evaluation failures stop with a controlled challenge.
+Enabled Keycloak required-action providers evaluate triggers, including password age.
+No browser flow is silently skipped when it contains an unsupported requirement.
+
+Only a random handle leaves Keycloak. Its credential binding remains inside Keycloak,
+and revalidation checks password changes, account/lockout/policy status and realm/user
+not-before revocation. Handles expire at the earliest of eight hours and the realm's
+positive SSO maximum/idle timeout. This is a fixed lease, so active use cannot extend
+it; shorter realm policies can require login sooner than the backend family limit.
+The handle never appears in desktop session JSON or `/auth/me`. Refresh preserves
+the original authentication time. Account
 revalidation is not a new password/MFA event. Required-action/MFA challenge continuation
 needs a separately designed native contract before such accounts can be supported.
 
@@ -147,8 +162,9 @@ The bounded in-memory implementation limits attempts before verification: five p
 normalized account, twenty per peer, one hundred total per minute, for both unknown
 and known names. It limits tracking/session capacity and stores hashed throttle keys.
 Wrong-password and unknown-account responses have identical HTTP status and JSON.
-The bridge must additionally perform comparable work/timing and enforce realm-level
-brute-force protection; response-shape tests alone do not prove timing resistance.
+The SPI performs a Keycloak-provider dummy hash for unknown, disabled and locked
+accounts and uses Keycloak's brute-force protector for real failures/success.
+Response-shape tests and a dummy hash do not establish statistical timing equivalence.
 
 This store is **single process only**. Configuration requires an explicit
 `MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS=1` acknowledgement and `WEB_CONCURRENCY=1`.
@@ -168,8 +184,8 @@ the bounded integration in the existing account system but requires identity-tea
 
 ## Gates before any real native activation
 
-1. Implement and independently review the identity-owned bridge against the exact
-   deployed Keycloak version/provider configuration. Test real normal, unknown,
+1. Independently review and qualify the identity SPI against the actual deployment's
+   exact Keycloak version/provider configuration. Test real normal, unknown,
    disabled, locked, federated, MFA and required-action accounts. Verify comparable
    rejection timing and no provider-form/password-grant fallback.
 2. Provision backend-only mTLS credentials using `MENTORFLOW_NATIVE_IDENTITY_ENDPOINT`,
@@ -199,5 +215,5 @@ the bounded integration in the existing account system but requires identity-tea
 
 Reference guidance: [OWASP authentication controls](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
 for generic failures and throttling; [OWASP session controls](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
-for session lifecycle and rotation. These references do not certify this unimplemented
+for session lifecycle and rotation. These references do not certify this
 identity adapter or replace its deployment security review.

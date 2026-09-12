@@ -5,8 +5,10 @@ boundary unavailable until its mTLS bridge and single-process deployment pass QA
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import re
 import secrets
 import ssl
 import threading
@@ -47,7 +49,9 @@ class MtlsIdentityVerifier:
     def __init__(self, endpoint, issuer, *, context=None, http_client=None):
         url = urlsplit(endpoint)
         if (url.scheme != 'https' or not url.hostname or url.username or url.password
-                or url.query or url.fragment or url.path != '/mentorflow-native-identity/v1'):
+                or url.query or url.fragment or url.path not in (
+                    '/mentorflow-native-identity/v1',
+                    urlsplit(issuer).path.rstrip('/') + '/mentorflow-native-identity/v1')):
             raise ValueError('Exact HTTPS native identity bridge endpoint required')
         if http_client is None and (context is None or not context.check_hostname
                                     or context.verify_mode != ssl.CERT_REQUIRED):
@@ -57,26 +61,37 @@ class MtlsIdentityVerifier:
 
     async def _verify(self, payload):
         try:
-            response = await self.http.post(self.endpoint, json=payload)
-            if response.status_code == 401:
-                raise denied()
-            if response.status_code != 200 or len(response.content) > 8192:
-                raise IdentityError('NATIVE_IDENTITY_UNAVAILABLE', '账号服务暂不可用。', status=503)
-            value = response.json()
+            async with asyncio.timeout(10):
+                async with self.http.stream('POST', self.endpoint, json=payload) as response:
+                    if response.status_code == 401:
+                        raise denied()
+                    if response.status_code != 200:
+                        raise IdentityError('NATIVE_IDENTITY_UNAVAILABLE', '账号服务暂不可用。', status=503)
+                    content = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(content) + len(chunk) > 8192:
+                            raise IdentityError('NATIVE_IDENTITY_INVALID', '账号服务响应无法验证。', status=503)
+                        content.extend(chunk)
+                    value = json.loads(content)
             # MFA/required actions are a hard stop, never silently bypassed.
             if value.get('outcome') == 'challenge_required':
                 raise IdentityError('NATIVE_ADDITIONAL_VERIFICATION_REQUIRED', '此账号需要额外验证，请联系账号管理员。', status=403)
-            if (set(value) != {'schema', 'outcome', 'issuer', 'subject', 'display_name', 'authentication_strength'}
+            if (set(value) != {'schema', 'outcome', 'issuer', 'subject', 'display_name', 'authentication_strength', 'verification_handle'}
                     or value['schema'] != 'mentorflow.native-identity.v1' or value['outcome'] != 'authenticated'
                     or value['issuer'] != self.issuer or value['authentication_strength'] != 'password_verified'
                     or not isinstance(value['subject'], str) or not value['subject']
-                    or value['subject'] != value['subject'].strip()):
+                    or value['subject'] != value['subject'].strip()
+                    or not isinstance(value['verification_handle'], str)
+                    or not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['verification_handle'])):
                 raise IdentityError('NATIVE_IDENTITY_INVALID', '账号服务响应无法验证。', status=503)
-            now = datetime.now(timezone.utc)
+            # Integer-second issuance avoids datetime/float rounding appearing
+            # fractionally in the future on Windows. Expiry is rounded down too.
+            now = datetime.fromtimestamp(int(time.time()), timezone.utc)
             return AuthenticatedPrincipal(issuer=self.issuer, subject=value['subject'],
                 display_name=value['display_name'], audiences=('mentorflow-api',),
                 token_id=secrets.token_urlsafe(32), issued_at=now, expires_at=now + timedelta(minutes=5),
-                authentication_time=now, authentication_strength='password_verified', client_id='mentorflow-desktop')
+                authentication_time=now, authentication_strength='password_verified', client_id='mentorflow-desktop',
+                identity_provider_session_id=value['verification_handle'])
         except IdentityError:
             raise
         except Exception:
@@ -88,8 +103,11 @@ class MtlsIdentityVerifier:
         return await self._verify({'operation': 'authenticate', 'username': username, 'password': password})
 
     async def revalidate(self, principal):
-        result = await self._verify({'operation': 'revalidate', 'issuer': principal.issuer, 'subject': principal.subject})
+        result = await self._verify({'operation': 'revalidate', 'issuer': principal.issuer, 'subject': principal.subject,
+                                    'verification_handle': principal.identity_provider_session_id})
         if (result.issuer, result.subject) != (principal.issuer, principal.subject):
+            raise expired()
+        if result.identity_provider_session_id != principal.identity_provider_session_id:
             raise expired()
         return result
 
