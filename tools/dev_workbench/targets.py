@@ -47,6 +47,9 @@ def json_bytes(raw):
 def validate_manifest(value):
     validator = Draft202012Validator(json_bytes(SCHEMA.read_bytes()), format_checker=FormatChecker())
     if not validator.is_valid(value): raise Refused('INVALID_MANIFEST')
+    if value['status'] == 'CURRENT' and any(value[key].upper() in {'UNKNOWN', 'NONE', 'NOT_RUN', 'PENDING'}
+            for key in ('product_version', 'build_id', 'deployment_identity')):
+        raise Refused('INVALID_MANIFEST')
     return value
 
 

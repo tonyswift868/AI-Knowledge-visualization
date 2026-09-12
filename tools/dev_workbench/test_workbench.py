@@ -117,6 +117,15 @@ def test_manifest_schema_rejects_commands_secrets_and_missing_identity(candidate
     with pytest.raises(t.Refused, match='INVALID_MANIFEST'): t.validate_manifest(value)
 
 
+@pytest.mark.parametrize('field', ['product_version', 'build_id', 'deployment_identity'])
+@pytest.mark.parametrize('unknown', ['UNKNOWN', 'unknown'])
+def test_unknown_build_identity_cannot_be_ready(candidate, field, unknown):
+    value, _ = candidate; value[field] = unknown
+    with pytest.raises(t.Refused, match='INVALID_MANIFEST'): t.validate_manifest(value)
+    normalized = a.receipt_to_manifest(value, value['test_id'])
+    assert normalized['status'] == 'WAITING_FOR_ARTIFACT'
+
+
 def test_manifest_valid_exact_artifact_launch(candidate):
     value, paths = candidate
     spawn = Mock(return_value=SimpleNamespace(pid=42))

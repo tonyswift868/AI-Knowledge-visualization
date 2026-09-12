@@ -40,11 +40,12 @@
   },
   "allOf": [{"if": {"properties": {"status": {"const": "CURRENT"}}}, "then": {"properties": {
     "source_sha": {"type": "string"}, "source_tree": {"type": "string"},
-    "product_version": {"type": "string"}, "build_id": {"type": "string"},
+    "product_version": {"type": "string", "not": {"enum": ["UNKNOWN", "NONE", "NOT_RUN", "PENDING"]}},
+    "build_id": {"type": "string", "not": {"enum": ["UNKNOWN", "NONE", "NOT_RUN", "PENDING"]}},
     "artifact_type": {"type": "string"}, "artifact_path": {"type": "string"},
     "artifact_sha256": {"type": "string"}, "launch_type": {"type": "string"},
     "launch_target": {"type": "string"}, "environment": {"type": "string"},
-    "deployment_identity": {"type": "string"}, "purpose": {"type": "string"},
+    "deployment_identity": {"type": "string", "not": {"enum": ["UNKNOWN", "NONE", "NOT_RUN", "PENDING"]}}, "purpose": {"type": "string"},
     "user_action": {"type": "string"}, "success_criteria": {"type": "string"},
     "receipt_path": {"type": "string"}, "log_path": {"type": "string"},
     "identity_evidence_path": {"type": "string"}, "identity_evidence_sha256": {"type": "string"}
