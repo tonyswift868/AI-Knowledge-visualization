@@ -71,7 +71,11 @@ class ParentAndCloseContract(unittest.TestCase):
         self.assertIn('AllowCancelDuringInstall=yes', SHELL)
         builder = (ROOT / 'scripts/build_inno_installer.py').read_text(encoding='utf-8')
         self.assertNotIn('/NOCANCEL', (SHELL + UI + builder).upper())
-        self.assertNotRegex(UI + SHELL, r'(?i)\.OnClose\w*\s*:=|CancelButton\.OnClick\s*:=')
+        self.assertNotRegex(UI + SHELL, r'(?i)\.OnCloseQuery\s*:=|CancelButton\.OnClick\s*:=')
+        close = body(UI, 'WizardClose')
+        self.assertIn('if WizardForm.CurPageID = wpFinished then begin', close)
+        self.assertIn('SecondaryClick(Sender);', close)
+        self.assertIn('else EngineClose(Sender, Action);', close)
         secondary = body(UI, 'SecondaryClick')
         self.assertIn('else if WizardForm.CancelButton.Enabled then', secondary)
         self.assertIn('WizardForm.CancelButton.OnClick(WizardForm.CancelButton)', secondary)
@@ -84,6 +88,22 @@ class ParentAndCloseContract(unittest.TestCase):
         self.assertNotRegex(cancel, r'Confirm := True|MsgBox|RunList|NextButton|ssPostInstall')
         # Active signed-core work receives a cancellation request, not fake success.
         self.assertNotRegex(UI + SHELL, r'(?i)MsgBox\(|TaskDialogMsgBox\(|NeedToAbortInstall\s*:=')
+
+    def test_finish_x_is_enabled_and_uses_existing_close_without_launch(self):
+        # Inno disables SC_CLOSE at wpFinished, and MainForm.Close only cancels
+        # ssPreInstall/ssInstall. Visibility alone cannot make finish X work.
+        create = body(UI, 'CreateBrandedPages')
+        self.assertIn('EngineClose := WizardForm.OnClose;', create)
+        self.assertIn('WizardForm.OnClose := @WizardClose;', create)
+        branded = body(UI, 'ShowBrandedPage')
+        finish = branded[branded.index("PageTitle.Caption := 'MentorFlow 已安装';"):]
+        self.assertIn('EnableWizardMenuItem(WizardSystemMenu(WizardForm.Handle, False), $F060, 0);', finish)
+        close = body(UI, 'WizardClose')
+        self.assertIn('Action := caNone;', close)
+        self.assertNotIn('PrimaryClick', close)
+        secondary = body(UI, 'SecondaryClick')
+        self.assertLess(secondary.index('WizardForm.RunList.Checked[0] := False;'),
+                        secondary.index('EngineNext(WizardForm.NextButton);'))
 
     def test_preinstall_close_cannot_create_target_or_install_receipt(self):
         for text, names in [(SHELL, ['InitializeWizard']),

@@ -12,14 +12,14 @@ begin
   if Percent < 0 then Percent := 0;
   if Percent > 100 then Percent := 100;
   { The timer only reads real core byte-copy/verify/health progress. }
-  CopyProgress.Position := Percent;
-  PercentCaption.Caption := IntToStr(Percent) + '%';
+  UpdateBrandedProgress(Percent, 100);
   ProgressCaption.Caption := GetIniString('install', 'stage', '正在校验安装文件…', CoreStatus);
   if CoreCancelRequested then ProgressCaption.Caption := '正在安全取消，请稍候…';
 end;
 
 function InstallThroughCore(Target: String): String;
 var Runtime, Parameters: String; Code: Integer; Timer: UINT_PTR;
+  CancelWasEnabled: Boolean;
 begin
   Result := '';
   Inc(CoreAttempt);
@@ -40,14 +40,24 @@ begin
     ' --release ' + AddQuotes(ExpandConstant('{tmp}\base-release.json')) +
     ' --status-file ' + AddQuotes(CoreStatus) + ' --cancel-file ' + AddQuotes(CoreCancelFile) +
     ' --result ' + AddQuotes(ExpandConstant('{tmp}\core-result.json')) + ' --close-after-health';
+  CancelWasEnabled := WizardForm.CancelButton.Enabled;
   CoreRunning := True;
-  ShowBrandedPage(wpInstalling);
-  Timer := SetCoreTimer(0, 0, 150, CreateCallback(@CoreProgress));
+  Timer := 0;
   try
-    if not Exec(Runtime, Parameters, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-      Result := '安装未完成：' + GetIniString('install', 'error', '核心未确认安装成功，请稍后重试。', CoreStatus);
+    { Inno disables Cancel before PrepareToInstall. While the core owns work,
+      X and the progress button must reach our cancellation-signal handler. }
+    WizardForm.CancelButton.Enabled := True;
+    ShowBrandedPage(wpInstalling);
+    UpdateBrandedProgress(0, 100);
+    Timer := SetCoreTimer(0, 0, 150, CreateCallback(@CoreProgress));
+    if not Exec(Runtime, Parameters, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+      { Raw core diagnostics remain in core-result.json, not ordinary UI. }
+      if CoreCancelRequested then Result := '安装已取消。您可以返回重试或关闭安装器。'
+      else Result := '安装未完成，请稍后重试。学习资料不会被删除。';
+    end;
   finally
     if Timer <> 0 then KillCoreTimer(0, Timer);
     CoreRunning := False;
+    WizardForm.CancelButton.Enabled := CancelWasEnabled;
   end;
 end;

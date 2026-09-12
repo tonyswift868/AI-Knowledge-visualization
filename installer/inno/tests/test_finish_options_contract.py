@@ -31,7 +31,8 @@ class FinishOptionsContract(unittest.TestCase):
                 self.assertLessEqual(abs(2 * ((c - w) // 2) + w - c), 1)
         self.assertIn("SecondaryButton.Caption := '取消安装';", progress)
         self.assertIn('WizardForm.CancelButton.OnClick(WizardForm.CancelButton);', UI)
-        self.assertNotRegex(UI + SHELL, r'\.OnClose\w*\s*:=|CancelButton\.OnClick\s*:=')
+        self.assertNotRegex(UI + SHELL, r'\.OnCloseQuery\s*:=|CancelButton\.OnClick\s*:=')
+        self.assertIn('else EngineClose(Sender, Action);', body(UI, 'WizardClose'))
 
     def test_finish_is_the_only_options_page_both_defaults_off(self):
         tasks = section('Tasks')

@@ -13,7 +13,13 @@ var
   CopyProgress: TNewProgressBar;
   BackColor, CardColor, InkColor, MutedColor, AccentColor, AccentInk: TColor;
   EngineNext: TNotifyEvent;
+  EngineClose: TCloseEvent;
   FinishOptionsShown: Boolean;
+
+function WizardSystemMenu(Window: HWND; Revert: BOOL): THandle;
+  external 'GetSystemMenu@user32.dll stdcall';
+function EnableWizardMenuItem(Menu: THandle; Item, Flags: UINT): DWORD;
+  external 'EnableMenuItem@user32.dll stdcall';
 
 function BitmapRect(W, H: Integer): TRect;
 begin
@@ -146,6 +152,16 @@ begin
     WizardForm.CancelButton.OnClick(WizardForm.CancelButton);
 end;
 
+procedure WizardClose(Sender: TObject; var Action: TCloseAction);
+begin
+  if WizardForm.CurPageID = wpFinished then begin
+    { Native MainForm.Close only handles cancellation before/during install.
+      Finish X must use the existing non-launching finalization path. }
+    Action := caNone;
+    SecondaryClick(Sender);
+  end else EngineClose(Sender, Action);
+end;
+
 procedure UpdateBrandedProgress(Current, Maximum: Integer);
 var Percent, Position: Integer;
 begin
@@ -219,6 +235,8 @@ begin
     SecondaryButton.Anchors := [akBottom];
   end else begin
     PageTitle.Caption := 'MentorFlow 已安装';
+    { Inno disabled SC_CLOSE before CurPageChanged on this final page. }
+    EnableWizardMenuItem(WizardSystemMenu(WizardForm.Handle, False), $F060, 0);
     PageSubtitle.Caption := '现在可以开始学习。';
     PrimaryButton.Enabled := True;
     PaintPrimary('启动 MentorFlow');
@@ -330,4 +348,6 @@ begin
   WizardForm.NextButton.Default := True;
   EngineNext := WizardForm.NextButton.OnClick;
   WizardForm.NextButton.OnClick := @PrimaryClick;
+  EngineClose := WizardForm.OnClose;
+  WizardForm.OnClose := @WizardClose;
 end;
