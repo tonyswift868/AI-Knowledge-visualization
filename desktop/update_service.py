@@ -179,6 +179,26 @@ __all__ = [
 
 # Mature update path extends this existing facade/cache; the legacy explicit
 # source checker above is NOT the normal in-app installation action anymore.
+def install_cache_identity(root):
+    import os
+    from .update_protocol import digest
+    return digest(os.path.normcase(str(Path(root).absolute())).encode('utf-8'))
+
+
+def read_release_witness(cache_root, public_keys, *, channel):
+    """Read the existing signed cache witness without constructing a transport."""
+    from .update_download import safe_entry
+    from .update_protocol import MAX_METADATA, SecurityError, verified_witness
+    if channel not in ('stable', 'beta'):
+        raise SecurityError('unsupported policy channel')
+    cache_root = Path(cache_root)
+    path = cache_root / ('highest-metadata-' + channel + '.json')
+    if not safe_entry(path, cache_root): return None
+    if path.stat().st_size > MAX_METADATA:
+        raise SecurityError('high-water witness too large')
+    return verified_witness(path.read_bytes(), public_keys, channel=channel)
+
+
 class MatureUpdateService:
     STATES = frozenset(('IDLE', 'CHECKING', 'UP_TO_DATE', 'UPDATE_AVAILABLE',
         'PREPARING', 'DOWNLOADING', 'DOWNLOAD_PAUSED_OR_INTERRUPTED', 'READY_TO_APPLY', 'APPLYING',
@@ -187,10 +207,9 @@ class MatureUpdateService:
     def __init__(self, *, install_root, cache_root, metadata_url, public_keys,
                  current, channel='stable', transport=None, apply_bridge=None,
                  accepted_app=None, runtime_staging_root=None, accepted_source_factory=None):
-        import os
         import threading
         from .update_download import ObjectCache, HTTPTransport
-        from .update_protocol import digest, SecurityError
+        from .update_protocol import SecurityError
         self.install_root = Path(install_root).absolute()
         cache_root = Path(cache_root).absolute()
         # Reject aliasing before overlap checks; lexical spelling must not make
@@ -202,7 +221,7 @@ class MatureUpdateService:
                 or self.install_root.is_relative_to(cache_root)
                 or cache_root == Path('E:/MentorFlowData') or cache_root.is_relative_to(Path('E:/MentorFlowData'))):
             raise SecurityError('update cache overlaps program/user data')
-        identity = digest(os.path.normcase(str(self.install_root)).encode('utf-8'))
+        identity = install_cache_identity(self.install_root)
         self.install_identity = identity
         runtime_staging_root=Path(runtime_staging_root).absolute() if runtime_staging_root else cache_root/'.u'/identity[:12]
         safe_entry(runtime_staging_root,runtime_staging_root,directory=True)
@@ -285,21 +304,18 @@ class MatureUpdateService:
             return None
 
     def _witness(self):
-        from .update_download import safe_entry
-        from .update_protocol import witness_version
-        path = self.cache.root / ('highest-metadata-' + self.channel + '.json')
-        if safe_entry(path, self.cache.root):
-            if path.stat().st_size > 16*1024**2:
-                from .update_protocol import SecurityError
-                raise SecurityError('high-water witness too large')
-            return witness_version(path.read_bytes(), self.keys, channel=self.channel)
-        return 0, ''
+        from .update_protocol import canonical, digest
+        release = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+        return (release.signed['metadata_version'], digest(canonical(release.signed))) if release else (0, '')
 
     def _remember_release(self, release):
         from .update_download import safe_entry
-        from .update_protocol import SecurityError, digest, canonical
+        from .update_protocol import SecurityError, digest, canonical, require_monotonic_floor
         import os
-        epoch, signed_hash = self._witness()
+        previous = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+        if previous is not None: require_monotonic_floor(release, previous)
+        epoch, signed_hash = ((previous.signed['metadata_version'], digest(canonical(previous.signed)))
+                              if previous is not None else (0, ''))
         incoming = release.signed['metadata_version']
         if incoming < epoch or incoming == epoch and signed_hash != digest(canonical(release.signed)):
             raise SecurityError('metadata replay or same-version equivocation')

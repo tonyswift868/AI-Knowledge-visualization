@@ -65,7 +65,8 @@ def restart_fixture(root):
 def case():
     base=Path(tempfile.mkdtemp(prefix='up-',dir=os.environ['TEMP']))
     assert (base.parent == Path('D:/MF14W') or
-            base.parent.is_relative_to(Path('D:/CodexScratch/MentorFlow')))
+            base.parent.is_relative_to(Path('D:/CodexScratch/MentorFlow')) or
+            base.parent.is_relative_to(Path('E:/Codex/Temp')))
     with ExitStack() as stack:
         adapters(stack)
         feed,old_ids=prepare(base)
@@ -87,7 +88,7 @@ def test_signed_download_apply_receipt_restart_previous_and_rollback(case,fallba
     assert restart_fixture(feed.install)=='1.1.0'
     with patch.object(apply,'PRODUCTION_RELEASE_KEYS',feed.keys), \
          patch.object(tx,'Registry',lambda:Registry(base)), \
-         patch.object(tx,'Shortcut',lambda _:Shortcut(base)), \
+         patch.object(tx,'ShortcutSet',lambda:Shortcut(base)), \
          patch.object(tx,'cleanup_failed',side_effect=AssertionError('update must not clean default install')):
         result=apply.apply_update(feed.install,service.staged,service.release.envelope)
         assert result['pending_update_health'] is True
@@ -176,7 +177,7 @@ def test_update_retention_blocks_unhealthy_second_apply(case):
     base,feed,_=case
     service=feed.service(); service.check(); service.download()
     with patch.object(apply,'PRODUCTION_RELEASE_KEYS',feed.keys), \
-         patch.object(tx,'Registry',lambda:Registry(base)),patch.object(tx,'Shortcut',lambda _:Shortcut(base)):
+         patch.object(tx,'Registry',lambda:Registry(base)),patch.object(tx,'ShortcutSet',lambda:Shortcut(base)):
         first=apply.apply_update(feed.install,service.staged,service.release.envelope)
         with pytest.raises(Exception,match='health'):
             apply.apply_update(feed.install,service.staged,service.release.envelope)
@@ -212,7 +213,7 @@ def test_update_card_check_download_apply_fixture_handoff(case):
         panel.refresh(); application.processEvents()
     try:
         with patch.object(apply,'PRODUCTION_RELEASE_KEYS',feed.keys), \
-             patch.object(tx,'Registry',lambda:Registry(base)),patch.object(tx,'Shortcut',lambda _:Shortcut(base)):
+             patch.object(tx,'Registry',lambda:Registry(base)),patch.object(tx,'ShortcutSet',lambda:Shortcut(base)):
             panel.check_button.click(); finish(lambda: service.snapshot['state']=='UPDATE_AVAILABLE')
             assert panel.download_button.isEnabled()
             panel.download_button.click(); finish(lambda: bool(results))

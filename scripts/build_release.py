@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 from desktop.update_protocol import (
     APP_ID, MANIFEST_PATH, canonical, digest, safe_path, strict_json,
-    verify_release, version_key, witness_version,
+    verify_release, version_key, witness_version, mandatory_floor, SecurityError,
 )
 
 
@@ -248,6 +248,18 @@ def read_previous(path: Path, keys: dict, channel: str):
                           now=datetime.fromisoformat(signed['issued_at']))
 
 
+def channel_history(output, keys, channel):
+    """Signed immutable releases also retain policy if channel pointers are lost."""
+    releases = []
+    for version in output.iterdir():
+        try: version_key(version.name)
+        except SecurityError: continue
+        regular(version, directory=True)
+        release = read_previous(version / channel / 'release.json', keys, channel)
+        if release is not None: releases.append(release)
+    return releases
+
+
 def verify_output(root: Path, release):
     for row in release.rows.values():
         path = root / 'objects' / row['sha256']
@@ -277,9 +289,9 @@ def build(args):
     for name in ('target', 'output'):
         setattr(args, name, Path(os.path.abspath(getattr(args, name))))
     version_key(args.version)
-    version_key(args.min_supported_version)
+    if args.min_supported_version is not None: version_key(args.min_supported_version)
     version_key(args.min_updater_version)
-    if version_key(args.min_supported_version) > version_key(args.version):
+    if args.min_supported_version is not None and version_key(args.min_supported_version) > version_key(args.version):
         raise ValueError('minimum supported version cannot exceed target')
     if args.channel == 'stable' and not version_key(args.version)[3]:
         raise ValueError('stable channel refuses prerelease')
@@ -309,11 +321,22 @@ def build(args):
         index = args.output / (args.channel + '.json')
         state = state_dir / (args.channel + '.json')
         previous = [r for r in (read_previous(index, keys, args.channel), read_previous(state, keys, args.channel)) if r]
+        previous.extend(channel_history(args.output, keys, args.channel))
         highest = max((r.signed['metadata_version'] for r in previous), default=0)
         if len({digest(canonical(r.signed)) for r in previous if r.signed['metadata_version'] == highest}) > 1:
             raise ValueError('publisher metadata epoch equivocation')
         if any(version_key(r.version) > version_key(args.version) for r in previous):
             raise ValueError('publisher downgrade refused')
+        policy_witness = max(previous, key=lambda r: (version_key(mandatory_floor(r)),
+                             r.signed['metadata_version']), default=None)
+        previous_envelope = policy_witness.envelope if policy_witness is not None else None
+        floor = max((mandatory_floor(r) for r in previous), key=version_key, default='1.0.0')
+        if args.min_supported_version is not None and version_key(args.min_supported_version) < version_key(floor):
+            raise ValueError('publisher mandatory floor downgrade refused')
+        minimum = max((floor, args.min_supported_version or floor,
+                       args.version if args.mandatory else floor), key=version_key)
+        if version_key(minimum) > version_key(args.version):
+            raise ValueError('mandatory floor exceeds target version')
         with tempfile.TemporaryDirectory(prefix='.build-', dir=args.output) as temporary:
             scratch = Path(temporary)
             objects = scratch / 'objects'
@@ -348,7 +371,7 @@ def build(args):
             policy = dict(version=args.version, channel=args.channel, app_id=APP_ID, origin=origin,
                           source_sha=args.source_sha, tree_sha=args.tree_sha, manifest=manifest,
                           base_versions=bases, base_policy=old_rows if args.base else 'AUTO', notes=notes,
-                          min_supported_version=args.min_supported_version, min_updater_version=args.min_updater_version,
+                          min_supported_version=minimum, min_updater_version=args.min_updater_version,
                           mandatory=args.mandatory, mandatory_reason=args.mandatory_reason,
                           expiry_days=args.expiry_days, key_id=key_id, public_key=base64.b64encode(public).decode(),
                           certificate_thumbprint=args.certificate_thumbprint, timestamp_server=args.timestamp_server,
@@ -366,7 +389,8 @@ def build(args):
                 if receipt['input_fingerprint'] != fingerprint:
                     raise ValueError('immutable version already exists with different inputs; publish a new version')
                 raw = (destination / 'release.json').read_bytes()
-                release = verify_release(raw, keys, current='0.0.0', channel=args.channel, highest_seen=highest)
+                release = verify_release(raw, keys, current='0.0.0', channel=args.channel,
+                                         highest_seen=highest, previous_envelope=previous_envelope)
                 if (receipt['metadata_sha256'] != digest(raw) or
                         (not args.certificate_thumbprint and release.signed['file_manifest'] != manifest) or
                         release.signed['base_versions'] != bases or
@@ -415,13 +439,14 @@ def build(args):
                           metadata_version=epoch, issued_at=now.isoformat(), published_at=now.isoformat(),
                           expires_at=(now + timedelta(days=args.expiry_days)).isoformat(), key_id=key_id,
                           rollout_percentage=args.rollout_percentage, rollout_seed=args.rollout_seed, withdrawn=False,
-                          min_supported_version=args.min_supported_version, min_updater_version=args.min_updater_version,
+                          min_supported_version=minimum, min_updater_version=args.min_updater_version,
                           mandatory=args.mandatory, mandatory_reason=args.mandatory_reason, release_notes=notes,
                           full_release=dict(format='file-set-v1', size=sum(r['size'] for r in rows.values()), assets=assets),
                           incremental_assets=changed, file_manifest=manifest, hash_algorithm='sha256',
                           signature_algorithm='ed25519', source_sha=args.source_sha, tree_sha=args.tree_sha, base_versions=bases)
             raw = canonical(dict(signed=signed, key_id=key_id, signature=base64.b64encode(key.sign(canonical(signed))).decode()))
-            release = verify_release(raw, keys, current='0.0.0', channel=args.channel, highest_seen=highest)
+            release = verify_release(raw, keys, current='0.0.0', channel=args.channel,
+                                     highest_seen=highest, previous_envelope=previous_envelope)
             receipt = dict(schema='mentorflow.release-build.v1', status='BUILT', input_fingerprint=fingerprint,
                            version=args.version, channel=args.channel, metadata_version=epoch, source_sha=args.source_sha,
                            tree_sha=args.tree_sha, metadata_sha256=digest(raw), METADATA_SIGNING=signing_mode,
@@ -468,7 +493,7 @@ def parser():
     p.add_argument('--development-signing', action='store_true')
     p.add_argument('--uat-loopback', action='store_true',
                    help='Compiled UAT identity only: reuse an external test key for a literal-loopback BASE/TARGET feed')
-    p.add_argument('--min-supported-version', default='1.0.0')
+    p.add_argument('--min-supported-version', help='Raise the channel mandatory floor; omission inherits signed history')
     p.add_argument('--min-updater-version', default='1.0.0')
     p.add_argument('--mandatory', action='store_true')
     p.add_argument('--mandatory-reason', choices=('', 'security', 'protocol', 'data_compatibility'), default='')

@@ -43,7 +43,8 @@ ephemeral memory-only keys; test clients receive only public verification materi
 | metadata_version | monotonically increasing positive integer <= 2^53-1 per app/channel; same epoch cannot change content |
 | issued_at, published_at, expires_at | timezone-aware ISO8601; publication <= issue; expiry after issue/now, <=31-day lifetime; issue not >5 minutes future |
 | app_id, channel, version | MentorFlow, stable/beta, strict SemVer; stable refuses prerelease; downgrade refused |
-| min_supported_version, min_updater_version | supported base/updater SemVer; unknown updater contract fails safely |
+| min_supported_version | signed mandatory floor per channel; cannot decrease or exceed the release version |
+| min_updater_version | required updater SemVer; unknown updater contract fails safely |
 | mandatory, mandatory_reason | bool; true requires security/protocol/data_compatibility, never ordinary feature pressure |
 | release_notes | plain text <=64KiB, not executable markup |
 | key_id, signature_algorithm, hash_algorithm | provisioned ID matching envelope, ed25519, sha256 |
@@ -67,6 +68,38 @@ re-fetched from the signed full inventory; this is repair reconstruction, not
 permission to apply same-version repairs without a separately authorized bridge.
 
 ## Selection, fallback, bytes and freshness
+
+`min_supported_version` is the cumulative mandatory floor, independent of
+incremental base support. Publishing a mandatory release R sets the floor to R;
+every subsequent optional release carries at least that floor. The publisher
+(`scripts/build_release.py`, also exposed by `build_release.ps1`) inherits it from
+verified channel indexes, signed publisher state, and immutable release history.
+Omitting `--min-supported-version` inherits this value (initial default 1.0.0);
+an explicit lower value is rejected before publication. Preserve the signed
+history when moving a feed. Stable and beta have independent histories and floors.
+The isolated delivery fixture generators are not an alternative production
+publication chain.
+
+For current 1.0/1.1, historical mandatory 1.2 and optional latest 1.4, startup is
+MANDATORY_UPDATE targeting 1.4. Current 1.2/1.3 sees OPTIONAL_UPDATE; current 1.4
+is HEALTHY. No intermediate installation is required. A signed supported direct
+base may use FILE_LEVEL_INCREMENTAL even below the floor; otherwise the SAME
+latest target uses FULL_FALLBACK. `base_versions` and `incremental_assets` alone
+declare incremental compatibility; the floor determines whether login is allowed.
+
+Clients retain policy in the existing per-install/channel signed
+`highest-metadata-<channel>.json` cache witness, independently of unsigned cache
+status. Startup revalidates its signature, product, channel, and release contract
+without needing a transport or configured feed; the signed installation high-water
+record also contributes known policy after an attempted apply. Network failures,
+timeouts, expiry, and withdrawal cannot remove an already learned mandatory gate.
+With no signed mandatory evidence, network failure retains the existing recoverable
+login behavior. An unverifiable local policy witness requires repair instead of
+authorizing login or inventing a mandatory version. Legacy signed `mandatory=true`
+also establishes a floor at that release's version, even when its original minimum
+field was lower. Incoming metadata cannot lower a known floor merely by increasing
+its metadata epoch. Historical witnesses authorize policy only: download/apply
+still require fresh metadata and target the latest currently verified release.
 
 Default path FILE_LEVEL_INCREMENTAL, never BLOCK_DELTA. If base unavailable,
 unsupported or changed size>=full, select FULL_FALLBACK, downloading the complete

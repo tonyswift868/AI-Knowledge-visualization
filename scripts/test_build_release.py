@@ -298,7 +298,7 @@ def test_beta_independent_channel(case):
 @pytest.mark.parametrize('change,match', [
     ({'version': '01.1.1'}, 'SemVer'), ({'version': '1.1.1-beta.1'}, 'prerelease'),
     ({'expiry_days': 32}, 'expiry'), ({'source_sha': 'main'}, 'exact packaged'),
-    ({'origin': 'http://example.com'}, 'HTTPS origin'), ({'mandatory': True}, 'mandatory'),
+    ({'origin': 'http://example.com'}, 'HTTPS publication mount'), ({'mandatory': True}, 'mandatory'),
 ])
 def test_invalid_publication_refused(case, change, match):
     args = case['args']

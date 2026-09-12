@@ -109,7 +109,8 @@ class Release:
 
 
 def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
-                   channel: str = 'stable', now=None, highest_seen=0) -> Release:
+                   channel: str = 'stable', now=None, highest_seen=0,
+                   previous_envelope: bytes | None = None) -> Release:
     """Trust comes only from caller-provisioned public keys, never the envelope."""
     doc = strict_json(raw)
     try:
@@ -149,7 +150,8 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
             raise SecurityError('downgrade refused')
         if version_key(UPDATER_VERSION) < version_key(signed['min_updater_version']):
             raise RecoverableError('updater version is too old; controlled upgrade required')
-        version_key(signed['min_supported_version'])
+        if version_key(signed['min_supported_version']) > target:
+            raise SecurityError('mandatory floor exceeds release version')
         if type(signed['mandatory']) is not bool or signed['mandatory_reason'] not in ('', 'security', 'protocol', 'data_compatibility'):
             raise SecurityError('invalid mandatory policy')
         if signed['mandatory'] and not signed['mandatory_reason']:
@@ -211,7 +213,14 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
             raise SecurityError('full inventory mismatch')
         if not isinstance(signed['incremental_assets'], list) or len(set(signed['incremental_assets'])) != len(signed['incremental_assets']) or set(signed['incremental_assets']) - set(rows):
             raise SecurityError('invalid incremental asset list')
-        return Release(raw, signed, rows, assets, manifest_bytes)
+        release = Release(raw, signed, rows, assets, manifest_bytes)
+        if previous_envelope is not None:
+            previous = verified_witness(previous_envelope, public_keys, channel=channel)
+            prior_epoch = previous.signed['metadata_version']
+            if epoch < prior_epoch or (epoch == prior_epoch and canonical(signed) != canonical(previous.signed)):
+                raise SecurityError('metadata replay or same-epoch equivocation')
+            require_monotonic_floor(release, previous)
+        return release
     except SecurityError:
         raise
     except (KeyError, TypeError, ValueError, InvalidSignature, AttributeError, OverflowError) as exc:
@@ -248,6 +257,32 @@ def witness_version(raw: bytes, keys: dict[str, bytes], *, channel: str) -> tupl
         raise SecurityError('invalid high-water witness') from exc
 
 
+def verified_witness(raw: bytes, keys: dict[str, bytes], *, channel: str) -> Release:
+    """Revalidate signed historical policy, never authorize an expired download."""
+    witness_version(raw, keys, channel=channel)
+    try:
+        issued = datetime.fromisoformat(strict_json(raw)['signed']['issued_at'].replace('Z', '+00:00'))
+        if issued.tzinfo is None or issued > datetime.now(timezone.utc) + timedelta(minutes=5):
+            raise SecurityError('future policy witness')
+        return verify_release(raw, keys, current='0.0.0', channel=channel, now=issued)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise SecurityError('invalid policy witness') from exc
+
+
+def mandatory_floor(release: Release) -> str:
+    # Legacy signed mandatory releases may predate publisher floor propagation.
+    return max((release.signed['min_supported_version'],
+                release.version if release.signed['mandatory'] else '0.0.0'), key=version_key)
+
+
+def require_monotonic_floor(release: Release, previous: Release) -> None:
+    """Both arguments must come from signature verification with compiled keys."""
+    if release.signed['channel'] != previous.signed['channel']:
+        raise SecurityError('mandatory floor channel mismatch')
+    if version_key(mandatory_floor(release)) < version_key(mandatory_floor(previous)):
+        raise SecurityError('signed mandatory floor downgrade refused')
+
+
 def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
     full = release.signed['full_release']['size']
     changed = [path for path, row in release.rows.items()
@@ -255,7 +290,6 @@ def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
                or local_rows.get(path, {}).get('size') != row['size']]
     size = sum(release.rows[p]['size'] for p in changed)
     supported = (current in release.signed['base_versions']
-                 and version_key(current) >= version_key(release.signed['min_supported_version'])
                  and set(changed).issubset(release.signed['incremental_assets']))
     fallback = not local_rows or not supported or size >= full
     paths = list(release.rows) if fallback else changed
@@ -269,9 +303,10 @@ def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
 
 def startup_version_policy(release: Release, current: str) -> str:
     """The startup view of the SAME verified release/version contract."""
-    if release.signed['withdrawn'] or version_key(current) >= version_key(release.version):
+    if version_key(current) >= version_key(release.version):
         return 'HEALTHY'
-    if (version_key(current) < version_key(release.signed['min_supported_version'])
-            or release.signed['mandatory']):
+    if version_key(current) < version_key(mandatory_floor(release)):
         return 'MANDATORY_UPDATE'
+    if release.signed['withdrawn']:
+        return 'HEALTHY'
     return 'OPTIONAL_UPDATE'

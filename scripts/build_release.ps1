@@ -14,7 +14,7 @@ param(
     [string]$KeyId = $env:MENTORFLOW_RELEASE_KEY_ID,
     [string]$KeyPasswordEnv,
     [switch]$DevelopmentSigning,
-    [string]$MinSupportedVersion = '1.0.0',
+    [string]$MinSupportedVersion,
     [string]$MinUpdaterVersion = '1.0.0',
     [switch]$Mandatory,
     [ValidateSet('','security','protocol','data_compatibility')][string]$MandatoryReason = '',
@@ -33,9 +33,10 @@ $releaseArgs = @('-B', '-m', 'scripts.build_release', '--version', $Version, '--
     '--origin', $Origin, '--source-sha', $SourceSha, '--tree-sha', $TreeSha,
     '--target', $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TargetDirectory),
     '--output', $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory),
-    '--min-supported-version', $MinSupportedVersion, '--min-updater-version', $MinUpdaterVersion,
+    '--min-updater-version', $MinUpdaterVersion,
     '--expiry-days', "$ExpiryDays", '--rollout-percentage', "$RolloutPercentage", '--rollout-seed', $RolloutSeed)
 if ($BaseDirectory) { $releaseArgs += @('--base', $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BaseDirectory)) }
+if ($MinSupportedVersion) { $releaseArgs += @('--min-supported-version', $MinSupportedVersion) }
 if ($SigningKey) { $releaseArgs += @('--signing-key', $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SigningKey)) }
 if ($KeyId) { $releaseArgs += @('--key-id', $KeyId) }
 if ($KeyPasswordEnv) { $releaseArgs += @('--key-password-env', $KeyPasswordEnv) }

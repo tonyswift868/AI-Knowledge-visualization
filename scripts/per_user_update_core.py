@@ -94,11 +94,28 @@ def _canonical_identity_candidate(root):
     raise SecurityError('no signed candidate binds the canonical App identity')
 
 
+def _startup_policy_evidence(root, current, service=None):
+    """Read existing signed witnesses; cache status/receipts are not authority."""
+    from desktop.update_service import install_cache_identity, read_release_witness
+    from desktop.update_protocol import verified_witness
+    evidence = [current]
+    highest = install.plain(root / install.HIGHEST)
+    if highest.exists():
+        evidence.append(verified_witness(install.read(highest), install.keys(), channel=current.signed['channel']))
+    cache = getattr(getattr(service, 'cache', None), 'root', None)
+    if cache is None:
+        cache = (Path(os.environ['LOCALAPPDATA']) / install.configured().app_id / 'Updates'
+                 / install_cache_identity(root))
+    saved = read_release_witness(cache, install.keys(), channel=current.signed['channel'])
+    if saved is not None: evidence.append(saved)
+    return evidence
+
+
 def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
     """Single authority for startup; no account API, token or UI dependency.
 
-    Feed uncertainty is not corruption or mandatory policy. Only fresh verified
-    signed metadata may change a healthy installation's login policy.
+    Network errors cannot invent a mandatory gate or erase one already proved
+    by signed metadata. Historical witnesses retain policy, never apply rights.
     """
     try:
         root = install.target(root)
@@ -116,23 +133,43 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
         if full: install.verify_payload(root, release)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('REPAIR_REQUIRED', current=release.version, reason='payload_verification_failed')
-    if not check_feed:
-        return _startup_result('HEALTHY', current=release.version, feed='NOT_CHECKED')
+    from desktop.update_protocol import mandatory_floor, startup_version_policy, version_key, verify_release, require_monotonic_floor
+    try:
+        evidence = _startup_policy_evidence(root, release, service)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        return _startup_result('REPAIR_REQUIRED', current=release.version, reason='signed_policy_witness_unverified')
+    def retained_policy(feed):
+        floor = max((mandatory_floor(item) for item in evidence), key=version_key)
+        if version_key(release.version) < version_key(floor):
+            compatible = [item for item in evidence
+                          if version_key(mandatory_floor(item)) >= version_key(floor)]
+            latest = max(compatible, key=lambda item: version_key(item.version)).version
+            return _startup_result('MANDATORY_UPDATE', current=release.version,
+                                   latest=latest, target=latest, mandatory_floor=floor, feed=feed)
+        return _startup_result('HEALTHY', current=release.version, feed=feed)
+    if not check_feed: return retained_policy('NOT_CHECKED')
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
         result = service.check(manual=True)
+        # check() may have persisted a valid witness before an unrelated status
+        # write failed. Re-read it even when no downloadable release is returned.
+        evidence.extend(_startup_policy_evidence(root, release, service))
         if result.get('state') not in ('UPDATE_AVAILABLE','UP_TO_DATE') or service.release is None:
-            return _startup_result('HEALTHY', current=release.version, feed='UNAVAILABLE_RECOVERABLE')
-        from desktop.update_protocol import startup_version_policy
-        state = startup_version_policy(service.release, release.version)
+            return retained_policy('UNAVAILABLE_RECOVERABLE')
+        prior = max(evidence, key=lambda item: item.signed['metadata_version'])
+        latest = verify_release(service.release.envelope, install.keys(), current=release.version,
+                                channel=release.signed['channel'], previous_envelope=prior.envelope)
+        for item in evidence: require_monotonic_floor(latest, item)
+        state = startup_version_policy(latest, release.version)
         if state == 'OPTIONAL_UPDATE' and not result.get('update'):
             state = 'HEALTHY'
-        return _startup_result(state, current=release.version, latest=service.release.version, feed='VERIFIED')
+        return _startup_result(state, current=release.version, latest=latest.version, target=latest.version,
+                               mandatory_floor=mandatory_floor(latest), feed='VERIFIED')
     except NoFeedConfigured:
-        return _startup_result('HEALTHY', current=release.version, feed='NO_FEED')
+        return retained_policy('NO_FEED')
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
-        return _startup_result('HEALTHY', current=release.version, feed='UNAVAILABLE_RECOVERABLE')
+        return retained_policy('UNAVAILABLE_RECOVERABLE')
     finally:
         if owned and service is not None: service.close()
 

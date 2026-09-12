@@ -347,8 +347,13 @@ def verify_gui(root, *, executable):
 
 def admit(root, envelope, public_keys, *, repair=False):
     current = installed(root, public_keys) if is_install(root) else None
-    epoch, fingerprint = witness_version(read(root / HIGHEST), public_keys, channel='stable') if (root / HIGHEST).exists() else (0, '')
-    release = verify_release(envelope, public_keys, current=current.version if current else '0.0.0', highest_seen=epoch)
+    previous = read(plain(root / HIGHEST)) if (root / HIGHEST).exists() else None
+    epoch, fingerprint = witness_version(previous, public_keys, channel='stable') if previous is not None else (0, '')
+    release = verify_release(envelope, public_keys, current=current.version if current else '0.0.0',
+                             highest_seen=epoch, previous_envelope=previous)
+    if current:
+        from desktop.update_protocol import require_monotonic_floor
+        require_monotonic_floor(release, current)
     if release.signed['withdrawn']:
         raise SecurityError('withdrawn release refused')
     if release.signed['metadata_version'] == epoch and digest(canonical(release.signed)) != fingerprint:

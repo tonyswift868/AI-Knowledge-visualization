@@ -25,7 +25,7 @@ def verify_committed(root):
 
 def protected_witness(root, channel, release=None):
     """Helper-owned network-replay floor; it cannot be reset by user cache edits."""
-    from desktop.update_protocol import witness_version, digest, canonical
+    from desktop.update_protocol import witness_version, digest, canonical, verified_witness, require_monotonic_floor
     import os
     if channel not in ('stable','beta'): raise SecurityError('invalid protected witness channel')
     base=root/tx.STAGING/tx.UPDATE_METADATA
@@ -35,6 +35,8 @@ def protected_witness(root, channel, release=None):
         tx.assert_no_alias(path); trust.assert_protected(path)
         if path.stat().st_size>16*1024**2: raise SecurityError('oversized protected witness')
         epoch,signed_hash=witness_version(path.read_bytes(),PRODUCTION_RELEASE_KEYS,channel=channel)
+        if release is not None:
+            require_monotonic_floor(release, verified_witness(path.read_bytes(), PRODUCTION_RELEASE_KEYS, channel=channel))
     if release is not None:
         incoming=release.signed['metadata_version']
         if incoming<epoch or incoming==epoch and signed_hash!=digest(canonical(release.signed)):
