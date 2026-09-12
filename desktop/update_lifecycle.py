@@ -84,7 +84,7 @@ class CoreUpdatePort:
             mandatory_reason=(raw.get('mandatory_reason') or 'support_floor') if state == 'MANDATORY_UPDATE' else '',
             min_supported_version=raw.get('min_supported_version', ''),
             downloaded=raw.get('actual_downloaded_bytes', 0), total=raw.get('expected_download_bytes', 0),
-            mandatory_reason=raw.get('mandatory_reason', ''), update_path=raw.get('update_path', ''),
+            update_path=raw.get('update_path', ''),
             has_update=bool(raw.get('update', code == 'UPDATE_AVAILABLE')),
             error_kind=error_kind, busy=bool(getattr(transport, 'busy', False)),
             available=self.service is not None)
