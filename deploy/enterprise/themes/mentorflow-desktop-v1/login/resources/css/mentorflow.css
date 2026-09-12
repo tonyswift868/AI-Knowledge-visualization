@@ -92,6 +92,19 @@ html.login-pf,
 .mentorflow-login #kc-login { width: 100%; }
 .mentorflow-login .pf-c-button.pf-m-primary:hover { background: #8d3f62; }
 .mentorflow-login .pf-c-button:disabled { opacity: .65; cursor: wait; }
+.mentorflow-login #kc-passwd-update-form [data-mf-password-reveal] {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--mf-accent);
+  background: var(--mf-panel);
+  border: 1px solid var(--mf-line);
+  border-left: 0;
+  border-radius: 0 10px 10px 0;
+}
+.mentorflow-login #kc-reset-submit:disabled { cursor: not-allowed; }
+/* Suppress the browser's built-in reveal control on confirmation as well. */
+.mentorflow-login #password-confirm::-ms-reveal { display: none; }
 .mentorflow-login :is(input, button, a):focus-visible {
   outline: 2px solid var(--mf-focus);
   outline-offset: 2px;

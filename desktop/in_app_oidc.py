@@ -49,6 +49,8 @@ from .enterprise_oidc import (
 
 AUTH_DIALOG_OBJECT_NAME = "mentorflowInAppOidcDialog"
 AUTH_VIEW_OBJECT_NAME = "mentorflowInAppOidcView"
+RESET_LOGIN_REQUIRED = "ENTERPRISE_RESET_LOGIN_REQUIRED"
+RESET_LOGIN_MESSAGE = "请使用新密码，通过正常登录页面登录 MentorFlow。"
 _retiring_dialogs: set[object] = set()
 
 
@@ -479,6 +481,12 @@ class InAppOidcLoginDialog(QDialog):
                         "ENTERPRISE_OIDC_LOGIN_CANCELLED",
                         "Enterprise login was cancelled",
                     )
+                if self._intent == 'forgot_password':
+                    # Validate/consume the existing callback transaction, but
+                    # never exchange it for a login session after a reset.
+                    # A callback alone is not evidence that a reset succeeded.
+                    prepared.transaction.consume_callback(callback)
+                    raise EnterpriseOidcError(RESET_LOGIN_REQUIRED, RESET_LOGIN_MESSAGE)
                 return await client.complete_login(prepared, callback)
             finally:
                 if prepared is not None:
@@ -533,6 +541,9 @@ class InAppOidcLoginDialog(QDialog):
 
     def _finish_successfully(self, value: object) -> None:
         if self._cancelled.is_set() or not isinstance(value, EnterpriseOidcLoginResult):
+            return
+        if self._intent == 'forgot_password':
+            self._finish_with_error(RESET_LOGIN_REQUIRED, RESET_LOGIN_MESSAGE)
             return
         self._result = value
         if self._embedded:

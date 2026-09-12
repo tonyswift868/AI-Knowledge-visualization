@@ -29,7 +29,7 @@ def properties(path):
                 if line and not line.startswith("#"))
 
 
-def test_only_template_delta_is_remember_me_removal():
+def test_regular_login_delta_is_only_remember_me_removal():
     template = (LOGIN / "login.ftl").read_text(encoding="utf-8")
     assert template.startswith(HEADER)
     restored = template[len(HEADER):].replace(
@@ -39,7 +39,7 @@ def test_only_template_delta_is_remember_me_removal():
     )
     assert hashlib.sha256(restored.encode()).hexdigest() == UPSTREAM_SHA256
     assert 'name="rememberMe"' not in template
-    assert sorted(path.name for path in LOGIN.glob("*.ftl")) == ["login.ftl"]
+    assert sorted(path.name for path in LOGIN.glob("*.ftl")) == ["login-update-password.ftl", "login.ftl"]
 
 
 def test_form_uses_upstream_post_errors_and_password_visibility():
@@ -55,7 +55,7 @@ def test_form_uses_upstream_post_errors_and_password_visibility():
                      'name="credentialId"', 'realm.resetPasswordAllowed',
                      'realm.registrationAllowed', 'social.providers'):
         assert expected in template
-    assert not list(LOGIN.rglob("*.js"))  # Upstream JS inherited; no password bridge.
+    assert [path.name for path in LOGIN.rglob("*.js")] == ["password-pair.js"]
     for forbidden in ("fetch(", "window.open", "postMessage", "/api/auth/login", "<iframe"):
         assert forbidden not in template
 

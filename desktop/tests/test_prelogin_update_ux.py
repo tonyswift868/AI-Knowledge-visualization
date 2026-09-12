@@ -187,7 +187,7 @@ def test_account_actions_refuse_opaque_url_substitution():
             authorization_request_for_intent(replace(prepared, authorization_url=url), 'forgot_password', {'forgot_password': True})
 
 
-@pytest.mark.parametrize('intent', ['register', 'forgot_password'])
+@pytest.mark.parametrize('intent', ['login', 'register'])
 def test_embedded_oidc_protocol_uses_selected_request_and_original_validator(intent):
     from desktop.in_app_oidc import InAppOidcLoginDialog
     from desktop.tests.test_in_app_oidc import _config

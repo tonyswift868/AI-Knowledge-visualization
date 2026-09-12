@@ -383,7 +383,7 @@ class LoginGateWindow(QWidget):
             enabled = False
         elif state in {LoginGateState.LOGIN_READY, LoginGateState.AUTH_READY}:
             title = "登录你的账号"
-            message = "学习计划、进度和本机资料会在登录后安全恢复。"
+            message = detail or "学习计划、进度和本机资料会在登录后安全恢复。"
             button = "登录 MentorFlow"
             enabled = True
         elif state is LoginGateState.AUTHENTICATING:

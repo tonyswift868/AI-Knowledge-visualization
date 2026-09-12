@@ -1248,6 +1248,23 @@ class MentorFlowApplication:
                 password = None
         threading.Thread(target=authenticate, name='mentorflow-native-login', daemon=True).start()
 
+    def _account_authentication_failed(self, generation, intent, code) -> None:
+        from .in_app_oidc import RESET_LOGIN_REQUIRED
+        if intent == 'forgot_password' and code == RESET_LOGIN_REQUIRED:
+            self._return_from_password_reset(generation)
+        else:
+            self._background_failed(f"{generation}:authenticate", "登录页面暂不可用，请检查网络或账号权限后重试。")
+
+    def _return_from_password_reset(self, generation) -> None:
+        from .in_app_oidc import RESET_LOGIN_MESSAGE
+        from .startup_flow import LoginGateState
+        if generation != self._login_generation or self._closing or self.login_gate is None:
+            return
+        self._invalidate_login_jobs()
+        self._remembered_profile = None
+        self._last_login_result = None
+        self.login_gate.set_state(LoginGateState.LOGIN_READY, detail=RESET_LOGIN_MESSAGE)
+
     def _accept_login_result(self, result) -> None:
         from .enterprise_oidc import EnterpriseOidcLoginResult
         from .runtime import record_enterprise_account_session
