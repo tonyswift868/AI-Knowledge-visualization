@@ -52,6 +52,39 @@ class PolicyContractTest(unittest.TestCase):
         self.assertFalse(self.policy['reset_flow']['reset_otp'])
         self.assertTrue(self.policy['reset_flow']['force_login'])
 
+    def test_brute_force_bounds_and_unique_email(self):
+        settings = self.policy['realm_settings']
+        self.assertFalse(settings['duplicateEmailsAllowed'])
+        self.assertEqual(settings['minimumQuickLoginWaitSeconds'], 60)
+        self.assertEqual(settings['waitIncrementSeconds'], 60)
+        self.assertEqual(settings['maxFailureWaitSeconds'], 900)
+        self.assertEqual(settings['quickLoginCheckMilliSeconds'], 1000)
+        self.assertEqual(settings['maxDeltaTimeSeconds'], 43200)
+        self.assertEqual(self.policy['unmanaged_attributes'], 'DISABLED')
+
+    def test_rate_limit_map_matches_auth_posts_and_not_assets_or_gets(self):
+        # Exercise expressions extracted from the checked-in nginx source. This
+        # is a routing contract, not evidence of a running nginx rate limiter.
+        rules = re.findall(r'^\s*~(\S+)\s+\$binary_remote_addr;', self.nginx, re.M)
+        self.assertEqual(len(rules), 4)
+        matches = lambda value: any(re.search(rule, value) for rule in rules)
+        targets = [
+            '/protocol/openid-connect/token', '/login-actions/authenticate',
+            '/login-actions/registration:', '/login-actions/reset-credentials:',
+            '/login-actions/send-verify-email:', '/login-actions/email-verification:',
+            '/login-actions/required-action:VERIFY_EMAIL',
+            '/login-actions/required-action:UPDATE_EMAIL',
+        ]
+        for target in targets:
+            with self.subTest(target=target):
+                self.assertTrue(matches('POST:/realms/mentorflow' + target))
+                for method in ('GET', 'HEAD', 'OPTIONS'):
+                    self.assertFalse(matches(method + ':/realms/mentorflow' + target))
+        self.assertFalse(matches('POST:/resources/theme/login.css'))
+        for zone, rate, burst in [('token', 30, 20), ('login', 10, 10), ('email', 3, 3)]:
+            self.assertIn(f'zone=e109_auth_{zone}:1m rate={rate}r/m;', self.nginx)
+            self.assertIn(f'limit_req zone=e109_auth_{zone} burst={burst} nodelay;', self.nginx)
+
     def test_proxy_trust_and_no_append(self):
         self.assertEqual(self.policy['proxy']['trusted_addresses'], ['172.18.0.5'])
         self.assertNotIn('$proxy_add_x_forwarded_for', self.nginx)

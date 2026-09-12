@@ -78,7 +78,8 @@ JOBS_MIGRATION_REVISION = "0030_enterprise_jobs_v1"
 COMPLETION_MIGRATION_REVISION = "0031_enterprise_tenancy_completion"
 PROVIDER_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
 WORKSPACE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
-MIGRATION_REVISION = "0034_enterprise_asset_manifests"
+ASSET_MIGRATION_REVISION = "0034_enterprise_asset_manifests"
+MIGRATION_REVISION = "0035_account_workspace_bootstrap"
 CANONICAL_TABLES = {
     "organizations",
     "organization_memberships",
@@ -799,7 +800,7 @@ def test_synthetic_fixture_and_isolation_corpus_cover_every_resource_and_operati
     assert corpus.unauthorized_success_expected == 0
 
 
-def test_canonical_migrations_form_one_linear_head_through_0034() -> None:
+def test_canonical_migrations_form_one_linear_head_through_0035() -> None:
     completion_path = (
         BACKEND_ROOT
         / "alembic"
@@ -849,13 +850,16 @@ def test_canonical_migrations_form_one_linear_head_through_0034() -> None:
     workspace = ScriptDirectory.from_config(config).get_revision(
         WORKSPACE_MIGRATION_REVISION
     )
+    assets = ScriptDirectory.from_config(config).get_revision(ASSET_MIGRATION_REVISION)
     head = ScriptDirectory.from_config(config).get_revision(MIGRATION_REVISION)
     assert provider is not None
     assert provider.down_revision == COMPLETION_MIGRATION_REVISION
     assert workspace is not None
     assert workspace.down_revision == PROVIDER_MIGRATION_REVISION
     assert head is not None
-    assert head.down_revision == WORKSPACE_MIGRATION_REVISION
+    assert assets is not None
+    assert assets.down_revision == WORKSPACE_MIGRATION_REVISION
+    assert head.down_revision == ASSET_MIGRATION_REVISION
     assert ENTERPRISE_MIGRATION_REVISION == MIGRATION_REVISION
     assert "workspace_memberships" in source
     assert "learning_plans" in source
@@ -873,7 +877,7 @@ def test_canonical_migrations_form_one_linear_head_through_0034() -> None:
     assert "workspace_memberships" not in foundation
 
 
-def test_0034_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
+def test_0035_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "enterprise-migration.db"

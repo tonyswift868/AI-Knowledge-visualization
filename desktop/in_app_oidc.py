@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
-from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit
+from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit, unquote
 
 from PySide6.QtCore import QThread, QUrl, Signal, Qt
 from PySide6.QtGui import QColor, QDesktopServices
@@ -95,6 +95,38 @@ def _origin(value: str) -> tuple[str, str, int]:
     return scheme, hostname, port
 
 
+def account_action_navigation_allowed(url: str, *, register: bool = False,
+                                      forgot_password: bool = False) -> bool:
+    """Guard provider page links without reading action tokens or page contents.
+
+    Keep this in the existing module: the delivery packager reuses a frozen
+    dependency closure. This client boundary cannot replace realm policy.
+    """
+    try:
+        parsed = urlsplit(url)
+        path = parsed.path
+        # Reject ambiguous nested encodings rather than disagreeing with the
+        # browser/proxy over which account action the path addresses.
+        for _ in range(4):
+            decoded = unquote(path, errors='strict')
+            if decoded == path:
+                break
+            path = decoded
+        else:
+            return False
+        segments = {part.split(';', 1)[0].casefold()
+                    for part in path.replace('\\', '/').split('/')}
+        prompts = [value.split() for key, value in parse_qsl(parsed.query)
+                   if key == 'prompt']
+    except (ValueError, UnicodeError):
+        return False
+    registration = bool(segments & {'registration', 'registrations'}) or any(
+        'create' in values for values in prompts)
+    recovery = bool(segments & {'forgot-credentials', 'reset-credentials'})
+    return ((not registration or register is True)
+            and (not recovery or forgot_password is True))
+
+
 @dataclass(frozen=True, slots=True)
 class InAppOidcNavigationPolicy:
     """Exact origins allowed inside the authentication-only browser surface."""
@@ -102,9 +134,11 @@ class InAppOidcNavigationPolicy:
     provider_origin: tuple[str, str, int]
     callback_origin: tuple[str, str, int]
     callback_path: str
+    register_allowed: bool = False
+    forgot_password_allowed: bool = False
 
     @classmethod
-    def from_prepared(cls, prepared: PreparedOidcLogin) -> "InAppOidcNavigationPolicy":
+    def from_prepared(cls, prepared: PreparedOidcLogin, capabilities=None) -> "InAppOidcNavigationPolicy":
         provider = _origin(prepared.discovery.authorization_endpoint)
         callback = urlsplit(prepared.transaction.redirect_uri)
         callback_origin = _origin(prepared.transaction.redirect_uri)
@@ -117,6 +151,8 @@ class InAppOidcNavigationPolicy:
             provider_origin=provider,
             callback_origin=callback_origin,
             callback_path=callback.path,
+            register_allowed=isinstance(capabilities, dict) and capabilities.get('register') is True,
+            forgot_password_allowed=isinstance(capabilities, dict) and capabilities.get('forgot_password') is True,
         )
 
     def allows(self, value: str) -> bool:
@@ -133,7 +169,10 @@ class InAppOidcNavigationPolicy:
         except EnterpriseOidcError:
             return False
         if candidate_origin == self.provider_origin:
-            return parsed.scheme.casefold() == "https"
+            return parsed.scheme.casefold() == "https" and account_action_navigation_allowed(
+                raw, register=self.register_allowed,
+                forgot_password=self.forgot_password_allowed,
+            )
         return (
             candidate_origin == self.callback_origin
             and parsed.scheme.casefold() == "http"
@@ -459,7 +498,7 @@ class InAppOidcLoginDialog(QDialog):
         if self._cancelled.is_set() or not isinstance(value, PreparedOidcLogin):
             return
         try:
-            policy = InAppOidcNavigationPolicy.from_prepared(value)
+            policy = InAppOidcNavigationPolicy.from_prepared(value, self._capabilities)
         except EnterpriseOidcError as exc:
             value.receiver.close()
             self._finish_with_error(exc.code, exc.message)
