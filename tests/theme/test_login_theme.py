@@ -39,7 +39,8 @@ def test_regular_login_delta_is_only_remember_me_removal():
     )
     assert hashlib.sha256(restored.encode()).hexdigest() == UPSTREAM_SHA256
     assert 'name="rememberMe"' not in template
-    assert sorted(path.name for path in LOGIN.glob("*.ftl")) == ["login-update-password.ftl", "login.ftl"]
+    assert sorted(path.name for path in LOGIN.glob("*.ftl")) == [
+        "login-update-password.ftl", "login.ftl", "mentorflow-account-lifecycle.ftl", "mentorflow-password-pair.ftl"]
 
 
 def test_form_uses_upstream_post_errors_and_password_visibility():
@@ -55,7 +56,8 @@ def test_form_uses_upstream_post_errors_and_password_visibility():
                      'name="credentialId"', 'realm.resetPasswordAllowed',
                      'realm.registrationAllowed', 'social.providers'):
         assert expected in template
-    assert [path.name for path in LOGIN.rglob("*.js")] == ["password-pair.js"]
+    assert sorted(path.name for path in LOGIN.rglob("*.js")) == [
+        "account-lifecycle-state.js", "account-lifecycle.js", "password-pair.js"]
     for forbidden in ("fetch(", "window.open", "postMessage", "/api/auth/login", "<iframe"):
         assert forbidden not in template
 

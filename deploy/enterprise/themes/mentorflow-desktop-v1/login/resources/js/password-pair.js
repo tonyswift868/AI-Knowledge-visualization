@@ -1,39 +1,39 @@
-// Equality/visibility only. The native Keycloak POST validates the action state
-// and the canonical realm password policy; this module never parses either.
-const form = document.getElementById('kc-passwd-update-form');
-if (form) {
-    const first = form.elements.namedItem('password-new');
-    const confirm = form.elements.namedItem('password-confirm');
-    const submit = document.getElementById('kc-reset-submit');
+// Equality/visibility only. Native Keycloak still owns password policy and
+// action validation. The future lifecycle shell can add presentation guards.
+export function bindPasswordPair(form, {canSubmit = () => true, onEdited = () => {}} = {}) {
+    const first = form.querySelector('[data-mf-new-password]');
+    const confirm = form.querySelector('[data-mf-confirm-password]');
+    const submit = form.querySelector('[data-mf-pair-submit]');
     const reveal = form.querySelector('[data-mf-password-reveal]');
-    const mismatch = document.getElementById('mf-password-mismatch');
-    const serverConfirmError = document.getElementById('input-error-password-confirm');
+    const mismatch = form.querySelector('[data-mf-password-mismatch]');
+    const serverConfirmError = form.querySelector('[data-mf-confirm-error]');
+    const listeners = new AbortController();
+    const options = {signal: listeners.signal};
     let submitting = false;
-
     const refresh = () => {
         const complete = first.value.length > 0 && confirm.value.length > 0;
         const differs = complete && first.value !== confirm.value;
         mismatch.hidden = !differs;
         confirm.setAttribute('aria-invalid', String(differs || !!serverConfirmError.textContent.trim()));
-        submit.disabled = submitting || !complete || differs;
-        return complete && !differs;
+        const allowed = complete && !differs && canSubmit();
+        submit.disabled = submitting || !allowed;
+        return allowed;
     };
     const edited = () => {
-        // A prior server mismatch refers to the previous submission. Policy
-        // errors remain separate and are never treated as a matching result.
         serverConfirmError.textContent = '';
+        onEdited();
         refresh();
     };
     for (const input of [first, confirm]) {
-        input.addEventListener('input', edited);
-        input.addEventListener('change', edited); // normal autofill/paste behavior
+        input.addEventListener('input', edited, options);
+        input.addEventListener('change', edited, options);
     }
     reveal.addEventListener('click', () => {
         const visible = first.type === 'password';
         first.type = visible ? 'text' : 'password';
         reveal.textContent = visible ? reveal.dataset.labelHide : reveal.dataset.labelShow;
         reveal.setAttribute('aria-pressed', String(visible));
-    });
+    }, options);
     form.addEventListener('submit', event => {
         if (event.submitter?.name === 'cancel-aia') return;
         if (submitting || !refresh()) {
@@ -42,14 +42,18 @@ if (form) {
         }
         submitting = true;
         submit.disabled = true;
-    });
-    window.addEventListener('pageshow', () => {
+    }, options);
+    const reset = () => {
         submitting = false;
-        // Back/forward navigation must not restore a revealed first field.
         first.type = 'password';
         reveal.textContent = reveal.dataset.labelShow;
         reveal.setAttribute('aria-pressed', 'false');
         refresh();
-    });
-    refresh();
+    };
+    window.addEventListener('pageshow', reset, options);
+    reset();
+    return {refresh, reset, destroy: () => listeners.abort()};
 }
+
+const nativeResetForm = document.getElementById('kc-passwd-update-form');
+if (nativeResetForm) bindPasswordPair(nativeResetForm);

@@ -10,8 +10,11 @@ LOGIN = ROOT / 'deploy/enterprise/themes/mentorflow-desktop-v1/login'
 
 def test_reset_form_preserves_native_post_and_independent_password_fields():
     template = (LOGIN / 'login-update-password.ftl').read_text(encoding='utf-8')
-    for name in ('password-new', 'password-confirm'):
-        inputs = re.findall(r'<input\b[^>]*\bid="' + name + r'"[^>]*>', template)
+    pair = (LOGIN / 'mentorflow-password-pair.ftl').read_text(encoding='utf-8')
+    assert '<@passwordPair.fields/>' in template
+    assert 'prefix="password" firstName="password-new"' in pair
+    for marker in ('data-mf-new-password', 'data-mf-confirm-password'):
+        inputs = [tag for tag in re.findall(r'<input\b.*?/>', pair, re.S) if marker in tag]
         assert len(inputs) == 1
         assert 'type="password"' in inputs[0]
         assert 'autocomplete="new-password"' in inputs[0]
@@ -20,12 +23,12 @@ def test_reset_form_preserves_native_post_and_independent_password_fields():
     assert 'action="${url.loginAction}" method="post"' in template
     assert '<@passwordCommons.logoutOtherSessions/>' in template
     assert 'name="cancel-aia" value="true" formnovalidate' in template
-    assert 'id="kc-reset-submit" disabled' in template
-    assert template.count('aria-controls="password-new"') == 1
-    assert 'aria-controls="password-confirm"' not in template
-    assert 'data-password-toggle' not in template
-    assert 'kcSanitize(messagesPerField.get' in template
-    assert 'aria-live="polite" hidden' in template
+    assert 'id="kc-reset-submit" data-mf-pair-submit disabled' in template
+    assert pair.count('aria-controls="${firstId}"') == 1
+    assert 'aria-controls="${confirmId}"' not in pair
+    assert 'data-password-toggle' not in pair
+    assert 'kcSanitize(messagesPerField.get' in pair
+    assert 'aria-live="polite" hidden' in pair
 
 
 def test_local_script_has_no_policy_engine_persistence_or_password_bridge():

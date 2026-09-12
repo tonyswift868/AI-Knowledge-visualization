@@ -25,7 +25,7 @@ public class ResetPasswordThemeFixture {
         StringTemplateLoader shell = new StringTemplateLoader();
         shell.putTemplate("template.ftl", """
             <#macro registrationLayout displayMessage=true>
-            <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+            <!doctype html><html class="login-pf" lang="zh-CN"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1">
             <link rel="stylesheet" href="/resources/css/mentorflow.css"></head>
             <body class="mentorflow-login"><div class="login-pf-page"><div class="card-pf">
@@ -42,7 +42,7 @@ public class ResetPasswordThemeFixture {
         Properties properties = new Properties();
         try (var r = Files.newBufferedReader(Path.of(args[1], "keycloak/login/theme.properties"))) { properties.load(r); }
         for (String state : List.of("normal", "server-mismatch", "policy-min", "policy-max", "policy-denied",
-                "policy-username", "policy-email", "invalid", "expired", "used", "success-specific", "success-generic", "cancel")) {
+                "policy-username", "policy-email", "invalid", "expired", "used", "success-specific", "success-generic", "cancel", "lifecycle")) {
             Map<String, Object> data = new HashMap<>();
             Map<String, String> errors = new HashMap<>();
             data.put("properties", properties);
@@ -78,10 +78,11 @@ public class ResetPasswordThemeFixture {
             }
             if (List.of("invalid", "expired", "used").contains(state)) template = "error.ftl";
             if (state.startsWith("success-")) template = "info.ftl";
+            if (state.equals("lifecycle")) template = "mentorflow-account-lifecycle.ftl";
             try (var writer = Files.newBufferedWriter(out.resolve(state + ".html"), StandardCharsets.UTF_8)) {
                 cfg.getTemplate(template).process(data, writer);
             }
         }
-        System.out.println("Rendered 13 password/error/info fixtures (offline; no auth or tokens).");
+        System.out.println("Rendered 14 password/error/info/lifecycle fixtures (offline; no auth or tokens).");
     }
 }

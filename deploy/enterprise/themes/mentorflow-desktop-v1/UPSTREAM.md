@@ -18,6 +18,9 @@ test restores the deleted block and requires this exact upstream identity.
 It keeps the native POST target, field names, logout-sessions macro and
 app-initiated cancellation. Confirmation has no reveal control; the small
 `password-pair.js` module checks equality and toggles only the first field.
+The field markup now lives in `mentorflow-password-pair.ftl`, shared by that
+native page and the inactive future lifecycle shell. `bindPasswordPair` owns
+the same equality/reveal behavior for each independent form and can be disposed.
 It does not implement password policy, token validation or credential updates.
 Native policy errors use localized, separate messages. The provider still
 validates the complete realm policy on submission; matching alone does not
@@ -58,6 +61,19 @@ consumes the existing OIDC callback validation once, performs no token exchange,
 and returns to the ordinary login gate. This protects against an unexpected
 provider login callback; it does not identify a successful credential reset.
 No account capability or deployment configuration is enabled by these UI files.
+
+Future lifecycle presentation: `mentorflow-account-lifecycle.ftl` is a custom,
+unrouted template, not a `register.ftl` or `login-reset-password.ftl` override.
+Its JS state machine and forms implement the next Desktop UX contract only.
+The register UI presents 8–128 Unicode code points without composition rules,
+as requested in dispatch 05; the current native realm's 15-character policy is
+unchanged. No native login page imports the lifecycle module, and the forms
+use `method="dialog"` without POST destinations. Lifecycle intents carry only
+an intent name, request correlation id or nonsecret account key. The shell has
+no network or credential/Vault adapter, even when test capabilities are enabled.
+Future remember-password/auto-login selections live only in that UI instance.
+See `docs/qa/MAIN3_03_ACCOUNT_LIFECYCLE_UX_SHELL_20260913.md` for the presentation
+contract and pending owner 01/04 integration boundaries.
 
 References for that boundary:
 
