@@ -6,18 +6,18 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "BATCH02_EXACT_LOCAL_OBJECTS_AND_REMOTE_START_REFS_VERIFIED",
+  "refs_verified": "GATEA_0036_EXACT_SOURCE_AND_REMOTE_START_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
+  "authority": "MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
-      "task_id": "MENTORFLOW_MAIN3_BATCH02_EXACT_STAGE_INTEGRATION_V1",
+      "dispatch_id": "MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02",
+      "task_id": "MENTORFLOW_GATE_A_SCHEMA_0036_UNBLOCK_INTEGRATION_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Batch02 integrated closeout; SILENT. Final immutable receipt binds publication HEAD/tree. No follow-up or live dispatch implied.",
+      "next_action": "0036 source unblock integrated. A SILENT after closeout. Deployment after fix NOT_RUN; no Gate A continuation or unrelated delivery authorized.",
       "worktree_isolation": "VERIFIED"
     },
     "01": {
@@ -32,7 +32,7 @@
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "97b15a64de5184753415bda4a46754085d7640fc",
       "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
-      "acceptance_state": "LIVE_PRODUCTION_LOGIN_NOT_RUN",
+      "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX",
       "ordered_source_commits": [
         "5079681154c0ca34ba2427e072962fe69024bef5",
         "03d979710a4cde44917c4f10c2f08d2390c8426d",
@@ -86,18 +86,24 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
-      "next_action": "SILENT. Complete Batch02 exact stage consumed; source/local fixture acceptance is scoped in the receipt. No polling or automatic follow-up dispatch.",
+      "delivery_commit": "0d064974a145e758cdc8e2c8700eca7a13576157",
+      "next_action": "Schema delivery consumed; SILENT within this integration receipt. Real SMTP continues under an independent 04 task; live progress not queried or accepted here.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "928d58f9e7ca35fbe716157703c9d51ad5b04bc6",
-      "delivery_state": "NATIVE_RLS_PASS_EVIDENCE_RETAINED",
-      "acceptance_state": "REAL_SMTP_NOT_RUN",
+      "integrated_commit": "34fc9c95e9e51da832ef1bc6aab587ee6a3a041a",
+      "delivery_state": "GATE_A_SCHEMA_BLOCKER_RESOLVED_IN_SOURCE; NATIVE_RLS_PASS_EVIDENCE_RETAINED",
+      "acceptance_state": "REAL_SMTP_SEPARATE_04_TASK",
       "ordered_source_commits": [
+        "0d064974a145e758cdc8e2c8700eca7a13576157"
+      ],
+      "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
+      "batch02_delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
+      "batch02_integrated_commit": "928d58f9e7ca35fbe716157703c9d51ad5b04bc6",
+      "batch02_ordered_source_commits": [
         "6adf672872a4d839be8f12ebca7a91eab783b8ad",
         "f9634e24d759eb268c56d45b301046dc503ef714"
       ],
-      "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd"
+      "schema_recovery_base": "f9634e24d759eb268c56d45b301046dc503ef714"
     },
     "B": {
       "status": "SILENT",
@@ -117,7 +123,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
+    "evidence": "MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -130,11 +136,11 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "BATCH02_INTEGRATED_01-04_SILENT",
+    "worker_dispatches": "GATE_A_0036_UNBLOCK_INTEGRATED; BATCH02_RETAINED",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Batch02 closeout; all slots SILENT. A Phase0 locally rechecked. Native auth/token fixture and edge runtime rerun by A; 04 native RLS PASS evidence retained, not rerun by A. Production/SMTP/install gates NOT_RUN.",
+    "snapshot_scope": "A schema-unblock closeout. Historical worker status rows remain delivery snapshots, not live task telemetry. Only 0d064974 consumed. A reran scoped 0036 PostgreSQL/ledger RLS. Deployment after fix NOT_RUN; real SMTP belongs to separate 04 task.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING"
@@ -146,15 +152,24 @@
     "password_grant_used": false,
     "direct_grant_used": false,
     "password_persisted": false,
-    "real_smtp_send": 0,
-    "real_smtp_verify": "NOT_RUN",
-    "real_smtp_reset": "NOT_RUN",
+    "real_smtp_send": null,
+    "real_smtp_verify": "INDEPENDENT_04_TASK",
+    "real_smtp_reset": "INDEPENDENT_04_TASK",
     "real_install_qa": "NOT_RUN",
     "final_1_5_0_to_1_5_1": "NOT_RUN",
     "live_production_login": "NOT_RUN",
     "production_keycloak_mutation": 0,
-    "native_rls": "04_PASS_EVIDENCE_RETAINED_NOT_RERUN_BY_A",
+    "native_rls": "BATCH02_04_PASS_RETAINED; A_0036_LEDGER_FOCUSED_NATIVE_PASS",
     "formal_main3": "NOT_CREATED",
-    "main2": "FROZEN"
-  }
+    "main2": "FROZEN",
+    "gate_a_schema_blocker": "RESOLVED_IN_SOURCE",
+    "gate_a_real_deployment": "NOT_RUN_AFTER_FIX",
+    "batch02_real_smtp_evidence": {
+      "send": 0,
+      "verify": "NOT_RUN",
+      "reset": "NOT_RUN"
+    },
+    "real_smtp_scope": "Separate independent 04 task; current live results not queried. This source-unblock task sent zero emails. Prior Batch02 SMTP evidence retained separately."
+  },
+  "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json"
 }

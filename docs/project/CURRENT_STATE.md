@@ -15,15 +15,35 @@ KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
+ALEMBIC_HEAD = 0036_account_import_ledger
+BACKEND_EXPECTED_HEAD = 0036_account_import_ledger
+GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
+GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-本轮 authority：`MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`。
+当前 authority：`MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02`。
+以下 Batch02 记录保留历史执行范围；本轮专项解阻见下一节。
 Batch02 起点 `15f6d0dda0968be1b39295577a139a9017615e82`，tree
 `53ed1867beb9afcb3944045cc837b52563d0f3b5`。知识原交付保持原 SHA/tree。
 
-## 控制面与 exact integration
+## Gate A schema 0036 专项解阻
+
+原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact
+`0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
+0036 是从 retained staging release / running image 恢复的逐字权威迁移；没有导入旧 release ancestry 或新增 import 产品功能。
+Alembic single head 与 backend expected head 均为 `0036_account_import_ledger`。
+A 本轮重新跑本地 PostgreSQL 18/18：fresh/0035/0033→0036、already-0036 只读接受、
+unknown future/十类 schema drift 拒绝、worker/backend preflight、ledger RLS/idempotency/rollback、
+default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/更新 smoke，计数见
+[专项 receipt](../governance/receipts/20260913-gatea-schema-0036-unblock.json)。本轮 fixture 已清理。
+**Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。**
+此前部署遇到 schema source 缺失是用户提供的背景；本轮没有重新部署或操作 staging DB，不能写 Gate A PASS。
+REAL SMTP 继续由独立 04 任务推进，本轮不轮询、执行或验收；旧 SMTP 计数只描述 Batch02。
+A 收口后 SILENT；其它员工状态保留交付快照含义，不代表其独立任务的实时状态。无 Batch03/其它交付。
+
+## Batch02 控制面与 exact integration（历史）
 
 A 完成本任务后 SILENT；01–04 与 B 均 SILENT。未联系、轮询或等待员工任务。
 A 原办公室复用，Phase0 实测 HEAD/index/clean 起点与 integration/main3 绑定。
@@ -60,7 +80,7 @@ current 1.0、历史 mandatory 1.2、latest optional 1.4 → MANDATORY，TARGET=
 reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 详情复用 [更新合同](../windows-update-release-contract-v1.md)。
 
-## 验收证据分层
+## Batch02 验收证据分层（历史）
 
 | 层次 | 当前证据 | 限制 |
 | --- | --- | --- |
@@ -71,8 +91,8 @@ reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 | 04 native RLS | PostgreSQL 17.6 原生 120 denial probes 与 controls；独立 retest 直接非特权 application login smoke PASS | E109 原报告整体 PARTIAL 保留；其中 token 缺陷由新独立 receipt supersede。A 未重新跑 RLS，不把 retained PASS 写成 A 执行 |
 | 当前生产/最终候选 | REAL_SMTP_SEND=0；VERIFY/RESET NOT_RUN；REAL_INSTALL_QA NOT_RUN；最终 1.5.0→1.5.1 NOT_RUN | LIVE_PRODUCTION_LOGIN NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；用户最终验收 PENDING |
 
-本轮默认后端连接下两项 native-DSN 测试跳过；并不否定 04 的独立原生 RLS 证据。
-两次 A fixture 均已停止进程、删除私钥；递归清理目录被自动审批拒绝，临时数据目录留在 E:，该限制见 receipt。
+Batch02 默认后端连接下两项 native-DSN 测试跳过；并不否定 04 的独立原生 RLS 证据。
+Batch02 两次 A fixture 均已停止进程、删除私钥；递归清理目录被自动审批拒绝，临时数据目录留在 E:，该限制见 receipt。
 当前 session/限流有单进程内存状态边界；实际分布式 session/revocation、SPI 版本和
 共享 token single-use authority、长期主窗口 session renewal 均需部署拓扑验收。
 

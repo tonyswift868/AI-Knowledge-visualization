@@ -50,23 +50,38 @@
       "unlocks": [
         "GATE_A_AUTH_LIVE_ACTIVATION",
         "GATE_B_ACCOUNT_SECURITY",
-        "GATE_C_UPDATE_FINAL_CANDIDATE"
+        "GATE_C_UPDATE_FINAL_CANDIDATE",
+        "GATE_A_SCHEMA_0036_UNBLOCK"
       ],
       "user_action_required": null,
       "reason": "11 exact commits audited and integrated 02 -> 03 -> 04 -> 01. Combined native login/update/edge regression, local native token fixture, knowledge authority correction; independent 04 RLS evidence retained. No live/package acceptance."
+    },
+    {
+      "task_id": "GATE_A_SCHEMA_0036_UNBLOCK",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "BATCH02_EXACT_INTEGRATION"
+      ],
+      "unlocks": [
+        "GATE_A_AUTH_LIVE_ACTIVATION"
+      ],
+      "user_action_required": null,
+      "reason": "Exact 0d064974 restored authoritative 0036 and strict backend/worker schema checks. A native PostgreSQL 18/18 and focused regression PASS. Schema blocker RESOLVED_IN_SOURCE; deployment after fix NOT_RUN."
     },
     {
       "task_id": "GATE_A_AUTH_LIVE_ACTIVATION",
       "owner": "01",
       "state": "NOT_DISPATCHED",
       "dependencies": [
-        "BATCH02_EXACT_INTEGRATION"
+        "BATCH02_EXACT_INTEGRATION",
+        "GATE_A_SCHEMA_0036_UNBLOCK"
       ],
       "unlocks": [
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: qualify exact Keycloak SPI, private backend-only mTLS, compatible backend/desktop candidate and actual session/revocation topology; native username/password -> session -> workspace bootstrap -> main. Any issuer cutover retains continuity and requires separate approved bounded window; normal login has no browser fallback."
+      "reason": "AFTER FIX: NOT_RUN / NOT_DISPATCHED by this task. Prior deployment found valid staging 0036 missing in Batch02 source; source blocker now resolved. Deployment/compatible native desktop/SPI/mTLS/session topology and old identity continuity still require Gate A execution and acceptance. No Gate A PASS claim."
     },
     {
       "task_id": "GATE_B_ACCOUNT_SECURITY",
@@ -79,7 +94,7 @@
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: production-topology RLS/session/token authority qualification; public issuer, real SMTP verification/reset and native account-action capability acceptance. Retain 04 native PostgreSQL RLS PASS and independent token confirmation; A reran local native auth/tokens and edge. Capabilities remain false; real SMTP send=0."
+      "reason": "Production account/public-issuer/capability acceptance remains pending. Real SMTP progresses under its independent 04 task; this schema unblock does not run, poll or accept that work. Retain Batch02 native security evidence and separately record A 0036 ledger RLS validation; capabilities remain false."
     },
     {
       "task_id": "GATE_C_UPDATE_FINAL_CANDIDATE",
@@ -134,6 +149,6 @@
       "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen."
     }
   ],
-  "authority": "MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01",
-  "assignment_scope": "Batch02 complete exact 01-04 stages integrated; all slots SILENT. Future gate owners are planning domains, not new dispatches or live writer leases."
+  "authority": "MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02",
+  "assignment_scope": "Only 0036 source blocker integrated. No Gate A deployment after fix or new worker dispatch. Real SMTP remains the independent 04 task."
 }
