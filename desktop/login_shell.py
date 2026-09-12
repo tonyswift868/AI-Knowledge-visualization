@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from enum import Enum
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox
+from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
 
@@ -46,7 +46,7 @@ class LoginGateWindow(QWidget):
             | Qt.WindowType.WindowCloseButtonHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        # Reserve the provider form viewport from first paint, including the
+        # Reserve the native form viewport from first paint, including the
         # native consent controls. Loading/form/refresh never resize the shell.
         area = self.screen().availableGeometry()
         available_width = max(240, area.width() - 48)
@@ -128,6 +128,27 @@ class LoginGateWindow(QWidget):
         self.state_detail.setWordWrap(True)
         self.state_detail.setMinimumHeight(54)
         card_layout.addWidget(self.state_detail)
+        self.username_field = QLineEdit()
+        self.username_field.setObjectName('nativeUsername')
+        self.username_field.setPlaceholderText('账号')
+        self.username_field.setAccessibleName('账号')
+        self.username_field.setMaxLength(320)
+        self.password_field = QLineEdit()
+        self.password_field.setObjectName('nativePassword')
+        self.password_field.setPlaceholderText('密码')
+        self.password_field.setAccessibleName('密码')
+        self.password_field.setMaxLength(1024)
+        self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_field.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.show_password = QCheckBox('显示密码')
+        self.show_password.toggled.connect(lambda visible: self.password_field.setEchoMode(
+            QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password))
+        self.password_field.returnPressed.connect(self._activate)
+        for widget in (self.username_field, self.password_field, self.show_password):
+            card_layout.addWidget(widget)
+        for field in (self.username_field, self.password_field):
+            field.setMinimumHeight(40)
+            field.setStyleSheet('QLineEdit {padding: 4px 10px; border: 1px solid #cbb4c1; border-radius: 6px;}')
         self.primary_button = QPushButton("登录 MentorFlow")
         self.primary_button.setObjectName("loginPrimaryButton")
         self.primary_button.setAccessibleName("登录 MentorFlow")
@@ -144,7 +165,7 @@ class LoginGateWindow(QWidget):
         card_layout.addWidget(self.repair_button)
         self.update_button.hide(); self.repair_button.hide()
         outer.addWidget(card, 1)
-        self.remember_box = QCheckBox("记住我（下次免输密码）")
+        self.remember_box = QCheckBox("记住登录状态")
         self.remember_box.setObjectName("rememberLoginCheckBox")
         self.auto_box = QCheckBox("自动登录")
         self.auto_box.setObjectName("autoLoginCheckBox")
@@ -162,7 +183,7 @@ class LoginGateWindow(QWidget):
         self.notice_label.setWordWrap(True)
         self.notice_label.setObjectName("loginSessionNotice")
         outer.addWidget(self.notice_label)
-        privacy = QLabel("密码仅由身份服务处理，MentorFlow 不读取或保存原始密码。")
+        privacy = QLabel("密码仅用于本次安全验证，不会保存。记住登录只保存安全会话。")
         privacy.setObjectName("loginSubtitle")
         privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         privacy.setWordWrap(True)
@@ -202,7 +223,7 @@ class LoginGateWindow(QWidget):
         if self.update_controller is not None:
             self.update_controller.login_policy_changed.disconnect(self._update_login_policy)
         self.update_controller = controller
-        # Leave enough room for the identity provider's form and direct footer.
+        # Leave enough room for the native credential form and direct footer.
         self.brand_widgets[0].hide()
         controller.login_policy_changed.connect(self._update_login_policy)
         if self.startup_update_state:
@@ -292,6 +313,7 @@ class LoginGateWindow(QWidget):
             self.notice_label.setText(snapshot['message'])
 
     def closeEvent(self, event) -> None:
+        self.clear_password()
         self.closed.emit()
         super().closeEvent(event)
         if self.login_is_blocked:
@@ -323,12 +345,21 @@ class LoginGateWindow(QWidget):
             QTimer.singleShot(0, self.first_paint_completed.emit)
 
     def _activate(self) -> None:
-        if self.login_is_blocked:
+        if self.login_is_blocked or not self._login_enabled:
             return
         if self._retry_mode:
             self.retry_requested.emit()
         else:
             self.login_requested.emit()
+
+    def clear_password(self):
+        self.password_field.clear()
+        self.show_password.setChecked(False)
+
+    def take_credentials(self):
+        username, password = self.username_field.text().strip(), self.password_field.text()
+        self.clear_password()
+        return username, password
 
     def set_state(
         self,
@@ -373,6 +404,8 @@ class LoginGateWindow(QWidget):
         self.primary_button.setText(button)
         self._login_enabled = enabled
         self.primary_button.setEnabled(enabled and not self.login_is_blocked)
+        for widget in (self.username_field, self.password_field, self.show_password):
+            widget.setEnabled(enabled and not retry_bootstrap and not self.login_is_blocked)
         preparing = state in {LoginGateState.STARTING, LoginGateState.SECURE_CONNECTION, LoginGateState.LOADING_AUTH}
         self.remember_box.setEnabled(not preparing)
         self.auto_box.setEnabled(not preparing and self.remember_box.isChecked())

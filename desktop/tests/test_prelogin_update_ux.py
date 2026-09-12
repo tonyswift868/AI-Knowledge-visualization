@@ -340,7 +340,7 @@ def test_mandatory_result_cancels_inflight_login_and_rejects_late_identity(app_c
 
 
 @pytest.mark.parametrize('intent', ['register', 'forgot_password'])
-def test_native_account_entry_passes_intent_into_existing_embedded_flow(app_context, monkeypatch, intent):
+def test_native_account_entry_never_routes_capability_to_legacy_embedded_flow(app_context, monkeypatch, intent):
     from desktop.tests.test_login_smooth import Pane
     target, app, _ = app_context
     captured = []
@@ -351,8 +351,10 @@ def test_native_account_entry_passes_intent_into_existing_embedded_flow(app_cont
     target._show_login_gate(); app.processEvents()
     gate = target.login_gate; gate.set_account_capabilities({intent: True})
     gate._account_action(intent); app.processEvents()
-    assert captured[-1]['intent'] == intent and captured[-1]['capabilities'][intent] is True
-    assert captured[-1]['embedded'] and target._auth_pane.window() is gate
+    assert captured == []
+    assert target._auth_pane is None
+    assert gate.notice_label.text() == '当前账号服务暂未开放此功能。'
+    assert gate.password_field.isVisible()
 
 
 def test_source_login_entry_also_uses_application_singleton(app_context):

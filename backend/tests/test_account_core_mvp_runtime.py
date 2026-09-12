@@ -169,6 +169,9 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
         "/api/enterprise/account/metadata/assets/{asset_id}/missing",
         "/api/enterprise/account/metadata/progress",
         "/api/enterprise/auth/me",
+        "/api/enterprise/auth/native/login",
+        "/api/enterprise/auth/native/refresh",
+        "/api/enterprise/auth/native/logout",
         "/api/enterprise/document-import/selections",
         "/api/enterprise/workspaces",
         "/api/enterprise/workspaces/{workspace_id}",
@@ -359,13 +362,15 @@ def test_account_core_secret_materialization_omits_worker_consumer(
     assert "worker" not in consumers
 
 
-def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> None:
+def test_native_login_supersedes_browser_ux_without_enabling_password_grant() -> None:
     mvp_environment = _compose()["x-account-core-environment"]
     desktop = (ROOT / "desktop" / "enterprise_oidc.py").read_text(encoding="utf-8")
     settings = (ROOT / "desktop" / "account_settings_page.py").read_text(
         encoding="utf-8"
     )
     embedded = (ROOT / "desktop" / "in_app_oidc.py").read_text(encoding="utf-8")
+    native = (ROOT / "desktop" / "native_auth.py").read_text(encoding="utf-8")
+    main = (ROOT / "desktop" / "main.py").read_text(encoding="utf-8")
     realm = json.loads(
         (ROOT / "deploy" / "enterprise" / "config" / "keycloak-realm.json").read_text(
             encoding="utf-8"
@@ -384,7 +389,12 @@ def test_current_desktop_login_transport_is_in_app_pkce_not_password_grant() -> 
     assert '"grant_type": "authorization_code"' in desktop
     assert "/api/enterprise/auth/me" in desktop
     assert "inAppOidcLoginButton" in settings
-    assert "login_enterprise_account_in_app_from_env" in settings
+    assert "login_enterprise_account_in_app_from_env" not in settings
+    assert 'login_native_account_from_env' in main
+    assert 'InAppOidcLoginDialog' not in main
+    assert 'grant_type' not in native and 'client_secret' not in native
+    assert '/api/enterprise/auth/native' in native
+    assert 'LEGACY / NON_DEFAULT / NOT_USER_VISIBLE' in embedded
     assert "open_system_browser_oauth" not in embedded
     assert "QWebEngineView" in embedded
     assert "NoPersistentCookies" in embedded

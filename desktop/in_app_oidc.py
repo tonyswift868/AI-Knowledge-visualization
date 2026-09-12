@@ -1,4 +1,7 @@
-"""Enterprise OIDC shell with system-browser authorization for E109.
+"""LEGACY / NON_DEFAULT / NOT_USER_VISIBLE OIDC compatibility shell.
+
+The native credential authority supersedes this module for normal login and
+account switching. Only explicit legacy callers/tests may instantiate it.
 
 The legacy embedded page is only an OIDC user-agent. Authorization results continue
 to arrive through the existing IPv4 loopback receiver; this module never reads

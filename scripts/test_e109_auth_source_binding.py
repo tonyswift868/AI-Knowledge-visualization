@@ -10,7 +10,7 @@ class AuthSourceBindingTests(unittest.TestCase):
         project = Path(__file__).resolve().parents[1]
         names = build.auth_source_modules()
         self.assertEqual(set(names), {'app.enterprise.identity.' + name for name in
-            ('config', 'issuer_migration', 'oidc', 'keycloak', 'runtime')})
+            ('config', 'issuer_migration', 'oidc', 'keycloak', 'runtime', 'native')})
         for name, path in names.items():
             self.assertTrue(path.is_relative_to(project / 'backend/app/enterprise/identity'))
             compile(path.read_bytes(), str(path), 'exec')
@@ -27,6 +27,16 @@ class AuthSourceBindingTests(unittest.TestCase):
         self.assertIn(retained, env['pure'])
         for name, source in names.items():
             self.assertEqual([row for row in env['pure'] if row[0] == name], [(name, str(source), 'PYMODULE')])
+
+    def test_native_desktop_dependency_is_added_when_absent_from_frozen_seed(self):
+        project = Path(__file__).resolve().parents[1]
+        parsed = ast.parse((project / 'release/real-delivery-app.spec').read_text(encoding='utf-8'))
+        start = next(i for i, node in enumerate(parsed.body) if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'extra' for target in node.targets))
+        block = ast.Module(body=parsed.body[start:start+2], type_ignores=[])
+        env = {'root': project, 'pure': [], 'names': set()}
+        exec(compile(block, '<native-desktop-binding>', 'exec'), env)
+        self.assertIn(('desktop.native_auth', str(project / 'desktop/native_auth.py'), 'PYMODULE'), env['pure'])
 
 
 if __name__ == '__main__':

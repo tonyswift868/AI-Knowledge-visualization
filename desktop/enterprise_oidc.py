@@ -240,8 +240,8 @@ class DesktopOidcConfig:
 
     @property
     def requires_system_browser(self) -> bool:
-        # OLD must support pre-cutover login without activating a migration.
-        # This selects the user-agent only; issuer trust remains independent.
+        # LEGACY-only user-agent selection. The default native credential path
+        # never consults this property; issuer trust remains independent.
         contract = _migration_contract()
         return self.issuer in (contract.OLD_ISSUER, contract.NEW_ISSUER)
 
@@ -1179,7 +1179,15 @@ def restore_enterprise_account_from_env(
     refresh_session: bool = False,
 ) -> EnterpriseOidcLoginResult:
     async def run() -> EnterpriseOidcLoginResult:
-        client = EnterpriseOidcClient(DesktopOidcConfig.from_env())
+        # Noninteractive compatibility entry also accepts the native session
+        # namespace. Never send an opaque native refresh to an OIDC endpoint.
+        from .native_auth import NativeCredentialClient, REFRESH_PREFIX
+        config = DesktopOidcConfig.from_env()
+        if profile.issuer_hash != issuer_hash(config.canonical_identity_issuer):
+            raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_ISSUER_CHANGED', '登录服务已变更，请重新登录。')
+        _, refresh = credentials.load_oauth_tokens(profile)
+        client_type = NativeCredentialClient if refresh.startswith(REFRESH_PREFIX) else EnterpriseOidcClient
+        client = client_type(config)
         try:
             return await client.restore(profile, credentials, refresh_session=refresh_session)
         finally:

@@ -105,7 +105,7 @@ def load_build_auth_authority():
 def auth_source_modules():
     """Exact current authentication code, never stale paths from a seed PYZ."""
     return {'app.enterprise.identity.' + name: ROOT / 'backend/app/enterprise/identity' / (name + '.py')
-            for name in ('config', 'issuer_migration', 'oidc', 'keycloak', 'runtime')}
+            for name in ('config', 'issuer_migration', 'oidc', 'keycloak', 'runtime', 'native')}
 
 
 def release_arguments(package, version, prior, work, source, feed_url=UPDATE_FEED_URL):

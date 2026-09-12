@@ -1,24 +1,19 @@
 # E109 authentication issuer migration — A → 05
 
-## MAIN3 Windows login requirement
+> 2026-09-12 product authority update: normal desktop login now uses MentorFlow
+> native username/password controls and the controlled native-session API.
+> [ADR: native credential authentication](ADR_NATIVE_CREDENTIAL_AUTH_V1.md)
+> supersedes the browser UX in this document and commit `03d979710a4cde44917c4f10c2f08d2390c8426d`.
+> The issuer migration material below remains a **legacy protocol/infrastructure**
+> contract, not the normal login UX or approval to activate a migration window.
+> Native identity verification is disabled until the ADR's identity bridge gate
+> is satisfied. There is no browser fallback. `auth-authority.json` remains prepared.
 
-Durable authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
-Windows login must use **System Browser OIDC Authorization Code + PKCE (S256)**,
-an IPv4 loopback callback on a dynamically allocated port, and the existing
-state/nonce/issuer/signature/audience/expiry checks. Authentication authority,
-API authority and the loopback callback are separate; never substitute one for
-another. Enter the main application only after verified login and successful
-[workspace bootstrap](account-core-workspace-bootstrap-v1.md).
-
-The retained [September 6 source receipt](enterprise/login-final-integration-v1.md)
-describes historical embedded authorization. Batch01 integrates 01's E109
-system-browser consumer and 04's explicit capability boundary; combined source
-tests preserve PKCE/state/nonce, dynamic callback and disabled account actions.
-Legacy/PREPARED behavior remains governed by the configuration contract. This
-source acceptance is not a backend deployment, desktop build/install, public
-issuer gate or migration-window start. Current limits are in
-[CURRENT_STATE](project/CURRENT_STATE.md).
-The E109 migration contract below continues to govern issuer/data continuity.
+Batch02 authority `MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01` also supersedes
+Batch01's System Browser normal-login requirement. Historical browser/PKCE/state/nonce
+checks remain applicable only to explicit legacy protocol consumers. Native login
+requires secure backend verification and successful workspace bootstrap before the
+main window; no password/direct grant, password persistence or browser fallback.
 
 Scope: `MF-E109-INTEGRATION-CONTROL-20260910-01 / AUTH_ISSUER_MIGRATION_BIND`.
 Source/config qualification only. No installer, live backend deployment, Keycloak

@@ -56,6 +56,13 @@ class LoginSession:
         profile = self.preferences.load_unvalidated()
         remember, automatic = self.preferences.login_options()
         if profile.mode is ProfileMode.ENTERPRISE_ACCOUNT and remember:
+            # Preferences alone are not proof that a restorable session exists.
+            try:
+                _, refresh = self.credentials.load_oauth_tokens(profile)
+                if not refresh:
+                    return None, False
+            except Exception:
+                return None, False
             return profile, automatic
         return None, False
 
@@ -83,6 +90,11 @@ class LoginSession:
             if cancelled.is_set():
                 raise EnterpriseOidcError('ENTERPRISE_LOGIN_CANCELLED', '登录已取消。')
             try:
+                from .native_auth import REFRESH_PREFIX, restore_native_account_from_env
+                _, token = self.credentials.load_oauth_tokens(profile)
+                if token.startswith(REFRESH_PREFIX):
+                    return restore_native_account_from_env(profile, self.credentials)
+                # LEGACY / NON_DEFAULT: existing OIDC refresh only; no UI/browser.
                 return restore_enterprise_account_from_env(profile, self.credentials, refresh_session=True)
             except EnterpriseOidcError as exc:
                 if exc.code in {'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'ENTERPRISE_OIDC_TOKEN_INVALID',
@@ -96,17 +108,19 @@ class LoginSession:
             if remote:
                 async def end():
                     from .enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient
+                    from .native_auth import NativeCredentialClient, REFRESH_PREFIX
                     from .account_identity import issuer_hash
-                    client = EnterpriseOidcClient(DesktopOidcConfig.from_env())
                     try:
-                        if profile.issuer_hash != issuer_hash(client.config.issuer):
+                        _, token = self.credentials.load_oauth_tokens(profile)
+                    except Exception as exc:
+                        if getattr(exc, 'code', '') != 'CREDENTIAL_NOT_FOUND' and not isinstance(exc, KeyError):
+                            raise
+                        token = refresh_token
+                    client_type = NativeCredentialClient if token and token.startswith(REFRESH_PREFIX) else EnterpriseOidcClient
+                    client = client_type(DesktopOidcConfig.from_env())
+                    try:
+                        if profile.issuer_hash != issuer_hash(client.config.canonical_identity_issuer):
                             return False
-                        try:
-                            _, token = self.credentials.load_oauth_tokens(profile)
-                        except Exception as exc:
-                            if getattr(exc, 'code', '') != 'CREDENTIAL_NOT_FOUND' and not isinstance(exc, KeyError):
-                                raise
-                            token = refresh_token
                         return await client.end_session(token)
                     finally:
                         await client.aclose()

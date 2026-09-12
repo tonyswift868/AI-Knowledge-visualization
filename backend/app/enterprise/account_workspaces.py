@@ -25,7 +25,7 @@ async def authenticate_account(request: Request, runtime):
         raise IdentityError("AUTH_BOUNDARY_CONFLICT", "Account bootstrap requires bearer authentication")
     if not authorization.startswith("Bearer ") or authorization.count(" ") != 1:
         raise IdentityError("ENTERPRISE_AUTH_REQUIRED", "A verified bearer account is required")
-    principal = await runtime.client.authenticate_access_token(authorization[7:])
+    principal = await runtime.authenticate_access_token(authorization[7:], request)
     if principal.actor_kind is not ActorKind.HUMAN:
         raise IdentityError("ACCOUNT_BOOTSTRAP_HUMAN_REQUIRED", "A human account is required", status=403)
     # Reject rather than accidentally treating a cached client scope as authority.

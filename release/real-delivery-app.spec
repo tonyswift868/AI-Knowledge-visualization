@@ -47,7 +47,7 @@ for name,path,kind in [*fields['pure'],*runtime_pure]:
     pure.append((name,path,kind))
     seen.add(name)
 names={row[0] for row in pure}
-extra=['desktop.gui_update_runtime','desktop.update_bridge','desktop.update_request','desktop.windows_identity',
+extra=['desktop.native_auth','desktop.gui_update_runtime','desktop.update_bridge','desktop.update_request','desktop.windows_identity',
        'desktop.windows_process_peer','desktop.windows_update_child','desktop.windows_update_pipe',
        'desktop.update_tree_security','scripts.install_product','scripts.install_receipt_state','scripts.runtime_path_budget',
        'scripts.update_health','scripts.update_source_reader','scripts.install_location','scripts.per_user_install',

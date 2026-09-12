@@ -146,10 +146,12 @@ class EnterpriseIdentityRuntime:
         *,
         client: KeycloakOidcClient | None = None,
         directory: IdentityDirectoryPort | None = None,
+        native_sessions=None,
     ) -> None:
         self.config = config
         self.client = client
         self.directory = directory
+        self.native_sessions = native_sessions
         if config.mode is TenantMode.ENTERPRISE_SERVER and (
             client is None or directory is None
         ):
@@ -168,7 +170,17 @@ class EnterpriseIdentityRuntime:
         )
 
     def is_public_path(self, path: str) -> bool:
-        return path in _PUBLIC_PATHS
+        from .native import PUBLIC_PATHS
+        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS
+
+    async def authenticate_access_token(self, token: str, request: Request):
+        from .native import ACCESS_PREFIX, expired
+        if token.startswith(ACCESS_PREFIX):
+            if request.url.scheme != 'https' or self.native_sessions is None:
+                raise expired()
+            return self.native_sessions.authenticate(token)
+        client, _directory = self._require_enterprise()
+        return await client.authenticate_access_token(token)
 
     def config_payload(self) -> dict[str, object]:
         if not self.enterprise_enabled:
@@ -298,7 +310,7 @@ class EnterpriseIdentityRuntime:
                     "Bearer authorization is malformed",
                 )
             token = authorization[7:]
-            principal = await client.authenticate_access_token(token)
+            principal = await self.authenticate_access_token(token, request)
             organization_id = str(
                 request.headers.get(_ORGANIZATION_HEADER) or ""
             ).strip()
@@ -467,6 +479,8 @@ class EnterpriseIdentityRuntime:
         }
 
     async def aclose(self) -> None:
+        if self.native_sessions is not None:
+            await self.native_sessions.aclose()
         if self.client is not None:
             await self.client.aclose()
 
@@ -481,6 +495,7 @@ def build_enterprise_identity_runtime(
     if config.mode is TenantMode.PERSONAL_LOCAL:
         return EnterpriseIdentityRuntime(config)
     assert config.keycloak is not None
+    from .native import from_env as native_sessions_from_env
     directory = PostgresIdentityDirectory(
         engine,
         issuer=config.keycloak.canonical_identity_issuer,
@@ -490,6 +505,7 @@ def build_enterprise_identity_runtime(
         config,
         client=KeycloakOidcClient(config),
         directory=directory,
+        native_sessions=native_sessions_from_env(env, config.keycloak.canonical_identity_issuer),
     )
 
 
@@ -759,6 +775,8 @@ def install_enterprise_identity(
     account_core_only: bool = False,
 ) -> None:
     app.include_router(_account_core_identity_router() if account_core_only else router)
+    from .native import router as native_router
+    app.include_router(native_router)
     # Imported lazily to keep the identity runtime independent from product
     # modules while installing the exact tenant-safe facade alongside it.
     from app.enterprise.product_bridge import install_enterprise_product_bridge

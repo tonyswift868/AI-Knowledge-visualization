@@ -34,7 +34,6 @@ from .account_vault import (
 from .enterprise_oidc import (
     EnterpriseOidcLoginResult,
 )
-from .in_app_oidc import login_enterprise_account_in_app_from_env
 from .runtime import (
     enterprise_account_server_state,
     record_enterprise_account_session,
@@ -334,17 +333,10 @@ class AccountSettingsPage(QWidget):
             return
         self.oauth_button.setEnabled(False)
         self.logout_button.setEnabled(False)
-        self.status.setText(
-            "正在 MentorFlow 内建立隔离的企业登录页面；完成授权后会自动切换账号。"
-        )
+        self.status.setText("正在准备账号登录…")
 
         if self.oidc_login is None:
-            try:
-                result = login_enterprise_account_in_app_from_env(parent=self)
-            except Exception:
-                self._oidc_failed_safely("企业登录未能安全完成，请检查配置后重试。")
-                return
-            self._finish_oidc(result)
+            self._oidc_failed_safely('请从原生登录窗口切换账号。')
             return
 
         def run() -> None:

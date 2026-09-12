@@ -183,13 +183,13 @@ def app_context(monkeypatch, tmp_path):
     application.processEvents()
 
 
-def test_first_screen_starts_credentials_without_second_auth_window(app_context):
+def test_first_screen_starts_native_credentials_without_second_auth_window(app_context):
     target, qt, _ = app_context
     target._show_login_gate(); qt.processEvents()
-    assert target._auth_pane.started
-    assert not target._auth_pane.isWindow()
-    assert target._auth_pane.window() is target.login_gate
-    assert not target.login_gate.primary_button.isVisible()
+    assert target._auth_pane is None
+    assert target.login_gate.username_field.isVisible()
+    assert target.login_gate.password_field.isVisible()
+    assert target.login_gate.primary_button.isVisible()
     assert target.main is None and target.service is None
     assert not target.login_gate.remember_box.isChecked()
     assert not target.login_gate.auto_box.isEnabled()
@@ -222,7 +222,8 @@ def test_auto_login_can_cancel_and_late_a_result_cannot_enter_b(app_context, mon
     target._show_login_gate(); qt.processEvents()
     old_generation = target._login_generation
     target.login_gate.cancel_button.click()
-    assert target._auth_pane.started and target._remembered_profile is None
+    assert target._auth_pane is None and target._remembered_profile is None
+    assert target.login_gate.password_field.isEnabled()
     assert not target.login_gate.auto_box.isChecked()
     target._background_succeeded(f'{old_generation}:restore', login())
     assert target._last_login_result is None
@@ -236,7 +237,8 @@ def test_expired_session_returns_to_original_gate_form(app_context):
     target._show_login_gate(); qt.processEvents()
     gate = target.login_gate
     target._background_failed(f'{target._login_generation}:restore_expired', 'expired')
-    assert target.login_gate is gate and target._auth_pane.started
+    assert target.login_gate is gate and target._auth_pane is None
+    assert gate.username_field.isVisible() and gate.password_field.isEnabled()
     assert target._login_session.preferences.login_options() == (False, False)
     assert target._remembered_profile is None
 
@@ -284,9 +286,9 @@ def test_account_switch_reuses_gate_only_after_a_is_quiescent(app_context, monke
     released.set()
     for _ in range(150):
         QTest.qWait(10)
-        if target._auth_pane is not None: break
+        if target.main is None: break
     assert target.login_gate is gate and int(gate.winId()) == window_id
-    assert target._auth_pane.started and not target._auth_pane.isWindow()
+    assert target._auth_pane is None and gate.password_field.isEnabled()
     assert target.main is None and target.service is None
     assert events.index('service-dead') < events.index('unmount')
     assert ('logout' in events) is (reason == 'logout')
@@ -294,31 +296,25 @@ def test_account_switch_reuses_gate_only_after_a_is_quiescent(app_context, monke
     if reason == 'logout': assert '远端会话注销未确认' in gate.notice_label.text()
 
 
-def test_closing_gate_during_discovery_detaches_and_releases_real_qt_pane(app_context, monkeypatch):
-    import asyncio
-    import shiboken6
+def test_closing_gate_during_native_login_discards_late_result(app_context, monkeypatch):
     entered, release = threading.Event(), threading.Event()
-    class Client:
-        async def prepare_login(self, **kwargs):
-            entered.set()
-            await asyncio.to_thread(release.wait, 3)
-            raise EnterpriseOidcError('ENTERPRISE_DISCOVERY_FAILED', 'synthetic failure')
-        async def aclose(self): pass
-    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog',
-                        lambda config, **kw: RealOidcPane(config, **kw, client_factory=lambda _: Client()))
+    def authenticate(*args, **kwargs):
+        entered.set()
+        assert release.wait(3)
+        return login()
+    monkeypatch.setattr('desktop.native_auth.login_native_account_from_env', authenticate)
     target, qt, _ = app_context
     target._show_login_gate(); qt.processEvents()
-    pane = target._auth_pane
+    target.login_gate.username_field.setText('known')
+    target.login_gate.password_field.setText('synthetic-test-only')
+    target.login_gate.primary_button.click()
     assert entered.wait(3)
     target.login_gate.close()
-    assert pane.parent() is None
     assert target._auth_pane is None
-    release.set(); pane._worker.join(4)
-    assert not pane._worker.is_alive()
-    # Process late failure/finished signals and actual DeferredDelete events.
+    release.set()
     QTest.qWait(100)
-    assert not shiboken6.isValid(pane)
-    assert target.main is None
+    assert target.main is None and target._last_login_result is None
+    assert target.login_gate.password_field.text() == ''
 
 
 def test_delayed_restored_accept_never_overwrites_a_newer_rotation():
