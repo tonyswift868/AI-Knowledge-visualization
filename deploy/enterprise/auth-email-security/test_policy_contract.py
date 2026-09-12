@@ -70,10 +70,9 @@ class PolicyContractTest(unittest.TestCase):
         matches = lambda value: any(re.search(rule, value) for rule in rules)
         targets = [
             '/protocol/openid-connect/token', '/login-actions/authenticate',
-            '/login-actions/registration:', '/login-actions/reset-credentials:',
-            '/login-actions/send-verify-email:', '/login-actions/email-verification:',
-            '/login-actions/required-action:VERIFY_EMAIL',
-            '/login-actions/required-action:UPDATE_EMAIL',
+            '/login-actions/registration', '/login-actions/reset-credentials',
+            '/login-actions/send-verify-email', '/login-actions/email-verification',
+            '/login-actions/required-action',
         ]
         for target in targets:
             with self.subTest(target=target):
@@ -100,7 +99,8 @@ class PolicyContractTest(unittest.TestCase):
         for line in self.nginx.splitlines():
             if '$binary_remote_addr;' in line:
                 self.assertIn('~^POST:', line)
-        self.assertIn('(VERIFY_EMAIL|UPDATE_EMAIL)', self.nginx)
+        self.assertIn('/login-actions/required-action$ $binary_remote_addr;', self.nginx)
+        self.assertNotIn('$arg_execution', self.nginx)
         self.assertIn('if ($e109_registration_denied) { return 403; }', self.nginx)
         self.assertIn('/mentorflow/updates/e108/', self.nginx)
 
