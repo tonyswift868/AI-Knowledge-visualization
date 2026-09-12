@@ -233,6 +233,8 @@ class LoginGateWindow(QWidget):
     def _update_login_policy(self, blocked):
         self.login_card.setVisible(not blocked)
         self.primary_button.setEnabled(self._login_enabled and not blocked)
+        for widget in (self.username_field, self.password_field, self.show_password):
+            widget.setEnabled(self._login_enabled and not self._retry_mode and not blocked)
         self.primary_button.setVisible(not blocked and self.auth_content is None)
         self.remember_box.setEnabled(not blocked)
         self.auto_box.setEnabled(not blocked and self.remember_box.isChecked())

@@ -252,80 +252,41 @@ def test_desktop_login_surface_retains_protocol_shell_without_page_scripting() -
     account_page = Path("desktop/account_settings_page.py").read_text(encoding="utf-8")
     embedded = Path("desktop/in_app_oidc.py").read_text(encoding="utf-8")
 
-    assert "login_enterprise_account_in_app_from_env" in account_page
+    assert "login_enterprise_account_in_app_from_env" not in account_page
     assert "inAppOidcLoginButton" in account_page
     assert "externalBrowserOAuthButton" not in account_page
     assert "login_enterprise_account_from_env" not in account_page
     assert "open_system_browser_oauth" not in embedded
-    # The E109 primary uses the OS browser through the same protocol shell.
+    # Explicit legacy consumers retain the OIDC shell; normal login is native.
     assert "self._config.requires_system_browser" in embedded
     assert "runJavaScript" not in embedded
     assert "setHtml" not in embedded
 
 
-def test_account_page_runs_default_embedded_login_on_qt_thread(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.parametrize('native_switch_available', [True, False])
+def test_account_page_uses_native_switch_or_fails_closed(tmp_path, monkeypatch, native_switch_available):
     application = _application()
     profile = AccountProfile.personal_local()
-    manager = AccountVaultManager(VaultLayout(tmp_path / "vault"))
+    manager = AccountVaultManager(VaultLayout(tmp_path / 'vault'))
     manager.mount(profile)
-    identity = AccountIdentity(
-        issuer="https://identity.example.test/realms/mentorflow",
-        subject="subject-a",
-        display_name="Account A",
-        organization_id="org-a",
-        workspace_id="workspace-a",
-    )
-    result = EnterpriseOidcLoginResult(
-        identity=identity,
-        access_token="opaque-access",
-        refresh_token="opaque-refresh",
-        server_state={"authenticated": True},
-    )
-    parents: list[object] = []
-    stored: list[tuple[str, str]] = []
-    switched: list[AccountIdentity] = []
-
+    called = []
+    def forbidden(*args, **kwargs):
+        pytest.fail('Default account switching must not open a legacy browser or persist credentials')
+    monkeypatch.setattr('PySide6.QtGui.QDesktopServices.openUrl', forbidden)
+    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog', forbidden)
     class Credentials:
-        def store_oauth_tokens(
-            self,
-            target: AccountIdentity,
-            *,
-            access_token: str,
-            refresh_token: str,
-        ) -> dict[str, str]:
-            assert target == identity
-            stored.append((access_token, refresh_token))
-            return {"access_token_ref": "opaque", "refresh_token_ref": "opaque"}
-
-        def logout(self, _target: AccountProfile) -> None:
-            return None
-
-    def login(*, parent: object) -> EnterpriseOidcLoginResult:
-        parents.append(parent)
-        return result
-
-    monkeypatch.setattr(
-        "desktop.account_settings_page.login_enterprise_account_in_app_from_env",
-        login,
-    )
-    page = AccountSettingsPage(
-        profile=profile,
-        vault_manager=manager,
-        credential_vault=Credentials(),  # type: ignore[arg-type]
-        switch_account=lambda target: switched.append(target),
-        logout_account=lambda: None,
-    )
+        store_oauth_tokens = forbidden
+        logout = forbidden
+    page = AccountSettingsPage(profile=profile, vault_manager=manager,
+        credential_vault=Credentials(), switch_account=forbidden, logout_account=forbidden,
+        begin_account_switch=(lambda: called.append('native-switch')) if native_switch_available else None)
     try:
         page.oauth_button.click()
         application.processEvents()
-        assert parents == [page]
-        assert switched == [identity]
-        assert stored == [("opaque-access", "opaque-refresh")]
-        assert page._oidc_thread is None
-        assert page.oauth_button.isEnabled()
+        assert called == (['native-switch'] if native_switch_available else [])
+        assert page._oidc_thread is None and page.oauth_button.isEnabled()
+        if not native_switch_available:
+            assert '原生登录窗口' in page.status.text()
     finally:
         page.close()
         manager.unmount()

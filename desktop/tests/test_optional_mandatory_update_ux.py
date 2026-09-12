@@ -328,6 +328,12 @@ def test_core_gate_arriving_during_main_construction_prevents_show(app_context, 
         return main
     monkeypatch.setattr('desktop.main_window.MainWindow', create)
     try:
+        # Native identity now requires workspace bootstrap before construction.
+        # Exercise the update race only after satisfying that independent gate.
+        target._show_main({})
+        assert target.main is None
+        target.bootstrap_result = SimpleNamespace(profile=None, vault_manager=None,
+            local_asset_lifecycle=None, snapshot=None, close=Mock())
         target._show_main({})
         assert target.main is main and not main.isVisible() and not main.isEnabled()
         assert target.login_gate.isVisible() and target.login_gate.login_is_blocked
