@@ -84,20 +84,24 @@ rows or user files are migrated. Signature/RS256, audience/client, expiry, nonce
 state and S256 PKCE remain enforced. JWKS requests use configured transport, never
 the untrusted token's issuer/jku. TLS certificate and hostname verification remain on.
 
-Desktop requests discovery from the new HTTPS host. Before Keycloak switches,
-the discovered OLD auth/token endpoints remain usable only inside the window.
+After approved activation, desktop requests discovery from the new HTTPS host.
+Before Keycloak switches, the discovered OLD auth/token endpoints remain usable
+only inside the window.
 After switching, a new login discovers NEW endpoints, so its browser target is
 `https://auth.clannad.win/realms/mentorflow/protocol/openid-connect/auth`.
 Each callback transaction binds the exact issuer returned by its own discovery;
 it does not accept an arbitrary issuer just because a migration is active.
 
-The E109 NEW-primary desktop opens that authorization URL in the system browser
-from both the startup login shell and account settings. It keeps this behavior
-after migration expiry/removal. Browser launch failure closes the callback and
-fails login; it never falls back to embedded authentication. The OS browser must
+The E109 OLD-primary PREPARED desktop and NEW-primary desktop open that
+authorization URL in the system browser from both the startup login shell and
+account settings. OLD system-browser selection does not activate migration or
+accept NEW discovery/tokens; it permits pre-cutover login without assigning live
+window dates. This behavior remains after migration expiry/removal.
+Browser launch failure closes the callback and fails login; it never falls back
+to embedded authentication. The OS browser must
 already trust both the retained OLD HTTPS endpoint (before cutover) and NEW host;
 Python CA environment variables do not configure the external browser. The
-PREPARED build continues to use its existing inactive defaults.
+PREPARED build retains OLD issuer, API, identity and inactive migration defaults.
 
 ## Required deployment order — do not skip
 

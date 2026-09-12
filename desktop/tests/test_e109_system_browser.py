@@ -11,11 +11,25 @@ from PySide6.QtWidgets import QApplication
 from app.enterprise.identity.issuer_migration import (
     AUTHORITY_SHA256, IssuerMigration, NEW_ISSUER, OLD_ISSUER,
 )
-from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient, EnterpriseOidcError
+from desktop.enterprise_oidc import (
+    DesktopOidcConfig, EnterpriseOidcClient, EnterpriseOidcError, bind_auth_authority,
+)
 from desktop.in_app_oidc import InAppOidcLoginDialog
 
 
-def config(*, migrated=False):
+def config(*, migrated=False, prepared=False):
+    if prepared:
+        from scripts import build_e108_user_candidate as build
+        from scripts.windows_installed_launch import ISSUER
+        manifest = build.version_document(build.BASE_VERSION, {})
+        assert 'auth_authority' not in manifest
+        return DesktopOidcConfig.from_env(bind_auth_authority({
+            'MENTORFLOW_DESKTOP_OIDC_ISSUER': ISSUER,
+            'MENTORFLOW_DESKTOP_OIDC_CLIENT_ID': 'mentorflow-desktop',
+            'MENTORFLOW_DESKTOP_OIDC_AUDIENCE': 'mentorflow-api',
+            'MENTORFLOW_ENTERPRISE_API_BASE_URL': 'https://localhost:18080',
+            'MENTORFLOW_DESKTOP_OIDC_CALLBACK_PORT': '0',
+        }, manifest.get('auth_authority')))
     return DesktopOidcConfig(
         issuer=NEW_ISSUER, identity_issuer=OLD_ISSUER,
         issuer_migration=None if migrated else IssuerMigration(100, 200, AUTHORITY_SHA256),
@@ -42,15 +56,18 @@ def prepare(cfg, discovered):
 
 
 @pytest.mark.parametrize('embedded', [False, True])
-@pytest.mark.parametrize('discovered,migrated', [(OLD_ISSUER, False), (NEW_ISSUER, False), (NEW_ISSUER, True)])
-def test_both_desktop_surfaces_open_system_browser_and_preserve_pkce(monkeypatch, embedded, discovered, migrated):
+@pytest.mark.parametrize('discovered,migrated,prepared_build', [
+    (OLD_ISSUER, False, True), (OLD_ISSUER, False, False),
+    (NEW_ISSUER, False, False), (NEW_ISSUER, True, False),
+])
+def test_both_desktop_surfaces_open_system_browser_and_preserve_pkce(monkeypatch, embedded, discovered, migrated, prepared_build):
     monkeypatch.setattr(time, 'time', lambda: 150)
     opened = []
     monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: opened.append(url.toString()) or True)
     def embedded_browser_forbidden(self):
         pytest.fail('E109 must not instantiate an embedded authentication browser')
     monkeypatch.setattr(InAppOidcLoginDialog, '_ensure_browser', embedded_browser_forbidden)
-    cfg = config(migrated=migrated)
+    cfg = config(migrated=migrated, prepared=prepared_build)
     prepared = prepare(cfg, discovered)
     dialog = None
     try:
@@ -81,14 +98,17 @@ def test_both_desktop_surfaces_open_system_browser_and_preserve_pkce(monkeypatch
 
 @pytest.mark.parametrize('raises', [False, True])
 @pytest.mark.parametrize('embedded', [False, True])
-def test_failed_os_browser_launch_closes_callback_without_embedded_fallback(monkeypatch, raises, embedded):
+@pytest.mark.parametrize('prepared_build', [False, True])
+def test_failed_os_browser_launch_closes_callback_without_embedded_fallback(monkeypatch, raises, embedded, prepared_build):
     monkeypatch.setattr(time, 'time', lambda: 150)
+    monkeypatch.setattr(InAppOidcLoginDialog, '_ensure_browser',
+                        lambda _: pytest.fail('OS browser failure must not open embedded authentication'))
     def failed_launch(url):
         if raises:
             raise OSError('synthetic browser failure')
         return False
     monkeypatch.setattr(QDesktopServices, 'openUrl', failed_launch)
-    cfg = config()
+    cfg = config(prepared=prepared_build)
     prepared = prepare(cfg, OLD_ISSUER)
     dialog = InAppOidcLoginDialog(cfg, embedded=embedded)
     try:
@@ -101,10 +121,10 @@ def test_failed_os_browser_launch_closes_callback_without_embedded_fallback(monk
         QApplication.instance().processEvents()
 
 
-@pytest.mark.parametrize('discovered', [OLD_ISSUER, NEW_ISSUER])
-def test_callback_cannot_switch_to_other_allowed_issuer_within_transaction(monkeypatch, discovered):
+@pytest.mark.parametrize('discovered,prepared_build', [(OLD_ISSUER, True), (OLD_ISSUER, False), (NEW_ISSUER, False)])
+def test_callback_cannot_switch_to_other_allowed_issuer_within_transaction(monkeypatch, discovered, prepared_build):
     monkeypatch.setattr(time, 'time', lambda: 150)
-    prepared = prepare(config(), discovered)
+    prepared = prepare(config(prepared=prepared_build), discovered)
     try:
         callback = prepared.receiver.redirect_uri + '?' + urlencode({
             'code': 'synthetic-code', 'state': prepared.transaction.state,
@@ -118,10 +138,11 @@ def test_callback_cannot_switch_to_other_allowed_issuer_within_transaction(monke
         prepared.receiver.close()
 
 
-def test_cancelled_login_never_launches_browser(monkeypatch):
+@pytest.mark.parametrize('prepared_build', [False, True])
+def test_cancelled_login_never_launches_browser(monkeypatch, prepared_build):
     monkeypatch.setattr(time, 'time', lambda: 150)
     monkeypatch.setattr(QDesktopServices, 'openUrl', lambda _: pytest.fail('cancelled browser launch'))
-    cfg = config()
+    cfg = config(prepared=prepared_build)
     prepared = prepare(cfg, OLD_ISSUER)
     dialog = InAppOidcLoginDialog(cfg, embedded=True)
     try:
@@ -132,3 +153,17 @@ def test_cancelled_login_never_launches_browser(monkeypatch):
         prepared.receiver.close()
         dialog.dispose()
         QApplication.instance().processEvents()
+
+
+def test_prepared_old_browser_does_not_start_migration_or_accept_new_discovery():
+    cfg = config(prepared=True)
+    assert cfg.requires_system_browser
+    assert cfg.issuer == cfg.canonical_identity_issuer == OLD_ISSUER
+    assert cfg.issuer_migration is None
+    assert cfg.api_base_url == 'https://localhost:18080' and cfg.callback_port == 0
+    assert cfg.accepts_issuer(OLD_ISSUER)
+    assert not cfg.accepts_issuer(NEW_ISSUER)
+    assert not cfg.accepts_issuer('https://unapproved.example/realms/mentorflow')
+    with pytest.raises(EnterpriseOidcError) as error:
+        prepare(cfg, NEW_ISSUER)
+    assert error.value.code == 'ENTERPRISE_OIDC_DISCOVERY_INVALID'
