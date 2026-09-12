@@ -88,6 +88,14 @@ After switching, a new login discovers NEW endpoints, so its browser target is
 Each callback transaction binds the exact issuer returned by its own discovery;
 it does not accept an arbitrary issuer just because a migration is active.
 
+The E109 NEW-primary desktop opens that authorization URL in the system browser
+from both the startup login shell and account settings. It keeps this behavior
+after migration expiry/removal. Browser launch failure closes the callback and
+fails login; it never falls back to embedded authentication. The OS browser must
+already trust both the retained OLD HTTPS endpoint (before cutover) and NEW host;
+Python CA environment variables do not configure the external browser. The
+PREPARED build continues to use its existing inactive defaults.
+
 ## Required deployment order — do not skip
 
 1. 05/authorized deployment owner must preserve the old API and loopback proxy,
@@ -107,6 +115,8 @@ it does not accept an arbitrary issuer just because a migration is active.
    merged config; do not recreate Keycloak or run migrations as a side effect.
    Run the existing strict `oidc-ready` probe in that deployed backend and verify
    old-token login/refresh plus existing account membership before proceeding.
+   The invalid-code negative probe must return HTTP 400 `invalid_grant`;
+   `invalid_client`, `unauthorized_client` or another error is not readiness.
 4. Activate the compatible desktop consumer before cutover. Direct runtime keys:
    `MENTORFLOW_DESKTOP_OIDC_ISSUER=NEW`,
    `MENTORFLOW_DESKTOP_IDENTITY_ISSUER=OLD`, and the same migration JSON.
@@ -147,3 +157,6 @@ unknown issuers, signature/audience/client/expiry, bounded window expiry, fixed
 JWKS source, desktop callback/PKCE and source preflight before/after cutover.
 They are not real SMTP, a deployed-backend check, packaged desktop QA, or a live
 new-issuer login. Those remain required at the deployment gate above.
+
+MAIN3 consumer preflight and the next activation prerequisites are recorded in
+`reports/enterprise/e109-auth-consumer-preflight-main3-01-20260912.md`.

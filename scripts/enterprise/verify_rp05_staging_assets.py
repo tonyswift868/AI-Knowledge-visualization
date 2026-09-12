@@ -1287,12 +1287,15 @@ def verify(root: Path) -> dict:
             token in runtime
             for token in (
                 "def _oidc_ready()",
-                '"issuer": public_issuer',
+                '"issuer": discovered_issuer',
+                'validate_binding(public_issuer, os.environ.get("MENTORFLOW_KEYCLOAK_IDENTITY_ISSUER"), migration)',
+                'if not accepts_issuer(discovered_issuer, public_issuer, migration, time.time()):',
                 '"authorization_endpoint"',
                 '"token_endpoint"',
                 '"jwks_uri"',
                 "MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER",
                 "OIDC token endpoint accepted an intentionally invalid code",
+                'error.get("error") != "invalid_grant"',
                 '"DISCOVERY_ISSUER_EXACT": "PASS"',
                 '"AUTHORIZATION_ENDPOINT": "PASS"',
                 '"TOKEN_ENDPOINT": "PASS"',

@@ -235,6 +235,7 @@ def test_runtime_preflight_supports_cutover_but_not_unknown_or_expired_authority
     }.items(): monkeypatch.setenv(name, value)
     monkeypatch.setattr(runtime.time, 'time', lambda: NOW.timestamp())
     discovered = OLD_ISSUER
+    token_error = 'invalid_grant'
     calls = []
     class Response(BytesIO):
         status = 200
@@ -246,11 +247,15 @@ def test_runtime_preflight_supports_cutover_but_not_unknown_or_expired_authority
             body = {'issuer': discovered, **{name: discovered + '/protocol/openid-connect/' + suffix
                 for name, suffix in [('authorization_endpoint','auth'), ('token_endpoint','token'), ('jwks_uri','certs')]}}
         elif url.endswith('/certs'): body = {'keys':[{'kid':'test-only'}]}
-        else: raise HTTPError(url, 400, 'Bad Request', None, BytesIO(b'{"error":"invalid_grant"}'))
+        else: raise HTTPError(url, 400, 'Bad Request', None, BytesIO(json.dumps({'error': token_error}).encode()))
         return Response(json.dumps(body).encode())
     monkeypatch.setattr(runtime, 'urlopen', open_url)
     for discovered in (OLD_ISSUER, NEW_ISSUER):
         assert runtime._oidc_ready() == 0
+    # A reachable token URL with a broken client/grant contract is not ready.
+    for token_error in ('invalid_client', 'unauthorized_client', 'unsupported_grant_type', 'invalid_request', ''):
+        with pytest.raises(SystemExit): runtime._oidc_ready()
+    token_error = 'invalid_grant'
     discovered = 'https://evil.example/realms/mentorflow'
     with pytest.raises(SystemExit): runtime._oidc_ready()
     discovered = OLD_ISSUER

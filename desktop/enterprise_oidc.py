@@ -3,8 +3,8 @@
 An OIDC user-agent owns interactive authentication.  MentorFlow receives
 exactly one loopback callback, validates the OIDC tokens, refreshes
 tenant-scoped server state, and only then exposes an account identity to the
-Desktop lifecycle.  The normal Desktop UI supplies an isolated in-app Qt
-WebEngine user-agent; the protocol core remains UI-agnostic.
+Desktop lifecycle. E109 uses the system browser; legacy configurations retain
+their isolated Qt WebEngine user-agent. The protocol core remains UI-agnostic.
 """
 
 from __future__ import annotations
@@ -236,6 +236,11 @@ class DesktopOidcConfig:
     @property
     def canonical_identity_issuer(self) -> str:
         return self.identity_issuer or self.issuer
+
+    @property
+    def requires_system_browser(self) -> bool:
+        # Keep this true after the migration window/config is retired.
+        return self.issuer == _migration_contract().NEW_ISSUER
 
     def accepts_issuer(self, value: str) -> bool:
         return _migration_contract().accepts_issuer(value, self.issuer, self.issuer_migration, time.time())

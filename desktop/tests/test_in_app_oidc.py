@@ -248,7 +248,7 @@ def test_dialog_reuses_prepare_loopback_and_complete_protocol() -> None:
     assert calls[-1] == "client.close"
 
 
-def test_default_desktop_login_surface_never_calls_system_browser() -> None:
+def test_desktop_login_surface_retains_protocol_shell_without_page_scripting() -> None:
     account_page = Path("desktop/account_settings_page.py").read_text(encoding="utf-8")
     embedded = Path("desktop/in_app_oidc.py").read_text(encoding="utf-8")
 
@@ -257,7 +257,8 @@ def test_default_desktop_login_surface_never_calls_system_browser() -> None:
     assert "externalBrowserOAuthButton" not in account_page
     assert "login_enterprise_account_from_env" not in account_page
     assert "open_system_browser_oauth" not in embedded
-    assert "QDesktopServices" not in embedded
+    # The E109 primary uses the OS browser through the same protocol shell.
+    assert "self._config.requires_system_browser" in embedded
     assert "runJavaScript" not in embedded
     assert "setHtml" not in embedded
 

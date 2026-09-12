@@ -225,8 +225,8 @@ def _oidc_ready() -> int:
                 f"OIDC token endpoint negative probe returned HTTP {exc.code}"
             ) from exc
         error = _bounded_json_http_error(exc, label="OIDC token endpoint negative probe")
-        if not isinstance(error.get("error"), str) or not error["error"]:
-            raise SystemExit("OIDC token endpoint negative probe returned no error code")
+        if error.get("error") != "invalid_grant":
+            raise SystemExit("OIDC token endpoint negative probe did not reject the invalid grant")
     else:
         raise SystemExit("OIDC token endpoint accepted an intentionally invalid code")
 

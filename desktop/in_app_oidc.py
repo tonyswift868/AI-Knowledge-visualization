@@ -1,6 +1,6 @@
-"""MentorFlow-owned, isolated Qt WebEngine surface for Enterprise OIDC.
+"""Enterprise OIDC shell with system-browser authorization for E109.
 
-The embedded page is only an OIDC user-agent.  Authorization results continue
+The legacy embedded page is only an OIDC user-agent. Authorization results continue
 to arrive through the existing IPv4 loopback receiver; this module never reads
 page DOM, cookies, form fields, authorization codes, or tokens.
 """
@@ -15,7 +15,7 @@ from typing import Protocol
 from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit
 
 from PySide6.QtCore import QThread, QUrl, Signal, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWebEngineCore import (
     QWebEngineCertificateError,
     QWebEnginePage,
@@ -265,7 +265,7 @@ class InAppOidcLoginDialog(QDialog):
         layout.addWidget(self.status)
 
         self._browser_created = False
-        if not embedded:
+        if not embedded and not config.requires_system_browser:
             self._ensure_browser()
         actions = QHBoxLayout()
         actions.addStretch()
@@ -465,6 +465,21 @@ class InAppOidcLoginDialog(QDialog):
             self._finish_with_error(exc.code, exc.message)
             return
         self._prepared = value
+        if self._config.requires_system_browser:
+            self.status.setText("请在系统浏览器中完成登录，完成后返回 MentorFlow。")
+            try:
+                opened = QDesktopServices.openUrl(QUrl(value.authorization_url))
+            except Exception:
+                opened = False
+            if not opened:
+                self._finish_with_error(
+                    'ENTERPRISE_OIDC_BROWSER_UNAVAILABLE',
+                    '无法打开系统浏览器，请检查默认浏览器设置后重试。',
+                )
+            else:
+                self.authorization_navigation_started.emit()
+            self._page_ready.set()
+            return
         self._ensure_browser()
         self._interceptor.policy = policy
         self.status.setText(
