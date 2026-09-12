@@ -1,8 +1,10 @@
 # Native identity verifier — Keycloak 26.7.3
 
 This extension completes the identity-side seam in `docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md`.
-It remains disabled without explicit server configuration. It is not a token-grant
-endpoint or a replacement password database. No production server was changed.
+The private credential endpoint remains disabled without explicit server configuration.
+The JAR also registers the action-token atomicity handlers described below; installing
+the JAR activates those handlers. It is not a token-grant endpoint or a replacement
+password database. No production server was changed.
 
 ## Build and isolate
 
@@ -11,6 +13,7 @@ Use JDK 21 and the exact Keycloak 26.7.3 distribution:
 ```powershell
 python scripts/build_native_identity_verifier.py --keycloak <keycloak-26.7.3> --jdk <jdk-21> --output <scratch>/mentorflow-native-verifier.jar
 python scripts/native_identity_fixture.py --keycloak-zip <keycloak-26.7.3.zip> --jdk <jdk-21> --desktop-python <python-with-PySide6> --output <E-drive-scratch>
+python scripts/native_identity_fixture.py --keycloak-zip <keycloak-26.7.3.zip> --jdk <jdk-21> --desktop-python <python-with-PySide6> --output <E-drive-scratch> --action-tokens
 ```
 
 The fixture needs the backend test dependencies, cryptography, uvicorn, and a Windows
@@ -18,6 +21,9 @@ desktop Python with the existing desktop test dependencies. It starts fresh H2-b
 Keycloak and SQLite-backed account-core instances on dynamic IPv4 loopback ports.
 Both network hops use verified TLS; the identity hop additionally uses mTLS. Realm
 import creates only random disposable credentials, then removes the import file.
+Add `--postgres-bin <portable-postgresql/bin>` to use a newly initialized PostgreSQL
+identity database with SCRAM credentials and dynamic loopback port. It never connects
+to an existing cluster. The runner stops its own database during cleanup.
 The fixture's separate `NativeIdentityFixtureControl.java` is never included by the
 production builder. Never deploy `fixture-control.jar`.
 
@@ -26,6 +32,58 @@ and Windows Credential Locker execute in the acceptance. The business page rende
 and local inference service are substituted after bootstrap; the actual `_show_main`
 guard runs. This proves the authentication gate, not a complete installed-app UAT or
 PostgreSQL RLS qualification. The receipt records exact checks and process cleanup.
+
+## Atomic verification and password-reset tokens
+
+The production JAR replaces the stock `verify-email` and `reset-credentials` handlers
+using the same signed token types, native verifiers and factory order 100. An
+`UPDATE_PASSWORD` factory adds a guard only to sessions bound by the reset handler;
+ordinary password required actions keep their native implementation.
+
+Each token is keyed by realm ID and Keycloak's native `serializeKey()` (subject,
+purpose, expiry and verification nonce). A `SingleUseObjectProvider.putIfAbsent`
+claim is the concurrency boundary. Only its winner enters the native state-changing
+flow and records the claim through Keycloak's existing `RevokedTokenProvider`.
+The separate claim key is needed because Keycloak 26.7.3's revoked-token provider
+can enlist a persistence write even when its own insertion loses. There is no new
+database, process lock, user lock or timing delay. All nodes must share the native
+single-use authority; token-revocation persistence must remain enabled.
+
+Verification's fresh-browser confirmation page does not consume the action. Its
+confirmation request claims before changing email/required actions. The key survives
+native confirmation-link re-signing. Reset links claim before entering the reset
+flow; the bound password form has a second atomic completion claim before the
+credential write. Repeated or copied forms receive the same controlled expired-action
+page. The native reset verifier may no longer resume a required action before this
+claim. Signature, issuer, client, email binding, validity and password policy checks
+remain in place. Missing, mismatching and policy-rejected passwords can be corrected;
+an unexpected failure after a claim requires a newly issued link.
+
+Claims are never released or deleted by resend/re-arm. Retention extends through
+the signed expiry plus Keycloak's existing 60-second storage margin, without extending
+token validity. A consumed token remains denied after re-arm, new-token issuance and
+Keycloak restart. A newly minted verification nonce creates an independent action.
+This does not reconstruct consumption history for old verification tokens used before
+the extension existed. Before a future installation, drain those outstanding tokens
+or invalidate them through an explicitly authorized identity operation.
+
+`--action-tokens` runs real HTTPS barrier tests at concurrency 2/5/10, sequential
+reuse, re-arm/resend, copied reset forms, password correction, wrong signature/email,
+expired/malformed inputs, cross-purpose rejection, restart persistence and the native
+desktop acceptance. Add `--upstream-action-handlers` only for a disposable negative
+control: it removes the atomic SPI registrations from that fixture's JAR and is
+expected to produce a failing receipt. The production build always registers them.
+
+Deployment requires exact Keycloak 26.7.3, inspection of the selected handler classes,
+and repeat acceptance against the target cache/database topology. The local fixture
+uses one real Keycloak process with native H2 or disposable PostgreSQL and cache;
+it does not qualify a distributed cluster. Stage the JAR and authorization first; do not install it in
+a running production server as part of preflight.
+
+Authority references: [single-use atomic provider](https://github.com/keycloak/keycloak/blob/26.7.3/model/infinispan/src/main/java/org/keycloak/models/sessions/infinispan/InfinispanSingleUseObjectProvider.java),
+[revocation adapter](https://github.com/keycloak/keycloak/blob/26.7.3/model/infinispan/src/main/java/org/keycloak/models/sessions/infinispan/InfinispanRevokedTokenProvider.java),
+[native email handler](https://github.com/keycloak/keycloak/blob/26.7.3/services/src/main/java/org/keycloak/authentication/actiontoken/verifyemail/VerifyEmailActionTokenHandler.java),
+[native action completion](https://github.com/keycloak/keycloak/blob/26.7.3/services/src/main/java/org/keycloak/services/managers/AuthenticationManager.java).
 
 ## Private contract
 

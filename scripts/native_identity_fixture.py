@@ -256,6 +256,8 @@ def run(args):
                'live_keycloak_mutation': 0, 'smtp_send': 0, 'password_grant_used': False}
     checks = receipt['checks']
     kc_process = None
+    pgdata = None
+    pg_started = False
     api_server = api_worker = engine = runtime = None
     log = None
     try:
@@ -264,6 +266,18 @@ def run(args):
         kc = home / 'keycloak-26.7.3'
         pin = certificates(home)
         receipt['spi_sha256'] = build(kc, args.jdk, kc / 'providers/mentorflow-native-verifier.jar')
+        if getattr(args, 'upstream_action_handlers', False):
+            # Disposable negative control only: omit the handler SPI registration.
+            # The production build function always includes the atomic handlers.
+            provider_jar = kc / 'providers/mentorflow-native-verifier.jar'
+            with zipfile.ZipFile(provider_jar) as source:
+                entries = {n: source.read(n) for n in source.namelist()
+                           if n not in ('META-INF/services/org.keycloak.authentication.actiontoken.ActionTokenHandlerFactory',
+                                        'META-INF/services/org.keycloak.authentication.RequiredActionFactory')}
+            with zipfile.ZipFile(provider_jar, 'w') as target:
+                for name, content in entries.items(): target.writestr(name, content)
+            receipt['spi_sha256'] = hashlib.sha256(provider_jar.read_bytes()).hexdigest()
+            receipt['upstream_action_handlers_negative_control'] = True
         classes = home / 'fixture-control-classes'
         classes.mkdir()
         subprocess.run([str(args.jdk / 'bin/javac.exe'), '--release', '21', '-cp', str(kc / 'lib/lib/main/*'),
@@ -289,7 +303,7 @@ def run(args):
             'registrationAllowed': False, 'resetPasswordAllowed': False, 'bruteForceProtected': True,
             'failureFactor': 2, 'waitIncrementSeconds': 60, 'minimumQuickLoginWaitSeconds': 60,
             'maxFailureWaitSeconds': 300, 'quickLoginCheckMilliSeconds': 1000,
-            'passwordPolicy': 'hashAlgorithm(argon2) and forceExpiredPasswordChange(1)', 'smtpServer': {}, 'users': users,
+            'passwordPolicy': 'hashAlgorithm(argon2) and forceExpiredPasswordChange(1) and length(12)', 'smtpServer': {}, 'users': users,
             'clients': [{'clientId': 'mentorflow-desktop', 'publicClient': True,
                          'standardFlowEnabled': True, 'directAccessGrantsEnabled': False,
                          'redirectUris': ['http://127.0.0.1/*']}]}
@@ -301,13 +315,42 @@ def run(args):
         process_env.update({'MF_NATIVE_VERIFIER_ENABLED': '1', 'MF_NATIVE_VERIFIER_REALM': realm,
                            'MF_NATIVE_VERIFIER_ISSUER': issuer, 'MF_NATIVE_VERIFIER_BACKEND_CERT_SHA256': pin,
                            'MF_NATIVE_FIXTURE_CONTROL': '1'})
+        db_options = ['--db=dev-file']
+        receipt['identity_database'] = 'H2_DISPOSABLE'
+        if getattr(args, 'postgres_bin', None):
+            pgdata = home / 'pgdata'
+            pgport = port()
+            pgpassword = secrets.token_urlsafe(32)
+            pwfile = home / 'pg-init-password'
+            pwfile.write_text(pgpassword, encoding='utf-8')
+            try:
+                with (home / 'postgres-init.log').open('wb') as pglog:
+                    result = subprocess.run([str(args.postgres_bin / 'initdb.exe'), '-D', str(pgdata), '-U', 'postgres',
+                        '--auth=scram-sha-256', '--pwfile='+str(pwfile), '--encoding=UTF8', '--locale=C'],
+                        cwd=home, stdout=pglog, stderr=subprocess.STDOUT, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                if result.returncode: raise RuntimeError('Disposable PostgreSQL initialization failed')
+            finally: pwfile.unlink(missing_ok=True)
+            with (pgdata / 'postgresql.conf').open('a', encoding='utf-8') as config:
+                config.write(f"\nlisten_addresses='127.0.0.1'\nport={pgport}\nshared_buffers='64MB'\n"
+                    "max_connections=30\nwork_mem='2MB'\nlog_statement='none'\nlog_min_error_statement=panic\n")
+            pg_started = True
+            with (home / 'postgres-start.log').open('wb') as pglog:
+                result = subprocess.run([str(args.postgres_bin / 'pg_ctl.exe'), '-D', str(pgdata), '-l', str(home/'postgres.log'), '-w', 'start'],
+                    cwd=home, stdout=pglog, stderr=subprocess.STDOUT, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
+            if result.returncode: raise RuntimeError('Disposable PostgreSQL startup failed')
+            process_env['KC_DB_PASSWORD'] = pgpassword
+            db_options = ['--db=postgres', f'--db-url=jdbc:postgresql://127.0.0.1:{pgport}/postgres',
+                          '--db-username=postgres', '--db-pool-initial-size=1', '--db-pool-min-size=1', '--db-pool-max-size=5']
+            receipt['identity_database'] = 'POSTGRESQL_DISPOSABLE'
+            receipt['postgres_version'] = subprocess.check_output([str(args.postgres_bin/'postgres.exe'), '--version'],
+                text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
         java = str(args.jdk / 'bin/java.exe')
         command = [java, '-Xms128m', '-Xmx512m', '-XX:ActiveProcessorCount=2',
             '-Duser.language=en', '-Duser.country=US', '-Dkc.home.dir='+str(kc),
             '-Djboss.server.config.dir='+str(kc / 'conf'),
             '-Djava.util.concurrent.ForkJoinPool.common.threadFactory=io.quarkus.bootstrap.forkjoin.QuarkusForkJoinWorkerThreadFactory',
             '-cp', str(kc / 'lib/quarkus-run.jar'), 'io.quarkus.bootstrap.runner.QuarkusEntryPoint',
-            'start-dev', '--db=dev-file', '--cache=local', '--http-enabled=false', '--http-host=127.0.0.1',
+            'start-dev', *db_options, '--cache=local', '--http-enabled=false', '--http-host=127.0.0.1', '--http-port='+str(port()),
             '--http-management-host=127.0.0.1', '--http-management-port='+str(management_port),
             '--https-port='+str(kc_port), '--https-certificate-file='+str(home / 'server.pem'),
             '--https-certificate-key-file='+str(home / 'server.key'), '--https-client-auth=request',
@@ -340,6 +383,23 @@ def run(args):
         mtls.load_cert_chain(home / 'backend.pem', home / 'backend.key')
         with httpx.Client(verify=mtls, trust_env=False, timeout=10) as identity:
             control = issuer+'/mf-native-fixture-control'
+            if getattr(args, 'action_tokens', False):
+                from scripts.action_token_fixture_checks import run as action_checks
+                def restart_identity():
+                    nonlocal kc_process
+                    kc_process.terminate(); kc_process.wait(15)
+                    kc_process = subprocess.Popen(command, cwd=kc, env=process_env, stdout=log, stderr=subprocess.STDOUT,
+                                                  creationflags=subprocess.CREATE_NO_WINDOW)
+                    with httpx.Client(verify=tls, trust_env=False, timeout=2) as ready:
+                        deadline = time.monotonic()+90
+                        while time.monotonic()<deadline and kc_process.poll() is None:
+                            try:
+                                if ready.get(issuer+'/.well-known/openid-configuration').status_code == 200: return
+                            except httpx.HTTPError: pass
+                            time.sleep(.3)
+                    raise RuntimeError('Fixture Keycloak restart failed')
+                action_checks(identity, issuer, tls, receipt, restart_identity)
+                (home / 'action-results.json').write_text(json.dumps(receipt['action_tokens'], indent=2), encoding='utf-8')
             policy = identity.get(control+'/policy')
             (home / 'policy.json').write_text(json.dumps(policy.json(), indent=2), encoding='utf-8')
             def auth(name, secret=password):
@@ -455,9 +515,17 @@ def run(args):
             try: kc_process.wait(15)
             except subprocess.TimeoutExpired: kc_process.kill(); kc_process.wait(10)
         if log is not None: log.close()
+        pg_stopped = True
+        if pg_started:
+            with (home / 'postgres-stop.log').open('wb') as pglog:
+                stopped = subprocess.run([str(args.postgres_bin / 'pg_ctl.exe'), '-D', str(pgdata), '-m', 'fast', '-w', 'stop'],
+                    cwd=home, stdout=pglog, stderr=subprocess.STDOUT, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
+            pg_stopped = stopped.returncode == 0 and not (pgdata/'postmaster.pid').exists()
+            if not pg_stopped: receipt['status'] = 'FAIL'
         for sensitive in [*home.glob('*.key'), *home.glob('keycloak-*/data/import/*.json')]: sensitive.unlink(missing_ok=True)
         receipt['cleanup'] = {'keycloak_stopped': kc_process is None or kc_process.poll() is not None,
-                              'api_stopped': api_worker is None or not api_worker.is_alive(), 'fixture_private_keys_removed': not list(home.glob('*.key'))}
+                              'api_stopped': api_worker is None or not api_worker.is_alive(), 'fixture_private_keys_removed': not list(home.glob('*.key')),
+                              'postgres_stopped': pg_stopped}
         (home / 'receipt.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
         (args.output / (home.name+'-receipt.json')).write_text(json.dumps(receipt, indent=2), encoding='utf-8')
         print(json.dumps(receipt, indent=2))
@@ -473,4 +541,8 @@ if __name__ == '__main__':
         parser.add_argument('--jdk', type=Path, required=True)
         parser.add_argument('--desktop-python', type=Path, required=True)
         parser.add_argument('--output', type=Path, required=True)
+        parser.add_argument('--action-tokens', action='store_true')
+        parser.add_argument('--postgres-bin', type=Path, help='Optional portable PostgreSQL bin; creates a fresh SCRAM-authenticated loopback cluster')
+        parser.add_argument('--upstream-action-handlers', action='store_true',
+                            help='Disposable negative control; expect action-token checks to FAIL')
         raise SystemExit(run(parser.parse_args()))

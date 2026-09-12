@@ -6,6 +6,12 @@ import java.util.*;
 import org.keycloak.Config;
 import org.keycloak.models.*;
 import org.keycloak.services.resource.*;
+import org.keycloak.common.util.Time;
+import org.keycloak.authentication.actiontoken.*;
+import org.keycloak.authentication.actiontoken.verifyemail.*;
+import org.keycloak.authentication.actiontoken.resetcred.*;
+import org.keycloak.events.*;
+import org.keycloak.sessions.*;
 
 /** Disposable fixture control only. Never packaged in the deployable verifier JAR. */
 public final class NativeIdentityFixtureControl implements RealmResourceProviderFactory {
@@ -86,6 +92,72 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
             }
             body.clear();
             return Map.of("changed", true);
+        }
+
+        /** Native signing and event/state oracles only; redemption uses production handlers. */
+        @POST @Path("action") @Consumes("application/json") @Produces("application/json")
+        public Map<String, Object> action(Map<String, String> body) throws Exception {
+            var realm = guard();
+            String name = body.get("username"), purpose = body.get("purpose");
+            if (name == null || !name.matches("action-[a-f0-9]{16}")
+                    || !Set.of("verification", "reset").contains(purpose)) throw new BadRequestException();
+            var user = session.users().getUserByUsername(realm, name);
+            switch (body.get("operation")) {
+                case "create" -> {
+                    if (user != null) throw new BadRequestException();
+                    user = session.users().addUser(realm, name);
+                    user.setEnabled(true);
+                    user.setEmail(name + "@fixture.invalid");
+                    if (!"true".equals(body.get("incomplete_profile"))) {
+                        user.setFirstName("Action"); user.setLastName("Fixture");
+                    }
+                    user.setEmailVerified("reset".equals(purpose));
+                    user.credentialManager().updateCredential(UserCredentialModel.password(body.get("password")));
+                    if ("verification".equals(purpose)) user.addRequiredAction(UserModel.RequiredAction.VERIFY_EMAIL);
+                    realm.setResetPasswordAllowed(true);
+                    realm.setEventsEnabled(true);
+                    realm.setEnabledEventTypes(Set.of("VERIFY_EMAIL", "VERIFY_EMAIL_ERROR", "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR"));
+                    return Map.of("created", true);
+                }
+                case "rearm" -> {
+                    if (user == null) throw new BadRequestException();
+                    user.addRequiredAction("verification".equals(purpose) ? UserModel.RequiredAction.VERIFY_EMAIL : UserModel.RequiredAction.UPDATE_PASSWORD);
+                    return Map.of("rearmed", true);
+                }
+                case "state" -> {
+                    if (user == null) throw new BadRequestException();
+                    var events = session.getProvider(EventStoreProvider.class);
+                    long verified = events.createQuery().realm(realm.getId()).user(user.getId())
+                        .type(EventType.VERIFY_EMAIL).getResultStream().filter(e -> e.getError() == null).count();
+                    long reset = events.createQuery().realm(realm.getId()).user(user.getId())
+                        .type(EventType.UPDATE_PASSWORD).getResultStream().filter(e -> e.getError() == null).count();
+                    return Map.of("verified", user.isEmailVerified(), "verify_events", verified, "reset_events", reset,
+                        "verify_handler", session.getProvider(ActionTokenHandler.class, "verify-email").getClass().getName(),
+                        "reset_handler", session.getProvider(ActionTokenHandler.class, "reset-credentials").getClass().getName(),
+                        "password_action", session.getProvider(org.keycloak.authentication.RequiredActionProvider.class, "UPDATE_PASSWORD").getClass().getName(),
+                        "required_actions", user.getRequiredActionsStream().toList());
+                }
+                case "mint" -> {
+                    if (user == null) throw new BadRequestException();
+                    int ttl = Integer.parseInt(body.getOrDefault("ttl", "600"));
+                    if (ttl < -60 || ttl > 600) throw new BadRequestException();
+                    var client = realm.getClientByClientId("mentorflow-desktop");
+                    var root = session.authenticationSessions().createRootAuthenticationSession(realm);
+                    var auth = root.createAuthenticationSession(client);
+                    auth.setAuthenticatedUser(user); auth.setProtocol("openid-connect"); auth.setAction("AUTHENTICATE");
+                    auth.setRedirectUri("http://127.0.0.1/unused-fixture-callback");
+                    auth.setClientNote("response_type", "code");
+                    auth.setClientNote("redirect_uri", "http://127.0.0.1/unused-fixture-callback");
+                    auth.setAuthNote("END_AFTER_REQUIRED_ACTIONS", "true");
+                    String compound = AuthenticationSessionCompoundId.fromAuthSession(auth).getEncodedId();
+                    String email = "true".equals(body.get("wrong_email")) ? "wrong@fixture.invalid" : user.getEmail();
+                    DefaultActionToken token = "verification".equals(purpose)
+                        ? new VerifyEmailActionToken(user.getId(), Time.currentTime()+ttl, compound, email, client.getClientId())
+                        : new ResetCredentialsActionToken(user.getId(), email, Time.currentTime()+ttl, compound, client.getClientId());
+                    return Map.of("token", token.serialize(session, realm, session.getContext().getUri()), "tab", auth.getTabId());
+                }
+                default -> throw new BadRequestException();
+            }
         }
     }
 }

@@ -17,12 +17,21 @@ def build(keycloak: Path, jdk: Path, output: Path):
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='native-spi-', dir=output.parent) as temp:
         javac = jdk / 'bin' / ('javac.exe' if (jdk / 'bin/javac.exe').exists() else 'javac')
-        subprocess.run([str(javac), '--release', '21', '-cp', str(libs / '*'), '-d', temp, str(SOURCE)], check=True)
+        sources = [SOURCE, *(SOURCE.parent / name for name in (
+            'AtomicActionTokens.java', 'AtomicVerifyEmailActionTokenHandler.java',
+            'AtomicResetCredentialsActionTokenHandler.java', 'AtomicResetPassword.java'))]
+        subprocess.run([str(javac), '--release', '21', '-cp', str(libs / '*'), '-d', temp,
+                        *(str(source) for source in sources)], check=True)
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as jar:
             for file in sorted(Path(temp).rglob('*.class')):
                 jar.writestr(file.relative_to(temp).as_posix(), file.read_bytes())
             jar.writestr('META-INF/services/org.keycloak.services.resource.RealmResourceProviderFactory',
                          'win.clannad.mentorflow.NativeIdentityVerifier\n')
+            jar.writestr('META-INF/services/org.keycloak.authentication.actiontoken.ActionTokenHandlerFactory',
+                         'win.clannad.mentorflow.AtomicVerifyEmailActionTokenHandler\n'
+                         'win.clannad.mentorflow.AtomicResetCredentialsActionTokenHandler\n')
+            jar.writestr('META-INF/services/org.keycloak.authentication.RequiredActionFactory',
+                         'win.clannad.mentorflow.AtomicResetPassword\n')
             jar.writestr('META-INF/beans.xml', '<beans xmlns="https://jakarta.ee/xml/ns/jakartaee" bean-discovery-mode="all"/>')
     return hashlib.sha256(output.read_bytes()).hexdigest()
 
