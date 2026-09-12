@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+/artifacts/handoff/
 .env
 MINIMAX_API_KEY.txt
 backend/config/voice/minimax_teacher_voice.local.json

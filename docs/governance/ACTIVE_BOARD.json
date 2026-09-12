@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "project": "MentorFlow",
+  "generation": "MAIN3",
+  "baseline_branch": "main2",
+  "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+  "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
+  "integration_branch": "integration/main3",
+  "refs_verified": "UNKNOWN",
+  "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
+  "authority": "MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01",
+  "workers": {
+    "A": {
+      "status": "READY",
+      "dispatch_id": "MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01",
+      "task_id": "MENTORFLOW_REPOSITORY_KNOWLEDGE_SYSTEM_AND_COMPACT_HANDOFF_V1",
+      "depends_on": [],
+      "unlocks": ["KNOWLEDGE_INTEGRATION_REVIEW"],
+      "delivery_commit": null,
+      "next_action": "Exact delivery receipt supplies commit; integrate only under later authority, then SILENT."
+    },
+    "01": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
+    "02": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
+    "03": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
+    "04": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
+    "B": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "ON-DEMAND ONLY; no inferred ref/default operation."}
+  }
+}

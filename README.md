@@ -2,9 +2,9 @@
 
 MentorFlow 是证据优先的目标驱动学习工作流：导入资料，分析目标与时间，生成可预览计划，按任务学习，并用引用、评估、错题和复习记录反馈进度。
 
-> 给 ChatGPT 网页端、产品协作者和开发代理使用的当前项目主上下文见
-> [`GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md`](GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md)。
-> 旧交接包、带日期报告和远端历史不能替代当前本地工作树。
+> 新会话先读 [AGENTS.md](AGENTS.md) → [ARCHITECTURE.md](ARCHITECTURE.md) →
+> [CURRENT_STATE](docs/project/CURRENT_STATE.md)。源码 canonical 与产品验收分开记录。
+> 历史 master context、交接包和 dated reports 保留作证据，不作当前状态 authority。
 
 ## 启动
 
@@ -39,9 +39,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_native_desktop.ps1
 前两个无控制台，后者显示运行日志，便于排查。它们都链接当前源码，适合现阶段快速迭代；原生页面
 稳定后再通过 Qt 官方部署工具冻结成独立 EXE 安装包。
 
-软件会自动启动只监听本机随机端口的服务。当前产品是 Windows 本地单用户软件，
-注册、登录、密码找回和认证窗口已经从当前产品删除，不显示账号或 KYC。历史数据库
-迁移和少量退休验证文件暂留作旧数据兼容/防回归，不代表功能仍存在。首次启动选择全新默认空间或导入旧设备迁移包；导入
+本地开发服务只监听本机；当前源码同时包含 PERSONAL_LOCAL 与账户/Enterprise 路径。
+E109 已接入原生登录壳及 OIDC；注册/找回密码 capability 仍关闭，真实邮件与最终包验收待完成。
+具体路由、issuer 与部署边界见 [当前架构](ARCHITECTURE.md) 和
+[E109 接线](docs/E109_INTEGRATION_MAP.md)。本地空间支持选择默认空间或导入旧设备迁移包；导入
 只允许新目录或空目录，不覆盖正在使用的数据。任务、资料、知识地图、候选审核、计划、
 课堂、附件、模型连接和本地数据诊断已经使用 Qt 原生控件；复杂地图、Live2D 等能力
 通过隔离的 Web 渲染表面提供。
