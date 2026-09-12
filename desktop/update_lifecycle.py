@@ -71,8 +71,10 @@ class CoreUpdatePort:
         # Keep that legacy binding here, never in the panel/controller.
         transport = getattr(getattr(self.service, 'cache', None), 'transport', None)
         # Only presentation values cross the port; no release envelope/cache/paths.
-        return dict(state=state, current=getattr(self.service, 'current', ''),
+        return dict(state=state, current=raw.get('current', getattr(self.service, 'current', '')),
             latest=raw.get('latest', ''), notes=raw.get('release_notes', ''),
+            mandatory_reason=(raw.get('mandatory_reason') or 'support_floor') if state == 'MANDATORY_UPDATE' else '',
+            min_supported_version=raw.get('min_supported_version', ''),
             downloaded=raw.get('actual_downloaded_bytes', 0), total=raw.get('expected_download_bytes', 0),
             has_update=bool(raw.get('update', code == 'UPDATE_AVAILABLE')),
             error_kind=error_kind, busy=bool(getattr(transport, 'busy', False)),

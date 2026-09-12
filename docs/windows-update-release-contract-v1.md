@@ -101,6 +101,35 @@ field was lower. Incoming metadata cannot lower a known floor merely by increasi
 its metadata epoch. Historical witnesses authorize policy only: download/apply
 still require fresh metadata and target the latest currently verified release.
 
+### Public startup reason (presentation only)
+
+`scripts.per_user_update_core.get_startup_update_state()` returns `state`,
+`current`, `latest`, `mandatory_reason`, and `min_supported_version` to the public
+`desktop.update_lifecycle.CoreUpdatePort.snapshot`. The adapter forwards these
+values without parsing envelopes or comparing versions; it maps HEALTHY to its
+existing UP_TO_DATE display state. Adapter snapshot reads return independent
+dictionaries and do not write policy. Unknown versions/minimums are empty strings.
+`min_supported_version` exposes the effective verified mandatory floor (the same
+value as the existing core `mandatory_floor`, including legacy mandatory flags).
+
+For MANDATORY_UPDATE, `mandatory_reason` is one of `security`, `protocol`,
+`data_compatibility`, or `support_floor`. Other startup states expose an empty
+reason. A mandatory latest release uses its own signed category. An optional
+latest release can use a historical category only from an already verified
+witness in the same channel, whose mandatory release version equals the current
+floor and whose metadata epoch is no later than the latest policy. The existing
+signed install/cache witnesses supply this evidence; unsigned state, release
+notes, and an optional release's category are never historical reason authority.
+
+If those existing witnesses no longer retain the historical category, the reason
+is `support_floor`: the installed version is below the minimum supported version.
+No new category archive or policy persistence engine is introduced. Offline and
+expired-witness startup uses the same rule, so a retained gate always has a reason
+even when the category cannot be proved. Missing category evidence cannot change
+MANDATORY_UPDATE to OPTIONAL_UPDATE. The signed floor and existing startup policy
+alone decide the gate; reason selection cannot change the latest target, planning,
+signature checks, freshness requirements, or transaction/rollback behavior.
+
 Default path FILE_LEVEL_INCREMENTAL, never BLOCK_DELTA. If base unavailable,
 unsupported or changed size>=full, select FULL_FALLBACK, downloading the complete
 file set with completed-object deduplication. A full set is not Setup.exe, and both

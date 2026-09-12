@@ -310,3 +310,23 @@ def startup_version_policy(release: Release, current: str) -> str:
     if release.signed['withdrawn']:
         return 'HEALTHY'
     return 'OPTIONAL_UPDATE'
+
+
+def startup_mandatory_reason(release: Release, current: str, *, witnesses=()) -> str:
+    """Presentation only; all releases must already be verified with trusted keys.
+
+    A historical category is usable only when its signed mandatory version binds
+    this exact channel/floor. Missing category evidence never changes the gate.
+    """
+    if startup_version_policy(release, current) != 'MANDATORY_UPDATE':
+        return ''
+    if release.signed['mandatory']:
+        return release.signed['mandatory_reason']
+    floor = version_key(mandatory_floor(release))
+    bound = [item for item in witnesses
+             if item.signed['channel'] == release.signed['channel']
+             and item.signed['mandatory'] and version_key(item.version) == floor
+             and item.signed['metadata_version'] <= release.signed['metadata_version']]
+    if bound:
+        return max(bound, key=lambda item: item.signed['metadata_version']).signed['mandatory_reason']
+    return 'support_floor'

@@ -28,6 +28,11 @@ STARTUP_STATES = frozenset(('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE',
 
 
 def _startup_result(state, **details):
+    details.setdefault('current', '')
+    details.setdefault('latest', '')
+    details.setdefault('min_supported_version', details.get('mandatory_floor', ''))
+    details['mandatory_reason'] = ((details.get('mandatory_reason') or 'support_floor')
+                                   if state == 'MANDATORY_UPDATE' else '')
     messages = {
         'HEALTHY': '可以正常登录。',
         'OPTIONAL_UPDATE': '有新版本可用，您可以继续登录。',
@@ -133,7 +138,8 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
         if full: install.verify_payload(root, release)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('REPAIR_REQUIRED', current=release.version, reason='payload_verification_failed')
-    from desktop.update_protocol import mandatory_floor, startup_version_policy, version_key, verify_release, require_monotonic_floor
+    from desktop.update_protocol import (mandatory_floor, startup_version_policy, startup_mandatory_reason,
+                                         version_key, verify_release, require_monotonic_floor)
     try:
         evidence = _startup_policy_evidence(root, release, service)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
@@ -143,10 +149,12 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
         if version_key(release.version) < version_key(floor):
             compatible = [item for item in evidence
                           if version_key(mandatory_floor(item)) >= version_key(floor)]
-            latest = max(compatible, key=lambda item: version_key(item.version)).version
+            latest = max(compatible, key=lambda item: version_key(item.version))
             return _startup_result('MANDATORY_UPDATE', current=release.version,
-                                   latest=latest, target=latest, mandatory_floor=floor, feed=feed)
-        return _startup_result('HEALTHY', current=release.version, feed=feed)
+                                   latest=latest.version, target=latest.version, mandatory_floor=floor,
+                                   mandatory_reason=startup_mandatory_reason(latest, release.version,
+                                                                           witnesses=evidence), feed=feed)
+        return _startup_result('HEALTHY', current=release.version, mandatory_floor=floor, feed=feed)
     if not check_feed: return retained_policy('NOT_CHECKED')
     owned = service is None
     try:
@@ -165,7 +173,9 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True):
         if state == 'OPTIONAL_UPDATE' and not result.get('update'):
             state = 'HEALTHY'
         return _startup_result(state, current=release.version, latest=latest.version, target=latest.version,
-                               mandatory_floor=mandatory_floor(latest), feed='VERIFIED')
+                               mandatory_floor=mandatory_floor(latest),
+                               mandatory_reason=startup_mandatory_reason(latest, release.version,
+                                                                       witnesses=evidence), feed='VERIFIED')
     except NoFeedConfigured:
         return retained_policy('NO_FEED')
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
