@@ -1,0 +1,66 @@
+{
+  "schema": "mentorflow.repository-knowledge-intake.v1",
+  "kind": "IMMUTABLE_SCOPED_AUDIT",
+  "authority": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+  "verified_on": "2026-09-12",
+  "phase0": {
+    "top_level": "E:/Codex/Data/worktrees/2735/MentorFlow",
+    "git_dir": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow",
+    "git_common_dir": "E:/Codex/Projects/MentorFlow/.git",
+    "head_path": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow/HEAD",
+    "index_path": "E:/Codex/Projects/MentorFlow/.git/worktrees/MentorFlow/index",
+    "starting_head": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+    "starting_branch": "DETACHED",
+    "starting_status_porcelain": "",
+    "starting_ref": "integration/main3",
+    "starting_ref_head": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+    "bound_branch": "integration/main3",
+    "result": "PASS_INDEPENDENT_WORKTREE_HEAD_INDEX",
+    "commands": [
+      "git rev-parse --show-toplevel",
+      "git rev-parse --git-dir",
+      "git rev-parse --git-common-dir",
+      "git rev-parse --git-path HEAD",
+      "git rev-parse --git-path index",
+      "git rev-parse HEAD",
+      "git branch --show-current",
+      "git status --porcelain",
+      "git worktree list --porcelain"
+    ],
+    "observed_worktrees": [
+      {"path": "E:/Codex/Projects/MentorFlow", "branch": "main2", "head": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82"},
+      {"path": "E:/Codex/Data/worktrees/2735/MentorFlow", "branch": "DETACHED", "head": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82"},
+      {"path": "E:/Codex/Data/worktrees/8831/MentorFlow", "branch": "DETACHED", "head": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82"}
+    ]
+  },
+  "source": {
+    "repository": "E:/Codex/Temp/MF-RepoKnowledge-20260912",
+    "actual_git_dir": "E:/Codex/Temp/MF-RepoKnowledge-20260912/.git",
+    "actual_git_common_dir": "E:/Codex/Temp/MF-RepoKnowledge-20260912/.git",
+    "actual_object_store": "E:/Codex/Temp/MF-RepoKnowledge-20260912/.git/objects",
+    "object_alternates": "NONE",
+    "parent": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+    "commit": "195fb241f30cbd9e6ea376bd6d22b76843e5d53a",
+    "tree": "46a93d98bef697831ae9d9496334d902bc6ce181",
+    "canonical_object_before_import": "ABSENT",
+    "import": "local fetch --no-tags --no-write-fetch-head of exact commit",
+    "integration": "fast-forward exact original commit; no branch tip or reconstructed commit",
+    "changed_files": 18,
+    "product_code_changed": "NO"
+  },
+  "source_checks_reproduced": {
+    "knowledge_lint": "PASS",
+    "internal_links": {"checked": 167, "result": "PASS", "scope": "docs Markdown and root AGENTS/ARCHITECTURE/README; local paths only, not anchors/external URLs"},
+    "bad_input_tests": {"passed": 8, "result": "PASS"},
+    "compact_handoff_utf8_bytes": 1735,
+    "compact_freshness": "PASS",
+    "json_validation": "PASS_BOARD_QUEUE",
+    "git_diff_check": "PASS",
+    "obvious_secret_matches": 0,
+    "secret_scope": "Original 18 knowledge/docs/tooling paths plus generated compact input/output; listed obvious patterns only. No whole-repository or Git-history secret audit.",
+    "source_state_boundary": "CANONICAL_SOURCE_BASELINE distinct from PENDING_E109_FINAL_QA; live/package/user PASS not claimed"
+  },
+  "control_evidence_scope": "B06 DONE, six branch-picker refs confirmed and 01-04 dispatches published are explicitly supplied user facts. Only A worktree isolation was observed here; no other slot contacted or polled.",
+  "product_acceptance": "PENDING_E109_FINAL_QA",
+  "publication_evidence": "Final external immutable receipt supplies integration/publication commit and remote readback. This intake does not claim a push or Actions execution result."
+}

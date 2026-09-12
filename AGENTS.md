@@ -21,7 +21,8 @@ MentorFlow 是 Windows 桌面学习系统，组合资料证据、知识地图、
 | --- | --- |
 | 查模块、入口和测试 | [COMPONENT_MAP](docs/project/COMPONENT_MAP.md) |
 | Git、员工、交付、promotion | [DEVELOPMENT_WORKFLOW](docs/governance/DEVELOPMENT_WORKFLOW.md) |
-| 新会话接手 | [HANDOFF_CONTRACT](docs/governance/HANDOFF_CONTRACT.md) |
+| 新网页会话接手 | [Web read order](docs/handoff/README.md)、[derived latest](docs/handoff/WEB_SESSION_LATEST.md) |
+| 长期产品闭环 | [PRODUCT_FLOW](docs/PRODUCT_FLOW.md)，其余长期要求索引在 Web read order |
 | 已冻结决定及历史边界 | [Decisions](docs/decisions/index.md) |
 | E109 更新、安装、UI 接线 | [E109 integration](docs/E109_INTEGRATION_MAP.md) |
 | Auth issuer 迁移 | [E109 auth migration](docs/E109_AUTH_ISSUER_MIGRATION.md) |
@@ -56,6 +57,7 @@ MentorFlow 是 Windows 桌面学习系统，组合资料证据、知识地图、
 ```text
 python scripts/context/build_compact_handoff.py
 python scripts/context/check_repo_knowledge.py
+python scripts/context/build_compact_handoff.py --web --check
 ```
 
 本地图的 MAIN3 治理来源为 dispatch MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01。

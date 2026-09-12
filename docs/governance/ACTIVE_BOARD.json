@@ -6,23 +6,97 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "UNKNOWN",
+  "refs_verified": "USER_SCREENSHOT_CONFIRMED_SIX_REFS_NOT_WORKTREE_PROOF",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01",
+  "authority": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
   "workers": {
     "A": {
-      "status": "READY",
-      "dispatch_id": "MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01",
-      "task_id": "MENTORFLOW_REPOSITORY_KNOWLEDGE_SYSTEM_AND_COMPACT_HANDOFF_V1",
+      "status": "SILENT",
+      "dispatch_id": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+      "task_id": "MENTORFLOW_REPO_KNOWLEDGE_INTEGRATE_AND_WEB_HANDOFF_V1",
       "depends_on": [],
-      "unlocks": ["KNOWLEDGE_INTEGRATION_REVIEW"],
+      "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Exact delivery receipt supplies commit; integrate only under later authority, then SILENT."
+      "next_action": "Knowledge integration closeout; final immutable receipt binds exact publication commit. Resume only on supplied authorized receipts; no polling."
     },
-    "01": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
-    "02": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
-    "03": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
-    "04": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "No evidenced MAIN3 assignment; Architect decides."},
-    "B": {"status": "UNKNOWN", "dispatch_id": null, "task_id": null, "depends_on": [], "unlocks": [], "delivery_commit": null, "next_action": "ON-DEMAND ONLY; no inferred ref/default operation."}
+    "01": {
+      "status": "UNKNOWN",
+      "dispatch_id": null,
+      "task_id": null,
+      "depends_on": [],
+      "unlocks": [],
+      "delivery_commit": null,
+      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
+      "dispatch_state": "PUBLISHED",
+      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+    },
+    "02": {
+      "status": "UNKNOWN",
+      "dispatch_id": null,
+      "task_id": null,
+      "depends_on": [],
+      "unlocks": [],
+      "delivery_commit": null,
+      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
+      "dispatch_state": "PUBLISHED",
+      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+    },
+    "03": {
+      "status": "UNKNOWN",
+      "dispatch_id": null,
+      "task_id": null,
+      "depends_on": [],
+      "unlocks": [],
+      "delivery_commit": null,
+      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
+      "dispatch_state": "PUBLISHED",
+      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+    },
+    "04": {
+      "status": "UNKNOWN",
+      "dispatch_id": null,
+      "task_id": null,
+      "depends_on": [],
+      "unlocks": [],
+      "delivery_commit": null,
+      "next_action": "New dispatch published per user; exact IDs/scope and Phase 0 receipt not supplied here. Do not infer running/completed or contact the slot.",
+      "dispatch_state": "PUBLISHED",
+      "worktree_isolation": "AWAITING_PHASE0_RECEIPT"
+    },
+    "B": {
+      "status": "SILENT",
+      "dispatch_id": null,
+      "task_id": null,
+      "depends_on": [],
+      "unlocks": [],
+      "delivery_commit": null,
+      "next_action": "B06 setup DONE per current dispatch; ON-DEMAND ONLY. No promotion or default-branch operation authorized here."
+    }
+  },
+  "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
+  "knowledge_delivery": {
+    "ref": "195fb241f30cbd9e6ea376bd6d22b76843e5d53a",
+    "commit": "195fb241f30cbd9e6ea376bd6d22b76843e5d53a",
+    "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
+  },
+  "control_plane": {
+    "evidence": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+    "repository_setup": "B06_DONE",
+    "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
+    "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
+    "active_slots": [
+      "A",
+      "01",
+      "02",
+      "03",
+      "04"
+    ],
+    "a_status_at_dispatch": "RUNNING",
+    "a_isolation": "PHASE0_VERIFIED",
+    "worker_dispatches": "01-04_PUBLISHED_DETAILS_NOT_SUPPLIED",
+    "worker_isolation": "01-04_AWAITING_PHASE0_RECEIPTS",
+    "main2": "FROZEN",
+    "user_action_required": "NONE",
+    "snapshot_scope": "Knowledge delivery closeout; external final receipt supplies publication HEAD. Product acceptance remains pending."
   }
 }

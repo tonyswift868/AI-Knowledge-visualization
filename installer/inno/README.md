@@ -1,5 +1,18 @@
 # MentorFlow single installer — E109 finish UX
 
+## Durable installer UX contract
+
+Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
+Ship one official `MentorFlow-Setup.exe`. The folder picker selects an existing
+parent and clearly shows its MentorFlow child. Shortcut creation and autostart
+default **OFF**. Offer recognizable repair/update entries for owned existing
+installations. Failures must explain what happened and what the user can do;
+never expose a raw `ValueError` or technical traceback as the user-facing error.
+The signed core retains trust/transaction ownership. These requirements persist
+across deliveries; the source/package qualification below is evidence of its
+stated scope only. QA interaction follows
+[development workflow](../../docs/governance/DEVELOPMENT_WORKFLOW.md).
+
 Current dispatch: `MF-E109-W02-INSTALLER-FINISH-UX-20260910-01`.
 Base delivery: `b362c22a6025fd76a5387b4842efc249a2b895ef`.
 This is a **source-only** handoff: no app rebuild, user-package build or
@@ -22,7 +35,10 @@ The output is `E:\Downloads\MentorFlow-E108-User-Test-20260910\Installer\MentorF
 No installer launch (including silent launch), host DPI/theme mutation, app
 execution or updater/feed change is permitted in this dispatch.
 
-Current behavior and evidence are in [parent-close-verification.md](parent-close-verification.md).
+The historical parent-close report is absent from this source tree. Retained
+entry points are [parent/close contract tests](tests/test_parent_close_contract.py)
+and [finish UX evidence](finish-ux-verification.md); their source scope does not
+certify a final package.
 The `source-freeze.json` receipt and the source-only delivery below are historical;
 they describe the 2026-09-09 commit, not the current binary or its acceptance.
 

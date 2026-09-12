@@ -1,5 +1,22 @@
 # MentorFlow staging release orchestrator
 
+## Durable writer and rollback boundaries
+
+Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
+Before any mutation, record one authorized writer for each resource domain:
+live service/release pointers, application database/migrations, Keycloak/identity,
+and formal user data. A writer needs a named owner, exact scope, evidence and
+handover boundary; another worker cannot infer ownership from source access.
+Unknown ownership blocks that domain's writes. Current owners/leases must come
+from the latest formal receipt and [board](../governance/ACTIVE_BOARD.json), not
+old E1 employee numbers. This knowledge task holds none of these write leases.
+
+Source rollback != server rollback != database rollback != identity rollback.
+Each requires its own authorized writer, exact recovery inputs, backup/restore
+or migration plan and post-recovery checks. A Git revert proves only source
+state. Keep actual credentials, databases and backups outside the repository;
+retain only non-sensitive ownership and evidence references.
+
 Status: **IMPLEMENTED / OFFLINE_VERIFIED / STAGING_EXECUTION_PENDING**. This package is executable after an Ubuntu host and immutable image refs exist. It does not claim a RackNerd deployment, Docker execution, PostgreSQL RLS result, k6 result, container result, or Linux staging result in this office.
 
 ## Host contract and bootstrap
@@ -72,4 +89,4 @@ The containerized k6 runner defaults to `smoke`. The `average`, `stress`, `spike
 
 ## Current environment truth
 
-The permanent facts remain `LOCAL_WINDOWS_DOCKER = NOT_RUN`, `LOCAL_WINDOWS_COMPOSE = NOT_RUN`, `REAL_POSTGRES_RLS = NOT_RUN`, `REAL_K6 = NOT_RUN`, `REAL_CONTAINER = NOT_RUN`, and `REAL_LINUX_STAGING = NOT_RUN`. Syntax, unit tests, dry-run plans, and offline fixtures never overwrite those facts.
+This original delivery recorded `LOCAL_WINDOWS_DOCKER = NOT_RUN`, `LOCAL_WINDOWS_COMPOSE = NOT_RUN`, `REAL_POSTGRES_RLS = NOT_RUN`, `REAL_K6 = NOT_RUN`, `REAL_CONTAINER = NOT_RUN`, and `REAL_LINUX_STAGING = NOT_RUN`. These are dated evidence, not permanent live state. Later exact receipts may establish new runtime results; syntax, unit tests, dry-run plans and offline fixtures cannot do so. Read [CURRENT_STATE](../project/CURRENT_STATE.md) before inferring today's environment.

@@ -1,8 +1,8 @@
 # MAIN3 development workflow
 
-Authority: `MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01`，2026-09-12。
-该 dispatch 冻结新 generation 模型，并临时允许 A 做本轮 documentation/context tooling。
-本文件描述治理规则，不宣称对应 branch/worktree/default 已经创建或切换。
+Authority: `MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01`，2026-09-12；
+本轮补充授权 `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`。
+治理规则与实际 ref/worktree 状态分离，后者由 CURRENT_STATE / board 和 exact receipts 记录。
 
 ## Roles and refs
 
@@ -44,10 +44,29 @@ GitHub Actions / push / server mutation 必须有任务授权，参见
 
 ## Promotion
 
-Worker deliveries → A integration → QA/user acceptance → exact promotion candidate SHA/tree
+Worker deliveries → A integration → QA/user acceptance → Interview + Acceptance bundle
+→ exact promotion candidate SHA/tree
 → B 按批准创建 main(N+1) → GitHub default switch → 旧 main 保持冻结。
 Promotion 的 branch/ref/default 操作由 B 执行，A 的 source delivery 不等于 promotion。
-本轮只产生 detached documentation commit；不操作 primary repo/main2/remote/default。
+本轮 A 仅集成 exact knowledge commit、维护文档/context tools，并获准普通非 force
+push 到 `origin/integration/main3`。发布前只读审 workflow；任何自动 hosted compute
+入口风险必须阻止发布。此授权不包含 main2/main1/default/tags/worker refs 或 Actions 执行。
+
+## Open-source-first 与用户 QA
+
+通用能力先审成熟开源项目的适配性、维护、许可和迁移成本，再决定复用边界；
+不是为了换库重写可用系统。复用 [已有 ADR](../decisions/index.md)，为实际改变记录
+decision rationale、替代方案与证据，不仅列库名。产品特有状态机仍遵守
+[产品流程](../PRODUCT_FLOW.md)，业务改动须能从 [component map](../project/COMPONENT_MAP.md)
+追到代码和测试。
+
+用户 QA 开始前先说明将发生什么、用户是否需要操作和成功标准。不要无预告或
+重复弹出安装器、UAC、浏览器；系统浏览器登录也须由明确登录动作触发。
+不改主机 DPI，不让用户反复填写已有配置；按现有授权从受控 resolver 读取配置。
+本轮只做离线知识校验，不运行产品、安装器或真实账号流程。
+CI 遵守 [现有 compute policy](../github-actions-compute-policy.md)：本地/自有 VPS
+优先，不新增 push / pull_request / schedule 的 GitHub-hosted 自动消耗。
+Staging 分域 writer 和恢复责任见 [staging contract](../enterprise/staging-orchestrator.md)。
 
 ## 长期知识维护
 
@@ -59,7 +78,9 @@ Promotion 的 branch/ref/default 操作由 B 执行，A 的 source delivery 不�
 
 ## Secrets 与回执
 
-只登记 private secret store 或 resolver contract，不提交 secret 值或个人隐私。
+只登记 private secret store / resolver 在哪里、谁拥有、如何在授权下读取；不登记值。
+使用 [provider secret governance](../enterprise/provider-secret-governance.md) 的现有合同，
+不能为了新会话接手复制本机配置、原始聊天或个人隐私。
 Provider/SMTP、SSH、token、用户密码、私有证书和签名私钥均在 repo 外。
 扫描发现疑似值只输出文件/行号，避免在工具错误和报告中再泄漏值。
 Knowledge lint 是轻量明显模式检查，不是整个历史的认证安全审计。

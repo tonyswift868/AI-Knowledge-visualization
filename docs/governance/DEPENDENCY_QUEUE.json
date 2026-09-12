@@ -3,14 +3,140 @@
   "generation": "MAIN3",
   "snapshot_kind": "PLANNING_DEPENDENCIES_NOT_DISPATCH",
   "tasks": [
-    {"task_id": "KNOWLEDGE_INTEGRATION_REVIEW", "owner": "A", "state": "READY", "dependencies": [], "unlocks": ["COMPACT_REPO_HANDOFF"], "user_action_required": "Provide exact documentation delivery receipt to Integration.", "reason": "Documentation/context tooling only; current detached delivery does not self-integrate."},
-    {"task_id": "COMPACT_REPO_HANDOFF", "owner": "A", "state": "BLOCKED", "dependencies": ["KNOWLEDGE_INTEGRATION_REVIEW"], "unlocks": [], "user_action_required": null, "reason": "Repository must contain knowledge commit before READ_FIRST works for another checkout."},
-    {"task_id": "AUTH_CONSUMER_DEPLOYMENT", "owner": "UNASSIGNED", "state": "NOT_DISPATCHED", "dependencies": [], "unlocks": ["AUTH_ISSUER_CUTOVER"], "user_action_required": "Architect assigns owner and explicit deployment authority; no secret values in handoff.", "reason": "Prepared source only; both compatible consumers and old login require live readback."},
-    {"task_id": "AUTH_ISSUER_CUTOVER", "owner": "UNASSIGNED", "state": "BLOCKED", "dependencies": ["AUTH_CONSUMER_DEPLOYMENT"], "unlocks": ["REAL_EMAIL_ACCOUNT_ACCEPTANCE"], "user_action_required": null, "reason": "Requires shared bounded migration window, signing authority recheck and old-login acceptance."},
-    {"task_id": "REAL_EMAIL_ACCOUNT_ACCEPTANCE", "owner": "UNASSIGNED", "state": "BLOCKED", "dependencies": ["AUTH_ISSUER_CUTOVER"], "unlocks": ["FINAL_E109_CANDIDATE"], "user_action_required": "Authorized real mailbox verification/reset acceptance and private SMTP provisioning.", "reason": "Mailpit evidence is insufficient; capabilities remain false until live criteria pass."},
-    {"task_id": "UPDATE_IDENTITY_REPAIR_REVIEW", "owner": "UNASSIGNED", "state": "NOT_DISPATCHED", "dependencies": [], "unlocks": ["FINAL_E109_CANDIDATE"], "user_action_required": "Architect assigns bounded owner scope; retain final-candidate QA obligations.", "reason": "Known missing/corrupt installation identity defect is recorded in final QA JSON."},
-    {"task_id": "FINAL_E109_CANDIDATE", "owner": "A", "state": "BLOCKED", "dependencies": ["REAL_EMAIL_ACCOUNT_ACCEPTANCE", "UPDATE_IDENTITY_REPAIR_REVIEW"], "unlocks": ["FINAL_QA_USER_ACCEPTANCE"], "user_action_required": null, "reason": "Final packaging requires fresh authority and accepted source/config; not authorized by knowledge bootstrap."},
-    {"task_id": "FINAL_QA_USER_ACCEPTANCE", "owner": "UNASSIGNED", "state": "BLOCKED", "dependencies": ["FINAL_E109_CANDIDATE"], "unlocks": ["MAIN3_PROMOTION"], "user_action_required": "User validates final candidate; authorized QA checks all four update/recovery items and installer/account flows.", "reason": "One exact candidate, artifact hash and retained data evidence; no separate W07 retest dispatch implied."},
-    {"task_id": "MAIN3_PROMOTION", "owner": "B", "state": "BLOCKED", "dependencies": ["FINAL_QA_USER_ACCEPTANCE"], "unlocks": [], "user_action_required": "Approve exact promotion SHA/tree and invoke B on demand.", "reason": "Only B creates frozen main3 and changes default after authorization; current ref state UNKNOWN."}
-  ]
+    {
+      "task_id": "KNOWLEDGE_INTEGRATION_REVIEW",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [
+        "COMPACT_REPO_HANDOFF"
+      ],
+      "user_action_required": null,
+      "reason": "Exact 195fb241 commit/tree imported and fast-forwarded, source 167-link/8-negative-test/1735-byte evidence reproduced; no product code change."
+    },
+    {
+      "task_id": "COMPACT_REPO_HANDOFF",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "KNOWLEDGE_INTEGRATION_REVIEW"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Existing generator extended for a committed derived web entry; 12 durable authorities indexed. Final receipt binds check counts and exact publication HEAD."
+    },
+    {
+      "task_id": "AUTH_CONSUMER_DEPLOYMENT",
+      "owner": "UNASSIGNED",
+      "state": "UNKNOWN",
+      "dependencies": [],
+      "unlocks": [
+        "AUTH_ISSUER_CUTOVER"
+      ],
+      "user_action_required": null,
+      "reason": "New 01-04 dispatches exist, mapping/leases unavailable here. Requires compatible consumers, old-login live readback and a unique authorized service writer."
+    },
+    {
+      "task_id": "AUTH_ISSUER_CUTOVER",
+      "owner": "UNASSIGNED",
+      "state": "BLOCKED",
+      "dependencies": [
+        "AUTH_CONSUMER_DEPLOYMENT"
+      ],
+      "unlocks": [
+        "REAL_EMAIL_ACCOUNT_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "Requires shared bounded migration window, signing authority recheck and old-login acceptance."
+    },
+    {
+      "task_id": "REAL_EMAIL_ACCOUNT_ACCEPTANCE",
+      "owner": "UNASSIGNED",
+      "state": "BLOCKED",
+      "dependencies": [
+        "AUTH_ISSUER_CUTOVER"
+      ],
+      "unlocks": [
+        "FINAL_E109_CANDIDATE"
+      ],
+      "user_action_required": null,
+      "reason": "Mailpit evidence is insufficient; capabilities remain false until live criteria pass."
+    },
+    {
+      "task_id": "UPDATE_IDENTITY_REPAIR_REVIEW",
+      "owner": "UNASSIGNED",
+      "state": "UNKNOWN",
+      "dependencies": [],
+      "unlocks": [
+        "FINAL_E109_CANDIDATE"
+      ],
+      "user_action_required": null,
+      "reason": "Known identity corruption defect remains a product gate; new-slot scope and exact accepted source receipt are not supplied."
+    },
+    {
+      "task_id": "FINAL_E109_CANDIDATE",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "REAL_EMAIL_ACCOUNT_ACCEPTANCE",
+        "UPDATE_IDENTITY_REPAIR_REVIEW",
+        "WINDOWS_SYSTEM_BROWSER_LOGIN"
+      ],
+      "unlocks": [
+        "FINAL_QA_USER_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "Final packaging requires fresh authority and accepted source/config; not authorized by knowledge bootstrap."
+    },
+    {
+      "task_id": "FINAL_QA_USER_ACCEPTANCE",
+      "owner": "UNASSIGNED",
+      "state": "BLOCKED",
+      "dependencies": [
+        "FINAL_E109_CANDIDATE"
+      ],
+      "unlocks": [
+        "INTERVIEW_ACCEPTANCE_BUNDLE"
+      ],
+      "user_action_required": null,
+      "reason": "One exact candidate, artifact hash and retained data evidence; no separate W07 retest dispatch implied."
+    },
+    {
+      "task_id": "MAIN3_PROMOTION",
+      "owner": "B",
+      "state": "BLOCKED",
+      "dependencies": [
+        "INTERVIEW_ACCEPTANCE_BUNDLE"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "B06 setup is DONE, B is SILENT. Only a later explicit exact promotion approval permits B to create frozen main3/change default; knowledge publication does not."
+    },
+    {
+      "task_id": "WINDOWS_SYSTEM_BROWSER_LOGIN",
+      "owner": "UNASSIGNED",
+      "state": "BLOCKED",
+      "dependencies": [],
+      "unlocks": [
+        "FINAL_E109_CANDIDATE"
+      ],
+      "user_action_required": null,
+      "reason": "Durable System Browser PKCE requirement differs from embedded-auth source. Await an authorized exact implementation/acceptance receipt; no new dispatch inferred."
+    },
+    {
+      "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "FINAL_QA_USER_ACCEPTANCE"
+      ],
+      "unlocks": [
+        "MAIN3_PROMOTION"
+      ],
+      "user_action_required": null,
+      "reason": "Mandatory final milestone: architecture/ADR rationale, business-to-code/tests, exact source/candidate identities, scoped offline/live/package/user results and explicit gaps/acceptance."
+    }
+  ],
+  "authority": "MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02",
+  "assignment_scope": "01-04 dispatches are published; their exact mappings to the product dependencies below are UNKNOWN until formal receipts arrive."
 }

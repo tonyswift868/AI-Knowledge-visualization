@@ -1,5 +1,25 @@
 # 产品流程
 
+## 长期产品合同
+
+Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`。
+MentorFlow 的交付目标是有证据的学习系统，不能以摘要器或 Chat 壳代替以下闭环：
+
+Materials → Evidence → Knowledge Inventory / Anchor-Support → Knowledge Map
+→ Plan → Teacher → Assessment → Student Model → Active Recall / Spaced Review
+→ Progress / Replan。
+
+资料经解析后保留来源、修订和引用定位；Inventory 区分核心知识 Anchor 与解释/例证
+Support，再供知识地图、计划和教学消费。评估产生可追溯事件，Student Model 区分
+自述与独立验证的掌握；主动回忆和间隔复习反馈进度与重排。具体边界复用
+[知识地图合同](knowledge-map-teacher-v1.md) 和 [grounding](SAFETY_AND_GROUNDING.md)。
+Free Chat 是独立工具：不得偷偷写 mastery、plan 或 score；任何学习状态变化必须
+通过有 authority 的学习/评估流程。业务链到代码和测试见
+[COMPONENT_MAP](project/COMPONENT_MAP.md)，选择与取舍见 [decisions](decisions/index.md)。
+
+本节是持续有效的要求，不是当前全链路 PASS 声明；当前缺口和最终用户验收看
+[CURRENT_STATE](project/CURRENT_STATE.md)。短期测试结果不能静默删减长期要求。
+
 ## 新建学习空间
 
 1. Demo 入口明确创建 demo Workspace；“创建真实学习计划”创建 real Workspace，未验证 ProviderSession 时只允许保存草稿信息，不允许生成。

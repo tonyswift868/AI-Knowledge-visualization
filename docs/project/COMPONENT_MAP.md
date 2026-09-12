@@ -25,5 +25,20 @@
 | [deploy](../../deploy/)、[enterprise_e1](../../enterprise_e1/) | 部署/门禁配置与历史 authority/lease 快照 | [auth offline policy](../../deploy/enterprise/auth-email-security/test_policy_contract.py) | [staging](../enterprise/staging-orchestrator.md) |
 | [docs/governance](../governance/)、[scripts/context](../../scripts/context/) | 调度快照、compact handoff 与 lint | `check_repo_knowledge.py`；context 自检 | [handoff](../governance/HANDOFF_CONTRACT.md) |
 
+## 学习业务链到代码 / 测试
+
+以下是阅读导航，测试存在不等于本轮运行或产品验收通过；长期要求在
+[PRODUCT_FLOW](../PRODUCT_FLOW.md)，选择理由在 [ADR index](../decisions/index.md)。
+
+| 业务阶段 | 代码入口 | 回归证据入口 |
+| --- | --- | --- |
+| Materials → Evidence | [ingestion](../../backend/app/sources/document/ingestion/)、[pipeline](../../backend/app/knowledge/pipeline_v2/) | [pipeline tests](../../backend/tests/test_knowledge_pipeline_v2.py) |
+| Inventory / Anchor-Support → Map | [inventory](../../backend/app/knowledge/inventory/)、[scope](../../backend/app/knowledge_map_scope.py) | [inventory](../../backend/tests/test_knowledge_inventory.py)、[anchor](../../backend/tests/test_knowledge_map_scope_anchor.py) |
+| Plan → Teacher | [plan creation](../../backend/app/planning/product_runtime/creation.py)、[teaching](../../backend/app/teaching/) | [plan runtime](../../backend/tests/test_plan_product_runtime_v1.py) |
+| Assessment → Student Model | [assessment](../../backend/app/teaching/assessment_v2/)、[student model](../../backend/app/teaching/student_model.py) | [assessment](../../backend/tests/test_assessment_session_v2.py)、[student model](../../backend/tests/test_student_model.py) |
+| Active Recall / Spaced Review | [review](../../backend/app/teaching/review_v1/)、[review memory](../../backend/app/teaching/review_memory/) | [review sessions](../../backend/tests/test_review_session_v1.py)、[schedule](../../backend/tests/test_review_schedule_integration_v2.py) |
+| Progress / Replan | [progress](../../backend/app/teaching/progress_read/)、[replan](../../backend/app/planning/scheduling/replan.py) | [progress](../../backend/tests/test_progress_read.py)、[replan](../../backend/tests/test_constraint_scheduler_replan.py) |
+| Free Chat 边界 | [free chat](../../backend/app/tools/free_chat/) | [state isolation](../../backend/tests/test_free_chat_service.py) |
+
 历史 `reports`/`artifacts` 只按专项合同中的 exact pointer 读取；不要全量装入上下文。
 `data`、用户资料库、credentials、模型缓存与实际运行日志不是知识库输入。

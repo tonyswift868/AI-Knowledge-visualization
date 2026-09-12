@@ -2,6 +2,7 @@
 
 先看 [CURRENT_STATE](../project/CURRENT_STATE.md) 的适用范围/冲突登记。
 新治理权威：[MAIN3 governance ADR](0001-main3-repository-governance.md)。
+网页交接的来源绑定与哈希边界：[Web handoff decision](0002-web-handoff-provenance.md)。
 旧 ADR 保留原编号和路径；标题中的 Accepted 只约束其当时 scope，不提升今天的产品状态。
 
 | 决策入口 | 范围 / 使用方法 |

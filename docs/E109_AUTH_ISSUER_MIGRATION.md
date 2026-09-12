@@ -1,5 +1,22 @@
 # E109 authentication issuer migration — A → 05
 
+## MAIN3 Windows login requirement
+
+Durable authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
+Windows login must use **System Browser OIDC Authorization Code + PKCE (S256)**,
+an IPv4 loopback callback on a dynamically allocated port, and the existing
+state/nonce/issuer/signature/audience/expiry checks. Authentication authority,
+API authority and the loopback callback are separate; never substitute one for
+another. Enter the main application only after verified login and successful
+[workspace bootstrap](account-core-workspace-bootstrap-v1.md).
+
+The retained [September 6 source receipt](enterprise/login-final-integration-v1.md)
+describes embedded authorization content. That is a historical implementation
+fact, not satisfaction of this System Browser requirement. MAIN3 records the
+gap in [CURRENT_STATE](project/CURRENT_STATE.md); this knowledge integration
+changes no login code, browser launch behavior, identity service or capability.
+The E109 migration contract below continues to govern issuer/data continuity.
+
 Scope: `MF-E109-INTEGRATION-CONTROL-20260910-01 / AUTH_ISSUER_MIGRATION_BIND`.
 Source/config qualification only. No installer, live backend deployment, Keycloak
 change, email, GitHub Actions or remote push is performed by this delivery.

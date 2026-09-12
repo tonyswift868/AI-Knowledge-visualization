@@ -1,5 +1,11 @@
 # Compact handoff contract v1
 
+本轮扩展 authority：`MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`。
+网页入口/read order/长期要求索引见 [web contract](../handoff/README.md)。
+原本地 compact 模式保留；同一生成器新增 `--web` / `--web --check`，输出
+`docs/handoff/WEB_SESSION_LATEST.md`。网页文件提交，且绑定前一个 exact source snapshot；
+其 containing publication commit 通过 ref/最终 immutable receipt 提供，避免哈希自引用。
+
 目标：可复制给新会话的 UTF-8 纯文本 ≤4096 bytes（按 bytes，不按字符计）。
 长期 system of record 是已集成 repository；handoff 只增加当前会话差量。
 先给 recipient 可访问的 repository/checkout，再给 exact current SHA。若知识库尚未合入
@@ -52,13 +58,26 @@ owner=UNASSIGNED 表示需架构师分派，不将历史 W05/W07 映射到新员
 `user_action_required=null` 表示没有额外用户动作，非空仅存非敏感文字。
 snapshot_kind 强调这是可提交快照；生成器不监控 worker 或验证远端 refs。
 
+MAIN3 增加 repository_url、knowledge_delivery（exact ref/commit/tree）及 control_plane。
+knowledge commit/tree 与 CURRENT_STATE 一致，并实际验证 Git object/tree/ancestry。
+control_plane 记录 B06、用户截图确认、active slots、A intake 状态、Phase 0 证据和用户动作。
+01–04 dispatch_state=PUBLISHED 与 status=UNKNOWN 可以同时成立：已派发不证明进程在跑。
+最终 board 的 A=SILENT 是本轮 closeout 快照；其 a_status_at_dispatch=RUNNING 保留入口事件。
+详细 dispatch/task IDs 未提供时为 null，不凭截图或旧员工角色补全。
+
 ## 知识 lint 范围
 
-检查四个地图的行数、READ_FIRST、board/queue schema、全 docs 的 Markdown 内部路径、
-本轮知识文件与 session delta 的明显 secret 模式以及 handoff bytes/新鲜度。
+检查四个地图的行数、READ_FIRST、board/queue schema、知识范围所有 JSON 的严格解析、
+全 docs 加根地图和 installer README 的 Markdown 内部路径、知识文件与 session delta
+的明显 secret 模式，以及两种 handoff bytes/新鲜度。链接检查只证实路径存在，
+不验证 Markdown anchor、外部 URL、语义一致性或全部历史 root handoff 的引用。
 Markdown fenced code 中的示例不作链接解析；锚点不影响路径存在性。
 检查不会跟随链接读取 credentials，也不会请求外部网址。
-轻量 SECRET_VALUE_COUNT=0 仅指受检文件未出现已列明显模式，不声称整个 Git 历史无秘密。
+范围为 AGENTS/ARCHITECTURE/README/.gitignore/.gitattributes、legacy KKS link repair、project/governance/
+decisions/exec-plans/handoff/context tools，以及本轮修改的 PRODUCT_FLOW、auth/update、
+installer 和 staging 合同、两种生成产物。输出文件数与匹配数；不读取历史 handoff 内容。
+轻量 SECRET_VALUE_COUNT=0 仅指这些输入未命中代码列出的明显模式，不证明没有未知格式
+secret，也不声称整个仓库、所有历史文档或 Git 历史无秘密。
 
 遇到冲突读 [CURRENT_STATE](../project/CURRENT_STATE.md)，修正 source/receipt 依据后再更新
 状态文件；不能通过 handoff 文案覆盖正式 acceptance。完成后退出，保持 SILENT。

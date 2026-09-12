@@ -5,6 +5,8 @@ MentorFlow 是证据优先的目标驱动学习工作流：导入资料，分析
 > 新会话先读 [AGENTS.md](AGENTS.md) → [ARCHITECTURE.md](ARCHITECTURE.md) →
 > [CURRENT_STATE](docs/project/CURRENT_STATE.md)。源码 canonical 与产品验收分开记录。
 > 历史 master context、交接包和 dated reports 保留作证据，不作当前状态 authority。
+> 网页会话从 [WEB_SESSION_LATEST](docs/handoff/WEB_SESSION_LATEST.md) 和
+> [read order / authority contract](docs/handoff/README.md) 接手；长期产品要求与当前验收分层。
 
 ## 启动
 

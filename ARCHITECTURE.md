@@ -45,6 +45,8 @@ Desktop → `gui_update_runtime` → controller → `CoreUpdatePort` → 已交�
 Keycloak 管理身份、验证邮件和重置动作；backend 验证 JWT 并结合 membership 授权。
 Desktop [enterprise_oidc.py](desktop/enterprise_oidc.py) 负责 code + S256 PKCE、state、
 nonce 与 IPv4 loopback callback；应用内认证呈现位于 `desktop/in_app_oidc.py`。
+MAIN3 的长期目标是 System Browser 登录；当前内嵌呈现与此目标的差距已登记到
+[CURRENT_STATE](docs/project/CURRENT_STATE.md)，源码导航不表示该要求已经通过。
 
 当前新 auth host 已准备在 [auth-authority.json](release/auth-authority.json)，状态为
 PREPARED_NOT_ACTIVE。[迁移合同](docs/E109_AUTH_ISSUER_MIGRATION.md) 约束两个 exact

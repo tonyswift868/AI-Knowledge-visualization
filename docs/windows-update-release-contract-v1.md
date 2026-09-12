@@ -1,5 +1,19 @@
 # MentorFlow signed file-release feed v1
 
+## Durable product update contract
+
+Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
+The product must provide stable/beta channels, readable release notes, manual,
+background and startup checks, update + restart, deferred update on exit or
+next launch, and rollback/recovery with user data preserved. Prefer file-level
+incremental delivery; a complete signed file set is only the qualified fallback
+described below. A signature or hash failure cannot authorize fallback.
+
+Current adapter/core ownership is documented in [E109 integration](E109_INTEGRATION_MAP.md)
+and [one-click core](ONE_CLICK_UPDATE_CORE_V1.md). Historical qualification
+limits below do not remove these long-term obligations; package/live/user
+acceptance remains separate in [CURRENT_STATE](project/CURRENT_STATE.md).
+
 Static hosting contract only; no backend or production feed deployed.
 Service entry remains desktop/update_service.py. Normal in-app updates must not
 call legacy launch_verified_installer or a first-install NSIS wizard.
