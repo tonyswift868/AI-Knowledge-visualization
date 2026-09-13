@@ -2,7 +2,7 @@
   "schema_version": 1,
   "test_id": "MAIN3_CROSS_DEVICE_AB_V2",
   "title": "冻结原生登录修复候选 V2",
-  "status": "CURRENT",
+  "status": "SUPERSEDED",
   "source_sha": "f624c6884a5570e83b438faffc81c15533da50ea",
   "source_tree": "36abfd164a0b2d3d2ccde544505d233aa9dc4fe0",
   "product_version": "1.1.0",

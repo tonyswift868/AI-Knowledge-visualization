@@ -8,18 +8,18 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_02_01_PARENT_AND_REMOTE_START_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
+  "authority": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
   "workers": {
     "A": {
-      "status": "SILENT",
+      "status": "RUNNING",
       "dispatch_id": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
-      "task_id": "MENTORFLOW_FROZEN_NATIVE_LOGIN_FIXED_CANDIDATE_V2",
+      "task_id": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
       "next_action": "V2 frozen native login qualified; complete independent A/B acceptance remains next task.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "冻结登录修复候选 V2 已验证，完整 A/B 待独立验收。"
+      "summary_zh": "新 Frozen 原生登录通过，正在执行真实产品 A→B 恢复。"
     },
     "01": {
       "status": "SILENT",
@@ -332,21 +332,21 @@
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "冻结原生登录修复候选 V2 已就绪，完整 A/B 待验收",
-    "current_gate": "独立 A/B 云恢复验收",
+    "current_phase": "真实 A→B 云恢复验收进行中",
+    "current_gate": "A 产品写入与 B 独立恢复",
     "staging_status": "OWNED_ACCEPTANCE_RUNTIME_RUNNING; PUBLIC_DEPLOYMENT_NOT_RUN",
     "database_revision": "0038_rehydration_manifest",
-    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V2",
+    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V3",
     "test_targets": [
+      {
+        "test_id": "MAIN3_CROSS_DEVICE_AB_V3",
+        "receipt_path": "docs/governance/receipts/20260914-real-ab-v3-current-target.json",
+        "receipt_sha256": "1b21c044642180ae66acadbe4757321472ced7075a49d6c1a3c6d63882230bec"
+      },
       {
         "test_id": "MAIN3_CROSS_DEVICE_AB_V2",
         "receipt_path": "docs/governance/receipts/20260913-frozen-login-v2-current-target.json",
-        "receipt_sha256": "d9b99c2a9dd664a809897805b7163153e809eefc555f4452ba447dbcd5d11c5b"
-      },
-      {
-        "test_id": "MAIN3_CROSS_DEVICE_AB_V1",
-        "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
-        "receipt_sha256": "87848cac5ff28f55c5d063bc63c0cf73d0ed889d7e0b1be15396db4b2ed081f4"
+        "receipt_sha256": "bbb5e1ce910b62284a382d19309c8fec669a139e38a0b55948e4f09186a9c9af"
       }
     ],
     "runtime_lease_id": "MF-AB-V2-RUNTIME-20260913-04-5b846e4cc8-final",
