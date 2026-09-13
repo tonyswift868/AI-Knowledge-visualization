@@ -449,6 +449,7 @@ def run(args):
             if name.upper() in {'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'}:
                 child_env.pop(name)
         child_env['NO_PROXY'] = '127.0.0.1,localhost'
+        child_env['MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY'] = '1'
         child_env.update({'QT_QPA_PLATFORM': 'offscreen', 'PYTHONIOENCODING': 'utf-8', 'PYTHONPATH': str(ROOT)})
         child = subprocess.run([str(args.desktop_python), str(Path(__file__).resolve()), 'desktop'],
             input=json.dumps({'home': str(home), 'issuer': issuer, 'api': api, 'password': password}),

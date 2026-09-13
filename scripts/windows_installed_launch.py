@@ -46,6 +46,7 @@ def clean_environment(temp):
 
 
 def launch(root, verify):
+    from desktop.account_storage import device_storage_root, prelaunch_storage_environment
     from scripts import verify_windows_package as v
     from scripts import windows_install_trust as trust
     root = trust._root(root)
@@ -58,7 +59,7 @@ def launch(root, verify):
         raise trust.RepairRequired("TLS certificate pin mismatch")
     local = Path(os.environ["LOCALAPPDATA"]) / "MentorFlow"
     profile = read_profile(local / "Runtime/launch.json")
-    vault = local / "Accounts" / profile
+    vault = device_storage_root(legacy_profile=profile)
     temp = vault / "runtime-temp"
     v._validate_existing_parent_chain(temp, label="external runtime")
     temp.mkdir(parents=True, exist_ok=True)
@@ -91,11 +92,8 @@ def launch(root, verify):
             ready = pool.submit(connect)
             verify()  # failure raises before application execution
             ready.result()
+        env.update(prelaunch_storage_environment(vault))
         env.update({
-            "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault), "MENTORFLOW_DATA_DIR": str(vault),
-            "MENTORFLOW_USER_DATA_ROOT": str(vault / "prelaunch"),
-            "MENTORFLOW_DB": str(vault / "prelaunch/data/app.db"),
-            "MENTORFLOW_ORM_DB": str(vault / "prelaunch/data/mentorflow_v2.db"),
             "MENTORFLOW_DESKTOP_FORCE_LOGIN_GATE": "1", "MENTORFLOW_DISABLE_PROVIDER_AUTORESTORE": "1",
             "MENTORFLOW_DESKTOP_OIDC_ISSUER": ISSUER, "MENTORFLOW_DESKTOP_OIDC_CLIENT_ID": "mentorflow-desktop",
             "MENTORFLOW_DESKTOP_OIDC_AUDIENCE": "mentorflow-api", "MENTORFLOW_ENTERPRISE_API_BASE_URL": "https://localhost:18080",

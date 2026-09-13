@@ -11,6 +11,7 @@ from app.enterprise.identity.config import KeycloakOidcConfig, EnterpriseIdentit
 from app.enterprise.identity.issuer_migration import IssuerMigration, OLD_ISSUER, NEW_ISSUER, AUTHORITY_SHA256
 from app.enterprise.identity.oidc import OidcIdentityAdapter, IdentityError, HttpJwksSigningKeyResolver
 from test_enterprise_identity_oidc import NOW, _claims, _token, _StaticSigningKey, signing_keys
+from identity_continuity_fixture import continuity
 
 
 def window():
@@ -20,7 +21,7 @@ def window():
 def config(**overrides):
     values = dict(issuer=NEW_ISSUER, transport_issuer=OLD_ISSUER, identity_issuer=OLD_ISSUER,
         issuer_migration=window(), client_id='mentorflow-web', audience='mentorflow-api',
-        redirect_uri='https://localhost:18080/api/enterprise/auth/callback')
+        redirect_uri='https://localhost:18080/api/enterprise/auth/callback', identity_continuity=continuity())
     values.update(overrides)
     return KeycloakOidcConfig(**values)
 

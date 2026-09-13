@@ -403,7 +403,9 @@ class BackendOidcTokenValidator:
                 "ENTERPRISE_OIDC_DISCOVERY_INVALID",
                 "OIDC discovery does not match the configured Keycloak issuer",
             )
-        self._adapter = OidcIdentityAdapter(keycloak)
+        # Desktop verifies external evidence only. The authenticated backend
+        # /auth/me projection below owns cross-issuer account continuity.
+        self._adapter = OidcIdentityAdapter(keycloak, external_identity_only=True)
 
     @staticmethod
     def _identity(principal: Any) -> ValidatedTokenIdentity:
@@ -974,7 +976,8 @@ class EnterpriseOidcClient:
             "Accept": "application/json",
             "Authorization": f"Bearer {access_token}",
         }
-        if canonicalize_issuer(validated.issuer) != self.config.canonical_identity_issuer:
+        if (canonicalize_issuer(validated.issuer) != self.config.canonical_identity_issuer
+                and not self.config.accepts_issuer(validated.issuer)):
             raise EnterpriseOidcError("ENTERPRISE_OIDC_ISSUER_INVALID", "登录身份来源不匹配。")
         selected = await self._discover_workspace(access_token)
         headers["X-MentorFlow-Organization-ID"] = selected["organization_id"]
@@ -1003,6 +1006,11 @@ class EnterpriseOidcClient:
                 "Enterprise account state is invalid",
             )
         server_subject = _required(account.get("subject_id"), "account.subject_id", limit=300)
+        expected_account_id = AccountIdentity(self.config.canonical_identity_issuer, validated.subject, '').account_id
+        migration = validated.issuer != self.config.canonical_identity_issuer
+        if (migration or 'account_id' in account) and account.get('account_id') != expected_account_id:
+            raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_STATE_MISMATCH',
+                                      'Enterprise server account anchor does not match')
         if not secrets.compare_digest(server_subject, validated.subject):
             raise EnterpriseOidcError(
                 "ENTERPRISE_ACCOUNT_STATE_MISMATCH",
@@ -1027,7 +1035,7 @@ class EnterpriseOidcClient:
         )
         return (
             AccountIdentity(
-                issuer=validated.issuer,
+                issuer=self.config.canonical_identity_issuer,
                 subject=validated.subject,
                 display_name=display,
                 organization_id=organization_id,
@@ -1123,23 +1131,24 @@ class EnterpriseOidcClient:
                     "ENTERPRISE_OIDC_TOKEN_INVALID",
                     "Restored Enterprise session token is invalid",
                 ) from exc
-        verified_identity = AccountIdentity(validated.issuer, validated.subject, validated.display_name)
-        restored_profile = verified_identity.profile()
-        if (
-            restored_profile.issuer_hash != profile.issuer_hash
-            or restored_profile.subject_hash != profile.subject_hash
-        ):
+        external_identity = AccountIdentity(validated.issuer, validated.subject, validated.display_name)
+        if external_identity.subject_hash != profile.subject_hash:
             raise EnterpriseOidcError(
                 "ENTERPRISE_ACCOUNT_RESTORE_MISMATCH",
                 "Restored session belongs to another Enterprise Account",
             )
+        # A NEW issuer token is external evidence, not permission to select a
+        # canonical Vault/Locker namespace. Confirm Backend's mapping first.
+        identity, state = await self._server_state(validated, effective_access)
+        if identity.account_id != profile.account_id:
+            raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_RESTORE_MISMATCH',
+                                      'Restored account anchor does not match')
         if (effective_access, effective_refresh) != (access_token, refresh_token):
             credentials.store_oauth_tokens(
-                verified_identity,
+                identity,
                 access_token=effective_access,
                 refresh_token=effective_refresh,
             )
-        identity, state = await self._server_state(validated, effective_access)
         return EnterpriseOidcLoginResult(
             identity=identity,
             access_token=effective_access,

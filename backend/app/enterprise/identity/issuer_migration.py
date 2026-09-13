@@ -37,6 +37,8 @@ class IssuerMigration:
 
 
 def validate_binding(issuer, identity_issuer, migration):
+    if issuer == NEW_ISSUER and identity_issuer != OLD_ISSUER:
+        raise ValueError('The E109 public issuer must retain its canonical OLD account namespace')
     if migration is not None and (not isinstance(migration, IssuerMigration) or
             issuer not in (OLD_ISSUER, NEW_ISSUER) or identity_issuer != OLD_ISSUER):
         raise ValueError('Migration is limited to the exact E109 realm and its existing identity namespace')

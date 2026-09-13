@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import BinaryIO, Protocol
 
 from .account_identity import AccountProfile, ProfileMode
+from .account_storage import DEFAULT_ROOT
 
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -139,13 +140,28 @@ def _sha256_file(path: Path) -> str:
 
 @dataclass(frozen=True, slots=True)
 class VaultLayout:
-    root: Path = Path("E:/MentorFlowData")
+    root: Path = DEFAULT_ROOT
+    test_only: bool | None = None
 
     def __post_init__(self) -> None:
         if not Path(self.root).is_absolute():
             raise ValueError("Vault root must be absolute")
         normalized = _lexical_path(self.root)
         object.__setattr__(self, "root", normalized)
+        if self.test_only is None:
+            from .account_storage import TEST_ONLY_ENV
+            object.__setattr__(self, "test_only", os.environ.get(TEST_ONLY_ENV) == '1')
+
+    @classmethod
+    def from_env(cls, source=None, *, root=None):
+        from .account_storage import device_storage_root, TEST_ONLY_ENV
+        env = os.environ if source is None else source
+        return cls(device_storage_root(env, root=root),
+                   test_only=env.get(TEST_ONLY_ENV) == '1')
+
+    def resolve(self, profile):
+        from .account_storage import resolve_account_storage
+        return resolve_account_storage(profile, root=self.root, test_only=self.test_only)
 
     @property
     def personal_local_root(self) -> Path:
@@ -160,14 +176,7 @@ class VaultLayout:
         return _safe_child(self.root, "shared-models")
 
     def root_for_profile(self, profile: AccountProfile) -> Path:
-        if profile.mode is ProfileMode.PERSONAL_LOCAL:
-            return self.personal_local_root
-        assert profile.issuer_hash is not None and profile.subject_hash is not None
-        return _safe_child(
-            self.accounts_root,
-            profile.issuer_hash,
-            profile.subject_hash,
-        )
+        return self.resolve(profile).root
 
 
 @dataclass(frozen=True, slots=True)

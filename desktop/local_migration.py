@@ -1677,9 +1677,14 @@ def _safe_member_name(name: str) -> str:
     return normalized
 
 
-def import_migration_archive(archive_path: Path, target_root: Path) -> dict[str, Any]:
+def import_migration_archive(archive_path: Path, target_root: Path, *, test_only: bool = False) -> dict[str, Any]:
     """Verify and extract a migration ZIP into a new or empty directory."""
 
+    from .account_storage import require_migration_target
+    try:
+        require_migration_target(target_root, test_only=test_only)
+    except ValueError as exc:
+        raise MigrationError(str(exc)) from None
     requested_source = _lexical_path(archive_path.expanduser())
     requested_target = _lexical_path(target_root.expanduser())
     _validate_parent_chain(requested_source.parent, role="迁移包")

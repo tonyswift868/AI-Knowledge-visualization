@@ -153,8 +153,7 @@ def _bind_desktop_profile_data_root(
     *,
     source: dict[str, str] | os._Environ[str],
 ) -> Path:
-    vault_root = Path(source.get("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData"))
-    manager = AccountVaultManager(VaultLayout(vault_root))
+    manager = AccountVaultManager(VaultLayout.from_env(source))
     account_root = manager.prepare_profile(profile)
     data_root = account_root / "data"
     bindings = {
@@ -206,9 +205,7 @@ def preflight_desktop_account_storage(
     target_settings = settings or QSettings("MentorFlow", "MentorFlow")
     preferences = AccountPreferenceStore(target_settings)
     configured = DesktopOidcConfig.is_configured(env)
-    layout = VaultLayout(
-        Path(env.get("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData"))
-    )
+    layout = VaultLayout.from_env(env)
     selected_root_raw = str(env.get("MENTORFLOW_USER_DATA_ROOT") or "").strip()
     selected_account_root = False
     if selected_root_raw:

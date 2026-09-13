@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from app.enterprise.contracts_v1 import TenantMode
 from .issuer_migration import IssuerMigration, accepts_issuer, validate_binding, OLD_ISSUER, NEW_ISSUER
+from .continuity import SignedIdentityContinuity, from_env as continuity_from_env
 
 
 class IdentityConfigurationError(ValueError):
@@ -106,6 +107,7 @@ class KeycloakOidcConfig:
     transport_issuer: str | None = None
     issuer_migration: IssuerMigration | None = None
     identity_issuer: str | None = None
+    identity_continuity: SignedIdentityContinuity | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         try:
@@ -379,6 +381,7 @@ class EnterpriseIdentityConfig:
             transport_issuer=transport_issuer,
             issuer_migration=IssuerMigration.from_json(env.get('MENTORFLOW_KEYCLOAK_ISSUER_MIGRATION_JSON')),
             identity_issuer=env.get('MENTORFLOW_KEYCLOAK_IDENTITY_ISSUER') or None,
+            identity_continuity=continuity_from_env(env),
         )
         cookie_secure = not (allow_http and urlparse(redirect_uri).scheme == "http")
         redirect = urlparse(redirect_uri)

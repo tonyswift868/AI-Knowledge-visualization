@@ -455,11 +455,13 @@ class EnterpriseIdentityRuntime:
         actor: ActorContext = binding.context.actor
         tenant: TenantContext = binding.context.tenant
         principal = binding.session.principal if binding.session is not None else None
+        from app.account_identity_contract import account_id
         return {
             "schema_version": "mentorflow.enterprise-identity-session.v1",
             "authenticated": True,
             "authentication_mode": binding.authentication_mode,
             "account": {
+                "account_id": account_id(actor.issuer, actor.subject_id),
                 "subject_id": actor.subject_id,
                 "preferred_username": (
                     principal.preferred_username if principal is not None else None

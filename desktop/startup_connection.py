@@ -15,6 +15,7 @@ from scripts.windows_installed_launch import ISSUER, CA_SHA, SPKI, clean_environ
 
 
 def prepare_environment(root: Path, *, per_user=False):
+    from desktop.account_storage import device_storage_root, prelaunch_storage_environment, TEST_ONLY_ENV
     from scripts import verify_windows_package as v
     from scripts import windows_install_trust as trust
     from scripts.per_user_install import app_path
@@ -35,19 +36,20 @@ def prepare_environment(root: Path, *, per_user=False):
         if not vault.is_relative_to(Path(WORK_ROOT).absolute()):
             raise ValueError('UAT data must remain within compiled isolated work root')
         product.validate_root(vault)
+        # Compiled UAT distributions are disposable; never migration-ready.
+        vault = device_storage_root({TEST_ONLY_ENV:'1'}, root=vault)
     else:
         local = Path(os.environ["LOCALAPPDATA"]) / "MentorFlow"
         profile = read_profile(local / "Runtime/launch.json")
-        vault = local / "Accounts" / profile
+        vault = device_storage_root(legacy_profile=profile)
     temp = vault / "runtime-temp"
     v._validate_existing_parent_chain(temp, label="external runtime")
     temp.mkdir(parents=True, exist_ok=True)
     env = clean_environment(temp)
+    if product.uat:
+        env[TEST_ONLY_ENV] = '1'
+    env.update(prelaunch_storage_environment(vault))
     env.update({
-        "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault), "MENTORFLOW_DATA_DIR": str(vault),
-        "MENTORFLOW_USER_DATA_ROOT": str(vault / "prelaunch"),
-        "MENTORFLOW_DB": str(vault / "prelaunch/data/app.db"),
-        "MENTORFLOW_ORM_DB": str(vault / "prelaunch/data/mentorflow_v2.db"),
         "MENTORFLOW_DESKTOP_FORCE_LOGIN_GATE": "1", "MENTORFLOW_DISABLE_PROVIDER_AUTORESTORE": "1",
         "MENTORFLOW_DESKTOP_OIDC_ISSUER": ISSUER,
         "MENTORFLOW_DESKTOP_OIDC_CLIENT_ID": "mentorflow-desktop",

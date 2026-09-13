@@ -358,7 +358,7 @@ def test_restart_refreshes_expired_session_and_rejects_cross_account_state() -> 
     assert token_requests == 1
     assert validator.access_calls == ["expired-access", "fresh-access"]
     assert credentials.stored == [
-        (AccountIdentity(ISSUER, "subject-a", "Token Account A"), "fresh-access", "refresh-rotated")
+        (AccountIdentity(ISSUER, "subject-a", "Account A", "org-a", "workspace-a"), "fresh-access", "refresh-rotated")
     ]
 
 

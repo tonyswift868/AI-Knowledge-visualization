@@ -290,10 +290,7 @@ def bootstrap_enterprise_account(
     profile = identity.profile()
     oidc_config = config or DesktopOidcConfig.from_env()
     manager = AccountVaultManager(
-        VaultLayout(
-            vault_root
-            or Path(os.getenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData"))
-        )
+        VaultLayout.from_env(root=vault_root)
     )
     api = metadata_api or EnterpriseAccountMetadataApi(
         oidc_config,

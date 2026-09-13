@@ -267,6 +267,7 @@ def test_quick_export_import_preserves_56_plans_and_excludes_raw_secrets_paths_m
             package,
             target,
             expected_account_identity=ACCOUNT,
+            test_only=True,
         )
         assert imported["duplicate"] is False
         assert imported["raw_assets_restored"] == 0
@@ -298,6 +299,7 @@ def test_quick_export_import_preserves_56_plans_and_excludes_raw_secrets_paths_m
             package,
             target,
             expected_account_identity=ACCOUNT,
+            test_only=True,
         )
         assert repeated["duplicate"] is True
         assert repeated["object_inventory"]["plans"] == 56
@@ -334,6 +336,7 @@ def test_full_export_import_restores_only_current_managed_asset_and_rebuilds_loc
             package,
             target,
             expected_account_identity=ACCOUNT,
+            test_only=True,
         )
         assert imported["raw_assets_restored"] == 1
         assert imported["derived_artifacts_restored"] == 1
@@ -383,13 +386,13 @@ def test_checksum_tamper_and_account_mismatch_fail_closed_without_partial_publis
     with _new_device_root() as device:
         target = device / "tamper-target"
         with pytest.raises(AccountPortabilityError) as failure:
-            import_account_package(tampered, target, expected_account_identity=ACCOUNT)
+            import_account_package(tampered, target, expected_account_identity=ACCOUNT, test_only=True)
         assert failure.value.code == "PACKAGE_CHECKSUM_MISMATCH"
         assert not target.exists() or not any(target.iterdir())
 
         mismatch = device / "mismatch-target"
         with pytest.raises(AccountPortabilityError) as denied:
-            import_account_package(package, mismatch, expected_account_identity=OTHER_ACCOUNT)
+            import_account_package(package, mismatch, expected_account_identity=OTHER_ACCOUNT, test_only=True)
         assert denied.value.code == "PACKAGE_ACCOUNT_MISMATCH"
         assert not mismatch.exists() or not any(mismatch.iterdir())
 
@@ -430,6 +433,7 @@ def test_security_rejects_zip_slip_symlink_compression_bomb_and_nonempty_overwri
                     archive,
                     device / f"target-{uuid.uuid4().hex}",
                     expected_account_identity=ACCOUNT,
+                    test_only=True,
                 )
             assert failure.value.code == expected_code
 
@@ -441,7 +445,7 @@ def test_security_rejects_zip_slip_symlink_compression_bomb_and_nonempty_overwri
         sentinel = occupied / "keep.txt"
         sentinel.write_text("keep", encoding="utf-8")
         with pytest.raises(AccountPortabilityError) as overwrite:
-            import_account_package(package, occupied, expected_account_identity=ACCOUNT)
+            import_account_package(package, occupied, expected_account_identity=ACCOUNT, test_only=True)
         assert overwrite.value.code == "IMPORT_TARGET_NOT_EMPTY"
         assert sentinel.read_text(encoding="utf-8") == "keep"
 
@@ -543,6 +547,7 @@ def test_reparse_target_and_atomic_publish_failure_leave_no_partial_account_data
                     package,
                     linked_parent / "target",
                     expected_account_identity=ACCOUNT,
+                    test_only=True,
                 )
             assert reparse.value.code == "PACKAGE_IMPORT_FAILED"
             assert not any(real_parent.iterdir())
@@ -561,6 +566,7 @@ def test_reparse_target_and_atomic_publish_failure_leave_no_partial_account_data
                 package,
                 target,
                 expected_account_identity=ACCOUNT,
+                test_only=True,
             )
         assert partial.value.code == "PACKAGE_IMPORT_FAILED"
         assert target.is_dir()

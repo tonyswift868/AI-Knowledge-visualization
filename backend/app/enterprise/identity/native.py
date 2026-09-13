@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 
 from .models import AuthenticatedPrincipal
 from .oidc import IdentityError
+from .continuity import canonical_principal_issuer, from_env as continuity_from_env
 
 PREFIX = '/api/enterprise/auth/native'
 PUBLIC_PATHS = frozenset(PREFIX + '/' + name for name in ('login', 'refresh', 'logout'))
@@ -46,7 +47,8 @@ def expired():
 
 class MtlsIdentityVerifier:
     """Controlled identity bridge, not Keycloak's token/admin/login-page API."""
-    def __init__(self, endpoint, issuer, *, context=None, http_client=None):
+    def __init__(self, endpoint, issuer, *, context=None, http_client=None,
+                 external_issuer=None, continuity=None):
         url = urlsplit(endpoint)
         if (url.scheme != 'https' or not url.hostname or url.username or url.password
                 or url.query or url.fragment or url.path not in (
@@ -57,6 +59,8 @@ class MtlsIdentityVerifier:
                                     or context.verify_mode != ssl.CERT_REQUIRED):
             raise ValueError('Verified mTLS context required')
         self.endpoint, self.issuer = endpoint, issuer
+        self.external_issuer = external_issuer or issuer
+        self.continuity = continuity
         self.http = http_client or httpx.AsyncClient(verify=context, timeout=10, follow_redirects=False, trust_env=False)
 
     async def _verify(self, payload):
@@ -78,12 +82,13 @@ class MtlsIdentityVerifier:
                 raise IdentityError('NATIVE_ADDITIONAL_VERIFICATION_REQUIRED', '此账号需要额外验证，请联系账号管理员。', status=403)
             if (set(value) != {'schema', 'outcome', 'issuer', 'subject', 'display_name', 'authentication_strength', 'verification_handle'}
                     or value['schema'] != 'mentorflow.native-identity.v1' or value['outcome'] != 'authenticated'
-                    or value['issuer'] != self.issuer or value['authentication_strength'] != 'password_verified'
+                    or value['issuer'] != self.external_issuer or value['authentication_strength'] != 'password_verified'
                     or not isinstance(value['subject'], str) or not value['subject']
                     or value['subject'] != value['subject'].strip()
                     or not isinstance(value['verification_handle'], str)
                     or not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['verification_handle'])):
                 raise IdentityError('NATIVE_IDENTITY_INVALID', '账号服务响应无法验证。', status=503)
+            canonical_principal_issuer(value['issuer'], value['subject'], self.issuer, self.continuity)
             # Integer-second issuance avoids datetime/float rounding appearing
             # fractionally in the future on Windows. Expiry is rounded down too.
             now = datetime.fromtimestamp(int(time.time()), timezone.utc)
@@ -103,7 +108,7 @@ class MtlsIdentityVerifier:
         return await self._verify({'operation': 'authenticate', 'username': username, 'password': password})
 
     async def revalidate(self, principal):
-        result = await self._verify({'operation': 'revalidate', 'issuer': principal.issuer, 'subject': principal.subject,
+        result = await self._verify({'operation': 'revalidate', 'issuer': self.external_issuer, 'subject': principal.subject,
                                     'verification_handle': principal.identity_provider_session_id})
         if (result.issuer, result.subject) != (principal.issuer, principal.subject):
             raise expired()
@@ -275,7 +280,9 @@ def from_env(env, issuer):
         raise ValueError('Native sessions require explicitly approved single-process deployment')
     context = ssl.create_default_context(cafile=env['MENTORFLOW_NATIVE_IDENTITY_CA_FILE'])
     context.load_cert_chain(env['MENTORFLOW_NATIVE_IDENTITY_CERT_FILE'], env['MENTORFLOW_NATIVE_IDENTITY_KEY_FILE'])
-    return NativeSessions(MtlsIdentityVerifier(endpoint, issuer, context=context), issuer)
+    return NativeSessions(MtlsIdentityVerifier(endpoint, issuer, context=context,
+        external_issuer=env.get('MENTORFLOW_NATIVE_EXTERNAL_ISSUER') or issuer,
+        continuity=continuity_from_env(env)), issuer)
 
 
 router = APIRouter()

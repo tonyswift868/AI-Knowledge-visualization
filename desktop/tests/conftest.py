@@ -4,6 +4,7 @@ import os
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ['MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY'] = '1'
 
 
 @pytest.fixture(scope="session", autouse=True)

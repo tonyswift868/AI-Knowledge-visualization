@@ -22,6 +22,11 @@ from desktop.local_migration import (
 )
 
 
+@pytest.fixture(autouse=True)
+def disposable_storage(monkeypatch):
+    monkeypatch.setenv("MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY", "1")
+
+
 def _make_junction(link: Path, target: Path) -> None:
     if os.name != "nt":
         pytest.skip("Windows junction regression requires Windows")
@@ -70,7 +75,7 @@ def test_local_migration_round_trip_uses_manifest_and_preserves_db(tmp_path: Pat
         assert "credentials" in manifest
 
     target = tmp_path / "ImportedData"
-    imported = import_migration_archive(archive, target)
+    imported = import_migration_archive(archive, target, test_only=True)
     assert imported["files"] == 2
     assert target.joinpath("data", "notes.txt").read_text(encoding="utf-8") == "local progress"
 
@@ -86,7 +91,7 @@ def test_local_migration_rejects_path_traversal_and_non_empty_target(tmp_path: P
         bundle.writestr("mentorflow-migration.json", json.dumps(manifest))
         bundle.writestr("../escape.txt", "x")
     with pytest.raises(MigrationError, match="不安全路径"):
-        import_migration_archive(archive, tmp_path / "target")
+        import_migration_archive(archive, tmp_path / "target", test_only=True)
 
     source = tmp_path / "source"
     source.mkdir()
@@ -97,7 +102,7 @@ def test_local_migration_rejects_path_traversal_and_non_empty_target(tmp_path: P
     target.mkdir()
     target.joinpath("existing.txt").write_text("keep", encoding="utf-8")
     with pytest.raises(MigrationError, match="新目录或空目录"):
-        import_migration_archive(good, target)
+        import_migration_archive(good, target, test_only=True)
 
 
 def test_local_migration_exports_live_allowlist_and_excludes_disposable_data(
@@ -137,7 +142,7 @@ def test_local_migration_exports_live_allowlist_and_excludes_disposable_data(
         "presets/local.json",
         "preset_settings.json",
     }
-    imported = import_migration_archive(archive, tmp_path / "imported")
+    imported = import_migration_archive(archive, tmp_path / "imported", test_only=True)
     assert imported["files"] == 4
     with sqlite3.connect(imported["target"] / "data" / "app.db") as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -162,7 +167,7 @@ def test_local_migration_rejects_tamper_ratio_and_bad_import_database(
                 "changed" if info.filename == "data/note.txt" else original.read(info.filename),
             )
     with pytest.raises(MigrationError, match="校验失败"):
-        import_migration_archive(tampered, tmp_path / "tampered-target")
+        import_migration_archive(tampered, tmp_path / "tampered-target", test_only=True)
 
     ratio_archive = tmp_path / "ratio.zip"
     bomb = b"x" * 300_000
@@ -176,7 +181,7 @@ def test_local_migration_rejects_tamper_ratio_and_bad_import_database(
         bundle.writestr("mentorflow-migration.json", json.dumps(manifest))
         bundle.writestr("data/large.txt", bomb)
     with pytest.raises(MigrationError, match="压缩比例不安全"):
-        import_migration_archive(ratio_archive, tmp_path / "ratio-target")
+        import_migration_archive(ratio_archive, tmp_path / "ratio-target", test_only=True)
 
     bad_db = tmp_path / "bad-source"
     (bad_db / "data").mkdir(parents=True)
@@ -199,7 +204,7 @@ def test_local_migration_rejects_tamper_ratio_and_bad_import_database(
         bundle.writestr("mentorflow-migration.json", json.dumps(manifest))
         bundle.writestr("data/app.db", payload)
     with pytest.raises(MigrationError, match="导入数据库完整性检查失败"):
-        import_migration_archive(bad_archive, tmp_path / "bad-target")
+        import_migration_archive(bad_archive, tmp_path / "bad-target", test_only=True)
 
 
 def test_local_migration_rejects_symlink_target_and_writes_next_launch_pointer(
@@ -219,7 +224,7 @@ def test_local_migration_rejects_symlink_target_and_writes_next_launch_pointer(
     except (OSError, NotImplementedError):
         pytest.skip("symlink creation is unavailable")
     with pytest.raises(MigrationError, match="符号链接"):
-        import_migration_archive(archive, link_target)
+        import_migration_archive(archive, link_target, test_only=True)
 
     current = tmp_path / "current"
     pointer = write_next_launch_data_root_pointer(current, real_target)
@@ -313,7 +318,7 @@ def test_local_migration_rejects_reparse_import_parent_and_pointer_parent(
     target.mkdir()
     try:
         with pytest.raises(MigrationError, match="符号链接|重解析点"):
-            import_migration_archive(archive, import_link / "target")
+            import_migration_archive(archive, import_link / "target", test_only=True)
         assert not (outside / "target").exists()
         with pytest.raises(MigrationError, match="符号链接|重解析点"):
             write_next_launch_data_root_pointer(current_link / "current", target)
@@ -427,7 +432,7 @@ def test_local_migration_publish_failure_rolls_back_partial_target(
     monkeypatch.setattr(local_migration_module.os, "replace", fail_on_second_publish)
     try:
         with pytest.raises(MigrationError, match="发布过程中发生变化"):
-            import_migration_archive(archive, target)
+            import_migration_archive(archive, target, test_only=True)
         assert raced
         assert not (target / "data").exists()
         assert (outside / "sentinel.txt").read_text(encoding="utf-8") == "must stay outside"
@@ -467,7 +472,7 @@ def test_local_migration_import_stages_on_target_volume(
 
         monkeypatch.setenv("MENTORFLOW_TEMP_ROOT", str(foreign_temp))
         monkeypatch.setattr(local_migration_module.tempfile, "mkdtemp", capture_staging)
-        imported = import_migration_archive(archive, target)
+        imported = import_migration_archive(archive, target, test_only=True)
 
         assert imported["target"] == target
         assert captured["dir"] == target.parent
@@ -503,7 +508,7 @@ def test_local_migration_vanished_target_volume_staging_fails_closed(
     )
 
     with pytest.raises(MigrationError, match="迁移暂存不存在"):
-        import_migration_archive(archive, target)
+        import_migration_archive(archive, target, test_only=True)
     assert not target.exists()
 
 
@@ -706,7 +711,7 @@ def test_local_migration_redacts_preset_json_without_mutating_source(
         serialized = json.dumps(cleaned).casefold()
         assert all(marker not in serialized for marker in sensitive_markers)
 
-    imported = import_migration_archive(archive, tmp_path / "imported")
+    imported = import_migration_archive(archive, tmp_path / "imported", test_only=True)
     assert imported["files"] == 3
     imported_preset = json.loads(
         (imported["target"] / "presets" / "DeepSeek Flash.json").read_text(encoding="utf-8")
@@ -820,7 +825,7 @@ def test_local_migration_rejects_oversized_manifest_before_reading_it(
         )
 
     with pytest.raises(MigrationError, match="清单超过安全上限"):
-        import_migration_archive(archive, tmp_path / "target")
+        import_migration_archive(archive, tmp_path / "target", test_only=True)
 
 
 def test_local_migration_redacts_staged_sqlite_sessions_without_mutating_source(
@@ -892,7 +897,7 @@ def test_local_migration_redacts_staged_sqlite_sessions_without_mutating_source(
         assert b"sk-test-123456789012" not in payload
         assert b"mfcred_12345678" not in payload
 
-    imported = import_migration_archive(archive, tmp_path / "imported")
+    imported = import_migration_archive(archive, tmp_path / "imported", test_only=True)
     with sqlite3.connect(imported["target"] / "data" / "app.db") as connection:
         connection.execute("PRAGMA foreign_keys = ON")
         row = connection.execute(
@@ -1056,6 +1061,15 @@ def test_first_start_import_switches_to_verified_new_root_in_same_launch(
     desktop_main_module._FIRST_START_CHOICE_MADE = False
     desktop_main_module._FIRST_START_IMPORTED_TARGET = None
 
+    # The real launcher must reject Temp even in a fixture-marked process.
+    with pytest.raises(MigrationError, match='TARGET_STORAGE_STABLE=NO'):
+        desktop_main_module._prepare_first_start_root(default_root)
+    assert not imported_root.exists() and not default_root.exists()
+    # Exercise the remaining first-start wiring with an explicit disposable
+    # executor. No production caller receives this override.
+    desktop_main_module._FIRST_START_CHOICE_MADE = False
+    monkeypatch.setattr(desktop_main_module, 'import_migration_archive',
+        lambda archive, target: import_migration_archive(archive, target, test_only=True))
     selected, imported = desktop_main_module._prepare_first_start_root(default_root)
 
     assert imported is True

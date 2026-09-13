@@ -319,8 +319,10 @@ class OidcIdentityAdapter:
         *,
         signing_keys: SigningKeyResolver | None = None,
         clock: Callable[[], datetime] | None = None,
+        external_identity_only: bool = False,
     ) -> None:
         self.config = config
+        self._external_identity_only = external_identity_only
         self._signing_keys = signing_keys or HttpJwksSigningKeyResolver(config)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
@@ -395,6 +397,14 @@ class OidcIdentityAdapter:
         return parsed.claims
 
     def _principal(self, claims: Mapping[str, Any]) -> AuthenticatedPrincipal:
+        from .continuity import canonical_principal_issuer
+        try:
+            if not self._external_identity_only:
+                canonical_principal_issuer(claims['iss'], claims['sub'],
+                    self.config.canonical_identity_issuer, self.config.identity_continuity)
+        except ValueError:
+            raise IdentityError('OIDC_IDENTITY_CONTINUITY_REQUIRED',
+                                'Account continuity is not authorized') from None
         issued_at = _numeric_date(claims, "iat")
         expires_at = _numeric_date(claims, "exp")
         assert issued_at is not None and expires_at is not None
@@ -412,7 +422,7 @@ class OidcIdentityAdapter:
         )
         return AuthenticatedPrincipal(
             # Only after signature and registered-claim verification above.
-            issuer=self.config.canonical_identity_issuer,
+            issuer=claims['iss'] if self._external_identity_only else self.config.canonical_identity_issuer,
             audiences=_audiences(claims.get("aud")),
             token_id=_required_text(claims, "jti", max_length=300),
             subject=_required_text(claims, "sub", max_length=300),
@@ -473,6 +483,14 @@ class OidcIdentityAdapter:
         _required_text(claims, "jti", max_length=300)
         if "nonce" in claims or not (session_id or subject):
             raise IdentityError("OIDC_LOGOUT_TOKEN_INVALID", "OIDC logout token shape is invalid")
+        if claims['iss'] != self.config.canonical_identity_issuer:
+            from .continuity import canonical_principal_issuer
+            try:
+                canonical_principal_issuer(claims['iss'], subject,
+                    self.config.canonical_identity_issuer, self.config.identity_continuity)
+            except ValueError:
+                raise IdentityError('OIDC_IDENTITY_CONTINUITY_REQUIRED',
+                    'Cross-issuer logout requires an authorized subject') from None
         issued_at = _numeric_date(claims, "iat")
         assert issued_at is not None
         current = self._clock()

@@ -455,6 +455,7 @@ def test_packaged_sidecar_fences_inherited_personal_database_paths(
     certificate.write_text("synthetic certificate fixture", encoding="utf-8")
     config = {
         "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(tmp_path / "uat"),
+        "MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY": "1",
         "MENTORFLOW_DATA_DIR": str(tmp_path / "uat"),
         "MENTORFLOW_DESKTOP_OIDC_ISSUER": ISSUER,
         "MENTORFLOW_DESKTOP_OIDC_CLIENT_ID": "mentorflow-desktop",
@@ -467,6 +468,7 @@ def test_packaged_sidecar_fences_inherited_personal_database_paths(
     # Restore the entire process environment after exercising startup binding.
     monkeypatch.setattr(os, "environ", dict(os.environ))
     os.environ.pop("MENTORFLOW_ACCOUNT_VAULT_ROOT", None)
+    os.environ.pop("MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY", None)
     os.environ["MENTORFLOW_DB"] = str(tmp_path / "protected.db")
     os.environ["MENTORFLOW_ORM_DB"] = str(tmp_path / "protected-orm.db")
     monkeypatch.setattr(sys, "frozen", True, raising=False)

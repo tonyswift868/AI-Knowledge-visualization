@@ -57,11 +57,14 @@ def test_backend_old_session_refresh_keeps_membership_id_and_scope(monkeypatch, 
     assert calls == [OLD_ISSUER + '/protocol/openid-connect/token']
 
 
-@pytest.mark.parametrize('discovered,refresh', [(OLD_ISSUER, False), (NEW_ISSUER, False), (OLD_ISSUER, True), (NEW_ISSUER, True)])
-def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, tmp_path, signing_keys, discovered, refresh):
+@pytest.mark.parametrize('discovered,refresh,server_anchor', [
+    (OLD_ISSUER,False,'correct'), (NEW_ISSUER,False,'correct'),
+    (OLD_ISSUER,True,'correct'), (NEW_ISSUER,True,'correct'),
+    (NEW_ISSUER,True,None), (NEW_ISSUER,True,'wrong-account')])
+def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, tmp_path, signing_keys, discovered, refresh, server_anchor):
     from desktop.account_identity import AccountIdentity, AccountCredentialVault
     from desktop.account_vault import VaultLayout
-    from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient
+    from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient, EnterpriseOidcError
     from backend.app import credential_store
     from test_enterprise_identity_oidc import _b64
 
@@ -81,7 +84,8 @@ def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, t
     old_access = _token(key, claims=_claims(iss=OLD_ISSUER, azp=cfg.client_id))
     vault.store_oauth_tokens(identity, access_token=old_access, refresh_token='old-refresh')
     old_refs = set(values)
-    layout = VaultLayout(tmp_path / 'vault')
+    old_values = dict(values)
+    layout = VaultLayout(tmp_path / 'vault', test_only=True)
     numbers = key.public_key().public_numbers()
     jwk = {'kty': 'RSA', 'use': 'sig', 'alg': 'RS256', 'kid': 'kid-001',
         'n': _b64(numbers.n.to_bytes((numbers.n.bit_length()+7)//8, 'big')),
@@ -119,7 +123,9 @@ def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, t
                 'status': 'active', 'initialization_status': 'READY',
             }]})
         assert url.endswith('/auth/me')
-        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': principal.subject},
+        from app.account_identity_contract import account_id
+        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': principal.subject,
+            'account_id': account_id(principal.issuer, principal.subject) if server_anchor == 'correct' else server_anchor},
             'context': {'organization_id': 'org-1', 'workspace_id': 'workspace-1'}})
 
     # The real desktop validator/JWKS resolver still verify generated RSA tokens.
@@ -128,10 +134,15 @@ def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, t
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_http(
         **{**kwargs, 'transport': httpx.MockTransport(handler)}))
     monkeypatch.setattr('app.enterprise.identity.oidc.OidcIdentityAdapter',
-        lambda cfg: OidcIdentityAdapter(cfg, clock=lambda: NOW))
+        lambda cfg, **kwargs: OidcIdentityAdapter(cfg, clock=lambda: NOW, **kwargs))
     async def scenario():
         client = EnterpriseOidcClient(cfg)
         try:
+            if server_anchor != 'correct':
+                with pytest.raises(EnterpriseOidcError):
+                    await client.restore(identity.profile(), vault, refresh_session=refresh)
+                assert values == old_values  # No alias credential namespace or unverified rotation is stored.
+                return
             result = await client.restore(identity.profile(), vault, refresh_session=refresh)
             assert result.identity.issuer == OLD_ISSUER and result.identity.subject == identity.subject
             assert layout.root_for_profile(result.identity.profile()) == layout.root_for_profile(identity.profile())

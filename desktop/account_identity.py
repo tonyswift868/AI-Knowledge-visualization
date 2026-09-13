@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from backend.app.account_identity_contract import account_id_from_hashes
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -96,6 +97,12 @@ class AccountProfile:
     def safe_account_label(self) -> str:
         return self.display_name
 
+    @property
+    def account_id(self) -> str | None:
+        if self.mode is ProfileMode.PERSONAL_LOCAL:
+            return None
+        return account_id_from_hashes(self.issuer_hash, self.subject_hash)
+
 
 @dataclass(frozen=True, slots=True)
 class AccountIdentity:
@@ -128,6 +135,10 @@ class AccountIdentity:
             issuer_hash=self.issuer_hash,
             subject_hash=self.subject_hash,
         )
+
+    @property
+    def account_id(self) -> str:
+        return account_id_from_hashes(self.issuer_hash, self.subject_hash)
 
 
 NONSECRET_ACCOUNT_PREFERENCE_KEYS = frozenset(

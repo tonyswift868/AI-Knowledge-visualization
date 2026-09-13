@@ -1463,10 +1463,25 @@ def import_account_package(
     *,
     expected_account_identity: Mapping[str, Any] | str,
     allow_personal_local: bool = False,
+    test_only: bool = False,
 ) -> dict[str, Any]:
     """Stable public import boundary for all fail-closed validation errors."""
 
     try:
+        from .account_storage import require_migration_target
+        from .account_identity import AccountIdentity
+        from .account_vault import VaultLayout
+        profile = None
+        if isinstance(expected_account_identity, Mapping) and expected_account_identity.get('issuer'):
+            profile = AccountIdentity(expected_account_identity['issuer'],
+                expected_account_identity.get('subject') or expected_account_identity.get('subject_id'),
+                'Account').profile()
+        if profile is None and not test_only:
+            raise ValueError('Authenticated canonical account identity required for migration')
+        if profile is not None and expected_account_identity.get('identity_fingerprint'):
+            raise ValueError('Caller-supplied fingerprint cannot override canonical account identity')
+        require_migration_target(target_vault_root, profile=profile,
+                                 root=VaultLayout.from_env().root, test_only=test_only)
         return _import_account_package_impl(
             archive_path,
             target_vault_root,

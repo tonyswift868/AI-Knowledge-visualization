@@ -464,11 +464,8 @@ class MainWindow(QMainWindow):
             except ValueError:
                 self.account_preferences.clear()
                 self.account_profile = AccountProfile.personal_local()
-        vault_root = Path(
-            os.getenv("MENTORFLOW_ACCOUNT_VAULT_ROOT", "E:/MentorFlowData")
-        )
         self.account_vault_manager = account_vault_manager or AccountVaultManager(
-            VaultLayout(vault_root)
+            VaultLayout.from_env()
         )
         if (
             self.account_vault_manager.current is None

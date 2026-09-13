@@ -26,6 +26,7 @@ def apply_account_core_package_config() -> None:
         "MENTORFLOW_DESKTOP_OIDC_AUDIENCE", "MENTORFLOW_ENTERPRISE_API_BASE_URL",
         "MENTORFLOW_DESKTOP_ORGANIZATION_ID", "MENTORFLOW_DESKTOP_WORKSPACE_ID",
         "MENTORFLOW_DESKTOP_OIDC_CALLBACK_PORT", "QTWEBENGINE_CHROMIUM_FLAGS",
+        "MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY",
     }
     values = config.get("environment")
     required = {
@@ -38,13 +39,14 @@ def apply_account_core_package_config() -> None:
     for key, value in values.items():
         if not isinstance(value, str) or not value.strip():
             raise RuntimeError("Invalid Account Core package configuration value")
+        if key == 'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY' and value not in {'0', '1'}:
+            raise RuntimeError('Invalid Account Core storage test marker')
         os.environ.setdefault(key, value)
-    vault = Path(os.environ["MENTORFLOW_ACCOUNT_VAULT_ROOT"])
+    from desktop.account_storage import device_storage_root, prelaunch_storage_environment
+    vault = device_storage_root()
     # A package configured for Account Core never opens an inherited Personal
     # Local database before an authenticated profile replaces these paths.
-    os.environ["MENTORFLOW_USER_DATA_ROOT"] = str(vault / "prelaunch")
-    os.environ["MENTORFLOW_DB"] = str(vault / "prelaunch/data/app.db")
-    os.environ["MENTORFLOW_ORM_DB"] = str(vault / "prelaunch/data/mentorflow_v2.db")
+    os.environ.update(prelaunch_storage_environment(vault))
     os.environ["MENTORFLOW_DESKTOP_FORCE_LOGIN_GATE"] = "1"
     os.environ["MENTORFLOW_DISABLE_PROVIDER_AUTORESTORE"] = "1"
     os.environ.pop("MENTORFLOW_DEPLOYMENT_MODE", None)
