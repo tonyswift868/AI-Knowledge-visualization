@@ -281,11 +281,14 @@ def run(args):
         classes = home / 'fixture-control-classes'
         classes.mkdir()
         subprocess.run([str(args.jdk / 'bin/javac.exe'), '--release', '21', '-cp', str(kc / 'lib/lib/main/*'),
-                        '-d', str(classes), str(ROOT / 'scripts/NativeIdentityFixtureControl.java')], check=True)
+                        '-d', str(classes), str(ROOT / 'scripts/NativeIdentityFixtureControl.java'),
+                        str(ROOT / 'scripts/ResetEventFixtureObserver.java')], check=True)
         with zipfile.ZipFile(kc / 'providers/fixture-control.jar', 'w') as jar:
             for file in classes.rglob('*.class'): jar.write(file, file.relative_to(classes).as_posix())
             jar.writestr('META-INF/services/org.keycloak.services.resource.RealmResourceProviderFactory',
                          'win.clannad.mentorflow.lab.NativeIdentityFixtureControl\n')
+            jar.writestr('META-INF/services/org.keycloak.events.EventListenerProviderFactory',
+                         'win.clannad.mentorflow.lab.ResetEventFixtureObserver\n')
             jar.writestr('META-INF/beans.xml', '<beans xmlns="https://jakarta.ee/xml/ns/jakartaee" bean-discovery-mode="all"/>')
         realm = 'mf-native-' + uuid.uuid4().hex[:10]
         kc_port, api_port, management_port = port(), port(), port()
@@ -300,6 +303,7 @@ def run(args):
                     'requiredActions': ['CONFIGURE_TOTP'] if username == 'mfa' else ['UPDATE_PASSWORD'] if username == 'temporary' else []}
             users.append(user)
         payload = {'realm': realm, 'enabled': True, 'sslRequired': 'all', 'verifyEmail': True,
+            'eventsListeners': ['mf-fixture-reset-observer'],
             'registrationAllowed': False, 'resetPasswordAllowed': False, 'bruteForceProtected': True,
             'failureFactor': 2, 'waitIncrementSeconds': 60, 'minimumQuickLoginWaitSeconds': 60,
             'maxFailureWaitSeconds': 300, 'quickLoginCheckMilliSeconds': 1000,
@@ -432,6 +436,10 @@ def run(args):
             checks['realm_mandatory_mfa_flow_closed'] = auth('valid').json().get('outcome') == 'challenge_required'
             assert identity.post(control+'/mutate', json={'operation': 'restore-flow', 'username': 'configured-mfa'}).status_code == 200
         api_server, api_worker, runtime, engine = backend(home, issuer, api, correct.json()['subject'])
+        if getattr(args, 'action_tokens', False):
+            from scripts.reset_completion_fixture_checks import run as completion_checks
+            with httpx.Client(verify=mtls, trust_env=False, timeout=12) as identity:
+                completion_checks(identity, issuer, tls, api, runtime, checks)
         with httpx.Client(verify=tls, trust_env=False, timeout=12) as api_probe:
             response = api_probe.post(api+'/api/enterprise/auth/native/login', json={'username': 'expire', 'password': password})
             if response.status_code != 200: raise AssertionError('TLS backend login probe status '+str(response.status_code))

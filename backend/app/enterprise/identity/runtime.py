@@ -171,7 +171,8 @@ class EnterpriseIdentityRuntime:
 
     def is_public_path(self, path: str) -> bool:
         from .native import PUBLIC_PATHS
-        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS
+        from .reset_completion import PUBLIC_PATHS as RESET_PATHS
+        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS or path in RESET_PATHS
 
     async def authenticate_access_token(self, token: str, request: Request):
         from .native import ACCESS_PREFIX, expired
@@ -777,6 +778,8 @@ def install_enterprise_identity(
     app.include_router(_account_core_identity_router() if account_core_only else router)
     from .native import router as native_router
     app.include_router(native_router)
+    from .reset_completion import router as reset_router
+    app.include_router(reset_router)
     # Imported lazily to keep the identity runtime independent from product
     # modules while installing the exact tenant-safe facade alongside it.
     from app.enterprise.product_bridge import install_enterprise_product_bridge

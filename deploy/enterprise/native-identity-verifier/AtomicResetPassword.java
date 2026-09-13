@@ -71,5 +71,6 @@ public final class AtomicResetPassword extends UpdatePassword {
         super.processAction(context);
         // An unexpected provider failure must not re-arm a claimed credential write.
         if (context.getStatus() != RequiredActionContext.Status.SUCCESS) denied(context);
+        else ResetCompletions.afterPasswordSuccess(context);
     }
 }

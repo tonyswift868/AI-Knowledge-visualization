@@ -131,6 +131,28 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
                     user.addRequiredAction("verification".equals(purpose) ? UserModel.RequiredAction.VERIFY_EMAIL : UserModel.RequiredAction.UPDATE_PASSWORD);
                     return Map.of("rearmed", true);
                 }
+                case "rollback", "pause-commit", "fail-commit" -> {
+                    if (user == null) throw new BadRequestException();
+                    user.setSingleAttribute("mf-fixture-" + body.get("operation"), "true");
+                    return Map.of("armed", true);
+                }
+                case "clock-offset" -> {
+                    int offset = Integer.parseInt(body.get("seconds"));
+                    if (offset != 0 && offset != 901) throw new BadRequestException();
+                    Time.setOffset(offset);
+                    return Map.of("clock_adjusted", true);
+                }
+                case "release-commit" -> {
+                    if (user == null) throw new BadRequestException();
+                    var latch = ResetEventFixtureObserver.paused.get(user.getId());
+                    if (latch == null) throw new BadRequestException();
+                    latch.countDown();
+                    return Map.of("released", true);
+                }
+                case "check-password" -> {
+                    if (user == null) throw new BadRequestException();
+                    return Map.of("valid", user.credentialManager().isValid(UserCredentialModel.password(body.get("password"))));
+                }
                 case "state" -> {
                     if (user == null) throw new BadRequestException();
                     var events = session.getProvider(EventStoreProvider.class);
@@ -138,7 +160,9 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
                         .type(EventType.VERIFY_EMAIL).getResultStream().filter(e -> e.getError() == null).count();
                     long reset = events.createQuery().realm(realm.getId()).user(user.getId())
                         .type(EventType.UPDATE_PASSWORD).getResultStream().filter(e -> e.getError() == null).count();
-                    return Map.of("verified", user.isEmailVerified(), "verify_events", verified, "reset_events", reset,
+                    String uid = user.getId();
+                    return Map.of("observations", ResetEventFixtureObserver.observations.stream().filter(e -> uid.equals(e.get("user_id"))).toList(),
+                        "verified", user.isEmailVerified(), "verify_events", verified, "reset_events", reset,
                         "verify_handler", session.getProvider(ActionTokenHandler.class, "verify-email").getClass().getName(),
                         "reset_handler", session.getProvider(ActionTokenHandler.class, "reset-credentials").getClass().getName(),
                         "password_action", session.getProvider(org.keycloak.authentication.RequiredActionProvider.class, "UPDATE_PASSWORD").getClass().getName(),
@@ -154,6 +178,7 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
                     auth.setAuthenticatedUser(user); auth.setProtocol("openid-connect"); auth.setAction("AUTHENTICATE");
                     auth.setRedirectUri("http://127.0.0.1/unused-fixture-callback");
                     auth.setClientNote("response_type", "code");
+                    if (body.get("reset_state") != null) auth.setClientNote("state", body.get("reset_state"));
                     auth.setClientNote("redirect_uri", "http://127.0.0.1/unused-fixture-callback");
                     auth.setAuthNote("END_AFTER_REQUIRED_ACTIONS", "true");
                     String compound = AuthenticationSessionCompoundId.fromAuthSession(auth).getEncodedId();

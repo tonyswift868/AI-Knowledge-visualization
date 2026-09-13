@@ -1209,9 +1209,44 @@ class MentorFlowApplication:
             self.login_gate.update_controller.bind_window(self.main)
 
     def _begin_account_action(self, intent):
-        if self.login_gate.login_is_blocked or self.login_gate.account_capabilities.get(intent) is not True:
+        if self.login_gate is None or self._closing or self.login_gate.login_is_blocked or self.login_gate.account_capabilities.get(intent) is not True:
             return
-        self.login_gate.notice_label.setText('当前账号服务暂未开放此功能。')
+        if intent != 'forgot_password':
+            self.login_gate.notice_label.setText('当前账号服务暂未开放此功能。')
+            return
+        from .enterprise_oidc import DesktopOidcConfig
+        from .in_app_oidc import InAppOidcLoginDialog
+        from .reset_completion import COMPLETED_CODE
+        from .startup_flow import LoginGateState
+        self._invalidate_login_jobs()
+        generation = self._login_generation
+        self._remembered_profile = None
+        self.login_gate.clear_password()
+        self.login_gate.set_state(LoginGateState.AUTHENTICATING)
+        try:
+            pane = InAppOidcLoginDialog(DesktopOidcConfig.from_env(), parent=self.login_gate, embedded=True,
+                intent=intent, capabilities=self.login_gate.account_capabilities)
+            self._auth_pane = pane
+            # Login results and provider page messages cannot attest reset success.
+            pane.authenticated.connect(lambda _: self._return_from_password_reset(generation))
+            pane.authentication_failed.connect(lambda code, _message:
+                self._return_from_password_reset(generation, completed=code == COMPLETED_CODE))
+            self.login_gate.set_auth_content(pane)
+            pane.start_embedded()
+        except Exception:
+            self._return_from_password_reset(generation)
+
+    def _return_from_password_reset(self, generation, *, completed=False):
+        from .reset_completion import COMPLETED_MESSAGE
+        from .startup_flow import LoginGateState
+        if generation != self._login_generation or self._closing or self.login_gate is None:
+            return
+        self._invalidate_login_jobs()
+        self._remembered_profile = None
+        self._last_login_result = None
+        self.login_gate.clear_password()
+        self.login_gate.set_state(LoginGateState.LOGIN_READY, detail=COMPLETED_MESSAGE if completed
+            else '尚未确认密码重置完成。请重新发起找回，或使用当前密码登录。')
 
     def _begin_interactive_login(self, *, intent='login') -> None:
         from .native_auth import login_native_account_from_env, MESSAGES
@@ -1247,23 +1282,6 @@ class MentorFlowApplication:
             finally:
                 password = None
         threading.Thread(target=authenticate, name='mentorflow-native-login', daemon=True).start()
-
-    def _account_authentication_failed(self, generation, intent, code) -> None:
-        from .in_app_oidc import RESET_LOGIN_REQUIRED
-        if intent == 'forgot_password' and code == RESET_LOGIN_REQUIRED:
-            self._return_from_password_reset(generation)
-        else:
-            self._background_failed(f"{generation}:authenticate", "登录页面暂不可用，请检查网络或账号权限后重试。")
-
-    def _return_from_password_reset(self, generation) -> None:
-        from .in_app_oidc import RESET_LOGIN_MESSAGE
-        from .startup_flow import LoginGateState
-        if generation != self._login_generation or self._closing or self.login_gate is None:
-            return
-        self._invalidate_login_jobs()
-        self._remembered_profile = None
-        self._last_login_result = None
-        self.login_gate.set_state(LoginGateState.LOGIN_READY, detail=RESET_LOGIN_MESSAGE)
 
     def _accept_login_result(self, result) -> None:
         from .enterprise_oidc import EnterpriseOidcLoginResult

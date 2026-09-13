@@ -36,6 +36,7 @@ public final class AtomicResetCredentialsActionTokenHandler extends ResetCredent
     public Response handleToken(ResetCredentialsActionToken token, ActionTokenContext context) {
         if (!AtomicActionTokens.claim(token, context)) return AtomicActionTokens.denied(context);
         context.getAuthenticationSession().setAuthNote(AtomicActionTokens.RESET_BINDING, token.serializeKey());
+        ResetCompletions.bind(context.getSession(), context.getAuthenticationSession(), token);
         // Preserve native form/session-code validation, password policy and final expiry
         // and invalidation checks. Only one token redemption can reach this flow.
         return super.handleToken(token, context);

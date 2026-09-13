@@ -9,6 +9,7 @@ from copy import deepcopy
 from html.parser import HTMLParser
 import secrets
 import threading
+import time
 from urllib.parse import urlencode, urljoin, urlsplit
 
 import httpx
@@ -32,11 +33,32 @@ def run(identity, issuer, tls, receipt, restart=None):
     checks = receipt['checks']
     control = issuer + '/mf-native-fixture-control/action'
     consumed_tokens = []
+    watches = {}
+    watch_completed = {}
+    restarted = False
+
+    def watch_status(ticket):
+        result = identity.post(issuer + '/mentorflow-native-identity/v1', json={
+            'operation': 'reset-status', 'transaction_id': ticket})
+        assert result.status_code == 200, 'reset status unavailable'
+        value = result.json()
+        assert set(value) == {'schema', 'transaction_id', 'status'} and value['transaction_id'] == ticket
+        return value['status']
 
     def command(operation, name, purpose, **extra):
+        ticket = None
+        if operation == 'mint' and purpose == 'reset':
+            state = secrets.token_urlsafe(48)
+            response = identity.post(issuer + '/mentorflow-native-identity/v1', json={'operation': 'reset-watch', 'state': state})
+            assert response.status_code == 200 and response.json()['status'] == 'PENDING', 'watch registration failed'
+            ticket = response.json()['transaction_id']
+            extra['reset_state'] = state
+            watches[name], watch_completed[name] = ticket, False
         response = identity.post(control, json=dict(operation=operation, username=name, purpose=purpose, **extra))
         assert response.status_code == 200, 'fixture action control status ' + str(response.status_code)
-        return response.json()
+        value = response.json()
+        if ticket: value['transaction_id'] = ticket
+        return value
 
     def create(purpose, **extra):
         name = 'action-' + secrets.token_hex(8)
@@ -94,12 +116,19 @@ def run(identity, issuer, tls, receipt, restart=None):
         state = command('state', name, purpose)
         count = state['verify_events' if purpose == 'verification' else 'reset_events'] - before
         passed = count == expected and all(r['status'] < 500 and not r['internal_exception'] for r in responses)
+        if purpose == 'reset':
+            if count: watch_completed[name] = True
+            canonical = watch_status(watches[name])
+            expected_status = 'INVALID' if restarted else 'COMPLETED' if watch_completed[name] else 'PENDING'
+            checks[label + '_canonical_completion'] = canonical == expected_status
+            details[label + '_completion'] = {'status': canonical, 'expected': expected_status}
         if expected == 0: passed &= all(r['status'] == 400 and not r['password_form'] for r in responses)
         if expected == 1 and len(responses) > 1:
             passed &= sum(r['status'] == 400 or (native_session_expiry and r['controlled_expiry']
                           and not r['password_form']) for r in responses) == len(responses)-1
         if purpose == 'verification' and expected == 1: passed &= state['verified']
         details[label] = {'success_count': count, 'responses': responses, 'pass': bool(passed)}
+        if purpose == 'reset' and label == 'reset_sequential': details['actual_reset_events'] = state['observations']
         checks[label] = bool(passed)
         print('ACTION_CHECK ' + label + '=' + ('PASS' if passed else 'FAIL'), flush=True)
         return state
@@ -183,6 +212,7 @@ def run(identity, issuer, tls, receipt, restart=None):
                     response = browser.post(safe(form), data={'password-new': new, 'password-confirm': confirmation})
                     corrections.append(response.status_code == 200 and bool(reset_form(response)))
                 unchanged = command('state', name, purpose)['reset_events'] == 0
+                checks['failed_policy_no_completion'] = watch_status(watches[name]) == 'PENDING'
                 response = finish(browser, response, purpose)
             checks['reset_validation_retry'] = all(corrections) and unchanged
             record('reset_after_validation_correction', name, purpose, 0, [observation(response)], 1)
@@ -238,8 +268,71 @@ def run(identity, issuer, tls, receipt, restart=None):
         cross.append(state['reset_events' if purpose == 'verification' else 'verify_events'] == 0)
     checks['action_cross_purpose'] = all(cross)
     details['cross_purpose'] = {'pass': all(cross)}
+    # Roll back a real native credential write after the observed success event.
+    old_password = secrets.token_urlsafe(26)
+    # A fresh named user with a known original credential for the rollback oracle.
+    name = 'action-' + secrets.token_hex(8)
+    command('create', name, 'reset', password=old_password)
+    token = command('mint', name, 'reset')
+    command('rollback', name, 'reset')
+    with client() as browser:
+        finish(browser, first(browser, token), 'reset')
+    state = command('state', name, 'reset')
+    checks['rollback_credential_unchanged'] = command('check-password', name, 'reset', password=old_password)['valid']
+    checks['rollback_no_completion'] = watch_status(watches[name]) == 'PENDING' and state['reset_events'] == 0
+    checks['rollback_event_observed'] = any(e['phase'] == 'AFTER_ROLLBACK' and e['type'] == 'UPDATE_CREDENTIAL' for e in state['observations'])
+    details['rollback_observations'] = state['observations']
+
+    name = 'action-' + secrets.token_hex(8)
+    command('create', name, 'reset', password=old_password)
+    token = command('mint', name, 'reset')
+    command('fail-commit', name, 'reset')
+    with client() as browser:
+        finish(browser, first(browser, token), 'reset')
+    state = command('state', name, 'reset')
+    checks['failed_commit_no_completion'] = watch_status(watches[name]) == 'PENDING' and state['reset_events'] == 0
+    checks['failed_commit_credential_unchanged'] = command('check-password', name, 'reset', password=old_password)['valid']
+
+    # A valid older action must still bind its original flow if a redemption URL
+    # supplies the newer request's state. It cannot complete the new observer.
+    name = create('reset')
+    old = command('mint', name, 'reset')
+    old_ticket = watches[name]
+    newer = command('mint', name, 'reset')
+    with client() as browser:
+        finish(browser, first(browser, old, '&state=' + secrets.token_urlsafe(48)), 'reset')
+    checks['old_unredeemed_action_cannot_complete_new_watch'] = watch_status(old_ticket) == 'COMPLETED' and watch_status(watches[name]) == 'PENDING'
+
+    name = create('reset')
+    token = command('mint', name, 'reset')
+    command('pause-commit', name, 'reset')
+    with client() as browser:
+        response = first(browser, token)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(finish, browser, response, 'reset')
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                state = command('state', name, 'reset')
+                if any(e['type'] == 'UPDATE_CREDENTIAL' for e in state['observations']): break
+                time.sleep(.05)
+            checks['completion_pending_before_commit'] = not future.done() and watch_status(watches[name]) == 'PENDING'
+            command('release-commit', name, 'reset')
+            future.result(timeout=20)
+    checks['completion_after_commit'] = watch_status(watches[name]) == 'COMPLETED'
+    checks['completion_idempotent_read'] = all(watch_status(watches[name]) == 'COMPLETED' for _ in range(3))
+    previous = watches[name]
+    command('mint', name, 'reset')
+    checks['old_event_cannot_satisfy_new_request'] = watch_status(previous) == 'COMPLETED' and watch_status(watches[name]) == 'PENDING'
+    checks['unknown_watch_invalid'] = watch_status(secrets.token_urlsafe(32)) == 'INVALID'
+    try:
+        command('clock-offset', name, 'reset', seconds='901')
+        checks['watch_lease_expired'] = watch_status(watches[name]) == 'EXPIRED'
+        checks['completed_fact_stable_after_action_expiry'] = watch_status(previous) == 'COMPLETED'
+    finally:
+        command('clock-offset', name, 'reset', seconds='0')
     if restart:
         restart()
+        restarted = True
         for name, purpose, token in consumed_tokens:
             event = 'verify_events' if purpose == 'verification' else 'reset_events'
             state = command('state', name, purpose)

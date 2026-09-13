@@ -19,7 +19,7 @@ def build(keycloak: Path, jdk: Path, output: Path):
         javac = jdk / 'bin' / ('javac.exe' if (jdk / 'bin/javac.exe').exists() else 'javac')
         sources = [SOURCE, *(SOURCE.parent / name for name in (
             'AtomicActionTokens.java', 'AtomicVerifyEmailActionTokenHandler.java',
-            'AtomicResetCredentialsActionTokenHandler.java', 'AtomicResetPassword.java'))]
+            'AtomicResetCredentialsActionTokenHandler.java', 'AtomicResetPassword.java', 'ResetCompletions.java'))]
         subprocess.run([str(javac), '--release', '21', '-cp', str(libs / '*'), '-d', temp,
                         *(str(source) for source in sources)], check=True)
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as jar:

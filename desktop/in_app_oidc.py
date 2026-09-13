@@ -462,9 +462,14 @@ class InAppOidcLoginDialog(QDialog):
         async def run() -> EnterpriseOidcLoginResult:
             client = self._client_factory(self._config)
             prepared: PreparedOidcLogin | None = None
+            reset_client = None
             try:
                 prepared = await client.prepare_login(force_reauthentication=True)
                 prepared = authorization_request_for_intent(prepared, self._intent, self._capabilities)
+                if self._intent == 'forgot_password':
+                    from .reset_completion import ResetCompletionClient
+                    reset_client = ResetCompletionClient(self._config)
+                    reset_transaction = await reset_client.begin(prepared.transaction.state)
                 self._prepared_signal.emit(prepared)
                 page_ready = await asyncio.to_thread(self._page_ready.wait, 10.0)
                 if not page_ready or self._cancelled.is_set():
@@ -472,6 +477,13 @@ class InAppOidcLoginDialog(QDialog):
                         "ENTERPRISE_OIDC_LOGIN_CANCELLED",
                         "Enterprise login was cancelled",
                     )
+                if reset_client is not None:
+                    from .reset_completion import COMPLETED_CODE, COMPLETED_MESSAGE
+                    await reset_client.wait_completed(reset_transaction, self._cancelled,
+                        timeout=self._config.callback_timeout_seconds)
+                    # This terminal outcome returns to login; never exchange an OIDC
+                    # callback, create a MentorFlow session or emit authenticated.
+                    raise EnterpriseOidcError(COMPLETED_CODE, COMPLETED_MESSAGE)
                 callback = await asyncio.to_thread(
                     prepared.receiver.wait,
                     self._config.callback_timeout_seconds,
@@ -481,16 +493,12 @@ class InAppOidcLoginDialog(QDialog):
                         "ENTERPRISE_OIDC_LOGIN_CANCELLED",
                         "Enterprise login was cancelled",
                     )
-                if self._intent == 'forgot_password':
-                    # Validate/consume the existing callback transaction, but
-                    # never exchange it for a login session after a reset.
-                    # A callback alone is not evidence that a reset succeeded.
-                    prepared.transaction.consume_callback(callback)
-                    raise EnterpriseOidcError(RESET_LOGIN_REQUIRED, RESET_LOGIN_MESSAGE)
                 return await client.complete_login(prepared, callback)
             finally:
                 if prepared is not None:
                     prepared.receiver.close()
+                if reset_client is not None:
+                    await reset_client.aclose()
                 await client.aclose()
 
         try:
@@ -543,7 +551,7 @@ class InAppOidcLoginDialog(QDialog):
         if self._cancelled.is_set() or not isinstance(value, EnterpriseOidcLoginResult):
             return
         if self._intent == 'forgot_password':
-            self._finish_with_error(RESET_LOGIN_REQUIRED, RESET_LOGIN_MESSAGE)
+            self._finish_with_error('RESET_UNVERIFIED_RETURN', '请返回登录页面，使用新密码登录。')
             return
         self._result = value
         if self._embedded:
