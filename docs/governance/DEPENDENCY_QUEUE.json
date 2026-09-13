@@ -328,7 +328,8 @@
       "state": "DONE",
       "dependencies": [],
       "unlocks": [
-        "ACCOUNT_MVP_USER_ACCEPTANCE"
+        "ACCOUNT_MVP_USER_ACCEPTANCE",
+        "ACCOUNT_MVP_FROZEN_REBUILD_READY"
       ],
       "user_action_required": null,
       "reason": "Exact deliveries integrated; official lifecycle wiring and Frozen admin/learner/multiaccount/WinVault/auto-login smoke PASS. Receipt: docs/governance/receipts/20260914-account-mvp-closeout.json."
@@ -338,7 +339,8 @@
       "owner": "A",
       "state": "READY",
       "dependencies": [
-        "ACCOUNT_MVP_FINAL_INTEGRATION"
+        "ACCOUNT_MVP_FINAL_INTEGRATION",
+        "ACCOUNT_MVP_FROZEN_REBUILD_READY"
       ],
       "unlocks": [],
       "user_action_required": "Run docs/governance/ACCOUNT_MVP_USER_TEST.md A-F checklist.",
