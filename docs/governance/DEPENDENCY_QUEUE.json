@@ -308,7 +308,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Exact 02/01 fixes integrated; actual frozen native login and negative cases passed; V1 superseded; runtime retained.",
+      "reason": "Exact 02/01 fixes integrated; actual final EXE manual and Workbench button native login PASS; same EXE negatives PASS; A/B isolated same-artifact precheck PASS; 510 combined checks PASS. V1 superseded; acceptance services and keys retained. Full A/B NOT_RUN.",
       "workbench_visible": true
     }
   ],

@@ -326,7 +326,9 @@
     "full_server_sync": "PARTIAL",
     "frozen_login_root_cause": "FIXED",
     "environment_consumers_pending": true,
-    "auto_cleanup": "FORBIDDEN"
+    "auto_cleanup": "FORBIDDEN",
+    "workbench_frozen_login": "PASS",
+    "device_ab_precheck": "PASS_ISOLATION_SAME_ARTIFACT_ONLY"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
@@ -346,7 +348,9 @@
         "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
         "receipt_sha256": "87848cac5ff28f55c5d063bc63c0cf73d0ed889d7e0b1be15396db4b2ed081f4"
       }
-    ]
+    ],
+    "runtime_lease_id": "MF-AB-V2-RUNTIME-20260913-04-5b846e4cc8-final",
+    "runtime_expires_at": "2026-09-14T02:30:19+00:00"
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",

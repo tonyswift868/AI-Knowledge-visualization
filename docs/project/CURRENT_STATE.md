@@ -38,11 +38,15 @@ main2 为冻结 canonical source baseline；integration/main3 是施工集成线
 
 ## Frozen native login V2 — ready for independent A/B acceptance
 
+WORKBENCH_FROZEN_LOGIN=PASS；实际 Device A 按钮 → 新 EXE → native login → Backend/session/bootstrap 已复验。
+A/B 目录、设置、缓存、vault、credential namespace 隔离且同一 artifact；B 仅首屏，完整 A/B=NOT_RUN。
+组合回归 510 PASS、0 FAIL、0 SKIP（481 pytest/native cases + 22 protocol + 7 schema gates）；UI/auth 证据独立列示。
+
 从 `d73f3f9850fc0ff99ce874eaf8166f988ba3637b` 按 02→01 集成两个 exact delta，UNKNOWN_COMMITS=0。
 BUILD_SOURCE `f624c6884a5570e83b438faffc81c15533da50ea`；tree `36abfd164a0b2d3d2ccde544505d233aa9dc4fe0`；后续 publication 仅治理文件。
 01 修复 `_MEIPASS/backend` 前插造成的 namespace shadowing；canonical `app.enterprise.identity` 来源与语义已实测。
 02 将 immutable candidate 与 ephemeral runtime 分离；旧/过期/错候选/错 CA/不可信路径仍拒绝。
-源码与真实 Frozen EXE 正确登录、错误密码、未知账号、错误 CA 已验证；浏览器回退与 password/direct grant 均未启用。
+源码与真实 Frozen EXE 正确登录、错误密码、未知账号已验证；同一 Frozen EXE 错误 CA 拒绝，TLS 校验开启。浏览器回退与 password/direct grant 均未启用。
 新 CURRENT=`MAIN3_CROSS_DEVICE_AB_V2`；旧 V1=`SUPERSEDED_FOR_LOGIN_FIX`，旧首屏 PASS 不替代真实登录。
 Backend/Identity/PG 为同产品兼容源码的 owned disposable runtime；0038 preflight 与 schema matrix PASS。
 运行租约具有 12 小时证书窗口；ENVIRONMENT_CONSUMERS_PENDING=YES，AUTO_CLEANUP=FORBIDDEN，后续单独 cleanup 派发。

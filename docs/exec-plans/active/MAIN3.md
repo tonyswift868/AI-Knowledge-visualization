@@ -41,7 +41,7 @@ REBUILD_OR_REDOWNLOAD_TIER 可重建／可信重下载。旧设备离线不影�
 
 04 的 46 个 retained artifact hash 已核验；只接收归一化事实。84-space 私有选择器仅为 QA，
 03 wizard 仍是无 IO／执行器的预览壳。MIGRATION_EXECUTED=NO；当前任务不要求用户作迁移选择。
-Workbench 刷新以上已登记状态，候选仍 WAITING_FOR_ARTIFACT，无可启动 CURRENT 包。
+历史 Batch03 时候选为 WAITING_FOR_ARTIFACT；当前 V2 CURRENT 与实测登录状态以下方最新候选段为准。
 保留 register/forgot_password=false、main2 冻结和 formal main3 未创建。
 
 ## Batch04 — historical source closeout / then PARTIAL
@@ -63,6 +63,10 @@ Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审�
 这不是派发，也不授权真实迁移／issuer cutover／账号 capability 激活。PORTABLE_PACK_V2 与真实旧数据迁移继续锁定。
 
 ## Frozen native login V2 — real A/B NOT_RUN
+
+WORKBENCH_FROZEN_LOGIN=PASS；实际 Device A 按钮 → 新 EXE → native login → Backend/session/bootstrap 已复验。
+A/B 目录、设置、缓存、vault、credential namespace 隔离且同一 artifact；B 仅首屏，完整 A/B=NOT_RUN。
+组合回归 510 PASS、0 FAIL、0 SKIP（481 pytest/native cases + 22 protocol + 7 schema gates）；UI/auth 证据独立列示。
 
 02 runtime lease 与 01 frozen import-path exact fixes 已集成；不重复消费父代交付。
 canonical app identity namespace 已通过真实 Frozen loader 验证；真实用户名/密码登录及负例 PASS。
