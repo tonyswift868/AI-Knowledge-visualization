@@ -33,6 +33,9 @@ from app.enterprise.identity.runtime import (
 )
 from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
+from app.enterprise.structured_sync_api import router as structured_sync_router
+from app.enterprise_tenancy.structured_sync import StructuredSyncService
+from app.enterprise_tenancy.context import PostgresTenantTransactionManager
 from app.observability.health import (
     ACCOUNT_CORE_MVP_PROFILE,
     HealthRegistry,
@@ -68,6 +71,7 @@ async def lifespan(app: FastAPI):
         engine = orm_runtime.configure_enterprise_orm()
         orm_runtime.verify_enterprise_runtime_schema()
         app.state.enterprise_workspace_service = EnterpriseWorkspaceService(engine)
+        app.state.structured_sync_service = StructuredSyncService(PostgresTenantTransactionManager(engine))
         app.state.account_workspace_bootstrap = AccountWorkspaceBootstrap(
             engine, issuer=config.keycloak.issuer
         )
@@ -96,6 +100,7 @@ app = FastAPI(
 )
 install_enterprise_identity(app, account_core_only=True)
 app.include_router(account_workspace_router)
+app.include_router(structured_sync_router)
 
 
 @app.get("/health/live")

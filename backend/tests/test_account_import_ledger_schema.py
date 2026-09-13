@@ -44,7 +44,8 @@ def test_authoritative_source_and_complete_linear_graph():
     # Git checkout may translate LF to CRLF; compare the retained LF source.
     assert hashlib.sha256(source.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == AUTHORITATIVE_SHA256
     scripts = ScriptDirectory.from_config(config())
-    assert scripts.get_heads() == [HEAD] == [ENTERPRISE_MIGRATION_REVISION]
+    assert scripts.get_heads() == [ENTERPRISE_MIGRATION_REVISION]
+    assert scripts.get_revision(ENTERPRISE_MIGRATION_REVISION).down_revision == HEAD
     assert scripts.get_revision(HEAD).down_revision == PREVIOUS
     revisions = list(scripts.walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})
@@ -90,7 +91,7 @@ def test_native_forward_matrix(native, start):
         command.upgrade(native.config, start)
         assert current(native) == start
     command.upgrade(native.config, "head")
-    assert current(native) == HEAD
+    assert current(native) == ENTERPRISE_MIGRATION_REVISION
     command.current(native.config, check_heads=True)
     orm.verify_enterprise_runtime_schema()
     with native.app.begin() as connection:
@@ -111,7 +112,7 @@ def test_native_forward_matrix(native, start):
                 assert [dict(row) for row in connection.execute(text(query)).mappings()] == expected[category], category
 
 
-def test_native_already_0036_startup_and_alembic_are_read_only(native):
+def test_native_already_latest_startup_and_alembic_are_read_only(native):
     command.upgrade(native.config, "head")
     # A write by either Alembic or real application startup now raises in PG.
     with native.lab.admin() as connection:
@@ -127,7 +128,7 @@ def test_native_already_0036_startup_and_alembic_are_read_only(native):
         orm.upgrade_orm_schema()
         with orm.engine.connect() as connection:
             assert connection.execute(text("SHOW transaction_read_only")).scalar_one() == "on"
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ENTERPRISE_MIGRATION_REVISION
     finally:
         orm.engine.dispose()
 
@@ -160,7 +161,7 @@ def test_native_revision_without_matching_schema_rejected(native, drift):
     command.upgrade(native.config, "head")
     with native.admin.begin() as connection:
         connection.execute(text(drift))
-    assert current(native) == HEAD
+    assert current(native) == ENTERPRISE_MIGRATION_REVISION
     with pytest.raises(orm.DatabaseRuntimeConfigurationError):
         orm.verify_enterprise_runtime_schema()
 
@@ -250,4 +251,4 @@ def test_native_ledger_isolation_idempotency_and_workspace_continuity(native):
         assert bootstrap.discover(principal) == expected == bootstrap.initialize(principal)
     with pytest.raises(RuntimeError, match="forward-only"):
         command.downgrade(native.config, PREVIOUS)
-    assert current(native) == HEAD
+    assert current(native) == ENTERPRISE_MIGRATION_REVISION

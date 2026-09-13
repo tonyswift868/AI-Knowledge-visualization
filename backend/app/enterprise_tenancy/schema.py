@@ -9,7 +9,7 @@ from .models import RESOURCE_TABLE_BY_KIND
 
 
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
-ENTERPRISE_MIGRATION_REVISION = "0036_account_import_ledger"
+ENTERPRISE_MIGRATION_REVISION = "0037_structured_sync"
 TENANT_CONTEXT_SETTINGS = (
     "mentorflow.organization_id",
     "mentorflow.workspace_id",
@@ -32,6 +32,7 @@ ASSET_MANIFEST_TABLES = (
     "asset_revisions",
 )
 ACCOUNT_IMPORT_LEDGER_TABLES = ("account_import_ledger",)
+STRUCTURED_SYNC_TABLES = ("structured_sync_entities", "structured_sync_requests")
 RESOURCE_SCOPE_TABLE = "resource_scopes"
 RESOURCE_TABLES = tuple(RESOURCE_TABLE_BY_KIND.values())
 TENANT_SCOPED_TABLES = (
@@ -39,6 +40,7 @@ TENANT_SCOPED_TABLES = (
     *WORKSPACE_PERSISTENCE_TABLES,
     *ASSET_MANIFEST_TABLES,
     *ACCOUNT_IMPORT_LEDGER_TABLES,
+    *STRUCTURED_SYNC_TABLES,
     RESOURCE_SCOPE_TABLE,
     *RESOURCE_TABLES,
 )
@@ -75,7 +77,7 @@ def resource_scope_predicate() -> str:
 
 
 def rls_predicate_for(table: str) -> str:
-    if table in ACCOUNT_IMPORT_LEDGER_TABLES:
+    if table in ACCOUNT_IMPORT_LEDGER_TABLES or table in STRUCTURED_SYNC_TABLES:
         return " AND ".join(
             f"{column} = NULLIF(current_setting('mentorflow.{setting}', true), '')"
             for column, setting in (
