@@ -1,6 +1,6 @@
 # MentorFlow architecture map
 
-范围：冻结 MAIN2 基线之上的 MAIN3 Batch03 集成源码阅读地图。
+范围：冻结 MAIN2 基线之上的 MAIN3 Batch04 集成源码阅读地图。
 产品与部署的验收状态见 [CURRENT_STATE](docs/project/CURRENT_STATE.md)。
 本文件说明已经存在的模块；不据此宣布某个服务器、安装包或学习全链路已经合格。
 
@@ -79,6 +79,11 @@ FastAPI 处理 HTTP；业务实现拆在 knowledge、teaching、planning、enter
 
 [跨设备 authority](docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md) 规定服务端结构化状态、
 本地大资源和可重建数据三层。现有表／bootstrap／V1 portability 是基础，不代表完整云同步或 V2 已实现。
+`account_identity_contract.py` / `identity/continuity.py` 定义 stable account proof 与签名 per-subject 映射；
+`desktop/account_storage.py` 统一 durable root，测试设备明确 TEST_ONLY。Live mapping 尚未批准。
+`enterprise_tenancy/structured_sync.py` / `structured_sync_api.py` 提供 0037 的三实体 V1：PLAN、PROGRESS、RESOURCE_METADATA；
+`desktop/structured_sync.py` 是 injected-transport 客户端。`rehydration_state.py` / `rehydration_page.py` 是独立展示合同；
+自动 login→sync→GUI 尚未接通，完整历史不在 V1 范围。Workbench 的 `devices.py` 只拥有 A/B 隔离启动与观察。
 账户重置新增 after-commit completion observation；只返回登录，不自动签发会话。
 独立 [Dev Workbench](tools/dev_workbench/README.md) 从 exact repo snapshot 读取状态，当前候选待构建。
 

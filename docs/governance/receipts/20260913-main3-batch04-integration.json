@@ -1,0 +1,687 @@
+{
+  "schema_version": 1,
+  "dispatch_id": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
+  "task_id": "MENTORFLOW_MAIN3_BATCH04_CROSS_DEVICE_INTEGRATION_V1",
+  "STATUS": "PARTIAL",
+  "START_HEAD": "1ef95a71c5e7422cb3fe1435ccd703193629b591",
+  "start_tree": "daed64b2c7722959c28b764a9e6ee932f328419b",
+  "runtime_source_sha": "852f8c2c1874bf1dd8b6855da492a97313b0080d",
+  "runtime_source_tree": "d27f4de1444474f64544e85367bc64a8a2581dbd",
+  "integration_source_snapshot": "11ebc96036bc274418b73c7da2e26f87a1333c8f",
+  "integration_source_tree": "f9698ea506fe8e9da5d08cb36ab1990f11af39c1",
+  "publication_identity": "Final publication HEAD/tree and remote readback are retained in the external immutable final receipt; this file does not self-reference its own containing commit.",
+  "exact_ancestry": {
+    "start_head": "1ef95a71c5e7422cb3fe1435ccd703193629b591",
+    "start_tree": "daed64b2c7722959c28b764a9e6ee932f328419b",
+    "phase0": "Verified before mutation: branch, local/origin HEAD and clean worktree; fetched origin same.",
+    "main2": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+    "unknown_commits": [],
+    "worker_clean": true,
+    "rows": [
+      {
+        "owner": "01",
+        "source": "16f5b9ad36e7191a16089fd5a353af469cb9adef",
+        "parents": [
+          "b8cc25d266c2ff549b9af86ec23b187a200d991c"
+        ],
+        "tree": "bf22ba651f63bf592e074360c0641808be8c4042",
+        "first_parent_changed_paths": [
+          "A\tbackend/app/account_identity_contract.py",
+          "M\tbackend/app/enterprise/identity/config.py",
+          "A\tbackend/app/enterprise/identity/continuity.py",
+          "M\tbackend/app/enterprise/identity/issuer_migration.py",
+          "M\tbackend/app/enterprise/identity/native.py",
+          "M\tbackend/app/enterprise/identity/oidc.py",
+          "M\tbackend/app/enterprise/identity/runtime.py",
+          "A\tbackend/tests/identity_continuity_fixture.py",
+          "M\tbackend/tests/test_e109_consumer_continuity.py",
+          "M\tbackend/tests/test_e109_issuer_migration.py",
+          "M\tbackend/tests/test_local_migration.py",
+          "A\tbackend/tests/test_stable_account_identity.py",
+          "M\tdesktop/account_identity.py",
+          "M\tdesktop/account_portability.py",
+          "A\tdesktop/account_storage.py",
+          "M\tdesktop/account_vault.py",
+          "M\tdesktop/enterprise_oidc.py",
+          "M\tdesktop/local_migration.py",
+          "M\tdesktop/main_window.py",
+          "M\tdesktop/runtime.py",
+          "M\tdesktop/startup_connection.py",
+          "M\tdesktop/startup_flow.py",
+          "M\tdesktop/tests/conftest.py",
+          "M\tdesktop/tests/test_account_portability.py",
+          "M\tdesktop/tests/test_enterprise_oidc.py",
+          "M\tdesktop/tests/test_login_gate_bootstrap.py",
+          "A\tdesktop/tests/test_stable_account_storage.py",
+          "M\tdesktop_entry.py",
+          "A\tdocs/decisions/STABLE_ACCOUNT_IDENTITY_V1.md",
+          "A\tdocs/qa/MAIN3_01_STABLE_ACCOUNT_CONTINUITY_PROOF.json",
+          "A\tdocs/qa/MAIN3_01_STABLE_IDENTITY_DURABLE_ROOT_20260913.md",
+          "M\tscripts/native_identity_fixture.py",
+          "M\tscripts/windows_installed_launch.py"
+        ],
+        "decision": "EXACT_DELTA_CHERRY_PICKED",
+        "integration_commit": "d773ab1b63c29984e46cdcf9149d1198429ac001"
+      },
+      {
+        "owner": "02",
+        "source": "6d1eff080a0e7a30704b95ec29df0110fa06d070",
+        "parents": [
+          "5c8eed29f607b5c16bddda0efb9c71ae91560b64"
+        ],
+        "tree": "d48e9890d7ff1881d31d868bf3892aa3333f8d79",
+        "first_parent_changed_paths": [
+          "M\tbackend/app/credential_store.py",
+          "M\tdesktop/classroom_page.py",
+          "M\tdesktop/main.py",
+          "M\tdesktop/main_window.py",
+          "M\tdesktop/runtime.py",
+          "M\tdesktop/system_page.py",
+          "A\tdesktop/test_device_profile.py",
+          "M\tdesktop/update_controller.py",
+          "A\tdocs/dev_workbench/TWO_DEVICE_HARNESS_V1.md",
+          "M\ttools/dev_workbench/README.md",
+          "M\ttools/dev_workbench/authority.py",
+          "A\ttools/dev_workbench/device_panel.py",
+          "A\ttools/dev_workbench/devices.py",
+          "M\ttools/dev_workbench/resources.py",
+          "M\ttools/dev_workbench/targets.py",
+          "A\ttools/dev_workbench/test_devices.py",
+          "M\ttools/dev_workbench/window.py"
+        ],
+        "decision": "EXACT_DELTA_CHERRY_PICKED",
+        "integration_commit": "53735c0ea30b39d53c31f7ff8437555521e04efa"
+      },
+      {
+        "owner": "03",
+        "source": "03f7289b81a489fe22745f2032078ed2eacb1c52",
+        "parents": [
+          "6c6af25d15ce10254e71ca4388452ee51c8c36ec"
+        ],
+        "tree": "a2d3f9237c5869cf615d6e471e53f710955ed625",
+        "first_parent_changed_paths": [
+          "M\tdesktop/account_settings_page.py",
+          "M\tdesktop/main.py",
+          "A\tdesktop/rehydration_page.py",
+          "A\tdesktop/rehydration_state.py",
+          "A\tdesktop/tests/test_rehydration_ux.py",
+          "A\tdocs/qa/MAIN3_03_NEW_DEVICE_REHYDRATION_UX_20260913.md"
+        ],
+        "decision": "EXACT_DELTA_CHERRY_PICKED",
+        "integration_commit": "c82f37973060cb9215f1362d270f28a8db0b5f12"
+      },
+      {
+        "owner": "04",
+        "source": "df4684b86f53f121f26e98fad051c11b6d2342b1",
+        "parents": [
+          "0d064974a145e758cdc8e2c8700eca7a13576157",
+          "1ef95a71c5e7422cb3fe1435ccd703193629b591"
+        ],
+        "tree": "daed64b2c7722959c28b764a9e6ee932f328419b",
+        "first_parent_changed_paths": [
+          "M\t.gitattributes",
+          "M\t.gitignore",
+          "A\tAGENTS.md",
+          "A\tARCHITECTURE.md",
+          "M\tREADME.md",
+          "A\tStart-MentorFlow-Dev-Workbench.cmd",
+          "M\tbackend/app/enterprise/account_workspaces.py",
+          "A\tbackend/app/enterprise/identity/native.py",
+          "A\tbackend/app/enterprise/identity/reset_completion.py",
+          "M\tbackend/app/enterprise/identity/runtime.py",
+          "M\tbackend/tests/test_account_core_mvp_runtime.py",
+          "A\tbackend/tests/test_e109_consumer_continuity.py",
+          "M\tbackend/tests/test_e109_issuer_migration.py",
+          "A\tbackend/tests/test_native_auth.py",
+          "A\tbackend/tests/test_reset_completion.py",
+          "M\tdeploy/enterprise/auth-email-security/admin.py",
+          "A\tdeploy/enterprise/auth-email-security/password-blacklists/.gitignore",
+          "A\tdeploy/enterprise/auth-email-security/prepare_password_denylist.py",
+          "M\tdeploy/enterprise/auth-email-security/realm-policy.json",
+          "M\tdeploy/enterprise/auth-email-security/test_policy_contract.py",
+          "M\tdeploy/enterprise/auth-email-security/verify_email_uat.py",
+          "A\tdeploy/enterprise/native-identity-verifier/AtomicActionTokens.java",
+          "A\tdeploy/enterprise/native-identity-verifier/AtomicResetCredentialsActionTokenHandler.java",
+          "A\tdeploy/enterprise/native-identity-verifier/AtomicResetPassword.java",
+          "A\tdeploy/enterprise/native-identity-verifier/AtomicVerifyEmailActionTokenHandler.java",
+          "A\tdeploy/enterprise/native-identity-verifier/NativeIdentityVerifier.java",
+          "A\tdeploy/enterprise/native-identity-verifier/README.md",
+          "A\tdeploy/enterprise/native-identity-verifier/ResetCompletions.java",
+          "M\tdeploy/enterprise/staging/rp05/compose.account-core-mvp.yml",
+          "M\tdeploy/enterprise/staging/rp05/runtime-entrypoint.py",
+          "M\tdeploy/enterprise/themes/mentorflow-desktop-v1/UPSTREAM.md",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/login-update-password.ftl",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/mentorflow-account-lifecycle.ftl",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/mentorflow-password-pair.ftl",
+          "M\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/messages/messages_en.properties",
+          "M\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/messages/messages_zh_CN.properties",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/resources/css/account-lifecycle.css",
+          "M\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/resources/css/mentorflow.css",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle-state.js",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle.js",
+          "A\tdeploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/password-pair.js",
+          "M\tdesktop/account_settings_page.py",
+          "M\tdesktop/enterprise_oidc.py",
+          "M\tdesktop/gui_update_runtime.py",
+          "M\tdesktop/in_app_oidc.py",
+          "A\tdesktop/legacy_recovery_preview.py",
+          "A\tdesktop/legacy_recovery_wizard.py",
+          "M\tdesktop/login_session.py",
+          "M\tdesktop/login_shell.py",
+          "M\tdesktop/main.py",
+          "A\tdesktop/mandatory-reason-ux-closeout.md",
+          "A\tdesktop/native_auth.py",
+          "A\tdesktop/optional-mandatory-update-ux-closeout.md",
+          "A\tdesktop/reset_completion.py",
+          "A\tdesktop/tests/test_e109_system_browser.py",
+          "M\tdesktop/tests/test_in_app_oidc.py",
+          "A\tdesktop/tests/test_legacy_recovery_preview.py",
+          "M\tdesktop/tests/test_login_smooth.py",
+          "A\tdesktop/tests/test_main3_batch01_integration.py",
+          "A\tdesktop/tests/test_main3_batch02_integration.py",
+          "A\tdesktop/tests/test_mandatory_reason_ux.py",
+          "M\tdesktop/tests/test_mature_update.py",
+          "A\tdesktop/tests/test_native_login.py",
+          "A\tdesktop/tests/test_optional_mandatory_update_ux.py",
+          "M\tdesktop/tests/test_prelogin_update_ux.py",
+          "A\tdesktop/tests/test_reset_completion_consumer.py",
+          "A\tdesktop/tests/test_reset_password_boundary.py",
+          "M\tdesktop/tests/test_update_ui_flow.py",
+          "M\tdesktop/update_controller.py",
+          "M\tdesktop/update_lifecycle.py",
+          "M\tdesktop/update_panel.py",
+          "M\tdesktop/update_protocol.py",
+          "M\tdesktop/update_service.py",
+          "A\tdocs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md",
+          "M\tdocs/AUTH_EMAIL_SECURITY_FLOW.md",
+          "M\tdocs/E109_AUTH_ISSUER_MIGRATION.md",
+          "M\tdocs/PRODUCT_FLOW.md",
+          "A\tdocs/decisions/0001-main3-repository-governance.md",
+          "A\tdocs/decisions/0002-web-handoff-provenance.md",
+          "A\tdocs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
+          "A\tdocs/decisions/index.md",
+          "A\tdocs/dev_workbench/ADR_TEST_TARGET_LAUNCH_V1.md",
+          "M\tdocs/enterprise/staging-orchestrator.md",
+          "A\tdocs/exec-plans/active/MAIN3.md",
+          "A\tdocs/exec-plans/completed/README.md",
+          "A\tdocs/governance/ACTIVE_BOARD.json",
+          "A\tdocs/governance/ACTIVE_TEST_TARGET.json",
+          "A\tdocs/governance/DEPENDENCY_QUEUE.json",
+          "A\tdocs/governance/DEVELOPMENT_WORKFLOW.md",
+          "A\tdocs/governance/HANDOFF_CONTRACT.md",
+          "A\tdocs/governance/TEST_TARGET_MANIFEST.schema.json",
+          "A\tdocs/governance/receipts/20260912-main3-batch01-integration.json",
+          "A\tdocs/governance/receipts/20260912-repository-knowledge-intake.json",
+          "A\tdocs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
+          "A\tdocs/governance/receipts/20260913-main3-batch02-integration.json",
+          "A\tdocs/governance/receipts/20260913-main3-batch03-continuity-evidence.json",
+          "A\tdocs/governance/receipts/20260913-main3-batch03-integration.json",
+          "A\tdocs/handoff/README.md",
+          "A\tdocs/handoff/WEB_SESSION_LATEST.md",
+          "M\tdocs/legacy-koikatsu/KKS_SPARK_TASK_COMPLETION_REPORT.md",
+          "A\tdocs/project/COMPONENT_MAP.md",
+          "A\tdocs/project/CURRENT_STATE.md",
+          "A\tdocs/qa/MAIN3_01_CANONICAL_RESET_COMPLETION_20260913.md",
+          "A\tdocs/qa/MAIN3_01_RESET_COMPLETION_EVIDENCE_20260913.json",
+          "A\tdocs/qa/MAIN3_03_ACCOUNT_LIFECYCLE_UX_SHELL_20260913.md",
+          "A\tdocs/qa/MAIN3_03_DATA_RECOVERY_PREVIEW_UX_20260913.md",
+          "A\tdocs/qa/MAIN3_03_RESET_PASSWORD_CONFIRM_UX_20260913.md",
+          "M\tdocs/windows-update-release-contract-v1.md",
+          "M\tinstaller/inno/README.md",
+          "M\tinstaller/inno/branded-pages.iss",
+          "A\tinstaller/inno/e109-main3-03-closeout.md",
+          "M\tinstaller/inno/per-user-core.iss",
+          "A\tinstaller/inno/tests/test_core_progress_contract.py",
+          "M\tinstaller/inno/tests/test_finish_options_contract.py",
+          "M\tinstaller/inno/tests/test_parent_close_contract.py",
+          "M\trelease/real-delivery-app.spec",
+          "A\treports/enterprise/action-token-atomicity-main3-01-20260912.md",
+          "A\treports/enterprise/e109-auth-consumer-preflight-main3-01-20260912.md",
+          "A\treports/enterprise/e109-auth-precutover-stage2-main3-01-20260912.json",
+          "A\treports/enterprise/e109-auth-precutover-stage2-main3-01-20260912.md",
+          "A\treports/enterprise/e109-old-prepared-system-browser-main3-01-20260912.md",
+          "A\treports/enterprise/native-credential-login-main3-01-20260912.md",
+          "A\treports/enterprise/native-credential-verifier-main3-01-20260912.md",
+          "A\tscripts/NativeIdentityFixtureControl.java",
+          "A\tscripts/ResetEventFixtureObserver.java",
+          "A\tscripts/action_token_fixture_checks.py",
+          "M\tscripts/build_e108_user_candidate.py",
+          "A\tscripts/build_native_identity_verifier.py",
+          "M\tscripts/build_release.ps1",
+          "M\tscripts/build_release.py",
+          "A\tscripts/context/build_compact_handoff.py",
+          "A\tscripts/context/check_repo_knowledge.py",
+          "A\tscripts/context/test_repo_knowledge.py",
+          "M\tscripts/e109_security_native_stage2.py",
+          "M\tscripts/enterprise/verify_rp05_staging_assets.py",
+          "A\tscripts/native_identity_fixture.py",
+          "M\tscripts/per_user_install.py",
+          "M\tscripts/per_user_update_core.py",
+          "A\tscripts/reset_completion_fixture_checks.py",
+          "M\tscripts/test_build_release.py",
+          "A\tscripts/test_canonical_identity_recovery.py",
+          "M\tscripts/test_e109_auth_source_binding.py",
+          "A\tscripts/test_mandatory_reason_public_seam.py",
+          "M\tscripts/test_mature_update_transaction.py",
+          "A\tscripts/test_signed_mandatory_floor.py",
+          "M\tscripts/windows_update_apply.py",
+          "A\ttests/theme/ResetPasswordThemeFixture.java",
+          "A\ttests/theme/account_lifecycle_preview.cjs",
+          "A\ttests/theme/reset_password_preview.cjs",
+          "A\ttests/theme/test_account_lifecycle_shell.py",
+          "M\ttests/theme/test_login_theme.py",
+          "A\ttests/theme/test_reset_password_theme.py",
+          "A\ttools/dev_workbench/README.md",
+          "A\ttools/dev_workbench/__init__.py",
+          "A\ttools/dev_workbench/__main__.py",
+          "A\ttools/dev_workbench/authority.py",
+          "A\ttools/dev_workbench/presentation.py",
+          "A\ttools/dev_workbench/resources.py",
+          "A\ttools/dev_workbench/self_check.py",
+          "A\ttools/dev_workbench/start.ps1",
+          "A\ttools/dev_workbench/targets.py",
+          "A\ttools/dev_workbench/test_clarity.py",
+          "A\ttools/dev_workbench/test_workbench.py",
+          "A\ttools/dev_workbench/window.py"
+        ],
+        "decision": "NO_NEW_DELTA_VS_INTEGRATION_START; DO_NOT_REPLAY_MERGE",
+        "integration_commit": null
+      },
+      {
+        "owner": "04",
+        "source": "6ef2f094964e995fcb02ba99f555a394ccd361d5",
+        "parents": [
+          "df4684b86f53f121f26e98fad051c11b6d2342b1"
+        ],
+        "tree": "8edeb4f85915f72c3840d404c9def7a989aa65fb",
+        "first_parent_changed_paths": [
+          "A\tbackend/alembic/versions/0037_structured_sync.py",
+          "M\tbackend/app/account_core_mvp.py",
+          "A\tbackend/app/enterprise/structured_sync_api.py",
+          "M\tbackend/app/enterprise_tenancy/schema.py",
+          "A\tbackend/app/enterprise_tenancy/structured_sync.py",
+          "M\tbackend/tests/test_account_core_mvp_runtime.py",
+          "M\tbackend/tests/test_account_import_ledger_schema.py",
+          "M\tbackend/tests/test_enterprise_tenant_persistence.py",
+          "A\tdesktop/structured_sync.py",
+          "A\treports/enterprise/server-sync-vertical-slice-20260913.md",
+          "A\treports/enterprise/server-sync-vertical-slice-20260913.receipt.json",
+          "A\ttests/server_sync/test_contract.py",
+          "A\ttests/server_sync/test_vertical_slice.py"
+        ],
+        "decision": "EXACT_DELTA_CHERRY_PICKED",
+        "integration_commit": "67f541e4eb367f0e05480fd896ad8b42f95143be"
+      }
+    ],
+    "integration_order": [
+      "01",
+      "04",
+      "03",
+      "02"
+    ],
+    "overlap_resolution": "desktop/account_settings_page.py retained native auth imports and added PortablePackEntry; old browser helper not restored."
+  },
+  "root_adjustments": [
+    {
+      "commit": "852f8c2c1874bf1dd8b6855da492a97313b0080d",
+      "scope": "TEST_ONLY device root marker; regression coverage; QApplication stylesheet isolation; forward-only downgrade error regex."
+    },
+    {
+      "commit": "11ebc96036bc274418b73c7da2e26f87a1333c8f",
+      "scope": "Native test preflight uses current head; dedicated RLS probe separates admin and nonprivileged migration DSNs."
+    }
+  ],
+  "STABLE_IDENTITY_COMBINED": "PASS_SOURCE_AND_FIXTURE",
+  "DURABLE_ROOT_COMBINED": "PASS_SOURCE_AND_FIXTURE",
+  "LIVE_ISSUER_MAPPING": "NOT_APPROVED",
+  "current_live_candidate_storage": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
+  "REAL_USER_MIGRATION": "NO",
+  "PLAN_SYNC": "PASS_V1_NATIVE_PG",
+  "PROGRESS_SYNC": "PASS_V1_NATIVE_PG",
+  "RESOURCE_METADATA_SYNC": "PASS_V1_NATIVE_PG",
+  "FULL_SERVER_SYNC": "PARTIAL",
+  "ALEMBIC_HEAD": "0037_structured_sync",
+  "BACKEND_EXPECTED_HEAD": "0037_structured_sync",
+  "REHYDRATION_UX": "PASS_SOURCE_AND_OFFSCREEN",
+  "PRODUCER_UX_WIRING": "POST_BATCH04_WIRING_REQUIRED",
+  "wiring_evidence": "docs/dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md",
+  "TWO_DEVICE_HARNESS": "READY_FOR_EXACT_CANDIDATE_TEST_SOURCE_ONLY",
+  "two_device_e2e": "NOT_RUN",
+  "TEST_TARGET_STATUS": "WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION",
+  "TEST_TARGET_ID": "MF-MAIN3-BATCH04-CROSS-DEVICE",
+  "TEST_ARTIFACT_SHA256": "2a641ea0a2a981dcacf2a29d9425149ef56efa0377dd5804797715a9561907ab",
+  "desktop_build": {
+    "source_sha": "852f8c2c1874bf1dd8b6855da492a97313b0080d",
+    "source_tree": "d27f4de1444474f64544e85367bc64a8a2581dbd",
+    "build_id": "MF-MAIN3-BATCH04-852f8c2c1874",
+    "command": [
+      "E:/Codex/Temp/mf-e1s1-rp01-test-venv/Scripts/python.exe",
+      "-m",
+      "PyInstaller",
+      "--noconfirm",
+      "--workpath",
+      "E:\\Codex\\Temp\\B4\\build-852f8c2c1874\\work",
+      "--distpath",
+      "E:\\Codex\\Temp\\B4\\build-852f8c2c1874\\dist",
+      "E:\\Codex\\Temp\\B4\\build-852f8c2c1874\\resume\\MentorFlow-Batch04.spec"
+    ],
+    "exit_code": 0,
+    "seconds": 121.39000000001397,
+    "artifact_path": "E:\\Codex\\Temp\\B4\\build-852f8c2c1874\\dist\\MentorFlow-Batch04.exe",
+    "artifact_sha256": "2a641ea0a2a981dcacf2a29d9425149ef56efa0377dd5804797715a9561907ab",
+    "environment": "TEST",
+    "acceptance": "UNQUALIFIED_BUILD; not a registered launch target or E2E pass",
+    "production_source_unchanged": true,
+    "source_closure": "e74cdeaae16d3b1ca11efd791b313a732c1946dd353563fb0b65ad2a38ea17b1",
+    "repo_modules_verified": 457,
+    "build_method": "Saved completed Analysis/PYZ source verified against852f8c2; omit generated __pycache__ data; package only. First full build timed out; cache-invalidated reanalysis stopped before this packaging pass."
+  },
+  "backend_artifact": {
+    "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\backend-source-852f8c2c1874.zip",
+    "sha256": "590dbb232001d0156cbbfe616309270acd4ad9f7a772ea4c07ab9981a6e5a07a",
+    "bytes": 3184725,
+    "kind": "EXACT_SOURCE_BUNDLE_NOT_IMAGE",
+    "image_digest": null,
+    "deployment": "NOT_RUN",
+    "container_tooling": "docker CLI not available in this office PATH",
+    "source_sha": "852f8c2c1874bf1dd8b6855da492a97313b0080d",
+    "source_tree": "d27f4de1444474f64544e85367bc64a8a2581dbd"
+  },
+  "combined": {
+    "pytest": {
+      "PASS": 564,
+      "FAIL": 0,
+      "SKIP": 1
+    },
+    "method": "Latest per-test outcome by classname/node name; reruns supersede failed/skipped attempts, duplicate PASS executions not added.",
+    "runs": [
+      {
+        "run": "identity-final",
+        "counts": {
+          "PASS": 209,
+          "FAIL": 4,
+          "SKIP": 3
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\identity-final.xml",
+        "sha256": "5b589f3a7400d1fe812ac8b99f13a97475be42c432ca0179ab9c75f6abbe795a"
+      },
+      {
+        "run": "desktop-clean",
+        "counts": {
+          "PASS": 322,
+          "FAIL": 0,
+          "SKIP": 0
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\desktop-clean.xml",
+        "sha256": "082eaaec33468226365593413bee7d08364a662590017308195760ef6985a8cb"
+      },
+      {
+        "run": "migration-final",
+        "counts": {
+          "PASS": 25,
+          "FAIL": 0,
+          "SKIP": 1
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\migration-final.xml",
+        "sha256": "e1544e0bb12b2a1aa45eb0a240e81fe92535884a0c9cf0ff9cd3f635c25843b5"
+      },
+      {
+        "run": "native-sync",
+        "counts": {
+          "PASS": 26,
+          "FAIL": 1,
+          "SKIP": 0
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-sync.xml",
+        "sha256": "449aea98cff111256461bbd45aea11faa821c6474c9fafd5907b7911528a67af"
+      },
+      {
+        "run": "native-sync-retest",
+        "counts": {
+          "PASS": 1,
+          "FAIL": 0,
+          "SKIP": 0
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-sync-retest.xml",
+        "sha256": "96ad584594593257f9259bec717c3c06596b9604a62e4bf85563e11019d48f0e"
+      },
+      {
+        "run": "native-extra-accepted",
+        "counts": {
+          "PASS": 2,
+          "FAIL": 0,
+          "SKIP": 0
+        },
+        "junit_path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-extra-accepted.xml",
+        "sha256": "02da10a5e2029ec009004760a8746d2a5380a3a854af8a8d8184a40953e286d7"
+      }
+    ],
+    "native_keycloak": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Real Keycloak26.7.3, PG17.6, mTLS verifier and Qt native form/session/bootstrap/main-window gate; disposable local fixture only.",
+      "receipt": {
+        "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native\\mf-native-047d9b0f65ff-receipt.json",
+        "sha256": "2af024880745d171ac2ffa5557e9cb5e2400eaed1be1debb2f5bdd67475b8f57",
+        "bytes": 2093
+      },
+      "cleanup": {
+        "keycloak_stopped": true,
+        "api_stopped": true,
+        "fixture_private_keys_removed": true,
+        "postgres_stopped": true
+      }
+    }
+  },
+  "COMBINED_PASS": 596,
+  "COMBINED_FAIL": 0,
+  "COMBINED_SKIP": 1,
+  "SKIPS_TOTAL": 1,
+  "skip_accounting": {
+    "retained_01": [
+      {
+        "path": "E:\\Codex\\Temp\\g13-final-results.xml",
+        "sha256": "a51c521e68148b39019a2ddfe5483bae03c2075e23f8f1c88a54d4fa36259432",
+        "bytes": 34489,
+        "skips": [
+          {
+            "test": "backend.tests.test_account_workspace_bootstrap::test_real_isolated_postgres_first_use_rls_if_provisioned",
+            "reason": "E:\\Codex\\Data\\worktrees\\8831\\MentorFlow\\backend\\tests\\test_account_workspace_bootstrap.py:303: NOT_RUN: no explicitly provisioned isolated PostgreSQL bootstrap database"
+          },
+          {
+            "test": "backend.tests.test_local_migration::test_local_migration_rejects_symlink_target_and_writes_next_launch_pointer",
+            "reason": "E:\\Codex\\Data\\worktrees\\8831\\MentorFlow\\backend\\tests\\test_local_migration.py:225: symlink creation is unavailable"
+          }
+        ]
+      },
+      {
+        "path": "E:\\Codex\\Temp\\g13-gate-results.xml",
+        "sha256": "f33600f0885d8a098cb39d08a4a59df4ac6903e0e1d4d6c57bdf37e091ae0751",
+        "bytes": 9455,
+        "skips": [
+          {
+            "test": "backend.tests.test_local_migration::test_local_migration_rejects_symlink_target_and_writes_next_launch_pointer",
+            "reason": "E:\\Codex\\Data\\worktrees\\8831\\MentorFlow\\backend\\tests\\test_local_migration.py:225: symlink creation is unavailable"
+          }
+        ]
+      }
+    ],
+    "retained_01_counts": "222 PASS/2 SKIP; 60 PASS/1 SKIP overlap; 32 native checks retained separately",
+    "retained_04": {
+      "receipt": "reports/enterprise/server-sync-vertical-slice-20260913.receipt.json",
+      "skipped": 17,
+      "reason": "Owned native migration lab absent in worker pytest invocation; worker did not run full-chain upgrade",
+      "cases": [
+        "backend/tests/test_account_import_ledger_schema.py::test_native_forward_matrix[fresh]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_forward_matrix[0035]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_forward_matrix[older_0033]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_already_latest_startup_and_alembic_are_read_only",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_unknown_future_rejected",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[table]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[column]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[unique]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[foreign_key]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[force_rls]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[read_policy]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[write_policy]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[app_delete]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[public_grant]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_revision_without_matching_schema_rejected[owner]",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_worker_schema_and_runtime_use_the_recovered_contract",
+        "backend/tests/test_account_import_ledger_schema.py::test_native_ledger_isolation_idempotency_and_workspace_continuity"
+      ],
+      "now": "ALL_17_EXECUTED_PASS_BY_A_WITH_NATIVE_POSTGRESQL"
+    },
+    "historical_skip_executions": 20,
+    "historical_unique_skipped_tests": 19,
+    "remaining": [
+      {
+        "test": "backend.tests.test_local_migration::test_local_migration_rejects_symlink_target_and_writes_next_launch_pointer",
+        "status": "SKIP",
+        "last_run": "migration-final",
+        "reason": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow\\backend\\tests\\test_local_migration.py:225: symlink creation is unavailable"
+      }
+    ],
+    "resolved_optional_pg": [
+      "backend.tests.test_account_workspace_bootstrap::test_real_isolated_postgres_first_use_rls_if_provisioned",
+      "backend.tests.test_enterprise_tenant_persistence::test_real_postgres_rls_is_fail_closed_and_pool_safe"
+    ],
+    "limitations": [
+      {
+        "gate": "WINDOWS_SYMLINK_CREATION",
+        "reason": "Windows symlink creation privilege unavailable",
+        "impact": "Specific native symlink target test not executed; junction/hardlink/path-swap and Temp/test-only gates independently passed. Real user migration stays blocked.",
+        "follow_up_gate": "Privileged Windows migration/package QA"
+      },
+      {
+        "gate": "FULL_TWO_DEVICE_PRODUCT",
+        "reason": "Producer/UX and observation wiring, full history, Backend exact deployment and target registration incomplete",
+        "impact": "No real E2E acceptance; overall PARTIAL",
+        "follow_up_gate": "POST_BATCH04_WIRING and exact two-device candidate"
+      }
+    ]
+  },
+  "CRITICAL_GATES_SKIPPED": "No unexecuted PG/identity/root check in declared V1 source scope; symlink-specific migration and real two-device/full-history/live gates remain unaccepted.",
+  "initial_failures": [
+    {
+      "run": "identity",
+      "reason": "Windows long basetemp WinError206",
+      "resolution": "Short E:/Codex/Temp/B4 base; identity-final passed affected test."
+    },
+    {
+      "run": "desktop-final",
+      "reason": "Short basetemp parent missing",
+      "resolution": "Create owned scratch parent and rerun."
+    },
+    {
+      "run": "desktop-pass",
+      "reason": "Desktop startup global QApplication stylesheet leaked into Workbench test",
+      "resolution": "Per-test stylesheet restoration; desktop-clean 322 PASS."
+    },
+    {
+      "run": "identity-final",
+      "reason": "Four Desktop-importing migration tests used backend interpreter without PySide6",
+      "resolution": "migration-final with Qt interpreter:25 PASS/1 environmental SKIP."
+    },
+    {
+      "run": "native-sync",
+      "reason": "Old test regex did not match 0037 Forward only downgrade refusal",
+      "resolution": "Case-insensitive equivalent regex; single failed case retested PASS."
+    },
+    {
+      "run": "native-extra/native-extra-final",
+      "reason": "A runner retained migration DSN during SQLite fixture setup; legacy RLS probe attempted Alembic with administrator and bootstrap hardcoded0036",
+      "resolution": "Clear runner env, current-head assertion and explicit nonprivileged migration DSN; native-extra-accepted 2 PASS."
+    }
+  ],
+  "native_pg_evidence": [
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-sync-receipt.json",
+      "sha256": "ba4f695fd24502fe02d737be47ccfc2d8ee5c16d2ec12f81ed4b5aedfbbed02f",
+      "bytes": 17916
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-sync-retest-receipt.json",
+      "sha256": "f33b63f99c357fcedac03a9b58e5ed3dde764dc0ccd6180bd1b6a70d46237943",
+      "bytes": 623
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\native-extra-accepted-receipt.json",
+      "sha256": "d0787b16981c2cd284f0f86dc67e8521ca1dc67cd48fc895c7e7ea617059ce59",
+      "bytes": 635
+    }
+  ],
+  "KNOWLEDGE_REFRESH": "AUTHORITIES_UPDATED; 18 knowledge tests and 312 internal links PASS; committed handoff/lint verification is bound in external final receipt.",
+  "WORKBENCH_REFRESH": "SOURCE_AUTHORITY_UPDATED; post-commit export and offscreen projection verification are bound in external final receipt.",
+  "GATE_A_SCHEMA_BLOCKER": "RESOLVED_IN_SOURCE",
+  "GATE_A_REAL_DEPLOYMENT": "NOT_RUN_AFTER_FIX",
+  "MAIN2_MUTATED": "NO",
+  "FORMAL_MAIN3_CREATED": "NO",
+  "GITHUB_ACTIONS_EXECUTED": 0,
+  "public_issuer_cutover": 0,
+  "register_activation": 0,
+  "forgot_password_activation": 0,
+  "tags_created": 0,
+  "force_push": 0,
+  "WORKER_STATUS": "SILENT",
+  "open_children": 0,
+  "active_children": 0,
+  "desktop_static_artifact_check": {
+    "status": "PASS_STATIC_FROZEN_ARTIFACT_STRUCTURE",
+    "source_sha": "852f8c2c1874bf1dd8b6855da492a97313b0080d",
+    "source_tree": "d27f4de1444474f64544e85367bc64a8a2581dbd",
+    "build_id": "MF-MAIN3-BATCH04-852f8c2c1874",
+    "artifact_path": "E:\\Codex\\Temp\\B4\\build-852f8c2c1874\\dist\\MentorFlow-Batch04.exe",
+    "artifact_sha256": "2a641ea0a2a981dcacf2a29d9425149ef56efa0377dd5804797715a9561907ab",
+    "bytes": 703067817,
+    "required_modules": [
+      "desktop.main",
+      "desktop.test_device_profile",
+      "desktop.account_storage",
+      "desktop.structured_sync",
+      "desktop.rehydration_state",
+      "desktop.rehydration_page",
+      "app.account_core_mvp",
+      "app.enterprise_tenancy.structured_sync",
+      "app.enterprise.structured_sync_api",
+      "app.account_identity_contract",
+      "app.enterprise.identity.continuity"
+    ],
+    "packaged_module_count": 13632,
+    "archive_entries": 9553,
+    "runtime_launch": "NOT_RUN",
+    "cloud_scenario": "NOT_RUN",
+    "qualification": "WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION"
+  },
+  "build_evidence": [
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\desktop-build-receipt.json",
+      "sha256": "2c69f13e398c0601a4bf0f08728ae7dc383856a9fe7900cdc9f0cf0c599ca175"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\desktop-build-final-receipt.json",
+      "sha256": "d81ed9a902232281fdff29d4111665b01741b7ab91761a0feaef0095b9067990"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\desktop-pack-receipt.json",
+      "sha256": "0f3e38e3d05868bab078e64a98067049297e97cce1cf8fee8278d57f1fe3ae09"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\desktop-artifact-static-check.json",
+      "sha256": "bd93017fbe6b1585fd32731be739ceaead804e3156b9945b0aa0ed42a8292144"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\build-source-closure.json",
+      "sha256": "d581e6199b40c96228aaf002b956dc2e99e99237289626f3f327c2a9bf665a62"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\frontend-build.log",
+      "sha256": "68f7e690afb29b2938072ae4ba267db3e120df30898b248214a7db416aef3672"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-MAIN3-A-BATCH04-20260913\\frontend-build-preflight.log",
+      "sha256": "17b29eba551ccb6407f387092783b263d80960dadd47aa94a7631cdf5f07aae7"
+    }
+  ]
+}

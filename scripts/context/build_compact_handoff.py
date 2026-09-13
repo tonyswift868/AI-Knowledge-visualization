@@ -237,7 +237,7 @@ def build_web(root: Path) -> bytes:
              for slot, worker in board["workers"].items() if worker["delivery_commit"] is not None]
     rows += [f"FORMAL_MAIN3 = {control['formal_main3']}", f"BRIDGE = {control['bridge_status']}"]
     rows += [f"{key} = {fields[key]}" for key in
-             ("BATCH03_SOURCE", "CROSS_DEVICE_DATA_CONTINUITY", "PORTABLE_PACK_V2", "MIGRATION_EXECUTED")
+             ("BATCH04_SOURCE", "FULL_SERVER_SYNC", "PRODUCER_UX_WIRING", "CROSS_DEVICE_DATA_CONTINUITY", "PORTABLE_PACK_V2", "MIGRATION_EXECUTED")
              if key in fields]
     blockers = [key for key, task in tasks.items() if task["state"] in {"BLOCKED", "UNKNOWN"}]
     actions = [f"{key}: {task['user_action_required']}" for key, task in tasks.items()

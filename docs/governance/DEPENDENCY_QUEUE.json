@@ -186,20 +186,20 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Temp is not final destination; localhost/public issuer account/workspace namespace continuity unresolved. No old-data migration.",
+      "reason": "Stable account identity/signed subject mapping and durable root source/fixtures PASS; live issuer mapping NOT_APPROVED, existing live candidate still Temp. No real migration.",
       "workbench_visible": true
     },
     {
       "task_id": "SERVER_SYNC_REHYDRATION",
       "title": "云端结构化状态与新设备恢复",
       "owner": "A",
-      "state": "NOT_DISPATCHED",
+      "state": "BLOCKED",
       "dependencies": [
         "CONTINUITY_AUTHORITY"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "All specified structured state must survive old-device offline; per-entity persistence, sync/revision/deletion and new-device rehydration still need implementation/acceptance.",
+      "reason": "PLAN/PROGRESS/RESOURCE_METADATA V1 passed native PG durable/idempotent/CAS/tombstone/isolation checks. Full supported history and login-to-GUI producer contract/wiring remain incomplete.",
       "workbench_visible": true
     },
     {
@@ -243,8 +243,48 @@
       "user_action_required": null,
       "reason": "Read-only evidence verified: data exists, no loss confirmed without complete baseline. Source preservation, account binding, stable IDs and two-device tests required. MIGRATION_EXECUTED=NO; real migration needs separate authorization.",
       "workbench_visible": true
+    },
+    {
+      "task_id": "BATCH04_EXACT_INTEGRATION",
+      "title": "第四批源码与组合回归",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "BATCH03_EXACT_INTEGRATION"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Five exact commits audited; 04 merge tree equals start and is not replayed. Four deltas integrated 01/04/03/02. Combined evidence is source/local fixture scope.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "POST_BATCH04_WIRING",
+      "title": "云恢复 producer 与界面接线",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "BATCH04_EXACT_INTEGRATION"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Need authenticated transport/account scope, snapshot revision/cache semantics, authoritative empty/history counts, file/model classification and many-plan resource projection. Do not infer full account empty from an empty V1 subset.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "BATCH04_EXACT_CANDIDATE",
+      "title": "同版双设备候选验收",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "BATCH04_EXACT_INTEGRATION",
+        "POST_BATCH04_WIRING"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Build evidence is separate from qualification. Backend 0037 deployment/identity and launch config required. Harness currently equates build source SHA with branch HEAD; committing target registration advances HEAD. No CURRENT or E2E claim.",
+      "workbench_visible": true
     }
   ],
-  "authority": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
-  "assignment_scope": "Batch03 exact source integration, 04 evidence only, cross-device authority and Workbench refresh. No migration/live activation."
+  "authority": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
+  "assignment_scope": "Batch04 exact source integration, combined local regression and candidate build/qualification. No real user migration or live activation."
 }

@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "BATCH03_EXACT_ANCESTRY_AND_REMOTE_START_VERIFIED",
+  "refs_verified": "BATCH04_EXACT_ANCESTRY_AND_REMOTE_START_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
+  "authority": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
-      "task_id": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
+      "dispatch_id": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
+      "task_id": "MENTORFLOW_MAIN3_BATCH04_CROSS_DEVICE_INTEGRATION_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Batch03 integrated and continuity authority recorded. SILENT after publication; no migration or live activation.",
+      "next_action": "Batch04 exact source integrated; remaining product wiring and exact candidate qualification recorded. SILENT after ordinary publication.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "阶段源码已集成，跨设备合同已登记。"
+      "summary_zh": "第四批源码已集成，双设备验收待接线。"
     },
     "01": {
       "status": "SILENT",
@@ -27,16 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
-      "next_action": "Exact Batch03 delivery consumed; no follow-up dispatch.",
+      "delivery_commit": "16f5b9ad36e7191a16089fd5a353af469cb9adef",
+      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
-      "delivery_state": "BATCH03_SOURCE_INTEGRATED",
-      "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING",
+      "integrated_commit": "d773ab1b63c29984e46cdcf9149d1198429ac001",
+      "delivery_state": "PASS_IDENTITY_ROOT_SOURCE",
+      "acceptance_state": "LIVE_MAPPING_NOT_APPROVED",
       "ordered_source_commits": [
-        "e6a553ee178fa679cd7e96ed8dd52ef42861dbb0",
-        "b8cc25d266c2ff549b9af86ec23b187a200d991c"
+        "16f5b9ad36e7191a16089fd5a353af469cb9adef"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -52,7 +51,17 @@
         "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
         "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX"
       },
-      "summary_zh": "密码规则与重置完成协议已集成。"
+      "summary_zh": "稳定账号与持久目录源码已集成。",
+      "batch03_delivery_snapshot": {
+        "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
+        "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
+        "ordered_source_commits": [
+          "e6a553ee178fa679cd7e96ed8dd52ef42861dbb0",
+          "b8cc25d266c2ff549b9af86ec23b187a200d991c"
+        ],
+        "delivery_state": "BATCH03_SOURCE_INTEGRATED",
+        "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      }
     },
     "02": {
       "status": "SILENT",
@@ -60,17 +69,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "5c8eed29f607b5c16bddda0efb9c71ae91560b64",
-      "next_action": "Exact Batch03 delivery consumed; no follow-up dispatch.",
+      "delivery_commit": "6d1eff080a0e7a30704b95ec29df0110fa06d070",
+      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "b8716c1e70bf4be8993661a558ab8c7db1843728",
-      "delivery_state": "BATCH03_SOURCE_INTEGRATED",
-      "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING",
+      "integrated_commit": "53735c0ea30b39d53c31f7ff8437555521e04efa",
+      "delivery_state": "PASS_HARNESS_SOURCE",
+      "acceptance_state": "EXACT_CANDIDATE_WAITING",
       "ordered_source_commits": [
-        "9a1215c6990b2acbc4fcb54af7d3471e9a63a0d1",
-        "b1f862e3a19ae0bdcea88092372b5fd0ad108038",
-        "5c8eed29f607b5c16bddda0efb9c71ae91560b64"
+        "6d1eff080a0e7a30704b95ec29df0110fa06d070"
       ],
       "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
       "batch02_delivery_snapshot": {
@@ -83,7 +90,18 @@
         "delivery_state": "MANDATORY_FLOOR_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "中文工作台与精确测试启动门已集成。"
+      "summary_zh": "双设备隔离启动与观察工具已集成。",
+      "batch03_delivery_snapshot": {
+        "delivery_commit": "5c8eed29f607b5c16bddda0efb9c71ae91560b64",
+        "integrated_commit": "b8716c1e70bf4be8993661a558ab8c7db1843728",
+        "ordered_source_commits": [
+          "9a1215c6990b2acbc4fcb54af7d3471e9a63a0d1",
+          "b1f862e3a19ae0bdcea88092372b5fd0ad108038",
+          "5c8eed29f607b5c16bddda0efb9c71ae91560b64"
+        ],
+        "delivery_state": "BATCH03_SOURCE_INTEGRATED",
+        "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      }
     },
     "03": {
       "status": "SILENT",
@@ -91,17 +109,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "6c6af25d15ce10254e71ca4388452ee51c8c36ec",
-      "next_action": "Exact Batch03 delivery consumed; no follow-up dispatch.",
+      "delivery_commit": "03f7289b81a489fe22745f2032078ed2eacb1c52",
+      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "54cced6c7716f5061b8a83cb1730656e4d33671d",
-      "delivery_state": "BATCH03_SOURCE_INTEGRATED",
-      "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING",
+      "integrated_commit": "c82f37973060cb9215f1362d270f28a8db0b5f12",
+      "delivery_state": "PASS_REHYDRATION_UX_SOURCE",
+      "acceptance_state": "PRODUCER_NOT_WIRED",
       "ordered_source_commits": [
-        "1ad0ed79e986396334821c9196be838c7d365222",
-        "e65c7980ee49e475dff60ced9e9d3edf505eed41",
-        "6c6af25d15ce10254e71ca4388452ee51c8c36ec"
+        "03f7289b81a489fe22745f2032078ed2eacb1c52"
       ],
       "batch01_consumed_source": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
       "batch02_delivery_snapshot": {
@@ -114,7 +130,18 @@
         "delivery_state": "MANDATORY_REASON_UX_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "账户流程与数据恢复预览壳已集成。"
+      "summary_zh": "云恢复与缺失文件／模型界面已集成。",
+      "batch03_delivery_snapshot": {
+        "delivery_commit": "6c6af25d15ce10254e71ca4388452ee51c8c36ec",
+        "integrated_commit": "54cced6c7716f5061b8a83cb1730656e4d33671d",
+        "ordered_source_commits": [
+          "1ad0ed79e986396334821c9196be838c7d365222",
+          "e65c7980ee49e475dff60ced9e9d3edf505eed41",
+          "6c6af25d15ce10254e71ca4388452ee51c8c36ec"
+        ],
+        "delivery_state": "BATCH03_SOURCE_INTEGRATED",
+        "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      }
     },
     "04": {
       "status": "SILENT",
@@ -122,15 +149,16 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "0d064974a145e758cdc8e2c8700eca7a13576157",
-      "next_action": "Only verified continuity evidence consumed this batch; schema source mapping remains historical.",
+      "delivery_commit": "6ef2f094964e995fcb02ba99f555a394ccd361d5",
+      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "34fc9c95e9e51da832ef1bc6aab587ee6a3a041a",
-      "delivery_state": "GATE_A_SCHEMA_BLOCKER_RESOLVED_IN_SOURCE; NATIVE_RLS_PASS_EVIDENCE_RETAINED",
-      "acceptance_state": "REAL_SMTP_SEPARATE_04_TASK",
+      "integrated_commit": "67f541e4eb367f0e05480fd896ad8b42f95143be",
+      "delivery_state": "PASS_PLAN_PROGRESS_RESOURCE_V1",
+      "acceptance_state": "FULL_SERVER_SYNC_PARTIAL",
       "ordered_source_commits": [
-        "0d064974a145e758cdc8e2c8700eca7a13576157"
+        "df4684b86f53f121f26e98fad051c11b6d2342b1",
+        "6ef2f094964e995fcb02ba99f555a394ccd361d5"
       ],
       "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
       "batch02_delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
@@ -140,9 +168,18 @@
         "f9634e24d759eb268c56d45b301046dc503ef714"
       ],
       "schema_recovery_base": "f9634e24d759eb268c56d45b301046dc503ef714",
-      "summary_zh": "只读连续性证据已核验，真实迁移未执行。",
+      "summary_zh": "三类状态同步已通过原生数据库验证。",
       "continuity_receipt": "docs/governance/receipts/20260913-main3-batch03-continuity-evidence.json",
-      "continuity_receipt_sha256": "110aa95f178734e0854b35fc80d5e17b21007b04e6f06cc423d3b828594281ae"
+      "continuity_receipt_sha256": "110aa95f178734e0854b35fc80d5e17b21007b04e6f06cc423d3b828594281ae",
+      "batch03_delivery_snapshot": {
+        "delivery_commit": "0d064974a145e758cdc8e2c8700eca7a13576157",
+        "integrated_commit": "34fc9c95e9e51da832ef1bc6aab587ee6a3a041a",
+        "ordered_source_commits": [
+          "0d064974a145e758cdc8e2c8700eca7a13576157"
+        ],
+        "delivery_state": "GATE_A_SCHEMA_BLOCKER_RESOLVED_IN_SOURCE; NATIVE_RLS_PASS_EVIDENCE_RETAINED",
+        "acceptance_state": "REAL_SMTP_SEPARATE_04_TASK"
+      }
     },
     "B": {
       "status": "SILENT",
@@ -162,7 +199,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
+    "evidence": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -175,14 +212,17 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "BATCH03_8_EXACT_COMMITS_INTEGRATED; 04_EVIDENCE_ONLY",
+    "worker_dispatches": "BATCH04_5_COMMITS_AUDITED_4_DELTAS_INTEGRATED",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Batch03 closeout; retained worker receipts, not live telemetry. Cross-device authority REQUIRED; migration not executed. No new worker dispatch.",
+    "snapshot_scope": "Batch04 source and local fixture closeout; no live migration/cutover or full E2E acceptance. Workers are receipt snapshots, not live telemetry.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
-    "product_acceptance": "PENDING"
+    "product_acceptance": "PENDING",
+    "open_children": 0,
+    "active_children": 0,
+    "pool_state": "NORMAL"
   },
   "batch02_receipt": "docs/governance/receipts/20260913-main3-batch02-integration.json",
   "acceptance_boundaries": {
@@ -198,7 +238,7 @@
     "final_1_5_0_to_1_5_1": "NOT_RUN",
     "live_production_login": "NOT_RUN",
     "production_keycloak_mutation": 0,
-    "native_rls": "BATCH02_04_PASS_RETAINED; A_0036_LEDGER_FOCUSED_NATIVE_PASS",
+    "native_rls": "A_BATCH04_PG_0037_LEDGER_SYNC_BOOTSTRAP_POOL_PASS",
     "formal_main3": "NOT_CREATED",
     "main2": "FROZEN",
     "gate_a_schema_blocker": "RESOLVED_IN_SOURCE",
@@ -210,24 +250,35 @@
     },
     "real_smtp_scope": "Separate independent 04 task; current live results not queried. This source-unblock task sent zero emails. Prior Batch02 SMTP evidence retained separately.",
     "cross_device_data_continuity": "REQUIRED_NOT_ACCEPTED",
-    "server_sync_tier": "REQUIRED_NOT_FULLY_IMPLEMENTED",
+    "server_sync_tier": "PARTIAL",
     "portable_pack_v2": "REQUIRED_NOT_IMPLEMENTED",
     "migration_executed": false,
     "target_storage_stable": false,
     "identity_issuer_stable": false,
     "private_workspace_chooser": "QA_ONLY",
     "register_capability": false,
-    "forgot_password_capability": false
+    "forgot_password_capability": false,
+    "server_sync_vertical_slice": "PLAN_PROGRESS_RESOURCE_METADATA_PASS_NATIVE_PG",
+    "stable_identity_source_fixture": "PASS",
+    "durable_root_source": "PASS",
+    "live_issuer_mapping": "NOT_APPROVED",
+    "current_live_test_candidate_root": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
+    "rehydration_ux": "PASS_SOURCE",
+    "producer_ux_wiring": "POST_BATCH04_WIRING_REQUIRED",
+    "two_device_harness": "READY_FOR_EXACT_CANDIDATE_TEST_SOURCE_ONLY",
+    "two_device_e2e": "NOT_RUN",
+    "test_target_status": "WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "第三批源码已集成，跨设备合同已建立",
-    "current_gate": "旧数据迁移等待稳定身份、持久目录和同步能力",
-    "staging_status": "NOT_REVALIDATED_BY_BATCH03",
+    "current_phase": "第四批源码已集成，双设备验收等待接线与候选",
+    "current_gate": "等待云恢复接线和同版测试环境",
+    "staging_status": "NOT_REVALIDATED_BY_BATCH04",
     "database_revision": "UNKNOWN",
     "current_test_id": null,
     "test_targets": []
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
-  "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json"
+  "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
+  "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json"
 }

@@ -15,45 +15,61 @@ KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
-ALEMBIC_HEAD = 0036_account_import_ledger
-BACKEND_EXPECTED_HEAD = 0036_account_import_ledger
+ALEMBIC_HEAD = 0037_structured_sync
+BACKEND_EXPECTED_HEAD = 0037_structured_sync
 GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
 GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
 BATCH03_SOURCE = INTEGRATED
+BATCH04_SOURCE = INTEGRATED
+FULL_SERVER_SYNC = PARTIAL
+PRODUCER_UX_WIRING = POST_BATCH04_WIRING_REQUIRED
+TEST_TARGET_STATUS = WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 第三批源码已集成，跨设备合同已建立
+CURRENT_PHASE = 第四批源码已集成，双设备验收等待接线与候选
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY`。
-以下保留 Batch02／schema 解阻的历史执行范围；当前 Batch03 见下一节。
-Batch02 起点 `15f6d0dda0968be1b39295577a139a9017615e82`，tree
-`53ed1867beb9afcb3944045cc837b52563d0f3b5`。知识原交付保持原 SHA/tree。
+当前 authority：`MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`。
 
-## Batch03 源码与跨设备连续性
+## Batch04 — 源码与本地组合验收
 
-起点 `d5169081bfcc3510ba2e4a644872294cd70ce3d7`；01 两项、02 三项、03 三项 exact commits
-按 02→03→01 集成；各自直接延续 Batch02 已消费点，无重复／未知提交。04 本阶段零源码，
-仅验证 retained continuity evidence 的 46 个 artifact hash，归一化公开事实，未导入私有清单。
-密码重置以服务端 after-commit 事实为准，完成后清空输入并返回原生登录；正常登录与 mandatory gate 保留。
-账户生命周期和数据恢复仅为未激活的 UI／预览壳；Workbench 从 repo exact snapshot 读取，当前候选仍待构建。
-组合回归、三处冲突处理及 Workbench 日期校验修复见 [Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json)。
+起点 `1ef95a71c5e7422cb3fe1435ccd703193629b591`；审计五项 exact commits，实际集成四份 delta，
+顺序 01→04→03→02。04 的 `df4684b86f53f121f26e98fad051c11b6d2342b1` merge tree 与起点逐字相同，
+只记录 ancestry，不重放 Batch03。无未知 commit。详见 [Batch04 receipt](../governance/receipts/20260913-main3-batch04-integration.json)。
 
-**CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[跨设备／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
-规定服务端结构化状态、本地大文件和重建／重下载三层，以及先恢复云状态、再导入缺失资源的顺序。
-V2 定义 QUICK_EXPORT / FULL_EXPORT、可选模型／大 payload、账号绑定、认证完整性与保密；
-现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制均未被静默改写。
-全量 server sync、V2 执行器、智能分类推荐及新设备产品接线仍待实现／验收。
-04 证据：历史数据存在，尚无数据丢失证明；没有完整事前 baseline，不声称所有记录完整。
-目标仍为 Temp，localhost→public issuer identity continuity 尚未稳定；MIGRATION_EXECUTED=NO。
-私有 84-workspace chooser 仅为 QA，不是最终 UX；产品先分类／推荐，仅真实歧义交给用户。
-Workbench 的旧数据连续性显示 BLOCKED；不把 audit PASS 投影为迁移／跨设备 PASS。
-register/forgot_password 保持 false。Batch03 未进行真实部署、SMTP、旧用户迁移或安装验收；
-此前 Gate A NOT_RUN_AFTER_FIX 保留为本任务未重验的历史门禁，不推断其他任务实时部署状态。
-A 收口 SILENT；无需用户操作、无新员工派发。正式 main3 未创建，main2 冻结。
+- **Stable identity source/fixture = PASS**；signed per-subject mapping、错误 subject／issuer 拒绝；**LIVE MAPPING = NOT_APPROVED**。
+- **Durable root source = PASS**；共同 resolver 拒绝 Temp 作为真实迁移目标；A/B profile 显式 TEST_ONLY。
+  当前已有 live test candidate 仍在 Temp；未改变其根目录，不是最终真实迁移目标。
+- **PLAN / PROGRESS / RESOURCE_METADATA V1 = PASS（本地原生 PostgreSQL）**：durable commit、独立客户端恢复、
+  stable IDs、幂等重试、409 CAS、tombstone、account/workspace/issuer 隔离；head 与 backend expected 均为 0037。
+- **FULL SERVER SYNC = PARTIAL**：现有三类状态不包含完整 review、learner model、messages、learning runs/history adapters。
+- **New-device UX = PASS source**：syncing/success/offline/failure/true-empty、missing file/model；缺资源时计划／进度仍可见。
+- **Producer→UX = POST_BATCH04_WIRING_REQUIRED**：04 无全局 snapshot revision、完整空账号／history 事实、资源 file/model 分类；
+  03 一个 resource key 只能绑定一个 plan，04 同一 resource 可被多个 plan 引用。登录后的 authenticated transport、cache
+  provenance 和观察字段也未接通。不能用默认值虚构恢复事实，详见 [接线与候选边界](../dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md)。
+- **Two-device harness = READY_FOR_EXACT_CANDIDATE_TEST（源码范围）**；实际云恢复 A/B E2E = NOT_RUN。
+  冻结 EXE 已产出并验证模块／资源结构，packaged runtime launch = NOT_RUN；
+  [ACTIVE_TEST_TARGET](../governance/ACTIVE_TEST_TARGET.json) 保持 WAITING_FOR_ARTIFACT，不提供假造 CURRENT 启动入口。
+
+组合结果、逐项 skip、初始失败与复测归一化均在 receipt。原 04 的 17 项迁移 skip 已用本地 PG 补跑；
+原 01 的未配置 PG bootstrap 也补跑。Windows symlink creation privilege 仍不可用，不把 PASS+SKIP 写成 FULL E2E。
+RLS dedicated fixture 区分 administrator provisioning/seed 与非特权 mentorflow_migrator Alembic；生产安全合同未放宽。
+本轮未实际部署 Backend、未进行公开 issuer cutover、真实 SMTP、真实迁移或注册／忘记密码激活。
+Gate A source blocker 仍 RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN_AFTER_FIX（本任务未重验其它办公室）。
+A 收口 SILENT，无新员工派发。main2 冻结，formal main3 未创建。
+
+## Batch03 与跨设备长期 authority（保留）
+
+[Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json) 记录八个新 exact commits 与 04 evidence-only。
+**CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[三层／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
+规定 server structured state、local large resources、rebuild/redownload，以及先恢复云状态再补资源。
+V2 QUICK_EXPORT/FULL_EXPORT、可选模型／大 payload、账号绑定、完整性及保密仍 REQUIRED_NOT_IMPLEMENTED。
+现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制未被静默改写；导入不得覆盖来源，必须幂等、拒绝错误账号、无凭据。
+智能分类／推荐及 full supported-history 仍为后续门禁；84-workspace 私有 chooser 仅 QA，不是最终 UX。
+04 retained 数据存在，无完整事前 baseline，不声称所有旧记录完整。**MIGRATION_EXECUTED = NO**。
 
 ## Gate A schema 0036 专项解阻（历史）
 

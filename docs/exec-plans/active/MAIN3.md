@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY`。
+Current authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -20,7 +20,7 @@ source 映射及分层状态见 [board](../../governance/ACTIVE_BOARD.json) 与
 | Interview + Acceptance | PENDING_MANDATORY | 最终用户验收后提供完整 bundle |
 | Formal main3 promotion | BLOCKED / NOT_AUTHORIZED | B SILENT；后续 exact promotion authority |
 
-## Batch03 与跨设备连续性
+## Batch03 与跨设备连续性（历史执行）
 
 八个新 exact commits 已按 02→03→01 集成，04 为 evidence only；不重放 Batch02。
 新增密码规则／canonical reset completion、未激活 lifecycle/recovery UI、中文只读 Workbench。
@@ -44,6 +44,24 @@ REBUILD_OR_REDOWNLOAD_TIER 可重建／可信重下载。旧设备离线不影�
 Workbench 刷新以上已登记状态，候选仍 WAITING_FOR_ARTIFACT，无可启动 CURRENT 包。
 保留 register/forgot_password=false、main2 冻结和 formal main3 未创建。
 
+## Batch04 — exact source integrated / product closure PARTIAL
+
+Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审计五项、集成四份 delta。
+04 baseline merge 的 tree 与起点一致，不能重复消费。01→04→03→02 已组合；
+[Batch04 receipt](../../governance/receipts/20260913-main3-batch04-integration.json) 绑定完整 parents/tree/paths 与测试证据。
+
+- 01 source/fixture PASS：稳定 account ID、signed per-subject continuity、durable root；live mapping NOT_APPROVED，已有 Temp candidate 不可真实迁移。
+- 04 V1 PLAN/PROGRESS/RESOURCE_METADATA 本地 native PG PASS；head/expected=0037，full sync/history PARTIAL。
+- 03 source UX PASS；04 缺 03 的可信空账号／history、全局 revision、file/model 与多计划资源语义，不能猜测 adapter。
+- 02 harness 源码可接受 exact candidate 验证；CURRENT target 尚未成立，真实 A/B 云恢复 NOT_RUN。
+- 17 dedicated migration skip 已补 native chain；bootstrap/pool RLS 补跑；剩余 Windows symlink privilege 明确计入 skip。
+- [候选／接线缺口](../../dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md) 记录冻结构建、Backend 部署与登记合同边界。
+
+下一阶段需明确 producer public contract 与 authenticated transport，完成 login/bootstrap→sync→UX→main 投影，
+使缺资源不等于 sync failed/empty account；定义 authoritative scope revision、历史范围、缓存可信度、资源分类与多计划投影。
+随后提供同版 Desktop+Backend exact target，解决 Workbench build SHA 与登记 HEAD 的循环约束，执行真实 A/B acceptance。
+这不是派发，也不授权真实迁移／issuer cutover／账号 capability 激活。PORTABLE_PACK_V2 与真实旧数据迁移继续锁定。
+
 ## 0036 schema blocker — source resolved（历史）
 
 只集成 `0d064974a145e758cdc8e2c8700eca7a13576157`，不重放 Batch02 04 commits。
@@ -51,7 +69,7 @@ Workbench 刷新以上已登记状态，候选仍 WAITING_FOR_ARTIFACT，无可�
 本轮 ledger RLS 是新增聚焦执行证据；上表及 Batch02 广域 RLS 仍保留原执行者范围。
 Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。
 [专项 receipt](../../governance/receipts/20260913-gatea-schema-0036-unblock.json) 绑定 exact source 和检查。
-该历史专项仅恢复 0036；real SMTP 属独立 04 任务。本轮 Batch03 不接收其邮件或部署验收。
+该历史专项仅恢复 0036；Batch04 已进至 0037。real SMTP 属独立 04 任务，本轮不接收其邮件或部署验收。
 
 ## Gate A — Native auth production activation
 
