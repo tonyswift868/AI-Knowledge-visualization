@@ -317,7 +317,7 @@
     "test_targets": [
       {
         "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
-        "receipt_sha256": "86524a9f24b2655151061b9fcec4cd11b35cb70a671b350b3fe51755edc63b17",
+        "receipt_sha256": "5966f50d69c899cb93d151a9b1e0dde41e589645b0c8fb6d79dbae94faae5a3a",
         "test_id": "MAIN3_CROSS_DEVICE_AB_V1"
       }
     ]
