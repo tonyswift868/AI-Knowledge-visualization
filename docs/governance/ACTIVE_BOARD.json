@@ -314,7 +314,13 @@
     "staging_status": "NOT_REVALIDATED; OWNED_LOCAL_CANDIDATE_ONLY",
     "database_revision": "0038_rehydration_manifest",
     "current_test_id": "MAIN3_CROSS_DEVICE_AB_V1",
-    "test_targets": []
+    "test_targets": [
+      {
+        "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
+        "receipt_sha256": "86524a9f24b2655151061b9fcec4cd11b35cb70a671b350b3fe51755edc63b17",
+        "test_id": "MAIN3_CROSS_DEVICE_AB_V1"
+      }
+    ]
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
