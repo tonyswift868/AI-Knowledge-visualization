@@ -10,7 +10,7 @@ KNOWLEDGE_REF = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
 CURRENT_INTEGRATION_REF = integration/main3
-CURRENT_INTEGRATION_COMMIT = 2014ed98f3d2d8fedc04538ac921334c6dd1a5a8
+CURRENT_INTEGRATION_COMMIT = 33a47b7274587296439b1f6b4c3adefba01d7330
 COMMIT_KIND = SOURCE_SNAPSHOT; publication HEAD is supplied by ref/immutable receipt.
 ACTIVE_SLOTS = A/01/02/03/04
 SLOT_STATE = A:SILENT; 01:SILENT; 02:SILENT; 03:SILENT; 04:SILENT; B:SILENT
@@ -49,7 +49,7 @@ READ_FIRST:
 - [COMPONENT_MAP.md](../project/COMPONENT_MAP.md)
 
 ```text
-GENERATED_FROM = 2014ed98f3d2d8fedc04538ac921334c6dd1a5a8; AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
-generated_at = 2026-09-13T21:05:47Z
+GENERATED_FROM = 33a47b7274587296439b1f6b4c3adefba01d7330; AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
+generated_at = 2026-09-13T21:07:04Z
 ```
 Timestamp is source commit time; board is a receipt-derived snapshot, not live telemetry.
