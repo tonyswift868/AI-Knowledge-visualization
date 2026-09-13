@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, text
 from app import account_core_mvp
 from app.enterprise.identity.models import MembershipGrant, MembershipStatus, BusinessRole
 from app.enterprise_tenancy.context import require_safe_application_role
+from app.enterprise_tenancy.schema import ENTERPRISE_MIGRATION_REVISION
 from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from app.enterprise_tenancy.workspace_bootstrap import AccountWorkspaceBootstrap, personal_scope
@@ -304,7 +305,7 @@ def test_real_isolated_postgres_first_use_rls_if_provisioned():
     engine = create_engine(dsn)
     with engine.connect() as connection:
         require_safe_application_role(connection)
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0036_account_import_ledger"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ENTERPRISE_MIGRATION_REVISION
     service = AccountWorkspaceBootstrap(engine, issuer=ISSUER)
     a = _principal("bootstrap-test-" + uuid.uuid4().hex, "test-a")
     b = _principal("bootstrap-test-" + uuid.uuid4().hex, "test-b")

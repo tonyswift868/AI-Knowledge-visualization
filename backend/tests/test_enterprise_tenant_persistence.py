@@ -358,6 +358,16 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
     if migration_url.username == APPLICATION_DATABASE_ROLE:
         pytest.fail("MENTORFLOW_RLS_DSN must use the distinct migration owner", pytrace=False)
 
+    # Provision/seed and SET ROLE probes need the fixture administrator, while
+    # the 0029+ migration contract requires the nonprivileged migration owner.
+    owner_dsn = os.environ.get("MENTORFLOW_RLS_MIGRATION_DSN", "").strip()
+    if not owner_dsn:
+        pytest.fail("MENTORFLOW_RLS_MIGRATION_DSN is required for the isolated migration owner", pytrace=False)
+    owner_url = make_url(owner_dsn).set(drivername="postgresql+psycopg")
+    if owner_url.username != "mentorflow_migrator" or (
+        owner_url.host, owner_url.port, owner_url.database
+    ) != (migration_url.host, migration_url.port, migration_url.database):
+        pytest.fail("RLS administrator and migration owner must address the same isolated database", pytrace=False)
     migration_engine = create_engine(migration_url, future=True, pool_pre_ping=True)
     tenant_engine = None
     try:
@@ -404,7 +414,7 @@ def test_real_postgres_rls_is_fail_closed_and_pool_safe(
             )
             environment.setenv(
                 "MENTORFLOW_MIGRATION_DATABASE_URL",
-                migration_url.render_as_string(hide_password=False),
+                owner_url.render_as_string(hide_password=False),
             )
             command.upgrade(config, "head")
 
