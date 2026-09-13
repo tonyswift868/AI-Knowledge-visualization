@@ -80,10 +80,11 @@ PROVIDER_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
 WORKSPACE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
 ASSET_MIGRATION_REVISION = "0034_enterprise_asset_manifests"
 BOOTSTRAP_MIGRATION_REVISION = "0035_account_workspace_bootstrap"
-MIGRATION_REVISION = "0037_structured_sync"
+MIGRATION_REVISION = "0038_rehydration_manifest"
 CANONICAL_TABLES = {
     "structured_sync_entities",
     "structured_sync_requests",
+    "rehydration_manifests",
     "account_import_ledger",
     "organizations",
     "organization_memberships",
@@ -875,7 +876,7 @@ def test_canonical_migrations_form_one_linear_head_through_0036() -> None:
     assert assets.down_revision == WORKSPACE_MIGRATION_REVISION
     bootstrap = ScriptDirectory.from_config(config).get_revision(BOOTSTRAP_MIGRATION_REVISION)
     assert bootstrap.down_revision == ASSET_MIGRATION_REVISION
-    assert head.down_revision == "0036_account_import_ledger"
+    assert head.down_revision == "0037_structured_sync"
     assert ENTERPRISE_MIGRATION_REVISION == MIGRATION_REVISION
     assert "workspace_memberships" in source
     assert "learning_plans" in source
@@ -899,7 +900,7 @@ def test_0035_sqlite_fresh_upgrade_incremental_downgrade_and_full_downgrade(
     database = tmp_path / "enterprise-migration.db"
     config = _alembic_config(database)
     # Preserve historical reversible coverage; recovered 0036 is forward-only.
-    historical_tables = CANONICAL_TABLES - {"account_import_ledger", "structured_sync_entities", "structured_sync_requests"}
+    historical_tables = CANONICAL_TABLES - {"account_import_ledger", "structured_sync_entities", "structured_sync_requests", "rehydration_manifests"}
     command.upgrade(config, BOOTSTRAP_MIGRATION_REVISION)
     assert historical_tables <= _tables(database)
     assert "plans" not in _tables(database)

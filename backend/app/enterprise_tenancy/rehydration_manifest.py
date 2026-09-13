@@ -1,0 +1,30 @@
+"""Bootstrap-owned durable state; no client assertion can initialize it."""
+from sqlalchemy import text
+
+SCOPE_VERSION = 'SUPPORTED_REHYDRATION_SCOPE_V1'
+SUPPORTED_SCOPE = ('plans', 'progress', 'resource_metadata')
+WHERE_SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
+
+
+def initialize_learning_state(connection, scope):
+    # Called only after membership and profile initialization in the same commit.
+    # Existing initialized state/generation is retained on repeated bootstrap.
+    connection.execute(text('''
+        INSERT INTO rehydration_manifests
+          (issuer,subject_id,organization_id,workspace_id,scope_version,initialized,generation)
+        VALUES (:issuer,:subject_id,:organization_id,:workspace_id,:version,true,1)
+        ON CONFLICT (issuer,subject_id,organization_id,workspace_id) DO UPDATE
+          SET initialized=true, generation=rehydration_manifests.generation+1, updated_at=CURRENT_TIMESTAMP
+          WHERE NOT rehydration_manifests.initialized AND rehydration_manifests.scope_version=:version
+    '''), dict(scope, version=SCOPE_VERSION))
+
+
+def advance_learning_generation(connection, scope):
+    connection.execute(text('''UPDATE rehydration_manifests
+        SET generation=generation+1, updated_at=CURRENT_TIMESTAMP
+        WHERE ''' + WHERE_SCOPE + ' AND initialized AND scope_version=:version'), dict(scope, version=SCOPE_VERSION))
+
+
+def learning_state_initialized(connection, scope):
+    return bool(connection.execute(text('SELECT initialized FROM rehydration_manifests WHERE '+WHERE_SCOPE+
+        ' AND scope_version=:version'), dict(scope, version=SCOPE_VERSION)).scalar_one_or_none())

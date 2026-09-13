@@ -36,7 +36,7 @@ class StructuredSyncClient:
         state = response.json()
         if state.get('schema') != 'mentorflow.structured-sync.v1' or state.get('complete') is not True:
             raise ValueError('Incomplete or unsupported server snapshot')
-        if state.get('contract_version') != 2 or not re.fullmatch(
+        if state.get('contract_version') not in (2, 3) or not re.fullmatch(
                 r'pg-snapshot:\d+:\d+:(?:\d+(?:,\d+)*)?', state.get('snapshot_revision', '')):
             raise ValueError('Authoritative snapshot observation required')
         result = {'plans':[], 'progress':[], 'resources':[], 'tombstones':[]}

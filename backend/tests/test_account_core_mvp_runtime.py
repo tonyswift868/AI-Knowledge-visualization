@@ -307,7 +307,7 @@ def test_account_core_schema_verify_never_invokes_worker_schema(
     assert runtime._verify_account_core() == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt["status"] == "PASS"
-    assert receipt["repository_head"] == "0037_structured_sync"
+    assert receipt["repository_head"] == "0038_rehydration_manifest"
     assert receipt["worker_schema"] == "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP"
     assert calls[0][-2:] == ["current", "--check-heads"]
     assert disposed == [True]

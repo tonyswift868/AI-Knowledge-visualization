@@ -64,7 +64,8 @@ def main():
         config = Config(str(ROOT/'backend/alembic.ini'))
         config.set_main_option('script_location', str(ROOT/'backend/alembic'))
         config.attributes['configure_logger'] = False
-        assert ScriptDirectory.from_config(config).get_heads() == ['0037_structured_sync']
+        head='0038_rehydration_manifest'
+        assert ScriptDirectory.from_config(config).get_heads() == [head]
         os.environ['MENTORFLOW_DEPLOYMENT_MODE'] = 'ENTERPRISE_SERVER'
         def database(name):
             with lab.admin() as c:
@@ -72,32 +73,32 @@ def main():
             os.environ['MENTORFLOW_DATABASE_URL'] = lab.url('mentorflow_app', name).update_query_dict(
                 {'connect_timeout': '3'}).render_as_string(hide_password=False)
             os.environ['MENTORFLOW_MIGRATION_DATABASE_URL'] = lab.url('mentorflow_migrator', name).render_as_string(hide_password=False)
-        for name, start in [('fresh', None), ('from0036', '0036_account_import_ledger')]:
+        for name, start in [('fresh', None), ('from0037', '0037_structured_sync')]:
             database(name)
             if start: command.upgrade(config, start)
             command.upgrade(config, 'head')
             engine = create_enterprise_postgres_engine(os.environ['MENTORFLOW_DATABASE_URL'])
             orm.engine = engine
             orm.verify_enterprise_runtime_schema()
-            report['checks']['FRESH_TO_0037' if start is None else '0036_TO_0037'] = 'PASS'
+            report['checks']['FRESH_TO_HEAD' if start is None else '0037_TO_HEAD'] = 'PASS'
             engine.dispose()
         # Startup/upgrade at head must work even with both roles forced read-only.
         with lab.admin() as c:
             for role in ('mentorflow_app', 'mentorflow_migrator'):
-                c.execute(sql.SQL('ALTER ROLE {} IN DATABASE from0036 SET default_transaction_read_only=on').format(sql.Identifier(role)))
+                c.execute(sql.SQL('ALTER ROLE {} IN DATABASE from0037 SET default_transaction_read_only=on').format(sql.Identifier(role)))
         command.upgrade(config, 'head')
         orm.verify_enterprise_runtime_schema()
-        report['checks']['ALREADY_0037'] = 'PASS_READ_ONLY'
+        report['checks']['ALREADY_CURRENT'] = 'PASS_READ_ONLY'
         engine.dispose()
         with lab.admin() as c:
             for role in ('mentorflow_app', 'mentorflow_migrator'):
-                c.execute(sql.SQL('ALTER ROLE {} IN DATABASE from0036 RESET default_transaction_read_only').format(sql.Identifier(role)))
-        admin = create_engine(lab.url('postgres', 'from0036'), hide_parameters=True)
+                c.execute(sql.SQL('ALTER ROLE {} IN DATABASE from0037 RESET default_transaction_read_only').format(sql.Identifier(role)))
+        admin = create_engine(lab.url('postgres', 'from0037'), hide_parameters=True)
         with admin.begin() as c: c.execute(text("UPDATE alembic_version SET version_num='9999_unknown'"))
         try: orm.verify_enterprise_runtime_schema()
         except orm.DatabaseRuntimeConfigurationError: report['checks']['FUTURE_REJECTED'] = 'PASS'
         else: raise AssertionError('FUTURE_NOT_REJECTED')
-        with admin.begin() as c: c.execute(text("UPDATE alembic_version SET version_num='0037_structured_sync'"))
+        with admin.begin() as c: c.execute(text('UPDATE alembic_version SET version_num=:head'),{'head':head})
         drift = [
             'ALTER TABLE structured_sync_entities DROP COLUMN revision',
             'ALTER TABLE structured_sync_requests DROP COLUMN response',
@@ -105,6 +106,12 @@ def main():
             'ALTER TABLE structured_sync_entities NO FORCE ROW LEVEL SECURITY',
             'ALTER POLICY tenant_isolation_structured_sync_entities ON structured_sync_entities USING (true)',
             'GRANT DELETE ON structured_sync_requests TO mentorflow_app',
+            'ALTER TABLE rehydration_manifests DROP COLUMN initialized',
+            'ALTER TABLE rehydration_manifests DROP COLUMN scope_version',
+            'ALTER TABLE rehydration_manifests DROP CONSTRAINT ck_rehydration_generation',
+            'ALTER TABLE rehydration_manifests NO FORCE ROW LEVEL SECURITY',
+            'ALTER POLICY tenant_isolation_rehydration_manifests ON rehydration_manifests WITH CHECK (true)',
+            'GRANT DELETE ON rehydration_manifests TO mentorflow_app',
         ]
         for statement in drift:
             with admin.connect() as c:
@@ -121,13 +128,15 @@ def main():
         # Reuse all real PG protocol tests against the full migrated schema.
         import test_vertical_slice
         import test_producer_contract
+        import test_empty_authority
         def setup(cls):
-            cls.admin = create_engine(lab.url('postgres', 'from0036'), hide_parameters=True)
+            cls.admin = create_engine(lab.url('postgres', 'from0037'), hide_parameters=True)
             cls.url = os.environ['MENTORFLOW_DATABASE_URL']
         test_vertical_slice.SyncTests.setUpClass = classmethod(setup)
         test_producer_contract.ProducerTests.setUpClass = classmethod(setup)
+        test_empty_authority.EmptyAuthorityTests.setUpClass = classmethod(setup)
         suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromTestCase(t) for t in
-            (test_vertical_slice.SyncTests, test_producer_contract.ProducerTests)])
+            (test_vertical_slice.SyncTests, test_producer_contract.ProducerTests, test_empty_authority.EmptyAuthorityTests)])
         with (lab.home/'private-suite.log').open('w') as log:
             result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
         report['protocol_tests'] = dict(run=result.testsRun, failures=len(result.failures), errors=len(result.errors))
@@ -197,7 +206,11 @@ def main():
             c=StructuredSyncClient(a)
             report['phase']='EMPTY_SNAPSHOT'
             empty=c.rehydrate()
-            assert empty['learning_state']['status']=='PARTIAL_UNSUPPORTED'
+            assert empty['learning_state']['status']=='TRUE_EMPTY_SUPPORTED_SCOPE'
+            report['empty_observations']={'new_account':empty['observation']}
+            partial=a.get(c.PREFIX+'/snapshot',params={'required_scope':'plans,review'}).json()
+            assert partial['learning_state']['status']=='PARTIAL_UNSUPPORTED'
+            report['empty_observations']['partial_unsupported']=partial['observation']
             report['phase']='RESOURCE_WRITE'
             c.write('resource','shared-resource',request_id='r',expected_revision=0,payload=dict(
                 filename='fixture.bin',media_type='application/octet-stream',sha256='a'*64,size_bytes=10,product_classification='MODEL'))
@@ -219,6 +232,14 @@ def main():
             assert state['observation']['supported_entity_types']==['plans','progress','resources']
             (args.scratch/'observation.json').write_text(json.dumps(state['observation'],indent=2))
             report['snapshot_result']=state
+            report['empty_observations']['nonempty']=state['observation']
+            for kind,id in [('progress','progress-1'),('plan','plan-1'),('plan','plan-2'),('resource','shared-resource')]:
+                StructuredSyncClient(b).delete(kind,id,request_id='delete-'+id,expected_revision=1)
+            empty_after=StructuredSyncClient(b).rehydrate()
+            assert empty_after['learning_state']['status']=='TRUE_EMPTY_SUPPORTED_SCOPE'
+            assert len(empty_after['tombstones'])==4
+            report['empty_observations']['delete_to_empty']=empty_after['observation']
+            (args.scratch/'empty-observations.json').write_text(json.dumps(report['empty_observations'],indent=2))
         report.update(endpoint=endpoint,backend_runtime_pass=True,independent_client_rehydrate=True,
             auth_evidence='REAL_RS256_VALIDATION_AND_DB_BOOTSTRAP; EPHEMERAL_LOOPBACK_JWKS_ISSUER; NO_NATIVE_LOGIN_CLAIM')
         # A real database outage must not produce an empty or partially successful snapshot.

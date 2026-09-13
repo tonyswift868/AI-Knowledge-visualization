@@ -17,14 +17,14 @@ class ProducerTests(unittest.TestCase):
     def test_empty_scope_never_claims_empty_account_or_zero_history(self):
         c, _, _ = self.device()
         state = c.rehydrate()
-        self.assertEqual(state['learning_state']['status'], 'PARTIAL_UNSUPPORTED')
+        self.assertEqual(state['learning_state']['status'], 'NOT_INITIALIZED')
         self.assertFalse(state['learning_state']['known_empty'])
         self.assertFalse(state['learning_state']['supported_scope_initialized'])
-        self.assertTrue(state['learning_state']['supported_scope_empty'])
+        self.assertIsNone(state['learning_state']['supported_scope_empty'])
         self.assertEqual(state['learning_state']['account_initialized'], 'UNKNOWN')
         self.assertIsNone(state['observation']['unsupported_counts']['messages'])
         self.seed(c)
-        self.assertTrue(c.rehydrate()['learning_state']['supported_scope_initialized'])
+        self.assertFalse(c.rehydrate()['learning_state']['supported_scope_initialized'])
 
     def test_shared_classified_resources_and_progress_provenance(self):
         c, t, _ = self.device()

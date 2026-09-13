@@ -1,6 +1,6 @@
 """HTTP adapter consuming the existing identity middleware's verified scope."""
 from typing import Literal
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Query
 from fastapi.responses import JSONResponse
 from app.enterprise.identity.oidc import IdentityError
 from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
@@ -36,5 +36,7 @@ def delete(request: Request, kind: Literal['plan','progress','resource'], entity
     return call(request, 'write', kind, entity_id, body, deleting=True)
 
 @router.get('/snapshot')
-def snapshot(request: Request):
-    return call(request, 'snapshot')
+def snapshot(request: Request, required_scope: str | None = Query(default=None, max_length=512),
+             scope_version: str | None = Query(default=None, max_length=64)):
+    requested = None if required_scope is None else required_scope.split(',')
+    return call(request, 'snapshot', requested_scope=requested, scope_version=scope_version)

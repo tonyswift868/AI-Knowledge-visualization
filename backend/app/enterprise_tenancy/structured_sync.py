@@ -142,14 +142,16 @@ class StructuredSyncService:
                 else:
                     c.execute(insert(entities).values(**scope, **result))
                 c.execute(insert(requests).values(**scope, request_id=body.request_id, digest=fingerprint, response=result))
+                from .rehydration_manifest import advance_learning_generation
+                advance_learning_generation(c, scope)
         # Context exits (and COMMIT succeeds) before any HTTP success is possible.
         return result
 
-    def snapshot(self, actor, tenant):
+    def snapshot(self, actor, tenant, *, requested_scope=None, scope_version=None):
         from .sync_snapshot import observe
         context = TenantTransactionContext(tenant=tenant, actor=actor)
         scope = scope_of(context)
         with self.transactions.transaction(context) as tx:
             self._bind(tx, scope)
-            result = observe(tx.connection, scope)
+            result = observe(tx.connection, scope, requested_scope=requested_scope, scope_version=scope_version)
         return result

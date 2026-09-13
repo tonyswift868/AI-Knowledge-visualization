@@ -45,7 +45,8 @@ def test_authoritative_source_and_complete_linear_graph():
     assert hashlib.sha256(source.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == AUTHORITATIVE_SHA256
     scripts = ScriptDirectory.from_config(config())
     assert scripts.get_heads() == [ENTERPRISE_MIGRATION_REVISION]
-    assert scripts.get_revision(ENTERPRISE_MIGRATION_REVISION).down_revision == HEAD
+    assert scripts.get_revision(ENTERPRISE_MIGRATION_REVISION).down_revision == "0037_structured_sync"
+    assert scripts.get_revision("0037_structured_sync").down_revision == HEAD
     assert scripts.get_revision(HEAD).down_revision == PREVIOUS
     revisions = list(scripts.walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from app.enterprise.contracts_v1 import ActorKind
 from app.enterprise.identity.models import AuthenticatedPrincipal
 from .models import EnterprisePersistenceRequestError
+from .rehydration_manifest import initialize_learning_state, learning_state_initialized
 
 
 DEFAULT_WORKSPACE_TITLE = "我的学习空间"
@@ -101,18 +102,23 @@ class AccountWorkspaceBootstrap:
 
     def _result(self, connection, principal, rows):
         workspaces = []
+        learning_required = False
         for row in rows:
             self._context(connection, principal, row["organization_id"], row["id"])
             initialized = connection.execute(text("""
                 SELECT workspace_id FROM workspace_profiles
                 WHERE workspace_id = :workspace AND organization_id = :organization
             """), {"workspace": row["id"], "organization": row["organization_id"]}).scalar_one_or_none()
+            if connection.dialect.name == 'postgresql':
+                learning_required |= not learning_state_initialized(connection, dict(
+                    issuer=principal.issuer, subject_id=principal.subject,
+                    organization_id=row['organization_id'], workspace_id=row['id']))
             workspaces.append(dict(id=row["id"], organization_id=row["organization_id"],
                                    title=row["name"], status=row["status"],
                                    initialization_status="READY" if initialized else "PROFILE_REQUIRED"))
         return dict(workspaces=workspaces,
                     default_workspace_id=workspaces[0]["id"] if workspaces else None,
-                    initialization_required=not workspaces or any(
+                    initialization_required=learning_required or not workspaces or any(
                         item["initialization_status"] != "READY" for item in workspaces))
 
     def discover(self, principal: AuthenticatedPrincipal):
@@ -159,4 +165,8 @@ class AccountWorkspaceBootstrap:
             for row in rows:
                 self._context(connection, principal, row["organization_id"], row["id"])
                 ensure_workspace_profile(connection, row["organization_id"], row["id"])
+                if connection.dialect.name == 'postgresql':
+                    connection.execute(text('SET LOCAL synchronous_commit = on'))
+                    initialize_learning_state(connection, dict(issuer=principal.issuer,
+                        subject_id=principal.subject, organization_id=row['organization_id'], workspace_id=row['id']))
             return self._result(connection, principal, rows)

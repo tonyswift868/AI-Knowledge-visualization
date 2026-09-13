@@ -1,7 +1,7 @@
 """Disposable PostgreSQL + independent device transports, no real user data.
 
-Run with MF_SYNC_TEST_ADMIN_URL and MF_SYNC_TEST_APP_URL pointing to an EMPTY,
-dedicated test database. Auth fixtures supply sessions; the real canonical
+Run with MF_SYNC_TEST_ADMIN_URL and MF_SYNC_TEST_APP_URL pointing to an owned,
+fully migrated dedicated test database. Auth fixtures supply sessions; the real canonical
 enterprise_request_context validates every membership/scope. No real login claimed.
 """
 import concurrent.futures
@@ -42,15 +42,9 @@ class SyncTests(unittest.TestCase):
         cls.admin = create_engine(os.environ['MF_SYNC_TEST_ADMIN_URL'])
         cls.url = os.environ['MF_SYNC_TEST_APP_URL']
         with cls.admin.begin() as c:
-            assert c.execute(text("SELECT to_regclass('structured_sync_entities')")).scalar() is None, 'EMPTY_FIXTURE_REQUIRED'
-            role=c.execute(text("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname='mentorflow_app'")).first()
-            if role is None:
-                c.execute(text('CREATE ROLE mentorflow_app LOGIN NOSUPERUSER NOBYPASSRLS'))
-            else:
-                assert tuple(role)==(False,False), 'UNSAFE_FIXTURE_APP_ROLE'
-            spec = importlib.util.spec_from_file_location('sync_migration', ROOT/'backend/alembic/versions/0037_structured_sync.py')
-            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-            with Operations.context(MigrationContext.configure(c)): module.upgrade()
+            assert c.execute(text("SELECT to_regclass('rehydration_manifests')")).scalar() is not None, 'MIGRATED_OWNED_FIXTURE_REQUIRED'
+            role=c.execute(text("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname='mentorflow_app'")).one()
+            assert tuple(role)==(False,False), 'UNSAFE_FIXTURE_APP_ROLE'
 
     @classmethod
     def tearDownClass(cls):
