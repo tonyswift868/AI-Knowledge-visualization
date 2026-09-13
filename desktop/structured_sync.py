@@ -36,14 +36,28 @@ class StructuredSyncClient:
         state = response.json()
         if state.get('schema') != 'mentorflow.structured-sync.v1' or state.get('complete') is not True:
             raise ValueError('Incomplete or unsupported server snapshot')
+        if state.get('contract_version') != 2 or not re.fullmatch(
+                r'pg-snapshot:\d+:\d+:(?:\d+(?:,\d+)*)?', state.get('snapshot_revision', '')):
+            raise ValueError('Authoritative snapshot observation required')
         result = {'plans':[], 'progress':[], 'resources':[], 'tombstones':[]}
+        resource_projection = {r['resource_id']: r for r in state['resources']}
         for entity in state['entities']:
             if entity['deleted']:
                 result['tombstones'].append(entity)
                 continue
             if entity['kind'] == 'resource':
-                entity = dict(entity, device_availability='AVAILABLE_ON_THIS_DEVICE' if
+                projection = resource_projection[entity['entity_id']]
+                entity = dict(entity, product_classification=projection['product_classification'],
+                              plan_ids=projection['plan_ids'], device_availability='AVAILABLE_ON_THIS_DEVICE' if
                               self.resource_is_present(entity) else 'MISSING_ON_THIS_DEVICE')
             result[{'plan':'plans','progress':'progress','resource':'resources'}[entity['kind']]].append(entity)
         # Rebuild from the authoritative snapshot, never merge omitted cached objects.
+        result['snapshot_revision'] = state['snapshot_revision']
+        result['snapshot_scope'] = state['snapshot_scope']
+        result['learning_state'] = state['learning_state']
+        result['progress_provenance'] = state['progress_provenance']
+        result['observation'] = dict(state['observation'],
+            resource_missing_state='DEVICE_LOCAL_RESOLVER',
+            missing_resources=[r['entity_id'] for r in result['resources']
+                               if r['device_availability'] == 'MISSING_ON_THIS_DEVICE'])
         return result

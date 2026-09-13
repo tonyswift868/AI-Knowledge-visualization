@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (MetaData, Table, Column, String, Integer, Boolean, JSON,
@@ -45,6 +46,7 @@ class Progress(StrictModel):
     completed_tasks: int = Field(ge=0)
 
 class Resource(StrictModel):
+    product_classification: Literal["USER_FILE", "MODEL", "OTHER", "UNKNOWN"] = "UNKNOWN"
     filename: str = Field(min_length=1, max_length=300, pattern=r'^[^/\\\x00-\x1f]+$')
     media_type: str = Field(min_length=1, max_length=120, pattern=r'^[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+$')
     sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
@@ -97,6 +99,9 @@ class StructuredSyncService:
                 payload = {'plan': Plan, 'progress': Progress, 'resource': Resource}[kind].model_validate(body.payload).model_dump()
             except ValidationError as exc:
                 raise error('SYNC_PAYLOAD_INVALID', 422) from exc
+            # Preserve pre-contract request fingerprints when the optional field is absent.
+            if kind == 'resource' and 'product_classification' not in body.payload:
+                payload.pop('product_classification', None)
             if kind == 'plan' and (len(set(payload['resource_ids'])) != len(payload['resource_ids']) or
                     any(not re.fullmatch(ID_PATTERN, r) for r in payload['resource_ids'])):
                 raise error('SYNC_RESOURCE_IDS_INVALID', 422)
@@ -141,13 +146,10 @@ class StructuredSyncService:
         return result
 
     def snapshot(self, actor, tenant):
+        from .sync_snapshot import observe
         context = TenantTransactionContext(tenant=tenant, actor=actor)
         scope = scope_of(context)
         with self.transactions.transaction(context) as tx:
             self._bind(tx, scope)
-            rows = tx.connection.execute(select(entities).where(predicate(entities, scope)).order_by(
-                entities.c.kind, entities.c.entity_id).limit(1001)).mappings().all()
-            if len(rows) > 1000:
-                raise error('SYNC_SNAPSHOT_LIMIT_EXCEEDED', 413)
-            result = [{n: row[n] for n in ('kind', 'entity_id', 'revision', 'deleted', 'payload')} for row in rows]
-        return dict(schema='mentorflow.structured-sync.v1', complete=True, entities=result)
+            result = observe(tx.connection, scope)
+        return result

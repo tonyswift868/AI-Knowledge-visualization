@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import re
 import secrets
+import json
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -172,6 +173,12 @@ async def account_core_identity_boundary(request: Request, call_next):
         response = await call_next(request)
     except (IdentityError, IdentityContextError) as exc:
         response = identity_error_response(request, exc)
+        if request.url.path.startswith('/api/enterprise/sync/'):
+            payload = json.loads(response.body)
+            payload['sync_status'] = 'NOT_AUTHORIZED' if response.status_code in (401, 403) else 'QUERY_FAILED'
+            response = JSONResponse(payload, status_code=response.status_code, headers=dict(response.headers))
+            # JSON grew; let the new response compute its own Content-Length.
+            response.headers['content-length'] = str(len(response.body))
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-MentorFlow-Runtime-Profile"] = RUNTIME_PROFILE
     if request.url.path in ACCOUNT_WORKSPACE_PATHS:

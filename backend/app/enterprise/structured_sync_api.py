@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from app.enterprise.identity.oidc import IdentityError
 from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
 from app.enterprise_tenancy.structured_sync import Write, Delete
+from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix='/api/enterprise/sync/v1')
 
@@ -19,7 +20,11 @@ def call(request, method, *args, **kwargs):
     try:
         result = getattr(service, method)(actor, tenant, *args, **kwargs)
     except EnterprisePersistenceRequestError as exc:
-        return JSONResponse({'code': exc.code}, status_code=exc.status, headers={'Cache-Control': 'no-store'})
+        return JSONResponse({'code': exc.code, 'sync_status': 'QUERY_FAILED'}, status_code=exc.status, headers={'Cache-Control': 'no-store'})
+    except SQLAlchemyError:
+        # Do not serialize SQL, connection strings, bound values or partial state.
+        return JSONResponse({'code': 'SYNC_QUERY_FAILED', 'sync_status': 'QUERY_FAILED'},
+                            status_code=503, headers={'Cache-Control': 'no-store'})
     return JSONResponse(result, headers={'Cache-Control': 'no-store'})
 
 @router.put('/entities/{kind}/{entity_id}')

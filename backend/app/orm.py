@@ -212,6 +212,7 @@ def verify_enterprise_runtime_schema() -> None:
 
     from .enterprise_tenancy.context import require_safe_application_role
     from .enterprise_tenancy.import_ledger_schema import require_account_import_ledger_schema
+    from .enterprise_tenancy.sync_schema import require_structured_sync_schema
     from .enterprise_tenancy.schema import (
         ENTERPRISE_MIGRATION_REVISION,
         detect_enterprise_schema_version,
@@ -223,6 +224,7 @@ def verify_enterprise_runtime_schema() -> None:
             revision = detect_enterprise_schema_version(connection)
             if revision == ENTERPRISE_MIGRATION_REVISION:
                 require_account_import_ledger_schema(connection)
+                require_structured_sync_schema(connection)
     except Exception as exc:
         raise DatabaseRuntimeConfigurationError(
             "enterprise PostgreSQL role or schema readiness check failed"
