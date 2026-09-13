@@ -19,16 +19,43 @@ ALEMBIC_HEAD = 0036_account_import_ledger
 BACKEND_EXPECTED_HEAD = 0036_account_import_ledger
 GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
 GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
+BATCH03_SOURCE = INTEGRATED
+CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
+PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
+MIGRATION_EXECUTED = NO
+CURRENT_PHASE = 第三批源码已集成，跨设备合同已建立
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02`。
-以下 Batch02 记录保留历史执行范围；本轮专项解阻见下一节。
+当前 authority：`MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY`。
+以下保留 Batch02／schema 解阻的历史执行范围；当前 Batch03 见下一节。
 Batch02 起点 `15f6d0dda0968be1b39295577a139a9017615e82`，tree
 `53ed1867beb9afcb3944045cc837b52563d0f3b5`。知识原交付保持原 SHA/tree。
 
-## Gate A schema 0036 专项解阻
+## Batch03 源码与跨设备连续性
+
+起点 `d5169081bfcc3510ba2e4a644872294cd70ce3d7`；01 两项、02 三项、03 三项 exact commits
+按 02→03→01 集成；各自直接延续 Batch02 已消费点，无重复／未知提交。04 本阶段零源码，
+仅验证 retained continuity evidence 的 46 个 artifact hash，归一化公开事实，未导入私有清单。
+密码重置以服务端 after-commit 事实为准，完成后清空输入并返回原生登录；正常登录与 mandatory gate 保留。
+账户生命周期和数据恢复仅为未激活的 UI／预览壳；Workbench 从 repo exact snapshot 读取，当前候选仍待构建。
+组合回归、三处冲突处理及 Workbench 日期校验修复见 [Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json)。
+
+**CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[跨设备／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
+规定服务端结构化状态、本地大文件和重建／重下载三层，以及先恢复云状态、再导入缺失资源的顺序。
+V2 定义 QUICK_EXPORT / FULL_EXPORT、可选模型／大 payload、账号绑定、认证完整性与保密；
+现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制均未被静默改写。
+全量 server sync、V2 执行器、智能分类推荐及新设备产品接线仍待实现／验收。
+04 证据：历史数据存在，尚无数据丢失证明；没有完整事前 baseline，不声称所有记录完整。
+目标仍为 Temp，localhost→public issuer identity continuity 尚未稳定；MIGRATION_EXECUTED=NO。
+私有 84-workspace chooser 仅为 QA，不是最终 UX；产品先分类／推荐，仅真实歧义交给用户。
+Workbench 的旧数据连续性显示 BLOCKED；不把 audit PASS 投影为迁移／跨设备 PASS。
+register/forgot_password 保持 false。Batch03 未进行真实部署、SMTP、旧用户迁移或安装验收；
+此前 Gate A NOT_RUN_AFTER_FIX 保留为本任务未重验的历史门禁，不推断其他任务实时部署状态。
+A 收口 SILENT；无需用户操作、无新员工派发。正式 main3 未创建，main2 冻结。
+
+## Gate A schema 0036 专项解阻（历史）
 
 原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact
 `0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
@@ -41,7 +68,7 @@ default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/
 **Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。**
 此前部署遇到 schema source 缺失是用户提供的背景；本轮没有重新部署或操作 staging DB，不能写 Gate A PASS。
 REAL SMTP 继续由独立 04 任务推进，本轮不轮询、执行或验收；旧 SMTP 计数只描述 Batch02。
-A 收口后 SILENT；其它员工状态保留交付快照含义，不代表其独立任务的实时状态。无 Batch03/其它交付。
+该 schema 专项当时仅消费 0036；其它员工状态为交付快照，不代表独立任务实时状态。
 
 ## Batch02 控制面与 exact integration（历史）
 

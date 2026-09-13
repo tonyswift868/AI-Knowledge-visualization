@@ -21,6 +21,9 @@ If the web session lacks repository access, provide the exact ref/commit and
 grant read access or paste this bounded generated entry. Do not copy all chat
 history or private configuration. Publication does not itself grant account access.
 
+当前跨设备长期 authority：[Cross-device / Portable Pack V2](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)。
+要求已接受不等于同步／导入已实现；迁移保持未执行。
+
 ## Truth layers and conflict priority
 
 | Layer | Authority and use |

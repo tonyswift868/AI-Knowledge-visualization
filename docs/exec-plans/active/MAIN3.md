@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02`。
+Current authority: `MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -20,14 +20,38 @@ source 映射及分层状态见 [board](../../governance/ACTIVE_BOARD.json) 与
 | Interview + Acceptance | PENDING_MANDATORY | 最终用户验收后提供完整 bundle |
 | Formal main3 promotion | BLOCKED / NOT_AUTHORIZED | B SILENT；后续 exact promotion authority |
 
-## 0036 schema blocker — source resolved
+## Batch03 与跨设备连续性
+
+八个新 exact commits 已按 02→03→01 集成，04 为 evidence only；不重放 Batch02。
+新增密码规则／canonical reset completion、未激活 lifecycle/recovery UI、中文只读 Workbench。
+冲突保持原生正常登录，重置成功只返回登录；source/native 回归与 live/product 验收分开。
+[Batch03 receipt](../../governance/receipts/20260913-main3-batch03-integration.json) 记录 exact source 映射和组合验证。
+
+[Cross-device authority](../../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md) 为本代必需合同：
+SERVER_SYNC_TIER 持久保存结构化用户状态；LOCAL_PORTABLE_TIER 携带大文件；
+REBUILD_OR_REDOWNLOAD_TIER 可重建／可信重下载。旧设备离线不影响新设备云状态恢复。
+登录后立即可见支持的计划／进度／历史；缺失资源标记 MISSING_ON_THIS_DEVICE，
+用户导入经过账号／workspace／hash 校验的大包，stable resource ids 重连云状态。
+
+- DATA_TARGET_STABILITY：BLOCKED；Temp 根不是最终目标，issuer namespace／subject 映射未稳定。
+- SERVER_SYNC_REHYDRATION：待派发；逐实体存储／同步／恢复矩阵及旧设备离线测试。
+- PORTABLE_PACK_V2：待派发；QUICK/FULL、可选模型、加密完整性与账号绑定、非覆盖幂等恢复。
+- DATA_CLASSIFICATION_RECOMMENDATION：待派发；自动分类／推荐，只将真实歧义交用户。
+- OLD_DATA_CONTINUITY：BLOCKED；以上门禁和双设备验收通过后，仍需独立真实迁移授权。
+
+04 的 46 个 retained artifact hash 已核验；只接收归一化事实。84-space 私有选择器仅为 QA，
+03 wizard 仍是无 IO／执行器的预览壳。MIGRATION_EXECUTED=NO；当前任务不要求用户作迁移选择。
+Workbench 刷新以上已登记状态，候选仍 WAITING_FOR_ARTIFACT，无可启动 CURRENT 包。
+保留 register/forgot_password=false、main2 冻结和 formal main3 未创建。
+
+## 0036 schema blocker — source resolved（历史）
 
 只集成 `0d064974a145e758cdc8e2c8700eca7a13576157`，不重放 Batch02 04 commits。
 0036 authoritative migration 与 expected head 已恢复；A 本地 PostgreSQL 18/18 加聚焦回归通过。
 本轮 ledger RLS 是新增聚焦执行证据；上表及 Batch02 广域 RLS 仍保留原执行者范围。
 Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。
 [专项 receipt](../../governance/receipts/20260913-gatea-schema-0036-unblock.json) 绑定 exact source 和检查。
-原生身份与更新长期 authority 保持；real SMTP 由独立 04 任务推进，无 Batch03 或其它 source intake。
+该历史专项仅恢复 0036；real SMTP 属独立 04 任务。本轮 Batch03 不接收其邮件或部署验收。
 
 ## Gate A — Native auth production activation
 
@@ -77,5 +101,5 @@ candidate hashes；source、synthetic、本地 native、独立 retained、生产
 
 状态由 [CURRENT_STATE](../../project/CURRENT_STATE.md)、[queue](../../governance/DEPENDENCY_QUEUE.json)
 和 [workflow](../../governance/DEVELOPMENT_WORKFLOW.md) 管理。
-本轮发布权限仅为聚焦和知识门禁通过后的 origin/integration/main3 普通 push；执行范围为隔离 PostgreSQL schema fixture。
+本轮发布权限为组合回归和知识门禁通过后的 origin/integration/main3 普通 push；原生测试仅隔离 fixture。
 LIVE_PRODUCTION_LOGIN=NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；无真实 SMTP/安装、manual Actions、tags、force push、main2 mutation 或 formal main3。

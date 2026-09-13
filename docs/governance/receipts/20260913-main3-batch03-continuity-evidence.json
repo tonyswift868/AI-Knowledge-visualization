@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "authority": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
+  "owner": "04",
+  "status": "VERIFIED_RETAINED_READONLY_EVIDENCE",
+  "source_commit": "0d064974a145e758cdc8e2c8700eca7a13576157",
+  "product_source_commits_consumed": 0,
+  "observed_at": "2026-09-13T00:16:29.611959+00:00",
+  "manifest_verification": [
+    {
+      "dispatch": "MF-MAIN3-04-DATA-CONTINUITY-AUDIT-20260913-11",
+      "manifest_sha256": "cfe90490339015973f3221ea2a6a9c1ca3f08183fb123d80d7286265dba99ea9",
+      "files_verified": 24
+    },
+    {
+      "dispatch": "MF-MAIN3-04-DATA-PROVENANCE-MIGRATION-PREVIEW-20260913-12",
+      "manifest_sha256": "8b12ff67725e186ff9d7f691c1986c9ec9d29921541526a61a4713b88e7aff05",
+      "files_verified": 22
+    }
+  ],
+  "scope": "A verified retained artifact hashes, cross-receipt invariants and repository contracts; did not reopen live databases, raw user records or private chooser contents. Hashing private artifacts does not publish them. Retained source-unchanged checks are by 04, not a new A live audit.",
+  "data_present": true,
+  "data_loss_confirmed": false,
+  "completeness": "No pre-loss baseline; full record/byte completeness is not established.",
+  "primary_record_counts": {
+    "compared_table_rows": 19011,
+    "orm_plans": 88,
+    "orm_progress": 83,
+    "scope": "33 allowlisted entity tables across app.db and mentorflow_v2.db; totals are table rows, not deduplicated user objects"
+  },
+  "secondary_unique_records": 57,
+  "non_timestamp_record_differences": 72,
+  "broken_paths": 15,
+  "content_candidates_found": 15,
+  "material_content_conflicts": 0,
+  "server_207_provenance": "UNRESOLVED",
+  "private_workspace_chooser": {
+    "count": 84,
+    "scope": "QA evidence only; not final UX; no private names, IDs or chooser copied"
+  },
+  "target_storage_stable": false,
+  "target_root_class": "TEMP_NOT_FINAL_DESTINATION",
+  "identity_issuer_stable": false,
+  "issuer_continuity": "localhost to public issuer unresolved; retained alias may preserve namespace, omitted alias changes it; real mapping not accepted",
+  "source_snapshot_checks_retained": 6,
+  "migration_ready": false,
+  "migration_executed": false,
+  "source_data_mutated": false,
+  "server_data_mutated": false,
+  "ledger_writes": 0,
+  "product_classification": "REQUIRED; recommend from provenance and content, ask only on true ambiguity"
+}

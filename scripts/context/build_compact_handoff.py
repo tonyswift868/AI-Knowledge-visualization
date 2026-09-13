@@ -20,6 +20,7 @@ WEB_OUTPUT = "docs/handoff/WEB_SESSION_LATEST.md"
 REPOSITORY_URL = "https://github.com/tonyswift868/AI-Knowledge-visualization"
 WEB_INPUTS = (*READ_FIRST, "docs/handoff/README.md", "docs/governance/HANDOFF_CONTRACT.md",
               "docs/PRODUCT_FLOW.md", "docs/project/COMPONENT_MAP.md", "docs/decisions/index.md",
+              "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
               "scripts/context/build_compact_handoff.py")
 SOURCE_PATHS = (".", f":(exclude){WEB_OUTPUT}")
 WORKERS = {"A", "01", "02", "03", "04", "B"}
@@ -235,6 +236,9 @@ def build_web(root: Path) -> bytes:
     rows += [f"{slot}_DELIVERY = {worker['delivery_state']}; {worker['acceptance_state']}"
              for slot, worker in board["workers"].items() if worker["delivery_commit"] is not None]
     rows += [f"FORMAL_MAIN3 = {control['formal_main3']}", f"BRIDGE = {control['bridge_status']}"]
+    rows += [f"{key} = {fields[key]}" for key in
+             ("BATCH03_SOURCE", "CROSS_DEVICE_DATA_CONTINUITY", "PORTABLE_PACK_V2", "MIGRATION_EXECUTED")
+             if key in fields]
     blockers = [key for key, task in tasks.items() if task["state"] in {"BLOCKED", "UNKNOWN"}]
     actions = [f"{key}: {task['user_action_required']}" for key, task in tasks.items()
                if task["state"] != "DONE" and task["user_action_required"]]

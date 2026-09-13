@@ -7,6 +7,7 @@
 
 | 决策入口 | 范围 / 使用方法 |
 | --- | --- |
+| [跨设备连续性／Portable Pack V2](CROSS_DEVICE_DATA_CONTINUITY_V2.md) | 三层存储、新设备恢复、QUICK/FULL、模型、账号绑定／保密；要求已接受，实现与迁移未验收 |
 | [Knowledge map ADR-001](../adr/001-knowledge-map-v1-open-source.md) | 知识地图开源选择；结合当前 registry/锁文件 |
 | [Video collection ADR-002](../adr/002-video-collection-v1.md) | 目录、字幕、分层摘要；不是原始视频媒体上传通用许可 |
 | [Native classroom ADR-003](../adr/003-native-classroom-theme-system.md) | 原生课堂/主题系统 |

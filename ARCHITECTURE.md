@@ -1,6 +1,6 @@
 # MentorFlow architecture map
 
-范围：冻结 MAIN2 基线之上的 MAIN3 Batch02 集成源码阅读地图。
+范围：冻结 MAIN2 基线之上的 MAIN3 Batch03 集成源码阅读地图。
 产品与部署的验收状态见 [CURRENT_STATE](docs/project/CURRENT_STATE.md)。
 本文件说明已经存在的模块；不据此宣布某个服务器、安装包或学习全链路已经合格。
 
@@ -76,6 +76,11 @@ FastAPI 处理 HTTP；业务实现拆在 knowledge、teaching、planning、enter
 可见空间，必要时显式初始化。缓存 workspace ID 只作选择提示；每次访问重验 membership。
 `desktop/account_identity.py` 与 `account_vault.py` 负责账户身份和本机隔离资料库。
 旧单 issuer 文档的账户身份解释须结合 E109 的 identity namespace 迁移合同阅读。
+
+[跨设备 authority](docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md) 规定服务端结构化状态、
+本地大资源和可重建数据三层。现有表／bootstrap／V1 portability 是基础，不代表完整云同步或 V2 已实现。
+账户重置新增 after-commit completion observation；只返回登录，不自动签发会话。
+独立 [Dev Workbench](tools/dev_workbench/README.md) 从 exact repo snapshot 读取状态，当前候选待构建。
 
 ## Evidence / knowledge pipeline
 

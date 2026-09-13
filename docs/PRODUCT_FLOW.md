@@ -20,6 +20,15 @@ Free Chat 是独立工具：不得偷偷写 mastery、plan 或 score；任何学
 本节是持续有效的要求，不是当前全链路 PASS 声明；当前缺口和最终用户验收看
 [CURRENT_STATE](project/CURRENT_STATE.md)。短期测试结果不能静默删减长期要求。
 
+## 跨设备连续性
+
+Authority: `MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY`。
+CROSS_DEVICE_DATA_CONTINUITY = REQUIRED；完整合同见 [三层数据与 Portable Pack V2](decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)。
+服务端持久保存结构化学习／账号状态；新设备登录即恢复计划、进度与支持的历史，无需旧设备在线。
+本机缺失的大资源单独标记，用户导入经账号／空间／完整性校验的迁移包后按稳定 ID 重连。
+QUICK/FULL 与可选模型、大 payload、非覆盖幂等性和保密都需验收；现有 V1 不等于 V2。
+产品先智能分类推荐，仅真实歧义需要选择。真实旧用户迁移仍未执行，稳定身份与持久目录为硬门禁。
+
 ## 启动、登录与更新
 
 Batch02 authority：`MF-MAIN3-A-BATCH02-INTEGRATION-20260913-01`。

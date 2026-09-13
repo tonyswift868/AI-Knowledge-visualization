@@ -116,7 +116,8 @@
       "dependencies": [
         "GATE_A_AUTH_LIVE_ACTIVATION",
         "GATE_B_ACCOUNT_SECURITY",
-        "GATE_C_UPDATE_FINAL_CANDIDATE"
+        "GATE_C_UPDATE_FINAL_CANDIDATE",
+        "OLD_DATA_CONTINUITY"
       ],
       "unlocks": [
         "INTERVIEW_ACCEPTANCE_BUNDLE"
@@ -147,8 +148,103 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen."
+    },
+    {
+      "task_id": "BATCH03_EXACT_INTEGRATION",
+      "title": "第三批源码集成",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "BATCH02_EXACT_INTEGRATION",
+        "GATE_A_SCHEMA_0036_UNBLOCK"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Eight exact commits; native login retained, canonical reset observation, inactive lifecycle/recovery UI, read-only Workbench. Source acceptance only.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "CONTINUITY_AUTHORITY",
+      "title": "跨设备数据连续性合同",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "BATCH03_EXACT_INTEGRATION"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Three tiers, new-device flow, Portable Pack V2 QUICK/FULL and optional models, integrity/account binding/confidentiality defined.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "DATA_TARGET_STABILITY",
+      "title": "迁移目标与账号身份稳定性",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "CONTINUITY_AUTHORITY"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Temp is not final destination; localhost/public issuer account/workspace namespace continuity unresolved. No old-data migration.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "SERVER_SYNC_REHYDRATION",
+      "title": "云端结构化状态与新设备恢复",
+      "owner": "A",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "CONTINUITY_AUTHORITY"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "All specified structured state must survive old-device offline; per-entity persistence, sync/revision/deletion and new-device rehydration still need implementation/acceptance.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "PORTABLE_PACK_V2",
+      "title": "迁移包第二版与大资源恢复",
+      "owner": "A",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "CONTINUITY_AUTHORITY"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Current V1 excludes model binaries and is plain ZIP/new-or-empty-vault only. V2 QUICK/FULL, optional models, encrypted/account-bound integrity, additive resource reconnection and idempotent crash recovery remain required.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "DATA_CLASSIFICATION_RECOMMENDATION",
+      "title": "智能数据分类与推荐",
+      "owner": "A",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "CONTINUITY_AUTHORITY"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Provenance/content classification and recommendations before choices; only true ambiguity prompts. Private 84-workspace chooser is QA; preview shell lacks producer/product wiring.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "OLD_DATA_CONTINUITY",
+      "title": "旧数据恢复与跨设备验收",
+      "owner": "A",
+      "state": "BLOCKED",
+      "dependencies": [
+        "DATA_TARGET_STABILITY",
+        "SERVER_SYNC_REHYDRATION",
+        "PORTABLE_PACK_V2",
+        "DATA_CLASSIFICATION_RECOMMENDATION"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Read-only evidence verified: data exists, no loss confirmed without complete baseline. Source preservation, account binding, stable IDs and two-device tests required. MIGRATION_EXECUTED=NO; real migration needs separate authorization.",
+      "workbench_visible": true
     }
   ],
-  "authority": "MF-MAIN3-A-GATEA-0036-UNBLOCK-20260913-02",
-  "assignment_scope": "Only 0036 source blocker integrated. No Gate A deployment after fix or new worker dispatch. Real SMTP remains the independent 04 task."
+  "authority": "MAIN3_BATCH03_AND_CROSS_DEVICE_CONTINUITY_AUTHORITY",
+  "assignment_scope": "Batch03 exact source integration, 04 evidence only, cross-device authority and Workbench refresh. No migration/live activation."
 }
