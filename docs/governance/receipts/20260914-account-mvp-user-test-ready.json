@@ -154,6 +154,18 @@
     {
       "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\final-runtime-proof.json",
       "sha256": "23282a151ecf7e5545af2b3096eae1939496efa85469d62139927aea63de8465"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\workbench-launch-proof.json",
+      "sha256": "037ce71ad06151974d9fcdd1c6878172494b8c0cebfebf3779a68bf1153d21ac"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\smtp-submission-proof.json",
+      "sha256": "9275208a9ea61f6bba936ece3d25c73ec6d8d4c65b0aa4570976e2846bb88237"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\public-action-proof.json",
+      "sha256": "cbb4b9b2fe3b761aebf388bcd434f84a7ccc5c21bc09ebb0e0867cc789e3a924"
     }
   ],
   "backend_retained_source": "405a3568c2e70a7aeea2f5cc5abd2daa42f058c5",
@@ -168,5 +180,7 @@
   "main2_mutated": false,
   "formal_main3_created": false,
   "github_actions_executed": 0,
-  "workbench_entry": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow\\Start-MentorFlow-Dev-Workbench.cmd"
+  "workbench_entry": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow\\Start-MentorFlow-Dev-Workbench.cmd",
+  "workbench_latest_dev_button": "PASS_ACTUAL_NEW_EXE_NATIVE_FIRST_PAINT",
+  "workbench_qualified_button": "DISABLED_NO_QUALIFIED_CANDIDATE"
 }
