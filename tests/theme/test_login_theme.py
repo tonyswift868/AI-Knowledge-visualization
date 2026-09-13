@@ -75,6 +75,9 @@ def test_existing_mvp_only_adds_readonly_theme_and_scoped_gate():
     after = yaml.safe_load((ROOT / COMPOSE).read_text(encoding="utf-8"))
     mount = "../../themes/mentorflow-desktop-v1:/opt/keycloak/themes/mentorflow-desktop-v1:ro"
     after["services"]["keycloak"]["volumes"].remove(mount)
+    # Batch03's pinned denylist is a separate read-only password-policy mount.
+    after["services"]["keycloak"]["volumes"].remove(
+        "${MENTORFLOW_PASSWORD_BLACKLIST_DIR:-../../auth-email-security/password-blacklists}:/opt/keycloak/data/password-blacklists:ro")
     assert after["services"]["keycloak-ready"]["environment"].pop(
         "MENTORFLOW_DESKTOP_LOGIN_THEME") == THEME.name
     assert after == before

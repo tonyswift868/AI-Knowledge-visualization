@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -47,6 +48,15 @@ def json_bytes(raw):
 def validate_manifest(value):
     validator = Draft202012Validator(json_bytes(SCHEMA.read_bytes()), format_checker=FormatChecker())
     if not validator.is_valid(value): raise Refused('INVALID_MANIFEST')
+    # jsonschema's date-time checker is optional. Admission must stay strict in
+    # the existing minimal desktop runtime even without its format extra.
+    stamp = value['created_at']
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})', stamp):
+        raise Refused('INVALID_MANIFEST')
+    try:
+        datetime.fromisoformat(stamp.upper().replace('Z', '+00:00'))
+    except ValueError:
+        raise Refused('INVALID_MANIFEST') from None
     if value['status'] == 'CURRENT' and any(value[key].upper() in {'UNKNOWN', 'NONE', 'NOT_RUN', 'PENDING'}
             for key in ('product_version', 'build_id', 'deployment_identity')):
         raise Refused('INVALID_MANIFEST')

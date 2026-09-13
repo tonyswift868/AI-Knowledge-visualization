@@ -117,6 +117,15 @@ def test_manifest_schema_rejects_commands_secrets_and_missing_identity(candidate
     with pytest.raises(t.Refused, match='INVALID_MANIFEST'): t.validate_manifest(value)
 
 
+@pytest.mark.parametrize('stamp', ['yesterday', '2026-02-30T00:00:00Z', '2026-09-13T00:00:00'])
+def test_timestamp_rejected_without_optional_format_checker(candidate, monkeypatch, stamp):
+    value, _ = candidate
+    value['created_at'] = stamp
+    monkeypatch.setattr(t, 'FormatChecker', lambda: None)
+    with pytest.raises(t.Refused, match='INVALID_MANIFEST'):
+        t.validate_manifest(value)
+
+
 @pytest.mark.parametrize('field', ['product_version', 'build_id', 'deployment_identity'])
 @pytest.mark.parametrize('unknown', ['UNKNOWN', 'unknown'])
 def test_unknown_build_identity_cannot_be_ready(candidate, field, unknown):

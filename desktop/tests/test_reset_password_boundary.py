@@ -15,14 +15,14 @@ from desktop.tests.test_update_ui_flow import until
 
 
 @pytest.mark.parametrize('valid', [True, False])
-def test_reset_callback_never_exchanges_or_logs_in(valid):
+def test_reset_callback_never_exchanges_or_logs_in(valid, monkeypatch):
     prepared = _prepared()
     callback = prepared.transaction.redirect_uri + '?' + urlencode({
         'code': 'synthetic-callback-only',
         'state': prepared.transaction.state if valid else 'incorrect-state',
         'iss': prepared.transaction.expected_issuer,
     })
-    receiver = SimpleNamespace(wait=lambda _: callback, close=Mock())
+    receiver = SimpleNamespace(wait=Mock(return_value=callback), close=Mock())
     prepared = replace(prepared, receiver=receiver)
     exchange = Mock()
     closed = Mock()
@@ -36,6 +36,14 @@ def test_reset_callback_never_exchanges_or_logs_in(valid):
         def _show_authorization_page(self, value):
             self._prepared = value
             self._page_ready.set()  # No browser or network.
+    class Reset:
+        def __init__(self, config): pass
+        async def begin(self, state): return 't' * 43
+        async def wait_completed(self, *args, **kwargs):
+            from desktop.enterprise_oidc import EnterpriseOidcError
+            raise EnterpriseOidcError('RESET_OBSERVATION_UNAVAILABLE', 'unverified')
+        async def aclose(self): pass
+    monkeypatch.setattr('desktop.reset_completion.ResetCompletionClient', Reset)
     pane = Surface(_config(), embedded=True, intent='forgot_password',
                    capabilities={'forgot_password': True}, client_factory=lambda _: Client())
     accepted, failed = Mock(), Mock()
@@ -47,8 +55,9 @@ def test_reset_callback_never_exchanges_or_logs_in(valid):
         exchange.assert_not_called()
         accepted.assert_not_called()
         assert pane._result is None
-        assert failed.call_args.args[0] == (RESET_LOGIN_REQUIRED if valid else 'ENTERPRISE_OIDC_STATE_INVALID')
-        assert prepared.transaction._consumed
+        assert failed.call_args.args[0] == 'RESET_OBSERVATION_UNAVAILABLE'
+        assert not prepared.transaction._consumed
+        receiver.wait.assert_not_called()
         assert receiver.close.called
         closed.assert_called_once()
     finally:
@@ -64,7 +73,7 @@ def test_reset_late_success_signal_cannot_authenticate():
     try:
         pane._finish_successfully(login())
         accepted.assert_not_called()
-        failed.assert_called_once_with(RESET_LOGIN_REQUIRED, RESET_LOGIN_MESSAGE)
+        failed.assert_called_once_with('RESET_UNVERIFIED_RETURN', '请返回登录页面，使用新密码登录。')
         assert pane._result is None
     finally:
         pane.dispose()
@@ -96,11 +105,14 @@ def test_desktop_returns_to_normal_login_without_session(app_context, monkeypatc
     assert target._auth_pane is None and gate.auth_content is None
     assert gate.state == LoginGateState.LOGIN_READY
     assert gate.primary_button.text() == '登录 MentorFlow' and gate.primary_button.isEnabled()
-    assert gate.state_detail.text() == RESET_LOGIN_MESSAGE
+    from desktop.reset_completion import COMPLETED_MESSAGE
+    assert gate.state_detail.text() != COMPLETED_MESSAGE
+    assert '尚未确认' in gate.state_detail.text()
     assert '密码已重置' not in gate.state_detail.text()  # Callback isn't a reset-success signal.
     gate.primary_button.click()
     app.processEvents()
-    assert target._auth_pane.started  # A fresh ordinary login, still no session.
+    assert target._auth_pane is None  # Ordinary native login needs fresh credentials.
+    assert gate.state == LoginGateState.AUTH_FAILED
     accept.assert_not_called()
 
 

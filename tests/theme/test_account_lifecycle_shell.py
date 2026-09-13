@@ -47,7 +47,7 @@ def test_reset_completion_is_still_not_inferred_and_future_preferences_are_local
     assert 'capabilities?.register === true' in state
     assert 'capabilities?.forgot_password === true' in state
     native = (ROOT / 'desktop/login_shell.py').read_text(encoding='utf-8')
-    assert '记住我（下次免输密码）' in native  # Existing token-based runtime label remains.
+    assert '记住登录状态' in native  # Integrated native token-based runtime label.
     source = (LOGIN / 'mentorflow-account-lifecycle.ftl').read_text(encoding='utf-8')
     assert '记住密码' in source and '自动登录' in source
     assert '当前账号服务暂未开放注册' in source and '当前账号服务暂未开放密码找回' in source

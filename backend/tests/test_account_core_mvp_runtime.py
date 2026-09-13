@@ -172,6 +172,8 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
         "/api/enterprise/auth/native/login",
         "/api/enterprise/auth/native/refresh",
         "/api/enterprise/auth/native/logout",
+        "/api/enterprise/auth/reset/watch",
+        "/api/enterprise/auth/reset/status",
         "/api/enterprise/document-import/selections",
         "/api/enterprise/workspaces",
         "/api/enterprise/workspaces/{workspace_id}",
@@ -391,7 +393,9 @@ def test_native_login_supersedes_browser_ux_without_enabling_password_grant() ->
     assert "inAppOidcLoginButton" in settings
     assert "login_enterprise_account_in_app_from_env" not in settings
     assert 'login_native_account_from_env' in main
-    assert 'InAppOidcLoginDialog' not in main
+    normal_login = main.split('    def _begin_interactive_login(', 1)[1].split('    def _accept_login_result(', 1)[0]
+    assert 'InAppOidcLoginDialog' not in normal_login
+    assert 'login_native_account_from_env' in normal_login
     assert 'grant_type' not in native and 'client_secret' not in native
     assert '/api/enterprise/auth/native' in native
     assert 'LEGACY / NON_DEFAULT / NOT_USER_VISIBLE' in embedded
