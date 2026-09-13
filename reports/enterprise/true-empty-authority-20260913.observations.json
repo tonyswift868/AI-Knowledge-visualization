@@ -1,0 +1,326 @@
+{
+  "new_account": {
+    "schema": "mentorflow.sync-observation.v1",
+    "source": "SERVER_CONFIRMED",
+    "snapshot_revision": "pg-snapshot:869:869:",
+    "server_confirmed_at": "2026-09-13T16:32:09.965678+08:00",
+    "trusted_cache": false,
+    "empty_state": "TRUE_EMPTY_SUPPORTED_SCOPE",
+    "supported_scope": [
+      "plans",
+      "progress",
+      "resource_metadata"
+    ],
+    "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+    "initialized": true,
+    "state_generation": 1,
+    "supported_entity_types": [
+      "plans",
+      "progress",
+      "resources"
+    ],
+    "unsupported_entity_types": [
+      "tasks_calendar",
+      "review",
+      "learner_model",
+      "learning_runs",
+      "messages",
+      "teaching_sessions",
+      "nonsecret_settings",
+      "model_metadata"
+    ],
+    "counts": {
+      "plans": 0,
+      "progress": 0,
+      "resources": 0,
+      "tombstones": 0
+    },
+    "unsupported_counts": {
+      "tasks_calendar": null,
+      "review": null,
+      "learner_model": null,
+      "learning_runs": null,
+      "messages": null,
+      "teaching_sessions": null,
+      "nonsecret_settings": null,
+      "model_metadata": null
+    },
+    "resource_missing_state": "DEVICE_LOCAL_RESOLVER",
+    "learning_state": {
+      "status": "TRUE_EMPTY_SUPPORTED_SCOPE",
+      "empty_state": "TRUE_EMPTY_SUPPORTED_SCOPE",
+      "known_empty": true,
+      "global_account_empty": "UNKNOWN",
+      "account_initialized": "UNKNOWN",
+      "initialized": true,
+      "supported_scope_initialized": true,
+      "supported_scope_empty": true,
+      "supported_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "requested_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "requested_scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "initialization_authority": "COMMITTED_BOOTSTRAP_REHYDRATION_MANIFEST",
+      "state_generation": 1,
+      "manifest": {
+        "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+        "initialized": true,
+        "generation": 1,
+        "created_at": "2026-09-13T16:32:09.923141+08:00",
+        "updated_at": "2026-09-13T16:32:09.923141+08:00"
+      },
+      "snapshot_revision": "pg-snapshot:869:869:"
+    },
+    "missing_resources": []
+  },
+  "partial_unsupported": {
+    "schema": "mentorflow.sync-observation.v1",
+    "source": "SERVER_CONFIRMED",
+    "snapshot_revision": "pg-snapshot:869:869:",
+    "server_confirmed_at": "2026-09-13T16:32:09.975642+08:00",
+    "trusted_cache": false,
+    "empty_state": "PARTIAL_UNSUPPORTED",
+    "supported_scope": [
+      "plans",
+      "progress",
+      "resource_metadata"
+    ],
+    "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+    "initialized": true,
+    "state_generation": 1,
+    "supported_entity_types": [
+      "plans",
+      "progress",
+      "resources"
+    ],
+    "unsupported_entity_types": [
+      "tasks_calendar",
+      "review",
+      "learner_model",
+      "learning_runs",
+      "messages",
+      "teaching_sessions",
+      "nonsecret_settings",
+      "model_metadata"
+    ],
+    "counts": {
+      "plans": 0,
+      "progress": 0,
+      "resources": 0,
+      "tombstones": 0
+    },
+    "unsupported_counts": {
+      "tasks_calendar": null,
+      "review": null,
+      "learner_model": null,
+      "learning_runs": null,
+      "messages": null,
+      "teaching_sessions": null,
+      "nonsecret_settings": null,
+      "model_metadata": null
+    },
+    "resource_missing_state": "NOT_OBSERVED_BY_SERVER",
+    "learning_state": {
+      "status": "PARTIAL_UNSUPPORTED",
+      "empty_state": "PARTIAL_UNSUPPORTED",
+      "known_empty": false,
+      "global_account_empty": "UNKNOWN",
+      "account_initialized": "UNKNOWN",
+      "initialized": true,
+      "supported_scope_initialized": true,
+      "supported_scope_empty": null,
+      "supported_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "requested_scope": [
+        "plans",
+        "review"
+      ],
+      "requested_scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "initialization_authority": "COMMITTED_BOOTSTRAP_REHYDRATION_MANIFEST",
+      "state_generation": 1,
+      "manifest": {
+        "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+        "initialized": true,
+        "generation": 1,
+        "created_at": "2026-09-13T16:32:09.923141+08:00",
+        "updated_at": "2026-09-13T16:32:09.923141+08:00"
+      },
+      "snapshot_revision": "pg-snapshot:869:869:"
+    }
+  },
+  "nonempty": {
+    "schema": "mentorflow.sync-observation.v1",
+    "source": "SERVER_CONFIRMED",
+    "snapshot_revision": "pg-snapshot:873:873:",
+    "server_confirmed_at": "2026-09-13T16:32:10.254537+08:00",
+    "trusted_cache": false,
+    "empty_state": "NONEMPTY",
+    "supported_scope": [
+      "plans",
+      "progress",
+      "resource_metadata"
+    ],
+    "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+    "initialized": true,
+    "state_generation": 5,
+    "supported_entity_types": [
+      "plans",
+      "progress",
+      "resources"
+    ],
+    "unsupported_entity_types": [
+      "tasks_calendar",
+      "review",
+      "learner_model",
+      "learning_runs",
+      "messages",
+      "teaching_sessions",
+      "nonsecret_settings",
+      "model_metadata"
+    ],
+    "counts": {
+      "plans": 2,
+      "progress": 1,
+      "resources": 1,
+      "tombstones": 0
+    },
+    "unsupported_counts": {
+      "tasks_calendar": null,
+      "review": null,
+      "learner_model": null,
+      "learning_runs": null,
+      "messages": null,
+      "teaching_sessions": null,
+      "nonsecret_settings": null,
+      "model_metadata": null
+    },
+    "resource_missing_state": "DEVICE_LOCAL_RESOLVER",
+    "learning_state": {
+      "status": "NONEMPTY",
+      "empty_state": "NONEMPTY",
+      "known_empty": false,
+      "global_account_empty": "UNKNOWN",
+      "account_initialized": "UNKNOWN",
+      "initialized": true,
+      "supported_scope_initialized": true,
+      "supported_scope_empty": false,
+      "supported_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "requested_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "requested_scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "initialization_authority": "COMMITTED_BOOTSTRAP_REHYDRATION_MANIFEST",
+      "state_generation": 5,
+      "manifest": {
+        "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+        "initialized": true,
+        "generation": 5,
+        "created_at": "2026-09-13T16:32:09.923141+08:00",
+        "updated_at": "2026-09-13T16:32:10.035702+08:00"
+      },
+      "snapshot_revision": "pg-snapshot:873:873:"
+    },
+    "missing_resources": [
+      "shared-resource"
+    ]
+  },
+  "delete_to_empty": {
+    "schema": "mentorflow.sync-observation.v1",
+    "source": "SERVER_CONFIRMED",
+    "snapshot_revision": "pg-snapshot:877:877:",
+    "server_confirmed_at": "2026-09-13T16:32:10.323671+08:00",
+    "trusted_cache": false,
+    "empty_state": "TRUE_EMPTY_SUPPORTED_SCOPE",
+    "supported_scope": [
+      "plans",
+      "progress",
+      "resource_metadata"
+    ],
+    "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+    "initialized": true,
+    "state_generation": 9,
+    "supported_entity_types": [
+      "plans",
+      "progress",
+      "resources"
+    ],
+    "unsupported_entity_types": [
+      "tasks_calendar",
+      "review",
+      "learner_model",
+      "learning_runs",
+      "messages",
+      "teaching_sessions",
+      "nonsecret_settings",
+      "model_metadata"
+    ],
+    "counts": {
+      "plans": 0,
+      "progress": 0,
+      "resources": 0,
+      "tombstones": 4
+    },
+    "unsupported_counts": {
+      "tasks_calendar": null,
+      "review": null,
+      "learner_model": null,
+      "learning_runs": null,
+      "messages": null,
+      "teaching_sessions": null,
+      "nonsecret_settings": null,
+      "model_metadata": null
+    },
+    "resource_missing_state": "DEVICE_LOCAL_RESOLVER",
+    "learning_state": {
+      "status": "TRUE_EMPTY_SUPPORTED_SCOPE",
+      "empty_state": "TRUE_EMPTY_SUPPORTED_SCOPE",
+      "known_empty": true,
+      "global_account_empty": "UNKNOWN",
+      "account_initialized": "UNKNOWN",
+      "initialized": true,
+      "supported_scope_initialized": true,
+      "supported_scope_empty": true,
+      "supported_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "requested_scope": [
+        "plans",
+        "progress",
+        "resource_metadata"
+      ],
+      "requested_scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+      "initialization_authority": "COMMITTED_BOOTSTRAP_REHYDRATION_MANIFEST",
+      "state_generation": 9,
+      "manifest": {
+        "scope_version": "SUPPORTED_REHYDRATION_SCOPE_V1",
+        "initialized": true,
+        "generation": 9,
+        "created_at": "2026-09-13T16:32:09.923141+08:00",
+        "updated_at": "2026-09-13T16:32:10.308636+08:00"
+      },
+      "snapshot_revision": "pg-snapshot:877:877:"
+    },
+    "missing_resources": []
+  }
+}
