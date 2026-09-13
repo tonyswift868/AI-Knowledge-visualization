@@ -15,6 +15,7 @@ import json
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import orm as orm_runtime
 from app.enterprise.contracts_v1 import TenantMode
@@ -179,6 +180,13 @@ async def account_core_identity_boundary(request: Request, call_next):
             response = JSONResponse(payload, status_code=response.status_code, headers=dict(response.headers))
             # JSON grew; let the new response compute its own Content-Length.
             response.headers['content-length'] = str(len(response.body))
+    except SQLAlchemyError:
+        if not request.url.path.startswith('/api/enterprise/sync/'):
+            raise
+        # Membership lookup can fail before the sync router is reached. A DB
+        # outage is not an authorization denial and cannot imply empty state.
+        response = JSONResponse({'code': 'SYNC_QUERY_FAILED', 'sync_status': 'QUERY_FAILED'},
+                                status_code=503, headers={'Cache-Control': 'no-store'})
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-MentorFlow-Runtime-Profile"] = RUNTIME_PROFILE
     if request.url.path in ACCOUNT_WORKSPACE_PATHS:

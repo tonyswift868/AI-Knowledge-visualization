@@ -69,7 +69,8 @@ def main():
         def database(name):
             with lab.admin() as c:
                 c.execute(sql.SQL('CREATE DATABASE {} OWNER mentorflow_migrator').format(sql.Identifier(name)))
-            os.environ['MENTORFLOW_DATABASE_URL'] = lab.url('mentorflow_app', name).render_as_string(hide_password=False)
+            os.environ['MENTORFLOW_DATABASE_URL'] = lab.url('mentorflow_app', name).update_query_dict(
+                {'connect_timeout': '3'}).render_as_string(hide_password=False)
             os.environ['MENTORFLOW_MIGRATION_DATABASE_URL'] = lab.url('mentorflow_migrator', name).render_as_string(hide_password=False)
         for name, start in [('fresh', None), ('from0036', '0036_account_import_ledger')]:
             database(name)
