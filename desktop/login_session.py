@@ -81,6 +81,12 @@ class LoginSession:
                 self.credentials.logout(profile)
         self.preferences.save_target(profile, sync_cursor=result.sync_cursor,
                                      remember_me=remember, auto_login=remember and automatic)
+        from .rehydration_transport import invalidate_active
+        invalidate_active()
+        if result.rehydration_session is not None:
+            writer = (lambda identity, access, refresh: self.credentials.store_oauth_tokens(
+                identity, access_token=access, refresh_token=refresh)) if remember else None
+            result.rehydration_session.activate(rotation_writer=writer)
 
     def restore(self, profile, cancelled: threading.Event):
         # Serialize refresh/read/rotation for this app and issuer+sub. A cancelled
@@ -103,6 +109,8 @@ class LoginSession:
                 raise
 
     def logout(self, profile, *, remote=False, refresh_token=None):
+        from .rehydration_transport import invalidate_active
+        refresh_token = invalidate_active(profile) or refresh_token
         with account_session_lock(profile):
             remote_ended = False
             if remote:
@@ -111,7 +119,10 @@ class LoginSession:
                     from .native_auth import NativeCredentialClient, REFRESH_PREFIX
                     from .account_identity import issuer_hash
                     try:
-                        _, token = self.credentials.load_oauth_tokens(profile)
+                        if refresh_token is not None:
+                            token = refresh_token
+                        else:
+                            _, token = self.credentials.load_oauth_tokens(profile)
                     except Exception as exc:
                         if getattr(exc, 'code', '') != 'CREDENTIAL_NOT_FOUND' and not isinstance(exc, KeyError):
                             raise

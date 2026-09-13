@@ -756,6 +756,7 @@ class EnterpriseOidcLoginResult:
     refresh_token: str = field(repr=False)
     server_state: Mapping[str, Any] = field(repr=False)
     restored: bool = False
+    rehydration_session: Any = field(default=None, repr=False, compare=False)
 
     @property
     def sync_cursor(self) -> str:

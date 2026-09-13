@@ -89,7 +89,7 @@ class AccountBootstrapError(RuntimeError):
 
 
 class EnterpriseAccountMetadataApi:
-    """One-token adapter for the existing Account Core metadata endpoint."""
+    """Account Core adapter; native sessions share the authenticated token owner."""
 
     def __init__(
         self,
@@ -98,6 +98,7 @@ class EnterpriseAccountMetadataApi:
         access_token: str,
         *,
         client: httpx.Client | None = None,
+        session_transport: Any = None,
     ) -> None:
         self._config = config
         self._identity = identity
@@ -107,11 +108,12 @@ class EnterpriseAccountMetadataApi:
                 "ACCOUNT_ACCESS_TOKEN_REQUIRED",
                 "登录状态无效，请重新登录。",
             )
-        self._client = client or httpx.Client(
+        self._session_transport = session_transport
+        self._client = None if session_transport is not None else client or httpx.Client(
             timeout=config.request_timeout_seconds,
             follow_redirects=False,
         )
-        self._owns_client = client is None
+        self._owns_client = session_transport is None and client is None
         self._cached_metadata: dict[str, Any] | None = None
         self.metadata_network_calls = 0
 
@@ -143,15 +145,20 @@ class EnterpriseAccountMetadataApi:
         return payload
 
     def account_metadata(self) -> Mapping[str, Any]:
+        from .rehydration_transport import RehydrationTransportError
         if self._cached_metadata is not None:
+            if self._session_transport is not None:
+                self._session_transport.require_current()
             return copy.deepcopy(self._cached_metadata)
         try:
-            response = self._client.get(
+            response = self._session_transport.account_metadata() if self._session_transport is not None else self._client.get(
                 f"{self._config.api_base_url}/api/enterprise/account/metadata",
                 headers=self._headers(),
             )
             self.metadata_network_calls += 1
             response.raise_for_status()
+        except RehydrationTransportError as exc:
+            raise AccountBootstrapError(exc.code, "账号服务暂时无法提供学习数据，请稍后重试。") from None
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise AccountBootstrapError(
@@ -176,13 +183,16 @@ class EnterpriseAccountMetadataApi:
         return copy.deepcopy(self._cached_metadata)
 
     def put_account_progress(self, payload: dict[str, Any]) -> Mapping[str, Any]:
+        from .rehydration_transport import RehydrationTransportError
         try:
-            response = self._client.put(
+            response = self._session_transport.put_account_progress(payload) if self._session_transport is not None else self._client.put(
                 f"{self._config.api_base_url}/api/enterprise/account/metadata/progress",
                 headers=self._headers(),
                 json=payload,
             )
             response.raise_for_status()
+        except RehydrationTransportError as exc:
+            raise AccountBootstrapError(exc.code, "学习进度暂时无法同步，请稍后重试。") from None
         except httpx.HTTPError as exc:
             raise AccountBootstrapError(
                 "ACCOUNT_PROGRESS_UNAVAILABLE",
@@ -220,6 +230,8 @@ class AccountBootstrapResult:
     metadata_sync: AccountMetadataSyncService
     metadata_api: EnterpriseAccountMetadataApi
     device_state: DeviceBootstrapState
+    rehydration_session: Any = None
+    rehydration_result: Any = None
 
     @property
     def resource_count(self) -> int:
@@ -258,6 +270,8 @@ class AccountBootstrapResult:
         self.device_state = classify_device(snapshot)
 
     def close(self) -> None:
+        if self.rehydration_session is not None:
+            self.rehydration_session.invalidate()
         self.metadata_api.close()
         self.vault_manager.unmount()
 
@@ -296,6 +310,7 @@ def bootstrap_enterprise_account(
         oidc_config,
         identity,
         login.access_token,
+        session_transport=login.rehydration_session,
     )
 
     def open_local_state() -> LocalAssetLifecycle:
@@ -323,6 +338,8 @@ def bootstrap_enterprise_account(
             account_identity=identity,
         )
         snapshot = sync.sync()
+        transport = login.rehydration_session
+        structured_result = transport.bootstrap() if transport is not None else None
         # Environment binding belongs to the UI generation acceptance gate.
         # A late A bootstrap must never redirect B's process-global paths.
         return AccountBootstrapResult(
@@ -335,6 +352,8 @@ def bootstrap_enterprise_account(
             metadata_sync=sync,
             metadata_api=api,
             device_state=classify_device(snapshot),
+            rehydration_session=transport,
+            rehydration_result=structured_result,
         )
     except AccountBootstrapError:
         manager.unmount()

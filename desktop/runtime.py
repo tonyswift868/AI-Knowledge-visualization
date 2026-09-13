@@ -100,6 +100,8 @@ def startup_restore_failure() -> str:
 
 def clear_enterprise_account_session(profile: AccountProfile | None = None) -> None:
     global _startup_restore_failure
+    from .rehydration_transport import invalidate_active
+    invalidate_active(profile)
     if profile is None:
         _restored_enterprise_profiles.clear()
         _enterprise_server_state.clear()
@@ -565,6 +567,8 @@ class AccountSwitchCoordinator:
         ):
             raise ValueError("target account is already active")
 
+        from .rehydration_transport import invalidate_active
+        invalidate_active()
         self.preferences.save_target(
             target_profile,
             sync_cursor=sync_cursor,

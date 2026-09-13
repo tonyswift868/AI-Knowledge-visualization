@@ -122,7 +122,7 @@ def test_client_success_verifies_workspace_and_me_on_api_authority():
             assert milestones == ['AUTH_SUCCESS_BOOTSTRAPPING']
             return httpx.Response(200, json=workspaces())
         assert request.headers['x-mentorflow-workspace-id'] == 'ws-a'
-        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': 'a'},
+        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': 'a', 'account_id': login().identity.account_id},
             'context': {'organization_id': 'org-a', 'workspace_id': 'ws-a'}})
     async def run():
         client, http = client_for(handler)
@@ -148,7 +148,7 @@ def test_native_restore_rotates_secure_material_before_workspace(failure):
         assert vault.load_oauth_tokens(profile) == (pair(suffix='b')['access_token'], pair(suffix='b')['refresh_token'])
         if request.url.path.endswith('/workspaces'):
             return httpx.Response(503 if failure == 'workspace' else 200, json=workspaces())
-        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': 'a'},
+        return httpx.Response(200, json={'authenticated': True, 'account': {'subject_id': 'a', 'account_id': login().identity.account_id},
             'context': {'organization_id': 'org-a', 'workspace_id': 'ws-a'}})
     async def run():
         client, http = client_for(handler)

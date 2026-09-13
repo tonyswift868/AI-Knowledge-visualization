@@ -1151,7 +1151,10 @@ class MentorFlowApplication:
             self.login_gate.set_state(LoginGateState.LOGIN_READY)
             self.login_gate.username_field.setFocus()
 
-    def _invalidate_login_jobs(self) -> None:
+    def _invalidate_login_jobs(self, *, preserve_session: bool = False) -> None:
+        if not preserve_session:
+            from .rehydration_transport import invalidate_active
+            invalidate_active()
         self._login_generation += 1
         self._login_cancelled.set()
         self._login_cancelled = threading.Event()
@@ -1320,7 +1323,7 @@ class MentorFlowApplication:
             )
             return
         self._last_login_result = result
-        self._invalidate_login_jobs()
+        self._invalidate_login_jobs(preserve_session=True)
         self._start_account_bootstrap()
 
     def _start_account_bootstrap(self) -> None:
@@ -1570,12 +1573,14 @@ class MentorFlowApplication:
 
     def _return_to_login_gate(self, reason: str) -> None:
         from .startup_flow import LoginGateState
+        from .rehydration_transport import invalidate_active
 
         if self.main is None:
             return
         if self.main._account_switch_in_progress:
             return
         self.main._account_switch_in_progress = True
+        sync_refresh = invalidate_active(self.main.account_profile)
         # Fence analogy producers before the existing API/executor drain starts.
         seal_history = getattr(self.main, '_seal_analogy_history', None)
         if seal_history is not None:
@@ -1584,7 +1589,7 @@ class MentorFlowApplication:
         self._login_session.preferences.disable_restore()
         generation, gate = self._login_generation, self.login_gate
         profile = self.main.account_profile
-        refresh = self._last_login_result.refresh_token if self._last_login_result is not None else None
+        refresh = sync_refresh or (self._last_login_result.refresh_token if self._last_login_result is not None else None)
         old_main, old_service = self.main, self.service
         # Stop UI producers before waiting on their executors off the Qt thread.
         for timer in old_main.findChildren(QTimer):

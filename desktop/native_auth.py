@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -28,12 +29,16 @@ MESSAGES = {
 
 
 class NativeCredentialClient(EnterpriseOidcClient):
-    def __init__(self, config, *, http_client=None):
+    @staticmethod
+    def _validate_config(config):
         url = urlsplit(config.api_base_url)
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
             raise EnterpriseOidcError('NATIVE_TLS_REQUIRED', '账号服务需要安全连接。')
         if config.client_id != 'mentorflow-desktop' or config.audience != 'mentorflow-api':
             raise EnterpriseOidcError('NATIVE_CLIENT_INVALID', '账号服务配置无法验证。')
+
+    def __init__(self, config, *, http_client=None):
+        self._validate_config(config)
         super().__init__(config, http_client=http_client)
 
     async def _session_request(self, operation, payload):
@@ -93,17 +98,22 @@ class NativeCredentialClient(EnterpriseOidcClient):
             value = await self._session_request('login', {'username': username.strip(), 'password': password})
         finally:
             password = None
+        received_at = time.monotonic()
         validated = self._validate_session(value)
         if on_authenticated is not None:
             on_authenticated()
         identity, state = await self._server_state(validated, value['access_token'])
-        return EnterpriseOidcLoginResult(identity, value['access_token'], value['refresh_token'], state)
+        from .rehydration_transport import AuthenticatedRehydrationTransport
+        transport = AuthenticatedRehydrationTransport(self.config, identity, state, value, received_at=received_at)
+        return EnterpriseOidcLoginResult(identity, value['access_token'], value['refresh_token'], state,
+                                        rehydration_session=transport)
 
     async def restore(self, profile, credentials, *, refresh_session=True):
         if profile.issuer_hash != issuer_hash(self.config.canonical_identity_issuer):
             raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_ISSUER_CHANGED', '登录服务已变更，请重新登录。')
         _, refresh = credentials.load_oauth_tokens(profile)
         value = await self._session_request('refresh', {'refresh_token': refresh})
+        received_at = time.monotonic()
         validated = self._validate_session(value)
         identity = AccountIdentity(validated.issuer, validated.subject, validated.display_name)
         restored = identity.profile()
@@ -112,7 +122,10 @@ class NativeCredentialClient(EnterpriseOidcClient):
         # Persist rotation before network/bootstrap work; a retry must not reuse it.
         credentials.store_oauth_tokens(identity, access_token=value['access_token'], refresh_token=value['refresh_token'])
         identity, state = await self._server_state(validated, value['access_token'])
-        return EnterpriseOidcLoginResult(identity, value['access_token'], value['refresh_token'], state, restored=True)
+        from .rehydration_transport import AuthenticatedRehydrationTransport
+        transport = AuthenticatedRehydrationTransport(self.config, identity, state, value, received_at=received_at)
+        return EnterpriseOidcLoginResult(identity, value['access_token'], value['refresh_token'], state, restored=True,
+                                        rehydration_session=transport)
 
     async def end_session(self, refresh_token):
         if not refresh_token:
