@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04`。
+Current authority: `MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -62,20 +62,16 @@ Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审�
 随后提供同版 Desktop+Backend exact target，解决 Workbench build SHA 与登记 HEAD 的循环约束，执行真实 A/B acceptance。
 这不是派发，也不授权真实迁移／issuer cutover／账号 capability 激活。PORTABLE_PACK_V2 与真实旧数据迁移继续锁定。
 
-## Frozen native login V2 — real A/B NOT_RUN
+## Frozen V3 — new Desktop local-service blocker
 
-WORKBENCH_FROZEN_LOGIN=PASS；实际 Device A 按钮 → 新 EXE → native login → Backend/session/bootstrap 已复验。
-A/B 目录、设置、缓存、vault、credential namespace 隔离且同一 artifact；B 仅首屏，完整 A/B=NOT_RUN。
-组合回归 510 PASS、0 FAIL、0 SKIP（481 pytest/native cases + 22 protocol + 7 schema gates）；UI/auth 证据独立列示。
-
-02 runtime lease 与 01 frozen import-path exact fixes 已集成；不重复消费父代交付。
-canonical app identity namespace 已通过真实 Frozen loader 验证；真实用户名/密码登录及负例 PASS。
-新 V2 CURRENT 绑定 exact source/tree/artifact/build/test，运行端点和 CA 由独立最新租约提供。
-旧 V1 SUPERSEDED；其首屏证明不等同于真实登录证明。测试夹具显式声明等待状态，避免依赖当前 repo target。
-0038 schema/preflight、native/session/bootstrap、rehydration、producer、TRUE_EMPTY、租约准入和更新 smoke 已组合验证。
-ENVIRONMENT_CONSUMERS_PENDING=YES；12 小时证书窗口；AUTO_CLEANUP=FORBIDDEN，仅后续明确 cleanup 派发可停止服务和删除私钥。
-下一步是 02 独立 A/B 验收；本轮 A write/A disappear/B restore=NOT_RUN。
-FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；LIVE_ISSUER_CUTOVER=NO。
+两个指定 delivery 已在当前远端 base；无重放，UNKNOWN_COMMITS=0。新 exact-source V3 已完成构建、原生认证负例及实际 Workbench A 登录。
+点击“进入学习空间”后，在 `desktop/account_backend.py:36` 首先发生 `ModuleNotFoundError: app.main`；`NoneType.write` 是子进程无 stderr 的次生错误。
+source 同函数导入成功；Frozen 前插 `_MEIPASS/backend` 选择 shadow app。只移除该路径的诊断可进入 canonical app.main，但仍有 knowledge-policy 资源闭包缺口；不是产品修复或 PASS。
+LIKELY_OWNER=01；V3=FAIL；真实 A/B=BLOCKED_BEFORE_A_WRITE。A 已关闭，B 空目录已准备但未登录恢复；真实 sync-failure control 未运行。
+TRUE_EMPTY 为真实 server-confirmed 支持范围 PASS；481 聚焦检查 PASS 不替代失败的 packaged main-startup gate。
+后续需经过授权的 Desktop Frozen 本地服务/资源修复、新 exact 候选，再继续真实 A durable write → A offline → B stable-ID restore/missing-resource/control。
+本轮不跨 owner 改源码或新派工；[阻塞证据](../../governance/receipts/20260914-real-ab-closeout-blocker.json) 可供下一次 exact delivery 使用。
+验收 runtime 与密钥保留，AUTO_CLEANUP=FORBIDDEN；FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；真实迁移/public issuer/账号 capability 未执行。
 
 ## 0036 schema blocker — source resolved（历史）
 

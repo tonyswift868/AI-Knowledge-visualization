@@ -23,38 +23,37 @@ BATCH03_SOURCE = INTEGRATED
 BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
 PRODUCER_UX_WIRING = PASS
-TEST_TARGET_STATUS = CURRENT
-FROZEN_CANDIDATE = PASS
-REAL_A_B_REHYDRATION = NOT_RUN
+TEST_TARGET_STATUS = FAIL
+FROZEN_CANDIDATE = BLOCKED_LOCAL_SERVICE_STARTUP
+REAL_A_B_REHYDRATION = BLOCKED_BEFORE_A_WRITE
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 冻结原生登录修复候选 V2 已就绪，完整 A/B 待验收
+CURRENT_PHASE = 真实 A/B 阻塞：Frozen 本机学习服务启动失败
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04`。
+当前 authority：`MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT`。
 
-## Frozen native login V2 — ready for independent A/B acceptance
+## Frozen V3 — real A/B blocked before A product write
 
-WORKBENCH_FROZEN_LOGIN=PASS；实际 Device A 按钮 → 新 EXE → native login → Backend/session/bootstrap 已复验。
-A/B 目录、设置、缓存、vault、credential namespace 隔离且同一 artifact；B 仅首屏，完整 A/B=NOT_RUN。
-组合回归 510 PASS、0 FAIL、0 SKIP（481 pytest/native cases + 22 protocol + 7 schema gates）；UI/auth 证据独立列示。
-
-从 `d73f3f9850fc0ff99ce874eaf8166f988ba3637b` 按 02→01 集成两个 exact delta，UNKNOWN_COMMITS=0。
-BUILD_SOURCE `f624c6884a5570e83b438faffc81c15533da50ea`；tree `36abfd164a0b2d3d2ccde544505d233aa9dc4fe0`；后续 publication 仅治理文件。
-01 修复 `_MEIPASS/backend` 前插造成的 namespace shadowing；canonical `app.enterprise.identity` 来源与语义已实测。
-02 将 immutable candidate 与 ephemeral runtime 分离；旧/过期/错候选/错 CA/不可信路径仍拒绝。
-源码与真实 Frozen EXE 正确登录、错误密码、未知账号已验证；同一 Frozen EXE 错误 CA 拒绝，TLS 校验开启。浏览器回退与 password/direct grant 均未启用。
-新 CURRENT=`MAIN3_CROSS_DEVICE_AB_V2`；旧 V1=`SUPERSEDED_FOR_LOGIN_FIX`，旧首屏 PASS 不替代真实登录。
-Backend/Identity/PG 为同产品兼容源码的 owned disposable runtime；0038 preflight 与 schema matrix PASS。
-运行租约具有 12 小时证书窗口；ENVIRONMENT_CONSUMERS_PENDING=YES，AUTO_CLEANUP=FORBIDDEN，后续单独 cleanup 派发。
-窗口/源码/协议证据分列于 [V2 receipt](../governance/receipts/20260913-frozen-login-fixed-candidate-v2.json)。
-REAL A/B=NOT_RUN；FULL SERVER SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL USER MIGRATION=NO；LIVE ISSUER CUTOVER=NO。
-新候选供下一轮独立 02 A/B 验收；本轮未执行 A 写入/A 离线/B 恢复。
-历史 [V1 receipt](../governance/receipts/20260913-main3-cross-device-candidate.json) 保留其当时的首屏范围，不能据此宣称完整 Frozen login 已通过。
-Gate A REAL DEPLOYMENT 仍 NOT_RUN；真实 SMTP、签名安装包及用户迁移未由本轮验收。
+当前远端 base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。
+新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
+FROZEN_NATIVE_LOGIN=PASS；手工与实际 Workbench A 按钮 → native login/workspace/auth-me/snapshot 均 200；同 EXE 错密码、未知账号、bad CA 拒绝。
+FIRST_DIVERGENCE：点击“进入学习空间”后，`desktop/account_backend.py:32-36` 前插 `_MEIPASS/backend`，子进程 `app.main` 导入失败。
+`NoneType.write` 是无控制台 multiprocessing 报错时的次生错误；source 同函数 import PASS，Frozen 原路径稳定失败。
+只在诊断进程移除该路径可进入 canonical `app.main`，随后发现 required knowledge-policy 资源缺失；没有修改/合格化产品 EXE。
+LIKELY_OWNER=01（Desktop Frozen 本地服务与资源闭包）；本轮按新跨-owner blocker 停止，不跨域修复或另行派工。
+V3 target=FAIL；旧 V2=SUPERSEDED。WORKBENCH_RESULT=实际 A observation + 当前失败候选，不能启动失败候选继续验收。
+TRUE_EMPTY=PASS（真实 server-confirmed 支持范围）；disposable subject 的 server durable entities=0；未写测试 plan/progress/resource。
+A 已完全关闭；B 独立空根已准备，B 启动/登录/恢复、stable IDs、物理资源缺失与真实 sync-failure control=NOT_RUN。
+组合聚焦 481 PASS、0 FAIL、0 SKIP（479 + 原生 PG 补测 2）；独立产品门禁 1 FAIL，不能被测试绿灯覆盖。
+[Blocker receipt](../governance/receipts/20260914-real-ab-closeout-blocker.json) 绑定 exact artifact、UI traceback、source/frozen differential、真实 HTTP/observation 和测试证据。
+现有 Backend/Identity/PG 与 TLS/mTLS 密钥保留；租约仍健康，有效至北京时间 2026-09-14 10:30:19；AUTO_CLEANUP=FORBIDDEN。
+FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；未访问 tonyswift555 历史 88 plans。
+PUBLIC_ISSUER_CUTOVER/REGISTER/FORGOT_PASSWORD=NO；Gate A 真实部署、最终签名安装更新及用户验收仍未通过。
+历史 [V2 login receipt](../governance/receipts/20260913-frozen-login-fixed-candidate-v2.json) 的登录范围保持有效，未证明本地学习服务/完整 A/B。
 
 ## Batch03 与跨设备长期 authority（保留）
 

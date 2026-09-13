@@ -288,14 +288,14 @@
       "task_id": "MAIN3_CROSS_DEVICE_AB_ACCEPTANCE",
       "title": "独立双设备云恢复验收",
       "owner": "02",
-      "state": "NOT_DISPATCHED",
+      "state": "BLOCKED",
       "dependencies": [
         "FROZEN_NATIVE_LOGIN_V2",
         "POST_BATCH04_WIRING"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "V2 ready with retained independent runtime. Full A write/A disappear/B login/B restore NOT_RUN by A; no next worker dispatch inferred.",
+      "reason": "真实 Workbench A 登录与 TRUE_EMPTY PASS；进入学习空间后 desktop/account_backend.py:36 导入 app.main 失败。首因是 Frozen 子进程再次前插 _MEIPASS/backend；likely owner 01。A 产品写入、B 恢复、真实 sync-failure control NOT_RUN；环境保留。无新员工派发。",
       "workbench_visible": true
     },
     {
@@ -312,6 +312,6 @@
       "workbench_visible": true
     }
   ],
-  "authority": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
-  "assignment_scope": "Frozen import and runtime lease fixes only; new V2 candidate; full A/B reserved for independent 02 acceptance."
+  "authority": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
+  "assignment_scope": "Exact fixes already integrated; rebuilt V3 and attempted real A/B; stopped at evidenced new Desktop local-service blocker."
 }

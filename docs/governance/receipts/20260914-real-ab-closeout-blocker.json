@@ -1,0 +1,60 @@
+{
+  "status": "BLOCKED_FROZEN_ACCOUNT_BACKEND_IMPORT",
+  "task": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
+  "base": "9cd6279917bbdd7b0dc9db2f860bc9d34021beb2",
+  "base_tree": "d493b8046fe9296729a43b42137e53cce89ef703",
+  "build_source_sha": "9cd6279917bbdd7b0dc9db2f860bc9d34021beb2",
+  "build_source_tree": "d493b8046fe9296729a43b42137e53cce89ef703",
+  "unknown_commits": 0,
+  "deliveries_already_integrated": {
+    "01": "d06f7f67e7fde6a40294b3ccd1c79f8a69160183",
+    "02": "d067f742d35fa60e015790c4c5f2c9e033bbc313"
+  },
+  "artifact_sha256": "27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43",
+  "artifact_path": "E:\\Codex\\Temp\\CQ\\build-9cd6279917bb\\dist\\MentorFlow-CrossDevice.exe",
+  "build_id": "MAIN3-CQ-9cd6279917bb",
+  "failed_stage": "DEVICE_A_ENTER_WORKSPACE_BEFORE_PRODUCT_WRITE",
+  "expected": "Workbench A native login -> local learning service ready -> product plan/progress/resource write -> server durable commit",
+  "actual": "Native login/auth-me/workspace/snapshot 200 and TRUE_EMPTY UI; Enter learning space starts Frozen child which raises ModuleNotFoundError app.main before product main opens",
+  "first_divergence": "desktop/account_backend.py:32-36 inserts _MEIPASS/backend, then imports app.main from the incomplete shadow namespace",
+  "secondary_error": "multiprocessing error reporting uses None stderr in no-console EXE, masking ModuleNotFoundError with NoneType.write",
+  "likely_owner": "01 — Desktop Frozen packaging/account local-service startup; historical source introduced by 023e89a24da4d9beeeadc511cf28edd46b6673ff",
+  "differential": {
+    "source": "PASS_IMPORT_AND_RETURN",
+    "same_frozen": "No module named 'app.main'",
+    "frozen_app_origin": "E:\\Codex\\Temp\\MF-MAIN3-A-REAL-AB-20260914\\diagnostic-temp\\_MEI695202\\backend\\app\\__init__.py",
+    "diagnostic_path_only_control": "Removing only the inserted child path reaches canonical app.main; then fails at knowledge_policy.py:266 missing required packaged policy resource. This is diagnostic-only, not a corrected artifact or successful main startup."
+  },
+  "frozen_login": "PASS_ACTUAL_MANUAL_AND_WORKBENCH_A",
+  "real_ab_rehydration": "BLOCKED_BEFORE_A_WRITE",
+  "true_empty": "PASS_REAL_SERVER_CONFIRMED_SUPPORTED_SCOPE",
+  "sync_failure_control": "NOT_RUN_FIRST_DIVERGENCE_BLOCKER",
+  "device_A": "LOGIN_PASS_MAIN_STARTUP_FAIL_CLOSED",
+  "device_B": "INDEPENDENT_EMPTY_ROOT_PREPARED; LAUNCH_LOGIN_RESTORE_NOT_RUN_AFTER_A_BLOCKER",
+  "tests": {
+    "focused_pass": 481,
+    "focused_fail": 0,
+    "focused_skip": 0,
+    "detail": "479 selected pytest PASS; provisioned native PG reran the one skip and added RLS pool safety: 2 PASS",
+    "packaged_gate_fail": 1,
+    "control_probes": "Source local-service import PASS; Frozen reproduces actual app.main failure; one path-only diagnostic advances to required-policy resource failure"
+  },
+  "remaining_gates": [
+    "01 frozen local-service startup/package resource closure fix and new candidate",
+    "Actual product A plan/progress/resource durable writes",
+    "A fully offline then independent B restore stable IDs and missing physical resource UI",
+    "Real sync-failure control",
+    "Full server sync still PARTIAL; Portable Pack V2 still NOT_IMPLEMENTED; real migration/public issuer/final signed release unaccepted"
+  ],
+  "evidence_path": "E:\\Codex\\Temp\\MF-MAIN3-A-REAL-AB-20260914\\BLOCKER_RECEIPT.json",
+  "evidence_sha256": "337575012cd84c7460775d080775667c9447b7b01046896191f276bb72ccf595",
+  "runtime_lease_id": "MF-AB-V3-CLOSEOUT-20260914-9cd62799",
+  "runtime_expires_at": "2026-09-14T02:30:19+00:00",
+  "runtime_retained": true,
+  "auto_cleanup": "FORBIDDEN",
+  "real_user_migration": false,
+  "main2_mutated": false,
+  "formal_main3_created": false,
+  "github_actions_executed": 0,
+  "worker_status": "SILENT"
+}
