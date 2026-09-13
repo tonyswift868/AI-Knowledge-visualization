@@ -368,7 +368,7 @@
     "current_gate": "Account MVP 用户验收",
     "staging_status": "ACCOUNT_MVP_TEST_RUNTIME_RUNNING; PRODUCTION_GATES_PENDING",
     "database_revision": "0038_rehydration_manifest",
-    "current_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
+    "current_test_id": "ACCOUNT_MVP_READY_20260914",
     "test_targets": [
       {
         "test_id": "MAIN3_CROSS_DEVICE_AB_V3",
@@ -383,12 +383,17 @@
       {
         "test_id": "ACCOUNT_MVP_USER_TEST_20260914",
         "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_USER_TEST_20260914.json",
-        "receipt_sha256": "f5015481633fd9e56b60a982fe7a30ab088c316df1a19101e723924b6f5c3795"
+        "receipt_sha256": "05f3a9542bdce6ce0cd9a8726f30430ed8063a16c3221fcaa683b49d87730385"
+      },
+      {
+        "test_id": "ACCOUNT_MVP_READY_20260914",
+        "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_READY_20260914.json",
+        "receipt_sha256": "e99f7982ff986676961678104bb73dba91c8724f89b8200e51d3de0af03e544e"
       }
     ],
-    "runtime_lease_id": "MF-ACCOUNT-MVP-20260914",
+    "runtime_lease_id": "MF-ACCOUNT-MVP-READY-20260914",
     "runtime_expires_at": "2026-09-14T20:20:39+00:00",
-    "latest_development_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
+    "latest_development_test_id": "ACCOUNT_MVP_READY_20260914",
     "latest_qualified_test_id": null
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",

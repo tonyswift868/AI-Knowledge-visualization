@@ -3,7 +3,7 @@
     "schema_version": 1,
     "test_id": "ACCOUNT_MVP_USER_TEST_20260914",
     "title": "Account MVP · 最新开发版",
-    "status": "CURRENT",
+    "status": "SUPERSEDED",
     "source_sha": "405a3568c2e70a7aeea2f5cc5abd2daa42f058c5",
     "source_tree": "177d2e027ab1aa66cf5986192c8a8eaf33341b3d",
     "product_version": "1.1.0",
@@ -53,5 +53,6 @@
     }
   ],
   "environment_expires_at": "2026-09-14T20:20:39+00:00",
-  "automatic_cleanup": false
+  "automatic_cleanup": false,
+  "superseded_by": "ACCOUNT_MVP_READY_20260914"
 }
