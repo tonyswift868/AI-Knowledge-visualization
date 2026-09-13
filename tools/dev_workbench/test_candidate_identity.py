@@ -77,6 +77,19 @@ def test_distinct_source_publication_and_ab_admission(publication, devices):
     assert devices.running_targets['A']['build_source_sha'] == devices.running_targets['B']['build_source_sha'] == build
 
 
+def test_user_test_launch_supplies_candidate_owned_observation_identity(publication,devices):
+    root,value,paths,build,publish=publication
+    from desktop.test_device_profile import environment,PROFILE_CONTRACT
+    profile=devices.prepare('UserTest');env=environment(devices.root('UserTest'),profile)
+    calls=[]
+    t.launch_exact(value,value,a.RepoSource(root).tree_for,paths,device_environment=env,
+        device_contract=PROFILE_CONTRACT,spawn=lambda argv,**options:calls.append(options))
+    actual=calls[0]['env']
+    assert actual['MENTORFLOW_TEST_TARGET_ID']==value['test_id']
+    assert actual['MENTORFLOW_TEST_ARTIFACT_SHA256']==value['artifact_sha256']
+    assert actual['MENTORFLOW_TEST_SCENARIO']=='ACCOUNT_MVP_USER_TEST'
+
+
 @pytest.mark.parametrize('change', ['runtime', 'unknown', 'tree', 'unrelated'])
 def test_old_unknown_and_wrong_sources_refused(publication, change):
     root, value, paths, build, _ = publication

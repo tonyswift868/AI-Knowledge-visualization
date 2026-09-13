@@ -199,6 +199,10 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
             config, lease_id, runtime_current = stack.enter_context(verified_runtime(manifest,paths))
             device_environment = {**device_environment, ENV_KEY: json.dumps(config),
                                   'MENTORFLOW_TEST_RUNTIME_LEASE_ID':lease_id}
+            if device == 'UserTest':
+                device_environment.update(MENTORFLOW_TEST_TARGET_ID=manifest['test_id'],
+                    MENTORFLOW_TEST_ARTIFACT_SHA256=manifest['artifact_sha256'],
+                    MENTORFLOW_TEST_SCENARIO='ACCOUNT_MVP_USER_TEST')
         if kind in ('DESKTOP_EXE', 'INSTALLER'):
             if manifest['artifact_type'] != kind or manifest['launch_target'] != manifest['artifact_path']:
                 raise Refused('LAUNCH_TARGET_MISMATCH')
