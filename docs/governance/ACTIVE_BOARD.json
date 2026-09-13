@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "BATCH04_EXACT_ANCESTRY_AND_REMOTE_START_VERIFIED",
+  "refs_verified": "EXACT_CANDIDATE_ANCESTRY_AND_REMOTE_START_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
+  "authority": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
-      "task_id": "MENTORFLOW_MAIN3_BATCH04_CROSS_DEVICE_INTEGRATION_V1",
+      "dispatch_id": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
+      "task_id": "MENTORFLOW_MAIN3_CROSS_DEVICE_EXACT_CANDIDATE_QUALIFICATION_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Batch04 exact source integrated; remaining product wiring and exact candidate qualification recorded. SILENT after ordinary publication.",
+      "next_action": "Exact candidate qualified; A/B precheck and ordinary publication only. Full A/B recovery reserved for the next independent 02 acceptance.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "第四批源码已集成，双设备验收待接线。"
+      "summary_zh": "同版候选已合格，完整双设备恢复待独立验收。"
     },
     "01": {
       "status": "SILENT",
@@ -27,15 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "16f5b9ad36e7191a16089fd5a353af469cb9adef",
-      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
+      "delivery_commit": "0775b1a53e8c4ef101494b86858a45266220d245",
+      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "d773ab1b63c29984e46cdcf9149d1198429ac001",
-      "delivery_state": "PASS_IDENTITY_ROOT_SOURCE",
-      "acceptance_state": "LIVE_MAPPING_NOT_APPROVED",
+      "integrated_commit": "d892f858a35f2727fa8d4ef314855f5e1ea08541",
+      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
       "ordered_source_commits": [
-        "16f5b9ad36e7191a16089fd5a353af469cb9adef"
+        "0775b1a53e8c4ef101494b86858a45266220d245"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -61,6 +61,15 @@
         ],
         "delivery_state": "BATCH03_SOURCE_INTEGRATED",
         "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      },
+      "batch04_delivery_snapshot": {
+        "delivery_commit": "16f5b9ad36e7191a16089fd5a353af469cb9adef",
+        "integrated_commit": "d773ab1b63c29984e46cdcf9149d1198429ac001",
+        "ordered_source_commits": [
+          "16f5b9ad36e7191a16089fd5a353af469cb9adef"
+        ],
+        "delivery_state": "PASS_IDENTITY_ROOT_SOURCE",
+        "acceptance_state": "LIVE_MAPPING_NOT_APPROVED"
       }
     },
     "02": {
@@ -69,15 +78,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "6d1eff080a0e7a30704b95ec29df0110fa06d070",
-      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
+      "delivery_commit": "6eab5be998172861022da6aa537daa4c3e0539b1",
+      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "53735c0ea30b39d53c31f7ff8437555521e04efa",
-      "delivery_state": "PASS_HARNESS_SOURCE",
-      "acceptance_state": "EXACT_CANDIDATE_WAITING",
+      "integrated_commit": "7b62de3af60f3979aec24e1d11e0731481de9865",
+      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
       "ordered_source_commits": [
-        "6d1eff080a0e7a30704b95ec29df0110fa06d070"
+        "6eab5be998172861022da6aa537daa4c3e0539b1"
       ],
       "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
       "batch02_delivery_snapshot": {
@@ -101,6 +110,15 @@
         ],
         "delivery_state": "BATCH03_SOURCE_INTEGRATED",
         "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      },
+      "batch04_delivery_snapshot": {
+        "delivery_commit": "6d1eff080a0e7a30704b95ec29df0110fa06d070",
+        "integrated_commit": "53735c0ea30b39d53c31f7ff8437555521e04efa",
+        "ordered_source_commits": [
+          "6d1eff080a0e7a30704b95ec29df0110fa06d070"
+        ],
+        "delivery_state": "PASS_HARNESS_SOURCE",
+        "acceptance_state": "EXACT_CANDIDATE_WAITING"
       }
     },
     "03": {
@@ -110,12 +128,12 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "03f7289b81a489fe22745f2032078ed2eacb1c52",
-      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
+      "next_action": "SILENT; no new source consumed.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "c82f37973060cb9215f1362d270f28a8db0b5f12",
       "delivery_state": "PASS_REHYDRATION_UX_SOURCE",
-      "acceptance_state": "PRODUCER_NOT_WIRED",
+      "acceptance_state": "EXISTING_UX_CONNECTED_BY_INTEGRATION_ADAPTER",
       "ordered_source_commits": [
         "03f7289b81a489fe22745f2032078ed2eacb1c52"
       ],
@@ -149,16 +167,24 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "6ef2f094964e995fcb02ba99f555a394ccd361d5",
-      "next_action": "Exact Batch04 delivery audited and consumed; no follow-up worker dispatch.",
+      "delivery_commit": "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6",
+      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "67f541e4eb367f0e05480fd896ad8b42f95143be",
-      "delivery_state": "PASS_PLAN_PROGRESS_RESOURCE_V1",
-      "acceptance_state": "FULL_SERVER_SYNC_PARTIAL",
+      "integrated_commit": "e2eecd294aa5e6e3ab11bb948b278861ae644605",
+      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
       "ordered_source_commits": [
-        "df4684b86f53f121f26e98fad051c11b6d2342b1",
-        "6ef2f094964e995fcb02ba99f555a394ccd361d5"
+        "cfde71d103052224cabdd4d9367059f382a1545f",
+        "2063bdb70dbd3ee966e8099ae589967d9b1db57a",
+        "ba20aee8666a96141d96354d3c4785d355a72d3a",
+        "7c697d0399ae0126a2bd62b7512aad3e0498558b",
+        "7fbea0083cdbf8eede32ffd46749f6bf90963ea5",
+        "851ddaeef8d6dd9a2e9c7ab992b8bbcaf25bd6b4",
+        "43d6e15c8b1ffe932420f3b671ae894c8a0a2391",
+        "830b4b61b067a6775e605febc26c7e652d32a01d",
+        "4e9f70de278a63bbff689da16a35709db4b47337",
+        "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6"
       ],
       "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
       "batch02_delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
@@ -179,6 +205,16 @@
         ],
         "delivery_state": "GATE_A_SCHEMA_BLOCKER_RESOLVED_IN_SOURCE; NATIVE_RLS_PASS_EVIDENCE_RETAINED",
         "acceptance_state": "REAL_SMTP_SEPARATE_04_TASK"
+      },
+      "batch04_delivery_snapshot": {
+        "delivery_commit": "6ef2f094964e995fcb02ba99f555a394ccd361d5",
+        "integrated_commit": "67f541e4eb367f0e05480fd896ad8b42f95143be",
+        "ordered_source_commits": [
+          "df4684b86f53f121f26e98fad051c11b6d2342b1",
+          "6ef2f094964e995fcb02ba99f555a394ccd361d5"
+        ],
+        "delivery_state": "PASS_PLAN_PROGRESS_RESOURCE_V1",
+        "acceptance_state": "FULL_SERVER_SYNC_PARTIAL"
       }
     },
     "B": {
@@ -199,7 +235,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
+    "evidence": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -212,11 +248,11 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "BATCH04_5_COMMITS_AUDITED_4_DELTAS_INTEGRATED",
+    "worker_dispatches": "11_NEW_DELTAS_INTEGRATED; BASELINE_MERGE_NOT_REPLAYED",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Batch04 source and local fixture closeout; no live migration/cutover or full E2E acceptance. Workers are receipt snapshots, not live telemetry.",
+    "snapshot_scope": "Exact source and owned disposable candidate qualification; real A/B recovery NOT_RUN.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -238,7 +274,7 @@
     "final_1_5_0_to_1_5_1": "NOT_RUN",
     "live_production_login": "NOT_RUN",
     "production_keycloak_mutation": 0,
-    "native_rls": "A_BATCH04_PG_0037_LEDGER_SYNC_BOOTSTRAP_POOL_PASS",
+    "native_rls": "A_0038_NATIVE_PROTOCOL_AND_SCHEMA_PASS",
     "formal_main3": "NOT_CREATED",
     "main2": "FROZEN",
     "gate_a_schema_blocker": "RESOLVED_IN_SOURCE",
@@ -251,7 +287,7 @@
     "real_smtp_scope": "Separate independent 04 task; current live results not queried. This source-unblock task sent zero emails. Prior Batch02 SMTP evidence retained separately.",
     "cross_device_data_continuity": "REQUIRED_NOT_ACCEPTED",
     "server_sync_tier": "PARTIAL",
-    "portable_pack_v2": "REQUIRED_NOT_IMPLEMENTED",
+    "portable_pack_v2": "NOT_IMPLEMENTED",
     "migration_executed": false,
     "target_storage_stable": false,
     "identity_issuer_stable": false,
@@ -264,21 +300,24 @@
     "live_issuer_mapping": "NOT_APPROVED",
     "current_live_test_candidate_root": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
     "rehydration_ux": "PASS_SOURCE",
-    "producer_ux_wiring": "POST_BATCH04_WIRING_REQUIRED",
-    "two_device_harness": "PARTIAL_EXACT_TARGET_REGISTRATION_BLOCKED; ISOLATION_AND_TRUSTED_LAUNCH_FIXTURES_PASS",
+    "producer_ux_wiring": "PASS",
+    "two_device_harness": "EXACT_CANDIDATE_QUALIFIED",
     "two_device_e2e": "NOT_RUN",
-    "test_target_status": "WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION"
+    "test_target_status": "CURRENT",
+    "frozen_candidate": "PASS",
+    "full_server_sync": "PARTIAL"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "第四批源码已集成，双设备验收等待接线与候选",
-    "current_gate": "等待云恢复接线和同版测试环境",
-    "staging_status": "NOT_REVALIDATED_BY_BATCH04",
-    "database_revision": "UNKNOWN",
-    "current_test_id": null,
+    "current_phase": "跨设备同版候选已合格，完整 A/B 恢复待独立验收",
+    "current_gate": "下一轮独立双设备云恢复验收",
+    "staging_status": "NOT_REVALIDATED; OWNED_LOCAL_CANDIDATE_ONLY",
+    "database_revision": "0038_rehydration_manifest",
+    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V1",
     "test_targets": []
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
-  "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json"
+  "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json",
+  "candidate_qualification_receipt": "docs/governance/receipts/20260913-main3-cross-device-candidate.json"
 }

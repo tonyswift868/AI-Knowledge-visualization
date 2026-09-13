@@ -199,7 +199,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "PLAN/PROGRESS/RESOURCE_METADATA V1 passed native PG durable/idempotent/CAS/tombstone/isolation checks. Full supported history and login-to-GUI producer contract/wiring remain incomplete.",
+      "reason": "Supported plans/progress/resource metadata wired and candidate-qualified. Full server sync remains PARTIAL; independent A/B cloud restoration remains NOT_RUN.",
       "workbench_visible": true
     },
     {
@@ -261,30 +261,44 @@
       "task_id": "POST_BATCH04_WIRING",
       "title": "云恢复 producer 与界面接线",
       "owner": "A",
-      "state": "BLOCKED",
+      "state": "DONE",
       "dependencies": [
         "BATCH04_EXACT_INTEGRATION"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Need authenticated transport/account scope, snapshot revision/cache semantics, authoritative empty/history counts, file/model classification and many-plan resource projection. Do not infer full account empty from an empty V1 subset.",
+      "reason": "Authenticated native session -> current producer -> Qt presentation; server empty authority, shared stable resource refs and actual product observation verified.",
       "workbench_visible": true
     },
     {
       "task_id": "BATCH04_EXACT_CANDIDATE",
       "title": "同版双设备候选验收",
       "owner": "A",
-      "state": "BLOCKED",
+      "state": "DONE",
       "dependencies": [
         "BATCH04_EXACT_INTEGRATION",
         "POST_BATCH04_WIRING"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Build evidence is separate from qualification. Backend 0037 deployment/identity and launch config required. Harness currently equates build source SHA with branch HEAD; committing target registration advances HEAD. No CURRENT or E2E claim.",
+      "reason": "Same-source 0038 Backend and new frozen Desktop actually launched; source/publication identity contract verified. Full A/B restoration NOT_RUN.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "MAIN3_CROSS_DEVICE_AB_ACCEPTANCE",
+      "title": "独立双设备云恢复验收",
+      "owner": "02",
+      "state": "NOT_DISPATCHED",
+      "dependencies": [
+        "POST_BATCH04_WIRING",
+        "BATCH04_EXACT_CANDIDATE"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Next independent acceptance: A write, A disappears, B native login and cloud restore. Current task ran launch precheck only; no worker dispatch inferred.",
       "workbench_visible": true
     }
   ],
-  "authority": "MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01",
-  "assignment_scope": "Batch04 exact source integration, combined local regression and candidate build/qualification. No real user migration or live activation."
+  "authority": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
+  "assignment_scope": "Exact cross-device candidate qualification. A/B launch precheck only; no real migration or live activation."
 }

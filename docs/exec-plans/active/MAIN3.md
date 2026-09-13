@@ -44,7 +44,7 @@ REBUILD_OR_REDOWNLOAD_TIER 可重建／可信重下载。旧设备离线不影�
 Workbench 刷新以上已登记状态，候选仍 WAITING_FOR_ARTIFACT，无可启动 CURRENT 包。
 保留 register/forgot_password=false、main2 冻结和 formal main3 未创建。
 
-## Batch04 — exact source integrated / product closure PARTIAL
+## Batch04 — historical source closeout / then PARTIAL
 
 Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审计五项、集成四份 delta。
 04 baseline merge 的 tree 与起点一致，不能重复消费。01→04→03→02 已组合；
@@ -61,6 +61,18 @@ Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审�
 使缺资源不等于 sync failed/empty account；定义 authoritative scope revision、历史范围、缓存可信度、资源分类与多计划投影。
 随后提供同版 Desktop+Backend exact target，解决 Workbench build SHA 与登记 HEAD 的循环约束，执行真实 A/B acceptance。
 这不是派发，也不授权真实迁移／issuer cutover／账号 capability 激活。PORTABLE_PACK_V2 与真实旧数据迁移继续锁定。
+
+## Exact cross-device candidate — qualified, full A/B NOT_RUN
+
+Authority: `MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`.
+01/02/04 的 11 个新增 delta 已消费，04 baseline merge 未重放；0038 head/expected 一致且历史 0037 未修改。
+最小 adapter 已连接 authenticated native session、authoritative snapshot 与 Qt UX，保留全部共享资源引用。
+空状态来自服务端 manifest，未知／未支持范围不显示为空账号；实际 sync 生成机器 observation。
+同一 exact source 的 Backend native PG/TLS/native login 与独立 HTTP rehydrate 已验证；新冻结 Desktop 实际首屏 PASS。
+Workbench 使用 build S 与 publication T 的受限 ancestry、tree、artifact 和 receipt 准入，CURRENT target 为 MAIN3_CROSS_DEVICE_AB_V1。
+本轮只做 A/B 同包隔离启动预检。下一轮 02 独立执行 A write / A disappear / B login / B restore；当前 NOT_RUN。
+FULL_SERVER_SYNC=PARTIAL；PORTABLE_PACK_V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；LIVE_ISSUER_CUTOVER=NOT_APPROVED。
+本地 disposable candidate 不替代真实部署、SMTP、最终签名安装包或用户数据迁移验收。
 
 ## 0036 schema blocker — source resolved（历史）
 

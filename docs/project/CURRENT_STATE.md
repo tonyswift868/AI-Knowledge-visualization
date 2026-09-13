@@ -15,51 +15,49 @@ KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
 KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
-ALEMBIC_HEAD = 0037_structured_sync
-BACKEND_EXPECTED_HEAD = 0037_structured_sync
+ALEMBIC_HEAD = 0038_rehydration_manifest
+BACKEND_EXPECTED_HEAD = 0038_rehydration_manifest
 GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
 GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
 BATCH03_SOURCE = INTEGRATED
 BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
-PRODUCER_UX_WIRING = POST_BATCH04_WIRING_REQUIRED
-TEST_TARGET_STATUS = WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION
+PRODUCER_UX_WIRING = PASS
+TEST_TARGET_STATUS = CURRENT
+FROZEN_CANDIDATE = PASS
+REAL_A_B_REHYDRATION = NOT_RUN
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 第四批源码已集成，双设备验收等待接线与候选
+CURRENT_PHASE = 跨设备同版候选已合格，完整 A/B 恢复待独立验收
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`。
+当前 authority：`MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`。
 
-## Batch04 — 源码与本地组合验收
+## Cross-device exact candidate qualification
 
-起点 `1ef95a71c5e7422cb3fe1435ccd703193629b591`；审计五项 exact commits，实际集成四份 delta，
-顺序 01→04→03→02。04 的 `df4684b86f53f121f26e98fad051c11b6d2342b1` merge tree 与起点逐字相同，
-只记录 ancestry，不重放 Batch03。无未知 commit。详见 [Batch04 receipt](../governance/receipts/20260913-main3-batch04-integration.json)。
+从 `04e2d61e3e39729886b3a2e6c7aff022b65a382a` 继续，审计 01/02/04 连续 ancestry，
+集成 11 个新增 exact delta；04 的 baseline merge tree 等于起点，不重复消费。UNKNOWN_COMMITS=0。
+构建源码 `2906893fe7d77e6ff70cf8efc374953423eb2450`，tree `aa9c757bb4d9c1e371f1994f9f3867f1c78742df`。
+后续 publication 只允许治理文件变更，Workbench 重新核对 ancestry/tree/EXE/identity receipt。
 
-- **Stable identity source/fixture = PASS**；signed per-subject mapping、错误 subject／issuer 拒绝；**LIVE MAPPING = NOT_APPROVED**。
-- **Durable root source = PASS**；共同 resolver 拒绝 Temp 作为真实迁移目标；A/B profile 显式 TEST_ONLY。
-  当前已有 live test candidate 仍在 Temp；未改变其根目录，不是最终真实迁移目标。
-- **PLAN / PROGRESS / RESOURCE_METADATA V1 = PASS（本地原生 PostgreSQL）**：durable commit、独立客户端恢复、
-  stable IDs、幂等重试、409 CAS、tombstone、account/workspace/issuer 隔离；head 与 backend expected 均为 0037。
-- **FULL SERVER SYNC = PARTIAL**：现有三类状态不包含完整 review、learner model、messages、learning runs/history adapters。
-- **New-device UX = PASS source**：syncing/success/offline/failure/true-empty、missing file/model；缺资源时计划／进度仍可见。
-- **Producer→UX = POST_BATCH04_WIRING_REQUIRED**：04 无全局 snapshot revision、完整空账号／history 事实、资源 file/model 分类；
-  03 一个 resource key 只能绑定一个 plan，04 同一 resource 可被多个 plan 引用。登录后的 authenticated transport、cache
-  provenance 和观察字段也未接通。不能用默认值虚构恢复事实，详见 [接线与候选边界](../dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md)。
-- **Two-device harness = PARTIAL**：隔离／hash／受控启动 fixture PASS；exact target 登记合同 BLOCKED，实际 A/B E2E = NOT_RUN。
-  冻结 EXE 已产出并验证模块／资源结构，packaged runtime launch = NOT_RUN；
-  [ACTIVE_TEST_TARGET](../governance/ACTIVE_TEST_TARGET.json) 保持 WAITING_FOR_ARTIFACT，不提供假造 CURRENT 启动入口。
+- SOURCE INTEGRATION = PASS；原生 session → /auth/me → workspace → authenticated sync → Qt 展示已接通。
+- 0038 fresh/0036/0037/current/future/drift 与原生协议 PASS；历史 0037 未改动。
+- TRUE_EMPTY_SUPPORTED_SCOPE 来自持久 manifest；PARTIAL_UNSUPPORTED、NOT_INITIALIZED、NOT_AUTHORIZED、SYNC_FAILED 分开显示。
+- 一个 stable resource 保留所有 plan_ids；模型分类来自 producer。缺本地资源不妨碍云端计划与进度展示。
+- 真实 product sync 输出 test/account/workspace/revision/scope/counts/server provenance；不是手写 observation。
+- Backend candidate = PASS：exact Git archive、owned native PG、实际 HTTP/TLS/native login 和独立客户端恢复。
+- Frozen candidate = PASS：新 EXE 实际启动并确认原生登录首屏；显式 TEST_RUNTIME_V1、TLS refs、独立 Device roots。
+- Test target = CURRENT：`MAIN3_CROSS_DEVICE_AB_V1`；同包 A/B 只做启动预检，完整 A/B 恢复 = NOT_RUN。
+- FULL SERVER SYNC = PARTIAL；复习、完整 history 等不在三实体 V1 范围，UI 不以零伪造支持。
+- REAL USER MIGRATION = NO；Portable Pack V2 = NOT_IMPLEMENTED；LIVE ISSUER CUTOVER = NOT_APPROVED。
 
-组合结果、逐项 skip、初始失败与复测归一化均在 receipt。原 04 的 17 项迁移 skip 已用本地 PG 补跑；
-原 01 的未配置 PG bootstrap 也补跑。Windows symlink creation privilege 仍不可用，不把 PASS+SKIP 写成 FULL E2E。
-RLS dedicated fixture 区分 administrator provisioning/seed 与非特权 mentorflow_migrator Alembic；生产安全合同未放宽。
-本轮未实际部署 Backend、未进行公开 issuer cutover、真实 SMTP、真实迁移或注册／忘记密码激活。
-Gate A source blocker 仍 RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN_AFTER_FIX（本任务未重验其它办公室）。
-A 收口 SILENT，无新员工派发。main2 冻结，formal main3 未创建。
+首次新包实际启动发现继承 PATH 把 Poppler ICU 绑定到 Qt；PE 导出核对后移除错误 DLL 并重建。
+初始失败和更正后的最终 gate 分别保留在 [candidate receipt](../governance/receipts/20260913-main3-cross-device-candidate.json)。
+旧 Batch04 接线／包级缺口是历史证据；[Batch04 receipt](../governance/receipts/20260913-main3-batch04-integration.json) 不改写。
+当前 owned disposable Backend 是测试环境，不等于 staging/live Gate A；Gate A 仍未宣布 PASS。
 
 ## Batch03 与跨设备长期 authority（保留）
 
