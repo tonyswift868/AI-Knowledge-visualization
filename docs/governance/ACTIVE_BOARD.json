@@ -339,12 +339,12 @@
       {
         "test_id": "MAIN3_CROSS_DEVICE_AB_V2",
         "receipt_path": "docs/governance/receipts/20260913-frozen-login-v2-current-target.json",
-        "receipt_sha256": "0eb784527c6c706c740d86ed9f60935fb2e5fb8fd107ead7e8412e449718e19e"
+        "receipt_sha256": "d9b99c2a9dd664a809897805b7163153e809eefc555f4452ba447dbcd5d11c5b"
       },
       {
         "test_id": "MAIN3_CROSS_DEVICE_AB_V1",
         "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
-        "receipt_sha256": "7fbda1dfeaec1c52a546fe688a6fb8c3c000d19aa3baf6be4391bd5f7f403f24"
+        "receipt_sha256": "87848cac5ff28f55c5d063bc63c0cf73d0ed889d7e0b1be15396db4b2ed081f4"
       }
     ]
   },
