@@ -169,3 +169,34 @@ class EmptyAuthorityTests(unittest.TestCase):
         finally:
             with self.admin.begin() as db:
                 db.execute(text('ALTER POLICY tenant_isolation_structured_sync_entities ON structured_sync_entities USING ('+original+')'))
+
+    def test_initialization_and_write_share_commit_order(self):
+        c,_,writer_engine=self.device();b,_,_=self.device()
+        subject=self.sessions['A'].principal.subject
+        with self.admin.begin() as db:
+            db.execute(text('DELETE FROM rehydration_manifests WHERE subject_id=:s'),{'s':subject})
+        inserted=threading.Event();release=threading.Event();initializing=threading.Event()
+        def hold(connection,cursor,statement,parameters,context,many):
+            if statement.startswith('INSERT INTO structured_sync_entities'):
+                inserted.set()
+                if not release.wait(10):raise AssertionError('WRITE_RELEASE_TIMEOUT')
+        def initialize():
+            initializing.set()
+            return self.bootstrap.initialize(self.sessions['A'].principal)
+        event.listen(writer_engine,'after_cursor_execute',hold)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                write=pool.submit(c.write,'plan','initializing',request_id='initializing',expected_revision=0,payload={'title':'First'})
+                try:
+                    self.assertTrue(inserted.wait(10))
+                    init=pool.submit(initialize)
+                    self.assertTrue(initializing.wait(10))
+                    self.assertEqual(b.rehydrate()['learning_state']['status'],'NOT_INITIALIZED')
+                finally:release.set()
+                write.result(timeout=10);init.result(timeout=10)
+            state=b.rehydrate()
+            self.assertEqual(state['learning_state']['status'],'NONEMPTY')
+            self.assertEqual(state['learning_state']['state_generation'],1)
+            b.write('plan','initializing',request_id='next',expected_revision=1,payload={'title':'Next'})
+            self.assertEqual(b.rehydrate()['learning_state']['state_generation'],2)
+        finally:event.remove(writer_engine,'after_cursor_execute',hold);release.set()

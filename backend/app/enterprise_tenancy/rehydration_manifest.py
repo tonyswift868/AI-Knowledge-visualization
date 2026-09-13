@@ -1,14 +1,23 @@
 """Bootstrap-owned durable state; no client assertion can initialize it."""
 from sqlalchemy import text
+import hashlib
+import json
 
 SCOPE_VERSION = 'SUPPORTED_REHYDRATION_SCOPE_V1'
 SUPPORTED_SCOPE = ('plans', 'progress', 'resource_metadata')
 WHERE_SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 
 
+def lock_learning_scope(connection, scope):
+    digest = hashlib.sha256(json.dumps(scope, sort_keys=True).encode()).digest()
+    key = int.from_bytes(digest[:8], 'big', signed=True)
+    connection.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
+
+
 def initialize_learning_state(connection, scope):
     # Called only after membership and profile initialization in the same commit.
     # Existing initialized state/generation is retained on repeated bootstrap.
+    lock_learning_scope(connection, scope)
     connection.execute(text('''
         INSERT INTO rehydration_manifests
           (issuer,subject_id,organization_id,workspace_id,scope_version,initialized,generation)

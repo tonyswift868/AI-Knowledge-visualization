@@ -82,9 +82,8 @@ class StructuredSyncService:
             c.execute(text("SELECT set_config('mentorflow.actor_issuer', :issuer, true)"), scope)
             if writing:
                 # Serialize one account/workspace, including references and first insert.
-                digest = hashlib.sha256(json.dumps(scope, sort_keys=True).encode()).digest()
-                key = int.from_bytes(digest[:8], 'big', signed=True)
-                c.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
+                from .rehydration_manifest import lock_learning_scope
+                lock_learning_scope(c, scope)
                 # Success requires WAL flush, even if a session default disables it.
                 c.execute(text('SET LOCAL synchronous_commit = on'))
 
