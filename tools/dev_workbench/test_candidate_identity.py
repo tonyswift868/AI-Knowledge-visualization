@@ -48,6 +48,8 @@ def publication(tmp_path, candidate):
         device_profile_contract='MENTORFLOW_TEST_DEVICE_V1', packaged_entrypoint='desktop_entry.py',
         test_device_configuration=runtime)))
     value['identity_evidence_sha256'] = t.sha256(identity.read_bytes())
+    from tools.dev_workbench.testing_leases import publish
+    publish(value)
     path = root / a.TARGET; path.parent.mkdir(parents=True); path.write_bytes(raw(value))
     publish = commit(root, 'Publish exact S artifact and build/test identities')
     return root, value, paths, build, publish
@@ -121,7 +123,8 @@ def test_tampered_and_superseded_never_spawn(publication, devices, tamper):
 
 def test_runtime_config_applies_before_frozen_sidecar(publication, devices, monkeypatch):
     _, value, _, _, _ = publication
-    runtime = json.loads(Path(value['identity_evidence_path']).read_text())['test_device_configuration']
+    from tools.dev_workbench import runtime_lease
+    runtime = json.loads((runtime_lease.AUTHORITY/'LATEST.json').read_text())['desktop_runtime_configuration']
     from desktop.test_device_profile import environment
     # Snapshot/restore every environment assignment made by the seam.
     with monkeypatch.context() as patch:

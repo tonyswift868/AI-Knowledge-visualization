@@ -127,11 +127,16 @@ class Devices:
                 return False
             if manifest['launch_type'] != 'DESKTOP_EXE' or manifest['environment'] not in ('TEST', 'STAGING'): return False
             raw = read_checked(manifest['identity_evidence_path'], paths)
-            from desktop.test_device_configuration import validate
-            validate(json_bytes(raw).get('test_device_configuration'))
-            return (sha256(raw) == manifest['identity_evidence_sha256'] and
-                    json_bytes(raw).get('device_profile_contract') == PROFILE_CONTRACT and
-                    json_bytes(raw).get('packaged_entrypoint') == 'desktop_entry.py')
+            from desktop.test_device_configuration import CONTRACT
+            identity = json_bytes(raw)
+            legacy = identity.get('test_device_configuration', {})
+            contract = identity.get('runtime_contract', legacy.get('contract') if isinstance(legacy,dict) else None)
+            if not (sha256(raw) == manifest['identity_evidence_sha256'] and contract == CONTRACT and
+                    identity.get('test_id',manifest['test_id']) == manifest['test_id'] and
+                    identity.get('device_profile_contract') == PROFILE_CONTRACT and
+                    identity.get('packaged_entrypoint') == 'desktop_entry.py'): return False
+            from .runtime_lease import verified_runtime
+            with verified_runtime(manifest, paths): return True
         except (KeyError, ValueError, OSError, Refused, AttributeError): return False
 
     @staticmethod

@@ -52,6 +52,9 @@ CATALOGS = {
             'unknown_resource': '暂未提供说明', 'unknown_value': '尚未提供',
         },
         'errors': {
+            'ACCEPTANCE_RUNTIME_UNAVAILABLE': '验收运行环境不可用或已过期，请等待新的有效租约。',
+            'ACCEPTANCE_RUNTIME_CANDIDATE_MISMATCH': '运行环境与当前候选不匹配，已阻止启动。',
+            'ACCEPTANCE_RUNTIME_CA_MISMATCH': '验收环境证书校验失败，已阻止启动。',
             'TEST_RUNTIME_CONFIGURATION_INVALID': '冻结候选缺少有效的测试连接配置，已阻止启动。',
             'TEST_RUNTIME_TLS_INVALID': '测试证书与已批准回执不一致，已阻止启动。',
             'SOURCE_NOT_INTEGRATED': '构建源码不属于已批准的集成历史。',

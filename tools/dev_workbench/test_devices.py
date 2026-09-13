@@ -37,6 +37,8 @@ def compatible(source, candidate):
         client_id='test-client', audience='test-api', organization_id='test-org', workspace_id='test-workspace',
         tls_ca_path=str(certificate), tls_ca_sha256=t.sha256(certificate.read_bytes()))
     path.write_bytes(raw(identity)); value['identity_evidence_sha256'] = t.sha256(path.read_bytes())
+    from tools.dev_workbench.testing_leases import publish
+    publish(value)
     approve(source, candidate)
     def git(*args):
         if args[0] == 'show' and args[1].endswith(':desktop/test_device_profile.py'):

@@ -39,32 +39,26 @@ signing key, feed authority, updater transaction or user data is changed.
 A/B still use the same build source, tree, artifact digest and build ID, with
 separate owned roots, preferences, caches and credential namespaces. The existing
 identity receipt must additionally attest `device_profile_contract` as
-`MENTORFLOW_TEST_DEVICE_V1`, `packaged_entrypoint` as `desktop_entry.py`, and this
-non-secret object as `test_device_configuration`:
+`MENTORFLOW_TEST_DEVICE_V1`, `packaged_entrypoint` as `desktop_entry.py`, and
+`runtime_contract` as `MENTORFLOW_TEST_RUNTIME_V1` (the compatible frozen wire
+contract). New receipts need no disposable endpoint or CA. Test ID remains
+bound by the exact governance publication; if repeated in the identity receipt
+it must match. Existing hash-pinned receipts may retain their historical
+`test_device_configuration`: only its `contract` identifies compatibility.
+Its endpoint/CA values never authorize a device launch.
 
-```json
-{
-  "contract": "MENTORFLOW_TEST_RUNTIME_V1",
-  "issuer": "https://test-auth.example.invalid",
-  "api_base_url": "https://test-api.example.invalid",
-  "client_id": "mentorflow-desktop",
-  "audience": "mentorflow-api",
-  "organization_id": "test-organization",
-  "workspace_id": "test-workspace",
-  "tls_ca_path": "E:/Codex/Artifacts/test-candidate/ca.crt",
-  "tls_ca_sha256": "<exact 64 lowercase hex characters>"
-}
-```
+The fixed coordination-owned [ephemeral runtime lease](EPHEMERAL_RUNTIME_LEASE_V2.md)
+provides current transport configuration. It must match CURRENT test ID, source
+SHA/tree and artifact digest. Workbench validates publication ownership, bounded
+schema, freshness, trusted paths and CA bytes/fingerprint/validity, holding file
+leases through spawn. Missing, expired or superseded leases refuse launch.
+There is no fallback to historical configuration.
 
-These are example connection values, not deployed services. No password, token,
-shell text, generic environment map, root override or TLS bypass flag is allowed.
-The whole receipt is hash-pinned by publication. The CA must be in a trusted path,
-and is independently hashed and leased through spawn. Workbench serializes only
-this validated object into `MENTORFLOW_TEST_RUNTIME_CONFIGURATION` in its clean,
-code-owned device environment. The new direct entry consumes it before desktop
-imports, rechecks owned root/generation and CA digest, binds the existing Account
-Core/OIDC client environment and skips the ordinary package sidecar. Storage still
-comes exclusively from the owned profile. Existing auth verification is unchanged.
+The existing frozen entry consumes the validated object through
+`MENTORFLOW_TEST_RUNTIME_CONFIGURATION` before desktop imports. It rechecks
+owned root/generation and CA digest, binds the existing Account Core/OIDC client
+environment and skips the ordinary package sidecar. Storage still comes
+exclusively from the owned profile. Existing auth verification is unchanged.
 
 The ordinary non-device package sidecar retains its existing behavior. Protected
 GUI wrappers which clean/replace environment are not attested by this V1 seam;

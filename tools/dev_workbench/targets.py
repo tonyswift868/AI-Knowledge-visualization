@@ -182,16 +182,23 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
                     identity.get('device_profile_contract') != PROFILE_CONTRACT or
                     identity.get('packaged_entrypoint') != 'desktop_entry.py'):
                 raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
-            from desktop.test_device_configuration import ENV_KEY, validate
-            try: config = validate(identity.get('test_device_configuration'))
-            except ValueError: raise Refused('TEST_RUNTIME_CONFIGURATION_INVALID') from None
-            certificate = paths.check(config['tls_ca_path'])
-            certificate_stream = stack.enter_context(pinned_file(certificate))
-            paths.check(str(certificate))
-            certificate_raw = certificate_stream.read(1024 * 1024 + 1)
-            if len(certificate_raw) > 1024 * 1024 or sha256(certificate_raw) != config['tls_ca_sha256']:
-                raise Refused('TEST_RUNTIME_TLS_INVALID')
-            device_environment = {**device_environment, ENV_KEY: json.dumps(config)}
+            from desktop.test_device_configuration import ENV_KEY, CONTRACT
+            legacy = identity.get('test_device_configuration')
+            contract = identity.get('runtime_contract', legacy.get('contract') if isinstance(legacy, dict) else None)
+            if contract != CONTRACT or identity.get('test_id',manifest['test_id']) != manifest['test_id']:
+                raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
+            from .devices import Devices
+            from desktop.test_device_profile import environment
+            device = Path(device_environment.get('MENTORFLOW_TEST_DEVICE_ROOT','')).name
+            devices = Devices(base=Path(device_environment.get('MENTORFLOW_TEST_DEVICE_ROOT','')).parent)
+            profile = devices.owned(device)
+            expected = environment(devices.root(device), profile)
+            if any(device_environment.get(key)!=value for key,value in expected.items()):
+                raise Refused('TEST_DEVICE_UNOWNED_ROOT')
+            from .runtime_lease import verified_runtime
+            config, lease_id, runtime_current = stack.enter_context(verified_runtime(manifest,paths))
+            device_environment = {**device_environment, ENV_KEY: json.dumps(config),
+                                  'MENTORFLOW_TEST_RUNTIME_LEASE_ID':lease_id}
         if kind in ('DESKTOP_EXE', 'INSTALLER'):
             if manifest['artifact_type'] != kind or manifest['launch_target'] != manifest['artifact_path']:
                 raise Refused('LAUNCH_TARGET_MISMATCH')
@@ -207,6 +214,7 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
             raise Refused('UNKNOWN_SCRIPT_ID')
         if cancelled(): raise Refused('CANCELLED')
         if authority_check is not None: authority_check()
+        if device_environment is not None: runtime_current()
         try:
             options = dict(cwd=str(ROOT if kind == 'SCRIPT_ID' else artifact.parent), shell=False, close_fds=True)
             if device_environment is not None: options['env'] = device_environment
