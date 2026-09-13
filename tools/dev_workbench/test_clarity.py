@@ -90,7 +90,12 @@ def test_evidence_scopes_never_promote_source_or_partial_account_work(source):
     assert summarize(view)['workflow'][-1]['text'] == '○ 未创建'
 
 
-def test_known_blocker_remains_visible_while_waiting_for_artifact(window, app, source):
+def test_known_blocker_remains_visible_while_waiting_for_artifact(window, app, source, candidate):
+    # Declare this test's waiting state instead of inheriting whichever real
+    # CURRENT candidate happens to be registered in the integration checkout.
+    waiting = copy.deepcopy(candidate[0])
+    waiting['status'] = 'WAITING_FOR_ARTIFACT'
+    source.files[a.TARGET] = raw(waiting)
     view = a.load_view(source)
     view['workers'][1]['status'] = 'BLOCKED'
     render(window, app, view)
