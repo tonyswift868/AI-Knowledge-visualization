@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from threading import Lock
 from typing import Any, Callable, Protocol, TypeVar
 
@@ -26,7 +27,7 @@ from .credential_store import get_secret
 from .enterprise.contracts_v1 import TenantMode
 from .koikatsu_paths import KKS_RUNTIME_ROOT, TEACHER_AVATAR_REGISTRY_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 REGISTRY_ROOT = TEACHER_AVATAR_REGISTRY_ROOT
 REGISTRY_FILE = REGISTRY_ROOT / "registry.json"
 KKS_CHARACTER_PACK_ROOT = KKS_RUNTIME_ROOT / "character-packs"

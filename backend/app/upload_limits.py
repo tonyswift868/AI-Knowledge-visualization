@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 
 DEFAULT_UPLOAD_CHUNK_BYTES = 1024 * 1024
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 
 
 class UploadLimitExceeded(ValueError):

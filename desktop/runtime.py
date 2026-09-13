@@ -317,15 +317,8 @@ class LocalService(QObject):
         if self._resolved_profile is not None and self._resolved_profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
             self._start_account_process()
             return
-        # The backend's canonical import root is ``app`` (its own modules use
-        # that name for shared enterprise contracts).  Loading it once as
-        # ``backend.app`` creates duplicate Enum/contract classes and makes a
-        # Personal Local lifespan look like Enterprise mode.  Source launches
-        # add the backend directory here; packaged launches already expose it.
-        backend_root = Path(__file__).resolve().parents[1] / "backend"
-        if backend_root.is_dir() and str(backend_root) not in sys.path:
-            sys.path.insert(0, str(backend_root))
-        from app.main import app
+        from .backend_imports import load_app
+        app = load_app()
         import uvicorn
 
         if self.thread and self.thread.is_alive():

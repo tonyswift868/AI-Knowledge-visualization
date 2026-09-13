@@ -3,12 +3,13 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 import yaml
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 STORY_PACK_ROOT = PROJECT_ROOT / "story_packs"
 PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 REQUIRED_MANIFEST_FIELDS = {

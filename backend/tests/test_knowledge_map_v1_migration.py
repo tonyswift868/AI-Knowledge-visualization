@@ -33,10 +33,10 @@ def _canonical_head(config: Config) -> str:
     return head
 
 
-def test_in_process_migration_supports_backend_package_from_repository_root(
+def test_in_process_migration_uses_canonical_package_from_repository_root(
     tmp_path: Path,
 ):
-    """Exercise the same import shape used by the isolated acceptance server."""
+    """Repository-root startup uses the same canonical boundary as Desktop."""
 
     project_root = Path(__file__).resolve().parents[2]
     database = tmp_path / "root-package-startup.db"
@@ -47,9 +47,12 @@ def test_in_process_migration_supports_backend_package_from_repository_root(
             sys.executable,
             "-c",
             (
-                "from backend.app import orm; "
+                "from desktop.backend_imports import prepare_backend_imports; "
+                "import sys; before = list(sys.path); prepare_backend_imports(); "
+                "from app import orm; "
                 f"orm.configure_orm({str(database)!r}); "
                 "orm.upgrade_orm_schema(); "
+                "assert sys.path == before; "
                 "print(orm.ORM_DB)"
             ),
         ],

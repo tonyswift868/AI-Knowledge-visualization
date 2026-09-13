@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 
@@ -26,7 +27,7 @@ _SHARED_MODULE: Any | None = None
 
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return project_resource_root()
 
 
 def _looks_like_shared_root(candidate: Path) -> bool:

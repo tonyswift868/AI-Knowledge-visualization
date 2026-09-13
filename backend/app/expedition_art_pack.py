@@ -18,6 +18,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from .runtime_resources import project_resource_root
 from typing import Any
 
 from .expedition_data import HEROES
@@ -56,7 +57,7 @@ OFFICIAL_ART_DIMENSIONS = {
 }
 OFFICIAL_ALPHA_KINDS = set(OFFICIAL_ART_KINDS) - {"card_art", "skill_cutin"}
 MAX_COMPRESSION_RATIO = 200
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 PACK_ROOT = PROJECT_ROOT / "content" / "expedition_art_packs"
 PREVIEW_ROOT = PROJECT_ROOT / "data" / "expedition_art_pack_previews"
 EXPECTED_HERO_IDS = tuple(hero["hero_id"] for hero in HEROES)

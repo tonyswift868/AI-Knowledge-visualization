@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from .runtime_resources import project_resource_root
 
 
 PRIVATE_TEACHER_ROUTE = "/teacher2d/tsubaki-live2d"
@@ -23,7 +24,7 @@ def private_teacher_asset_root() -> Path:
             / "teacher-assets"
             / "tsubaki-live2d"
         )
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = project_resource_root()
     return project_root / "data" / "teacher-assets" / "tsubaki-live2d"
 
 

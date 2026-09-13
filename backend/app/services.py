@@ -9,6 +9,7 @@ import socket
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from urllib.parse import urlparse
 
 from . import db
@@ -16,7 +17,7 @@ from . import db
 SUPPORTED = {".pdf", ".docx", ".md", ".txt", ".html", ".htm"}
 FORBIDDEN_PARTS = {".git", "node_modules", ".venv", "venv"}
 MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_DEPTH = 50, 5_000_000, 50_000_000, 5
-STORY_PRESET_PATH = Path(__file__).resolve().parents[2] / "data" / "presets" / "mentorflow_story_theater_default.json"
+STORY_PRESET_PATH = project_resource_root() / "data" / "presets" / "mentorflow_story_theater_default.json"
 
 
 def load_story_preset() -> dict:

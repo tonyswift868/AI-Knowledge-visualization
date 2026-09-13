@@ -11,11 +11,12 @@ import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path, PurePosixPath
+from .runtime_resources import project_resource_root
 from threading import Lock
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 REGISTRY_ROOT = PROJECT_ROOT / "data" / "spine_teachers"
 REGISTRY_FILE = REGISTRY_ROOT / "registry.json"
 MANIFEST_NAME = "teacher.manifest.json"

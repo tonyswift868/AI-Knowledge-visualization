@@ -15,6 +15,7 @@ import io
 from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
@@ -138,7 +139,7 @@ def _default_teacher_presentation_state(action: Any) -> str:
     return "talking"
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 UPLOAD_ROOT = Path(
     os.getenv(
         "MENTORFLOW_ACTIVE_UPLOAD_ROOT",

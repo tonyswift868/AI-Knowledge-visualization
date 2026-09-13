@@ -13,6 +13,7 @@ import zipfile
 from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from .runtime_resources import project_resource_root
 from threading import Lock
 from typing import Any
 
@@ -37,7 +38,7 @@ from .koikatsu_paths import (
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 ROOT = KKS_TEACHER_REGISTRY_ROOT
 REGISTRY = ROOT / "registry.json"
 DEFAULT_CARD_CANDIDATES = (

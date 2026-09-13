@@ -16,6 +16,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from .runtime_resources import project_resource_root
 from typing import Any, AsyncIterator, Mapping, Protocol
 from urllib.parse import urljoin, urlparse
 from uuid import uuid4
@@ -45,7 +46,7 @@ from .private_voice_release_registration import (
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 DEFAULT_PACK_ROOT = PROJECT_ROOT / "data" / "voice" / "packs"
 DEFAULT_CATALOG_PATH = (
     PROJECT_ROOT / "backend" / "config" / "voice" / "teacher_voice_pack_catalog.v1.json"

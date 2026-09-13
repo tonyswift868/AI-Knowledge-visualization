@@ -7,6 +7,7 @@ import json
 import os
 import struct
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from threading import BoundedSemaphore, Lock
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -16,7 +17,7 @@ import httpx
 from .teacher_avatar_registry import MAX_MODEL_BYTES, TeacherAvatarError, import_model, list_models
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 PRESET_ROOT = PROJECT_ROOT / "content" / "teacher_avatar_presets" / "1.0.0"
 PRESET_MANIFEST = PRESET_ROOT / "manifest.json"
 REMOTE_CACHE_ROOT = PROJECT_ROOT / "data" / "teacher_avatar_cache"

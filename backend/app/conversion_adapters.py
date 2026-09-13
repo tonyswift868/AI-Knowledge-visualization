@@ -14,6 +14,7 @@ import wave
 import zipfile
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from pathlib import PurePosixPath
 from typing import Any, Protocol, Sequence
 from xml.etree import ElementTree
@@ -28,7 +29,7 @@ def document_runtime_cache_root() -> Path:
     configured = os.getenv("MENTORFLOW_DOCUMENT_CACHE_ROOT", "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return (Path(__file__).resolve().parents[2] / "data" / "runtime-cache" / "documents").resolve()
+    return (project_resource_root() / "data" / "runtime-cache" / "documents").resolve()
 
 
 def _configure_document_runtime_cache() -> Path:
@@ -1463,7 +1464,7 @@ def _rapidocr_engine() -> Any:
 
 
 def _ocr_parts(raw: bytes, suffix: str, *, page: int | None = None) -> list[ConvertedPart]:
-    runtime = Path(__file__).resolve().parents[2] / "runtime" / "conversion"
+    runtime = project_resource_root() / "runtime" / "conversion"
     runtime.mkdir(parents=True, exist_ok=True)
     target = runtime / f"ocr-{uuid.uuid4().hex}{suffix or '.png'}"
     target.write_bytes(raw)

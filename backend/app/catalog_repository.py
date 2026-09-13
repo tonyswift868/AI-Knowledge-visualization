@@ -5,6 +5,7 @@ import re
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 from . import db
@@ -12,7 +13,7 @@ from .story_pack import StoryPackError, load_story_pack
 from .services import uid
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = project_resource_root()
 CATALOG_ROOT = ROOT / "content" / "narrative_catalog" / "v2"
 CATALOG_DB = CATALOG_ROOT / "narrative_catalog_v2.sqlite"
 MANIFEST_PATH = CATALOG_ROOT / "catalog_manifest.json"

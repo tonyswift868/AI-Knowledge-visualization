@@ -16,11 +16,12 @@ import platform
 import sys
 import time
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any, Mapping
 
 from .koikatsu_paths import KKS_RUNTIME_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 RUNTIME_MANIFEST_PATH = Path(os.getenv("MENTORFLOW_KKS_RUNTIME_MANIFEST", str(KKS_RUNTIME_ROOT / "runtime-manifest-v1.json")))
 CARD_INDEX_PATH = Path(os.getenv("MENTORFLOW_KKS_CARD_INDEX", str(KKS_RUNTIME_ROOT / "card-index-v1.sqlite3")))
 ZIPMOD_INDEX_PATH = Path(os.getenv("MENTORFLOW_KKS_ZIPMOD_INDEX", str(KKS_RUNTIME_ROOT / "zipmod-index-v1.csv")))

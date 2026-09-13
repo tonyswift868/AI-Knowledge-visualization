@@ -12,6 +12,7 @@ from threading import Lock
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from uuid import uuid4
@@ -125,7 +126,7 @@ from .teacher_visual_assets import (
     private_teacher_asset_root,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 DEFAULT_PRESET_DIR = Path(
     os.getenv("MENTORFLOW_PRESET_ROOT", str(PROJECT_ROOT / "data" / "presets"))
 )
@@ -1264,7 +1265,7 @@ async def add_url_source(workspace_id: str, body: UrlSourceIn):
 def _historical_upload_root() -> Path:
     """Return the one canonical upload root used before the user-data move."""
 
-    return (Path(__file__).resolve().parents[2] / "data" / "uploads").resolve()
+    return (project_resource_root() / "data" / "uploads").resolve()
 
 
 @app.delete("/api/sources/{source_id}")
@@ -4117,7 +4118,7 @@ def teacher_avatar_morph(model_id: str, request: Request, body: dict[str, Any]):
         _teacher_avatar_error(exc)
 
 
-STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+STATIC = project_resource_root() / "frontend" / "dist"
 if STATIC.exists():
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
     # Private teacher files live in durable user data instead of the public

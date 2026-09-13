@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from .runtime_resources import backend_resource_root
 from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -257,7 +258,7 @@ def _policy_path() -> Path:
     configured = os.getenv("MENTORFLOW_KNOWLEDGE_POLICY_PATH", "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return Path(__file__).resolve().parents[1] / "config" / "knowledge_policy_v1.json"
+    return backend_resource_root() / "config" / "knowledge_policy_v1.json"
 
 
 def _load_policy_document() -> PolicyDocument:

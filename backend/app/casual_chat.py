@@ -14,6 +14,7 @@ import re
 import stat
 import time
 from pathlib import Path, PureWindowsPath
+from .runtime_resources import backend_resource_root
 from typing import Any
 from urllib.parse import urlparse
 
@@ -62,7 +63,7 @@ def _casual_prompt_path() -> Path:
     explicit = str(os.getenv("MENTORFLOW_CASUAL_CHAT_PROMPT") or "").strip()
     if explicit:
         return Path(explicit).expanduser().resolve()
-    return (Path(__file__).resolve().parents[1] / "config" / "prompts" / "casual_chat_teacher_prompt.md").resolve()
+    return (backend_resource_root() / "config" / "prompts" / "casual_chat_teacher_prompt.md").resolve()
 
 
 def _casual_prompt_template() -> str:

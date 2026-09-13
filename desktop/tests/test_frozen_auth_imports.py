@@ -7,21 +7,20 @@ import pytest
 from desktop import enterprise_oidc
 
 
-@pytest.mark.parametrize('frozen', [False, True])
-def test_only_source_adds_checkout_backend_path(monkeypatch, frozen):
-    root = str(Path(enterprise_oidc.__file__).resolve().parents[1] / 'backend')
-    paths = [entry for entry in sys.path if entry != root]
-    monkeypatch.setattr(sys, 'path', paths.copy())
-    monkeypatch.setattr(sys, 'frozen', frozen, raising=False)
-    enterprise_oidc._prepare_backend_imports()
-    assert sys.path == (paths if frozen else [root] + paths)
-    enterprise_oidc._prepare_backend_imports()
-    assert sys.path.count(root) == (0 if frozen else 1)
+def test_source_loads_canonical_package_without_search_path_mutation():
+    # A fresh interpreter proves root-only source mode; do not clear modules.
+    import os
+    import subprocess
+    env = dict(os.environ)
+    env.pop('PYTHONPATH', None)
+    result = subprocess.run([sys.executable, '-c', "from desktop.backend_imports import prepare_backend_imports; import sys; before=list(sys.path); prepare_backend_imports(); prepare_backend_imports(); import app; assert sys.path == before; assert app.__name__ == 'app'"], cwd=Path(__file__).resolve().parents[2], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
-def test_frozen_config_still_loads_canonical_migration_contract(monkeypatch):
+def test_config_still_loads_canonical_migration_contract(monkeypatch):
+    from desktop.backend_imports import prepare_backend_imports
+    prepare_backend_imports()
     from app.enterprise.identity import issuer_migration
-    monkeypatch.setattr(sys, 'frozen', True, raising=False)
     before = sys.path.copy()
     assert enterprise_oidc._migration_contract() is issuer_migration
     assert sys.path == before
@@ -43,7 +42,6 @@ def test_frozen_missing_contract_fails_closed(monkeypatch):
         if name == 'app.enterprise.identity':
             raise ModuleNotFoundError(name='app.enterprise.identity')
         return original(name, *args, **kwargs)
-    monkeypatch.setattr(sys, 'frozen', True, raising=False)
     monkeypatch.setattr(builtins, '__import__', unavailable)
     with pytest.raises(ModuleNotFoundError):
         enterprise_oidc._migration_contract()

@@ -5,6 +5,7 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from threading import Lock
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -25,7 +26,7 @@ from .expedition_orm import (
 )
 from .orm import SessionLocal, init_orm
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = project_resource_root()
 PROFILE_ID = "expedition_profile_local"
 USER_KEY = "local"
 ASSET_ROOT = ROOT / "frontend" / "public" / "assets" / "expedition"

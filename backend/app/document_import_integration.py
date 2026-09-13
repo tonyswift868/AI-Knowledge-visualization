@@ -8,6 +8,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 from fastapi import APIRouter, Body, FastAPI, File, HTTPException, Request, UploadFile
@@ -25,7 +26,7 @@ from .upload_limits import UploadLimitExceeded, read_upload_limited
 
 DOCUMENT_IMPORT_ROUTE_PREFIX = "/api/document-import"
 DOCUMENT_IMPORT_MAX_FILES = 20
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 
 
 class DocumentBatchStartIn(BaseModel):

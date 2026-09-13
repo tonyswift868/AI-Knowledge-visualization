@@ -5,6 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from .runtime_resources import backend_resource_root
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlsplit
 
@@ -72,7 +73,7 @@ class TeacherVoiceReleaseSlot:
 
 def default_manifest_path() -> Path:
     return (
-        Path(__file__).resolve().parents[1]
+        backend_resource_root()
         / "config"
         / "voice"
         / "teacher_voice_release_slot.v1.json"

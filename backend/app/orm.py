@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from datetime import datetime, date, timezone
 from typing import Any
 from pathlib import Path
+from .runtime_resources import project_resource_root, backend_resource_root
 import os
 import sys
 from threading import Lock
@@ -12,7 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 
 from .enterprise.contracts_v1 import TenantMode
 
-ROOT=Path(__file__).resolve().parents[2]; DATA=ROOT/'data'
+ROOT=project_resource_root(); DATA=ROOT/'data'
 ORM_DB=Path(os.getenv("MENTORFLOW_ORM_DB", str(DATA/'mentorflow_v2.db'))).expanduser().resolve()
 APPLICATION_DATABASE_ROLE = "mentorflow_app"
 RUNTIME_DATABASE_URL_ENV = "MENTORFLOW_DATABASE_URL"
@@ -250,43 +251,22 @@ def upgrade_orm_schema(revision: str = "head") -> None:
     from alembic import command
     from alembic.config import Config
 
-    # Historical migrations deliberately keep their original ``app.*``
-    # imports. A frozen desktop bundle exposes this package as ``backend.app``;
-    # register aliases so those immutable migration files load the same module
-    # objects instead of creating a second ORM engine.
-    if getattr(sys, "frozen", False):
-        import backend.app as backend_app
-        from . import expedition_orm
-
-        sys.modules.setdefault("app", backend_app)
-        sys.modules.setdefault("app.orm", sys.modules[__name__])
-        sys.modules.setdefault("app.expedition_orm", expedition_orm)
-
-    backend_root = Path(__file__).resolve().parents[1]
+    # Desktop and server now share app.*. Refuse a duplicate engine instead
+    # of aliasing modules or changing the process-wide import search path.
+    if __name__ != "app.orm":
+        raise RuntimeError("Migrations require the canonical app.orm module")
+    backend_root = backend_resource_root()
     config = Config(str(backend_root / "alembic.ini"))
     config.set_main_option("script_location", str(backend_root / "alembic"))
-    # Historical migration modules import ``app.orm``.  When FastAPI is
-    # launched as ``backend.app.main`` from the repository root, Alembic must
-    # prepend the backend directory rather than the process working directory.
-    config.set_main_option("prepend_sys_path", str(backend_root))
+    config.set_main_option("prepend_sys_path", "")
     config.set_main_option("sqlalchemy.url", f"sqlite:///{ORM_DB.as_posix()}")
     # Startup migrations run inside the application process.  Alembic's CLI
     # logging configuration must not replace handlers already installed by the
     # host, otherwise later runtime and shutdown failures become invisible.
     config.attributes["configure_logger"] = False
-    backend_import_root = str(backend_root)
-    added_backend_import_root = backend_import_root not in sys.path
-    if added_backend_import_root:
-        sys.path.insert(0, backend_import_root)
-    try:
-        with _migration_lock:
-            command.upgrade(config, revision)
-    finally:
-        if added_backend_import_root:
-            try:
-                sys.path.remove(backend_import_root)
-            except ValueError:
-                pass
+    with _migration_lock:
+        command.upgrade(config, revision)
+
 def utcnow(): return datetime.now(timezone.utc)
 class Base(DeclarativeBase): pass
 # Keep v1 knowledge-map/teacher tables on a dedicated metadata registry.  The

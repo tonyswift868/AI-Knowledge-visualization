@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from .runtime_resources import project_resource_root
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 KOIKATSU_ROOT = Path(
     os.getenv(
         "MENTORFLOW_KOIKATSU_ROOT",

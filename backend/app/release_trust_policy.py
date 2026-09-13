@@ -24,6 +24,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from .runtime_resources import backend_resource_root
 from typing import Any, Callable, Iterable, Mapping
 
 
@@ -32,7 +33,7 @@ TRUST_ROOTS_SCHEMA = "mentorflow.release-trust-roots.v1"
 TRUST_POLICY_SCHEMA = "mentorflow.release-trust-policy.v1"
 RELEASE_TRUST_BINDING_SCHEMA = "mentorflow.release-trust-binding.v1"
 RELEASE_TRUST_ROOTS_PATH = (
-    Path(__file__).resolve().parents[1]
+    backend_resource_root()
     / "config"
     / "voice"
     / "release_trust_roots.v1.json"

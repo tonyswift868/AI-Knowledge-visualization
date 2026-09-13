@@ -9,6 +9,7 @@ import json
 import os
 import threading
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any, Mapping
 
 from .local_voice_runtime_supervisor import (
@@ -123,7 +124,7 @@ def _registration_path() -> Path:
         raise PrivateQwenRuntimeError("app private voice release registration is invalid") from exc
     if private_release is not None:
         return private_release["runtime_registration_path"]
-    return Path(__file__).resolve().parents[2] / "data" / "voice_packs" / "private-runtime-registration.json"
+    return project_resource_root() / "data" / "voice_packs" / "private-runtime-registration.json"
 
 
 def probe_registration() -> dict[str, Any]:

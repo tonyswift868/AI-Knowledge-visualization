@@ -47,8 +47,6 @@ from .local_migration import (
 
 
 PROJECT_ROOT = _lexical_path(Path(__file__)).parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 _FRONTEND_BUNDLE_ENV = "MENTORFLOW_DESKTOP_FRONTEND_BUNDLE"

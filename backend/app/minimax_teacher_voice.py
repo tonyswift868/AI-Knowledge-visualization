@@ -13,6 +13,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any
 
 import httpx
@@ -56,7 +57,7 @@ class MiniMaxSynthesis:
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return project_resource_root()
 
 
 def _config_path() -> Path:

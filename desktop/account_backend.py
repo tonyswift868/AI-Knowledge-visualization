@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import sys
 import threading
 
 
@@ -29,12 +28,9 @@ def run_account_backend(listener, data_root: str, stop_event) -> None:
     })
     from .main import _bind_local_teacher_asset_vault
     _bind_local_teacher_asset_vault(root)
-    backend_root = Path(__file__).resolve().parents[1] / "backend"
-    if backend_root.is_dir() and str(backend_root) not in sys.path:
-        sys.path.insert(0, str(backend_root))
+    from .backend_imports import load_app
     import uvicorn
-    from app.main import app
-
+    app = load_app()
     server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", port=listener.getsockname()[1],
         access_log=False, log_level="warning", log_config=None,

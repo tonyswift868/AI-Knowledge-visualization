@@ -24,6 +24,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from .runtime_resources import project_resource_root
 from typing import Any, Callable, Mapping, Protocol
 
 from .local_voice_runtime_supervisor import (
@@ -85,7 +86,7 @@ MAX_AUDIO_BASE64_BYTES = 4 * ((MAX_AUDIO_BYTES + 2) // 3)
 _HEX64 = frozenset("0123456789abcdef")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _SAFE_TOKEN_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._-")
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_resource_root()
 ENGINE_REGISTRATION_SCHEMA = "mentorflow.qwen-engine-registration.v1"
 DEFAULT_ENGINE_REGISTRATION_PATH = (
     PROJECT_ROOT / "backend" / "config" / "voice" / "qwen_engine_registration.v1.json"

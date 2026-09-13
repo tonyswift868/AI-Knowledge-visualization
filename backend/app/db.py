@@ -6,9 +6,10 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from .runtime_resources import project_resource_root
 from typing import Any, Iterator
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = project_resource_root()
 DATA_DIR = ROOT / "data"
 DB_PATH = Path(os.getenv("MENTORFLOW_DB", DATA_DIR / "app.db"))
 

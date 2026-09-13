@@ -1,6 +1,5 @@
 import os
 import hashlib
-import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import (
@@ -22,12 +21,16 @@ if uat_config:
     if set(uat_doc) != {'schema', 'root', 'public_key', 'key_id', 'source_sha', 'tree_sha'} or uat_doc['schema'] != 'mentorflow.packaged-update-uat.v1':
         raise ValueError('invalid UAT public build configuration')
 backend_root = root / "backend"
-# Desktop runtime imports the canonical backend namespace as ``app`` after
-# selecting the account-scoped data root.  Make that same namespace visible
-# while PyInstaller enumerates hidden imports; collecting ``backend.app``
-# creates a second, unusable module identity and misses dynamic ``app.*``
-# imports such as the cost boundaries.
-sys.path.insert(0, str(backend_root))
+# Build-time module search is declared through Analysis.pathex below.
+# Enumerate canonical names without mutating the build interpreter's sys.path.
+backend_modules = ["app"]
+for source in sorted((backend_root / "app").rglob("*.py")):
+    parts = source.relative_to(backend_root).with_suffix("").parts
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    for length in range(1, len(parts) + 1):
+        backend_modules.append(".".join(parts[:length]))
+
 datas = [
     (str(root / "backend" / "alembic" / "env.py"), "backend/alembic"),
     (str(root / "backend" / "alembic" / "script.py.mako"), "backend/alembic"),
@@ -108,14 +111,11 @@ for catalog_relative in (
     catalog_path = root / "content" / "narrative_catalog" / "v2" / catalog_relative
     datas.append((str(catalog_path), f"content/narrative_catalog/v2/{catalog_path.parent.name}" if catalog_path.parent.name == "legacy_v1_seed" else "content/narrative_catalog/v2"))
 # Alembic migration files are public runtime inputs, but a checkout may have
-# ignored ``__pycache__`` entries.  Add only the tracked migration sources.
+# ignored ``__pycache__`` entries. Add only the tracked migration sources.
 for migration in sorted((root / "backend" / "alembic" / "versions").glob("*.py")):
     datas.append((str(migration), "backend/alembic/versions"))
-# ``desktop.runtime`` activates an account-scoped data root before importing
-# ``app.main`` and deliberately exposes ``_internal/backend`` as the canonical
-# import root.  Keep the tracked application sources at that runtime location;
-# hidden imports in the PYZ alone are not discoverable through this boundary in
-# the frozen process.
+# Preserve existing file resources for consumers such as migrations. Executable
+# backend imports use canonical app.* in PYZ, never this backend resource tree.
 for app_source in sorted((backend_root / "app").rglob("*.py")):
     relative_parent = app_source.relative_to(backend_root).parent
     destination = Path("backend") / relative_parent
@@ -125,7 +125,7 @@ for app_source in sorted((backend_root / "app").rglob("*.py")):
 # Preserve that wheel layout so its existing fail-closed preloader can resolve
 # the exact bundled libraries before CP-SAT is imported.
 binaries = collect_dynamic_libs("ortools")
-hiddenimports = collect_submodules("app") + collect_submodules("keyring.backends")
+hiddenimports = sorted(set(backend_modules)) + collect_submodules("keyring.backends")
 
 for package in ("docling", "rapidocr", "instructor", "yt_dlp"):
     package_datas, package_binaries, package_hidden = collect_all(package)
