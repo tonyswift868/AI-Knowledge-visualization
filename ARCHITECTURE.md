@@ -81,9 +81,12 @@ FastAPI 处理 HTTP；业务实现拆在 knowledge、teaching、planning、enter
 本地大资源和可重建数据三层。现有表／bootstrap／V1 portability 是基础，不代表完整云同步或 V2 已实现。
 `account_identity_contract.py` / `identity/continuity.py` 定义 stable account proof 与签名 per-subject 映射；
 `desktop/account_storage.py` 统一 durable root，测试设备明确 TEST_ONLY。Live mapping 尚未批准。
-`enterprise_tenancy/structured_sync.py` / `structured_sync_api.py` 提供 0037 的三实体 V1：PLAN、PROGRESS、RESOURCE_METADATA；
-`desktop/structured_sync.py` 是 injected-transport 客户端。`rehydration_state.py` / `rehydration_page.py` 是独立展示合同；
-自动 login→sync→GUI 尚未接通，完整历史不在 V1 范围。Workbench 的 `devices.py` 只拥有 A/B 隔离启动与观察。
+`enterprise_tenancy/structured_sync.py` / `structured_sync_api.py` 提供三实体 V1：PLAN、PROGRESS、RESOURCE_METADATA；
+0038 manifest 与单 SQL snapshot 拥有初始化、支持范围和空状态 authority，历史 0037 保持不可变。
+`rehydration_transport.py` 绑定原生 session 与服务端 account/workspace，`rehydration_adapter.py` 经 epoch fence
+将真实 snapshot 投影到 `rehydration_page.py`，保留共享资源全部 plan_ids，输出 scoped runtime observation。
+复习和完整历史仍不支持；缺本地资源不等于云同步失败。Workbench `devices.py` 拥有 A/B 隔离启动与观察，
+按 build source 与仅治理文件 publication 的 ancestry、tree、artifact hash 和 receipt 共同准入。
 账户重置新增 after-commit completion observation；只返回登录，不自动签发会话。
 独立 [Dev Workbench](tools/dev_workbench/README.md) 从 exact repo snapshot 读取状态，当前候选待构建。
 

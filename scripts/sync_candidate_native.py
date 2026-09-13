@@ -73,14 +73,14 @@ def main():
             os.environ['MENTORFLOW_DATABASE_URL'] = lab.url('mentorflow_app', name).update_query_dict(
                 {'connect_timeout': '3'}).render_as_string(hide_password=False)
             os.environ['MENTORFLOW_MIGRATION_DATABASE_URL'] = lab.url('mentorflow_migrator', name).render_as_string(hide_password=False)
-        for name, start in [('fresh', None), ('from0037', '0037_structured_sync')]:
+        for name, start in [('fresh', None), ('from0036', '0036_account_import_ledger'), ('from0037', '0037_structured_sync')]:
             database(name)
             if start: command.upgrade(config, start)
             command.upgrade(config, 'head')
             engine = create_enterprise_postgres_engine(os.environ['MENTORFLOW_DATABASE_URL'])
             orm.engine = engine
             orm.verify_enterprise_runtime_schema()
-            report['checks']['FRESH_TO_HEAD' if start is None else '0037_TO_HEAD'] = 'PASS'
+            report['checks']['FRESH_TO_HEAD' if start is None else start[:4]+'_TO_HEAD'] = 'PASS'
             engine.dispose()
         # Startup/upgrade at head must work even with both roles forced read-only.
         with lab.admin() as c:

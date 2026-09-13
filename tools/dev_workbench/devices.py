@@ -220,6 +220,7 @@ class Devices:
                 env.update(PATH=str(system / 'System32') + ';' + str(system))
                 env.update(environment(root, value))
                 env['MENTORFLOW_TEST_ARTIFACT_SHA256'] = fresh['artifact_sha256']
+                env['MENTORFLOW_TEST_TARGET_ID'] = fresh['test_id']
                 env['MENTORFLOW_TEST_SCENARIO'] = scenario
                 # Verification and leases are still exclusively owned by launch_exact.
                 process = launch_exact(selected, fresh, source.tree_for, paths, spawn=spawn, cancelled=cancelled,
@@ -239,6 +240,14 @@ class Devices:
             plain(path)
             if path.stat().st_size > 8192: return result
             with pinned_file(path) as stream: value = json_bytes(stream.read(8193))
+            if value.get('schema') == 'mentorflow.sync-observation.v1':
+                if (value.get('test_id') != manifest['test_id'] or value.get('scenario') != scenario
+                        or value.get('generation') != target['generation']
+                        or value.get('artifact_sha256') != manifest['artifact_sha256']
+                        or value.get('source') != 'SERVER_CONFIRMED'):
+                    return result
+                value = dict(target=target, scenario=scenario,
+                             values={key: value[key] for key in OBSERVATION_KEYS})
             if (value.get('target') != target or value.get('scenario') != scenario
                     or set(value) != {'target', 'scenario', 'values'}): return result
             fields = value['values']

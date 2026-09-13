@@ -124,7 +124,8 @@ class RehydrationPage(QWidget):
         model, snapshot = self.model, self.model.snapshot
         self.title.setText(model.headline)
         self.progress.setVisible(model.state in (SyncState.AUTH_SUCCESS, SyncState.SYNCING))
-        self.retry.setVisible(model.state in (SyncState.SYNC_OFFLINE, SyncState.SYNC_FAILED))
+        self.retry.setVisible(model.state in (SyncState.SYNC_OFFLINE, SyncState.SYNC_FAILED) or
+                              snapshot is not None and snapshot.empty_state == 'NOT_INITIALIZED')
         self.enter.setEnabled(model.workspace_allowed)
         self.cache_notice.setText('')
         self.summary.setText('')
@@ -135,7 +136,8 @@ class RehydrationPage(QWidget):
             else:
                 self.enter.setText('进入学习空间')
             self.summary.setText(f'计划 {len(snapshot.plans)} · 进度 {snapshot.progress_count} · '
-                                 f'复习 {snapshot.review_count} · 历史 {snapshot.history_count}')
+                                 f'复习 {snapshot.review_count if snapshot.review_count is not None else "暂不支持"} · '
+                                 f'历史 {snapshot.history_count if snapshot.history_count is not None else "暂不支持"}')
         old = self.scroll.takeWidget()
         if old is not None:
             old.hide()
@@ -168,8 +170,16 @@ class RehydrationPage(QWidget):
 
     def _resource(self, rows, resource):
         rows.addWidget(caption(resource.name))
+        if len(resource.plan_keys) > 1:
+            rows.addWidget(caption('用于多个学习计划：' + '、'.join(
+                p.name for p in self.model.snapshot.plans if p.key in resource.plan_keys)))
+        elif resource.plan_keys:
+            rows.addWidget(caption('用于学习计划：' + next(
+                p.name for p in self.model.snapshot.plans if p.key == resource.plan_keys[0])))
         message = ('模型尚未安装在这台设备。' if resource.kind == 'model' else
                    '这份资料还没有下载到这台设备。') if resource.missing else '本机可用'
+        if resource.kind in ('other', 'unknown') and resource.missing:
+            message = '这项资源尚未在本机验证，资源类型以云端记录为准。'
         rows.addWidget(caption(message))
         if not resource.missing:
             return

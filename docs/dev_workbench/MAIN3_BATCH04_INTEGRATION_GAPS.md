@@ -1,6 +1,8 @@
 # Batch04 integration boundaries and exact candidate follow-up
 
 Authority: MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01.
+This is the historical Batch04 closeout. Later candidate qualification is recorded in CURRENT_STATE;
+the tables below retain the original gap evidence and do not override later exact receipts.
 Source integration is accepted separately from packaged/live two-device acceptance.
 The exact [receipt](../governance/receipts/20260913-main3-batch04-integration.json) owns counts and artifact hashes.
 

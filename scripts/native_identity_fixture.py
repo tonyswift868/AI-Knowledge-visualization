@@ -68,7 +68,7 @@ def certificates(home):
     return pin
 
 
-def backend(home, issuer, api, existing_subject):
+def backend(home, issuer, api, existing_subject, sync_lab=None):
     import httpx
     import uvicorn
     from alembic import command
@@ -85,10 +85,29 @@ def backend(home, issuer, api, existing_subject):
     import test_account_workspace_bootstrap as storage
     from test_enterprise_workspace_persistence import _config, _SQLiteTransactions, _seed_identity
     storage.ISSUER = issuer  # Test-only SQL membership directory; identity validation remains real.
-    path = home / 'account-core.sqlite3'
-    command.upgrade(_config(path), 'head')
-    engine = create_engine(f'sqlite:///{path.as_posix()}', connect_args={'timeout': 15})
-    _seed_identity(engine, organization='existing-org', workspace='existing-workspace', subject=existing_subject)
+    if sync_lab is None:
+        path = home / 'account-core.sqlite3'
+        command.upgrade(_config(path), 'head')
+        engine = create_engine(f'sqlite:///{path.as_posix()}', connect_args={'timeout': 15})
+        _seed_identity(engine, organization='existing-org', workspace='existing-workspace', subject=existing_subject)
+    else:
+        from alembic.config import Config
+        with sync_lab.admin() as connection:
+            connection.execute('CREATE DATABASE native_sync OWNER mentorflow_migrator')
+        previous = {k: os.environ.get(k) for k in ('MENTORFLOW_DEPLOYMENT_MODE','MENTORFLOW_DATABASE_URL','MENTORFLOW_MIGRATION_DATABASE_URL')}
+        os.environ.update(MENTORFLOW_DEPLOYMENT_MODE='ENTERPRISE_SERVER',
+            MENTORFLOW_DATABASE_URL=sync_lab.url('mentorflow_app','native_sync').render_as_string(hide_password=False),
+            MENTORFLOW_MIGRATION_DATABASE_URL=sync_lab.url('mentorflow_migrator','native_sync').render_as_string(hide_password=False))
+        config = Config(str(ROOT/'backend/alembic.ini'))
+        config.set_main_option('script_location', str(ROOT/'backend/alembic'))
+        command.upgrade(config, 'head')
+        engine = create_engine(os.environ['MENTORFLOW_DATABASE_URL'], hide_parameters=True)
+        admin = create_engine(sync_lab.url('postgres','native_sync'), hide_parameters=True)
+        _seed_identity(admin, organization='existing-org', workspace='existing-workspace', subject=existing_subject)
+        admin.dispose()
+        for key, value in previous.items():
+            if value is None: os.environ.pop(key, None)
+            else: os.environ[key] = value
     context = ssl.create_default_context(cafile=str(home / 'ca.pem'))
     context.load_cert_chain(home / 'backend.pem', home / 'backend.key')
     config = EnterpriseIdentityConfig(mode=TenantMode.ENTERPRISE_SERVER,
@@ -98,15 +117,31 @@ def backend(home, issuer, api, existing_subject):
     sessions = NativeSessions(verifier, issuer)
     # The legacy JWT consumer remains installed; native authentication uses the real SPI.
     legacy = KeycloakOidcClient(config)
-    runtime = EnterpriseIdentityRuntime(config, client=legacy, directory=storage.Directory(engine), native_sessions=sessions)
+    from app.enterprise.identity.directory import PostgresIdentityDirectory
+    directory = storage.Directory(engine) if sync_lab is None else PostgresIdentityDirectory(engine, issuer=issuer)
+    runtime = EnterpriseIdentityRuntime(config, client=legacy, directory=directory, native_sessions=sessions)
     state = account_core_mvp.app.state
     state.enterprise_identity_runtime = runtime
     state.account_workspace_bootstrap = AccountWorkspaceBootstrap(engine, issuer=issuer)
-    transactions = _SQLiteTransactions(engine)
+    from app.enterprise_tenancy.context import PostgresTenantTransactionManager
+    transactions = _SQLiteTransactions(engine) if sync_lab is None else PostgresTenantTransactionManager(engine)
+    if sync_lab is not None:
+        from app.enterprise_tenancy.structured_sync import StructuredSyncService
+        state.structured_sync_service = StructuredSyncService(transactions)
     state.enterprise_workspace_service = EnterpriseWorkspaceService(transaction_manager=transactions)
     state.enterprise_document_import_service = EnterpriseDocumentImportService(transaction_manager=transactions)
+    if sync_lab is not None:
+        os.environ.update(MENTORFLOW_DEPLOYMENT_MODE='ENTERPRISE_SERVER',
+            MENTORFLOW_DATABASE_URL=sync_lab.url('mentorflow_app','native_sync').render_as_string(hide_password=False),
+            MENTORFLOW_KEYCLOAK_ISSUER=issuer, MENTORFLOW_KEYCLOAK_CLIENT_ID='mentorflow-desktop',
+            MENTORFLOW_KEYCLOAK_AUDIENCE='mentorflow-api', MENTORFLOW_KEYCLOAK_REDIRECT_URI=api+'/api/enterprise/auth/callback',
+            MENTORFLOW_NATIVE_IDENTITY_ENDPOINT=issuer+'/mentorflow-native-identity/v1',
+            MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS='1',
+            MENTORFLOW_NATIVE_IDENTITY_CA_FILE=str(home/'ca.pem'),
+            MENTORFLOW_NATIVE_IDENTITY_CERT_FILE=str(home/'backend.pem'),
+            MENTORFLOW_NATIVE_IDENTITY_KEY_FILE=str(home/'backend.key'), SSL_CERT_FILE=str(home/'ca.pem'))
     server = uvicorn.Server(uvicorn.Config(account_core_mvp.app, host='127.0.0.1', port=int(api.rsplit(':', 1)[1]),
-        ssl_keyfile=str(home / 'server.key'), ssl_certfile=str(home / 'server.pem'), lifespan='off',
+        ssl_keyfile=str(home / 'server.key'), ssl_certfile=str(home / 'server.pem'), lifespan='off' if sync_lab is None else 'on',
         access_log=False, log_level='error', proxy_headers=False))
     worker = threading.Thread(target=server.run, daemon=True)
     worker.start()
@@ -114,6 +149,10 @@ def backend(home, issuer, api, existing_subject):
     while not server.started and worker.is_alive() and time.monotonic()<deadline:
         time.sleep(.1)
     if not server.started: raise RuntimeError('Isolated account-core TLS startup failed')
+    if sync_lab is not None:
+        runtime = state.enterprise_identity_runtime
+        with httpx.Client(verify=context, trust_env=False) as probe:
+            assert probe.get(api+'/health/startup').status_code == 200
     return server, worker, runtime, engine
 
 
@@ -204,6 +243,13 @@ def desktop_acceptance():
         while target.main is None and time.monotonic()<deadline:
             qt.processEvents()
             time.sleep(.01)
+            recovery = getattr(target, 'rehydration_page', None)
+            if recovery is not None and recovery.enter.isEnabled():
+                assert recovery.model.snapshot.server_confirmed
+                checks['native_authenticated_rehydration_ui'] = True
+                (home / 'product-sync-observation.json').write_text(
+                    json.dumps(recovery.runtime_observation, indent=2), encoding='utf-8')
+                recovery.enter.click()
             if gate.state.value == 'AUTH_FAILED': break
         if target.main is None:
             import faulthandler
@@ -258,7 +304,7 @@ def run(args):
     kc_process = None
     pgdata = None
     pg_started = False
-    api_server = api_worker = engine = runtime = None
+    api_server = api_worker = engine = runtime = sync_lab = None
     log = None
     try:
         with zipfile.ZipFile(args.keycloak_zip) as archive:
@@ -435,7 +481,11 @@ def run(args):
             assert identity.post(control+'/mutate', json={'operation': 'require-mfa', 'username': 'configured-mfa'}).status_code == 200
             checks['realm_mandatory_mfa_flow_closed'] = auth('valid').json().get('outcome') == 'challenge_required'
             assert identity.post(control+'/mutate', json={'operation': 'restore-flow', 'username': 'configured-mfa'}).status_code == 200
-        api_server, api_worker, runtime, engine = backend(home, issuer, api, correct.json()['subject'])
+        if args.postgres_bin:
+            from scripts.schema_0036_native import NativePostgres
+            sync_lab = NativePostgres(args.postgres_bin, home)
+            sync_lab.start()
+        api_server, api_worker, runtime, engine = backend(home, issuer, api, correct.json()['subject'], sync_lab)
         if getattr(args, 'action_tokens', False):
             from scripts.reset_completion_fixture_checks import run as completion_checks
             with httpx.Client(verify=mtls, trust_env=False, timeout=12) as identity:
@@ -444,6 +494,28 @@ def run(args):
             response = api_probe.post(api+'/api/enterprise/auth/native/login', json={'username': 'expire', 'password': password})
             if response.status_code != 200: raise AssertionError('TLS backend login probe status '+str(response.status_code))
             checks['real_tls_backend_session'] = True
+            if sync_lab is not None:
+                from desktop.structured_sync import StructuredSyncClient
+                seeded = api_probe.post(api+'/api/enterprise/auth/native/login',
+                    json={'username':'valid','password':password})
+                seeded.raise_for_status()
+                api_probe.headers['Authorization'] = 'Bearer '+seeded.json()['access_token']
+                api_probe.post(api+'/api/enterprise/account/workspaces/initialize',json={}).raise_for_status()
+                api_probe.headers.update({'X-MentorFlow-Organization-ID':'existing-org',
+                                          'X-MentorFlow-Workspace-ID':'existing-workspace'})
+                # Absolute endpoint adapter over the real TLS/native session.
+                class Transport:
+                    def put(self, path, **kwargs): return api_probe.put(api+path, **kwargs)
+                sync = StructuredSyncClient(Transport())
+                sync.write('resource','native-shared',request_id='native-resource',expected_revision=0,
+                    payload=dict(filename='model.bin',media_type='application/octet-stream',
+                                 sha256='a'*64,size_bytes=10,product_classification='MODEL'))
+                for i in (1,2):
+                    sync.write('plan',f'native-plan-{i}',request_id=f'native-plan-{i}',expected_revision=0,
+                        payload=dict(title=f'Native plan {i}',resource_ids=['native-shared']))
+                sync.write('progress','native-progress',request_id='native-progress',expected_revision=0,
+                    payload=dict(plan_id='native-plan-1',mastery=.5,completed_tasks=2))
+                checks['native_session_structured_writes'] = True
         child_env = {k: v for k, v in os.environ.items() if not k.startswith(('MENTORFLOW_NATIVE_', 'MF_NATIVE_VERIFIER_', 'KC_', 'KEYCLOAK_'))}
         for name in list(child_env):
             if name.upper() in {'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'}:
@@ -510,6 +582,17 @@ def run(args):
             finally:
                 original.verifier.endpoint = previous_endpoint
                 release_stall.set(); stalled.shutdown(); stall_thread.join(5); stalled.server_close()
+            if getattr(args, 'candidate_hold', False):
+                ready = dict(contract='MENTORFLOW_TEST_RUNTIME_V1', issuer=issuer, api_base_url=api,
+                    client_id='mentorflow-desktop', audience='mentorflow-api',
+                    organization_id='existing-org', workspace_id='existing-workspace',
+                    tls_ca_path=str(home/'ca.pem'), tls_ca_sha256=hashlib.sha256((home/'ca.pem').read_bytes()).hexdigest())
+                (args.output/'runtime-configuration.json').write_text(json.dumps(ready,indent=2),encoding='utf-8')
+                deadline = time.monotonic()+1800
+                while not (args.output/'release-candidate').exists() and time.monotonic()<deadline:
+                    time.sleep(.25)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Owned candidate qualification lease expired')
             kc_process.terminate(); kc_process.wait(15)
             checks['real_identity_unavailable_closed'] = client.post(prefix+'/login', json={'username': 'valid', 'password': password}).status_code == 503
         receipt['status'] = 'PASS' if all(checks.values()) else 'FAIL'
@@ -524,6 +607,7 @@ def run(args):
             # HTTP transports belong to uvicorn's event loop, now closed. Process owns them.
             runtime.native_sessions.families.clear()
         if engine is not None: engine.dispose()
+        if sync_lab is not None: sync_lab.close()
         if kc_process is not None and kc_process.poll() is None:
             kc_process.terminate()
             try: kc_process.wait(15)
@@ -556,6 +640,7 @@ if __name__ == '__main__':
         parser.add_argument('--desktop-python', type=Path, required=True)
         parser.add_argument('--output', type=Path, required=True)
         parser.add_argument('--action-tokens', action='store_true')
+        parser.add_argument('--candidate-hold', action='store_true', help='Hold owned TLS candidate at runtime-configuration.json until output/release-candidate, at most 30 minutes')
         parser.add_argument('--postgres-bin', type=Path, help='Optional portable PostgreSQL bin; creates a fresh SCRAM-authenticated loopback cluster')
         parser.add_argument('--upstream-action-handlers', action='store_true',
                             help='Disposable negative control; expect action-token checks to FAIL')

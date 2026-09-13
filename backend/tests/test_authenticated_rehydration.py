@@ -26,25 +26,18 @@ INTEGRATION = '04e2d61e3e39729886b3a2e6c7aff022b65a382a'
 
 
 def test_native_session_to_exact_sync_route_with_server_membership_and_renewal(system, monkeypatch):
-    root = Path(__file__).resolve().parents[2]
-    modules = [
-        ('app.enterprise_tenancy.structured_sync', 'backend/app/enterprise_tenancy/structured_sync.py'),
-        ('app.enterprise.structured_sync_api', 'backend/app/enterprise/structured_sync_api.py'),
-        ('desktop.structured_sync', 'desktop/structured_sync.py'),
-    ]
-    for name, path in modules:
-        source = subprocess.check_output(['git', 'show', INTEGRATION + ':' + path], cwd=root)
-        module = types.ModuleType(name)
-        monkeypatch.setitem(sys.modules, name, module)
-        exec(compile(source, INTEGRATION + '/' + path, 'exec'), module.__dict__)
     app = account_core_mvp.app
     previous_routes = list(app.router.routes)
-    app.include_router(sys.modules['app.enterprise.structured_sync_api'].router)
     seen = []
     class SnapshotFixture:
-        def snapshot(self, actor, tenant):
+        def snapshot(self, actor, tenant, **kwargs):
             seen.append((actor.subject_id, tenant.organization_id, tenant.workspace_id))
-            return {'schema':'mentorflow.structured-sync.v1', 'complete':True, 'entities':[]}
+            return dict(schema='mentorflow.structured-sync.v1', complete=True, entities=[],
+                contract_version=3, snapshot_revision='pg-snapshot:1:2:', resources=[],
+                snapshot_scope=dict(subject_id=actor.subject_id, organization_id=tenant.organization_id,
+                                    workspace_id=tenant.workspace_id),
+                learning_state=dict(status='TRUE_EMPTY_SUPPORTED_SCOPE'), progress_provenance=[],
+                observation=dict(source='SERVER_CONFIRMED', snapshot_revision='pg-snapshot:1:2:'))
     monkeypatch.setattr(app.state, 'structured_sync_service', SnapshotFixture(), raising=False)
     client, _, engine = system
     client.base_url = httpx.URL('https://api.example.test')

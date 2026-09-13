@@ -1155,6 +1155,10 @@ class MentorFlowApplication:
         if not preserve_session:
             from .rehydration_transport import invalidate_active
             invalidate_active()
+            page = getattr(self, 'rehydration_page', None)
+            if page is not None:
+                page.close()
+                self.rehydration_page = None
         self._login_generation += 1
         self._login_cancelled.set()
         self._login_cancelled = threading.Event()
@@ -1379,6 +1383,12 @@ class MentorFlowApplication:
         if job == "logout_remote":
             self._finish_return_to_login_gate(result)
             return
+        if job == 'rehydration':
+            from .rehydration_adapter import present
+            page, generation, envelope = result
+            if page is getattr(self, 'rehydration_page', None) and not self.login_gate.login_is_blocked:
+                present(page, generation, envelope)
+            return
         if job != "bootstrap":
             return
         if self.login_gate is not None and self.login_gate.login_is_blocked:
@@ -1396,9 +1406,51 @@ class MentorFlowApplication:
         self.bootstrap_result = result
         from .runtime import bind_desktop_profile_data_root
         bind_desktop_profile_data_root(result.profile)
+        if result.rehydration_result is not None:
+            self._show_rehydration(result)
+            return
         if result.device_state is DeviceBootstrapState.NEW_DEVICE_OR_EMPTY_LOCAL_STATE:
             self._show_device_migration(before_main=True)
         else:
+            self._start_enterprise_local_service()
+
+    def _show_rehydration(self, result) -> None:
+        from .rehydration_page import RehydrationPage
+        from .rehydration_adapter import present
+        old = getattr(self, 'rehydration_page', None)
+        if old is not None:
+            old.close()
+        page = self.rehydration_page = RehydrationPage()
+        page.setWindowTitle('MentorFlow · 学习空间恢复')
+        page.resize(820, 780)
+        page.authenticated(result.rehydration_session.context.account_id)
+        generation = page.start_sync()
+        present(page, generation, result.rehydration_result)
+        page.workspace_requested.connect(lambda _: self._enter_rehydrated_workspace(page, result))
+        def retry(request):
+            epoch = self._login_generation
+            def run():
+                envelope = result.rehydration_session.bootstrap()
+                self.login_gate.background_succeeded.emit(f'{epoch}:rehydration',
+                    (page, request['generation'], envelope))
+            threading.Thread(target=run, daemon=True, name='mentorflow-rehydration').start()
+        page.sync_requested.connect(retry)
+        page.show()
+
+    def _enter_rehydrated_workspace(self, page, result) -> None:
+        if page is not self.rehydration_page or result is not self.bootstrap_result:
+            return
+        if self.login_gate is not None and self.login_gate.login_is_blocked:
+            return
+        try:
+            result.rehydration_session.require_current()
+        except Exception:
+            page.authenticated(result.rehydration_session.context.account_id)
+            generation = page.start_sync()
+            page.receive(generation, 'NOT_AUTHORIZED')
+            return
+        if page.model.workspace_allowed:
+            page.hide()
             self._start_enterprise_local_service()
 
     def _background_failed(self, job: str, message: str) -> None:

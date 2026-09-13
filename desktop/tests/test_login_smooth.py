@@ -451,7 +451,7 @@ def test_unchecking_remember_on_a_restored_session_removes_only_that_rotated_pai
     assert session.remembered() == (None, False)
 
 
-def test_auto_restore_refreshes_even_unexpired_access_and_preserves_rotation_on_workspace_error():
+def test_legacy_restore_requires_server_mapping_before_vault_rotation():
     credentials = Credentials()
     result = login()
     credentials.store_oauth_tokens(result.identity, access_token='still-valid', refresh_token='old-refresh')
@@ -475,4 +475,6 @@ def test_auto_restore_refreshes_even_unexpired_access_and_preserves_rotation_on_
                 await client.restore(result.identity.profile(), credentials, refresh_session=True)
     asyncio.run(run())
     assert any(path.endswith('/token') for path in calls)
-    assert credentials.load_oauth_tokens(result.identity.profile()) == ('new-access', 'new-refresh')
+    # Batch04 stable-identity authority: failed Backend mapping cannot select
+    # a canonical Vault namespace, even when the legacy token was rotated.
+    assert credentials.load_oauth_tokens(result.identity.profile()) == ('still-valid', 'old-refresh')
