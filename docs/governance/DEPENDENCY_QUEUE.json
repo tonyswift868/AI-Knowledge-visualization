@@ -321,6 +321,28 @@
       "user_action_required": null,
       "reason": "Known remote docs + preserved local bcc9f25 + exact a98584a delta. 65 focused tests; real source native login and Frozen diagnostic backend spawn PASS. See reconciliation receipt.",
       "workbench_visible": true
+    },
+    {
+      "task_id": "ACCOUNT_MVP_FINAL_INTEGRATION",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [
+        "ACCOUNT_MVP_USER_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "Exact deliveries integrated; official lifecycle wiring and Frozen admin/learner/multiaccount/WinVault/auto-login smoke PASS. Receipt: docs/governance/receipts/20260914-account-mvp-closeout.json."
+    },
+    {
+      "task_id": "ACCOUNT_MVP_USER_ACCEPTANCE",
+      "owner": "A",
+      "state": "READY",
+      "dependencies": [
+        "ACCOUNT_MVP_FINAL_INTEGRATION"
+      ],
+      "unlocks": [],
+      "user_action_required": "Run docs/governance/ACCOUNT_MVP_USER_TEST.md A-F checklist.",
+      "reason": "Current development build is available through Workbench. User mailbox receipt/click and final acceptance remain pending; no migration authority."
     }
   ],
   "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",

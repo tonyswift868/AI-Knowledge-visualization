@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MAIN3_RECONCILE_CURRENT_INTEGRATION`。
+Current authority: `MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -20,12 +20,14 @@ source 映射及分层状态见 [board](../../governance/ACTIVE_BOARD.json) 与
 | Interview + Acceptance | PENDING_MANDATORY | 最终用户验收后提供完整 bundle |
 | Formal main3 promotion | BLOCKED / NOT_AUTHORIZED | B SILENT；后续 exact promotion authority |
 
-## 当前合流收口
+## 当前 Account MVP 收口
 
-保留 bcc9f25 全部本地历史与已知 Astra 文档提交，仅新增 exact a98584a delta → 4632c3a；UNKNOWN_COMMITS=0。
-65 focused tests、当前源码真实 native login 与 Frozen 诊断包 backend spawn PASS；
-[receipt](../../governance/receipts/20260914-main3-reconciliation.json) 绑定证据。旧 V3 FAIL 保留；新正式验收候选与 A/B 未执行。
-本轮只普通发布 integration/main3；不继续 A/B、Portable Pack、迁移或功能扩展。环境保留。
+01 453e940、02 fba57de、04 3feb4b6 exact delta 已集成；03 已有 UI 复用，A 完成官方生命周期和 Workbench 最小接线。
+最终 product source 405a3568；最新开发 Frozen 实测 admin/learner main、多账号、WinVault、session-first 与 saved-credential 自动登录 PASS。
+官方客户端凭据 grant、测试公开邮件链接、官方 verify/UPDATE_PASSWORD 与 after-commit observer 已验证；用户 QQ 邮箱验收 PENDING。
+[用户 A-F 清单](../../governance/ACCOUNT_MVP_USER_TEST.md) 和 [收口证据](../../governance/receipts/20260914-account-mvp-closeout.json) 是下一轮入口。
+Workbench 最新开发版 CURRENT；最新已验收候选 NONE；旧 V3 FAIL 保留。环境至北京时间 2026-09-15 04:20:39，不自动清理。
+只普通发布 integration/main3；A/B 恢复、Portable Pack、迁移和生产 promotion 不在本轮范围。
 
 ## Batch03 与跨设备连续性（历史执行）
 

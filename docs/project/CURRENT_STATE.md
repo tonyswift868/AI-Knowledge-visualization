@@ -23,27 +23,31 @@ BATCH03_SOURCE = INTEGRATED
 BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
 PRODUCER_UX_WIRING = PASS
-TEST_TARGET_STATUS = FAIL
-FROZEN_CANDIDATE = BLOCKED_LOCAL_SERVICE_STARTUP
+TEST_TARGET_STATUS = CURRENT_DEVELOPMENT_PENDING_USER
+FROZEN_CANDIDATE = ACCOUNT_MVP_FROZEN_SMOKE_PASS
 REAL_A_B_REHYDRATION = BLOCKED_BEFORE_A_WRITE
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 集成基线合流完成；导入修复 source/fixture PASS；新候选与 A/B 待验收
+CURRENT_PHASE = Account MVP 最新开发 Frozen 可测试；用户邮箱及六组验收待完成
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MAIN3_RECONCILE_CURRENT_INTEGRATION`。
+当前 authority：`MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD`。
 
-## 当前集成基线合流
+## 当前 Account MVP 用户测试入口
 
-保留本地 `bcc9f2509673daccfa39ad67c5771a50d1cdfb61` 全部历史，远端新增仅两条已知 Astra docs-only commits。
-01 exact `a98584a57103c86541062b7fb18a3659ebe86731` 集成为 `4632c3a3826371d127b7421b2d26b73dbe487c21`；patch-id 相同，UNKNOWN_COMMITS=0。
-FROZEN_BACKEND_IMPORT_BOUNDARY=PASS（当前 integrated source 的诊断 EXE，真实 spawn/health/clean exit）；65 focused tests PASS。
-NATIVE_LOGIN_SMOKE=PASS（当前 source → retained disposable runtime；错误密码／未知账号／bad CA 拒绝）。
-源码 blocker 已修复；旧 V3 EXE 仍 FAIL，新 acceptance candidate 未构建，A/B 未继续。环境保留，不执行迁移或 Portable Pack。
-[Reconciliation receipt](../governance/receipts/20260914-main3-reconciliation.json) 记录 ancestry、exact delta、诊断包及检查证据。
+基于 `0325c82e` 保留全部历史，01/02/04 exact delta 已集成，UNKNOWN_COMMITS=0。
+最终 product source `405a3568c2e70a7aeea2f5cc5abd2daa42f058c5`；后续提交仅发布 authority/证据。
+当前 Frozen 管理员 SUPER_ADMIN、普通 LEARNER、主界面、多账号隔离、WinVault、两种自动登录实测 PASS；错误密码／未知账号／bad CA 拒绝。
+官方 Keycloak client_credentials + manage-users/query-users；createUser/sendVerifyEmail/executeActionsEmail；无 realm-admin/password grant/新身份协议。
+注册／忘记密码仅本轮 test runtime/candidate 开放；普通 release 仍关闭。公开测试 action 邮件可点击，native issuer 未迁移。
+官方邮件生成与受控真实 after-commit 验证/重置 PASS；批准 QQ 邮箱用户点击与完整用户验收仍 PENDING。
+[用户 A-F 清单](../governance/ACCOUNT_MVP_USER_TEST.md)：打开 Workbench → 启动最新开发版；无需配置或寻找 EXE。
+环境保留至北京时间 2026-09-15 04:20:39；AUTO_CLEANUP=FORBIDDEN。最新已验收候选=NONE；旧 V3 FAIL 不被重新合格化。
+[Account MVP receipt](../governance/receipts/20260914-account-mvp-closeout.json) 绑定 source/artifact、聚焦及真实 Frozen 证据。
+A/B 云恢复、Portable Pack、旧 88 plans、真实迁移、生产 Gate A/B/C 均未在本轮执行或提升验收。
 
 ## Frozen V3 — historical real A/B stop before A product write
 

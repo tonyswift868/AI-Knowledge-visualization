@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "REMOTE_DOCS_ONLY_LOCAL_BCC_PRESERVED_EXACT_A98584A",
+  "refs_verified": "EXACT_0325_BASE_3_DELIVERIES_PLUS_AUTHORIZED_A_WIRING_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
+  "authority": "MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
+      "task_id": "MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "SILENT; reconciliation and focused smoke complete; no A/B continuation.",
+      "next_action": "SILENT; user Account MVP checklist next.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "唯一集成基线合流；导入边界 source/Frozen fixture 与 native login smoke PASS。"
+      "summary_zh": "Account MVP 开发 Frozen 实测通过；待用户邮件与六组验收。"
     },
     "01": {
       "status": "SILENT",
@@ -27,15 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "a98584a57103c86541062b7fb18a3659ebe86731",
+      "delivery_commit": "453e94000dadc4387654f3cfa2f3b6171f8d9efd",
       "next_action": "SILENT; exact delivery consumed, no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "4632c3a3826371d127b7421b2d26b73dbe487c21",
-      "delivery_state": "CANONICAL_BACKEND_IMPORT_SOURCE_INTEGRATED",
-      "acceptance_state": "SOURCE_AND_FROZEN_DIAGNOSTIC_BACKEND_SPAWN_PASS",
+      "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
+      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
+      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
       "ordered_source_commits": [
-        "a98584a57103c86541062b7fb18a3659ebe86731"
+        "453e94000dadc4387654f3cfa2f3b6171f8d9efd"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -51,7 +51,7 @@
         "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
         "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX"
       },
-      "summary_zh": "完整 import/resource 边界修复已 exact 集成；验收候选未重建。",
+      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
       "batch03_delivery_snapshot": {
         "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
         "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
@@ -79,6 +79,15 @@
         ],
         "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
         "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
+      },
+      "pre_account_mvp_snapshot": {
+        "delivery_commit": "a98584a57103c86541062b7fb18a3659ebe86731",
+        "integrated_commit": "4632c3a3826371d127b7421b2d26b73dbe487c21",
+        "ordered_source_commits": [
+          "a98584a57103c86541062b7fb18a3659ebe86731"
+        ],
+        "delivery_state": "CANONICAL_BACKEND_IMPORT_SOURCE_INTEGRATED",
+        "acceptance_state": "SOURCE_AND_FROZEN_DIAGNOSTIC_BACKEND_SPAWN_PASS"
       }
     },
     "02": {
@@ -87,15 +96,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "d067f742d35fa60e015790c4c5f2c9e033bbc313",
+      "delivery_commit": "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1",
       "next_action": "SILENT; exact delivery consumed, no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "26201b5a8b267d3d3e76c733c120b796da386410",
-      "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
-      "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN",
+      "integrated_commit": "a5ee60f4940c50480d8397286370516f684ffe5e",
+      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
+      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
       "ordered_source_commits": [
-        "d067f742d35fa60e015790c4c5f2c9e033bbc313"
+        "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1"
       ],
       "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
       "batch02_delivery_snapshot": {
@@ -108,7 +117,7 @@
         "delivery_state": "MANDATORY_FLOOR_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "独立运行租约绑定已集成并通过准入回归。",
+      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
       "batch03_delivery_snapshot": {
         "delivery_commit": "5c8eed29f607b5c16bddda0efb9c71ae91560b64",
         "integrated_commit": "b8716c1e70bf4be8993661a558ab8c7db1843728",
@@ -137,6 +146,15 @@
         ],
         "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
         "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
+      },
+      "pre_account_mvp_snapshot": {
+        "delivery_commit": "d067f742d35fa60e015790c4c5f2c9e033bbc313",
+        "integrated_commit": "26201b5a8b267d3d3e76c733c120b796da386410",
+        "ordered_source_commits": [
+          "d067f742d35fa60e015790c4c5f2c9e033bbc313"
+        ],
+        "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
+        "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN"
       }
     },
     "03": {
@@ -185,24 +203,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6",
+      "delivery_commit": "3feb4b680d21a2744456fc97b3c80c78198db733",
       "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "e2eecd294aa5e6e3ab11bb948b278861ae644605",
-      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
-      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
+      "integrated_commit": "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
+      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
+      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
       "ordered_source_commits": [
-        "cfde71d103052224cabdd4d9367059f382a1545f",
-        "2063bdb70dbd3ee966e8099ae589967d9b1db57a",
-        "ba20aee8666a96141d96354d3c4785d355a72d3a",
-        "7c697d0399ae0126a2bd62b7512aad3e0498558b",
-        "7fbea0083cdbf8eede32ffd46749f6bf90963ea5",
-        "851ddaeef8d6dd9a2e9c7ab992b8bbcaf25bd6b4",
-        "43d6e15c8b1ffe932420f3b671ae894c8a0a2391",
-        "830b4b61b067a6775e605febc26c7e652d32a01d",
-        "4e9f70de278a63bbff689da16a35709db4b47337",
-        "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6"
+        "3feb4b680d21a2744456fc97b3c80c78198db733"
       ],
       "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
       "batch02_delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
@@ -212,7 +221,7 @@
         "f9634e24d759eb268c56d45b301046dc503ef714"
       ],
       "schema_recovery_base": "f9634e24d759eb268c56d45b301046dc503ef714",
-      "summary_zh": "三类状态同步已通过原生数据库验证。",
+      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
       "continuity_receipt": "docs/governance/receipts/20260913-main3-batch03-continuity-evidence.json",
       "continuity_receipt_sha256": "110aa95f178734e0854b35fc80d5e17b21007b04e6f06cc423d3b828594281ae",
       "batch03_delivery_snapshot": {
@@ -233,6 +242,24 @@
         ],
         "delivery_state": "PASS_PLAN_PROGRESS_RESOURCE_V1",
         "acceptance_state": "FULL_SERVER_SYNC_PARTIAL"
+      },
+      "pre_account_mvp_snapshot": {
+        "delivery_commit": "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6",
+        "integrated_commit": "e2eecd294aa5e6e3ab11bb948b278861ae644605",
+        "ordered_source_commits": [
+          "cfde71d103052224cabdd4d9367059f382a1545f",
+          "2063bdb70dbd3ee966e8099ae589967d9b1db57a",
+          "ba20aee8666a96141d96354d3c4785d355a72d3a",
+          "7c697d0399ae0126a2bd62b7512aad3e0498558b",
+          "7fbea0083cdbf8eede32ffd46749f6bf90963ea5",
+          "851ddaeef8d6dd9a2e9c7ab992b8bbcaf25bd6b4",
+          "43d6e15c8b1ffe932420f3b671ae894c8a0a2391",
+          "830b4b61b067a6775e605febc26c7e652d32a01d",
+          "4e9f70de278a63bbff689da16a35709db4b47337",
+          "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6"
+        ],
+        "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+        "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
       }
     },
     "B": {
@@ -266,11 +293,11 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "NONE_NEW; exact a98584a consumed",
+    "worker_dispatches": "NONE_NEW; 01/02/04 exact deliveries consumed",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
-    "user_action_required": "NONE",
-    "snapshot_scope": "Baseline reconciled; source native login and Frozen diagnostic backend spawn PASS; old V3 remains FAIL",
+    "user_action_required": "Account MVP: open Workbench and run A-F checklist.",
+    "snapshot_scope": "Account MVP Frozen smoke PASS; user acceptance pending; A/B recovery not run",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -284,10 +311,10 @@
     "normal_login_external_browser_required": false,
     "password_grant_used": false,
     "direct_grant_used": false,
-    "password_persisted": false,
-    "real_smtp_send": null,
-    "real_smtp_verify": "INDEPENDENT_04_TASK",
-    "real_smtp_reset": "INDEPENDENT_04_TASK",
+    "password_persisted": "EXPLICIT_CONSENT_WINDOWS_CREDENTIAL_MANAGER_ONLY",
+    "real_smtp_send": true,
+    "real_smtp_verify": "OFFICIAL_GENERATION_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
+    "real_smtp_reset": "OFFICIAL_UPDATE_PASSWORD_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
     "real_install_qa": "NOT_RUN",
     "final_1_5_0_to_1_5_1": "NOT_RUN",
     "live_production_login": "NOT_RUN",
@@ -302,7 +329,7 @@
       "verify": "NOT_RUN",
       "reset": "NOT_RUN"
     },
-    "real_smtp_scope": "Separate independent 04 task; current live results not queried. This source-unblock task sent zero emails. Prior Batch02 SMTP evidence retained separately.",
+    "real_smtp_scope": "Approved disposable test realm and approved QQ recipient; official SMTP submission PASS, user inbox interaction pending.",
     "cross_device_data_continuity": "REQUIRED_NOT_ACCEPTED",
     "server_sync_tier": "PARTIAL",
     "portable_pack_v2": "NOT_IMPLEMENTED",
@@ -310,8 +337,8 @@
     "target_storage_stable": false,
     "identity_issuer_stable": false,
     "private_workspace_chooser": "QA_ONLY",
-    "register_capability": false,
-    "forgot_password_capability": false,
+    "register_capability": "TEST_CANDIDATE_ONLY_TRUE",
+    "forgot_password_capability": "TEST_CANDIDATE_ONLY_TRUE",
     "server_sync_vertical_slice": "PLAN_PROGRESS_RESOURCE_METADATA_PASS_NATIVE_PG",
     "stable_identity_source_fixture": "PASS",
     "durable_root_source": "PASS",
@@ -321,21 +348,25 @@
     "producer_ux_wiring": "PASS",
     "two_device_harness": "V3_FAILED_BEFORE_A_WRITE",
     "two_device_e2e": "BLOCKED_BEFORE_A_WRITE",
-    "test_target_status": "FAIL",
-    "frozen_candidate": "FAIL_LOCAL_SERVICE_STARTUP",
+    "test_target_status": "CURRENT_DEVELOPMENT_PENDING_USER",
+    "frozen_candidate": "ACCOUNT_MVP_FROZEN_SMOKE_PASS",
     "full_server_sync": "PARTIAL",
     "frozen_login_root_cause": "FIXED",
     "environment_consumers_pending": true,
     "auto_cleanup": "FORBIDDEN",
-    "workbench_frozen_login": "PASS_A_LOGIN_ONLY",
+    "workbench_frozen_login": "ACCOUNT_MVP_ADMIN_AND_LEARNER_MAIN_PASS",
     "device_ab_precheck": "A_LOGIN_PASS; B_EMPTY_PREPARED_NOT_LAUNCHED",
-    "frozen_local_service": "FIXED_SOURCE_DIAGNOSTIC_FIXTURE_PASS; V3_EXE_FAIL_UNCHANGED"
+    "frozen_local_service": "PASS_ACCOUNT_MVP_EXACT_FROZEN",
+    "ordinary_release_register_capability": false,
+    "ordinary_release_forgot_password_capability": false,
+    "account_mvp_user_acceptance": "PENDING",
+    "extra_mtls_negative_recheck": "NOT_RUN_AUTO_APPROVAL_REJECTED; retained prior boundary evidence only"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
     "current_phase": "Account MVP 开发版 · 待用户测试",
     "current_gate": "Account MVP 用户验收",
-    "staging_status": "OWNED_ACCEPTANCE_RUNTIME_RUNNING; PUBLIC_DEPLOYMENT_NOT_RUN",
+    "staging_status": "ACCOUNT_MVP_TEST_RUNTIME_RUNNING; PRODUCTION_GATES_PENDING",
     "database_revision": "0038_rehydration_manifest",
     "current_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
     "test_targets": [
@@ -352,11 +383,11 @@
       {
         "test_id": "ACCOUNT_MVP_USER_TEST_20260914",
         "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_USER_TEST_20260914.json",
-        "receipt_sha256": "04a492a17c9d5a2338bc108127c01742bca943bd714fca8d3c7eac952c10eeac"
+        "receipt_sha256": "2d9a56c84cce5f07f70691e8ec95508b0a96f9a89b2c4eccbfe6b32d0b28540c"
       }
     ],
-    "runtime_lease_id": "MF-AB-V3-CLOSEOUT-20260914-9cd62799",
-    "runtime_expires_at": "2026-09-14T02:30:19+00:00",
+    "runtime_lease_id": "MF-ACCOUNT-MVP-20260914",
+    "runtime_expires_at": "2026-09-14T20:20:39+00:00",
     "latest_development_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
     "latest_qualified_test_id": null
   },
@@ -364,5 +395,6 @@
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
   "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json",
   "candidate_qualification_receipt": "docs/governance/receipts/20260914-real-ab-closeout-blocker.json",
-  "reconciliation_receipt": "docs/governance/receipts/20260914-main3-reconciliation.json"
+  "reconciliation_receipt": "docs/governance/receipts/20260914-main3-reconciliation.json",
+  "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json"
 }
