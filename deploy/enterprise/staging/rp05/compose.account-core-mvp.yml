@@ -255,6 +255,7 @@ services:
     environment:
       <<: *account-core-environment
       SSL_CERT_FILE: /run/mentorflow/tls/tls.crt
+      MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS: "${MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS:-[]}"
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
       - backend_tls:/run/mentorflow/tls:ro

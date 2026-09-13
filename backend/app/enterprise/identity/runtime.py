@@ -30,6 +30,7 @@ from .directory import PostgresIdentityDirectory, service_identity_grants_from_e
 from .keycloak import KeycloakOidcClient
 from .models import EnterpriseSession, IdentityDirectoryPort
 from .oidc import IdentityError
+from .application_roles import ApplicationRole, ApplicationRolePolicy, reject_client_role_assertions
 
 
 AUTH_PREFIX = "/api/enterprise/auth"
@@ -147,11 +148,13 @@ class EnterpriseIdentityRuntime:
         client: KeycloakOidcClient | None = None,
         directory: IdentityDirectoryPort | None = None,
         native_sessions=None,
+        application_roles: ApplicationRolePolicy | None = None,
     ) -> None:
         self.config = config
         self.client = client
         self.directory = directory
         self.native_sessions = native_sessions
+        self.application_roles = application_roles or ApplicationRolePolicy()
         if config.mode is TenantMode.ENTERPRISE_SERVER and (
             client is None or directory is None
         ):
@@ -459,6 +462,7 @@ class EnterpriseIdentityRuntime:
         return {
             "schema_version": "mentorflow.enterprise-identity-session.v1",
             "authenticated": True,
+            "role": self.application_roles.role_for(actor).value,
             "authentication_mode": binding.authentication_mode,
             "account": {
                 "account_id": account_id(actor.issuer, actor.subject_id),
@@ -509,6 +513,7 @@ def build_enterprise_identity_runtime(
         client=KeycloakOidcClient(config),
         directory=directory,
         native_sessions=native_sessions_from_env(env, config.keycloak.canonical_identity_issuer),
+        application_roles=ApplicationRolePolicy.from_env(env),
     )
 
 
@@ -618,7 +623,20 @@ async def callback(
 
 @router.get("/me")
 def me(request: Request) -> dict[str, object]:
+    reject_client_role_assertions(request)
     return _runtime(request).response_payload(_binding(request))
+
+
+@router.get("/admin/check")
+async def application_admin_check(request: Request) -> dict[str, object]:
+    """Read-only authorization gate; grants no tenant or infrastructure access."""
+    reject_client_role_assertions(request)
+    runtime = _runtime(request)
+    binding = await runtime.revalidate_product_identity(request)
+    actor = binding.context.actor
+    if runtime.application_roles.role_for(actor) is not ApplicationRole.SUPER_ADMIN:
+        raise IdentityError("APPLICATION_SUPER_ADMIN_REQUIRED", "Product administrator access is required", status=403)
+    return {"authorized": True, "role": ApplicationRole.SUPER_ADMIN.value}
 
 
 @router.post("/context")
@@ -759,7 +777,7 @@ async def backchannel_logout(request: Request) -> Response:
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
-_ACCOUNT_CORE_IDENTITY_ROUTE_NAMES = frozenset({"me"})
+_ACCOUNT_CORE_IDENTITY_ROUTE_NAMES = frozenset({"me", "application_admin_check"})
 
 
 def _account_core_identity_router() -> APIRouter:
