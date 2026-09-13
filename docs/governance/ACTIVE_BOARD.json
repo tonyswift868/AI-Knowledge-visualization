@@ -8,18 +8,18 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_0325_BASE_3_DELIVERIES_PLUS_AUTHORIZED_A_WIRING_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD",
+  "authority": "MENTORFLOW_ACCOUNT_MVP_USER_TEST_READY",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "MENTORFLOW_ACCOUNT_MVP_FINAL_INTEGRATION_AND_USER_TEST_BUILD",
+      "task_id": "MENTORFLOW_ACCOUNT_MVP_USER_TEST_READY",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
       "next_action": "SILENT; user Account MVP checklist next.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "Account MVP 开发 Frozen 实测通过；待用户邮件与六组验收。"
+      "summary_zh": "本轮重新构建 Frozen，账号／多账号／WinVault 四操作／两种自动登录 PASS；待用户测试。"
     },
     "01": {
       "status": "SILENT",
@@ -297,7 +297,7 @@
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "Account MVP: open Workbench and run A-F checklist.",
-    "snapshot_scope": "Account MVP Frozen smoke PASS; user acceptance pending; A/B recovery not run",
+    "snapshot_scope": "Rebuilt exact integration Frozen; account MVP smoke PASS; user email click and A-F acceptance pending.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -364,8 +364,8 @@
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "Account MVP 开发版 · 待用户测试",
-    "current_gate": "Account MVP 用户验收",
+    "current_phase": "Account MVP 最新开发版 · 用户测试就绪",
+    "current_gate": "用户 A-F 账号验收",
     "staging_status": "ACCOUNT_MVP_TEST_RUNTIME_RUNNING; PRODUCTION_GATES_PENDING",
     "database_revision": "0038_rehydration_manifest",
     "current_test_id": "ACCOUNT_MVP_READY_20260914",
@@ -388,7 +388,7 @@
       {
         "test_id": "ACCOUNT_MVP_READY_20260914",
         "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_READY_20260914.json",
-        "receipt_sha256": "e99f7982ff986676961678104bb73dba91c8724f89b8200e51d3de0af03e544e"
+        "receipt_sha256": "b199d032ebfb4bd1e6a09f55eae3853b8b886e3cf224834993ff8961adccce26"
       }
     ],
     "runtime_lease_id": "MF-ACCOUNT-MVP-READY-20260914",
@@ -401,5 +401,6 @@
   "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json",
   "candidate_qualification_receipt": "docs/governance/receipts/20260914-real-ab-closeout-blocker.json",
   "reconciliation_receipt": "docs/governance/receipts/20260914-main3-reconciliation.json",
-  "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json"
+  "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json",
+  "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json"
 }

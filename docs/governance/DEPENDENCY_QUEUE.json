@@ -342,7 +342,20 @@
       ],
       "unlocks": [],
       "user_action_required": "Run docs/governance/ACCOUNT_MVP_USER_TEST.md A-F checklist.",
-      "reason": "Current development build is available through Workbench. User mailbox receipt/click and final acceptance remain pending; no migration authority."
+      "reason": "Fresh exact integration Frozen 83186d3ce207 ready in Workbench. Admin/learner, multi-account, WinVault set/get/overwrite/delete and both auto-login paths PASS; user mailbox click pending."
+    },
+    {
+      "task_id": "ACCOUNT_MVP_FROZEN_REBUILD_READY",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
+        "ACCOUNT_MVP_FINAL_INTEGRATION"
+      ],
+      "unlocks": [
+        "ACCOUNT_MVP_USER_ACCEPTANCE"
+      ],
+      "user_action_required": null,
+      "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS."
     }
   ],
   "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",

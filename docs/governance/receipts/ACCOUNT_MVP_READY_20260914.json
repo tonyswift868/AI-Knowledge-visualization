@@ -28,5 +28,26 @@
     "identity_evidence_sha256": "39072c8a34293716c8de22fb8dc8b42c4db08a2c030ad6fe081b68e54fb62f62"
   },
   "acceptance": "DEVELOPMENT_BUILD_PENDING_USER_TEST",
-  "actual_frozen_smoke": "IN_PROGRESS"
+  "actual_frozen_smoke": "PASS",
+  "engineering_evidence": [
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-accounts-proof.json",
+      "sha256": "a86203158dcd6a59bed12d3a3436c24c0c2f6758423baeb482fe5751f64a7d03"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-api-proof.json",
+      "sha256": "b09dcc1d39dab3d790e4f6aafb58b8c847d9b450b0d9525eb8dae793e1097f44"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-auto_session-proof.json",
+      "sha256": "aa6f9b94f54cec3b0efd64b916b5f1abbc09f926b531c51e044d0afb89c73866"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-auto_fallback-proof.json",
+      "sha256": "adf5adaadc633d48509a6de0ae4049de05377e9352661e6eaded504e0535278f"
+    }
+  ],
+  "user_acceptance": "PENDING_USER_EMAIL_CLICK_AND_A_TO_F",
+  "environment_expires_at": "2026-09-14T20:20:39+00:00",
+  "automatic_cleanup": false
 }

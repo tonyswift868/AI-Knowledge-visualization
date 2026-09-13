@@ -1,0 +1,172 @@
+{
+  "task": "MENTORFLOW_ACCOUNT_MVP_USER_TEST_READY",
+  "requested_base": "0325c82e7d6d0fd7d480d7c5d206cdef8844689b",
+  "start_head": "b2de64a3ae97cfd9383c94eb49cb0572b5f6532b",
+  "source_sha": "83186d3ce20792e4a9ee98f9228a189c356085b2",
+  "source_tree": "527ce1a3cb4d96b01b6f7dad6de92834187c7d80",
+  "artifact_sha256": "8248e8d7f1b179a98eb1be73ab95541bd5a58cd13a50cdb72663e82b2763d5ca",
+  "artifact_path": "E:\\Codex\\Temp\\MVP\\build-83186d3ce207\\dist\\MentorFlow-Account-MVP.exe",
+  "unknown_commits": 0,
+  "duplicate_delivery_applications": 0,
+  "exact_deliveries": [
+    {
+      "owner": "01",
+      "source": "453e94000dadc4387654f3cfa2f3b6171f8d9efd",
+      "parent": "a98584a57103c86541062b7fb18a3659ebe86731",
+      "tree": "f8d6641b6a7352181520ac028313b1787beb03c6",
+      "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
+      "patch_id": "a238cf801b000c4c679f3884d533bfe55906361a",
+      "changed_files": [
+        "backend/app/enterprise/identity/application_roles.py",
+        "backend/app/enterprise/identity/runtime.py",
+        "backend/tests/test_account_core_mvp_runtime.py",
+        "backend/tests/test_application_roles.py",
+        "deploy/enterprise/staging/rp05/compose.account-core-mvp.yml",
+        "docs/APPLICATION_ROLES.md"
+      ]
+    },
+    {
+      "owner": "02",
+      "source": "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1",
+      "parent": "506cab1ef26223e2416b7a2f93eef3d8acfc4c1e",
+      "tree": "627fe240a60188065c12db6404a49938654cc37a",
+      "integrated_commit": "a5ee60f4940c50480d8397286370516f684ffe5e",
+      "patch_id": "9fd139745b390c3568836c60b02ad3a263f28e3b",
+      "changed_files": [
+        "desktop/account_registry.py",
+        "desktop/login_session.py",
+        "desktop/login_shell.py",
+        "desktop/main.py",
+        "desktop/saved_password.py",
+        "desktop/tests/test_account_switching.py",
+        "desktop/tests/test_multi_account.py",
+        "docs/ADR_NATIVE_CREDENTIAL_AUTH_V1.md",
+        "docs/MULTI_ACCOUNT_WINDOWS_CREDENTIALS.md",
+        "scripts/windows_account_credentials_spike.py"
+      ]
+    },
+    {
+      "owner": "04",
+      "source": "3feb4b680d21a2744456fc97b3c80c78198db733",
+      "parent": "8a98d46cac4e193eb71da64d8ebdd8a2408c11e6",
+      "tree": "e74ac1707e50fa936a3016d7b40467cc03142292",
+      "integrated_commit": "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
+      "patch_id": "4961c6f3b174b8404123d015ef4e290e5ffe88ec",
+      "changed_files": [
+        "backend/app/enterprise/identity/account_lifecycle.py",
+        "backend/tests/test_account_lifecycle_admin.py",
+        "reports/enterprise/account-lifecycle-keycloak-20260914.md"
+      ]
+    }
+  ],
+  "product_scope": [
+    "Requested empty qualified-candidate wording only"
+  ],
+  "frozen_smoke": {
+    "frozen-accounts-proof.json": {
+      "frozen": true,
+      "source_sha": "83186d3ce20792e4a9ee98f9228a189c356085b2",
+      "mode": "accounts",
+      "steps": [
+        "frozen_exact_source_loaded",
+        "native_first_paint_two_consent_controls",
+        "existing_03_frozen_register_form_and_hidden_confirmation",
+        "admin_native_super_admin_main_and_wincred",
+        "learner_native_main_accounts_vault_session_credentials_isolated",
+        "switch_back_admin_and_auto_consent_persisted"
+      ],
+      "status": "PASS"
+    },
+    "frozen-api-proof.json": {
+      "frozen": true,
+      "source_sha": "83186d3ce20792e4a9ee98f9228a189c356085b2",
+      "artifact": "MentorFlow-Account-MVP.exe",
+      "wrong_password": "REJECTED",
+      "unknown_account": "REJECTED",
+      "bad_ca": "REJECTED",
+      "winvault_set_get_overwrite": "PASS",
+      "credential_backend": "keyring.backends.Windows.WinVaultKeyring",
+      "credential_read_write_isolation": "PASS",
+      "winvault_delete": "PASS",
+      "capabilities": {
+        "register": true,
+        "forgot_password": true
+      },
+      "registration": "VERIFY_EMAIL_PENDING",
+      "forgot": {
+        "state": "RESET_WAITING",
+        "observation": "PENDING"
+      },
+      "status": "PASS"
+    },
+    "frozen-auto_session-proof.json": {
+      "frozen": true,
+      "source_sha": "83186d3ce20792e4a9ee98f9228a189c356085b2",
+      "mode": "auto_session",
+      "steps": [
+        "frozen_exact_source_loaded",
+        "automatic_correct_admin_main"
+      ],
+      "session_restored": true,
+      "status": "PASS"
+    },
+    "frozen-auto_fallback-proof.json": {
+      "frozen": true,
+      "source_sha": "83186d3ce20792e4a9ee98f9228a189c356085b2",
+      "mode": "auto_fallback",
+      "steps": [
+        "frozen_exact_source_loaded",
+        "automatic_correct_admin_main"
+      ],
+      "session_restored": false,
+      "status": "PASS"
+    }
+  },
+  "focused_tests": {
+    "passed": 37,
+    "failed": 0
+  },
+  "evidence": [
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-accounts-proof.json",
+      "sha256": "a86203158dcd6a59bed12d3a3436c24c0c2f6758423baeb482fe5751f64a7d03"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-api-proof.json",
+      "sha256": "b09dcc1d39dab3d790e4f6aafb58b8c847d9b450b0d9525eb8dae793e1097f44"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-auto_session-proof.json",
+      "sha256": "aa6f9b94f54cec3b0efd64b916b5f1abbc09f926b531c51e044d0afb89c73866"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\frozen-auto_fallback-proof.json",
+      "sha256": "adf5adaadc633d48509a6de0ae4049de05377e9352661e6eaded504e0535278f"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\ancestry-audit.json",
+      "sha256": "8f7915d21d97b1a04bb36ceb359bbe503c4ea8ad742acdcdb14479beee67b2f8"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\focused.log",
+      "sha256": "e2b613ec04dc1496ba8600414f9d47b3cc7e12876bbe2ca1ac4d10dbc40cae47"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-READY-20260914\\final-runtime-proof.json",
+      "sha256": "23282a151ecf7e5545af2b3096eae1939496efa85469d62139927aea63de8465"
+    }
+  ],
+  "backend_retained_source": "405a3568c2e70a7aeea2f5cc5abd2daa42f058c5",
+  "backend_product_paths_identical": true,
+  "service_restarts": 0,
+  "test_environment_expires_at": "2026-09-14T20:20:39+00:00",
+  "auto_cleanup": "FORBIDDEN",
+  "latest_qualified_candidate": null,
+  "user_email_click": "PENDING_USER",
+  "real_ab_rehydration": "NOT_RUN_THIS_TASK",
+  "real_user_migration": false,
+  "main2_mutated": false,
+  "formal_main3_created": false,
+  "github_actions_executed": 0,
+  "workbench_entry": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow\\Start-MentorFlow-Dev-Workbench.cmd"
+}
