@@ -86,6 +86,14 @@
     {
       "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-20260914\\execute-actions-proof.json",
       "sha256": "950db6df6bcda7f8a4a02d8b887928245de67696b66486cbf1609b9be44b479f"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-20260914\\workbench-final-launch-proof.json",
+      "sha256": "38d5dc54e25f4b1f0f0cb94638c363bdfb79c88f40b7c0ce1d659c9d63cf76b2"
+    },
+    {
+      "path": "E:\\Codex\\Temp\\MF-ACCOUNT-MVP-20260914\\final-runtime-proof.json",
+      "sha256": "33c3cd412aac36da7f4cd0b4c8f57ff10185eba2472da9c76595fbef9a3bd4ec"
     }
   ],
   "tests": {
@@ -105,7 +113,11 @@
     "user_test_observation_binding": {
       "passed": 1
     },
-    "counts_are_runs_not_unique_total": true
+    "counts_are_runs_not_unique_total": true,
+    "final_authority_and_path_regression": {
+      "passed": 5,
+      "failed": 0
+    }
   },
   "service_account": {
     "grant": "client_credentials",
@@ -130,5 +142,19 @@
   "main2_mutated": false,
   "formal_main3_created": false,
   "github_actions_executed": 0,
-  "extra_mtls_negative_recheck": "Auto approval rejected extra command: blocked by policy. Not retried; no new negative result claimed."
+  "extra_mtls_negative_recheck": "Auto approval rejected extra command: blocked by policy. Not retried; no new negative result claimed.",
+  "workbench_actual_button_launch": "PASS_EXACT_FROZEN_LOGIN_TO_MAIN",
+  "known_integration_commits_before_final_evidence": [
+    "baf04fe3b5efc6427b3c9f70db11e9af48c3d4bc",
+    "33a47b7274587296439b1f6b4c3adefba01d7330",
+    "b7a65a3059d91dd3813b513beec0dfe422314a56",
+    "2014ed98f3d2d8fedc04538ac921334c6dd1a5a8",
+    "727e2c8bc301a0e5f01161eab391d1a94f8adace",
+    "405a3568c2e70a7aeea2f5cc5abd2daa42f058c5",
+    "7194ccbb5525c4917e9406ac62920cef8f6ddbc3",
+    "555a6347cce2aafa673fb8d40261752369d97c83",
+    "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
+    "a5ee60f4940c50480d8397286370516f684ffe5e",
+    "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf"
+  ]
 }
