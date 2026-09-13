@@ -44,11 +44,20 @@ MAX_JSON_BYTES = 1_048_576
 DEFAULT_CALLBACK_PATH = "/oauth/callback"
 
 
-def _migration_contract():
-    # Same existing server verifier/config package used by BackendOidcTokenValidator.
+def _prepare_backend_imports():
+    # Frozen imports resolve canonical `app.*` directly from PYZ. Adding the
+    # checkout-only backend directory makes PyInstaller resolve it instead as
+    # `backend.app.*`, a different (and potentially incomplete) package tree.
+    if getattr(sys, 'frozen', False):
+        return
     backend_root = Path(__file__).resolve().parents[1] / 'backend'
     if str(backend_root) not in sys.path:
         sys.path.insert(0, str(backend_root))
+
+
+def _migration_contract():
+    # Same existing server verifier/config package used by BackendOidcTokenValidator.
+    _prepare_backend_imports()
     from app.enterprise.identity import issuer_migration
     return issuer_migration
 
@@ -375,9 +384,7 @@ class BackendOidcTokenValidator:
         redirect_uri: str,
         discovery: OidcDiscovery,
     ) -> None:
-        backend_root = Path(__file__).resolve().parents[1] / "backend"
-        if str(backend_root) not in sys.path:
-            sys.path.insert(0, str(backend_root))
+        _prepare_backend_imports()
         from app.enterprise.identity.config import KeycloakOidcConfig
         from app.enterprise.identity.oidc import OidcIdentityAdapter
 
