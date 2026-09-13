@@ -34,6 +34,7 @@ from .account_vault import (
 from .enterprise_oidc import (
     EnterpriseOidcLoginResult,
 )
+from .rehydration_page import PortablePackEntry
 from .runtime import (
     enterprise_account_server_state,
     record_enterprise_account_session,
@@ -134,6 +135,9 @@ class AccountSettingsPage(QWidget):
         actions.addWidget(linked)
         actions.addStretch()
         layout.addLayout(actions)
+
+        self.portable_pack_entry = PortablePackEntry(self)
+        layout.addWidget(self.portable_pack_entry)
 
         self.assets = QTableWidget(0, 4)
         self.assets.setObjectName("accountVaultAssets")

@@ -1321,7 +1321,7 @@ class MentorFlowApplication:
             return
         self.login_gate.set_state(
             LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING,
-            detail="正在确认账号 · 正在恢复学习数据 · 正在检查本机资料",
+            detail="正在恢复你的学习空间…",
         )
         login_result = self._last_login_result
         generation, gate = self._login_generation, self.login_gate
