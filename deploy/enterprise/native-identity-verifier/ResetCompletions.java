@@ -41,6 +41,42 @@ final class ResetCompletions {
     static Map<String,String> response(String ticket, String status) {
         return Map.of("schema", "mentorflow.reset-completion.v1", "transaction_id", ticket, "status", status);
     }
+    static Map<String,String> bindExecuteWatch(KeycloakSession session, String ticket, String subject) {
+        if (!"PENDING".equals(status(session, ticket).get("status"))) throw new IllegalArgumentException();
+        var realm = session.getContext().getRealm();
+        if (session.users().getUserById(realm, subject) == null) throw new IllegalArgumentException();
+        String p = prefix(realm);
+        var row = session.singleUseObjects().get(p + "ticket:" + hash(ticket));
+        session.singleUseObjects().put(p + "execute-subject:" + hash(subject), TTL, row);
+        return response(ticket, "PENDING");
+    }
+    static void bindExecute(KeycloakSession session, AuthenticationSessionModel auth,
+            org.keycloak.authentication.actiontoken.execactions.ExecuteActionsActionToken token) {
+        if (!token.getRequiredActions().equals(List.of("UPDATE_PASSWORD"))) return;
+        String p = prefix(session.getContext().getRealm());
+        var row = session.singleUseObjects().get(p + "execute-subject:" + hash(token.getUserId()));
+        if (row == null || token.getIat() == null || token.getIat() < Long.parseLong(row.get("issued"))
+                || Integer.parseInt(row.get("expires")) <= Time.currentTime()) return;
+        auth.setAuthNote("MF_EXECUTE_COMPLETION", row.get("ticket"));
+        auth.setAuthNote("MF_EXECUTE_SUBJECT", hash(token.getUserId()));
+    }
+    static void afterExecuteSuccess(RequiredActionContext context) {
+        var auth = context.getAuthenticationSession();
+        String ticket = auth.getAuthNote("MF_EXECUTE_COMPLETION");
+        if (ticket == null || context.getStatus() != RequiredActionContext.Status.SUCCESS
+                || !hash(context.getUser().getId()).equals(auth.getAuthNote("MF_EXECUTE_SUBJECT"))) return;
+        String p = prefix(context.getRealm());
+        var row = context.getSession().singleUseObjects().get(p + "ticket:" + ticket);
+        if (row == null || Integer.parseInt(row.get("expires")) <= Time.currentTime()) return;
+        var factory = context.getSession().getKeycloakSessionFactory();
+        context.getSession().getTransactionManager().enlistAfterCompletion(new AbstractKeycloakTransaction() {
+            protected void commitImpl() {
+                KeycloakModelUtils.runJobInTransaction(factory, fresh ->
+                    fresh.singleUseObjects().putIfAbsent(p + "completed:" + ticket, TTL + RETENTION));
+            }
+            protected void rollbackImpl() { }
+        });
+    }
     static Map<String,String> status(KeycloakSession session, String ticket) {
         if (ticket == null || !ticket.matches("[A-Za-z0-9_-]{43}")) throw new IllegalArgumentException();
         String p = prefix(session.getContext().getRealm());

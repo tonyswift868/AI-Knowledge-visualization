@@ -204,6 +204,10 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     body.put(field.getKey(), field.getValue().textValue());
                 }
                 RealmModel realm = session.getContext().getRealm();
+                if (body.keySet().equals(Set.of("operation", "transaction_id", "subject")) && "reset-execute-bind".equals(body.get("operation"))) {
+                    if (!permitted("reset-watch", false)) return result(429, Map.of("outcome", "unavailable"));
+                    return result(200, ResetCompletions.bindExecuteWatch(session, body.get("transaction_id"), body.get("subject")));
+                }
                 if (body.keySet().equals(Set.of("operation", "state")) && "reset-watch".equals(body.get("operation"))) {
                     if (!permitted("reset-watch", false)) return result(429, Map.of("outcome", "unavailable"));
                     return result(200, ResetCompletions.watch(session, body.get("state")));

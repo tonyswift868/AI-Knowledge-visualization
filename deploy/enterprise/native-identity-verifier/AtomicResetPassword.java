@@ -44,7 +44,11 @@ public final class AtomicResetPassword extends UpdatePassword {
     @Override
     public void processAction(RequiredActionContext context) {
         String key = key(context);
-        if (key == null) { super.processAction(context); return; }
+        if (key == null) {
+            super.processAction(context);
+            ResetCompletions.afterExecuteSuccess(context);
+            return;
+        }
         var token = DefaultActionTokenKey.from(context.getAuthenticationSession().getAuthNote(AtomicActionTokens.RESET_BINDING));
         if (token == null || !"reset-credentials".equals(token.getActionId())
                 || !context.getUser().getId().equals(token.getUserId()) || token.getExp() <= Time.currentTime()

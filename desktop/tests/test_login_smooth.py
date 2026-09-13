@@ -192,7 +192,8 @@ def test_first_screen_starts_native_credentials_without_second_auth_window(app_c
     assert target.login_gate.primary_button.isVisible()
     assert target.main is None and target.service is None
     assert not target.login_gate.remember_box.isChecked()
-    assert not target.login_gate.auto_box.isEnabled()
+    assert target.login_gate.auto_box.isEnabled()
+    assert not target.login_gate.remember_box.isVisible()
     target.login_gate.remember_box.setChecked(True)
     assert target.login_gate.auto_box.isEnabled()
     target.login_gate.auto_box.setChecked(True)

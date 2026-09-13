@@ -155,6 +155,7 @@ class EnterpriseIdentityRuntime:
         self.directory = directory
         self.native_sessions = native_sessions
         self.application_roles = application_roles or ApplicationRolePolicy()
+        self.lifecycle = None
         if config.mode is TenantMode.ENTERPRISE_SERVER and (
             client is None or directory is None
         ):
@@ -175,7 +176,8 @@ class EnterpriseIdentityRuntime:
     def is_public_path(self, path: str) -> bool:
         from .native import PUBLIC_PATHS
         from .reset_completion import PUBLIC_PATHS as RESET_PATHS
-        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS or path in RESET_PATHS
+        from .lifecycle_api import PUBLIC_PATHS as LIFECYCLE_PATHS
+        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS or path in RESET_PATHS or path in LIFECYCLE_PATHS
 
     async def authenticate_access_token(self, token: str, request: Request):
         from .native import ACCESS_PREFIX, expired
@@ -486,6 +488,8 @@ class EnterpriseIdentityRuntime:
         }
 
     async def aclose(self) -> None:
+        if self.lifecycle is not None:
+            await self.lifecycle.aclose()
         if self.native_sessions is not None:
             await self.native_sessions.aclose()
         if self.client is not None:
@@ -508,13 +512,16 @@ def build_enterprise_identity_runtime(
         issuer=config.keycloak.canonical_identity_issuer,
         service_grants=service_identity_grants_from_env(env),
     )
-    return EnterpriseIdentityRuntime(
+    runtime = EnterpriseIdentityRuntime(
         config,
         client=KeycloakOidcClient(config),
         directory=directory,
         native_sessions=native_sessions_from_env(env, config.keycloak.canonical_identity_issuer),
         application_roles=ApplicationRolePolicy.from_env(env),
     )
+    from .lifecycle_api import from_env as lifecycle_from_env
+    runtime.lifecycle = lifecycle_from_env(env)
+    return runtime
 
 
 router = APIRouter(prefix=AUTH_PREFIX, tags=["enterprise-identity"])
@@ -800,6 +807,8 @@ def install_enterprise_identity(
     app.include_router(native_router)
     from .reset_completion import router as reset_router
     app.include_router(reset_router)
+    from .lifecycle_api import router as lifecycle_router
+    app.include_router(lifecycle_router)
     # Imported lazily to keep the identity runtime independent from product
     # modules while installing the exact tenant-safe facade alongside it.
     from app.enterprise.product_bridge import install_enterprise_product_bridge

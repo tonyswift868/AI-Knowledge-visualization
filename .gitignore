@@ -78,3 +78,6 @@ frontend/output/
 data/active_teaching/uploads/_teaching_attachments/
 $extract/
 weight.json
+
+# Reproducible Keycloak UI build input
+artifacts/account-lifecycle-ui/

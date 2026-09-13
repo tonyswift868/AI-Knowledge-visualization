@@ -80,14 +80,15 @@ def test_reset_late_success_signal_cannot_authenticate():
         QApplication.instance().processEvents()
 
 
-@pytest.mark.parametrize('signal', ['authenticated', 'authentication_failed'])
-def test_desktop_returns_to_normal_login_without_session(app_context, monkeypatch, signal):
+@pytest.mark.parametrize('completed', [False, True])
+def test_desktop_returns_to_normal_login_without_session(app_context, monkeypatch, completed):
     target, app, _ = app_context
-    def create(config, **options):
-        options.pop('intent', None)
-        options.pop('capabilities', None)
-        return Pane(config, **options)
-    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog', create)
+    from PySide6.QtCore import Signal
+    class LifecyclePane(Pane):
+        finished = Signal(bool)
+        def __init__(self, intent, parent):
+            super().__init__(None, parent=parent, embedded=True)
+    monkeypatch.setattr('desktop.lifecycle_pane.AccountLifecyclePane', LifecyclePane)
     target._show_login_gate()
     app.processEvents()
     gate = target.login_gate
@@ -96,8 +97,7 @@ def test_desktop_returns_to_normal_login_without_session(app_context, monkeypatc
     monkeypatch.setattr(target, '_accept_login_result', accept)
     target._begin_account_action('forgot_password')
     pane = target._auth_pane
-    if signal == 'authenticated': pane.authenticated.emit(login())
-    else: pane.authentication_failed.emit(RESET_LOGIN_REQUIRED, 'untrusted provider text')
+    pane.finished.emit(completed)
     app.processEvents()
     accept.assert_not_called()
     assert target._last_login_result is None
@@ -106,9 +106,8 @@ def test_desktop_returns_to_normal_login_without_session(app_context, monkeypatc
     assert gate.state == LoginGateState.LOGIN_READY
     assert gate.primary_button.text() == '登录 MentorFlow' and gate.primary_button.isEnabled()
     from desktop.reset_completion import COMPLETED_MESSAGE
-    assert gate.state_detail.text() != COMPLETED_MESSAGE
-    assert '尚未确认' in gate.state_detail.text()
-    assert '密码已重置' not in gate.state_detail.text()  # Callback isn't a reset-success signal.
+    assert (gate.state_detail.text() == COMPLETED_MESSAGE) is completed
+    if not completed: assert '尚未确认' in gate.state_detail.text()
     gate.primary_button.click()
     app.processEvents()
     assert target._auth_pane is None  # Ordinary native login needs fresh credentials.

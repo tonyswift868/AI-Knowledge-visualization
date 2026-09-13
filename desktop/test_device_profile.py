@@ -24,7 +24,7 @@ def plain(path):
 
 def read_profile(root, *, base=None):
     root, base = Path(root), Path(base or DEVICE_BASE)
-    if root not in (base / 'A', base / 'B') or not root.is_absolute():
+    if root not in (base / 'A', base / 'B', base / 'UserTest') or not root.is_absolute():
         raise ValueError('TEST_DEVICE_UNOWNED_ROOT')
     plain(root); marker = plain(root / MARKER)
     if marker.stat().st_size > 2048: raise ValueError('TEST_DEVICE_INVALID_OWNER')

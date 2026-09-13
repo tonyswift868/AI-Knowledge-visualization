@@ -242,12 +242,26 @@ def load_view(source, paths=None):
             candidate = validate_manifest(json_bytes((ROOT / TARGET).read_bytes()))
             if candidate['status'] == 'WAITING_FOR_ARTIFACT': active = candidate
         except (Refused, OSError): pass
+    # Two explicit authorities; acceptance is never inferred from CURRENT.
+    development = active if active and active['test_id'] == extension.get('latest_development_test_id') else None
+    qualified = next((item for item in targets if item['test_id'] == extension.get('latest_qualified_test_id')
+                      and item['status'] == 'CURRENT'), None)
     qualification = None
     if active is not None and active['status'] == 'CURRENT':
         try: qualification = source.qualify(active)
         except Refused:
             issues.append('构建源码与发布登记的绑定未通过验证。')
             active = None
+            development = None
+    if qualified is not None:
+        try:
+            if source.git('merge-base', qualified['source_sha'], source.sha) != qualified['source_sha']:
+                raise Refused('SOURCE_NOT_INTEGRATED')
+            if source.tree_for(qualified['source_sha']) != qualified['source_tree']:
+                raise Refused('SOURCE_IDENTITY_MISMATCH')
+        except Refused:
+            qualified = None
+            issues.append('已验收候选的集成来源无法验证。')
     if active is not None:
         if not any(value['test_id'] == active['test_id'] for value in targets): targets.insert(0, active)
         if active['status'] == 'CURRENT':
@@ -279,6 +293,8 @@ def load_view(source, paths=None):
         user_action_state='USER_ACTION_REQUIRED' if actions else 'NONE' if control.get('user_action_required') == 'NONE' else 'UNKNOWN',
         action_summary=('当前无需用户操作。' if not actions and control.get('user_action_required') == 'NONE'
                         else '用户操作状态 UNKNOWN' if not actions else '现在需要你完成以下操作'),
+        latest_development=development, latest_qualified=qualified,
+        same_artifact=bool(development and qualified and development['artifact_sha256'] == qualified['artifact_sha256']),
         active_target=active, history=targets[:20], issues=issues,
         handoff_available=raw_files[HANDOFF] is not None, web_handoff_url=web_url)
 

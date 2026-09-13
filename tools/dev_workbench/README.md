@@ -1,5 +1,28 @@
 # MentorFlow Dev Workbench V1.1
 
+## Account MVP user test
+
+The version area keeps separate **启动最新开发版** and **启动最新已验收候选**
+authorities. Development shows exact source, build ID, hash and timestamp and
+remains pending user acceptance. An absent or superseded qualified candidate
+stays unavailable. Identical artifacts share one visible launch action while
+both identities remain in engineering details.
+
+Development launches reuse the existing owned profile adapter at
+`E:/Codex/TestDevices/MentorFlow/UserTest`, with isolated settings, credentials
+and vaults. The exact artifact verifier and pinned, expiring runtime lease
+remain mandatory. This profile persists across launches and is never reset by
+the launch button. Official mail actions are enabled only in the explicitly
+configured disposable Account MVP runtime and test build; ordinary release
+capabilities remain off. Shared-mailbox tests should use the unique username
+for password recovery; ambiguous email lookup fails closed.
+
+Before freezing, render the existing Keycloak 26.7.3 forms with
+`scripts/render_account_lifecycle_ui.py --keycloak <pinned-runtime> --jdk <jdk21>`.
+The generated local UI includes the existing 03 forms and a native QWebChannel
+bridge. Only bundled local content can reach that bridge; email action links
+remain ordinary official Keycloak pages in the user's browser.
+
 ## Two-device harness
 
 Open **跨设备测试** to select **云端数据恢复** or **本机资源缺失**, then use

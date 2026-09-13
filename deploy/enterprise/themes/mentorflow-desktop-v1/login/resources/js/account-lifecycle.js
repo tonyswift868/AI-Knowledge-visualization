@@ -136,4 +136,4 @@ export function mountAccountLifecycle(root, options = {}) {
 }
 
 const root = document.getElementById('mf-account-lifecycle');
-if (root) mountAccountLifecycle(root); // Capabilities default FALSE. No production route.
+if (root && !window.qt) mountAccountLifecycle(root); // Native adapter supplies test capabilities explicitly.

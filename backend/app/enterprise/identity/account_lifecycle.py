@@ -40,7 +40,7 @@ class KeycloakAccountAdmin:
 
     def __init__(self, origin: str, realm: str,
                  token_resolver: Callable[[], Awaitable[str]], *,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None, verify=True):
         parsed = urlsplit(origin)
         if (parsed.scheme != 'https' or not parsed.hostname or parsed.username
                 or parsed.password or parsed.query or parsed.fragment
@@ -48,7 +48,9 @@ class KeycloakAccountAdmin:
             raise ValueError('Exact HTTPS Keycloak administration origin required')
         self.base = origin.rstrip('/') + '/admin/realms/' + _identifier(realm)
         self.resolve_token = token_resolver
-        self.http = httpx.AsyncClient(timeout=10, follow_redirects=False,
+        if verify is False:
+            raise ValueError('Verified TLS required')
+        self.http = httpx.AsyncClient(verify=verify, timeout=10, follow_redirects=False,
                                       trust_env=False, transport=transport)
 
     async def aclose(self):
@@ -120,7 +122,8 @@ class KeycloakAccountAdmin:
         """Uses official execute-actions, NOT the reset-credentials token handler.
 
         This is a private subject-based primitive, not the anonymous forgot API.
-        Existing OIDC reset completion cannot attest this operation yet.
+        The candidate wiring observes the verified execute-actions required
+        action through the existing after-commit completion mechanism.
         """
         await self._call('PUT', '/users/' + _identifier(subject) + '/execute-actions-email',
                          payload=['UPDATE_PASSWORD'], params={'lifespan': 600})
@@ -137,5 +140,19 @@ class KeycloakAccountAdmin:
             return None
         if (not isinstance(value[0], dict) or not isinstance(value[0].get('username'), str)
                 or value[0]['username'].casefold() != username.casefold()):
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        return _identifier(value[0].get('id'))
+
+    async def find_account(self, name: str) -> str | None:
+        if '@' not in name:
+            return await self.find_username(name)
+        if not name or len(name) > 254:
+            raise LifecycleError('REGISTRATION_INPUT_INVALID')
+        value, _ = await self._call('GET', '/users', params={'email': name, 'exact': 'true', 'max': 2}, expected=200)
+        if not isinstance(value, list) or len(value) > 1:
+            return None
+        if not value:
+            return None
+        if str(value[0].get('email', '')).casefold() != name.casefold():
             raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
         return _identifier(value[0].get('id'))

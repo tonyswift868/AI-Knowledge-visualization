@@ -19,7 +19,7 @@ def build(keycloak: Path, jdk: Path, output: Path):
         javac = jdk / 'bin' / ('javac.exe' if (jdk / 'bin/javac.exe').exists() else 'javac')
         sources = [SOURCE, *(SOURCE.parent / name for name in (
             'AtomicActionTokens.java', 'AtomicVerifyEmailActionTokenHandler.java',
-            'AtomicResetCredentialsActionTokenHandler.java', 'AtomicResetPassword.java', 'ResetCompletions.java'))]
+            'AtomicResetCredentialsActionTokenHandler.java', 'AtomicResetPassword.java', 'ResetCompletions.java', 'ObservedExecuteActions.java'))]
         subprocess.run([str(javac), '--release', '21', '-cp', str(libs / '*'), '-d', temp,
                         *(str(source) for source in sources)], check=True)
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as jar:
@@ -29,7 +29,8 @@ def build(keycloak: Path, jdk: Path, output: Path):
                          'win.clannad.mentorflow.NativeIdentityVerifier\n')
             jar.writestr('META-INF/services/org.keycloak.authentication.actiontoken.ActionTokenHandlerFactory',
                          'win.clannad.mentorflow.AtomicVerifyEmailActionTokenHandler\n'
-                         'win.clannad.mentorflow.AtomicResetCredentialsActionTokenHandler\n')
+                         'win.clannad.mentorflow.AtomicResetCredentialsActionTokenHandler\n'
+                         'win.clannad.mentorflow.ObservedExecuteActions\n')
             jar.writestr('META-INF/services/org.keycloak.authentication.RequiredActionFactory',
                          'win.clannad.mentorflow.AtomicResetPassword\n')
             jar.writestr('META-INF/beans.xml', '<beans xmlns="https://jakarta.ee/xml/ns/jakartaee" bean-discovery-mode="all"/>')

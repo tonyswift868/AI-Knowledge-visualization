@@ -100,6 +100,13 @@ class Workbench(QMainWindow):
         self.version_button = self.button('version_details', self.version_details)
         self.target_controls = QGridLayout(); target.addLayout(self.target_controls)
         layout.addWidget(target_card)
+        self.qualified_title = label('最新已验收候选', 19, True)
+        self.qualified_detail = label('尚无未被替代的已验收候选。')
+        self.qualified_button = QPushButton('启动最新已验收候选')
+        self.qualified_button.clicked.connect(lambda: self.launch('latest_qualified'))
+        self.qualified_button.setEnabled(False)
+        target.addWidget(self.qualified_title); target.addWidget(self.qualified_detail)
+        target.addWidget(self.qualified_button)
         self.bottom = QGridLayout(); self.bottom.setSpacing(10)
         self.workflow_card, flow = self.card('workflow')
         self.flow_rows = []
@@ -221,6 +228,7 @@ class Workbench(QMainWindow):
 
     def start_job(self, operation, done):
         self.refresh_button.setEnabled(False); self.launch_button.setEnabled(False)
+        self.qualified_button.setEnabled(False)
         self.action_button.setEnabled(False)
         job = Job(operation, self); self.jobs.append(job)
         job.done.connect(done); job.failed.connect(self.failure)
@@ -228,6 +236,7 @@ class Workbench(QMainWindow):
             self.jobs.remove(job); job.deleteLater()
             self.refresh_button.setEnabled(True); self.action_button.setEnabled(True)
             self.launch_button.setEnabled((self.view.get('active_target') or {}).get('status') == 'CURRENT')
+            self.qualified_button.setEnabled(bool(self.view.get('latest_qualified')))
             self.device_panel.show_view(self.view)
         job.finished.connect(finish); job.start()
 
@@ -261,6 +270,18 @@ class Workbench(QMainWindow):
         self.launch_button.setObjectName('secondary' if summary['action_required'] else 'primary')
         self.launch_button.style().unpolish(self.launch_button); self.launch_button.style().polish(self.launch_button)
         active = view.get('active_target') or {}
+        development = view.get('latest_development')
+        qualified = view.get('latest_qualified')
+        if development:
+            self.target_title.setText('最新开发版 · 待用户测试')
+            self.launch_button.setText('启动最新开发版')
+            self.target_version.setText(development['source_sha'][:12] + ' · ' + development['build_id'])
+            self.target_purpose.setText('构建时间：' + development['created_at'] + '\nSHA256：' + development['artifact_sha256'])
+        self.qualified_detail.setText((qualified['source_sha'][:12] + ' · ' + qualified['build_id']) if qualified else '尚无未被替代的已验收候选。')
+        same = view.get('same_artifact', False)
+        if same: self.qualified_detail.setText('当前开发版已是最新验收候选')
+        self.qualified_button.setVisible(not same)
+        self.qualified_button.setEnabled(bool(qualified) and not self.jobs)
         self.version_button.setVisible(bool(active))
         self.nav_buttons['directory'].setVisible(ready)
         for kind, button in self.nav_buttons.items():
@@ -294,16 +315,26 @@ class Workbench(QMainWindow):
         self.set_notice(self.tr_text('errors', code))
         self.device_panel.notice.setText(self.tr_text('errors', code))
 
-    def launch(self):
+    def launch(self, authority='active_target'):
+        if not isinstance(authority, str): authority = 'active_target'
         if self.jobs: return
-        selected = self.view.get('active_target')
+        selected = self.view.get(authority)
         self.set_notice(self.tr_text('messages', 'verifying'))
         self.cancel.clear()
         def operation():
             source = self.source_factory()
-            fresh = load_view(source, self.paths).get('active_target')
+            latest = load_view(source, self.paths)
+            fresh = latest.get(authority)
+            options = {}
+            if selected and selected == latest.get('latest_development'):
+                import os
+                from .devices import Devices
+                from desktop.test_device_profile import environment, PROFILE_CONTRACT
+                devices = Devices(); profile = devices.prepare('UserTest')
+                options = dict(device_contract=PROFILE_CONTRACT,
+                    device_environment={**os.environ, **environment(devices.root('UserTest'), profile)})
             process = launch_exact(selected, fresh, source.tree_for, self.paths, cancelled=self.cancel.is_set,
-                                   authority_check=source.assert_current)
+                                   authority_check=source.assert_current, **options)
             return process.pid
         self.start_job(operation, lambda pid: self.set_notice(self.tr_text('messages', 'launched')))
 

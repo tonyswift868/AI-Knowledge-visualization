@@ -21,6 +21,7 @@ if uat_config:
     if set(uat_doc) != {'schema', 'root', 'public_key', 'key_id', 'source_sha', 'tree_sha'} or uat_doc['schema'] != 'mentorflow.packaged-update-uat.v1':
         raise ValueError('invalid UAT public build configuration')
 backend_root = root / "backend"
+account_ui = root / 'artifacts/account-lifecycle-ui'
 # Build-time module search is declared through Analysis.pathex below.
 # Enumerate canonical names without mutating the build interpreter's sys.path.
 backend_modules = ["app"]
@@ -32,6 +33,7 @@ for source in sorted((backend_root / "app").rglob("*.py")):
         backend_modules.append(".".join(parts[:length]))
 
 datas = [
+    (str(account_ui), 'account-lifecycle'),
     (str(root / "backend" / "alembic" / "env.py"), "backend/alembic"),
     (str(root / "backend" / "alembic" / "script.py.mako"), "backend/alembic"),
     (str(root / "backend" / "alembic.ini"), "backend"),
