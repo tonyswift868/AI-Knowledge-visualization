@@ -78,7 +78,13 @@
       "DRIFT_REJECTED": "PASS_12_CASES",
       "QUERY_FAILED": "PASS_REAL_DATABASE_OUTAGE"
     },
-    "knowledge_gates": "Worker checkout cannot publish integration web handoff; run results retained in final validation",
+    "knowledge_gates": {
+      "compact_generator": "PASS_1119_BYTES",
+      "repo_knowledge_lint": "BLOCKED",
+      "web_handoff_check": "BLOCKED",
+      "reason": "wrong integration checkout",
+      "integration_checkout_mutated": false
+    },
     "initialization_write_commit_order": "PASS_SHARED_TRANSACTION_SCOPE_LOCK"
   },
   "OBSERVATION_ARTIFACT": {

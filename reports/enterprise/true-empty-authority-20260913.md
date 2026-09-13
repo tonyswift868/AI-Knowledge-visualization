@@ -134,3 +134,7 @@ endpoint is historical runtime identity, not a deployed or currently running ser
 
 The final shared-lock regression proves that initialization cannot overtake an
 uncommitted sync write and later writes advance the initialized generation.
+
+Knowledge checks: compact generator PASS (1119 bytes); repository lint and web
+handoff check refuse this owned worker branch with `wrong integration checkout`.
+The integration-only publication guard is retained; no A-owned handoff is changed.
