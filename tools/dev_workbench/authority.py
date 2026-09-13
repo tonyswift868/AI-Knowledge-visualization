@@ -17,7 +17,8 @@ PLAN = 'docs/exec-plans/active/MAIN3.md'
 HANDOFF = 'docs/handoff/WEB_SESSION_LATEST.md'
 TARGET = 'docs/governance/ACTIVE_TEST_TARGET.json'
 SLOTS = ('A', '01', '02', '03', '04')
-WORKER_STATES = {'RUNNING', 'SILENT', 'BLOCKED', 'USER_ACTION_REQUIRED', 'PASS_STAGE'}
+WORKER_STATES = {'RUNNING', 'SILENT', 'BLOCKED', 'USER_ACTION_REQUIRED', 'PASS_STAGE',
+                 'WAITING_FOR_ARTIFACT', 'NOT_RUN', 'LOCKED'}
 FLOW_STATES = {'DONE': 'PASS', 'PASS': 'PASS', 'RUNNING': 'RUNNING', 'BLOCKED': 'BLOCKED',
                'LOCKED': 'LOCKED', 'NOT_RUN': 'NOT_RUN', 'NOT_DISPATCHED': 'NOT_RUN'}
 LABELS = {
@@ -169,7 +170,9 @@ def load_view(source, paths=None):
         workers.append(dict(slot=slot, status=status, task_id=text(worker.get('task_id')),
             dispatch_id=text(worker.get('dispatch_id')), head=text(worker.get('delivery_commit') or worker.get('head')),
             objective=text(worker.get('objective') or worker.get('next_action')),
-            blocker=text(worker.get('blocker')), next_gate=text(worker.get('next_gate'))))
+            blocker=text(worker.get('blocker')), next_gate=text(worker.get('next_gate')),
+            summary_zh=text(worker.get('summary_zh')), receipt=text(worker.get('receipt')),
+            raw_status=text(worker.get('status'))))
     workflow, actions = [], []
     tasks = queue.get('tasks', [])
     if not isinstance(tasks, list): tasks = []
@@ -234,6 +237,8 @@ def load_view(source, paths=None):
         remote_head=remote, staging_status=text(extension.get('staging_status')),
         database_revision=text(extension.get('database_revision')), source_schema=text(fields.get('ALEMBIC_HEAD')),
         workers=workers, workflow=workflow, actions=actions,
+        formal_main3=text(control.get('formal_main3')),
+        user_action_state='USER_ACTION_REQUIRED' if actions else 'NONE' if control.get('user_action_required') == 'NONE' else 'UNKNOWN',
         action_summary=('当前无需用户操作。' if not actions and control.get('user_action_required') == 'NONE'
                         else '用户操作状态 UNKNOWN' if not actions else '现在需要你完成以下操作'),
         active_target=active, history=targets[:20], issues=issues,

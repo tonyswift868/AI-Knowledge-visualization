@@ -30,9 +30,11 @@ still be pinned in repo governance. Board writes are performed by A/worker recei
 integration, never by Workbench. A single canonical ACTIVE_TEST_TARGET.json in the
 same Git tree is also supported. Missing/ambiguous selected IDs fail closed.
 
-Workers can add explicit `objective`, `blocker`, `next_gate`, `head` fields to their
+Workers can add explicit `objective`, `summary_zh`, `blocker`, `next_gate`, `head`, `receipt` fields to their
 existing board rows. Workbench does not merge an unregistered receipt over a row.
-Unknown worker statuses display UNKNOWN; B is excluded from the active board.
+The optional `summary_zh` is concise public Chinese prose, not execution authority.
+Unknown worker statuses display 状态未知; the raw status remains in details.
+B is excluded from the active board.
 
 DEPENDENCY_QUEUE tasks keep their existing shape. DONE maps to PASS;
 NOT_DISPATCHED maps to NOT_RUN; PASS/RUNNING/BLOCKED/LOCKED/NOT_RUN pass through.
@@ -41,6 +43,16 @@ evidence; until present they display UNKNOWN. Other rows can opt into the timeli
 with `workbench_visible: true` and a public `title`. A user-action row uses
 `user_action_required` (public instruction) and `success_criteria`. No natural
 language stage inference or execution dispatch is performed by the workbench.
+
+V1.1 maps those registered rows to five business summaries. Optional specific
+acceptance rows use `workbench_visible: true`: `REAL_NATIVE_LOGIN`,
+`OLD_DATA_CONTINUITY` (aliases `DATA_CONTINUITY`, `ACCOUNT_DATA_CONTINUITY`),
+`ACCOUNT_LIFECYCLE_ACCEPTANCE`, and `FINAL_INSTALL_UPDATE`. They take priority
+over their corresponding Gate A/B/C planning row; `MAIN3_PROMOTION` retains its
+formal-branch meaning. The ordered mapping is in `presentation.STAGES`. Missing
+rows remain unknown; the tool never opens an unregistered receipt to fill them.
+`control_plane.formal_main3=NOT_CREATED` is displayed as 未创建. These optional
+fields do not add, change, or approve a CURRENT test target.
 
 ## Build identity and trust boundary
 

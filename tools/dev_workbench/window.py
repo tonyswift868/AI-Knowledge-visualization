@@ -1,36 +1,26 @@
-"""Lightweight Qt developer projection. No product/UI/auth imports."""
+"""Summary-first Qt projection. Launch admission remains owned by targets.py."""
+import json
 import threading
 
 from PySide6.QtCore import Qt, QThread, Signal, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import (QApplication, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
-    QLabel, QMainWindow, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QTabWidget, QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtGui import QDesktopServices, QTextOption
+from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QGridLayout, QHBoxLayout,
+    QLabel, QListWidget, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QTabWidget,
+    QTextEdit, QVBoxLayout, QWidget)
 
 from .authority import RepoSource, load_view, public_text
+from .presentation import details_payload, summarize
+from .resources import Resources, COLORS
 from .targets import Refused, TrustedPaths, launch_exact, navigation_path
 
-COLORS = {'PASS': '#167047', 'PASS_STAGE': '#167047', 'CURRENT': '#1d4ed8', 'RUNNING': '#1d4ed8',
-          'SILENT': '#64748b', 'BLOCKED': '#b42318', 'FAIL': '#b42318', 'LOCKED': '#64748b',
-          'NOT_RUN': '#64748b', 'UNKNOWN': '#64748b', 'USER_ACTION_REQUIRED': '#b45309',
-          'WAITING_FOR_ARTIFACT': '#b45309', 'SUPERSEDED': '#64748b'}
-ERRORS = {
-    'ARTIFACT_HASH_MISMATCH': '这个文件不是当前指定测试版本。',
-    'BUILD_IDENTITY_MISMATCH': '构建身份与指定候选不一致。',
-    'SOURCE_IDENTITY_MISMATCH': 'Source SHA 与 tree 无法匹配。',
-    'UNTRUSTED_PATH': '文件不在受信任的本地产物目录，或路径包含别名。',
-    'ARTIFACT_MISSING': '指定的文件尚不存在。',
-    'OLD_OR_UNREADY_TARGET': '这是旧测试版本，或候选尚未准备完成。',
-    'TARGET_CHANGED': '当前测试目标已更新，请刷新后再启动。',
-    'CANCELLED': '已取消启动。',
-}
 
-
-def label(text='', size=None, bold=False):
+def label(text='', size=14, bold=False):
     item = QLabel(text)
     item.setTextFormat(Qt.TextFormat.PlainText)
     item.setWordWrap(True)
-    if size: item.setStyleSheet(f'font-size:{size}px; font-weight:{600 if bold else 400};')
+    item.setMinimumWidth(0)
+    item.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    item.setStyleSheet(f'font-size:{size}px; font-weight:{600 if bold else 400};')
     return item
 
 
@@ -49,170 +39,274 @@ class Job(QThread):
 
 
 class Workbench(QMainWindow):
-    def __init__(self, source_factory=RepoSource, paths=None, *, auto_load=True):
+    def __init__(self, source_factory=RepoSource, paths=None, *, auto_load=True, resources=None):
         super().__init__()
         self.source_factory, self.paths = source_factory, paths or TrustedPaths()
-        self.view, self.jobs = {}, []
+        self.resources = resources or Resources()
+        self.view, self.jobs, self.summary = {}, [], {}
         self.cancel = threading.Event()
-        self.setWindowTitle('MentorFlow Dev Workbench · 开发工作台')
-        self.resize(1240, 910)
-        self.setMinimumSize(980, 760)
+        self.last_error = None
+        self._wide = None
+        self.setWindowTitle(self.tr_text('labels', 'title'))
+        self.resize(1100, 900)
+        self.setMinimumSize(280, 320)
         self.setStyleSheet('''
-            QMainWindow {background:#f3f5f9;} QWidget {font-family:"Segoe UI","Microsoft YaHei UI"; font-size:13px; color:#18243b;}
-            QFrame#card {background:white; border:1px solid #dfe5ef; border-radius:10px;}
-            QPushButton {background:white; border:1px solid #cbd5e1; border-radius:6px; padding:8px 14px;}
-            QPushButton:hover {background:#eef4ff;} QPushButton:disabled {color:#94a3b8; background:#f1f5f9;}
-            QPushButton#primary {background:#2458d3; color:white; border:0; font-weight:600;}
+            QMainWindow, QScrollArea, QWidget#content {background:#f3f5f9;}
+            QWidget {font-family:"Microsoft YaHei UI","Segoe UI"; font-size:14px; color:#18243b;}
+            QScrollArea {border:0;} QFrame#card {background:white; border:1px solid #dfe5ef; border-radius:10px;}
+            QFrame#actionCard {background:#edf4ff; border:2px solid #adc8f3; border-radius:10px;}
+            QLabel {background:transparent; border:0;}
+            QPushButton {background:white; border:1px solid #cbd5e1; border-radius:6px; padding:7px 10px;}
+            QPushButton:hover {background:#e5edff;} QPushButton:disabled {color:#94a3b8; background:#f1f5f9;}
+            QPushButton#primary {background:#2458d3; color:white; border:0; font-weight:600; padding:11px;}
             QPushButton#primary:disabled {background:#dce5f7; color:#64748b;}
-            QTableWidget {border:0; background:white; gridline-color:#edf0f5; selection-background-color:#eaf0ff; selection-color:#18243b;}
-            QHeaderView::section {background:#f7f9fc; border:0; padding:8px; color:#58667f;}
-            QTabWidget::pane {border:1px solid #dfe5ef; background:white;} QTextEdit {border:0; background:white;}
+            QPushButton#worker {text-align:left; border:0; background:#f7f9fc;}
+            QTextEdit {background:white; border:1px solid #dfe5ef;}
         ''')
-        root = QWidget(); self.setCentralWidget(root)
-        layout = QVBoxLayout(root); layout.setContentsMargins(24, 16, 24, 16); layout.setSpacing(12)
-        header = QHBoxLayout()
-        title = label('MentorFlow  /  开发工作台', 24, True); title.setWordWrap(False)
-        header.addWidget(title); header.addStretch()
-        self.refresh_button = QPushButton('刷新 repo 快照'); self.refresh_button.clicked.connect(self.refresh)
-        header.addWidget(self.refresh_button); layout.addLayout(header)
-        self.phase = label('正在读取 repo authority…', 17, True); layout.addWidget(self.phase)
-        self.blockers = label('', 13); layout.addWidget(self.blockers)
-        self.provenance = label('只读投影 · 不代表员工或服务器的实时状态', 12); layout.addWidget(self.provenance)
-        action_card = QFrame(); action_card.setObjectName('card')
-        action = QVBoxLayout(action_card); action.setContentsMargins(18, 14, 18, 14)
-        action.addWidget(label('现在你需要做什么？', 18, True))
-        self.action_text = label('正在读取…', 15); action.addWidget(self.action_text)
-        self.target_title = label(); action.addWidget(self.target_title)
-        self.criteria = label(); action.addWidget(self.criteria)
-        self.account = label(); action.addWidget(self.account)
-        buttons = QHBoxLayout()
-        self.launch_button = QPushButton('启动当前测试版'); self.launch_button.setObjectName('primary')
-        self.launch_button.clicked.connect(self.launch); buttons.addWidget(self.launch_button)
-        self.nav_buttons = {}
-        for key, title in (('directory', '打开所在目录'), ('receipt', '打开回执'), ('log', '打开日志')):
-            button = QPushButton(title); button.clicked.connect(lambda checked=False, k=key: self.navigate(k))
-            self.nav_buttons[key] = button; buttons.addWidget(button)
-        copy = QPushButton('复制 Source SHA'); copy.clicked.connect(self.copy_source); buttons.addWidget(copy)
-        self.web_button = QPushButton('打开网页版接手页'); self.web_button.clicked.connect(self.open_handoff)
-        buttons.addWidget(self.web_button); buttons.addStretch(); action.addLayout(buttons)
-        self.notice = label(); action.addWidget(self.notice); layout.addWidget(action_card)
-        layout.addWidget(label('员工交付看板  ·  A / 01 / 02 / 03 / 04', 16, True))
-        self.workers = self.table(['员工', '状态', '当前目标', '阻塞', '下一关'], 5)
-        self.workers.setFixedHeight(192); self.workers.itemSelectionChanged.connect(self.worker_details)
-        self.workers.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.workers)
-        tabs = QTabWidget()
-        self.flow = self.table(['阶段 / Gate', '状态', '证据范围'], 0)
-        self.flow.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        tabs.addTab(self.flow, 'MAIN3 工作流')
-        self.history = self.table(['TEST_ID', '版本', 'Source SHA', '状态'], 0)
-        self.history.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.history.cellDoubleClicked.connect(self.history_notice)
-        tabs.addTab(self.history, '测试目标历史 · 只读')
-        self.details = QTextEdit(); self.details.setReadOnly(True); tabs.addTab(self.details, '工程详情 / 来源')
-        layout.addWidget(tabs, 1)
-        self.footer = label('Workbench 不执行 merge / push / deploy，也不修改治理状态。', 12)
-        layout.addWidget(self.footer)
+        self.scroll = QScrollArea(); self.scroll.setWidgetResizable(True)
+        self.setCentralWidget(self.scroll)
+        self.content = QWidget(); self.content.setObjectName('content'); self.scroll.setWidget(self.content)
+        layout = QVBoxLayout(self.content); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(10)
+        self.sections = []
+        header, top = self.card()
+        self.title = label(self.tr_text('labels', 'title'), 23, True); top.addWidget(self.title)
+        self.phase = label(self.tr_text('messages', 'loading'), 17, True); top.addWidget(self.phase)
+        self.overall = label(); top.addWidget(self.overall)
+        self.blockers = label(); top.addWidget(self.blockers); self.blockers.hide()
+        self.header_controls = QGridLayout()
+        self.integration = label(); self.integration.setMaximumWidth(260)
+        self.integration.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.copy_button = self.button('copy', self.copy_integration)
+        self.engineering_button = self.button('engineering', self.engineering_details)
+        self.refresh_button = self.button('refresh', self.refresh)
+        top.addLayout(self.header_controls)
+        self.provenance = label(self.tr_text('labels', 'snapshot'), 12); top.addWidget(self.provenance)
+        layout.addWidget(header)
+        action_card, action = self.card('action', action=True)
+        self.action_text = label(self.tr_text('messages', 'loading'), 25, True)
+        self.criteria = label('', 15)
+        action.addWidget(self.action_text); action.addWidget(self.criteria)
+        self.action_button = self.button('instructions', self.primary_action, primary=True)
+        action.addWidget(self.action_button); self.action_button.hide()
+        self.notice = label(); action.addWidget(self.notice); self.notice.hide()
+        layout.addWidget(action_card)
+        target_card, target = self.card('target')
+        self.target_title = label('', 19, True); target.addWidget(self.target_title)
+        self.target_version = label('', 16, True); target.addWidget(self.target_version)
+        self.target_purpose = label(); target.addWidget(self.target_purpose)
+        self.launch_button = self.button('launch', self.launch, primary=True)
+        self.nav_buttons = {'directory': self.button('directory', lambda: self.navigate('directory'))}
+        self.version_button = self.button('version_details', self.version_details)
+        self.target_controls = QGridLayout(); target.addLayout(self.target_controls)
+        layout.addWidget(target_card)
+        self.bottom = QGridLayout(); self.bottom.setSpacing(10)
+        self.workflow_card, flow = self.card('workflow')
+        self.flow_rows = []
+        for _ in range(5):
+            row = QHBoxLayout(); title, status = label(), label()
+            row.addWidget(title, 3); row.addWidget(status, 2); flow.addLayout(row)
+            self.flow_rows.append((title, status))
+        self.workflow_note = label('', 12); flow.addWidget(self.workflow_note); self.workflow_note.hide()
+        flow.addStretch()
+        self.workers_card, workers = self.card('workers')
+        self.worker_rows, self.worker_layouts = [], []
+        for index in range(5):
+            button = QPushButton(); button.setObjectName('worker')
+            button.clicked.connect(lambda checked=False, i=index: self.worker_details(i))
+            summary = label('', 13)
+            row = QGridLayout(); row.addWidget(button, 0, 0); row.addWidget(summary, 1, 0)
+            workers.addLayout(row); self.worker_layouts.append(row)
+            self.worker_rows.append((button, summary))
+        workers.addStretch()
+        layout.addLayout(self.bottom)
+        layout.addStretch()
+        self.build_details_dialog()
         self.launch_button.setEnabled(False)
+        self.reflow()
         if auto_load: self.refresh()
 
-    @staticmethod
-    def table(headers, rows):
-        table = QTableWidget(rows, len(headers)); table.setHorizontalHeaderLabels(headers)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.verticalHeader().hide(); table.verticalHeader().setDefaultSectionSize(31)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        return table
+    def tr_text(self, group, key, **values):
+        return self.resources.text(group, key, **values)
 
-    def fill(self, table, rows):
-        table.setRowCount(len(rows))
-        for row, values in enumerate(rows):
-            for col, value in enumerate(values):
-                value = public_text(value)
-                item = QTableWidgetItem(value); item.setToolTip(value)
-                if value in COLORS: item.setForeground(QColor(COLORS[value]))
-                table.setItem(row, col, item)
+    def button(self, key, callback, *, primary=False):
+        button = QPushButton(self.tr_text('actions', key))
+        if primary: button.setObjectName('primary')
+        button.clicked.connect(callback)
+        return button
+
+    def card(self, title=None, *, action=False):
+        frame = QFrame(); frame.setObjectName('actionCard' if action else 'card')
+        frame.setMinimumWidth(0)
+        body = QVBoxLayout(frame); body.setContentsMargins(14, 12, 14, 12); body.setSpacing(8)
+        if title: body.addWidget(label(self.tr_text('labels', title), 16, True))
+        self.sections.append(frame)
+        return frame, body
+
+    def reflow(self):
+        wide = self.width() >= 760
+        self.title.setText(self.tr_text('labels', 'title_compact' if self.width() < 400 else 'title'))
+        if wide == self._wide: return
+        self._wide = wide
+        self.integration.setWordWrap(not wide)
+        for index, widget in enumerate((self.integration, self.copy_button, self.engineering_button, self.refresh_button)):
+            self.header_controls.removeWidget(widget)
+            self.header_controls.addWidget(widget, 0 if wide else index // 2, index if wide else index % 2)
+        self.header_controls.setColumnStretch(0, 1 if not wide else 0)
+        self.header_controls.setColumnStretch(4, 1 if wide else 0)
+        for index, button in enumerate((self.launch_button, self.nav_buttons['directory'], self.version_button)):
+            self.target_controls.removeWidget(button)
+            self.target_controls.addWidget(button, 0 if wide else index, index if wide else 0)
+        self.target_controls.setColumnStretch(3, 1 if wide else 0)
+        self.bottom.removeWidget(self.workflow_card); self.bottom.removeWidget(self.workers_card)
+        self.bottom.addWidget(self.workflow_card, 0, 0)
+        self.bottom.addWidget(self.workers_card, 0 if wide else 1, 1 if wide else 0)
+        self.bottom.setColumnStretch(0, 1); self.bottom.setColumnStretch(1, 1 if wide else 0)
+        for row, (button, message) in zip(self.worker_layouts, self.worker_rows):
+            row.removeWidget(message)
+            row.addWidget(message, 0 if wide else 1, 1 if wide else 0)
+            row.setColumnStretch(0, 0 if wide else 1); row.setColumnStretch(1, 1 if wide else 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'bottom'): self.reflow()
+
+    def build_details_dialog(self):
+        self.details_dialog = QDialog(self)
+        self.details_dialog.resize(760, 620); self.details_dialog.setMinimumSize(260, 280)
+        body = QVBoxLayout(self.details_dialog)
+        self.details = QTextEdit(); self.details.setReadOnly(True)
+        self.details.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+        self.detail_tabs = QTabWidget()
+        self.detail_tabs.addTab(self.details, self.tr_text('labels', 'engineering'))
+        self.history = QListWidget(); self.history.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.history.itemDoubleClicked.connect(lambda item: self.history_notice(self.history.row(item), 0))
+        self.detail_tabs.addTab(self.history, self.tr_text('labels', 'history'))
+        body.addWidget(self.detail_tabs, 1)
+        self.account = label(); body.addWidget(self.account); self.account.hide()
+        buttons = QGridLayout()
+        for index, kind in enumerate(('receipt', 'log')):
+            button = self.button(kind, lambda checked=False, k=kind: self.navigate(k))
+            self.nav_buttons[kind] = button; buttons.addWidget(button, 0, index)
+        buttons.addWidget(self.button('copy_source', self.copy_source), 1, 0)
+        self.web_button = self.button('handoff', self.open_handoff); buttons.addWidget(self.web_button, 1, 1)
+        body.addLayout(buttons)
+        body.addWidget(self.button('close', self.details_dialog.hide))
+
+    def open_details(self, title, value):
+        self.details_dialog.setWindowTitle(title)
+        self.details.setPlainText(json.dumps(details_payload(value), ensure_ascii=False, indent=2))
+        self.detail_tabs.setCurrentIndex(0)
+        self.details_dialog.resize(min(760, self.width()), min(620, self.height()))
+        self.details_dialog.show(); self.details_dialog.raise_()
+
+    def engineering_details(self):
+        self.open_details(self.tr_text('labels', 'engineering'),
+                          {**self.view, 'authority_ref': 'refs/heads/integration/main3', 'last_error': self.last_error})
+
+    def version_details(self):
+        self.open_details(self.tr_text('labels', 'version_details'), self.view.get('active_target'))
+
+    def worker_details(self, index):
+        rows = self.view.get('workers', [])
+        if not 0 <= index < len(rows): return
+        self.open_details(self.tr_text('labels', 'worker_details', slot=rows[index]['slot']), rows[index])
+
+    def primary_action(self):
+        if self.summary.get('target_state') == 'READY': self.launch()
+        else: self.open_details(self.tr_text('labels', 'actions_details'), self.view.get('actions'))
 
     def start_job(self, operation, done):
         self.refresh_button.setEnabled(False); self.launch_button.setEnabled(False)
+        self.action_button.setEnabled(False)
         job = Job(operation, self); self.jobs.append(job)
         job.done.connect(done); job.failed.connect(self.failure)
         def finish():
             self.jobs.remove(job); job.deleteLater()
-            self.refresh_button.setEnabled(True)
-            self.launch_button.setEnabled(self.view.get('active_target', {}).get('status') == 'CURRENT'
-                                          if self.view.get('active_target') else False)
+            self.refresh_button.setEnabled(True); self.action_button.setEnabled(True)
+            self.launch_button.setEnabled((self.view.get('active_target') or {}).get('status') == 'CURRENT')
         job.finished.connect(finish); job.start()
+
+    def set_notice(self, text):
+        self.notice.setText(text); self.notice.setVisible(bool(text))
 
     def refresh(self):
         if self.jobs: return
-        self.notice.setText('正在读取同一 Git commit 的权威文件…')
+        self.set_notice(self.tr_text('messages', 'loading'))
         self.start_job(lambda: load_view(self.source_factory(), self.paths), self.show_view)
 
     def show_view(self, view):
         self.view = view
-        self.phase.setText(f"{view['generation']}  ·  {view['current_phase']}")
-        blocked = [item['title'] for item in view['workflow'] if item['status'] in ('BLOCKED', 'LOCKED')]
-        self.blockers.setText('阻塞：' + (' · '.join(blocked) if blocked else 'UNKNOWN / 尚无已登记阻塞'))
-        self.provenance.setText(f"交付快照 {view['snapshot_at']}  ·  integration {view['integration_sha'][:12]}  ·  实时状态未查询")
-        self.action_text.setText(view['action_summary'])
+        self.summary = summary = summarize(view, self.resources)
+        self.phase.setText(self.tr_text('labels', 'phase', value=summary['phase']))
+        self.overall.setText(self.tr_text('labels', 'overall', value=summary['overall']))
+        self.blockers.setText(self.tr_text('labels', 'blocked', stages='、'.join(summary['blocked'])))
+        self.blockers.setVisible(bool(summary['blocked']))
+        self.integration.setText(self.tr_text('labels', 'integration', sha=summary['integration_short']))
+        self.action_text.setText(summary['action_title']); self.criteria.setText(summary['action_sentence'])
+        ready = summary['target_state'] == 'READY'
+        self.action_button.setVisible(summary['action_required'])
+        self.action_button.setText(self.tr_text('actions', 'action_launch' if ready else 'instructions'))
+        self.target_title.setText(summary['target_text'])
+        self.target_version.setText(self.tr_text('labels', 'version', version=summary['version']))
+        self.target_version.setVisible(ready)
+        self.target_purpose.setText(self.tr_text('labels', 'purpose', purpose=summary['purpose']) if ready else
+            self.tr_text('empty', 'waiting_target' if summary['target_state'] == 'WAITING' else 'none_target'))
+        self.launch_button.setVisible(ready); self.launch_button.setEnabled(ready and not self.jobs)
+        self.launch_button.setObjectName('secondary' if summary['action_required'] else 'primary')
+        self.launch_button.style().unpolish(self.launch_button); self.launch_button.style().polish(self.launch_button)
         active = view.get('active_target') or {}
-        self.target_title.setText('当前测试目标：' + public_text(active.get('title')) + '  ·  ' + public_text(active.get('status')))
-        actions = view['actions']
-        if actions:
-            self.criteria.setText('\n'.join(public_text(a['title']) + '：' + public_text(a['instruction']) +
-                '\n成功标准：' + public_text(a['success_criteria']) for a in actions))
-        else:
-            self.criteria.setText('等待 01/A 登记完整的 exact 候选回执后，此处将开放启动。' if active.get('status') == 'WAITING_FOR_ARTIFACT' else '')
-        self.account.setText(('测试账号：' + public_text(active.get('test_username')) +
-            '  ·  密码：SECURE_REFERENCE_ONLY\n引用：' + public_text(active.get('secret_ref')))
-            if active.get('test_username') or active.get('secret_ref') else '')
-        self.account.setVisible(bool(self.account.text()))
-        self.launch_button.setEnabled(active.get('status') == 'CURRENT')
+        self.version_button.setVisible(bool(active))
+        self.nav_buttons['directory'].setVisible(ready)
         for kind, button in self.nav_buttons.items():
             button.setEnabled(bool(active.get('artifact_path' if kind == 'directory' else kind + '_path')))
         self.web_button.setEnabled(bool(view.get('handoff_available') and view.get('web_handoff_url')))
-        self.fill(self.workers, [(w['slot'], w['status'],
-            '此快照未登记新任务；详细交付说明见工程详情' if w['status'] == 'SILENT' and w['task_id'] == 'UNKNOWN'
-            else w['objective'], w['blocker'], w['next_gate']) for w in view['workers']])
-        self.fill(self.flow, [(s['title'], s['status'], s['reason']) for s in view['workflow']])
-        self.fill(self.history, [(t['test_id'], t['product_version'], (t['source_sha'] or 'UNKNOWN')[:12], t['status']) for t in view['history']])
-        self.notice.setText('；'.join(view['issues']) or '仅启动当前指定候选；路径、SHA256、source/build 身份全部匹配后才启动。')
-        details = '\n'.join(f'{key} = {public_text(view.get(key))}' for key in (
-            'project', 'generation', 'current_phase', 'current_gate', 'integration_sha', 'integration_tree',
-            'remote_head', 'snapshot_at', 'snapshot_kind', 'staging_status', 'database_revision', 'source_schema'))
-        self.base_details = details + '\n\n远端 SHA 仅为本地已有快照，未 fetch。数据库运行态与源码 schema 分别显示。'
-        self.details.setPlainText(self.base_details)
-
-    def worker_details(self):
-        index = self.workers.currentRow()
-        rows = self.view.get('workers', [])
-        if not 0 <= index < len(rows): return
-        self.details.setPlainText(getattr(self, 'base_details', '') + '\n\n员工明细\n' +
-            '\n'.join(f'{k} = {public_text(v)}' for k, v in rows[index].items()))
+        self.account.setText(self.tr_text('labels', 'account', username=public_text(active.get('test_username')),
+            reference=public_text(active.get('secret_ref'))) if active.get('test_username') or active.get('secret_ref') else '')
+        self.account.setVisible(bool(self.account.text()))
+        self.history.clear()
+        for target in view.get('history', []):
+            self.history.addItem(self.tr_text('statuses', target['status']) + '  ·  ' +
+                                 public_text(target.get('product_version')) + '  ·  ' + target['test_id'])
+        for (title, status), row in zip(self.flow_rows, summary['workflow']):
+            title.setText(row['title']); status.setText(row['text'])
+            status.setStyleSheet(f"color:{COLORS.get(row['status'], '#64748b')}; font-weight:600;")
+        completed = {row['task_id'] for row in view.get('workflow', []) if row['status'] == 'PASS'}
+        mail_note = 'qq_pass' if 'REAL_QQ_DELIVERY' in completed else 'smtp_pass' if 'REAL_SMTP_TRANSPORT' in completed else None
+        self.workflow_note.setText(self.tr_text('workflow', mail_note) if mail_note else '')
+        self.workflow_note.setVisible(mail_note is not None)
+        for index, (button, message) in enumerate(self.worker_rows):
+            row = summary['workers'][index] if index < len(summary['workers']) else None
+            button.setVisible(row is not None); message.setVisible(row is not None)
+            if row:
+                button.setText(row['slot'] + '    ' + row['text'] + '   ›')
+                button.setAccessibleName(self.tr_text('actions', 'worker', slot=row['slot']))
+                message.setText(row['summary'])
+        self.set_notice(self.tr_text('messages', 'issues') if view.get('issues') else '')
 
     def failure(self, code):
-        self.notice.setText('REFUSE_TO_LAUNCH / ' + ERRORS.get(code, '无法完成操作；请检查已登记的权威文件。') + ' [' + code + ']')
+        self.last_error = code
+        self.set_notice(self.tr_text('errors', code))
 
     def launch(self):
         if self.jobs: return
         selected = self.view.get('active_target')
-        self.notice.setText('正在核验 exact 候选…')
+        self.set_notice(self.tr_text('messages', 'verifying'))
         self.cancel.clear()
         def operation():
             source = self.source_factory()
             fresh = load_view(source, self.paths).get('active_target')
             process = launch_exact(selected, fresh, source.tree_for, self.paths, cancelled=self.cancel.is_set)
             return process.pid
-        self.start_job(operation, lambda pid: self.notice.setText(f'已启动已验证的指定候选。进程 {pid}；验收结果仍需回执确认。'))
+        self.start_job(operation, lambda pid: self.set_notice(self.tr_text('messages', 'launched')))
 
     def navigate(self, kind):
         try:
             path = navigation_path(self.view.get('active_target') or {}, kind, self.paths)
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         except Refused as exc: self.failure(str(exc))
+
+    def copy_integration(self):
+        if self.view.get('integration_sha'): QApplication.clipboard().setText(self.view['integration_sha'])
 
     def copy_source(self):
         value = (self.view.get('active_target') or {}).get('source_sha')
@@ -224,14 +318,14 @@ class Workbench(QMainWindow):
 
     def history_notice(self, row, _column):
         target = self.view['history'][row]
-        self.notice.setText('这是旧测试版本。历史记录只读，请由 A 将其明确登记为 CURRENT 后再启动。'
-                           if target['status'] != 'CURRENT' or target != self.view.get('active_target')
-                           else '请使用上方“启动当前测试版”按钮，启动前将重新验证。')
+        message = self.tr_text('messages', 'old'
+            if target['status'] != 'CURRENT' or target != self.view.get('active_target') else 'current_history')
+        self.set_notice(message)
+        if self.details_dialog.isVisible():
+            self.open_details(self.tr_text('labels', 'history'), {self.tr_text('labels', 'actions_details'): message, **target})
 
     def closeEvent(self, event):
         if self.jobs:
-            self.cancel.set()
-            self.notice.setText('正在取消校验，请稍后关闭。')
-            event.ignore()
+            self.cancel.set(); self.set_notice(self.tr_text('messages', 'closing')); event.ignore()
         else:
-            event.accept()
+            self.details_dialog.hide(); event.accept()

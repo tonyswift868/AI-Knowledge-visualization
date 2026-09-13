@@ -1,4 +1,4 @@
-# MentorFlow Dev Workbench V1
+# MentorFlow Dev Workbench V1.1
 
 Double-click [Start-MentorFlow-Dev-Workbench.cmd](../../Start-MentorFlow-Dev-Workbench.cmd).
 This is a separate Python/Qt developer window, outside the Desktop product entry.
@@ -6,10 +6,18 @@ It needs an existing Python with `PySide6` and `jsonschema`; the launcher checks
 repo environment and audited existing E: runtimes. `MENTORFLOW_DEV_PYTHON` can name
 another explicitly provisioned `python.exe`. It never downloads or installs tools.
 
-The first view shows what the repository can prove: stage, action center, exact
-test target, A/01/02/03/04 delivery board, workflow and read-only target history.
-Select a worker and open **工程详情 / 来源** for task/dispatch/head/blocker/next gate.
-Unknown fields stay UNKNOWN. Snapshot time and source SHA remain visible: a
+The first view has five Chinese summary areas: current stage, user action, test
+version, business workflow and A/01/02/03/04 worker status. **现在需要你做什么**
+has the highest visual priority. Without a registered action it explicitly says
+**当前无需你操作**; unknown action authority stays unknown. A ready target gives
+one primary **启动测试版本** button in the action center. The version area keeps
+the same launch operation as a secondary button, plus directory and details.
+
+Select a worker for task/dispatch/head/blocker/receipt details. **工程详情** holds
+the complete source identities, snapshot timestamp, paths and read-only history;
+it is closed by default. Unknown statuses show **状态未知** in summaries; raw
+UNKNOWN and original machine values remain in details. Only one eight-character
+integration SHA is on the main screen; **复制** copies its full identity. A
 delivery snapshot is not live worker/server telemetry. No polling, fetch, merge,
 push, deployments, protocol registration or product startup occurs on opening.
 
@@ -30,8 +38,34 @@ repo approval were present. No old shortcut or external wrapper is auto-admitted
 Before A integrates the new manifest, the worker's checked-in bootstrap may only
 display WAITING; a local CURRENT file is not executable authority.
 
-The current initial governance snapshot says USER_ACTION_REQUIRED=NONE. That is
-shown as a dated governance statement, not a claim about another task's live work.
+The current initial governance snapshot says USER_ACTION_REQUIRED=NONE. The UI
+labels itself as the most recently registered state; its exact timestamp is in
+details. It does not claim silent workers are currently executing a task.
+
+## Chinese presentation contract
+
+`resources.py` groups labels, statuses, actions, workflow names, empty states and
+errors under the default `zh-CN` catalog. `Resources(locale, catalogs)` supports
+another language without changing Qt business code. A missing translation falls
+back to Chinese; an unknown status stays **状态未知**. `presentation.py` derives
+short summaries without changing the raw authority view or launch manifest.
+Chinese `summary_zh` on a worker row takes precedence over its Chinese objective.
+Machine-heavy/English-only prose falls back to a short Chinese placeholder and
+remains available verbatim in engineering details; no automatic translation or
+task/status inference occurs.
+
+The five workflow summaries represent native login, old-data continuity, account
+lifecycle, final install/update and formal main3. Specific acceptance rows take
+priority over broad planning gates; missing continuity evidence stays unknown.
+Source integration/schema completion does not imply native login acceptance.
+SMTP transport, actual mailbox delivery and overall account/reset completion
+remain separate evidence. Adding a partial UI or mail PASS never completes the
+whole account lifecycle. See the ADR for optional registered stage identifiers.
+
+The layout uses two workflow/worker columns on desktop and stacks at narrow
+widths. It supports 320-pixel width with vertical scrolling and readable text;
+long paths and task IDs remain in a wrapping secondary details view. No product
+UI, launch admission, trusted-root policy or update engine is changed.
 
 ## Producers and disposable projections
 
@@ -80,4 +114,4 @@ double-clicking an old target warns “这是旧测试版本” and does not lau
 an old build, A must explicitly designate it CURRENT in governance.
 
 See [launch/deep-link ADR and governance extension](../../docs/dev_workbench/ADR_TEST_TARGET_LAUNCH_V1.md).
-Run focused tests with `python -m pytest -q tools/dev_workbench/test_workbench.py`.
+Run focused tests with `python -m pytest -q tools/dev_workbench/test_workbench.py tools/dev_workbench/test_clarity.py`.
