@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "EXACT_02_01_PARENT_AND_REMOTE_START_VERIFIED",
+  "refs_verified": "REMOTE_DOCS_ONLY_LOCAL_BCC_PRESERVED_EXACT_A98584A",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
+  "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
+      "task_id": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "BLOCKED_FROZEN_ACCOUNT_BACKEND_IMPORT; exact evidence published; no cross-owner source repair or new worker dispatch.",
+      "next_action": "SILENT; reconciliation and focused smoke complete; no A/B continuation.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "真实 A/B 在本机服务导入失败处阻塞，已保留环境与首因证据。"
+      "summary_zh": "唯一集成基线合流；导入边界 source/Frozen fixture 与 native login smoke PASS。"
     },
     "01": {
       "status": "SILENT",
@@ -27,15 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "d06f7f67e7fde6a40294b3ccd1c79f8a69160183",
+      "delivery_commit": "a98584a57103c86541062b7fb18a3659ebe86731",
       "next_action": "SILENT; exact delivery consumed, no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "7fd28c22fa1e55e342d7c57f3267f83bdaa6794d",
-      "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
-      "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN",
+      "integrated_commit": "4632c3a3826371d127b7421b2d26b73dbe487c21",
+      "delivery_state": "CANONICAL_BACKEND_IMPORT_SOURCE_INTEGRATED",
+      "acceptance_state": "SOURCE_AND_FROZEN_DIAGNOSTIC_BACKEND_SPAWN_PASS",
       "ordered_source_commits": [
-        "d06f7f67e7fde6a40294b3ccd1c79f8a69160183"
+        "a98584a57103c86541062b7fb18a3659ebe86731"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -51,7 +51,7 @@
         "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
         "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX"
       },
-      "summary_zh": "冻结 canonical import 修复已集成并实测登录。",
+      "summary_zh": "完整 import/resource 边界修复已 exact 集成；验收候选未重建。",
       "batch03_delivery_snapshot": {
         "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
         "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
@@ -253,7 +253,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
+    "evidence": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -266,11 +266,11 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "NONE_NEW; two requested deliveries already consumed",
+    "worker_dispatches": "NONE_NEW; exact a98584a consumed",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Real Frozen A login PASS; local service import FAIL before writes; B recovery NOT_RUN",
+    "snapshot_scope": "Baseline reconciled; source native login and Frozen diagnostic backend spawn PASS; old V3 remains FAIL",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -329,12 +329,12 @@
     "auto_cleanup": "FORBIDDEN",
     "workbench_frozen_login": "PASS_A_LOGIN_ONLY",
     "device_ab_precheck": "A_LOGIN_PASS; B_EMPTY_PREPARED_NOT_LAUNCHED",
-    "frozen_local_service": "BLOCKED_APP_MAIN_SHADOW_IMPORT"
+    "frozen_local_service": "FIXED_SOURCE_DIAGNOSTIC_FIXTURE_PASS; V3_EXE_FAIL_UNCHANGED"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "真实 A/B 阻塞：Frozen 本机学习服务启动失败",
-    "current_gate": "01 Desktop Frozen 本地服务启动／资源闭包",
+    "current_phase": "集成基线合流完成；导入修复 source/fixture PASS",
+    "current_gate": "新验收候选与真实 A/B 仍待后续授权执行",
     "staging_status": "OWNED_ACCEPTANCE_RUNTIME_RUNNING; PUBLIC_DEPLOYMENT_NOT_RUN",
     "database_revision": "0038_rehydration_manifest",
     "current_test_id": "MAIN3_CROSS_DEVICE_AB_V3",
@@ -356,5 +356,6 @@
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
   "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json",
-  "candidate_qualification_receipt": "docs/governance/receipts/20260914-real-ab-closeout-blocker.json"
+  "candidate_qualification_receipt": "docs/governance/receipts/20260914-real-ab-closeout-blocker.json",
+  "reconciliation_receipt": "docs/governance/receipts/20260914-main3-reconciliation.json"
 }

@@ -29,16 +29,25 @@ REAL_A_B_REHYDRATION = BLOCKED_BEFORE_A_WRITE
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 真实 A/B 阻塞：Frozen 本机学习服务启动失败
+CURRENT_PHASE = 集成基线合流完成；导入修复 source/fixture PASS；新候选与 A/B 待验收
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT`。
+当前 authority：`MAIN3_RECONCILE_CURRENT_INTEGRATION`。
 
-## Frozen V3 — real A/B blocked before A product write
+## 当前集成基线合流
 
-当前远端 base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。
+保留本地 `bcc9f2509673daccfa39ad67c5771a50d1cdfb61` 全部历史，远端新增仅两条已知 Astra docs-only commits。
+01 exact `a98584a57103c86541062b7fb18a3659ebe86731` 集成为 `4632c3a3826371d127b7421b2d26b73dbe487c21`；patch-id 相同，UNKNOWN_COMMITS=0。
+FROZEN_BACKEND_IMPORT_BOUNDARY=PASS（当前 integrated source 的诊断 EXE，真实 spawn/health/clean exit）；65 focused tests PASS。
+NATIVE_LOGIN_SMOKE=PASS（当前 source → retained disposable runtime；错误密码／未知账号／bad CA 拒绝）。
+源码 blocker 已修复；旧 V3 EXE 仍 FAIL，新 acceptance candidate 未构建，A/B 未继续。环境保留，不执行迁移或 Portable Pack。
+[Reconciliation receipt](../governance/receipts/20260914-main3-reconciliation.json) 记录 ancestry、exact delta、诊断包及检查证据。
+
+## Frozen V3 — historical real A/B stop before A product write
+
+历史 V3 build base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。
 新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
 FROZEN_NATIVE_LOGIN=PASS；手工与实际 Workbench A 按钮 → native login/workspace/auth-me/snapshot 均 200；同 EXE 错密码、未知账号、bad CA 拒绝。
 FIRST_DIVERGENCE：点击“进入学习空间”后，`desktop/account_backend.py:32-36` 前插 `_MEIPASS/backend`，子进程 `app.main` 导入失败。

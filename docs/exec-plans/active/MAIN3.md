@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT`。
+Current authority: `MAIN3_RECONCILE_CURRENT_INTEGRATION`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -19,6 +19,13 @@ source 映射及分层状态见 [board](../../governance/ACTIVE_BOARD.json) 与
 | Account / edge / RLS | A 本地 nginx encoding/anti-enumeration PASS；04 native RLS PASS retained | Gate B 生产拓扑/public issuer/SMTP；A 未重跑 RLS |
 | Interview + Acceptance | PENDING_MANDATORY | 最终用户验收后提供完整 bundle |
 | Formal main3 promotion | BLOCKED / NOT_AUTHORIZED | B SILENT；后续 exact promotion authority |
+
+## 当前合流收口
+
+保留 bcc9f25 全部本地历史与已知 Astra 文档提交，仅新增 exact a98584a delta → 4632c3a；UNKNOWN_COMMITS=0。
+65 focused tests、当前源码真实 native login 与 Frozen 诊断包 backend spawn PASS；
+[receipt](../../governance/receipts/20260914-main3-reconciliation.json) 绑定证据。旧 V3 FAIL 保留；新正式验收候选与 A/B 未执行。
+本轮只普通发布 integration/main3；不继续 A/B、Portable Pack、迁移或功能扩展。环境保留。
 
 ## Batch03 与跨设备连续性（历史执行）
 

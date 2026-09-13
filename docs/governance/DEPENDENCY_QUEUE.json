@@ -295,7 +295,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "真实 Workbench A 登录与 TRUE_EMPTY PASS；进入学习空间后 desktop/account_backend.py:36 导入 app.main 失败。首因是 Frozen 子进程再次前插 _MEIPASS/backend；likely owner 01。A 产品写入、B 恢复、真实 sync-failure control NOT_RUN；环境保留。无新员工派发。",
+      "reason": "历史 V3 在 A 写入前 local backend import 失败；a98584a 已集成并通过 source/Frozen 诊断包 spawn。旧 V3 仍 FAIL，新验收候选及 A/B 本轮未执行；环境保留，无新派工。",
       "workbench_visible": true
     },
     {
@@ -310,8 +310,19 @@
       "user_action_required": null,
       "reason": "Exact 02/01 fixes integrated; actual final EXE manual and Workbench button native login PASS; same EXE negatives PASS; A/B isolated same-artifact precheck PASS; 510 combined checks PASS. V1 superseded; acceptance services and keys retained. Full A/B NOT_RUN.",
       "workbench_visible": true
+    },
+    {
+      "task_id": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
+      "title": "集成基线安全合流",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Known remote docs + preserved local bcc9f25 + exact a98584a delta. 65 focused tests; real source native login and Frozen diagnostic backend spawn PASS. See reconciliation receipt.",
+      "workbench_visible": true
     }
   ],
-  "authority": "MAIN3_FROZEN_FIX_AND_REAL_AB_CLOSEOUT",
-  "assignment_scope": "Exact fixes already integrated; rebuilt V3 and attempted real A/B; stopped at evidenced new Desktop local-service blocker."
+  "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
+  "assignment_scope": "Preserve local bcc9f25, audit known remote docs, consume only exact a98584a, focused import/backend/login smoke, ordinary publication."
 }
