@@ -59,6 +59,16 @@ def test_protected_and_broad_roots_refused(path):
     with pytest.raises(t.Refused): Devices(path)
 
 
+def test_device_environment_cannot_become_a_real_migration_process(devices, monkeypatch):
+    from desktop.account_storage import require_migration_target, TEST_ONLY_ENV
+    value = devices.owned('A')
+    env = profile.environment(devices.root('A'), value)
+    assert env[TEST_ONLY_ENV] == '1'
+    monkeypatch.setenv(TEST_ONLY_ENV, env[TEST_ONLY_ENV])
+    with pytest.raises(ValueError, match='TEST_ONLY processes'):
+        require_migration_target(Path('E:/MentorFlowData/test-only-migration-gate'))
+
+
 def test_existing_unowned_root_and_forged_marker_refused(devices, tmp_path):
     other = Devices(tmp_path / 'not-owned'); root = other.root('A'); root.mkdir(parents=True)
     marker = devices.owned('A'); marker['root'] = str(root)

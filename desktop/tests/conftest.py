@@ -20,3 +20,16 @@ def desktop_qt_session(tmp_path_factory):
     application = QApplication.instance() or QApplication([])
     yield application
     QSettings.setDefaultFormat(previous_format)
+
+
+@pytest.fixture(autouse=True)
+def restore_desktop_application_style(desktop_qt_session):
+    """Startup tests share QApplication; their product stylesheet must not leak."""
+    from PySide6.QtWidgets import QApplication
+
+    application = QApplication.instance()
+    stylesheet = application.styleSheet()
+    try:
+        yield
+    finally:
+        application.setStyleSheet(stylesheet)

@@ -44,6 +44,7 @@ def environment(root, profile):
     return {
         'MENTORFLOW_TEST_DEVICE_ROOT': str(root),
         'MENTORFLOW_TEST_DEVICE_GENERATION': profile['generation'],
+        'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY': '1',
         'MENTORFLOW_FIRST_START_ACTION': 'defaults',
         'MENTORFLOW_ACCOUNT_VAULT_ROOT': str(vault),
         'MENTORFLOW_USER_DATA_ROOT': str(vault / 'prelaunch'),

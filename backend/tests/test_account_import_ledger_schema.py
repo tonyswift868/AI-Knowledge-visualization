@@ -249,6 +249,6 @@ def test_native_ledger_isolation_idempotency_and_workspace_continuity(native):
     assert rejected.value.orig.sqlstate == "42501"
     for principal, expected in zip(principals, workspaces):
         assert bootstrap.discover(principal) == expected == bootstrap.initialize(principal)
-    with pytest.raises(RuntimeError, match="forward-only"):
+    with pytest.raises(RuntimeError, match="(?i)forward[- ]only"):
         command.downgrade(native.config, PREVIOUS)
     assert current(native) == ENTERPRISE_MIGRATION_REVISION
