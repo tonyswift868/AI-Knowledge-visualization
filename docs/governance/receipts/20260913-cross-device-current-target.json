@@ -2,7 +2,7 @@
   "schema_version": 1,
   "test_id": "MAIN3_CROSS_DEVICE_AB_V1",
   "title": "同版双设备云恢复候选",
-  "status": "CURRENT",
+  "status": "SUPERSEDED",
   "source_sha": "2906893fe7d77e6ff70cf8efc374953423eb2450",
   "source_tree": "aa9c757bb4d9c1e371f1994f9f3867f1c78742df",
   "product_version": "1.1.0",

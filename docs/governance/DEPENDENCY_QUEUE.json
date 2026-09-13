@@ -290,15 +290,28 @@
       "owner": "02",
       "state": "NOT_DISPATCHED",
       "dependencies": [
-        "POST_BATCH04_WIRING",
+        "FROZEN_NATIVE_LOGIN_V2",
+        "POST_BATCH04_WIRING"
+      ],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "V2 ready with retained independent runtime. Full A write/A disappear/B login/B restore NOT_RUN by A; no next worker dispatch inferred.",
+      "workbench_visible": true
+    },
+    {
+      "task_id": "FROZEN_NATIVE_LOGIN_V2",
+      "title": "冻结原生登录修复候选 V2",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [
         "BATCH04_EXACT_CANDIDATE"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Next independent acceptance: A write, A disappears, B native login and cloud restore. Current task ran launch precheck only; no worker dispatch inferred.",
+      "reason": "Exact 02/01 fixes integrated; actual frozen native login and negative cases passed; V1 superseded; runtime retained.",
       "workbench_visible": true
     }
   ],
-  "authority": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
-  "assignment_scope": "Exact cross-device candidate qualification. A/B launch precheck only; no real migration or live activation."
+  "authority": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
+  "assignment_scope": "Frozen import and runtime lease fixes only; new V2 candidate; full A/B reserved for independent 02 acceptance."
 }

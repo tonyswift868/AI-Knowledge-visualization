@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "EXACT_CANDIDATE_ANCESTRY_AND_REMOTE_START_VERIFIED",
+  "refs_verified": "EXACT_02_01_PARENT_AND_REMOTE_START_VERIFIED",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
+  "authority": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
   "workers": {
     "A": {
       "status": "SILENT",
-      "dispatch_id": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
-      "task_id": "MENTORFLOW_MAIN3_CROSS_DEVICE_EXACT_CANDIDATE_QUALIFICATION_V1",
+      "dispatch_id": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
+      "task_id": "MENTORFLOW_FROZEN_NATIVE_LOGIN_FIXED_CANDIDATE_V2",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "Exact candidate qualified; A/B precheck and ordinary publication only. Full A/B recovery reserved for the next independent 02 acceptance.",
+      "next_action": "V2 frozen native login qualified; complete independent A/B acceptance remains next task.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "同版候选已合格，完整双设备恢复待独立验收。"
+      "summary_zh": "冻结登录修复候选 V2 已验证，完整 A/B 待独立验收。"
     },
     "01": {
       "status": "SILENT",
@@ -27,15 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "0775b1a53e8c4ef101494b86858a45266220d245",
-      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
+      "delivery_commit": "d06f7f67e7fde6a40294b3ccd1c79f8a69160183",
+      "next_action": "SILENT; exact delivery consumed, no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "d892f858a35f2727fa8d4ef314855f5e1ea08541",
-      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
-      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
+      "integrated_commit": "7fd28c22fa1e55e342d7c57f3267f83bdaa6794d",
+      "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
+      "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN",
       "ordered_source_commits": [
-        "0775b1a53e8c4ef101494b86858a45266220d245"
+        "d06f7f67e7fde6a40294b3ccd1c79f8a69160183"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -51,7 +51,7 @@
         "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
         "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX"
       },
-      "summary_zh": "稳定账号与持久目录源码已集成。",
+      "summary_zh": "冻结 canonical import 修复已集成并实测登录。",
       "batch03_delivery_snapshot": {
         "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
         "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
@@ -70,6 +70,15 @@
         ],
         "delivery_state": "PASS_IDENTITY_ROOT_SOURCE",
         "acceptance_state": "LIVE_MAPPING_NOT_APPROVED"
+      },
+      "candidate_v1_delivery_snapshot": {
+        "delivery_commit": "0775b1a53e8c4ef101494b86858a45266220d245",
+        "integrated_commit": "d892f858a35f2727fa8d4ef314855f5e1ea08541",
+        "ordered_source_commits": [
+          "0775b1a53e8c4ef101494b86858a45266220d245"
+        ],
+        "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+        "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
       }
     },
     "02": {
@@ -78,15 +87,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "6eab5be998172861022da6aa537daa4c3e0539b1",
-      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
+      "delivery_commit": "d067f742d35fa60e015790c4c5f2c9e033bbc313",
+      "next_action": "SILENT; exact delivery consumed, no new dispatch.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "7b62de3af60f3979aec24e1d11e0731481de9865",
-      "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
-      "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN",
+      "integrated_commit": "26201b5a8b267d3d3e76c733c120b796da386410",
+      "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
+      "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN",
       "ordered_source_commits": [
-        "6eab5be998172861022da6aa537daa4c3e0539b1"
+        "d067f742d35fa60e015790c4c5f2c9e033bbc313"
       ],
       "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
       "batch02_delivery_snapshot": {
@@ -99,7 +108,7 @@
         "delivery_state": "MANDATORY_FLOOR_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "双设备隔离启动与观察工具已集成。",
+      "summary_zh": "独立运行租约绑定已集成并通过准入回归。",
       "batch03_delivery_snapshot": {
         "delivery_commit": "5c8eed29f607b5c16bddda0efb9c71ae91560b64",
         "integrated_commit": "b8716c1e70bf4be8993661a558ab8c7db1843728",
@@ -119,6 +128,15 @@
         ],
         "delivery_state": "PASS_HARNESS_SOURCE",
         "acceptance_state": "EXACT_CANDIDATE_WAITING"
+      },
+      "candidate_v1_delivery_snapshot": {
+        "delivery_commit": "6eab5be998172861022da6aa537daa4c3e0539b1",
+        "integrated_commit": "7b62de3af60f3979aec24e1d11e0731481de9865",
+        "ordered_source_commits": [
+          "6eab5be998172861022da6aa537daa4c3e0539b1"
+        ],
+        "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
+        "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
       }
     },
     "03": {
@@ -235,7 +253,7 @@
     "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
   },
   "control_plane": {
-    "evidence": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
+    "evidence": "MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -248,11 +266,11 @@
     ],
     "a_status_at_dispatch": "RUNNING",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "11_NEW_DELTAS_INTEGRATED; BASELINE_MERGE_NOT_REPLAYED",
+    "worker_dispatches": "EXACT_02_AND_01_INTEGRATED",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
     "user_action_required": "NONE",
-    "snapshot_scope": "Exact source and owned disposable candidate qualification; real A/B recovery NOT_RUN.",
+    "snapshot_scope": "Frozen UI/native login and independent runtime lease; full A/B NOT_RUN",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -301,29 +319,37 @@
     "current_live_test_candidate_root": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
     "rehydration_ux": "PASS_SOURCE",
     "producer_ux_wiring": "PASS",
-    "two_device_harness": "EXACT_CANDIDATE_QUALIFIED",
+    "two_device_harness": "V2_READY_FOR_REAL_AB_ACCEPTANCE",
     "two_device_e2e": "NOT_RUN",
     "test_target_status": "CURRENT",
-    "frozen_candidate": "PASS",
-    "full_server_sync": "PARTIAL"
+    "frozen_candidate": "PASS_FROZEN_NATIVE_LOGIN",
+    "full_server_sync": "PARTIAL",
+    "frozen_login_root_cause": "FIXED",
+    "environment_consumers_pending": true,
+    "auto_cleanup": "FORBIDDEN"
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "跨设备同版候选已合格，完整 A/B 恢复待独立验收",
-    "current_gate": "下一轮独立双设备云恢复验收",
-    "staging_status": "NOT_REVALIDATED; OWNED_LOCAL_CANDIDATE_ONLY",
+    "current_phase": "冻结原生登录修复候选 V2 已就绪，完整 A/B 待验收",
+    "current_gate": "独立 A/B 云恢复验收",
+    "staging_status": "OWNED_ACCEPTANCE_RUNTIME_RUNNING; PUBLIC_DEPLOYMENT_NOT_RUN",
     "database_revision": "0038_rehydration_manifest",
-    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V1",
+    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V2",
     "test_targets": [
       {
+        "test_id": "MAIN3_CROSS_DEVICE_AB_V2",
+        "receipt_path": "docs/governance/receipts/20260913-frozen-login-v2-current-target.json",
+        "receipt_sha256": "0eb784527c6c706c740d86ed9f60935fb2e5fb8fd107ead7e8412e449718e19e"
+      },
+      {
+        "test_id": "MAIN3_CROSS_DEVICE_AB_V1",
         "receipt_path": "docs/governance/receipts/20260913-cross-device-current-target.json",
-        "receipt_sha256": "5966f50d69c899cb93d151a9b1e0dde41e589645b0c8fb6d79dbae94faae5a3a",
-        "test_id": "MAIN3_CROSS_DEVICE_AB_V1"
+        "receipt_sha256": "7fbda1dfeaec1c52a546fe688a6fb8c3c000d19aa3baf6be4391bd5f7f403f24"
       }
     ]
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
   "batch04_receipt": "docs/governance/receipts/20260913-main3-batch04-integration.json",
-  "candidate_qualification_receipt": "docs/governance/receipts/20260913-main3-cross-device-candidate.json"
+  "candidate_qualification_receipt": "docs/governance/receipts/20260913-frozen-login-fixed-candidate-v2.json"
 }

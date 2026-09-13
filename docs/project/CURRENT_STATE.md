@@ -29,37 +29,28 @@ REAL_A_B_REHYDRATION = NOT_RUN
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = 跨设备同版候选已合格，完整 A/B 恢复待独立验收
+CURRENT_PHASE = 冻结原生登录修复候选 V2 已就绪，完整 A/B 待验收
 ```
 
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`。
+当前 authority：`MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04`。
 
-## Cross-device exact candidate qualification
+## Frozen native login V2 — ready for independent A/B acceptance
 
-从 `04e2d61e3e39729886b3a2e6c7aff022b65a382a` 继续，审计 01/02/04 连续 ancestry，
-集成 11 个新增 exact delta；04 的 baseline merge tree 等于起点，不重复消费。UNKNOWN_COMMITS=0。
-构建源码 `2906893fe7d77e6ff70cf8efc374953423eb2450`，tree `aa9c757bb4d9c1e371f1994f9f3867f1c78742df`。
-后续 publication 只允许治理文件变更，Workbench 重新核对 ancestry/tree/EXE/identity receipt。
-
-- SOURCE INTEGRATION = PASS；原生 session → /auth/me → workspace → authenticated sync → Qt 展示已接通。
-- 0038 fresh/0036/0037/current/future/drift 与原生协议 PASS；历史 0037 未改动。
-- TRUE_EMPTY_SUPPORTED_SCOPE 来自持久 manifest；PARTIAL_UNSUPPORTED、NOT_INITIALIZED、NOT_AUTHORIZED、SYNC_FAILED 分开显示。
-- 一个 stable resource 保留所有 plan_ids；模型分类来自 producer。缺本地资源不妨碍云端计划与进度展示。
-- 真实 product sync 输出 test/account/workspace/revision/scope/counts/server provenance；不是手写 observation。
-- Backend candidate = PASS：exact Git archive、owned native PG、实际 HTTP/TLS/native login 和独立客户端恢复。
-- Frozen candidate = PASS：新 EXE 实际启动并确认原生登录首屏；显式 TEST_RUNTIME_V1、TLS refs、独立 Device roots。
-- Test target = CURRENT：`MAIN3_CROSS_DEVICE_AB_V1`；同包 A/B 隔离启动预检 PASS，完整 A/B 恢复 = NOT_RUN。
-- FULL SERVER SYNC = PARTIAL；复习、完整 history 等不在三实体 V1 范围，UI 不以零伪造支持。
-- REAL USER MIGRATION = NO；Portable Pack V2 = NOT_IMPLEMENTED；LIVE ISSUER CUTOVER = NOT_APPROVED。
-
-首次新包实际启动发现继承 PATH 把 Poppler ICU 绑定到 Qt；PE 导出核对后移除错误 DLL 并重建。
-初始失败和更正后的最终 gate 分别保留在 [candidate receipt](../governance/receipts/20260913-main3-cross-device-candidate.json)。
-旧 Batch04 接线／包级缺口是历史证据；[Batch04 receipt](../governance/receipts/20260913-main3-batch04-integration.json) 不改写。
-当前 owned disposable Backend 是测试环境，不等于 staging/live Gate A；Gate A 仍未宣布 PASS。
-本轮组合检查 442 PASS / 0 FAIL / 0 SKIP；原生 PG 补测覆盖默认连接下的跳过项，分项见 receipt。
-临时 Backend/Keycloak/PG 已停止、测试私钥已清理；下一轮完整 A/B 需从同一源码重建 owned runtime 并重新绑定 endpoint/TLS identity。
+从 `d73f3f9850fc0ff99ce874eaf8166f988ba3637b` 按 02→01 集成两个 exact delta，UNKNOWN_COMMITS=0。
+BUILD_SOURCE `f624c6884a5570e83b438faffc81c15533da50ea`；tree `36abfd164a0b2d3d2ccde544505d233aa9dc4fe0`；后续 publication 仅治理文件。
+01 修复 `_MEIPASS/backend` 前插造成的 namespace shadowing；canonical `app.enterprise.identity` 来源与语义已实测。
+02 将 immutable candidate 与 ephemeral runtime 分离；旧/过期/错候选/错 CA/不可信路径仍拒绝。
+源码与真实 Frozen EXE 正确登录、错误密码、未知账号、错误 CA 已验证；浏览器回退与 password/direct grant 均未启用。
+新 CURRENT=`MAIN3_CROSS_DEVICE_AB_V2`；旧 V1=`SUPERSEDED_FOR_LOGIN_FIX`，旧首屏 PASS 不替代真实登录。
+Backend/Identity/PG 为同产品兼容源码的 owned disposable runtime；0038 preflight 与 schema matrix PASS。
+运行租约具有 12 小时证书窗口；ENVIRONMENT_CONSUMERS_PENDING=YES，AUTO_CLEANUP=FORBIDDEN，后续单独 cleanup 派发。
+窗口/源码/协议证据分列于 [V2 receipt](../governance/receipts/20260913-frozen-login-fixed-candidate-v2.json)。
+REAL A/B=NOT_RUN；FULL SERVER SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL USER MIGRATION=NO；LIVE ISSUER CUTOVER=NO。
+新候选供下一轮独立 02 A/B 验收；本轮未执行 A 写入/A 离线/B 恢复。
+历史 [V1 receipt](../governance/receipts/20260913-main3-cross-device-candidate.json) 保留其当时的首屏范围，不能据此宣称完整 Frozen login 已通过。
+Gate A REAL DEPLOYMENT 仍 NOT_RUN；真实 SMTP、签名安装包及用户迁移未由本轮验收。
 
 ## Batch03 与跨设备长期 authority（保留）
 

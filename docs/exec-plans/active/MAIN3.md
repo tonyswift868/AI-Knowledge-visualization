@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`。
+Current authority: `MF-MAIN3-A-FROZEN-LOGIN-RECANDIDATE-20260913-04`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -62,18 +62,16 @@ Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审�
 随后提供同版 Desktop+Backend exact target，解决 Workbench build SHA 与登记 HEAD 的循环约束，执行真实 A/B acceptance。
 这不是派发，也不授权真实迁移／issuer cutover／账号 capability 激活。PORTABLE_PACK_V2 与真实旧数据迁移继续锁定。
 
-## Exact cross-device candidate — qualified, full A/B NOT_RUN
+## Frozen native login V2 — real A/B NOT_RUN
 
-Authority: `MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`.
-01/02/04 的 11 个新增 delta 已消费，04 baseline merge 未重放；0038 head/expected 一致且历史 0037 未修改。
-最小 adapter 已连接 authenticated native session、authoritative snapshot 与 Qt UX，保留全部共享资源引用。
-空状态来自服务端 manifest，未知／未支持范围不显示为空账号；实际 sync 生成机器 observation。
-同一 exact source 的 Backend native PG/TLS/native login 与独立 HTTP rehydrate 已验证；新冻结 Desktop 实际首屏 PASS。
-Workbench 使用 build S 与 publication T 的受限 ancestry、tree、artifact 和 receipt 准入，CURRENT target 为 MAIN3_CROSS_DEVICE_AB_V1。
-本轮 A/B 同包隔离启动预检 PASS。下一轮 02 独立执行 A write / A disappear / B login / B restore；当前 NOT_RUN。
-组合检查 442 PASS / 0 FAIL / 0 SKIP；临时服务已停止、测试私钥已清理，下一轮需同源码 owned runtime 与重新绑定的 endpoint/TLS identity。
-FULL_SERVER_SYNC=PARTIAL；PORTABLE_PACK_V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；LIVE_ISSUER_CUTOVER=NOT_APPROVED。
-本地 disposable candidate 不替代真实部署、SMTP、最终签名安装包或用户数据迁移验收。
+02 runtime lease 与 01 frozen import-path exact fixes 已集成；不重复消费父代交付。
+canonical app identity namespace 已通过真实 Frozen loader 验证；真实用户名/密码登录及负例 PASS。
+新 V2 CURRENT 绑定 exact source/tree/artifact/build/test，运行端点和 CA 由独立最新租约提供。
+旧 V1 SUPERSEDED；其首屏证明不等同于真实登录证明。测试夹具显式声明等待状态，避免依赖当前 repo target。
+0038 schema/preflight、native/session/bootstrap、rehydration、producer、TRUE_EMPTY、租约准入和更新 smoke 已组合验证。
+ENVIRONMENT_CONSUMERS_PENDING=YES；12 小时证书窗口；AUTO_CLEANUP=FORBIDDEN，仅后续明确 cleanup 派发可停止服务和删除私钥。
+下一步是 02 独立 A/B 验收；本轮 A write/A disappear/B restore=NOT_RUN。
+FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；LIVE_ISSUER_CUTOVER=NO。
 
 ## 0036 schema blocker — source resolved（历史）
 
