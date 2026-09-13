@@ -168,12 +168,15 @@ def main():
             MENTORFLOW_KEYCLOAK_AUDIENCE='mentorflow-api', MENTORFLOW_KEYCLOAK_REDIRECT_URI=endpoint+'/callback',
             MENTORFLOW_KEYCLOAK_ALLOW_LOOPBACK_HTTP='1',
             MENTORFLOW_USER_DATA_ROOT=str(lab.home/'runtime'), MENTORFLOW_DATA_DIR=str(lab.home/'runtime'))
+        # The owned loopback issuer must not travel through a workstation proxy.
+        env['NO_PROXY'] = env['no_proxy'] = '127.0.0.1,localhost'
         with (lab.home/'private-backend.log').open('wb') as log:
             process=subprocess.Popen([sys.executable,'-B','-m','uvicorn','app.account_core_mvp:app',
                 '--host','127.0.0.1','--port',str(port),'--no-access-log'],cwd=ROOT,env=env,
                 stdout=log,stderr=log,creationflags=HIDDEN)
         import httpx
         from desktop.structured_sync import StructuredSyncClient
+        report['phase']='BACKEND_STARTUP'
         with httpx.Client(base_url=endpoint,trust_env=False,timeout=15) as a:
             for _ in range(50):
                 if process.poll() is not None: raise AssertionError('BACKEND_EXITED')
@@ -182,17 +185,22 @@ def main():
                 except httpx.TransportError: pass
                 time.sleep(.2)
             else: raise AssertionError('BACKEND_STARTUP_TIMEOUT')
+            report['phase']='UNAUTHENTICATED_SNAPSHOT'
             r=a.get('/api/enterprise/sync/v1/snapshot')
             assert r.status_code==401 and r.json()['sync_status']=='NOT_AUTHORIZED'
             a.headers['Authorization']='Bearer '+bearer('disposable-account')
+            report['phase']='AUTHENTICATED_WORKSPACE_BOOTSTRAP'
             r=a.post('/api/enterprise/account/workspaces/initialize',json={});r.raise_for_status()
             ws=r.json()['workspaces'][0]
             a.headers.update({'X-MentorFlow-Organization-ID':ws['organization_id'],'X-MentorFlow-Workspace-ID':ws['id']})
             c=StructuredSyncClient(a)
+            report['phase']='EMPTY_SNAPSHOT'
             empty=c.rehydrate()
             assert empty['learning_state']['status']=='PARTIAL_UNSUPPORTED'
+            report['phase']='RESOURCE_WRITE'
             c.write('resource','shared-resource',request_id='r',expected_revision=0,payload=dict(
                 filename='fixture.bin',media_type='application/octet-stream',sha256='a'*64,size_bytes=10,product_classification='MODEL'))
+            report['phase']='PLAN_PROGRESS_WRITE'
             for i in (1,2): c.write('plan',f'plan-{i}',request_id=f'p{i}',expected_revision=0,
                 payload=dict(title=f'Disposable plan {i}',resource_ids=['shared-resource']))
             c.write('progress','progress-1',request_id='g',expected_revision=0,
@@ -200,6 +208,7 @@ def main():
             headers=dict(a.headers)
         # Device A transport is closed before a second independent socket client.
         with httpx.Client(base_url=endpoint,headers=headers,trust_env=False,timeout=15) as b:
+            report['phase']='INDEPENDENT_CLIENT_REHYDRATE'
             state=StructuredSyncClient(b).rehydrate()
             assert state['resources'][0]['plan_ids']==['plan-1','plan-2']
             assert state['resources'][0]['product_classification']=='MODEL'
@@ -214,10 +223,12 @@ def main():
         # A real database outage must not produce an empty or partially successful snapshot.
         lab.command('pg_ctl', '-D', lab.data, '-m', 'fast', '-w', 'stop')
         lab.started = False
+        report['phase']='DATABASE_OUTAGE'
         with httpx.Client(base_url=endpoint,headers=headers,trust_env=False,timeout=15) as b:
             failed=b.get('/api/enterprise/sync/v1/snapshot')
             assert failed.status_code==503 and failed.json()==dict(code='SYNC_QUERY_FAILED',sync_status='QUERY_FAILED')
         report['checks']['QUERY_FAILED'] = 'PASS_REAL_DATABASE_OUTAGE'
+        report['phase']='COMPLETE'
         code=0
     except Exception as exc:
         report['failure_type']=type(exc).__name__
