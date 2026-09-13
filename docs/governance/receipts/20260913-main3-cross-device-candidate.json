@@ -2,7 +2,7 @@
   "schema_version": 1,
   "dispatch_id": "MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02",
   "task_id": "MENTORFLOW_MAIN3_CROSS_DEVICE_EXACT_CANDIDATE_QUALIFICATION_V1",
-  "status": "CANDIDATE_QUALIFIED_A_B_PRECHECK_PENDING",
+  "status": "PASS_CROSS_DEVICE_CANDIDATE_QUALIFIED",
   "start_head": "04e2d61e3e39729886b3a2e6c7aff022b65a382a",
   "start_tree": "ceb9b068fb98495a5fe2d6f17fe09fb66942cba4",
   "build_source_sha": "2906893fe7d77e6ff70cf8efc374953423eb2450",
@@ -328,7 +328,7 @@
       "QUERY_FAILED": "PASS_REAL_DATABASE_OUTAGE"
     },
     "endpoint_identity": "https://127.0.0.1:56006",
-    "environment": "OWNED_DISPOSABLE_ACTIVE_QUALIFICATION_LEASE"
+    "environment": "OWNED_DISPOSABLE; STOPPED_AFTER_QUALIFICATION"
   },
   "desktop": {
     "build_id": "MAIN3-CQ-2906893fe7d7",
@@ -350,9 +350,9 @@
       "path": "E:\\Codex\\Temp\\CQ\\build-2906893fe7d7\\candidate-identity.json",
       "sha256": "9ed760fb82bb5700980137d2d1fd254ded8790fa5b500e7e5467a62238ce4e8b"
     },
-    "ab_precheck": "PENDING",
-    "same_artifact": null,
-    "isolated_roots": null
+    "ab_precheck": "PASS",
+    "same_artifact": true,
+    "isolated_roots": true
   },
   "product_observation": {
     "evidence": {
@@ -384,10 +384,13 @@
     "normalized_unique_pytest_pass": 379,
     "normalized_unique_pytest_skip": 0,
     "native_protocol_pass": 22,
-    "native_auth_checks": null,
+    "native_auth_checks": 34,
     "schema_matrix_gates": 7,
     "schema_drift_negative_cases": 12,
-    "accounting": "377 PASS + 1 unconfigured PG skip; native supplementary 2 PASS resolves that skip and adds pool RLS. 379 unique pytest PASS. Protocol, native auth and matrix reported separately."
+    "accounting": "377 PASS + 1 unconfigured PG skip; native supplementary 2 PASS resolves that skip and adds pool RLS. 379 unique pytest PASS. Protocol, native auth and matrix reported separately.",
+    "combined_pass": 442,
+    "combined_fail": 0,
+    "combined_skip": 0
   },
   "boundaries": {
     "real_ab_rehydration": "NOT_RUN",
@@ -446,6 +449,15 @@
     "native_supplement": {
       "path": "E:\\Codex\\Temp\\MF-MAIN3-A-CQ-20260913\\native-extra-accepted-receipt.json",
       "sha256": "d0787b16981c2cd284f0f86dc67e8521ca1dc67cd48fc895c7e7ea617059ce59"
+    },
+    "native_identity": {
+      "path": "E:\\Codex\\Temp\\CQ\\build-2906893fe7d7\\native-runtime\\mf-native-9a1a6528d63d-receipt.json",
+      "sha256": "7314993d28132744d14cc15ed8b002cda1003cbc2f4230a6fa0a43d7303ad134"
+    },
+    "ab_precheck": {
+      "path": "E:\\Codex\\Temp\\CQ\\build-2906893fe7d7\\admitted-launch.json",
+      "sha256": "333c885369ea6e8dda5bdab4002ad798504bbba0d2df73d4e2ceece320f1d576"
     }
-  }
+  },
+  "restart_boundary": "Disposable services stopped and test private keys removed after PASS. Full A/B scenario must provision an owned runtime from this same source and publish newly pinned endpoint/TLS identity before authentication; CURRENT qualifies this immutable desktop artifact, not a permanently running server."
 }

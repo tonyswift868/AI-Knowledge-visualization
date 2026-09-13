@@ -50,7 +50,7 @@ main2 为冻结 canonical source baseline；integration/main3 是施工集成线
 - 真实 product sync 输出 test/account/workspace/revision/scope/counts/server provenance；不是手写 observation。
 - Backend candidate = PASS：exact Git archive、owned native PG、实际 HTTP/TLS/native login 和独立客户端恢复。
 - Frozen candidate = PASS：新 EXE 实际启动并确认原生登录首屏；显式 TEST_RUNTIME_V1、TLS refs、独立 Device roots。
-- Test target = CURRENT：`MAIN3_CROSS_DEVICE_AB_V1`；同包 A/B 只做启动预检，完整 A/B 恢复 = NOT_RUN。
+- Test target = CURRENT：`MAIN3_CROSS_DEVICE_AB_V1`；同包 A/B 隔离启动预检 PASS，完整 A/B 恢复 = NOT_RUN。
 - FULL SERVER SYNC = PARTIAL；复习、完整 history 等不在三实体 V1 范围，UI 不以零伪造支持。
 - REAL USER MIGRATION = NO；Portable Pack V2 = NOT_IMPLEMENTED；LIVE ISSUER CUTOVER = NOT_APPROVED。
 
@@ -58,6 +58,8 @@ main2 为冻结 canonical source baseline；integration/main3 是施工集成线
 初始失败和更正后的最终 gate 分别保留在 [candidate receipt](../governance/receipts/20260913-main3-cross-device-candidate.json)。
 旧 Batch04 接线／包级缺口是历史证据；[Batch04 receipt](../governance/receipts/20260913-main3-batch04-integration.json) 不改写。
 当前 owned disposable Backend 是测试环境，不等于 staging/live Gate A；Gate A 仍未宣布 PASS。
+本轮组合检查 442 PASS / 0 FAIL / 0 SKIP；原生 PG 补测覆盖默认连接下的跳过项，分项见 receipt。
+临时 Backend/Keycloak/PG 已停止、测试私钥已清理；下一轮完整 A/B 需从同一源码重建 owned runtime 并重新绑定 endpoint/TLS identity。
 
 ## Batch03 与跨设备长期 authority（保留）
 

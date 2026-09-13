@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`。
+Current authority: `MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -70,7 +70,8 @@ Authority: `MF-MAIN3-A-CROSS-DEVICE-CANDIDATE-QUALIFICATION-20260913-02`.
 空状态来自服务端 manifest，未知／未支持范围不显示为空账号；实际 sync 生成机器 observation。
 同一 exact source 的 Backend native PG/TLS/native login 与独立 HTTP rehydrate 已验证；新冻结 Desktop 实际首屏 PASS。
 Workbench 使用 build S 与 publication T 的受限 ancestry、tree、artifact 和 receipt 准入，CURRENT target 为 MAIN3_CROSS_DEVICE_AB_V1。
-本轮只做 A/B 同包隔离启动预检。下一轮 02 独立执行 A write / A disappear / B login / B restore；当前 NOT_RUN。
+本轮 A/B 同包隔离启动预检 PASS。下一轮 02 独立执行 A write / A disappear / B login / B restore；当前 NOT_RUN。
+组合检查 442 PASS / 0 FAIL / 0 SKIP；临时服务已停止、测试私钥已清理，下一轮需同源码 owned runtime 与重新绑定的 endpoint/TLS identity。
 FULL_SERVER_SYNC=PARTIAL；PORTABLE_PACK_V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；LIVE_ISSUER_CUTOVER=NOT_APPROVED。
 本地 disposable candidate 不替代真实部署、SMTP、最终签名安装包或用户数据迁移验收。
 
