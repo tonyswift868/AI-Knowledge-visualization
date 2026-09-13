@@ -50,7 +50,8 @@
     "cfde71d103052224cabdd4d9367059f382a1545f",
     "2063bdb70dbd3ee966e8099ae589967d9b1db57a",
     "ba20aee8666a96141d96354d3c4785d355a72d3a",
-    "7c697d0399ae0126a2bd62b7512aad3e0498558b"
+    "7c697d0399ae0126a2bd62b7512aad3e0498558b",
+    "7fbea0083cdbf8eede32ffd46749f6bf90963ea5"
   ],
   "TESTS": {
     "candidate_protocol": 13,
@@ -72,7 +73,8 @@
     "knowledge": {
       "compact_generator": "PASS_1119_BYTES",
       "repo_lint": "BLOCKED_DERIVED_INTEGRATION_WEB_HANDOFF_NOT_REPUBLISHED_FROM_WORKER",
-      "web_check": "BLOCKED_SAME_AUTHORITY_BOUNDARY"
+      "web_check": "BLOCKED_SAME_AUTHORITY_BOUNDARY",
+      "exact_failure_reason": "wrong integration checkout"
     },
     "initial_candidates": "Candidate1/2 protocol and normal real HTTP smoke passed; supplemental DB-outage timeout fixed and candidate3 passed"
   },
@@ -268,5 +270,6 @@
   "SECRET_VALUES_EMITTED": 0,
   "GITHUB_ACTIONS_EXECUTED": 0,
   "WORKER_STATUS": "SILENT",
-  "0036_TO_0037": "PASS"
+  "0036_TO_0037": "PASS",
+  "DELIVERY_COMMIT": "Commit containing this final receipt update; exact SHA supplied in final response"
 }

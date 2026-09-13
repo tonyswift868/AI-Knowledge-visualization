@@ -130,3 +130,25 @@ Database connection timeouts remain deployment configuration. The disposable
 candidate uses a three-second PostgreSQL connect_timeout so an actual outage is
 bounded. The sync API maps DB failures in both membership lookup and state reads
 to QUERY_FAILED without serializing SQL or connection details.
+
+## Final executed result
+
+The accepted disposable candidate source is
+`7c697d0399ae0126a2bd62b7512aad3e0498558b`, tree
+`c6ff1eccc471133e2b274a77fdb283868c902637`. Executed archive SHA256:
+`e9dcd07e986b6d8c2ed0c645b478df3db1e8eacb30767aa9db2f337d27ec5271`.
+All 13 PG protocol cases and every dedicated candidate gate passed, including
+real HTTP bootstrap/writes, independent B recovery, and actual DB-outage rejection.
+The first two attempts passed normal recovery but timed out during the extra
+outage check; the final source fixes the pre-router membership error boundary.
+Four contract tests and 39 Account Core/tenancy tests also passed.
+
+The compact generator passed (1119 bytes). Knowledge lint and web handoff check
+refused this worker checkout with the exact reason `wrong integration checkout`.
+Their A-owned integration guard was retained, and no global integration handoff
+was republished from worker source. This remains an explicit unrun integration
+publication gate.
+
+STATUS=PARTIAL: the producer is safely consumable and the 0037 candidate ran,
+but no durable full-account TRUE_EMPTY authority exists. Unsupported history
+remains explicitly unknown; no product-wide completeness claim is made.
