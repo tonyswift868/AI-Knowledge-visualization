@@ -302,7 +302,8 @@ class Workbench(QMainWindow):
         def operation():
             source = self.source_factory()
             fresh = load_view(source, self.paths).get('active_target')
-            process = launch_exact(selected, fresh, source.tree_for, self.paths, cancelled=self.cancel.is_set)
+            process = launch_exact(selected, fresh, source.tree_for, self.paths, cancelled=self.cancel.is_set,
+                                   authority_check=source.assert_current)
             return process.pid
         self.start_job(operation, lambda pid: self.set_notice(self.tr_text('messages', 'launched')))
 

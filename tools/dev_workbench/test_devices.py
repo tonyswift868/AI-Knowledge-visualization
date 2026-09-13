@@ -29,12 +29,21 @@ def compatible(source, candidate):
     path = Path(value['identity_evidence_path'])
     identity = json.loads(path.read_text())
     identity['device_profile_contract'] = PROFILE_CONTRACT
+    identity['packaged_entrypoint'] = 'desktop_entry.py'
+    certificate = path.parent / 'test-ca.crt'
+    certificate.write_bytes(b'fixture certificate; no network')
+    identity['test_device_configuration'] = dict(contract='MENTORFLOW_TEST_RUNTIME_V1',
+        issuer='https://test.invalid', api_base_url='https://test.invalid/api',
+        client_id='test-client', audience='test-api', organization_id='test-org', workspace_id='test-workspace',
+        tls_ca_path=str(certificate), tls_ca_sha256=t.sha256(certificate.read_bytes()))
     path.write_bytes(raw(identity)); value['identity_evidence_sha256'] = t.sha256(path.read_bytes())
     approve(source, candidate)
     def git(*args):
         if args[0] == 'show' and args[1].endswith(':desktop/test_device_profile.py'):
             return "PROFILE_CONTRACT = '" + PROFILE_CONTRACT + "'"
         if args[0] == 'show' and args[1].endswith(':desktop/main.py'): return '_configure_test_device()'
+        if args[0] == 'show' and args[1].endswith(':desktop_entry.py'):
+            return 'from desktop.test_device_configuration import apply_from_environment'
         raise t.Refused('REPO_STATE_UNAVAILABLE')
     source.git = git
     return value

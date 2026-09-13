@@ -147,7 +147,11 @@ commands from JSON. A successful process start is not a product acceptance PASS.
 Receipt/log buttons only navigate to allowed local document types and trusted
 roots. Secrets are references only, never opened/resolved. History is read-only;
 double-clicking an old target warns “这是旧测试版本” and does not launch it. To retest
-an old build, A must explicitly designate it CURRENT in governance.
+an old build, A must explicitly designate it CURRENT in governance and satisfy
+the publication-only ancestry rule; runtime changes require a new build.
+
+Build source S may differ from publication T. See the
+[candidate identity and frozen configuration contract](../../docs/dev_workbench/CANDIDATE_IDENTITY_V1.md).
 
 See [launch/deep-link ADR and governance extension](../../docs/dev_workbench/ADR_TEST_TARGET_LAUNCH_V1.md).
 Run focused tests with `python -m pytest -q tools/dev_workbench/test_workbench.py tools/dev_workbench/test_clarity.py`.

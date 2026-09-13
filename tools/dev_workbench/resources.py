@@ -52,6 +52,10 @@ CATALOGS = {
             'unknown_resource': '暂未提供说明', 'unknown_value': '尚未提供',
         },
         'errors': {
+            'TEST_RUNTIME_CONFIGURATION_INVALID': '冻结候选缺少有效的测试连接配置，已阻止启动。',
+            'TEST_RUNTIME_TLS_INVALID': '测试证书与已批准回执不一致，已阻止启动。',
+            'SOURCE_NOT_INTEGRATED': '构建源码不属于已批准的集成历史。',
+            'BUILD_SOURCE_SUPERSEDED': '登记期间运行源码已变化，需要重新构建候选。',
             'TEST_DEVICE_BUSY': '测试设备仍在运行，请先关闭该设备窗口。',
             'TEST_DEVICE_PAIR_BUILD_CHANGED': '另一设备的版本不同或尚未确认，请先关闭两台设备再启动。',
             'TEST_DEVICE_CONTRACT_REQUIRED': '该候选尚未声明支持独立测试设备，已阻止启动。',

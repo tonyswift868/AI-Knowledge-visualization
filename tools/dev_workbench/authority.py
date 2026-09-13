@@ -72,6 +72,33 @@ class RepoSource:
         if result.returncode: raise Refused('REPO_STATE_UNAVAILABLE')
         return result.stdout
 
+    def assert_current(self):
+        # A pinned snapshot is evidence, but cannot authorize after supersession.
+        if self.git('rev-parse', '--verify', 'refs/heads/integration/main3^{commit}') != self.sha:
+            raise Refused('TARGET_CHANGED')
+
+    def qualify(self, manifest):
+        """Bind an exact build to a publication-only descendant on integration.
+
+        The publication SHA comes from Git, never a self-referential field inside
+        the commit being created. Runtime changes require a new candidate build.
+        """
+        validate_manifest(manifest)
+        self.assert_current()
+        build = manifest['source_sha']
+        if self.tree_for(build) != manifest['source_tree']:
+            raise Refused('SOURCE_IDENTITY_MISMATCH')
+        if self.git('merge-base', build, self.sha) != build:
+            raise Refused('SOURCE_NOT_INTEGRATED')
+        changed = self.git('diff', '--name-only', '--no-renames', build, self.sha, '--').splitlines()
+        publication_files = {CURRENT, PLAN, HANDOFF}
+        if any(not (path.startswith('docs/governance/') or path in publication_files) for path in changed):
+            raise Refused('BUILD_SOURCE_SUPERSEDED')
+        return dict(build_source_sha=build, build_source_tree=manifest['source_tree'],
+                    governance_publication_sha=self.sha, artifact_sha256=manifest['artifact_sha256'],
+                    build_id=manifest['build_id'], test_id=manifest['test_id'],
+                    identity_evidence_sha256=manifest['identity_evidence_sha256'])
+
 
 def public_text(value, secrets=()):
     if not isinstance(value, str) or not value: return 'UNKNOWN'
@@ -215,6 +242,12 @@ def load_view(source, paths=None):
             candidate = validate_manifest(json_bytes((ROOT / TARGET).read_bytes()))
             if candidate['status'] == 'WAITING_FOR_ARTIFACT': active = candidate
         except (Refused, OSError): pass
+    qualification = None
+    if active is not None and active['status'] == 'CURRENT':
+        try: qualification = source.qualify(active)
+        except Refused:
+            issues.append('构建源码与发布登记的绑定未通过验证。')
+            active = None
     if active is not None:
         if not any(value['test_id'] == active['test_id'] for value in targets): targets.insert(0, active)
         if active['status'] == 'CURRENT':
@@ -233,7 +266,8 @@ def load_view(source, paths=None):
                if isinstance(repository, str) and re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository) else None)
     from .devices import Devices
     return dict(project=text(board.get('project')), generation=text(board.get('generation')),
-        device_profile_supported=Devices.source_supported(source),
+        device_profile_supported=bool(active) and Devices.source_supported(source, active.get('source_sha')),
+        candidate_identity=qualification,
         current_phase=phase, current_gate=current_gate, integration_sha=source.sha, integration_tree=source.tree,
         snapshot_at=source.timestamp, snapshot_kind=text(board.get('snapshot_kind')),
         remote_head=remote, staging_status=text(extension.get('staging_status')),

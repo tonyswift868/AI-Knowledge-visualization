@@ -148,7 +148,7 @@ def navigation_path(manifest, kind, paths):
 
 
 def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Popen, cancelled=lambda: False,
-                 device_environment=None, device_contract=None):
+                 device_environment=None, device_contract=None, authority_check=None):
     """Caller reloads repo approval at click time; cache/selection never authorizes."""
     validate_manifest(manifest)
     if manifest != approved: raise Refused('TARGET_CHANGED')
@@ -179,8 +179,19 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
         if device_environment is not None:
             from desktop.test_device_profile import PROFILE_CONTRACT
             if (device_contract != PROFILE_CONTRACT or kind != 'DESKTOP_EXE' or
-                    identity.get('device_profile_contract') != PROFILE_CONTRACT):
+                    identity.get('device_profile_contract') != PROFILE_CONTRACT or
+                    identity.get('packaged_entrypoint') != 'desktop_entry.py'):
                 raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
+            from desktop.test_device_configuration import ENV_KEY, validate
+            try: config = validate(identity.get('test_device_configuration'))
+            except ValueError: raise Refused('TEST_RUNTIME_CONFIGURATION_INVALID') from None
+            certificate = paths.check(config['tls_ca_path'])
+            certificate_stream = stack.enter_context(pinned_file(certificate))
+            paths.check(str(certificate))
+            certificate_raw = certificate_stream.read(1024 * 1024 + 1)
+            if len(certificate_raw) > 1024 * 1024 or sha256(certificate_raw) != config['tls_ca_sha256']:
+                raise Refused('TEST_RUNTIME_TLS_INVALID')
+            device_environment = {**device_environment, ENV_KEY: json.dumps(config)}
         if kind in ('DESKTOP_EXE', 'INSTALLER'):
             if manifest['artifact_type'] != kind or manifest['launch_target'] != manifest['artifact_path']:
                 raise Refused('LAUNCH_TARGET_MISMATCH')
@@ -195,6 +206,7 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
         else:
             raise Refused('UNKNOWN_SCRIPT_ID')
         if cancelled(): raise Refused('CANCELLED')
+        if authority_check is not None: authority_check()
         try:
             options = dict(cwd=str(ROOT if kind == 'SCRIPT_ID' else artifact.parent), shell=False, close_fds=True)
             if device_environment is not None: options['env'] = device_environment

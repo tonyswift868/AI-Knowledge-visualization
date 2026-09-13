@@ -13,6 +13,9 @@ def apply_account_core_package_config() -> None:
     The Account Core UAT distribution ships it so double-clicking the EXE has
     the same isolated login-first configuration as its PowerShell launcher.
     """
+    from desktop.test_device_configuration import apply_from_environment
+    if apply_from_environment():
+        return
     if not getattr(sys, "frozen", False):
         return
     package = Path(sys.executable).resolve().parent

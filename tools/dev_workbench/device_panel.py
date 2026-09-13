@@ -44,7 +44,7 @@ class DevicePanel(QScrollArea):
         state = self.text('waiting_observation' if view.get('server_sync_state') == 'IMPLEMENTED' else 'waiting_sync')
         self.scenario.setText(self.text('cloud') + ' / ' + self.text('missing') + '：' + state)
         active = view.get('active_target')
-        ready = bool(view.get('device_profile_supported')) and self.devices.compatible(active, view.get('integration_sha'), self.workbench.paths)
+        ready = bool(view.get('device_profile_supported')) and self.devices.compatible(active, view.get('candidate_identity'), self.workbench.paths)
         for device, row in self.rows.items():
             values, owned = {}, False
             running = self.devices.root(device).exists()
@@ -70,6 +70,7 @@ class DevicePanel(QScrollArea):
     def details(self, device):
         try: value = self.devices.observation(device, self.view.get('active_target'), self.scenario_box.currentData())
         except (ValueError, OSError, RuntimeError): value = {'root': str(self.devices.root(device)), 'status': 'NOT_PREPARED'}
+        value['candidate_identity'] = self.view.get('candidate_identity')
         self.workbench.open_details(self.text(device), value)
 
     def operate(self, device, reset):

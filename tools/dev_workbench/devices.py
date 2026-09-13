@@ -117,23 +117,32 @@ class Devices:
         except OSError: return True
 
     @staticmethod
-    def compatible(manifest, source_sha, paths):
+    def compatible(manifest, qualification, paths):
         try:
-            if not manifest or manifest['status'] != 'CURRENT' or manifest['source_sha'] != source_sha:
+            if not manifest or manifest['status'] != 'CURRENT' or not qualification:
+                return False
+            if any(qualification.get(key) != manifest[field] for key, field in (
+                    ('build_source_sha', 'source_sha'), ('build_source_tree', 'source_tree'),
+                    ('artifact_sha256', 'artifact_sha256'), ('build_id', 'build_id'), ('test_id', 'test_id'))):
                 return False
             if manifest['launch_type'] != 'DESKTOP_EXE' or manifest['environment'] not in ('TEST', 'STAGING'): return False
             raw = read_checked(manifest['identity_evidence_path'], paths)
+            from desktop.test_device_configuration import validate
+            validate(json_bytes(raw).get('test_device_configuration'))
             return (sha256(raw) == manifest['identity_evidence_sha256'] and
-                    json_bytes(raw).get('device_profile_contract') == PROFILE_CONTRACT)
+                    json_bytes(raw).get('device_profile_contract') == PROFILE_CONTRACT and
+                    json_bytes(raw).get('packaged_entrypoint') == 'desktop_entry.py')
         except (KeyError, ValueError, OSError, Refused, AttributeError): return False
 
     @staticmethod
-    def source_supported(source):
+    def source_supported(source, build_sha=None):
         try:
-            adapter = source.git('show', source.sha + ':desktop/test_device_profile.py')
-            entry = source.git('show', source.sha + ':desktop/main.py')
+            adapter = source.git('show', (build_sha or source.sha) + ':desktop/test_device_profile.py')
+            entry = source.git('show', (build_sha or source.sha) + ':desktop/main.py')
+            frozen = source.git('show', (build_sha or source.sha) + ':desktop_entry.py')
             return ("PROFILE_CONTRACT = '" + PROFILE_CONTRACT + "'" in adapter
-                    and '_configure_test_device()' in entry)
+                    and '_configure_test_device()' in entry
+                    and 'from desktop.test_device_configuration import apply_from_environment' in frozen)
         except Refused: return False
 
     def reset(self, device):
@@ -178,6 +187,8 @@ class Devices:
                     scope='DERIVED_NOT_LAUNCH_AUTHORITY', candidate_status=(manifest or {}).get('status'),
                     profile_contract=PROFILE_CONTRACT, root=str(self.root(device)), generation=value['generation'],
                     source_sha=(manifest or {}).get('source_sha'), source_tree=(manifest or {}).get('source_tree'),
+                    build_source_sha=(manifest or {}).get('source_sha'), build_source_tree=(manifest or {}).get('source_tree'),
+                    test_id=(manifest or {}).get('test_id'),
                     artifact_sha256=(manifest or {}).get('artifact_sha256'), build_id=(manifest or {}).get('build_id'))
 
     def launch(self, device, selected, source, paths, *, spawn=subprocess.Popen, cancelled=lambda: False,
@@ -188,9 +199,9 @@ class Devices:
             value = self.prepare(device)
             if self.busy(device): raise Refused('TEST_DEVICE_BUSY')
             fresh = load_view(source, paths).get('active_target')
-            if not fresh or fresh.get('source_sha') != source.sha:
+            if not fresh:
                 raise Refused('TEST_DEVICE_INTEGRATED_CANDIDATE_REQUIRED')
-            if not self.source_supported(source): raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
+            if not self.source_supported(source, fresh['source_sha']): raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
             if fresh.get('launch_type') != 'DESKTOP_EXE' or fresh.get('environment') not in ('TEST', 'STAGING'):
                 raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
             other = 'B' if device == 'A' else 'A'
@@ -212,7 +223,8 @@ class Devices:
                 env['MENTORFLOW_TEST_SCENARIO'] = scenario
                 # Verification and leases are still exclusively owned by launch_exact.
                 process = launch_exact(selected, fresh, source.tree_for, paths, spawn=spawn, cancelled=cancelled,
-                                       device_environment=env, device_contract=PROFILE_CONTRACT)
+                                       device_environment=env, device_contract=PROFILE_CONTRACT,
+                                       authority_check=source.assert_current)
                 self.processes[device] = process
                 self.running_targets[device] = target
                 atomic_json(root / '.target.json', target)  # Disposable, never read as launch authority.

@@ -24,14 +24,17 @@ After a harness restart, an already-running device has no trusted in-memory buil
 binding; close both devices before starting a new pair. Local target files cannot
 authorize mixing builds or recover that binding.
 
-Only a CURRENT DESKTOP_EXE in TEST/STAGING at the current integration SHA may
+Only a CURRENT DESKTOP_EXE in TEST/STAGING with a qualified integrated build source may
 launch. In addition to the existing complete pinned build identity, the producer
 must include this field in the identity evidence JSON and pin its new checksum:
 
 ```json
-{"device_profile_contract": "MENTORFLOW_TEST_DEVICE_V1"}
+{"device_profile_contract": "MENTORFLOW_TEST_DEVICE_V1", "packaged_entrypoint": "desktop_entry.py"}
 ```
 
+The pinned receipt must also provide the explicit `test_device_configuration`
+described in [candidate identity V1](CANDIDATE_IDENTITY_V1.md). That contract
+supersedes the original requirement that build source equal publication SHA.
 This is an additional producer attestation, not a replacement for artifact hash,
 source/tree or identity checks. The integrated source must also contain the
 adapter and its Desktop startup hook. Build a direct Desktop entry that consumes
@@ -51,7 +54,8 @@ script launch is admitted as a test device. Unknown/old/tampered targets fail cl
 The Desktop application validates the fixed root, owner marker, generation and
 storage links before acquiring a process-lifetime device lock. Existing account
 root selection continues below that device's vault. First start chooses a blank
-test space. No server identity or auth policy is supplied by the harness.
+test space. Public test connection configuration comes from the pinned build
+receipt; server identity and auth policy remain with the existing product engine.
 
 Every product QSettings constructor uses `create_settings`: without a device it
 delegates unchanged; with a device it supplies a root-specific INI filename and
@@ -95,7 +99,8 @@ The product/sync owner may emit `<device root>/observation.json` with:
 
 The example counts are synthetic schema examples, not current project facts.
 Target fields are `target_id`, `device`, `scenario`, `profile_contract`, `root`,
-`generation`, `source_sha`, `source_tree`, `artifact_sha256`, `build_id`,
+`generation`, `source_sha`, `source_tree`, `build_source_sha`, `build_source_tree`,
+`test_id`, `artifact_sha256`, `build_id`,
 `scope=DERIVED_NOT_LAUNCH_AUTHORITY`, and the original `candidate_status`.
 Reports must match the selected build, device generation and scenario. Limits:
 8 KiB file, 160-character public text values, nonnegative integer counts up to

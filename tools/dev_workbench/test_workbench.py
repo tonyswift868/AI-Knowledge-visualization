@@ -27,6 +27,13 @@ class Source:
     def read(self, name): return self.files.get(name)
     def tree_for(self, sha): return self.tree if sha == self.sha else 'UNKNOWN'
     def git(self, *_): raise t.Refused('REPO_STATE_UNAVAILABLE')
+    def assert_current(self): pass
+    def qualify(self, manifest):
+        if self.tree_for(manifest['source_sha']) != manifest['source_tree']:
+            raise t.Refused('SOURCE_IDENTITY_MISMATCH')
+        return dict(build_source_sha=manifest['source_sha'], build_source_tree=manifest['source_tree'],
+                    governance_publication_sha=self.sha, artifact_sha256=manifest['artifact_sha256'],
+                    build_id=manifest['build_id'], test_id=manifest['test_id'])
 
 
 @pytest.fixture
