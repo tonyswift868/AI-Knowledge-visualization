@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from enum import Enum
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit
+from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QComboBox
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
 
@@ -33,6 +33,8 @@ class LoginGateWindow(QWidget):
     register_requested = Signal()
     forgot_password_requested = Signal()
     update_blocked = Signal(bool)
+    account_selected = Signal(str)
+    account_remove_requested = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -128,6 +130,19 @@ class LoginGateWindow(QWidget):
         self.state_detail.setWordWrap(True)
         self.state_detail.setMinimumHeight(54)
         card_layout.addWidget(self.state_detail)
+        account_row = QHBoxLayout()
+        self.account_selector = QComboBox()
+        self.account_selector.setAccessibleName('本机账号列表')
+        self.account_selector.activated.connect(lambda _: self.account_selected.emit(self.account_selector.currentData() or ''))
+        self.add_account_button = QPushButton('添加账号')
+        self.add_account_button.clicked.connect(self.cancel_requested.emit)
+        self.remove_account_button = QPushButton('移除本机账号')
+        self.remove_account_button.setToolTip('只移除本机账号与凭据；服务器账号及学习资料保留。')
+        self.remove_account_button.clicked.connect(lambda: self.account_remove_requested.emit(self.account_selector.currentData() or ''))
+        account_row.addWidget(self.account_selector,1)
+        account_row.addWidget(self.add_account_button)
+        account_row.addWidget(self.remove_account_button)
+        card_layout.addLayout(account_row)
         self.username_field = QLineEdit()
         self.username_field.setObjectName('nativeUsername')
         self.username_field.setPlaceholderText('账号')
@@ -173,6 +188,9 @@ class LoginGateWindow(QWidget):
         self.remember_box.toggled.connect(self._remember_toggled)
         outer.addWidget(self.remember_box)
         outer.addWidget(self.auto_box)
+        self.remember_password_box = QCheckBox('记住密码（Windows 凭据管理器）')
+        self.remember_password_box.setObjectName('rememberPasswordCheckBox')
+        outer.addWidget(self.remember_password_box)
         self.cancel_button = QPushButton("取消并选择其他账号")
         self.cancel_button.setObjectName("loginCancelButton")
         self.cancel_button.setStyleSheet('min-height: 24px; padding: 3px;')
@@ -183,7 +201,7 @@ class LoginGateWindow(QWidget):
         self.notice_label.setWordWrap(True)
         self.notice_label.setObjectName("loginSessionNotice")
         outer.addWidget(self.notice_label)
-        privacy = QLabel("密码仅用于本次安全验证，不会保存。记住登录只保存安全会话。")
+        privacy = QLabel("仅勾选记住密码才保存密码；密码和会话仅保存在 Windows 凭据管理器。移除本机账号不删除学习资料。")
         privacy.setObjectName("loginSubtitle")
         privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         privacy.setWordWrap(True)
@@ -237,6 +255,8 @@ class LoginGateWindow(QWidget):
             widget.setEnabled(self._login_enabled and not self._retry_mode and not blocked)
         self.primary_button.setVisible(not blocked and self.auth_content is None)
         self.remember_box.setEnabled(not blocked)
+        for widget in (self.remember_password_box,self.account_selector,self.add_account_button,self.remove_account_button):
+            widget.setEnabled(not blocked)
         self.auto_box.setEnabled(not blocked and self.remember_box.isChecked())
         self.cancel_button.setEnabled(not blocked)
         self.remember_box.setVisible(not blocked)
@@ -409,6 +429,8 @@ class LoginGateWindow(QWidget):
         for widget in (self.username_field, self.password_field, self.show_password):
             widget.setEnabled(enabled and not retry_bootstrap and not self.login_is_blocked)
         preparing = state in {LoginGateState.STARTING, LoginGateState.SECURE_CONNECTION, LoginGateState.LOADING_AUTH}
+        for widget in (self.remember_password_box,self.account_selector,self.add_account_button,self.remove_account_button):
+            widget.setEnabled(enabled and not retry_bootstrap and not self.login_is_blocked)
         self.remember_box.setEnabled(not preparing)
         self.auto_box.setEnabled(not preparing and self.remember_box.isChecked())
         self.cancel_button.setVisible(state in {LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED})

@@ -157,7 +157,7 @@ def test_device_indicator_tracks_real_file_binding_without_vault_asset(vault_roo
 
 @pytest.fixture
 def vault_root() -> Path:
-    scratch = Path("D:/CodexScratch/r")
+    scratch = Path("E:/Codex/Temp")
     scratch.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="", dir=scratch))
     try:

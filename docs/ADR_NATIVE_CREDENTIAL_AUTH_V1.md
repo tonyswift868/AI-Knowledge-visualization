@@ -1,6 +1,13 @@
 # ADR: native credential authentication v1
 
 Date: 2026-09-12. Status: **identity SPI implemented; live deployment remains gated**.
+
+2026-09-14 product authority `MENTORFLOW_MULTI_ACCOUNT_AND_WINDOWS_CREDENTIALS`
+supersedes the earlier blanket prohibition on saving a native password in Locker:
+only explicit **Remember password** consent permits the per-stable-account
+Windows Credential Manager entry described in [local account lifecycle](MULTI_ACCOUNT_WINDOWS_CREDENTIALS.md).
+No local password database, plaintext file, server identity or authentication
+algorithm is added. Without that consent the original transient-only rule holds.
 Authority: `MF-MAIN3-01-NATIVE-CREDENTIAL-LOGIN-20260912-04` /
 `MENTORFLOW_NATIVE_USERNAME_PASSWORD_LOGIN_CONTRACT_V1`.
 
@@ -141,7 +148,8 @@ needs a separately designed native contract before such accounts can be supporte
 Passwords exist briefly in the masked field and request memory only. Desktop clears
 the field and show-password state on submit/cancel/close, drops worker references at
 completion, and sends only allowlisted error text to Qt. Neither side logs request
-bodies or passwords or writes them to QSettings, Locker, receipts, or diagnostics.
+bodies or passwords or writes them to QSettings, receipts, or diagnostics. Locker
+password persistence is limited to the later explicit-consent exception above.
 Python/Qt/HTTP libraries may create transient memory copies; this is not a claim of
 reliable memory zeroization. Full-memory dumps, HTTP body capture, debug request
 logging and proxy/body telemetry must be disabled in the credential deployment path.

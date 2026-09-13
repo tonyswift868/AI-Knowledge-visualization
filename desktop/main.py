@@ -1128,6 +1128,9 @@ class MentorFlowApplication:
         self.login_gate.background_failed.connect(self._background_failed)
         self.login_gate.cancel_requested.connect(self._cancel_login)
         self.login_gate.closed.connect(self._invalidate_login_jobs)
+        self.login_gate.account_selected.connect(self._select_local_account)
+        self.login_gate.account_remove_requested.connect(self._remove_local_account)
+        self._refresh_local_accounts()
         self.login_gate.notice_label.setText(os.environ.pop("MENTORFLOW_LOGIN_NOTICE", ""))
         self.login_gate.show()
         try:
@@ -1137,7 +1140,9 @@ class MentorFlowApplication:
         force_once = os.environ.pop("MENTORFLOW_DESKTOP_REQUIRE_INTERACTIVE_ONCE", "") == "1"
         self._remembered_profile = None if force_once else profile
         if self._remembered_profile is not None:
-            self.login_gate.remember_box.setChecked(True)
+            row = self._login_session.registry.get(profile.account_id)
+            self.login_gate.remember_password_box.setChecked(bool(row and row['remember_password']))
+            self.login_gate.remember_box.setChecked(bool(row and row['remember_session']))
             self.login_gate.auto_box.setChecked(automatic)
             self.login_gate.set_state(LoginGateState.LOGIN_READY)
             self.login_gate.state_title.setText(profile.safe_account_label)
@@ -1172,12 +1177,57 @@ class MentorFlowApplication:
         self._last_login_result = None
         self.login_gate.remember_box.setChecked(False)
         self.login_gate.auto_box.setChecked(False)
+        self.login_gate.remember_password_box.setChecked(False)
+        self.login_gate.account_selector.setCurrentIndex(-1)
+        self.login_gate.username_field.clear()
         self.login_gate.clear_password()
         # Cancel automatic login without deleting any account's credentials.
-        self._login_session.preferences.settings.setValue("account/auto_login", "0")
-        self._login_session.preferences.settings.sync()
+        self._login_session.suspend_automatic()
         from .startup_flow import LoginGateState
         self.login_gate.set_state(LoginGateState.LOGIN_READY)
+
+    def _refresh_local_accounts(self):
+        try: snapshot = self._login_session.registry.snapshot()
+        except (ValueError,RuntimeError):
+            self.login_gate.notice_label.setText('本机账号列表无法安全读取，请检查本机设置；不会覆盖已有账号。')
+            self.login_gate.account_selector.clear()
+            self.login_gate.remove_account_button.setEnabled(False)
+            return
+        selector = self.login_gate.account_selector
+        selector.blockSignals(True)
+        selector.clear()
+        for row in snapshot['accounts']:
+            selector.addItem(row['display_name']+' · '+row['account_id'][-8:],row['account_id'])
+        selector.setCurrentIndex(selector.findData(snapshot['current_account_id']))
+        selector.blockSignals(False)
+        self.login_gate.remove_account_button.setEnabled(bool(snapshot['accounts']))
+
+    def _select_local_account(self, account_id):
+        from .startup_flow import LoginGateState
+        if not account_id or self.login_gate.login_is_blocked: return
+        self._invalidate_login_jobs()
+        row = self._login_session.select(account_id)
+        self._last_login_result = None
+        self._remembered_profile = self._login_session.registry.profile(row)
+        self.login_gate.clear_password()
+        self.login_gate.username_field.clear()
+        self.login_gate.remember_box.setChecked(row['remember_session'])
+        self.login_gate.auto_box.setChecked(row['auto_login'])
+        self.login_gate.remember_password_box.setChecked(row['remember_password'])
+        self.login_gate.set_state(LoginGateState.LOGIN_READY)
+        self.login_gate.state_title.setText(row['display_name'])
+        self.login_gate.state_detail.setText('点击登录恢复此账号；也可输入账号与密码重新验证。')
+
+    def _remove_local_account(self, account_id):
+        if not account_id or self.login_gate.login_is_blocked: return
+        self._invalidate_login_jobs()
+        try: self._login_session.remove_local(account_id)
+        except Exception:
+            self.login_gate.notice_label.setText('本机凭据未能清除，账号未移除。请稍后重试。')
+            return
+        self._cancel_login()
+        self._refresh_local_accounts()
+        self.login_gate.notice_label.setText('已移除本机账号；服务器账号和学习资料均保留。')
 
     def _begin_remembered_login(self) -> None:
         from .startup_flow import LoginGateState
@@ -1282,13 +1332,15 @@ class MentorFlowApplication:
         self._invalidate_login_jobs()
         generation, gate = self._login_generation, self.login_gate
         self.login_gate.set_state(LoginGateState.AUTHENTICATING)
+        save_password = gate.remember_password_box.isChecked()
 
         def authenticate():
             nonlocal password
             try:
                 result = login_native_account_from_env(username, password, on_authenticated=lambda:
                     gate.background_succeeded.emit(f'{generation}:credentials_validated', None))
-                gate.background_succeeded.emit(f'{generation}:authenticate', result)
+                payload = (result, username, password) if save_password else result
+                gate.background_succeeded.emit(f'{generation}:authenticate', payload)
             except Exception as exc:
                 # Never interpolate exception/request objects into UI or receipts.
                 message = MESSAGES.get(getattr(exc, 'code', ''), '登录暂时无法完成，请检查网络或账号服务后重试。')
@@ -1297,7 +1349,7 @@ class MentorFlowApplication:
                 password = None
         threading.Thread(target=authenticate, name='mentorflow-native-login', daemon=True).start()
 
-    def _accept_login_result(self, result) -> None:
+    def _accept_login_result(self, result, *, username=None, password=None) -> None:
         from .enterprise_oidc import EnterpriseOidcLoginResult
         from .runtime import record_enterprise_account_session
         from .startup_flow import LoginGateState
@@ -1313,7 +1365,9 @@ class MentorFlowApplication:
             return
         try:
             self._login_session.accept(result, remember=self.login_gate.remember_box.isChecked(),
-                                       automatic=self.login_gate.auto_box.isChecked())
+                                       automatic=self.login_gate.auto_box.isChecked(),
+                                       remember_password=self.login_gate.remember_password_box.isChecked(),
+                                       username=username,password=password)
             record_enterprise_account_session(
                 result.identity.profile(),
                 result.server_state,
@@ -1376,7 +1430,11 @@ class MentorFlowApplication:
                 self.login_gate.set_state(LoginGateState.AUTH_SUCCESS_BOOTSTRAPPING)
             return
         if job in {"restore", "authenticate"}:
-            self._accept_login_result(result)
+            if job == 'authenticate' and isinstance(result,tuple):
+                login_result,username,password = result
+                try: self._accept_login_result(login_result,username=username,password=password)
+                finally: password=None;result=None
+            else: self._accept_login_result(result)
             return
         if job == "logout_remote":
             self._finish_return_to_login_gate(result)
@@ -1469,6 +1527,7 @@ class MentorFlowApplication:
             return
         if job == "restore_expired":
             self._login_session.preferences.disable_restore()
+            self._login_session.suspend_automatic()
             self._remembered_profile = None
             self._last_login_result = None
             self.login_gate.remember_box.setChecked(False)
@@ -1637,6 +1696,7 @@ class MentorFlowApplication:
             seal_history()
         self._invalidate_login_jobs()
         self._login_session.preferences.disable_restore()
+        self._login_session.suspend_automatic()
         generation, gate = self._login_generation, self.login_gate
         profile = self.main.account_profile
         refresh = sync_refresh or (self._last_login_result.refresh_token if self._last_login_result is not None else None)
@@ -1690,6 +1750,8 @@ class MentorFlowApplication:
             self._remembered_profile = None
             self.login_gate.remember_box.setChecked(False)
             self.login_gate.auto_box.setChecked(False)
+            self.login_gate.remember_password_box.setChecked(False)
+            self._refresh_local_accounts()
             if reason == "logout":
                 self.login_gate.notice_label.setText(
                     "已退出当前账号。" if outcome["remote"] else "此设备已退出；远端会话注销未确认。"
