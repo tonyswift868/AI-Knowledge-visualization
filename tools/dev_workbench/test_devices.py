@@ -312,6 +312,22 @@ def test_second_scenario_has_separate_observation_scope(devices, source, candida
     assert calls[0]['env']['MENTORFLOW_TEST_SCENARIO']==SCENARIOS[1]
 
 
+def test_product_observation_missing_fields_and_wrong_identity_are_ignored(devices, candidate):
+    value,_=candidate
+    target=devices.target('A',value)
+    report=dict(schema='mentorflow.sync-observation.v1',test_id=value['test_id'],scenario=SCENARIOS[0],
+        generation=target['generation'],artifact_sha256=value['artifact_sha256'],source='SERVER_CONFIRMED',
+        account='account',server_workspace='workspace',last_sync_revision='pg-snapshot:1:2:',
+        cloud_entities_restored_count=4,missing_local_resources_count=1)
+    path=devices.root('A')/'observation.json'
+    path.write_bytes(raw(report))
+    assert devices.observation('A',value)['values']['cloud_entities_restored_count']==4
+    for key in ('account','test_id','generation','artifact_sha256'):
+        malformed={k:v for k,v in report.items() if k!=key}
+        path.write_bytes(raw(malformed))
+        assert devices.observation('A',value)['values']=={}
+
+
 def test_real_named_webengine_profiles_are_isolated(devices, monkeypatch, app):
     from PySide6.QtWebEngineCore import QWebEngineProfile
     profiles=[]

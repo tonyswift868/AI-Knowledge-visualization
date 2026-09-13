@@ -247,7 +247,7 @@ class Devices:
                         or value.get('source') != 'SERVER_CONFIRMED'):
                     return result
                 value = dict(target=target, scenario=scenario,
-                             values={key: value[key] for key in OBSERVATION_KEYS})
+                             values={key: value.get(key) for key in OBSERVATION_KEYS})
             if (value.get('target') != target or value.get('scenario') != scenario
                     or set(value) != {'target', 'scenario', 'values'}): return result
             fields = value['values']
