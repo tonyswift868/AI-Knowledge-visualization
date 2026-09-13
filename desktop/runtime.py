@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
 import os
 import socket
 import sys
@@ -202,7 +204,7 @@ def preflight_desktop_account_storage(
     env = os.environ if source is None else source
     from .enterprise_oidc import DesktopOidcConfig
 
-    target_settings = settings or QSettings("MentorFlow", "MentorFlow")
+    target_settings = settings or create_settings(QSettings, "MentorFlow", "MentorFlow")
     preferences = AccountPreferenceStore(target_settings)
     configured = DesktopOidcConfig.is_configured(env)
     layout = VaultLayout.from_env(env)

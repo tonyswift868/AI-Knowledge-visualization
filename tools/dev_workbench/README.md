@@ -1,5 +1,41 @@
 # MentorFlow Dev Workbench V1.1
 
+## Two-device harness
+
+Open **跨设备测试** to select **云端数据恢复** or **本机资源缺失**, then use
+**启动设备 A / 启动设备 B**. The harness prepares its own persistent test profiles
+at `E:/Codex/TestDevices/MentorFlow/A` and `B`; no manual environment setup or
+credential copying is needed. Users log in normally inside each device. The
+same account/server may be used; the harness never supplies passwords or tokens.
+
+Both launches use the current repo-approved, exact integrated desktop candidate
+and the existing artifact/build hash verifier. An installer, older integration,
+or build without `MENTORFLOW_TEST_DEVICE_V1` support is refused. No candidate is
+built or approved by this view. Integration `1ef95a71c5e7422cb3fe1435ccd703193629b591`
+has neither the new runtime isolation adapter nor a ready device-compatible
+target: integrate this source and register a compatible candidate before real
+device launches. Until then the launch buttons remain disabled.
+
+The two devices have independent vaults/databases, explicit INI preferences,
+secure Locker service namespaces and browser/runtime caches. A small opt-in
+Desktop adapter routes existing storage constructors; normal launches retain
+their original APIs. It does not implement authentication, server sync or a new
+storage engine. Windows' organization/application QSettings constructor ignores
+the default format, so explicit filenames are required for actual isolation.
+
+**重置测试设备** only clears a marked, creation-recorded harness root after checking
+for running processes and unsafe links. Another device, unknown directories and
+`E:/MentorFlowData` are never reset. Reset rotates the local credential namespace;
+old test entries remain protected in Windows Locker and are not reused. This is
+not server token revocation. Close device windows normally before resetting.
+
+**刷新设备观测** refreshes account/workspace/revision/restored/missing counts.
+These are explicitly local observations, never acceptance authority. Missing or
+stale observations stay unknown. If repo authority has not recorded the sync
+implementation, the view says **等待云同步实现**, regardless of local counts.
+Portable Pack is reserved and cannot launch. See the
+[producer and safety contract](../../docs/dev_workbench/TWO_DEVICE_HARNESS_V1.md).
+
 Double-click [Start-MentorFlow-Dev-Workbench.cmd](../../Start-MentorFlow-Dev-Workbench.cmd).
 This is a separate Python/Qt developer window, outside the Desktop product entry.
 It needs an existing Python with `PySide6` and `jsonschema`; the launcher checks the

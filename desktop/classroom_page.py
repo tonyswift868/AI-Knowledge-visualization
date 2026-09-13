@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
+from .test_device_profile import create_web_profile
+
 import html
 import json
 import math
@@ -1548,7 +1552,7 @@ class ClassroomPage(QWidget):
         self.interaction_notice: QLabel | None = None
         self.interaction_mode = "learning_evidence"
         self._classroom_theme_key = normalize_classroom_theme(
-            QSettings("MentorFlow", "MentorFlow").value(
+            create_settings(QSettings, "MentorFlow", "MentorFlow").value(
                 "appearance/classroom_theme", DEFAULT_CLASSROOM_THEME
             )
         )
@@ -1949,7 +1953,7 @@ class ClassroomPage(QWidget):
         normalized = normalize_classroom_theme(theme_key)
         self._classroom_theme_key = normalized
         if persist:
-            settings = QSettings("MentorFlow", "MentorFlow")
+            settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
             settings.setValue("appearance/classroom_theme", normalized)
             settings.sync()
         if self._classroom_panel is not None:
@@ -2344,7 +2348,7 @@ class ClassroomPage(QWidget):
 
     @staticmethod
     def _load_teacher_action_reviews() -> dict[str, str]:
-        raw = QSettings("MentorFlow", "MentorFlow").value(
+        raw = create_settings(QSettings, "MentorFlow", "MentorFlow").value(
             _TEACHER_ACTION_REVIEW_SETTINGS_KEY, "{}"
         )
         try:
@@ -2361,7 +2365,7 @@ class ClassroomPage(QWidget):
         }
 
     def _save_teacher_action_reviews(self) -> None:
-        settings = QSettings("MentorFlow", "MentorFlow")
+        settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
         settings.setValue(
             _TEACHER_ACTION_REVIEW_SETTINGS_KEY,
             json.dumps(self._teacher_action_debug_reviews, ensure_ascii=False, sort_keys=True),
@@ -2700,7 +2704,7 @@ class ClassroomPage(QWidget):
         if panel is None:
             return
         web = QWebEngineView(panel)
-        profile = QWebEngineProfile(f"mentorflow_teacher_stage_panel_{id(self)}", self)
+        profile = create_web_profile(QWebEngineProfile, f"mentorflow_teacher_stage_panel_{id(self)}", self)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
         web.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
@@ -2829,7 +2833,7 @@ class ClassroomPage(QWidget):
         hint = QLabel("语音声包和 2D 教师资源可以单独下载，不会混入学习数据迁移包。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
-        profile = QWebEngineProfile(f"mentorflow_teacher_resources_{id(dialog)}", dialog)
+        profile = create_web_profile(QWebEngineProfile, f"mentorflow_teacher_resources_{id(dialog)}", dialog)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView(dialog)
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
@@ -3049,7 +3053,7 @@ class ClassroomPage(QWidget):
         hint = QLabel("教师人设编辑会保存到本地教师库；只有点击应用后才影响当前任务。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
-        profile = QWebEngineProfile(f"mentorflow_teacher_modeling_{id(dialog)}", dialog)
+        profile = create_web_profile(QWebEngineProfile, f"mentorflow_teacher_modeling_{id(dialog)}", dialog)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView(dialog)
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
@@ -3273,7 +3277,7 @@ class ClassroomPage(QWidget):
             else "learning_evidence"
         )
         free_chat_prompt = (
-            str(QSettings("MentorFlow", "MentorFlow").value(_FREE_CHAT_PROMPT_SETTINGS_KEY, "") or "")[:6000]
+            str(create_settings(QSettings, "MentorFlow", "MentorFlow").value(_FREE_CHAT_PROMPT_SETTINGS_KEY, "") or "")[:6000]
             if interaction_mode == "free_chat"
             else ""
         )

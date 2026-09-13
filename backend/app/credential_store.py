@@ -12,6 +12,13 @@ CREDENTIAL_PREFIX = "mfcred_"
 ACCOUNT_CREDENTIAL_PREFIX = "mfcred_account_"
 
 
+def _service_name():
+    if not os.getenv('MENTORFLOW_TEST_DEVICE_ROOT'):
+        return SERVICE_NAME
+    from desktop.test_device_profile import credential_service
+    return credential_service(SERVICE_NAME)
+
+
 class CredentialStoreError(RuntimeError):
     def __init__(self, code: str, message: str):
         self.code = code
@@ -84,7 +91,7 @@ def store_secret(secret: str, credential_ref: str | None = None) -> str:
             "云端凭据必须由部署系统注入，不能通过业务 API 写入进程环境。",
         )
     try:
-        _get_keyring().set_password(SERVICE_NAME, reference, value)
+        _get_keyring().set_password(_service_name(), reference, value)
     except CredentialStoreError:
         raise
     except Exception as exc:
@@ -106,7 +113,7 @@ def get_secret(credential_ref: str) -> str:
             )
         return value
     try:
-        value = _get_keyring().get_password(SERVICE_NAME, reference)
+        value = _get_keyring().get_password(_service_name(), reference)
     except CredentialStoreError:
         raise
     except Exception as exc:
@@ -130,10 +137,10 @@ def delete_secret(credential_ref: str) -> bool:
             "云端凭据必须由部署系统管理，不能通过业务 API 删除。",
         )
     backend = _get_keyring()
-    if not backend.get_password(SERVICE_NAME, reference):
+    if not backend.get_password(_service_name(), reference):
         return False
     try:
-        backend.delete_password(SERVICE_NAME, reference)
+        backend.delete_password(_service_name(), reference)
     except Exception as exc:
         raise CredentialStoreError(
             "CREDENTIAL_STORE_DELETE_FAILED",

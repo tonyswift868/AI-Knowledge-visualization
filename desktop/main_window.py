@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
+from .test_device_profile import create_web_profile
+
 import json
 import hashlib
 import os
@@ -454,7 +458,7 @@ class MainWindow(QMainWindow):
         self.api = api
         self.user = user
         self.origin = origin
-        self.settings = QSettings("MentorFlow", "MentorFlow")
+        self.settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
         self.account_preferences = AccountPreferenceStore(self.settings)
         if account_profile is not None:
             self.account_profile = account_profile
@@ -2139,7 +2143,7 @@ class MainWindow(QMainWindow):
             "创建计划",
             "先说清学习目标，再选择可核对的资料；确认后只需补充日期，系统会生成知识地图和每日任务。",
         )
-        profile = QWebEngineProfile("mentorflow_teacher_chat", self)
+        profile = create_web_profile(QWebEngineProfile, "mentorflow_teacher_chat", self)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView()
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
@@ -2221,7 +2225,7 @@ class MainWindow(QMainWindow):
         dialog.setModal(False)
         content = QVBoxLayout(dialog)
         web = QWebEngineView(dialog)
-        profile = QWebEngineProfile(f"mentorflow_auxiliary_{tool}_{id(dialog)}", dialog)
+        profile = create_web_profile(QWebEngineProfile, f"mentorflow_auxiliary_{tool}_{id(dialog)}", dialog)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))
         web.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
@@ -2244,7 +2248,7 @@ class MainWindow(QMainWindow):
             "学习远征",
             "探索、训练和成长记录单独放在这里；不会把额外玩法混进任务、资料或原生课堂。",
         )
-        profile = QWebEngineProfile("mentorflow_expedition", self)
+        profile = create_web_profile(QWebEngineProfile, "mentorflow_expedition", self)
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         web = QWebEngineView()
         web.setPage(install_external_link_handler(QWebEnginePage(profile, web)))

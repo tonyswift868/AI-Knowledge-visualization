@@ -231,12 +231,16 @@ def load_view(source, paths=None):
     repository = board.get('repository_url', '')
     web_url = (repository + '/blob/' + source.sha + '/' + HANDOFF
                if isinstance(repository, str) and re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository) else None)
+    from .devices import Devices
     return dict(project=text(board.get('project')), generation=text(board.get('generation')),
+        device_profile_supported=Devices.source_supported(source),
         current_phase=phase, current_gate=current_gate, integration_sha=source.sha, integration_tree=source.tree,
         snapshot_at=source.timestamp, snapshot_kind=text(board.get('snapshot_kind')),
         remote_head=remote, staging_status=text(extension.get('staging_status')),
         database_revision=text(extension.get('database_revision')), source_schema=text(fields.get('ALEMBIC_HEAD')),
         workers=workers, workflow=workflow, actions=actions,
+        server_sync_state=text((board.get('acceptance_boundaries') or {}).get('server_sync_tier'))
+            if isinstance(board.get('acceptance_boundaries', {}), dict) else 'UNKNOWN',
         formal_main3=text(control.get('formal_main3')),
         user_action_state='USER_ACTION_REQUIRED' if actions else 'NONE' if control.get('user_action_required') == 'NONE' else 'UNKNOWN',
         action_summary=('当前无需用户操作。' if not actions and control.get('user_action_required') == 'NONE'

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
 import os
 import hashlib
 import json
@@ -61,7 +63,7 @@ FREE_CHAT_PROMPT_SETTINGS_KEY = "classroom/free_chat_prompt"
 def _safe_qsettings_snapshot(*, history_settings=None, settings=None) -> dict[str, Any]:
     """Return only nonsecret Qt settings that are useful on a new device."""
 
-    settings = settings if settings is not None else QSettings("MentorFlow", "MentorFlow")
+    settings = settings if settings is not None else create_settings(QSettings, "MentorFlow", "MentorFlow")
     allowed = {
         "official_updates/enabled",
         "tutorial/completed",
@@ -358,7 +360,7 @@ class SystemPage(QWidget):
         self.classroom_theme_combo.setAccessibleName("课堂皮肤选择")
         self.classroom_theme_combo.setMinimumWidth(220)
         current_theme = normalize_classroom_theme(
-            QSettings("MentorFlow", "MentorFlow").value(
+            create_settings(QSettings, "MentorFlow", "MentorFlow").value(
                 "appearance/classroom_theme", DEFAULT_CLASSROOM_THEME
             )
         )
@@ -518,7 +520,7 @@ class SystemPage(QWidget):
         self.free_chat_prompt.setPlaceholderText("留空：不添加 MentorFlow 自定义自由聊天提示词")
         self.free_chat_prompt.setMaximumHeight(120)
         self.free_chat_prompt.setPlainText(
-            str(QSettings("MentorFlow", "MentorFlow").value(FREE_CHAT_PROMPT_SETTINGS_KEY, "") or "")
+            str(create_settings(QSettings, "MentorFlow", "MentorFlow").value(FREE_CHAT_PROMPT_SETTINGS_KEY, "") or "")
         )
         settings_layout.addWidget(self.free_chat_prompt)
         free_chat_actions = QHBoxLayout()
@@ -644,7 +646,7 @@ class SystemPage(QWidget):
 
     def _save_free_chat_prompt(self) -> None:
         value = self.free_chat_prompt.toPlainText()[:6000]
-        settings = QSettings("MentorFlow", "MentorFlow")
+        settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
         if value.strip():
             settings.setValue(FREE_CHAT_PROMPT_SETTINGS_KEY, value)
             status = "已保存到当前电脑；不会导出到迁移包。"
@@ -735,7 +737,7 @@ class SystemPage(QWidget):
             if notify:
                 self._notify_classroom_theme_changed(key, persist=False)
             return
-        settings = QSettings("MentorFlow", "MentorFlow")
+        settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
         settings.setValue("appearance/classroom_theme", key)
         settings.sync()
         self._notify_classroom_theme_changed(key, persist=True)

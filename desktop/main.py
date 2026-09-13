@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
+from .test_device_profile import configure as _configure_test_device
+
 import os
 import json
 import re
@@ -415,7 +419,7 @@ def _restore_safe_qsettings(app_root: Path) -> None:
     if not isinstance(payload, dict):
         raise MigrationError("导入的安全设置必须是对象。")
     settings = _validate_safe_settings(payload)
-    target = QSettings("MentorFlow", "MentorFlow")
+    target = create_settings(QSettings, "MentorFlow", "MentorFlow")
     # A machine may have a previous profile's Qt reference.  It is not part
     # of the imported package and must not silently attach to this new space.
     for sensitive_key in (
@@ -1027,9 +1031,14 @@ def _import_development_data_once(app_root: Path, data_root: Path) -> None:
 
 class MentorFlowApplication:
     def __init__(self, *, login_gate=None) -> None:
+        _configure_test_device()
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.app.setApplicationName("MentorFlow")
         self.app.setOrganizationName("MentorFlow")
+        if os.getenv('MENTORFLOW_TEST_DEVICE_ROOT'):
+            from PySide6.QtWebEngineCore import QWebEngineProfile
+            from .test_device_profile import bind_web_profile
+            bind_web_profile(QWebEngineProfile.defaultProfile())
         self._startup_cancelled = False
         self._startup_failed = False
         self._enterprise_login_required = False
@@ -1075,7 +1084,7 @@ class MentorFlowApplication:
         self._closing = False
         from .account_identity import AccountPreferenceStore
         from .login_session import LoginSession
-        self._login_session = LoginSession(AccountPreferenceStore(QSettings("MentorFlow", "MentorFlow")))
+        self._login_session = LoginSession(AccountPreferenceStore(create_settings(QSettings, "MentorFlow", "MentorFlow")))
         pixmap = QPixmap(520, 270)
         pixmap.fill(QColor("#244c40"))
         self.splash = QSplashScreen(pixmap)

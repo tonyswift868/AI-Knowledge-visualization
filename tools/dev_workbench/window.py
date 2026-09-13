@@ -64,7 +64,8 @@ class Workbench(QMainWindow):
             QTextEdit {background:white; border:1px solid #dfe5ef;}
         ''')
         self.scroll = QScrollArea(); self.scroll.setWidgetResizable(True)
-        self.setCentralWidget(self.scroll)
+        self.pages = QTabWidget(); self.pages.addTab(self.scroll, self.tr_text('labels', 'overview'))
+        self.setCentralWidget(self.pages)
         self.content = QWidget(); self.content.setObjectName('content'); self.scroll.setWidget(self.content)
         layout = QVBoxLayout(self.content); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(10)
         self.sections = []
@@ -121,6 +122,9 @@ class Workbench(QMainWindow):
         layout.addLayout(self.bottom)
         layout.addStretch()
         self.build_details_dialog()
+        from .device_panel import DevicePanel
+        self.device_panel = DevicePanel(self, label)
+        self.pages.addTab(self.device_panel, self.tr_text('labels', 'devices'))
         self.launch_button.setEnabled(False)
         self.reflow()
         if auto_load: self.refresh()
@@ -224,6 +228,7 @@ class Workbench(QMainWindow):
             self.jobs.remove(job); job.deleteLater()
             self.refresh_button.setEnabled(True); self.action_button.setEnabled(True)
             self.launch_button.setEnabled((self.view.get('active_target') or {}).get('status') == 'CURRENT')
+            self.device_panel.show_view(self.view)
         job.finished.connect(finish); job.start()
 
     def set_notice(self, text):
@@ -236,6 +241,7 @@ class Workbench(QMainWindow):
 
     def show_view(self, view):
         self.view = view
+        self.device_panel.show_view(view)
         self.summary = summary = summarize(view, self.resources)
         self.phase.setText(self.tr_text('labels', 'phase', value=summary['phase']))
         self.overall.setText(self.tr_text('labels', 'overall', value=summary['overall']))
@@ -286,6 +292,7 @@ class Workbench(QMainWindow):
     def failure(self, code):
         self.last_error = code
         self.set_notice(self.tr_text('errors', code))
+        self.device_panel.notice.setText(self.tr_text('errors', code))
 
     def launch(self):
         if self.jobs: return

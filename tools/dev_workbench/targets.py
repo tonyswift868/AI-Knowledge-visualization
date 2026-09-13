@@ -147,7 +147,8 @@ def navigation_path(manifest, kind, paths):
     return path
 
 
-def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Popen, cancelled=lambda: False):
+def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Popen, cancelled=lambda: False,
+                 device_environment=None, device_contract=None):
     """Caller reloads repo approval at click time; cache/selection never authorizes."""
     validate_manifest(manifest)
     if manifest != approved: raise Refused('TARGET_CHANGED')
@@ -175,6 +176,11 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
                 identity.get(key) != manifest[key] for key in IDENTITY_FIELDS):
             raise Refused('BUILD_IDENTITY_MISMATCH')
         kind = manifest['launch_type']
+        if device_environment is not None:
+            from desktop.test_device_profile import PROFILE_CONTRACT
+            if (device_contract != PROFILE_CONTRACT or kind != 'DESKTOP_EXE' or
+                    identity.get('device_profile_contract') != PROFILE_CONTRACT):
+                raise Refused('TEST_DEVICE_CONTRACT_REQUIRED')
         if kind in ('DESKTOP_EXE', 'INSTALLER'):
             if manifest['artifact_type'] != kind or manifest['launch_target'] != manifest['artifact_path']:
                 raise Refused('LAUNCH_TARGET_MISMATCH')
@@ -190,7 +196,8 @@ def launch_exact(manifest, approved, source_tree, paths, *, spawn=subprocess.Pop
             raise Refused('UNKNOWN_SCRIPT_ID')
         if cancelled(): raise Refused('CANCELLED')
         try:
-            return spawn(argv, cwd=str(ROOT if kind == 'SCRIPT_ID' else artifact.parent),
-                         shell=False, close_fds=True)
+            options = dict(cwd=str(ROOT if kind == 'SCRIPT_ID' else artifact.parent), shell=False, close_fds=True)
+            if device_environment is not None: options['env'] = device_environment
+            return spawn(argv, **options)
         except OSError:
             raise Refused('LAUNCH_FAILED') from None

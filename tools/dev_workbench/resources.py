@@ -2,6 +2,7 @@
 CATALOGS = {
     'zh-CN': {
         'labels': {
+            'overview': '项目概览', 'devices': '跨设备测试',
             'title': 'MentorFlow 开发工作台', 'title_compact': 'MentorFlow\n开发工作台', 'phase': '当前阶段：{value}',
             'overall': '整体状态：{value}', 'integration': '当前集成版本：{sha}',
             'snapshot': '根据最近已登记的项目状态展示', 'action': '现在需要你做什么',
@@ -51,6 +52,13 @@ CATALOGS = {
             'unknown_resource': '暂未提供说明', 'unknown_value': '尚未提供',
         },
         'errors': {
+            'TEST_DEVICE_BUSY': '测试设备仍在运行，请先关闭该设备窗口。',
+            'TEST_DEVICE_PAIR_BUILD_CHANGED': '另一设备的版本不同或尚未确认，请先关闭两台设备再启动。',
+            'TEST_DEVICE_CONTRACT_REQUIRED': '该候选尚未声明支持独立测试设备，已阻止启动。',
+            'TEST_DEVICE_INTEGRATED_CANDIDATE_REQUIRED': '等待当前集成版本的精确测试候选。',
+            'TEST_DEVICE_UNOWNED_ROOT': '目录不属于工作台，禁止启动或重置。',
+            'TEST_DEVICE_UNSAFE_PATH': '测试目录未通过安全检查，操作已停止。',
+            'TEST_DEVICE_SCENARIO_UNAVAILABLE': '该场景尚未实现，不能启动。',
             'ARTIFACT_HASH_MISMATCH': '这个文件不是当前指定测试版本。',
             'BUILD_IDENTITY_MISMATCH': '构建身份与指定候选不一致。',
             'SOURCE_IDENTITY_MISMATCH': '源码身份与指定候选不一致。',
@@ -68,6 +76,22 @@ CATALOGS = {
             'old': '这是旧测试版本。历史记录只读，请先由负责人登记为当前测试版。',
             'current_history': '请使用主界面的启动按钮，启动前会重新校验版本。',
             'phase_schema_pending': '部署验收准备',
+        },
+        'devices': {
+            'refresh': '刷新设备观测',
+            'title': '跨设备测试', 'A': '设备 A：旧设备', 'B': '设备 B：新设备',
+            'launch': '启动设备 {device}', 'reset': '重置测试设备 {device}', 'details': '查看设备详情',
+            'cloud': '云端数据恢复', 'missing': '本机资源缺失', 'portable': '便携包（预留，尚未实现）',
+            'waiting_sync': '等待云同步实现', 'waiting_observation': '等待设备观测',
+            'scope': '以下为本地测试观测，不代表云同步或产品验收通过。',
+            'account': '账号：{value}', 'root': '本地目录：{value}',
+            'workspace': '服务端工作区：{value}', 'revision': '最近同步修订：{value}',
+            'restored': '云端恢复实体数：{value}', 'missing_count': '缺少本地资源数：{value}',
+            'unknown': '未观测', 'observed': '已观测（详情内查看）', 'unprepared': '启动时自动创建',
+            'unowned': '目录未通过所有权检查',
+            'build_wait': '等待支持设备隔离的集成候选', 'build_bound': '测试版本：同一集成候选，启动前校验文件',
+            'reset_done': '测试设备已重置，已切换到新的本地凭据命名空间。',
+            'launch_done': '测试设备已启动；请在设备内登录测试账号。',
         },
     }
 }

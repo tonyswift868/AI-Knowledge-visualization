@@ -1,6 +1,8 @@
 """One-click UI orchestration. Core owns validation, pending work and restart."""
 from __future__ import annotations
 
+from .test_device_profile import create_settings
+
 import threading
 from enum import StrEnum
 
@@ -44,7 +46,7 @@ class UpdateController(QObject):
     def __init__(self, service=None, parent=None, *, settings=None, port=None):
         super().__init__(parent)
         self.service = service
-        self.settings = settings if settings is not None else QSettings('MentorFlow', 'MentorFlow')
+        self.settings = settings if settings is not None else create_settings(QSettings, 'MentorFlow', 'MentorFlow')
         self.key = f"updater/{getattr(service, 'install_identity', 'unconfigured')}/"
         self.window = None
         self._thread = None
