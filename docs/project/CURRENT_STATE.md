@@ -50,7 +50,7 @@ main2 为冻结 canonical source baseline；integration/main3 是施工集成线
 - **Producer→UX = POST_BATCH04_WIRING_REQUIRED**：04 无全局 snapshot revision、完整空账号／history 事实、资源 file/model 分类；
   03 一个 resource key 只能绑定一个 plan，04 同一 resource 可被多个 plan 引用。登录后的 authenticated transport、cache
   provenance 和观察字段也未接通。不能用默认值虚构恢复事实，详见 [接线与候选边界](../dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md)。
-- **Two-device harness = READY_FOR_EXACT_CANDIDATE_TEST（源码范围）**；实际云恢复 A/B E2E = NOT_RUN。
+- **Two-device harness = PARTIAL**：隔离／hash／受控启动 fixture PASS；exact target 登记合同 BLOCKED，实际 A/B E2E = NOT_RUN。
   冻结 EXE 已产出并验证模块／资源结构，packaged runtime launch = NOT_RUN；
   [ACTIVE_TEST_TARGET](../governance/ACTIVE_TEST_TARGET.json) 保持 WAITING_FOR_ARTIFACT，不提供假造 CURRENT 启动入口。
 

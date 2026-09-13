@@ -265,7 +265,7 @@
     "current_live_test_candidate_root": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
     "rehydration_ux": "PASS_SOURCE",
     "producer_ux_wiring": "POST_BATCH04_WIRING_REQUIRED",
-    "two_device_harness": "READY_FOR_EXACT_CANDIDATE_TEST_SOURCE_ONLY",
+    "two_device_harness": "PARTIAL_EXACT_TARGET_REGISTRATION_BLOCKED; ISOLATION_AND_TRUSTED_LAUNCH_FIXTURES_PASS",
     "two_device_e2e": "NOT_RUN",
     "test_target_status": "WAITING_FOR_WIRING_BACKEND_AND_CANDIDATE_QUALIFICATION"
   },

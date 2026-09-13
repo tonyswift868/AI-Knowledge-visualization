@@ -53,7 +53,7 @@ Authority: `MF-MAIN3-A-BATCH04-INTEGRATION-20260913-01`；从 `1ef95a71...` 审�
 - 01 source/fixture PASS：稳定 account ID、signed per-subject continuity、durable root；live mapping NOT_APPROVED，已有 Temp candidate 不可真实迁移。
 - 04 V1 PLAN/PROGRESS/RESOURCE_METADATA 本地 native PG PASS；head/expected=0037，full sync/history PARTIAL。
 - 03 source UX PASS；04 缺 03 的可信空账号／history、全局 revision、file/model 与多计划资源语义，不能猜测 adapter。
-- 02 harness 源码可接受 exact candidate 验证；CURRENT target 尚未成立，真实 A/B 云恢复 NOT_RUN。
+- 02 harness 隔离／hash／受控启动 fixture PASS；exact target 登记合同 BLOCKED，真实 A/B 云恢复 NOT_RUN。
 - 17 dedicated migration skip 已补 native chain；bootstrap/pool RLS 补跑；剩余 Windows symlink privilege 明确计入 skip。
 - [候选／接线缺口](../../dev_workbench/MAIN3_BATCH04_INTEGRATION_GAPS.md) 记录冻结构建、Backend 部署与登记合同边界。
 
