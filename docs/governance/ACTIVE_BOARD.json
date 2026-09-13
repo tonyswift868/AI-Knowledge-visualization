@@ -333,11 +333,11 @@
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "集成基线合流完成；导入修复 source/fixture PASS",
-    "current_gate": "新验收候选与真实 A/B 仍待后续授权执行",
+    "current_phase": "Account MVP 开发版 · 待用户测试",
+    "current_gate": "Account MVP 用户验收",
     "staging_status": "OWNED_ACCEPTANCE_RUNTIME_RUNNING; PUBLIC_DEPLOYMENT_NOT_RUN",
     "database_revision": "0038_rehydration_manifest",
-    "current_test_id": "MAIN3_CROSS_DEVICE_AB_V3",
+    "current_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
     "test_targets": [
       {
         "test_id": "MAIN3_CROSS_DEVICE_AB_V3",
@@ -348,10 +348,17 @@
         "test_id": "MAIN3_CROSS_DEVICE_AB_V2",
         "receipt_path": "docs/governance/receipts/20260913-frozen-login-v2-current-target.json",
         "receipt_sha256": "bbb5e1ce910b62284a382d19309c8fec669a139e38a0b55948e4f09186a9c9af"
+      },
+      {
+        "test_id": "ACCOUNT_MVP_USER_TEST_20260914",
+        "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_USER_TEST_20260914.json",
+        "receipt_sha256": "29a8bc58765f3448166539cba6139ab4fa4fc0d0a222128696965be78028ba56"
       }
     ],
     "runtime_lease_id": "MF-AB-V3-CLOSEOUT-20260914-9cd62799",
-    "runtime_expires_at": "2026-09-14T02:30:19+00:00"
+    "runtime_expires_at": "2026-09-14T02:30:19+00:00",
+    "latest_development_test_id": "ACCOUNT_MVP_USER_TEST_20260914",
+    "latest_qualified_test_id": null
   },
   "continuity_authority": "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
   "batch03_receipt": "docs/governance/receipts/20260913-main3-batch03-integration.json",
