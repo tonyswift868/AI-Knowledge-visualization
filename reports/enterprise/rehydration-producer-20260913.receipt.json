@@ -1,0 +1,272 @@
+{
+  "DISPATCH_ID": "MF-MAIN3-04-REHYDRATION-PRODUCER-CONTRACT-20260913-14",
+  "TASK_ID": "MENTORFLOW_REHYDRATION_SNAPSHOT_AND_0037_BACKEND_CANDIDATE_V1",
+  "STATUS": "PARTIAL",
+  "EXPECTED_START_HEAD": "6ef2f094964e995fcb02ba99f555a394ccd361d5",
+  "AUTHORITATIVE_INTEGRATION": "04e2d61e3e39729886b3a2e6c7aff022b65a382a",
+  "PHASE0": {
+    "independent_worktree": true,
+    "starting_clean": true,
+    "branch": "worker/main3/04",
+    "branch_collision": false,
+    "integration_read_only": true
+  },
+  "SNAPSHOT_REVISION": "PASS_POSTGRESQL_SINGLE_STATEMENT_MVCC; opaque observation, not cursor",
+  "TRUE_EMPTY_AUTHORITY": "PARTIAL: supported-scope committed ledger facts exist; full-account initialization/known-empty authority absent; TRUE_EMPTY never guessed",
+  "SUPPORTED_SCOPE": "PASS_EXPLICIT_SUPPORTED_AND_UNSUPPORTED_TYPES; unsupported counts null",
+  "RESOURCE_CLASSIFICATION": "PASS_USER_FILE_MODEL_OTHER_UNKNOWN; committed metadata; legacy UNKNOWN",
+  "SHARED_RESOURCE_REFERENCES": "PASS_ONE_STABLE_ID_TWO_PLAN_IDS",
+  "SERVER_PROVENANCE": "PASS_SERVER_CONFIRMED_ENTITY_REVISION_SNAPSHOT_AND_TIME; trusted_cache=false",
+  "OBSERVATION_PRODUCER": {
+    "status": "PASS_ACTUAL_HTTP_RESULT",
+    "path": "reports/enterprise/rehydration-producer-20260913.observation.json",
+    "sha256": "d9e6d9427f355b66f54db104fd7c81b88c8c5adfb0d1e66c9c0ff077298da1f6"
+  },
+  "ALEMBIC_HEAD": "0037_structured_sync",
+  "BACKEND_CANDIDATE": "PASS_EXECUTED_EXACT_SOURCE_ARCHIVE; disposable endpoint now stopped",
+  "BACKEND_DIGEST": "e9dcd07e986b6d8c2ed0c645b478df3db1e8eacb30767aa9db2f337d27ec5271",
+  "BACKEND_RUNTIME_PASS": "YES_REAL_UVICORN_ACCOUNT_CORE",
+  "FRESH_TO_0037": "PASS",
+  "ALREADY_0037": "PASS_READ_ONLY",
+  "FUTURE_REJECTED": "PASS",
+  "DRIFT_REJECTED": "PASS_6_SYNC_SCHEMA_CASES",
+  "INDEPENDENT_CLIENT_REHYDRATE": "PASS_REAL_HTTP_TWO_CLIENTS; A_CLOSED_BEFORE_B",
+  "REAL_USER_DATA_MIGRATION": "NO",
+  "FILES_CHANGED": [
+    "backend/app/account_core_mvp.py",
+    "backend/app/enterprise/structured_sync_api.py",
+    "backend/app/enterprise_tenancy/structured_sync.py",
+    "backend/app/enterprise_tenancy/sync_schema.py",
+    "backend/app/enterprise_tenancy/sync_snapshot.py",
+    "backend/app/orm.py",
+    "desktop/structured_sync.py",
+    "scripts/sync_candidate_native.py",
+    "tests/server_sync/test_producer_contract.py",
+    "reports/enterprise/rehydration-producer-20260913.observation.json",
+    "reports/enterprise/rehydration-producer-20260913.receipt.json",
+    "reports/enterprise/rehydration-producer-contract-20260913.md"
+  ],
+  "NEW_COMMITS": [
+    "cfde71d103052224cabdd4d9367059f382a1545f",
+    "2063bdb70dbd3ee966e8099ae589967d9b1db57a",
+    "ba20aee8666a96141d96354d3c4785d355a72d3a",
+    "7c697d0399ae0126a2bd62b7512aad3e0498558b"
+  ],
+  "TESTS": {
+    "candidate_protocol": 13,
+    "candidate_checks": {
+      "FRESH_TO_0037": "PASS",
+      "0036_TO_0037": "PASS",
+      "ALREADY_0037": "PASS_READ_ONLY",
+      "FUTURE_REJECTED": "PASS",
+      "DRIFT_REJECTED": "PASS_6_CASES",
+      "QUERY_FAILED": "PASS_REAL_DATABASE_OUTAGE"
+    },
+    "local_contract": 4,
+    "account_core_and_tenancy": 39,
+    "retained_native_0036": {
+      "passed": 17,
+      "failed": 1,
+      "reason": "Unrelated worker-schema case lacks procrastinate dependency in available test runtime"
+    },
+    "knowledge": {
+      "compact_generator": "PASS_1119_BYTES",
+      "repo_lint": "BLOCKED_DERIVED_INTEGRATION_WEB_HANDOFF_NOT_REPUBLISHED_FROM_WORKER",
+      "web_check": "BLOCKED_SAME_AUTHORITY_BOUNDARY"
+    },
+    "initial_candidates": "Candidate1/2 protocol and normal real HTTP smoke passed; supplemental DB-outage timeout fixed and candidate3 passed"
+  },
+  "RUNTIME_ENVIRONMENT": {
+    "python": "3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]",
+    "packages": {
+      "fastapi": "0.139.2",
+      "starlette": "1.3.1",
+      "uvicorn": "0.51.0",
+      "sqlalchemy": "2.0.51",
+      "psycopg": "3.3.4",
+      "alembic": "1.18.5",
+      "httpx": "0.28.1",
+      "cryptography": "46.0.7"
+    }
+  },
+  "CANDIDATE_EVIDENCE": {
+    "source": {
+      "source_sha": "7c697d0399ae0126a2bd62b7512aad3e0498558b",
+      "source_tree": "c6ff1eccc471133e2b274a77fdb283868c902637",
+      "artifact": "E:\\Codex\\Temp\\MF04-PRODUCER14\\candidate3\\source.zip",
+      "artifact_sha256": "e9dcd07e986b6d8c2ed0c645b478df3db1e8eacb30767aa9db2f337d27ec5271",
+      "interpreter": "E:\\Codex\\Temp\\mf-e1s1-rp01-test-venv\\Scripts\\python.exe",
+      "interpreter_sha256": "b70275ad94210fce7548761143be5e177769721045e287bb6c80aac3f928c65b"
+    },
+    "db_identity": "mf-schema-0036-29813d70efdb71c9",
+    "db_endpoint": "127.0.0.1:54351",
+    "checks": {
+      "FRESH_TO_0037": "PASS",
+      "0036_TO_0037": "PASS",
+      "ALREADY_0037": "PASS_READ_ONLY",
+      "FUTURE_REJECTED": "PASS",
+      "DRIFT_REJECTED": "PASS_6_CASES",
+      "QUERY_FAILED": "PASS_REAL_DATABASE_OUTAGE"
+    },
+    "real_user_data_migration": false,
+    "cleaned_up": true,
+    "postgres_version": "17.6",
+    "protocol_tests": {
+      "run": 13,
+      "failures": 0,
+      "errors": 0
+    },
+    "phase": "COMPLETE",
+    "snapshot_result": {
+      "plans": [
+        {
+          "kind": "plan",
+          "entity_id": "plan-1",
+          "revision": 1,
+          "deleted": false,
+          "payload": {
+            "title": "Disposable plan 1",
+            "resource_ids": [
+              "shared-resource"
+            ]
+          }
+        },
+        {
+          "kind": "plan",
+          "entity_id": "plan-2",
+          "revision": 1,
+          "deleted": false,
+          "payload": {
+            "title": "Disposable plan 2",
+            "resource_ids": [
+              "shared-resource"
+            ]
+          }
+        }
+      ],
+      "progress": [
+        {
+          "kind": "progress",
+          "entity_id": "progress-1",
+          "revision": 1,
+          "deleted": false,
+          "payload": {
+            "plan_id": "plan-1",
+            "mastery": 0.5,
+            "completed_tasks": 2
+          }
+        }
+      ],
+      "resources": [
+        {
+          "kind": "resource",
+          "entity_id": "shared-resource",
+          "revision": 1,
+          "deleted": false,
+          "payload": {
+            "product_classification": "MODEL",
+            "filename": "fixture.bin",
+            "media_type": "application/octet-stream",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 10
+          },
+          "product_classification": "MODEL",
+          "plan_ids": [
+            "plan-1",
+            "plan-2"
+          ],
+          "device_availability": "MISSING_ON_THIS_DEVICE"
+        }
+      ],
+      "tombstones": [],
+      "snapshot_revision": "pg-snapshot:824:824:",
+      "snapshot_scope": {
+        "issuer": "http://127.0.0.1:63260/realms/disposable",
+        "subject_id": "disposable-account",
+        "organization_id": "personal_org_6f0e726c20cc4cafd70aef73c8f28765759e5f7addf3b326766d6d2774e693ad",
+        "workspace_id": "personal_ws_6f0e726c20cc4cafd70aef73c8f28765759e5f7addf3b326766d6d2774e693ad"
+      },
+      "learning_state": {
+        "status": "PARTIAL_UNSUPPORTED",
+        "known_empty": false,
+        "account_initialized": "UNKNOWN",
+        "supported_scope_initialized": true,
+        "supported_scope_empty": false,
+        "authority": "COMMITTED_V1_STATE_AND_REQUEST_LEDGER",
+        "reason": "FULL_ACCOUNT_HISTORY_AUTHORITY_UNAVAILABLE"
+      },
+      "progress_provenance": [
+        {
+          "entity_id": "progress-1",
+          "revision": 1,
+          "source": "SERVER_CONFIRMED",
+          "snapshot_revision": "pg-snapshot:824:824:",
+          "server_confirmed_at": "2026-09-13T15:05:08.802345+08:00",
+          "trusted_cache": false
+        }
+      ],
+      "observation": {
+        "schema": "mentorflow.sync-observation.v1",
+        "source": "SERVER_CONFIRMED",
+        "snapshot_revision": "pg-snapshot:824:824:",
+        "server_confirmed_at": "2026-09-13T15:05:08.802345+08:00",
+        "trusted_cache": false,
+        "supported_entity_types": [
+          "plans",
+          "progress",
+          "resources"
+        ],
+        "unsupported_entity_types": [
+          "tasks_calendar",
+          "review",
+          "learner_model",
+          "learning_runs",
+          "messages",
+          "teaching_sessions",
+          "nonsecret_settings",
+          "model_metadata"
+        ],
+        "counts": {
+          "plans": 2,
+          "progress": 1,
+          "resources": 1,
+          "tombstones": 0
+        },
+        "unsupported_counts": {
+          "tasks_calendar": null,
+          "review": null,
+          "learner_model": null,
+          "learning_runs": null,
+          "messages": null,
+          "teaching_sessions": null,
+          "nonsecret_settings": null,
+          "model_metadata": null
+        },
+        "resource_missing_state": "DEVICE_LOCAL_RESOLVER",
+        "learning_state": {
+          "status": "PARTIAL_UNSUPPORTED",
+          "known_empty": false,
+          "account_initialized": "UNKNOWN",
+          "supported_scope_initialized": true,
+          "supported_scope_empty": false,
+          "authority": "COMMITTED_V1_STATE_AND_REQUEST_LEDGER",
+          "reason": "FULL_ACCOUNT_HISTORY_AUTHORITY_UNAVAILABLE"
+        },
+        "missing_resources": [
+          "shared-resource"
+        ]
+      }
+    },
+    "endpoint": "http://127.0.0.1:63261",
+    "backend_runtime_pass": true,
+    "independent_client_rehydrate": true,
+    "auth_evidence": "REAL_RS256_VALIDATION_AND_DB_BOOTSTRAP; EPHEMERAL_LOOPBACK_JWKS_ISSUER; NO_NATIVE_LOGIN_CLAIM"
+  },
+  "WORKTREE_CLEAN": "verified after receipt delivery commit; exact final SHA in response",
+  "KEYCLOAK_MUTATION": 0,
+  "REAL_SMTP_SEND": 0,
+  "SECRET_VALUES_EMITTED": 0,
+  "GITHUB_ACTIONS_EXECUTED": 0,
+  "WORKER_STATUS": "SILENT",
+  "0036_TO_0037": "PASS"
+}
