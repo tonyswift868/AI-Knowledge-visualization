@@ -383,7 +383,7 @@
       {
         "test_id": "ACCOUNT_MVP_USER_TEST_20260914",
         "receipt_path": "docs/governance/receipts/ACCOUNT_MVP_USER_TEST_20260914.json",
-        "receipt_sha256": "2d9a56c84cce5f07f70691e8ec95508b0a96f9a89b2c4eccbfe6b32d0b28540c"
+        "receipt_sha256": "f5015481633fd9e56b60a982fe7a30ab088c316df1a19101e723924b6f5c3795"
       }
     ],
     "runtime_lease_id": "MF-ACCOUNT-MVP-20260914",
