@@ -182,5 +182,3 @@ MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 can
 
 `04` delivery `dd86307c387ed8012a6edbe130b6ccd7eb510d68` integrated through its exact parent chain (`f097cd4`, `c423bc9`, `6a15de5`, `dd86307`). `SYNC_ITEM_REGISTRY` and migration `0039_generic_sync_kinds` are now the canonical integration baseline. Unsupported kinds remain fail-closed; structured sync entities/projections remain non-authoritative. Full account rehydration is NOT_YET_COMPLETE; domain adapters remain pending.
 
-
-
