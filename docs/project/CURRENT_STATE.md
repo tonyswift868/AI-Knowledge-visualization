@@ -11,8 +11,8 @@ MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
 SOURCE_BASELINE = CANONICAL_SOURCE_BASELINE
 PRODUCT_ACCEPTANCE = PENDING_E109_FINAL_QA
 INTEGRATION_BRANCH = integration/main3
-KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
-KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
+KNOWLEDGE_COMMIT = 5372881addcb7ee67e423e9233e89505404fcfee
+KNOWLEDGE_TREE = f1a49f60601bf39c38654dcb4f6f77644c835b87
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
 ALEMBIC_HEAD = 0039_generic_sync_kinds
@@ -174,3 +174,4 @@ MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 can
 ## Generic sync foundation (2026-09-14)
 
 `04` delivery `dd86307c387ed8012a6edbe130b6ccd7eb510d68` integrated through its exact parent chain (`f097cd4`, `c423bc9`, `6a15de5`, `dd86307`). `SYNC_ITEM_REGISTRY` and migration `0039_generic_sync_kinds` are now the canonical integration baseline. Unsupported kinds remain fail-closed; structured sync entities/projections remain non-authoritative. Full account rehydration is NOT_YET_COMPLETE; domain adapters remain pending.
+

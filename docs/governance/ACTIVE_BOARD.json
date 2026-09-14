@@ -275,9 +275,9 @@
   },
   "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
   "knowledge_delivery": {
-    "ref": "195fb241f30cbd9e6ea376bd6d22b76843e5d53a",
-    "commit": "195fb241f30cbd9e6ea376bd6d22b76843e5d53a",
-    "tree": "46a93d98bef697831ae9d9496334d902bc6ce181"
+    "ref": "5372881addcb7ee67e423e9233e89505404fcfee",
+    "commit": "5372881addcb7ee67e423e9233e89505404fcfee",
+    "tree": "f1a49f60601bf39c38654dcb4f6f77644c835b87"
   },
   "control_plane": {
     "evidence": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
@@ -404,3 +404,4 @@
   "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json",
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json"
 }
+
