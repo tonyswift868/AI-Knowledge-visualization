@@ -82,6 +82,8 @@ from .unit_of_work import (
     TransactionalAuditPort,
     TransactionalOutboxPort,
 )
+from .rehydration_dispatcher import DispatchContext, RehydrationDispatcher, RehydrationRejected
+from .plan_task_mutation import PlanTaskMutationRejected, PlanTaskMutationService
 
 
 __all__ = [
@@ -144,6 +146,11 @@ __all__ = [
     "TenantTransactionManagerPort",
     "TransactionalAuditPort",
     "TransactionalOutboxPort",
+    "DispatchContext",
+    "RehydrationDispatcher",
+    "RehydrationRejected",
+    "PlanTaskMutationRejected",
+    "PlanTaskMutationService",
     "build_tenant_isolation_corpus",
     "create_enterprise_postgres_engine",
     "detect_enterprise_schema_version",

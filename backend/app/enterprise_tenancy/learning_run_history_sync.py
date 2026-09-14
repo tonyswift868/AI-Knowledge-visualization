@@ -11,6 +11,16 @@ from datetime import datetime
 from ..orm import LearningRunORM, LearningRunMessageORM
 
 SUPPORTED_KINDS = frozenset({"learning_run", "history"})
+_SECRET_NAMES = {"password", "token", "credential", "api_key", "private_key", "signing_key"}
+
+def _assert_safe(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if any(secret in str(key).lower() for secret in _SECRET_NAMES):
+                raise ValueError("SECRET_FIELD_REJECTED")
+            _assert_safe(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value: _assert_safe(child)
 
 @dataclass(frozen=True)
 class TrustedSyncScope:
@@ -22,6 +32,7 @@ class TrustedSyncScope:
 def project_run(run: LearningRunORM, scope: TrustedSyncScope) -> dict[str, Any]:
     if run.workspace_id != scope.workspace_id:
         raise ValueError("LEARNING_RUN_WORKSPACE_SCOPE_MISMATCH")
+    _assert_safe(run.state or {})
     return {"kind":"learning_run","entity_id":run.id,"workspace_id":run.workspace_id,
             "task_id":run.task_id,"lesson_id":run.lesson_id,"phase":run.phase,
             "status":run.status,"revision":run.revision,"state":dict(run.state or {}),
@@ -31,6 +42,7 @@ def project_run(run: LearningRunORM, scope: TrustedSyncScope) -> dict[str, Any]:
 def project_history(messages: list[LearningRunMessageORM], scope: TrustedSyncScope, run_id: str) -> dict[str, Any]:
     if any(m.run_id != run_id for m in messages): raise ValueError("HISTORY_RUN_MISMATCH")
     rows=sorted(messages,key=lambda m:(m.created_at,m.id))
+    for message in rows: _assert_safe(message.grounding or {})
     return {"kind":"history","entity_id":run_id,"workspace_id":scope.workspace_id,
             "run_id":run_id,"entries":[{"message_id":m.id,"run_id":m.run_id,"role":m.role,
             "phase":m.phase,"content":m.content,"grounding":dict(m.grounding or {}),
@@ -43,6 +55,7 @@ def apply_snapshot(session, snapshot: Mapping[str, Any], scope: TrustedSyncScope
     if snapshot["kind"] == "learning_run":
         run=session.get(LearningRunORM,str(snapshot["entity_id"]))
         if run and run.revision > int(snapshot["revision"]): return "STALE_REJECTED"
+        if run and run.revision == int(snapshot["revision"]): return "DUPLICATE_IGNORED"
         if run is None: run=LearningRunORM(id=str(snapshot["entity_id"]),workspace_id=scope.workspace_id,task_id=str(snapshot.get("task_id") or ""),lesson_id=str(snapshot.get("lesson_id") or "")) ; session.add(run)
         for key in ("task_id","lesson_id","phase","status","state","revision"): setattr(run,key,snapshot.get(key))
         return "APPLIED"

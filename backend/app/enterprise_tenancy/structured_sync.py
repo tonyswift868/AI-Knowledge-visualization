@@ -17,6 +17,19 @@ from .context import TenantTransactionContext
 from .models import EnterprisePersistenceRequestError
 from .sync_registry import SYNC_KINDS, SYNC_ITEM_REGISTRY
 
+_SECRET_KEYS = frozenset({'password', 'access_token', 'refresh_token', 'token', 'credential',
+                          'api_key', 'provider_secret', 'private_key', 'signing_key', 'secret'})
+
+def _reject_secret(value):
+    if isinstance(value, dict):
+        if any(str(k).lower() in _SECRET_KEYS or any(part in str(k).lower() for part in ('password', 'token', 'secret', 'credential', 'private_key')) for k in value):
+            raise error('SYNC_SECRET_FIELD_REJECTED', 422)
+        for child in value.values():
+            _reject_secret(child)
+    elif isinstance(value, list):
+        for child in value:
+            _reject_secret(child)
+
 
 metadata = MetaData()
 SCOPE = ('issuer', 'subject_id', 'organization_id', 'workspace_id')
@@ -96,6 +109,7 @@ class StructuredSyncService:
         payload = {}
         if not deleting:
             try:
+                _reject_secret(body.payload)
                 model = {'plan': Plan, 'progress': Progress, 'resource': Resource}.get(kind)
                 payload = (model.model_validate(body.payload).model_dump() if model else SYNC_ITEM_REGISTRY[kind].project(body.payload))
             except ValidationError as exc:

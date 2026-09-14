@@ -28,11 +28,11 @@ def call(request, method, *args, **kwargs):
     return JSONResponse(result, headers={'Cache-Control': 'no-store'})
 
 @router.put('/entities/{kind}/{entity_id}')
-def write(request: Request, kind: Literal['plan','progress','resource'], entity_id: str, body: Write):
+def write(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Write):
     return call(request, 'write', kind, entity_id, body)
 
 @router.post('/entities/{kind}/{entity_id}/delete')
-def delete(request: Request, kind: Literal['plan','progress','resource'], entity_id: str, body: Delete):
+def delete(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Delete):
     return call(request, 'write', kind, entity_id, body, deleting=True)
 
 @router.get('/snapshot')
