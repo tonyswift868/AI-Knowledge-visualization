@@ -15,6 +15,7 @@ from sqlalchemy import (MetaData, Table, Column, String, Integer, Boolean, JSON,
 
 from .context import TenantTransactionContext
 from .models import EnterprisePersistenceRequestError
+from .sync_registry import SYNC_KINDS, SYNC_ITEM_REGISTRY
 
 
 metadata = MetaData()
@@ -27,7 +28,7 @@ entities = Table('structured_sync_entities', metadata, *scope_columns(),
     Column('revision', Integer, nullable=False), Column('deleted', Boolean, nullable=False),
     Column('payload', JSON, nullable=False),
     CheckConstraint('revision > 0', name='ck_sync_revision'),
-    CheckConstraint("kind IN ('plan','progress','resource')", name='ck_sync_kind'))
+    CheckConstraint("kind IN ('plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting')", name='ck_sync_kind'))
 requests = Table('structured_sync_requests', metadata, *scope_columns(),
     Column('request_id', String(128), primary_key=True),
     Column('digest', String(64), nullable=False), Column('response', JSON, nullable=False))
@@ -90,12 +91,13 @@ class StructuredSyncService:
     def write(self, actor, tenant, kind, entity_id, body, *, deleting=False):
         import re
         from pydantic import ValidationError
-        if kind not in ('plan', 'progress', 'resource') or not re.fullmatch(ID_PATTERN, entity_id):
+        if kind not in SYNC_KINDS or not re.fullmatch(ID_PATTERN, entity_id):
             raise error('SYNC_ENTITY_INVALID', 422)
         payload = {}
         if not deleting:
             try:
-                payload = {'plan': Plan, 'progress': Progress, 'resource': Resource}[kind].model_validate(body.payload).model_dump()
+                model = {'plan': Plan, 'progress': Progress, 'resource': Resource}.get(kind)
+                payload = (model.model_validate(body.payload).model_dump() if model else SYNC_ITEM_REGISTRY[kind].project(body.payload))
             except ValidationError as exc:
                 raise error('SYNC_PAYLOAD_INVALID', 422) from exc
             # Preserve pre-contract request fingerprints when the optional field is absent.

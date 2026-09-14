@@ -4,7 +4,9 @@ import hashlib
 import json
 
 SCOPE_VERSION = 'SUPPORTED_REHYDRATION_SCOPE_V1'
-SUPPORTED_SCOPE = ('plans', 'progress', 'resource_metadata')
+SUPPORTED_SCOPE = ('plans', 'progress', 'resource_metadata', 'plan_tasks', 'calendars',
+                   'review_fsrs', 'learner_profile', 'learning_runs', 'teaching_chat_history',
+                   'nonsecret_settings')
 WHERE_SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 
 

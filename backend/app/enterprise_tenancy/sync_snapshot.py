@@ -2,10 +2,10 @@
 from sqlalchemy import text
 from .models import EnterprisePersistenceRequestError
 from .rehydration_manifest import SCOPE_VERSION, SUPPORTED_SCOPE
+from .sync_registry import SYNC_DOMAINS, SYNC_ITEM_REGISTRY
 
-SUPPORTED = ('plans', 'progress', 'resources')
-UNSUPPORTED = ('tasks_calendar', 'review', 'learner_model', 'learning_runs',
-               'messages', 'teaching_sessions', 'nonsecret_settings', 'model_metadata')
+SUPPORTED = SYNC_DOMAINS
+UNSUPPORTED = ('model_binary',)
 _SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 OBSERVE = text('''
 WITH scoped AS MATERIALIZED (
@@ -44,8 +44,8 @@ def observe(connection, scope, *, requested_scope=None, scope_version=None):
         plan_ids=sorted(references.get(e['entity_id'], [])),
         device_availability='NOT_OBSERVED_BY_SERVER',
     ) for e in live if e['kind'] == 'resource']
-    counts = {name: sum(e['kind'] == kind for e in live) for name, kind in
-              (('plans', 'plan'), ('progress', 'progress'), ('resources', 'resource'))}
+    counts = {v.domain: sum(e['kind'] == k for e in live)
+              for k, v in SYNC_ITEM_REGISTRY.items()}
     counts['tombstones'] = len(entities) - len(live)
     manifest = row['manifest']
     requested = list(SUPPORTED_SCOPE if requested_scope is None else requested_scope)

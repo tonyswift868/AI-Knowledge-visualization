@@ -28,7 +28,7 @@ def require_structured_sync_schema(connection):
         require(inspector.get_pk_constraint(table, schema='public')['constrained_columns'] == pk)
         checks = {c['name']: _expression(c['sqltext']) for c in inspector.get_check_constraints(table, schema='public')}
         require(checks == ({'ck_sync_revision': _expression('revision > 0'),
-            'ck_sync_kind': _expression("kind = ANY (ARRAY['plan','progress','resource'])")}
+            'ck_sync_kind': _expression("kind = ANY (ARRAY['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'])")}
             if table.endswith('entities') else {'ck_rehydration_generation': _expression('generation > 0')}
             if table == 'rehydration_manifests' else {}))
         if table == 'rehydration_manifests':
