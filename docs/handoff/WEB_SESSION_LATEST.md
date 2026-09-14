@@ -6,11 +6,11 @@
 REPOSITORY = https://github.com/tonyswift868/AI-Knowledge-visualization
 PROJECT = MentorFlow
 GENERATION = main3
-KNOWLEDGE_REF = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
-KNOWLEDGE_COMMIT = 195fb241f30cbd9e6ea376bd6d22b76843e5d53a
-KNOWLEDGE_TREE = 46a93d98bef697831ae9d9496334d902bc6ce181
+KNOWLEDGE_REF = 06e5ebcb8d084caf675611518dfac490b9168093
+KNOWLEDGE_COMMIT = 06e5ebcb8d084caf675611518dfac490b9168093
+KNOWLEDGE_TREE = 498238eb6be9b15f816012d0b402a87647a5f41b
 CURRENT_INTEGRATION_REF = integration/main3
-CURRENT_INTEGRATION_COMMIT = d6aa3a56075ea5b5e4c21588b61a4da7d3fae04e
+CURRENT_INTEGRATION_COMMIT = 73d0d8f07d8ad2571afed44a288a62d8625cd107
 COMMIT_KIND = SOURCE_SNAPSHOT; publication HEAD is supplied by ref/immutable receipt.
 ACTIVE_SLOTS = A/01/02/03/04
 SLOT_STATE = A:SILENT; 01:SILENT; 02:SILENT; 03:SILENT; 04:SILENT; B:SILENT
@@ -49,7 +49,7 @@ READ_FIRST:
 - [COMPONENT_MAP.md](../project/COMPONENT_MAP.md)
 
 ```text
-GENERATED_FROM = d6aa3a56075ea5b5e4c21588b61a4da7d3fae04e; AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
-generated_at = 2026-09-13T22:00:40Z
+GENERATED_FROM = 73d0d8f07d8ad2571afed44a288a62d8625cd107; AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
+generated_at = 2026-09-14T03:13:49Z
 ```
 Timestamp is source commit time; board is a receipt-derived snapshot, not live telemetry.
