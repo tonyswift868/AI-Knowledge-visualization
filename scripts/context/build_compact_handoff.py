@@ -201,12 +201,12 @@ def build_web(root: Path) -> bytes:
     snapshot = git(root, "log", "-1", "--format=%H", "HEAD", "--", *SOURCE_PATHS)
     verify_source(root, fields, snapshot)
     git(root, "merge-base", "--is-ancestor", snapshot, "HEAD")
-    require(not git(root, "diff", "--name-only", snapshot, "HEAD", "--", *SOURCE_PATHS),
-            "HEAD contains newer source than web snapshot")
-    require(not git(root, "diff", "--name-only", "HEAD", "--", *SOURCE_PATHS),
-            "commit source changes before generating web handoff")
-    require(not git(root, "diff", "--cached", "--name-only", "HEAD", "--", *SOURCE_PATHS),
-            "commit staged source changes before generating web handoff")
+    def source_changes(*args):
+        return [p for p in git(root, "diff", "--name-only", *args).splitlines()
+                if p.replace("\\", "/") != WEB_OUTPUT]
+    require(not source_changes(snapshot, "HEAD"), "HEAD contains newer source than web snapshot")
+    require(not source_changes("HEAD"), "commit source changes before generating web handoff")
+    require(not source_changes("--cached", "HEAD"), "commit staged source changes before generating web handoff")
     require(not git(root, "ls-files", "--others", "--exclude-standard", "--", *SOURCE_PATHS),
             "untracked source files before web generation")
     branch = git(root, "symbolic-ref", "--quiet", "--short", "HEAD", detached=True)

@@ -7,7 +7,7 @@ import re
 import sys
 from urllib.parse import unquote, urlsplit
 
-from build_compact_handoff import ROOT, OUTPUT, WEB_OUTPUT, build, build_web, check_output, read, require, safe_path, secret_count, no_duplicate_keys
+from build_compact_handoff import ROOT, OUTPUT, WEB_OUTPUT, build, build_web, check_output, read, require, safe_path, secret_count, no_duplicate_keys, load_state, verify_source, git
 import json
 
 LIMITS = {"AGENTS.md": 120, "ARCHITECTURE.md": 300, "docs/project/CURRENT_STATE.md": 180, "docs/exec-plans/active/MAIN3.md": 200}
@@ -58,48 +58,104 @@ def link_failures(root: Path, documents):
     return failures, count
 
 
+EXPECTED_ERRORS = (ValueError, OSError, TypeError, KeyError)
+
+
+def diagnostic(exc, fallback):
+    """Return only static reason IDs; exception text may contain sensitive values."""
+    if isinstance(exc, json.JSONDecodeError):
+        return "JSON_PARSE_FAILED"
+    message = str(exc)
+    for fragment, reason in (
+        ("duplicate JSON key", "DUPLICATE_JSON_KEY"),
+        ("missing/oversized input", "KNOWLEDGE_INPUT_MISSING_OR_OVERSIZED"),
+        ("redirected repository", "UNSAFE_INPUT_PATH"),
+        ("path escapes repository", "UNSAFE_INPUT_PATH"),
+        ("absolute input path", "UNSAFE_INPUT_PATH"),
+        ("commit source changes", "DIRTY_SOURCE"),
+        ("commit staged source", "DIRTY_SOURCE"),
+        ("untracked source", "UNTRACKED_SOURCE"),
+        ("source tree not reproducible", "SOURCE_TREE_NOT_REPRODUCIBLE"),
+        ("4096 bytes", "HANDOFF_SIZE_LIMIT"),
+        ("obvious secret", "SECRET_PATTERN_FOUND"),
+        ("dependency", "QUEUE_DEPENDENCY_INVALID"),
+        ("unlock edge", "QUEUE_DEPENDENCY_INVALID"),
+    ):
+        if fragment in message:
+            return reason
+    return fallback
+
+
+def safe_label(path):
+    # Emit repository-relative file identifiers only, never exception text or link targets.
+    return path if re.fullmatch(r"[A-Za-z0-9_./-]+", path) and not secret_count(path) else "REDACTED_PATH"
+
+
+def scan(root, session_delta="NONE"):
+    """Run independent gates even after failure; continue per file within scan gates."""
+    stages = {name: [] for name in (
+        "LINE_BUDGET", "STATE_BOARD_QUEUE", "COMPACT_HANDOFF", "WEB_HANDOFF",
+        "INTERNAL_LINKS", "JSON_PARSE_DUPLICATE_KEYS", "SECRET_PATTERN")}
+
+    def attempt(stage, action, reason, path=""):
+        try:
+            action()
+        except EXPECTED_ERRORS as exc:
+            stages[stage].append((diagnostic(exc, reason), safe_label(path)))
+
+    for name, limit in LIMITS.items():
+        attempt("LINE_BUDGET", lambda n=name, l=limit: require(len(read(root, n).splitlines()) <= l,
+                "line budget exceeded"), "LINE_BUDGET_EXCEEDED", name)
+
+    def state():
+        fields, board, _tasks = load_state(root)
+        verify_source(root, fields, git(root, "rev-parse", "HEAD"))
+        if "current_stage" in board:
+            queue = json.loads(read(root, "docs/governance/DEPENDENCY_QUEUE.json"), object_pairs_hook=no_duplicate_keys)
+            require(board["authority"] == queue["authority"], "state disagreement: authority")
+            require(board["current_stage"] == queue["current_stage"], "state disagreement: current stage")
+            for key, value in board["current_stage"].items():
+                require(fields.get(key) == value, "state disagreement: current field")
+    attempt("STATE_BOARD_QUEUE", state, "STATE_DISAGREEMENT")
+    attempt("COMPACT_HANDOFF", lambda: check_output(root, OUTPUT, build(root, session_delta)), "STALE_COMPACT_HANDOFF")
+    attempt("WEB_HANDOFF", lambda: check_output(root, WEB_OUTPUT, build_web(root)), "STALE_WEB_HANDOFF")
+
+    docs = sorted((root / "docs").rglob("*.md")) + [root / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", "installer/inno/README.md")]
+    for file in docs:
+        attempt("INTERNAL_LINKS", lambda f=file: require(not link_failures(root, [f])[0],
+                "broken internal documentation links"), "BROKEN_INTERNAL_LINK", file.relative_to(root).as_posix())
+
+    files = [root / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", ".gitignore", ".gitattributes", "docs/legacy-koikatsu/KKS_SPARK_TASK_COMPLETION_REPORT.md")]
+    for directory in KNOWLEDGE_DIRS:
+        files.extend(p for p in (root / directory).rglob("*") if p.suffix in {".md", ".json", ".py"})
+    files.extend(root / name for name in EXTRA_KNOWLEDGE)
+    for file in sorted(set(files)):
+        relative = file.relative_to(root).as_posix()
+        if file.suffix == ".json":
+            attempt("JSON_PARSE_DUPLICATE_KEYS", lambda n=relative: json.loads(read(root, n), object_pairs_hook=no_duplicate_keys),
+                    "JSON_PARSE_FAILED", relative)
+        attempt("SECRET_PATTERN", lambda n=relative: require(secret_count(read(root, n)) == 0,
+                "obvious secret material found"), "SECRET_PATTERN_FOUND", relative)
+    return stages
+
+
+def report(stages):
+    failures = 0
+    for stage, findings in stages.items():
+        print(f"{stage} = {'FAIL' if findings else 'PASS'}")
+        for reason, path in findings:
+            print(f"STAGE={stage} RESULT=FAIL REASON_ID={reason} INPUT={path or 'STAGE_CONTRACT'}")
+        failures += len(findings)
+    print(f"KNOWLEDGE_FAILURE_COUNT={failures}")
+    print(f"KNOWLEDGE_LINT={'FAIL' if failures else 'PASS'}")
+    return int(bool(failures))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session-delta", default="NONE")
     args = parser.parse_args()
-    try:
-        for name, limit in LIMITS.items():
-            lines = len(read(ROOT, name).splitlines())
-            require(lines <= limit, f"line budget exceeded: {name}")
-            print(f"{name}: {lines}/{limit} lines")
-        output = build(ROOT, args.session_delta)
-        check_output(ROOT, OUTPUT, output)
-        web = build_web(ROOT)
-        check_output(ROOT, WEB_OUTPUT, web)
-        docs = sorted((ROOT / "docs").rglob("*.md")) + [ROOT / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", "installer/inno/README.md")]
-        failures, links = link_failures(ROOT, docs)
-        for failure in failures:
-            print("BROKEN_LINK " + failure, file=sys.stderr)
-        require(not failures, "broken internal documentation links")
-        files = [ROOT / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", ".gitignore", ".gitattributes", "docs/legacy-koikatsu/KKS_SPARK_TASK_COMPLETION_REPORT.md")]
-        for directory in KNOWLEDGE_DIRS:
-            files.extend(p for p in (ROOT / directory).rglob("*") if p.suffix in {".md", ".json", ".py"})
-        files.extend(ROOT / name for name in EXTRA_KNOWLEDGE)
-        files = sorted(set(files))
-        total = 0
-        json_files = 0
-        for file in files:
-            relative = file.relative_to(ROOT).as_posix()
-            contents = read(ROOT, relative)
-            if file.suffix == ".json":
-                json.loads(contents, object_pairs_hook=no_duplicate_keys)
-                json_files += 1
-            count = secret_count(contents)
-            if count:
-                print(f"SECRET_PATTERN path={relative} count={count}", file=sys.stderr)
-            total += count
-        require(total == 0, "obvious secret material found")
-        print(f"KNOWLEDGE_LINT=PASS JSON_PARSE=PASS JSON_FILES={json_files} LINKS={links} HANDOFF_BYTES={len(output)} WEB_HANDOFF_BYTES={len(web)} SECRET_VALUE_COUNT=0 SECRET_FILES={len(files)}")
-        print("SECRET_SCOPE=knowledge maps/state/docs/context tools + extended auth/update/installer/staging contracts + generated outputs; obvious patterns only, not repository/history audit")
-        return 0
-    except (ValueError, OSError, TypeError, KeyError) as exc:
-        print(f"KNOWLEDGE_LINT=FAIL ({type(exc).__name__}); check local knowledge inputs/links/handoff.", file=sys.stderr)
-        return 1
+    return report(scan(ROOT, args.session_delta))
 
 
 if __name__ == "__main__":
