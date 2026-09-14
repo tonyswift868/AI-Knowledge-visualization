@@ -141,3 +141,7 @@ candidate hashes；source、synthetic、本地 native、独立 retained、生产
 和 [workflow](../../governance/DEVELOPMENT_WORKFLOW.md) 管理。
 本轮发布权限为组合回归和知识门禁通过后的 origin/integration/main3 普通 push；原生测试仅隔离 fixture。
 LIVE_PRODUCTION_LOGIN=NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；无真实 SMTP/安装、manual Actions、tags、force push、main2 mutation 或 formal main3。
+
+## Generic sync foundation baseline
+
+MAIN3 baseline now includes the exact 04 generic sync infrastructure chain through `b053853`. This is a shared dependency for parallel domain adapters. Registry-driven kinds, 0039 migration, and S3 seam are integrated; full account rehydration remains NOT_YET_COMPLETE.
