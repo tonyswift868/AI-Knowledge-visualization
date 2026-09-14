@@ -168,17 +168,22 @@ a = Analysis(
 # extension imports the versioned data DLL directly; keep the conflicting
 # pair out of the root so Qt loads the Windows platform shim it was built for.
 _conflicting_root_icu = {"icuuc.dll", "icudt78.dll"}
-a.binaries = [
-    entry
-    for entry in a.binaries
-    if not (
-        (
-            Path(str(entry[0])).name.casefold() in _conflicting_root_icu
-            or Path(str(entry[1])).name.casefold() in _conflicting_root_icu
-        )
-        and Path(str(entry[1])).parent in (Path("."), Path(""))
-    )
+_removed_conflicting_icu = [
+    entry for entry in a.binaries
+    if Path(str(entry[0])).name.casefold() in _conflicting_root_icu
 ]
+for _entry in _removed_conflicting_icu:
+    print(f"REMOVED_FORBIDDEN_ICU dest={_entry[0]} src={_entry[1]} type={_entry[2]}")
+a.binaries = [
+    entry for entry in a.binaries
+    if Path(str(entry[0])).name.casefold() not in _conflicting_root_icu
+]
+_forbidden_icu_dest_count = sum(
+    Path(str(entry[0])).name.casefold() == "icuuc.dll" for entry in a.binaries
+)
+assert _forbidden_icu_dest_count == 0, (
+    f"FORBIDDEN_ICU_DEST_COUNT={_forbidden_icu_dest_count}"
+)
 pyz = PYZ(a.pure)
 
 # Some wheel license trees exceed MAX_PATH even inside the prescribed D: build
