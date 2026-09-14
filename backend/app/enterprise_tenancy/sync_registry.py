@@ -14,12 +14,12 @@ class SyncItemAdapter:
         return self.encode(value)
 
 SYNC_ITEM_REGISTRY = {a.kind: a for a in (
-    SyncItemAdapter('plan', 'plans'), SyncItemAdapter('progress', 'progress/mastery'),
-    SyncItemAdapter('resource', 'resource metadata'), SyncItemAdapter('task', 'plan tasks'),
-    SyncItemAdapter('calendar', 'calendars'), SyncItemAdapter('review', 'review/FSRS'),
-    SyncItemAdapter('learner_profile', 'learner/student profile'),
-    SyncItemAdapter('learning_run', 'learning runs'), SyncItemAdapter('history', 'teaching/chat history'),
-    SyncItemAdapter('setting', 'non-secret workspace/account settings'),
+    SyncItemAdapter('plan', 'plans'), SyncItemAdapter('progress', 'progress'),
+    SyncItemAdapter('resource', 'resource_metadata'), SyncItemAdapter('task', 'plan_tasks'),
+    SyncItemAdapter('calendar', 'calendars'), SyncItemAdapter('review', 'review_fsrs'),
+    SyncItemAdapter('learner_profile', 'learner_profile'),
+    SyncItemAdapter('learning_run', 'learning_runs'), SyncItemAdapter('history', 'teaching_chat_history'),
+    SyncItemAdapter('setting', 'nonsecret_settings'),
 )}
 SYNC_KINDS = frozenset(SYNC_ITEM_REGISTRY)
 SYNC_DOMAINS = tuple(a.domain for a in SYNC_ITEM_REGISTRY.values())
