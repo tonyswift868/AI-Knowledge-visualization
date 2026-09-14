@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
-from sqlalchemy import Boolean, Column, Integer, JSON, MetaData, String, Table, create_engine, select, update
+from sqlalchemy import Boolean, Column, Integer, JSON, MetaData, String, Table, create_engine, select, update, func
 
 from .profile_settings_sync import validate, NONSECRET_SETTINGS_ALLOWLIST, ProfileSettingsRejected
 
@@ -59,7 +59,7 @@ class LocalProfileSettingsStore:
             rows = c.execute(select(settings.c.key, settings.c.value).filter_by(**scope)).all()
         return {key: value for key, value in rows}
 
-    def mutate(self, *, account_id, organization_id, workspace_id, profile=None, setting_updates=None, unset=(), request_id=None, emit_outbox=True):
+    def mutate(self, *, account_id, organization_id, workspace_id, profile=None, setting_updates=None, unset=(), request_id=None, emit_outbox=True, server_revision=None):
         scope = self._scope(account_id, organization_id, workspace_id)
         profile = dict(profile or {})
         profile = validate(profile)
@@ -69,35 +69,50 @@ class LocalProfileSettingsStore:
             raise ProfileSettingsRejected('unknown_or_sensitive_field')
         request_id = request_id or 'local-' + uuid.uuid4().hex
         now = datetime.now(timezone.utc).isoformat()
-        with self.transaction() as c:
+        def work(c):
             old = c.execute(select(profiles).filter_by(**scope)).mappings().first()
             revision = int(old['revision']) if old else 0
+            new_revision = int(server_revision) if server_revision is not None else revision + 1
             merged = validate({**(old['values'] if old else {}), **profile})
             c.execute(profiles.delete().filter_by(**scope))
-            c.execute(profiles.insert().values(**scope, revision=revision + 1, values=merged))
+            c.execute(profiles.insert().values(**scope, revision=new_revision, values=merged))
             existing = {key: value for key, value in c.execute(
                 select(settings.c.key, settings.c.value).filter_by(**scope)).all()}
             for key in unset: existing.pop(key, None)
             existing.update(updates)
             c.execute(settings.delete().filter_by(**scope))
             for key, value in existing.items():
-                c.execute(settings.insert().values(**scope, key=key, value=value, revision=revision + 1))
+                c.execute(settings.insert().values(**scope, key=key, value=value, revision=new_revision))
+            if request_id:
+                for kind, entity, payload in (('learner_profile', account_id, merged), ('setting', account_id, existing)):
+                    digest = hashlib.sha256(json.dumps([kind, entity, new_revision, payload], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                    existing_intent = c.execute(select(outbox).where(outbox.c.request_id == request_id + ':' + kind)).mappings().first()
+                    if existing_intent and existing_intent['fingerprint'] != digest:
+                        raise ProfileSettingsRejected('request_id_payload_conflict')
             if not emit_outbox:
-                return revision + 1
+                return new_revision
             for kind, entity, payload in (('learner_profile', account_id, merged), ('setting', account_id, existing)):
-                digest = hashlib.sha256(json.dumps([kind, entity, revision + 1, payload], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                digest = hashlib.sha256(json.dumps([kind, entity, new_revision, payload], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
                 c.execute(outbox.insert().prefix_with('OR IGNORE').values(request_id=request_id + ':' + kind, **scope, kind=kind, entity_id=entity,
                     operation='upsert', expected_revision=revision, payload=payload, fingerprint=digest, status='PENDING',
                     attempt_count=0, created_at=now, updated_at=now))
-        return revision + 1
+            return new_revision
+        active = getattr(self, '_active_connection', None)
+        return work(active) if active is not None else self._run_transaction(work)
+
+    def _run_transaction(self, work):
+        with self.transaction() as c:
+            return work(c)
 
     def export_snapshot(self, *, account_id, organization_id, workspace_id):
         scope = self._scope(account_id, organization_id, workspace_id)
         with self.engine.connect() as c:
             pr = c.execute(select(profiles.c.revision).filter_by(**scope)).scalar_one_or_none() or 0
-            sr = c.execute(select(settings.c.revision).filter_by(**scope)).scalar_one_or_none() or 0
-        return [{'kind': 'learner_profile', 'entity_id': account_id, 'revision': pr, 'deleted': False, 'payload': self.read_profile(**scope)},
-                {'kind': 'setting', 'entity_id': account_id, 'revision': sr, 'deleted': False, 'payload': self.read_settings(**scope)}]
+            sr = c.execute(select(func.max(settings.c.revision)).filter_by(**scope)).scalar_one_or_none() or 0
+        result=[]
+        if pr: result.append({'kind': 'learner_profile', 'entity_id': account_id, 'revision': pr, 'deleted': False, 'payload': self.read_profile(**scope)})
+        if sr: result.append({'kind': 'setting', 'entity_id': account_id, 'revision': sr, 'deleted': False, 'payload': self.read_settings(**scope)})
+        return result
 
     def apply_snapshot(self, items, *, account_id, organization_id, workspace_id):
         """Apply a local snapshot through the shared fail-closed dispatcher."""
@@ -109,7 +124,10 @@ class LocalProfileSettingsStore:
                    'entities': list(items)}
         adapter = type('Adapter', (), {'apply': lambda _, item, *, scope, store: store.apply_item(item, scope={
             'account_id': scope['subject_id'], 'organization_id': scope['organization_id'], 'workspace_id': scope['workspace_id']})})()
-        return RehydrationDispatcher({'learner_profile': adapter, 'setting': adapter}).apply(wrapped, context=context, store=self)
+        with self.transaction() as c:
+            self._active_connection = c
+            try: return RehydrationDispatcher({'learner_profile': adapter, 'setting': adapter}).apply(wrapped, context=context, store=self)
+            finally: self._active_connection = None
 
     def apply_item(self, item, *, scope):
         if set(scope) != set(SCOPE_FIELDS) or any(not isinstance(scope[k], str) or not scope[k] for k in SCOPE_FIELDS):
@@ -122,18 +140,39 @@ class LocalProfileSettingsStore:
                 current = c.execute(select(profiles.c.revision).filter_by(**scope)).scalar_one_or_none() or 0
                 current_payload = c.execute(select(profiles.c['values']).filter_by(**scope)).scalar_one_or_none() or {}
             else:
-                current = c.execute(select(settings.c.revision).filter_by(**scope).order_by(settings.c.revision.desc())).scalar_one_or_none() or 0
+                current = c.execute(select(func.max(settings.c.revision)).filter_by(**scope)).scalar_one_or_none() or 0
                 current_payload = {key: value for key, value in c.execute(select(settings.c.key, settings.c.value).filter_by(**scope)).all()}
         if item['revision'] < current:
             if current_payload == payload:
                 return 'DUPLICATE_IGNORED'
             raise ProfileSettingsRejected('stale_revision')
-        if item['revision'] == current and current > 0:
+        if item['revision'] == current and current > 0 and current_payload == payload:
             return 'DUPLICATE_IGNORED'
+        if item['revision'] == current and current > 0:
+            raise ProfileSettingsRejected('stale_revision')
+        if item.get('deleted') is True:
+            with self.transaction() as c:
+                if item['kind'] == 'learner_profile': c.execute(profiles.delete().filter_by(**scope))
+                else: c.execute(settings.delete().filter_by(**scope))
+            return 'DELETED'
+        existing_keys = tuple(current_payload) if item['kind'] == 'setting' else ()
+        if item['kind'] == 'setting':
+            conn = getattr(self, '_active_connection', None)
+            if conn is None:
+                with self.transaction() as conn:
+                    conn.execute(settings.delete().filter_by(**scope))
+                    for key, value in payload.items():
+                        conn.execute(settings.insert().values(**scope, key=key, value=value, revision=item['revision']))
+            else:
+                conn.execute(settings.delete().filter_by(**scope))
+                for key, value in payload.items():
+                    conn.execute(settings.insert().values(**scope, key=key, value=value, revision=item['revision']))
+            return 'APPLIED'
         self.mutate(account_id=scope['account_id'], organization_id=scope['organization_id'], workspace_id=scope['workspace_id'],
                     profile=payload if item['kind'] == 'learner_profile' else None,
                     setting_updates=payload if item['kind'] == 'setting' else None,
-                    request_id='rehydrate-' + item['kind'] + '-' + item['entity_id'], emit_outbox=False)
+                    unset=existing_keys, request_id='rehydrate-' + item['kind'] + '-' + item['entity_id'], emit_outbox=False,
+                    server_revision=item['revision'])
         return 'APPLIED'
 
     def pending(self):

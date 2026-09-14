@@ -39,7 +39,7 @@ class StructuredSyncClient:
         if state.get('contract_version') not in (2, 3) or not re.fullmatch(
                 r'pg-snapshot:\d+:\d+:(?:\d+(?:,\d+)*)?', state.get('snapshot_revision', '')):
             raise ValueError('Authoritative snapshot observation required')
-        result = {'plans':[], 'progress':[], 'resources':[], 'tombstones':[]}
+        result = {'plans':[], 'progress':[], 'resources':[], 'learner_profile':[], 'setting':[], 'learning_run':[], 'history':[], 'tombstones':[]}
         resource_projection = {r['resource_id']: r for r in state['resources']}
         for entity in state['entities']:
             if entity['deleted']:
@@ -50,7 +50,10 @@ class StructuredSyncClient:
                 entity = dict(entity, product_classification=projection['product_classification'],
                               plan_ids=projection['plan_ids'], device_availability='AVAILABLE_ON_THIS_DEVICE' if
                               self.resource_is_present(entity) else 'MISSING_ON_THIS_DEVICE')
-            result[{'plan':'plans','progress':'progress','resource':'resources'}[entity['kind']]].append(entity)
+            key = {'plan':'plans','progress':'progress','resource':'resources', 'learner_profile':'learner_profile', 'setting':'setting', 'learning_run':'learning_run', 'history':'history'}.get(entity['kind'])
+            if key is None:
+                raise ValueError('Unsupported structured sync kind')
+            result[key].append(entity)
         # Rebuild from the authoritative snapshot, never merge omitted cached objects.
         result['snapshot_revision'] = state['snapshot_revision']
         result['snapshot_scope'] = state['snapshot_scope']
