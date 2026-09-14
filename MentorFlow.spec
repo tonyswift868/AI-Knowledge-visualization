@@ -172,8 +172,11 @@ a.binaries = [
     entry
     for entry in a.binaries
     if not (
-        Path(str(entry[0])).parent == Path(".")
-        and Path(str(entry[0])).name.casefold() in _conflicting_root_icu
+        (
+            Path(str(entry[0])).name.casefold() in _conflicting_root_icu
+            or Path(str(entry[1])).name.casefold() in _conflicting_root_icu
+        )
+        and Path(str(entry[1])).parent in (Path("."), Path(""))
     )
 ]
 pyz = PYZ(a.pure)
