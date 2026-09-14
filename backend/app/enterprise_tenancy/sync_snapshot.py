@@ -4,7 +4,7 @@ from .models import EnterprisePersistenceRequestError
 from .rehydration_manifest import SCOPE_VERSION, SUPPORTED_SCOPE
 from .sync_registry import SYNC_DOMAINS, SYNC_ITEM_REGISTRY
 
-SUPPORTED = SYNC_DOMAINS
+SUPPORTED = tuple(v.domain for v in SYNC_ITEM_REGISTRY.values() if v.domain in SUPPORTED_SCOPE)
 UNSUPPORTED = ('model_binary',)
 _SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 OBSERVE = text('''
