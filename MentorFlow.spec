@@ -33,7 +33,9 @@ for source in sorted((backend_root / "app").rglob("*.py")):
         backend_modules.append(".".join(parts[:length]))
 
 datas = [
-    (str(account_ui), 'account-lifecycle'),
+    # source-inputs.json is build provenance, never runtime/user payload.
+    *[(str(path), str(Path('account-lifecycle') / path.relative_to(account_ui)))
+      for path in sorted(account_ui.rglob('*')) if path.is_file() and path.name != 'source-inputs.json'],
     (str(root / "backend" / "alembic" / "env.py"), "backend/alembic"),
     (str(root / "backend" / "alembic" / "script.py.mako"), "backend/alembic"),
     (str(root / "backend" / "alembic.ini"), "backend"),
