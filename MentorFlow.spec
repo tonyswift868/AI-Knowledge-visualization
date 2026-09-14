@@ -168,6 +168,15 @@ a = Analysis(
 # extension imports the versioned data DLL directly; keep the conflicting
 # pair out of the root so Qt loads the Windows platform shim it was built for.
 _conflicting_root_icu = {"icuuc.dll", "icudt78.dll"}
+def _forbidden_dest(entry):
+    return Path(str(entry[0])).name.casefold() in _conflicting_root_icu
+
+def _filter_forbidden_dest(entries, producer):
+    removed = [entry for entry in entries if _forbidden_dest(entry)]
+    for entry in removed:
+        print(f"REMOVED_FORBIDDEN_ICU producer={producer} dest={entry[0]} src={entry[1]} type={entry[2]}")
+    return [entry for entry in entries if not _forbidden_dest(entry)]
+
 _removed_conflicting_icu = [
     entry for entry in a.binaries
     if Path(str(entry[0])).name.casefold() in _conflicting_root_icu
@@ -258,6 +267,24 @@ install_gate_exe = EXE(
     bootloader_ignore_signals=False, strip=False, upx=True, console=False,
     uac_admin=False,
 )
+
+# The self-check executable shares the final COLLECT directory; apply the
+# same destination-level ICU guard to its collected binaries as well.
+selfcheck_a.binaries = [
+    entry for entry in selfcheck_a.binaries
+    if Path(str(entry[0])).name.casefold() not in _conflicting_root_icu
+]
+install_gate_a.binaries = _filter_forbidden_dest(install_gate_a.binaries, "install_gate_a.binaries")
+_pre_collect_counts = {
+    "a.binaries": sum(_forbidden_dest(e) for e in a.binaries),
+    "install_gate_a.binaries": sum(_forbidden_dest(e) for e in install_gate_a.binaries),
+    "selfcheck_a.binaries": sum(_forbidden_dest(e) for e in selfcheck_a.binaries),
+    "install_gate_a.datas": sum(_forbidden_dest(e) for e in install_gate_a.datas),
+}
+_pre_collect_total = sum(_pre_collect_counts.values())
+for _producer, _count in _pre_collect_counts.items():
+    print(f"PRODUCER_NAME={_producer} FORBIDDEN_DEST_COUNT={_count}")
+assert _pre_collect_total == 0, f"PRE_COLLECT_FORBIDDEN_ICU_DEST_COUNT={_pre_collect_total}"
 
 coll = COLLECT(
     exe,
