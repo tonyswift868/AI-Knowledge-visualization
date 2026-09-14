@@ -360,6 +360,7 @@
       "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS."
     }
   ],
-  "authority": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
-  "assignment_scope": "Preserve local bcc9f25, audit known remote docs, consume only exact a98584a, focused import/backend/login smoke, ordinary publication."
+  "authority": "GENERIC_SYNC_FOUNDATION_KNOWLEDGE_REFRESH_CLOSEOUT",
+  "assignment_scope": "Knowledge refresh closeout; foundation qualified; domain adapters not dispatched."
 }
+

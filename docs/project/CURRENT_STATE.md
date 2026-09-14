@@ -83,7 +83,7 @@ V2 QUICK_EXPORT/FULL_EXPORT、可选模型／大 payload、账号绑定、完整
 原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact
 `0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
 0036 是从 retained staging release / running image 恢复的逐字权威迁移；没有导入旧 release ancestry 或新增 import 产品功能。
-Alembic single head 与 backend expected head 均为 `0039_generic_sync_kinds`。
+当时 Alembic single head 与 backend expected head 均为 `0036_account_import_ledger`。
 A 本轮重新跑本地 PostgreSQL 18/18：fresh/0035/0033→0036、already-0036 只读接受、
 unknown future/十类 schema drift 拒绝、worker/backend preflight、ledger RLS/idempotency/rollback、
 default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/更新 smoke，计数见

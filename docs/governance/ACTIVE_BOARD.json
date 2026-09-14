@@ -8,7 +8,7 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_0325_BASE_3_DELIVERIES_PLUS_AUTHORIZED_A_WIRING_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "MENTORFLOW_ACCOUNT_MVP_USER_TEST_READY",
+  "authority": "GENERIC_SYNC_FOUNDATION_KNOWLEDGE_REFRESH_CLOSEOUT",
   "workers": {
     "A": {
       "status": "SILENT",
@@ -364,10 +364,10 @@
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "Account MVP 最新开发版 · 用户测试就绪",
-    "current_gate": "用户 A-F 账号验收",
+    "current_phase": "Generic Sync Foundation qualified · Knowledge Refresh closeout",
+    "current_gate": "Knowledge Refresh stage closeout",
     "staging_status": "ACCOUNT_MVP_TEST_RUNTIME_RUNNING; PRODUCTION_GATES_PENDING",
-    "database_revision": "0038_rehydration_manifest",
+    "database_revision": "0039_generic_sync_kinds",
     "current_test_id": "ACCOUNT_MVP_READY_20260914",
     "test_targets": [
       {
@@ -404,5 +404,6 @@
   "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json",
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json"
 }
+
 
 
