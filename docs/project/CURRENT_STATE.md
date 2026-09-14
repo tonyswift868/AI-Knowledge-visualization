@@ -1,7 +1,5 @@
 # Current state — source and acceptance
-
 固定字段由 compact handoff 读取；提交快照不是实时服务/进程状态。
-
 ```text
 PROJECT = MentorFlow
 GENERATION = MAIN3
@@ -31,11 +29,9 @@ PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
 CURRENT_PHASE = MAIN3 当前源码已发布；structured rehydration partial，domain correctness 与用户验收待完成
 ```
-
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
 当前 authority：`STRUCTURED_REHYDRATION_SOURCE_PARTIAL`；Account MVP 仅保留历史/Frozen smoke 证据。
-
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
 PROFILE_SETTINGS_EVIDENCE = LOCAL_FIXTURE_PARTIAL_CORRECTNESS_REVIEW_REQUIRED
 LEARNING_RUN_HISTORY = PARTIAL
