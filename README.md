@@ -2,6 +2,7 @@
 
 MentorFlow 是证据优先的目标驱动学习工作流：导入资料，分析目标与时间，生成可预览计划，按任务学习，并用引用、评估、错题和复习记录反馈进度。
 
+> 唯一阅读顺序：[AGENTS.md](AGENTS.md) → [ARCHITECTURE.md](ARCHITECTURE.md) → [当前状态](docs/project/CURRENT_STATE.md) → [组件地图](docs/project/COMPONENT_MAP.md) → [MAIN3 计划](docs/exec-plans/active/MAIN3.md) → [网页交接](docs/handoff/WEB_SESSION_LATEST.md)。
 > 新会话先读 [AGENTS.md](AGENTS.md) → [ARCHITECTURE.md](ARCHITECTURE.md) →
 > [CURRENT_STATE](docs/project/CURRENT_STATE.md)。源码 canonical 与产品验收分开记录。
 > 历史 master context、交接包和 dated reports 保留作证据，不作当前状态 authority。
@@ -15,6 +16,8 @@ cd "E:\aiPlay\AI-Knowledge visualization"
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 ```
+
+中央施工分支是 `integration/main3`；正常入口是原生用户名/密码登录，经 MentorFlow Backend 建立 session、workspace bootstrap 后进入主界面。当前源码已发布，Account MVP/Frozen smoke 与基础同步 adapter 有局部证据；完整 structured rehydration、生产部署和最终用户验收仍未完成。
 
 开发地址：`http://127.0.0.1:5173`；API 文档：`http://127.0.0.1:8000/docs`。
 

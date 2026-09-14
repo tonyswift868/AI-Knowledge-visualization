@@ -43,6 +43,17 @@
 历史 `reports`/`artifacts` 只按专项合同中的 exact pointer 读取；不要全量装入上下文。
 `data`、用户资料库、credentials、模型缓存与实际运行日志不是知识库输入。
 
+## 当前 structured rehydration 导航
+
+| 层级 | 正式路径 / 状态 | 生产者 → 消费者 | store / 证据 |
+| --- | --- | --- | --- |
+| 正式产品 | `enterprise_tenancy/learning_run_history_sync.py`、`profile_settings_sync.py` | ORM/domain rows → adapter/dispatcher（当前仍 partial） | LearningRunORM、LearningRunMessageORM；adapter tests |
+| 正式产品 | `enterprise_tenancy/rehydration_dispatcher.py`、`profile_settings_store.py` | authenticated snapshot → Device-B stores | local profile/settings store；focused tests |
+| 兼容路径 | `active_teaching.py`、`active_plan_tasks` | legacy runtime projection | 不拥有 canonical business truth；PlanTask seam 未完成 |
+| 正式基础设施 | `structured_sync.py`、`sync_snapshot.py`、`sync_registry.py` | scoped producer → server projection | `structured_sync_entities` 是 projection，不是业务 authority |
+| 独立 fixture | `backend/tests/`、`scripts/` qualification helpers | synthetic/test inputs → tests | 不等同真实产品验收 |
+| PoC | PowerSync Node/.NET/VPS material | evaluated future SyncEnginePort | deferred；不是当前 runtime dependency |
+
 ## Batch02 integration seams
 
 正常登录：[native form/client](../../desktop/native_auth.py) →

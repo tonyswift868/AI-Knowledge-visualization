@@ -360,7 +360,8 @@
       "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS."
     }
   ],
-  "authority": "GENERIC_SYNC_FOUNDATION_KNOWLEDGE_REFRESH_CLOSEOUT",
+  "authority": "STRUCTURED_REHYDRATION_SOURCE_PARTIAL",
   "assignment_scope": "Knowledge refresh closeout; foundation qualified; domain adapters not dispatched."
 }
+
 

@@ -2,7 +2,7 @@
 
 MAIN3_BASE = main2
 
-Current authority: `MENTORFLOW_ACCOUNT_MVP_USER_TEST_READY`。
+Current authority: `STRUCTURED_REHYDRATION_SOURCE_PARTIAL`；foundation 已发布，domain correctness 仍在推进。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
@@ -24,7 +24,7 @@ source 映射及分层状态见 [board](../../governance/ACTIVE_BOARD.json) 与
 
 01 453e940、02 fba57de、04 3feb4b6 exact delta 已集成；03 已有 UI 复用，A 完成官方生命周期和 Workbench 最小接线。
 最终 product source 83186d3c；最新开发 Frozen 实测 admin/learner main、多账号、WinVault、session-first 与 saved-credential 自动登录 PASS。
-官方客户端凭据 grant、测试公开邮件链接、官方 verify/UPDATE_PASSWORD 与 after-commit observer 已验证；用户 QQ 邮箱验收 PENDING。
+ 官方客户端凭据 grant、测试公开邮件链接、官方 verify/UPDATE_PASSWORD 与 after-commit observer 已验证；用户 QQ 邮箱验收 PENDING。
 [用户 A-F 清单](../../governance/ACCOUNT_MVP_USER_TEST.md) 和 [收口证据](../../governance/receipts/20260914-account-mvp-user-test-ready.json) 是下一轮入口。
 Workbench 最新开发版 CURRENT；最新已验收候选 NONE；旧 V3 FAIL 保留。环境至北京时间 2026-09-15 04:20:39，不自动清理。
 只普通发布 integration/main3；A/B 恢复、Portable Pack、迁移和生产 promotion 不在本轮范围。

@@ -8,7 +8,7 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_0325_BASE_3_DELIVERIES_PLUS_AUTHORIZED_A_WIRING_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "GENERIC_SYNC_FOUNDATION_KNOWLEDGE_REFRESH_CLOSEOUT",
+  "authority": "STRUCTURED_REHYDRATION_SOURCE_PARTIAL",
   "workers": {
     "A": {
       "status": "SILENT",
@@ -364,7 +364,7 @@
   },
   "gate_a_schema_receipt": "docs/governance/receipts/20260913-gatea-schema-0036-unblock.json",
   "workbench": {
-    "current_phase": "Generic Sync Foundation qualified · Knowledge Refresh closeout",
+    "current_phase": "Structured rehydration partial · domain correctness in progress",
     "current_gate": "Knowledge Refresh stage closeout",
     "staging_status": "ACCOUNT_MVP_TEST_RUNTIME_RUNNING; PRODUCTION_GATES_PENDING",
     "database_revision": "0039_generic_sync_kinds",
@@ -404,6 +404,7 @@
   "account_mvp_receipt": "docs/governance/receipts/20260914-account-mvp-closeout.json",
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json"
 }
+
 
 
 
