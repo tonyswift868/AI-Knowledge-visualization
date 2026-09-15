@@ -907,6 +907,7 @@ def test_fresh_teacher_uses_distributable_profile_without_overwriting_private_ch
 
 
 def test_private_teacher_profile_is_hidden_when_asset_is_not_bundled(tmp_path, monkeypatch):
+    monkeypatch.setenv("MENTORFLOW_PRIVATE_TEACHER_ASSET_ROOT", str(tmp_path / "empty-private-assets"))
     configure_orm(tmp_path / "teacher-private-profile-unavailable.db")
     package_root = tmp_path / "public-package"
     public_manifest = (

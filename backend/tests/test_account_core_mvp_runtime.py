@@ -173,6 +173,11 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
         "/api/enterprise/account/metadata/progress",
         "/api/enterprise/auth/me",
         "/api/enterprise/auth/admin/check",
+        "/api/enterprise/auth/admin/overview",
+        "/api/enterprise/auth/lifecycle/register",
+        "/api/enterprise/auth/lifecycle/change-password",
+        "/api/enterprise/auth/lifecycle/capabilities",
+        "/api/enterprise/auth/lifecycle/forgot",
         "/api/enterprise/auth/reset/watch",
         "/api/enterprise/auth/reset/status",
         "/api/enterprise/auth/native/login",
@@ -310,7 +315,7 @@ def test_account_core_schema_verify_never_invokes_worker_schema(
     assert runtime._verify_account_core() == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt["status"] == "PASS"
-    assert receipt["repository_head"] == "0038_rehydration_manifest"
+    assert receipt["repository_head"] == "0040_admin_overview_aggregate"
     assert receipt["worker_schema"] == "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP"
     assert calls[0][-2:] == ["current", "--check-heads"]
     assert disposed == [True]
