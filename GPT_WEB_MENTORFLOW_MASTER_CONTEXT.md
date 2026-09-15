@@ -6,7 +6,7 @@ UPDATED_AT = 2026-09-15
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-MAIN3-A-CONTROL-CONVERGENCE-HANDOFF-SEAL-20260915-25.
+Authority: MF-MAIN3-A-ACCEPTANCE-AUTHORITY-UAT-REQUALIFY-20260915-26; prior convergence evidence from dispatch 25 retained.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -46,7 +46,7 @@ Authority: MF-MAIN3-A-CONTROL-CONVERGENCE-HANDOFF-SEAL-20260915-25.
 未找到已批准 QQ inbox resolver；不能借用无关 SSO/不明 credential。
 TonySwift 精确 SUPER_ADMIN 绑定未获 authority；历史 TEST `tonyswift555` 不可替代 `tonyswift`。
 本轮真实 SMTP send = 0；TonySwift account mutation = 0；secret exposure = 0。
-未来真实发送、角色绑定、续期环境、用户验收须新的明确授权。本机旧 TEST 租约已到期，不能直接交用户。
+未来真实发送、角色绑定、共享环境写入、Frozen 用户验收须新的明确授权。旧 TEST 已过期；本轮获准创建的新隔离环境见下方，不能借此宣称邮件或产品验收通过。
 
 ## Main3 Server / Deployment Authority
 
@@ -84,7 +84,7 @@ TonySwift 精确 SUPER_ADMIN 绑定未获 authority；历史 TEST `tonyswift555`
 | MENTORFLOW_SMTP_CONFIG_REFERENCE | E:/Codex/Secrets/MentorFlow/smtp.env; approved resolver brevo_smtp.load_private_store; no values from secret fields retained |
 | TLS_TERMINATION_POINT | edge nginx 443→8443; backend-only native mTLS independently enforced |
 | TLS_CERT_LOCATION_OR_MANAGER | Edge /run/secrets/e108-ip-tls/active/fullchain.pem; hostname /run/secrets/e109-cloudflare-origin/cert.pem; loopback /run/secrets/tls_certificate; Docker secret volumes |
-| TLS_RENEWAL_MECHANISM | mentorflow-e108-ip-renew.timer → /opt/mentorflow/update-static/config/renew-ip-cert.sh (last observed status 0); Cloudflare origin renewal owner/schedule UNKNOWN |
+| TLS_RENEWAL_MECHANISM | mentorflow-e108-ip-renew.timer → /opt/mentorflow/update-static/config/renew-ip-cert.sh (IP certificate only); Cloudflare Origin CA uses manual backed-up rotation, named owner pending; expiry 2041-09-07T01:41:00Z |
 | HEALTH_ENDPOINTS | /health/live, /health/startup, /health/ready; diagnostic status not UAT |
 | BACKEND_STATUS_COMMAND | sudo -n docker inspect --format '{{.State.Status}}' mentorflow-e1-preview-backend-1 |
 | BACKEND_RESTART_COMMAND | sudo -n docker restart mentorflow-e1-preview-backend-1 (reference only; requires separate writer authority) |
@@ -121,13 +121,56 @@ Deployment/restore procedures: [staging orchestrator](docs/enterprise/staging-or
   Approved diagnostic egress connected 127.0.0.1:45350→Brevo587, preserving Brevo TLS hostname;
   no MAIL/RCPT/DATA in readiness probe. This is not a production networking policy.
 - Coordination `acceptance-runtime/LATEST.json` can be stale; validate lease, TLS and exact candidate before any future UAT.
-- Fresh A/B tests in this task use separate disposable loopback PostgreSQL and ephemeral RS256/JWKS issuer,
+- Prior dispatch 25 A/B tests used separate disposable loopback PostgreSQL and ephemeral RS256/JWKS issuer,
   never the resident identity/account data. No native-password or GUI-UAT claim from this harness.
 
 SERVER_INVENTORY_COMPLETE = PARTIAL_VERIFIED
-SERVER_OWNER_INPUT_REQUIRED = Cloudflare origin certificate renewal ownership/schedule; future deployment writer/backup acceptance; approved inbox resolver and exact role authority.
+SERVER_OWNER_INPUT_REQUIRED = Named Cloudflare origin certificate owner and expiry monitor; future deployment writer/backup acceptance; approved inbox resolver and exact identity/role authority.
 Existing SSH runtime, compose labels/mounts, realm metadata, proxy config, renewal timer, local approved configs,
 and repo runbooks were checked. Unknown operational approval is not invented from configuration presence.
+
+## Dispatch 26 — fresh UAT and external authority qualification
+
+Canonical machine-readable evidence: [acceptance authority matrix](docs/governance/receipts/20260915-main3-authority-uat-requalification.json).
+Result: PASS_WITH_EXTERNAL_AUTHORITY_BLOCKERS. Product code unchanged; prior 51 A/B PASS and 554 source PASS / 4 environment skips retained, not rerun.
+
+- Fresh runtime `MF-A-UAT-26-98d64fb0`, root `E:/Codex/Temp/MF-A-UAT-26-98d64fb0`.
+  Exact backend input `d60e6c5fce4928dffa4dc1b62c9aef8ea1a70fea`, tree `be78a9aec2818177407e10fcf7d844fd6c53ff33`;
+  isolated source archive and rebuilt native SPI hashes retained in matrix. No Frozen build or Workbench change.
+- Lease: `2026-09-15T14:49:15.334761Z` through `2026-09-15T17:39:15.334761Z` (Beijing 22:49 through September 16 01:39).
+  Readiness is dated and lease-bound; expiry requires requalification, not reuse of this PASS.
+- Backend `https://127.0.0.1:63570`; identity `https://127.0.0.1:63569`;
+  realm `mf-uat26-b35a2fb6`; exact issuer ends `/realms/mf-uat26-b35a2fb6`.
+  Clients `mentorflow-desktop` / `mentorflow-account-lifecycle` exist, direct grants disabled; JWKS PASS.
+- Fresh PostgreSQL `127.0.0.1:53321`, application DB `uat_application`, identity DB `uat_identity`;
+  head `0040_admin_overview_aggregate`; `mentorflow_app` NOSUPERUSER/NOBYPASSRLS.
+  pg_isready, no-context RLS denial, scoped access and foreign-workspace 403 PASS.
+- Backend live/startup/ready all HTTP200. Imported synthetic member/admin controls: native login and authenticated
+  `/api/enterprise/auth/me` HTTP200; member admin endpoint 403, synthetic admin 200. These controls are not the registration/email lifecycle.
+- New disposable registration reached durable `emailVerified=false / VERIFY_EMAIL`.
+  Realm SMTP deliberately unconfigured: HTTP400 `KEYCLOAK_OPERATION_REJECTED` after creation,
+  subsequent login 403 `NATIVE_ADDITIONAL_VERIFICATION_REQUIRED`. State `AWAITING_EMAIL_VERIFICATION`;
+  no forced verification, no delivery claim. Real email lifecycle NOT_RUN pending resolver and next dispatch.
+- Fresh TLS/mTLS, dynamic ports, restricted root ACL. Secret references only: root `database-credentials.json`,
+  `lifecycle-client-secret`, `fixture-credentials.json`, `tls/`; runtime/lease and sanitized evidence remain outside Git.
+  No automatic cleanup: after explicit release, verify process commands, owned root and PG data directory before stopping only this runtime.
+  Never stop shared/old services or remove evidence by treating lease expiry as deletion authority.
+- Approved Brevo resolver passed network/TLS/AUTH/NOOP, preserving hostname verification.
+  Observed commands EHLO/STARTTLS/EHLO/AUTH/NOOP; MAIL/RCPT/DATA absent; real send count 0.
+- QQ recipient approval exists, but no approved inbox resolver found in bounded repo/local/tooling inventory.
+  Inbox reading and link extraction remain blocked; mailbox cleanup is not authorized.
+- Exact `tonyswift` absent in retained VPS and old local identity metadata; only `tonyswift555` found.
+  No substitution or account mutation. Expected application SUPER_ADMIN binding needs exact identity and separate write authority.
+- VPS SSH/docker read authority confirmed; deploy/restart/rollback/backup creation/restore writes not authorized.
+- Public Cloudflare Origin certificate: SAN `auth.clannad.win`, valid September 11 2026 through
+  `2041-09-07T01:41:00Z`, 5470 days remaining at observation. Manual Origin CA rotation documented;
+  no dedicated expiry monitor found in reviewed jobs/config. Renewal owner requires Owner input; no private key read.
+- Human Frozen A/B UAT remains next-dispatch work. Current authorization covers synthetic local runtime/accounts/workspaces;
+  no real user roots, production credential mutation, actual Frozen launch or screenshots used.
+
+Owner actions (2):
+1. 为批准的 QQ 测试邮箱配置只读读取工具，并提供工具名称或安全引用，不要发送密码。
+2. 确认要验收的 exact tonyswift 身份，并指定 VPS/Cloudflare 证书维护负责人；后续写入与 Frozen 人测按下一调度授权。
 
 ## DO_NOT_REDO / NEXT_TASK
 

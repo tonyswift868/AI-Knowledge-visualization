@@ -296,7 +296,7 @@
     "worker_dispatches": "NONE_NEW; 03 sealing consumed; PRE02 retained",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
-    "user_action_required": "NONE",
+    "user_action_required": "Dispatch26: approved QQ read-only resolver; exact tonyswift identity and VPS/Cloudflare owner (see master context / authority matrix).",
     "snapshot_scope": "Rebuilt exact integration Frozen; account MVP smoke PASS; user email click and A-F acceptance pending.",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",

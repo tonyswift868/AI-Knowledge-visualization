@@ -1,0 +1,448 @@
+{
+  "schema_version": 1,
+  "dispatch_id": "MF-MAIN3-A-ACCEPTANCE-AUTHORITY-UAT-REQUALIFY-20260915-26",
+  "task_id": "MAIN3_EXTERNAL_AUTHORITY_AND_FRESH_UAT_REQUALIFICATION_V1",
+  "source_sha": "d60e6c5fce4928dffa4dc1b62c9aef8ea1a70fea",
+  "source_tree": "be78a9aec2818177407e10fcf7d844fd6c53ff33",
+  "observed_at": "2026-09-15T14:54:51.761729+00:00",
+  "product_code_changed": false,
+  "mailbox": {
+    "approved_test_mailbox_exists": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "Prior user-approved QQ test recipient; not a credential grant"
+    },
+    "provider": {
+      "status": "PASS",
+      "value": "QQ Mail",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "address_reference": {
+      "status": "PASS",
+      "value": "Prior user-approved TEST recipient in Account MVP dispatch; no address copied here",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "resolver_available": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No approved inbox resolver found in repo, local approved secret references, acceptance-runtime or mail tooling; SMTP and Mailpit are not QQ inbox readers"
+    },
+    "inbox_read_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "This task authorizes read-only use only if an approved resolver exists; none found"
+    },
+    "link_extraction_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "Needs approved read-only mailbox resolver; no clicking/consumption authorized this dispatch"
+    },
+    "delete_or_cleanup_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No mailbox deletion or cleanup authorization"
+    }
+  },
+  "smtp": {
+    "config_resolves": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "brevo_smtp.load_private_store with ACL validation; E:/Codex/Secrets/MentorFlow/smtp.env"
+    },
+    "network_ready": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "tls_ready": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "Exact smtp-relay.brevo.com certificate verification over fresh local SSH forwarding; no TLS downgrade"
+    },
+    "auth_config_present": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "auth_ready": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "EMAIL_TLS_AUTH_READY"
+    },
+    "test_recipient_authorized": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "Only prior explicitly approved QQ TEST recipient; no send in this dispatch"
+    },
+    "real_send_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "Explicitly deferred to next dispatch; no MAIL/RCPT/DATA"
+    },
+    "observed_commands": {
+      "status": "PASS",
+      "value": [
+        "EHLO",
+        "STARTTLS",
+        "EHLO",
+        "AUTH",
+        "NOOP"
+      ],
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "real_send_count": {
+      "status": "PASS",
+      "value": 0,
+      "evidence": "this dispatch; bounded read-only evidence"
+    }
+  },
+  "tonyswift_identity": {
+    "exact_username": {
+      "status": "PASS",
+      "value": "tonyswift",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "exact_user_found": {
+      "status": "PASS",
+      "value": false,
+      "evidence": "Read-only exact SQL metadata in retained VPS mentorflow and old local mf-ab-f0daac9477; both only found tonyswift555"
+    },
+    "user_id_reference": {
+      "status": "NOT_APPLICABLE",
+      "reason": "Exact user absent; no approximate substitution"
+    },
+    "current_realm": {
+      "status": "PASS",
+      "value": [
+        "mentorflow",
+        "mf-ab-f0daac9477"
+      ],
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "current_roles": {
+      "status": "NOT_APPLICABLE",
+      "reason": "Exact user absent; tonyswift555 roles do not transfer"
+    },
+    "expected_role": {
+      "status": "PASS",
+      "value": "SUPER_ADMIN application role; not realm-admin",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "role_mapping_write_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No mapping/create/credential mutation authorized"
+    },
+    "account_mutation": {
+      "status": "PASS",
+      "value": 0,
+      "evidence": "this dispatch; bounded read-only evidence"
+    }
+  },
+  "deployment": {
+    "target": {
+      "status": "PASS",
+      "value": "89.45.45.28 / mentorflow-e1-preview",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "ssh_read_authority": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "docker_read_authority": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "deploy_write_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No shared VPS writer lease in this dispatch; sudo capability is not authorization"
+    },
+    "service_restart_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No shared VPS writer lease in this dispatch; sudo capability is not authorization"
+    },
+    "rollback_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No shared VPS writer lease in this dispatch; sudo capability is not authorization"
+    },
+    "backup_create_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No shared VPS writer lease in this dispatch; sudo capability is not authorization"
+    },
+    "backup_restore_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No shared VPS writer lease in this dispatch; sudo capability is not authorization"
+    }
+  },
+  "cloudflare_origin_cert": {
+    "subject": {
+      "status": "PASS",
+      "value": "CN=CloudFlare Origin Certificate,OU=CloudFlare Origin CA,O=CloudFlare\\, Inc.",
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "san": {
+      "status": "PASS",
+      "value": [
+        "auth.clannad.win"
+      ],
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "not_before": {
+      "status": "PASS",
+      "value": "2026-09-11T01:41:00+00:00",
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "not_after": {
+      "status": "PASS",
+      "value": "2041-09-07T01:41:00+00:00",
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "days_remaining": {
+      "status": "PASS",
+      "value": 5470,
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "path_reference": {
+      "status": "PASS",
+      "value": "/run/secrets/e109-cloudflare-origin/cert.pem",
+      "evidence": "Read public certificate only; private key never read"
+    },
+    "renewal_owner": {
+      "status": "OWNER_INPUT_REQUIRED",
+      "reason": "Named origin certificate renewal/rotation owner not in reviewed repo/history/config/timers/cron"
+    },
+    "renewal_mechanism": {
+      "status": "PASS",
+      "value": "User-supplied Cloudflare Origin CA pair; manual backed-up rotation; no matching scheduled origin renewal found. E108 IP renewal timer is a different certificate.",
+      "evidence": "HOSTNAME_CUTOVER.md and read-only timer/cron inventory"
+    },
+    "expiry_monitoring": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No dedicated origin expiry monitor identified; this dated inventory is not continuous monitoring"
+    },
+    "renewal_write_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "No Cloudflare or certificate replacement write grant"
+    }
+  },
+  "human_uat": {
+    "owner": {
+      "status": "PASS",
+      "value": "Owner/user; human acceptance is distinct from automated probes",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "automated_runtime_qualification": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "disposable_account_allowed": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "This fresh isolated namespace only"
+    },
+    "disposable_workspace_allowed": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "This fresh isolated namespace only"
+    },
+    "frozen_app_allowed": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "Exact Frozen candidate and user-facing/A-B launch belong to subsequent dispatch; not executed here"
+    },
+    "screenshot_evidence_allowed": {
+      "status": "PASS",
+      "value": "Synthetic TEST evidence only; no real personal data; no screenshots taken this task",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "ab_login_write_restart_authority": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "This task qualifies prerequisites; actual Frozen A/B product UAT is not dispatched"
+    }
+  },
+  "fresh_uat_runtime": {
+    "ready": {
+      "status": "PASS",
+      "value": true,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "old_uat": {
+      "status": "PASS",
+      "value": "MF-A-UAT-23 EXPIRED; no acceptance reuse; only exact-identity read-only inventory",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "old_uat_reused": {
+      "status": "PASS",
+      "value": false,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "id": {
+      "status": "PASS",
+      "value": "MF-A-UAT-26-98d64fb0",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "root": {
+      "status": "PASS",
+      "value": "E:\\Codex\\Temp\\MF-A-UAT-26-98d64fb0",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "lease_start": {
+      "status": "PASS",
+      "value": "2026-09-15T14:49:15.334761+00:00",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "lease_expires": {
+      "status": "PASS",
+      "value": "2026-09-15T17:39:15.334761+00:00",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "backend_url": {
+      "status": "PASS",
+      "value": "https://127.0.0.1:63570",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "identity_url": {
+      "status": "PASS",
+      "value": "https://127.0.0.1:63569",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "issuer": {
+      "status": "PASS",
+      "value": "https://127.0.0.1:63569/realms/mf-uat26-b35a2fb6",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "realm": {
+      "status": "PASS",
+      "value": "mf-uat26-b35a2fb6",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "postgres_endpoint": {
+      "status": "PASS",
+      "value": "127.0.0.1:53321",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "migration_head": {
+      "status": "PASS",
+      "value": "0040_admin_overview_aggregate",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "application_role": {
+      "status": "PASS",
+      "value": "mentorflow_app NOSUPERUSER NOBYPASSRLS",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "rls_smoke": {
+      "status": "PASS",
+      "value": "No-context SQL sees zero rows; authenticated scope positive; foreign workspace HTTP403",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "keycloak": {
+      "status": "PASS",
+      "value": "Fresh PostgreSQL database/realm, exact issuer/JWKS, desktop/lifecycle client exist; direct grants disabled",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "backend_health": {
+      "status": "PASS",
+      "value": {
+        "backend_live": 200,
+        "backend_startup": 200,
+        "backend_ready": 200
+      },
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "registration": {
+      "status": "PASS",
+      "value": {
+        "http_status": 400,
+        "code": "KEYCLOAK_OPERATION_REJECTED",
+        "expected": "400 KEYCLOAK_OPERATION_REJECTED because sending is unconfigured; durable unverified account must exist",
+        "state": "AWAITING_EMAIL_VERIFICATION",
+        "email_verified": false,
+        "required_actions": [
+          "VERIFY_EMAIL"
+        ]
+      },
+      "evidence": "No realm SMTP configured. Expected HTTP400 after durable account creation; not a delivery PASS"
+    },
+    "registration_login": {
+      "status": "PASS",
+      "value": {
+        "status": 403,
+        "code": "NATIVE_ADDITIONAL_VERIFICATION_REQUIRED"
+      },
+      "evidence": "Unverified account gets no session; no verified-bit mutation"
+    },
+    "synthetic_login": {
+      "status": "PASS",
+      "value": "Imported synthetic member/admin controls HTTP200; not the registration/mail flow",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "principal": {
+      "status": "PASS",
+      "value": "Both synthetic controls authenticated /api/enterprise/auth/me HTTP200",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "member_admin_denial": {
+      "status": "PASS",
+      "value": 403,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "synthetic_admin": {
+      "status": "PASS",
+      "value": 200,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "secret_references": {
+      "status": "PASS",
+      "value": [
+        "E:\\Codex\\Temp\\MF-A-UAT-26-98d64fb0\\database-credentials.json",
+        "E:\\Codex\\Temp\\MF-A-UAT-26-98d64fb0\\lifecycle-client-secret",
+        "E:\\Codex\\Temp\\MF-A-UAT-26-98d64fb0\\fixture-credentials.json",
+        "E:\\Codex\\Temp\\MF-A-UAT-26-98d64fb0\\tls"
+      ],
+      "evidence": "Fresh root ACL restricted to current user and SYSTEM; never Git/log values"
+    },
+    "cleanup_plan": {
+      "status": "PASS",
+      "value": "No automatic cleanup. On explicit release after lease, verify each process command/root and pgdata owner before stopping only this runtime; preserve sanitized receipts, then remove only this owned directory after path verification. Never touch old UAT or shared services.",
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "automatic_cleanup": {
+      "status": "PASS",
+      "value": false,
+      "evidence": "this dispatch; bounded read-only evidence"
+    },
+    "real_email_lifecycle": {
+      "status": "BLOCKED_EXTERNAL_AUTHORITY",
+      "reason": "NOT_RUN; fresh preconditions ready, approved inbox resolver and later real-send/link authority still absent"
+    }
+  },
+  "remaining_owner_actions": [
+    "为批准的 QQ 测试邮箱配置只读读取工具，并提供工具名称或安全引用，不要发送密码。",
+    "确认要验收的 exact tonyswift 身份，并指定 VPS/Cloudflare 证书维护负责人；后续写入与 Frozen 人测按下一调度授权。"
+  ],
+  "preserved_accepted_evidence": {
+    "ab": "51 PASS / 0 FAIL / 0 SKIP; not rerun",
+    "source_suite": "554 PASS / 0 FAIL / 4 environment skips; not rerun"
+  },
+  "secret_exposure_count": 0,
+  "real_smtp_send_count": 0,
+  "tonyswift_account_mutation": 0,
+  "integration_branch_mutated": false,
+  "main2_mutated": false,
+  "github_actions_executed": 0,
+  "evidence_sha256": {
+    "provision.py": "43c6676d6de0cd10efe332b924ed819d414bc809e9a4c60b6145a44c440c773a",
+    "runtime.json": "b3f7af07ee5284de4390d059da73e1d9fd2550ae545661219567db5604f7f755",
+    "qualification.json": "3f927398c41537800528b79b8a54e390c1e49fa81de632e3416bbb7b472dd34e",
+    "smtp-probe.json": "dae7b745072b14685ed7d32a72febefc00c7a586bc8cf887a324bfe081120cf7",
+    "external-readonly.json": "c37d840af6430ccb6517819550b65be1cc9ba40ffed0c79ec7f4951d6a29dc22",
+    "authority-supplement.json": "bd5209bbc52878f8c73ba7342228ffbc472ac704fe79df386e5b0aca233bd213",
+    "lease.json": "0394a30dc0f4fb0f1646292b10fb09afa1dcb4028396bd3e93b1fbbc8f0c31f5"
+  },
+  "source_archive_sha256": "5181de8065b3486ab6d14e6214c1806144535ce188020a56c1e3ec1a250a88b5",
+  "spi_sha256": "519cdee7b752c59ad457c48366fc1c868b9c96ae5abafd53a6b7ad38b233fd58",
+  "mailbox_discovery_scope": [
+    "repo governance/handoff/deploy/tooling",
+    "approved local SMTP store metadata, not inbox credential",
+    "acceptance-runtime refs",
+    "MentorFlow secret filenames and inbox/IMAP environment names",
+    "approved historical mail/hostname tooling; no personal SSO used"
+  ]
+}
