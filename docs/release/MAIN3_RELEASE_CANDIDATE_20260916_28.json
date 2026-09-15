@@ -1,0 +1,74 @@
+{
+  "schema": "mentorflow.main3-release-candidate-manifest.v1",
+  "status": "TEST_DESKTOP_BOUND_NOT_DEPLOYABLE",
+  "source_sha": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
+  "tree": "bf0e13143177a3ec9e9b602f4bd65635961bc241",
+  "migration_head": "0040_admin_overview_aggregate",
+  "source_archive": {
+    "path": "E:\\Codex\\Temp\\MF-A-28\\source.zip",
+    "sha256": "c8d3c81b3f773f85214368573485ceb6c15d20d3d5709a9c6116b21130a62703"
+  },
+  "backend_artifact": {
+    "status": "UNRESOLVED_EXACT_SOURCE_IMAGE_DIGEST",
+    "reference": null
+  },
+  "desktop_artifact": {
+    "status": "TEST_MACHINE_SMOKE_PASS_GUI_UAT_PENDING",
+    "reference": "E:\\Codex\\Temp\\MF-A-28\\dist\\MentorFlow\\MentorFlow.exe",
+    "sha256": "1b5371c22416b579f286e6a411c2c957fa0d9331869a9bfa64e5ac4594be4f93",
+    "build_id": "MF-A-FROZEN-28-20e976c7",
+    "signed_release": false
+  },
+  "versioned_config_hashes": {
+    "backend/app/enterprise_tenancy/schema.py": "fe16de6f69855e2f4c4f260924f5be4457a43f7fd598ab0c942ef8f469621119",
+    "deploy/enterprise/staging/rp05/compose.account-core-mvp.yml": "6bb43d52940c82827ff21323cba52297d3c81f0add41e911be6638a3fa84845c",
+    "deploy/enterprise/config/keycloak-realm.json": "cce0c03b1e4205073928db54bb70808d8befdc36bd673afa4d7b1dc0cf4f7252",
+    "deploy/enterprise/staging/rp05/account-core-edge.conf": "eebac47ce7d38502bd4f007336294372742e21f71d92c7891a55c0255a1466d2",
+    "deploy/enterprise/staging/rp05/edge-https.conf": "a2bb17ff35ce6b2dfad5a2131e1c9cc682800cfd2367d65919f094d10c4a4d02",
+    "deploy/enterprise/staging/rp05/runtime-images.account-core-mvp.template.json": "65a2899cfa6cdbd231ff07096ab782521d8e9fde7ad1eb0a2a408a3cd39416dd",
+    "release/auth-authority.json": "3ecc97e9c40a55347d554abce0a2c1b8d5d0a209b9449c3237062e2716fd9830",
+    "release/account-capabilities.json": "bc2fe593f99e7fd88ab6064a0f100e3cc02f9029eb06a236cc26d7c02f126deb"
+  },
+  "keycloak_config": {
+    "source": "deploy/enterprise/config/keycloak-realm.json",
+    "live_overlay": "UNSEALED; retained realm/issuer/native verifier/mTLS/SMTP must be reconciled by owner before use",
+    "image_digest": null
+  },
+  "postgresql_schema": {
+    "target": "0040_admin_overview_aggregate",
+    "backup_before": "0035_account_workspace_bootstrap",
+    "isolated_upgrade": "PASS",
+    "production_image_digest": null
+  },
+  "edge_config": {
+    "source": "deploy/enterprise/staging/rp05/account-core-edge.conf",
+    "live_overlay": "UNSEALED; do not overwrite retained TLS/issuer routes"
+  },
+  "secret_references": {
+    "ssh": "E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519",
+    "host": "/opt/mentorflow/secrets (operator-owned; exact consumer bindings require sealed package)",
+    "smtp": "E:/Codex/Secrets/MentorFlow/smtp.env via approved resolver; never package values"
+  },
+  "health_endpoints": [
+    "/health/live",
+    "/health/startup",
+    "/health/ready"
+  ],
+  "rollback_prerequisites": [
+    "fresh verified application+identity backups",
+    "protected object/file backup with digest manifest",
+    "exact previous backend/identity/edge image digests and config",
+    "matching DB schema or isolated backup restore+cutover",
+    "named writer and outage window"
+  ],
+  "not_executed": [
+    "VPS deployment",
+    "real-user migration",
+    "Cloudflare certificate change",
+    "GitHub Actions"
+  ],
+  "fresh_predeploy_backup": "NOT_YET_CREATED",
+  "canonical_owner_domain_mapping": "STILL_REQUIRED",
+  "real_old_data_migration": "NOT_RUN",
+  "vps_deployment": "NOT_RUN"
+}

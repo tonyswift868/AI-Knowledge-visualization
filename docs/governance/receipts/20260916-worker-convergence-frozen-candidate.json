@@ -1,0 +1,251 @@
+{
+  "dispatch_id": "MF-MAIN3-A-WORKER-CONVERGENCE-FROZEN-CANDIDATE-20260916-28",
+  "task_id": "MAIN3_WORKER_DELIVERIES_CONVERGENCE_AND_NEW_FROZEN_CANDIDATE_V1",
+  "status": "PASS_WORKER_CONVERGENCE_FROZEN_TEST_CANDIDATE_READY",
+  "base": "69b7e210ce7ff4abeb14337e4d969b0420db476a",
+  "deliveries": [
+    {
+      "slot": "02",
+      "source_sha": "6227abafd5d444e4c71d0e25bd9440d066b12f52",
+      "parent": "ac75a90b4c6f26d4ecb381ca3ea23cdcd2b8f0f8",
+      "source_tree": "50d56eb4539949921bd12f80797e75488604499e",
+      "integrated_commit": "4eebe4aa0f2ff4be5d7d35d87ef6386db3c50cd9",
+      "paths": [
+        "backend/app/active_teaching.py",
+        "backend/tests/test_material_long_account_paths.py",
+        "docs/qa/MF-MAIN3-02-FROZEN-AB-UAT-27.md"
+      ],
+      "method": "exact cherry-pick -x",
+      "conflicts": []
+    },
+    {
+      "slot": "01",
+      "source_sha": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11",
+      "parent": "69b7e210ce7ff4abeb14337e4d969b0420db476a",
+      "source_tree": "3c69b48661534ca75596dce6225b91d563af1276",
+      "integrated_commit": "3bc6f02f25df73fa72f2a944e47a01c05b0bd2e8",
+      "paths": [
+        "docs/qa/MAIN3_01_REAL_EMAIL_LIFECYCLE_20260915_27.md"
+      ],
+      "method": "exact cherry-pick -x",
+      "conflicts": []
+    },
+    {
+      "slot": "03",
+      "source_sha": "c7943a9aaccbfdddcc045239858dd8c55b8bd401",
+      "parent": "80b619d263d81f5e684af67528da898cbfbda178",
+      "source_tree": "99e7b421d8c12b013febc7c95702939626ea740e",
+      "integrated_commit": "fae5292ce287a50ebce38f4fca2f79399e0eaea2",
+      "paths": [
+        "docs/governance/receipts/20260915-03-tonyswift-blocker-classification.md"
+      ],
+      "method": "exact cherry-pick -x",
+      "conflicts": []
+    },
+    {
+      "slot": "04",
+      "source_sha": "71efae533de930d83c16517d096f5f6701291b01",
+      "parent": "de072dadc68876b61ab6beb139dde3b812efa09f",
+      "source_tree": "6b301a9355ca70d35651ac3711690822247879da",
+      "integrated_commit": "ef24a72682e7e06aa2725076aa84f49089645cfc",
+      "paths": [
+        "docs/release/main3-20260915-27/BACKUP_RESTORE_EVIDENCE.json",
+        "docs/release/main3-20260915-27/DEPLOYMENT_READINESS.md",
+        "docs/release/main3-20260915-27/MAIN3_RELEASE_CANDIDATE_MANIFEST.json",
+        "docs/release/main3-20260915-27/OLD_DATA_INVENTORY.json"
+      ],
+      "method": "exact cherry-pick -x",
+      "conflicts": []
+    }
+  ],
+  "product_files_changed": [
+    "backend/app/active_teaching.py"
+  ],
+  "source_suite": {
+    "test_profile_settings_postgres": {
+      "total": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    "test_rehydration_transport": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0
+    },
+    "test_material_long_account_paths": {
+      "total": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    "test_material_path_convergence": {
+      "total": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    "test_material_pipeline_v1": {
+      "total": 6,
+      "passed": 6,
+      "skipped": 0
+    },
+    "test_upload_limits": {
+      "total": 11,
+      "passed": 11,
+      "skipped": 0
+    },
+    "test_resource_references": {
+      "total": 11,
+      "passed": 11,
+      "skipped": 0
+    },
+    "test_material_recovery_state": {
+      "total": 8,
+      "passed": 8,
+      "skipped": 0
+    },
+    "total": {
+      "passed": 596,
+      "failed": 0,
+      "skipped": 4
+    },
+    "ab_postgres": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "original_worker02_tests": {
+    "passed": 20,
+    "failed": 0,
+    "skipped": 0
+  },
+  "focused_path_resource_tests": {
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  },
+  "candidate": {
+    "source_sha": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
+    "source_tree": "bf0e13143177a3ec9e9b602f4bd65635961bc241",
+    "build_id": "MF-A-FROZEN-28-20e976c7",
+    "artifact": "E:\\Codex\\Temp\\MF-A-28\\dist\\MentorFlow\\MentorFlow.exe",
+    "artifact_sha256": "1b5371c22416b579f286e6a411c2c957fa0d9331869a9bfa64e5ac4594be4f93",
+    "selfcheck_sha256": "c18b4aea473cda1d03fbf3de604cbf6ecb649da8f425289f133d70e5cd5b0fd3",
+    "package_manifest_sha256": "adda2e4c883558be4a6becbf40058b804ec060470b64348c9a80bd7b3382db9d",
+    "spec_sha256": "95964fdad1a02278231ee47922c7ae0cb410cde0b68f7cbcfb44028042ba947e",
+    "generated_icon_sha256": "963bf6cff5ab6d7778a56021b6a1b6c27338ff8bffe47d17752a2336a4cacb55",
+    "package_verifier": "PASS",
+    "forbidden_icu_dest_count": 0,
+    "scope": "TEST_ONLY_NOT_WORKBENCH_CURRENT",
+    "reproducibility": "EXACT_SOURCE_AND_COMMANDS_RECORDED; BITWISE_REBUILD_NOT_TESTED"
+  },
+  "machine_smoke": {
+    "EXE_START": "PASS",
+    "BACKEND_SPAWN": "PASS",
+    "LOGIN_SURFACE_LOAD": "PASS",
+    "WORKSPACE_SURFACE_LOAD": "PASS",
+    "RESOURCE_SURFACE_LOAD": "PASS",
+    "artifact_sha256": "1b5371c22416b579f286e6a411c2c957fa0d9331869a9bfa64e5ac4594be4f93",
+    "gui_pid": 20304,
+    "backend_pid": 48832,
+    "backend_parent_pid": 20304,
+    "backend_health": {
+      "url": "http://127.0.0.1:52188/api/health",
+      "status": "ok",
+      "service": "MentorFlow",
+      "deployment_mode": "PERSONAL_LOCAL"
+    },
+    "native_login": "Synthetic uat28-member native login; secret resolved in memory, not retained",
+    "workspace": "Recovery dialog -> enter workspace -> MentorFlow main window; empty synthetic account",
+    "resource": "MaterialsPage rendered: 添加资料; 请选择一个计划，再添加资料。",
+    "observed_window_id": 1641834,
+    "exe_alive_after_8s": true,
+    "scope": "A_MACHINE_SMOKE_ONLY; NOT_WORKER02_GUI_AB_ACCEPTANCE",
+    "profile_restore": "Prior UserTest profile/owner restored; new synthetic smoke profile retained separately",
+    "workbench_current_mutated": false,
+    "resource_surface_sha256": "7da3bd57660803844013c78e825d9de4df22a6b3bab68d6280d72fb04127f099"
+  },
+  "uat": {
+    "id": "MF-A-UAT-28-5ebe30cf",
+    "root": "E:\\Codex\\Temp\\MF-A-UAT-28-5ebe30cf",
+    "source_sha": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
+    "realm": "mf-uat28-fad456f1",
+    "issuer": "https://127.0.0.1:55302/realms/mf-uat28-fad456f1",
+    "backend_url": "https://127.0.0.1:55303",
+    "postgres_endpoint": "127.0.0.1:57760",
+    "lease_start": "2026-09-15T17:21:36.352844+00:00",
+    "lease_expires": "2026-09-15T20:11:36.352844+00:00"
+  },
+  "uat_qualification": "PASS",
+  "smtp_non_delivery": {
+    "config_resolves": true,
+    "network_tls_auth_noop_ready": true,
+    "classification": "EMAIL_TLS_AUTH_READY",
+    "commands": [
+      "EHLO",
+      "STARTTLS",
+      "EHLO",
+      "AUTH",
+      "NOOP"
+    ],
+    "MAIL": false,
+    "RCPT": false,
+    "DATA": false,
+    "send_count": 0
+  },
+  "email_lifecycle": "BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE",
+  "owner_action": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
+  "tonyswift_release_blocker": false,
+  "tonyswift_class": "OWNER_OPERATOR_BOOTSTRAP_POST_ACCEPTANCE",
+  "backup_restore_rehearsal": "PASS_RETAINED_WORKER04_EVIDENCE",
+  "old_workspace_count": 530,
+  "old_plan_count": 88,
+  "old_resource_count": 330,
+  "migration_schema_rehearsal": "PASS_0035_TO_0040_RESTORED_VPS_CLONE",
+  "real_old_data_migration": "NOT_RUN",
+  "vps_deployment": false,
+  "real_user_data_mutated": false,
+  "real_smtp_send_count": 0,
+  "secret_exposure_count": 0,
+  "subagents_spawned": 0,
+  "integration_branch_mutated": false,
+  "main2_mutated": false,
+  "workbench_current_mutated": false,
+  "diagnostics": [
+    "Initial build completed with missing generated icon; existing build_desktop_icon.py supplied it, spec/product unchanged.",
+    "Supplemental test corrected lexical/extended path mismatch; pytest-qt 4.5.0 isolated test plugin supplied. Final tests pass."
+  ],
+  "remaining_release_blockers": [
+    "QQ inbox credential reference and real email lifecycle",
+    "Worker02 full Frozen GUI A/B acceptance",
+    "Fresh coordinated predeploy backups",
+    "Canonical owner/domain mapping and legacy domain import",
+    "Exact backend/identity/edge image and rollback bindings; deployment separately authorized"
+  ],
+  "evidence_sha256": {
+    "regression.xml": "59a562739ab821efd20ea2535401282e71ca0cc5c8c77c5f24515cf4d3b68be2",
+    "candidate.json": "37167a0b82f5fe29ab6dfc193fceae40f3c8575c4f0e4a7acf11c60d6fca93c8",
+    "machine-smoke-receipt.json": "338a52eb4f8d7f7952fae13a2ecdfeb991b4ce2ad397899641c1728212b7dbb6",
+    "integration-audit.json": "5b12063ff1ada5aa3a2bf7e584232134a2eae4c427ce2b7389ac88007cf779a5",
+    "qualification.json": "d98f1c81acbeec9db744071b4a49c2c67ea3b9aaad2a229e6a275036d14bce50",
+    "lease.json": "4d15654c32a1184de11122fca988d52e6749ff6c6d384919059a5e2b9228dfb6",
+    "smtp-probe.json": "dae7b745072b14685ed7d32a72febefc00c7a586bc8cf887a324bfe081120cf7"
+  },
+  "final_recheck": {
+    "observed_at": "2026-09-15T17:56:14.282953+00:00",
+    "checks": {
+      "live": 200,
+      "startup": 200,
+      "ready": 200,
+      "discovery": 200,
+      "jwks": 200,
+      "postgres_ready": true
+    },
+    "lease_valid": true,
+    "packaged_long_path_calls": {
+      "upload_material": true,
+      "delete_material": true
+    },
+    "artifact_sha256": "1b5371c22416b579f286e6a411c2c957fa0d9331869a9bfa64e5ac4594be4f93",
+    "versioned_config_hashes": "MATCH_EXACT_SOURCE"
+  }
+}

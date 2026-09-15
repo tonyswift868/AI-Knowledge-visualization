@@ -295,7 +295,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "03 native PG A/B source sealing consumed. Frozen product UI A/B needs separate exact candidate authority; historical V3 is not current source blocker.",
+      "reason": "Dispatch28 new Frozen TEST artifact and UAT28 machine smoke ready; independent full Frozen GUI A/B and real email lifecycle remain pending. Tony exact-name is not a release blocker.",
       "workbench_visible": true
     },
     {
@@ -344,7 +344,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required."
+      "reason": "Dispatch28 new Frozen TEST artifact and UAT28 machine smoke ready; independent full Frozen GUI A/B and real email lifecycle remain pending. Tony exact-name is not a release blocker."
     },
     {
       "task_id": "ACCOUNT_MVP_FROZEN_REBUILD_READY",
@@ -367,12 +367,30 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "03 exact sealing consumed on efb control; PRE02 retained. No integration promotion."
+    },
+    {
+      "task_id": "WORKER_CONVERGENCE_FROZEN_28",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Four exact deliveries, long-path tests, A/B source regression, new Frozen TEST machine smoke and UAT28 ready; see dispatch28 receipt."
+    },
+    {
+      "task_id": "QQ_EMAIL_LIFECYCLE",
+      "owner": "01",
+      "state": "BLOCKED",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
+      "reason": "Approved inbox resolver not found; TLS/AUTH/NOOP is not email lifecycle. Real send count zero."
     }
   ],
-  "authority": "CONTROL_CONVERGENCE_CODE_INTEGRATION",
-  "assignment_scope": "Knowledge refresh closeout; foundation qualified; domain adapters not dispatched.",
+  "authority": "WORKER_CONVERGENCE_FROZEN_TEST_CANDIDATE",
+  "assignment_scope": "Dispatch28 complete; no new worker dispatch.",
   "current_stage": {
-    "CURRENT_PHASE": "CONTROL_CLOSEOUT; A_B_AND_PRE02_SOURCE_QUALIFICATION; EXTERNAL_GATES_BLOCKED",
+    "CURRENT_PHASE": "WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING",
     "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN",
     "PRODUCT_ACCEPTANCE": "PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT",
     "CHATGPT_READ_BRANCH": "control/main3-current"

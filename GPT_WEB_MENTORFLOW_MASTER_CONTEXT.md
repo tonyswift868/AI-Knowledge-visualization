@@ -1,12 +1,12 @@
 AUTHORITATIVE_FOR = MAIN3_CURRENT
 CHATGPT_READ_BRANCH = control/main3-current
-LAST_VERIFIED_SHA = 1b8f30862f24ac989a6fbdef2f0819afb44a7b06
-LAST_VERIFIED_TREE = fd285c9e42af0fbc4b2205ec479bc8416296ee98
-UPDATED_AT = 2026-09-15
+LAST_VERIFIED_SHA = 20e976c7878401123ca2b20f63b2cf70a73e5f3e
+LAST_VERIFIED_TREE = bf0e13143177a3ec9e9b602f4bd65635961bc241
+UPDATED_AT = 2026-09-16
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-MAIN3-A-ACCEPTANCE-AUTHORITY-UAT-REQUALIFY-20260915-26; prior convergence evidence from dispatch 25 retained.
+Authority: MF-MAIN3-A-WORKER-CONVERGENCE-FROZEN-CANDIDATE-20260916-28; prior dispatch evidence retained with its original scope.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -38,13 +38,38 @@ Authority: MF-MAIN3-A-ACCEPTANCE-AUTHORITY-UAT-REQUALIFY-20260915-26; prior conv
   TLS/AUTH/NOOP classification/deadline、admin 200/member 403、revision、secret rejection。
   SMTP readiness 不等于真实 delivery。详见 [本轮证据](docs/governance/receipts/20260915-control-convergence.json)。
 - FULL_ACCOUNT_REHYDRATION = NOT_YET_COMPLETE；PRODUCT_ACCEPTANCE = PENDING。
-  本轮没有新 Frozen build、Workbench CURRENT 更新、用户测试、真实迁移或旧 88 plans 修改。
+  此前 control 收口未构建 Frozen；dispatch 28 新候选见下方。Workbench CURRENT、真实迁移及旧 88 plans 均未修改。
+
+## Dispatch 28 — exact convergence and new Frozen TEST candidate
+
+Current receipt: [worker convergence](docs/governance/receipts/20260916-worker-convergence-frozen-candidate.json).
+Release bindings: [TEST manifest](docs/release/MAIN3_RELEASE_CANDIDATE_20260916_28.json), not deployable production authority.
+- Exact deliveries consumed 02 → 01 → 03 → 04; original parents, paths and integrated commits are recorded. No worker branch merge or internal agents.
+- Only product delta: worker02 Windows long-path handling in `backend/app/active_teaching.py`. Isolation/deletion boundaries retained.
+- Frozen source `20e976c7878401123ca2b20f63b2cf70a73e5f3e`, tree `bf0e13143177a3ec9e9b602f4bd65635961bc241`; build `MF-A-FROZEN-28-20e976c7`.
+  Artifact `E:/Codex/Temp/MF-A-28/dist/MentorFlow/MentorFlow.exe`; SHA256 `1b5371c22416b579f286e6a411c2c957fa0d9331869a9bfa64e5ac4594be4f93`.
+  Exact archive, dependency inputs and commands retained; packaged upload/delete code contains `_native_path`.
+  Initial missing generated icon was supplied by the existing icon generator, then completed rebuild PASS; no spec change.
+- Worker02 original 20/0/0; path/resource focused 22/0/0; selected source suite 596 PASS / 0 FAIL / 4 Windows symlink-privilege skips.
+  Native PostgreSQL A/B 25/0/0 and Desktop transport 26/0/0 PASS. These remain protocol/client evidence, not full GUI domain acceptance.
+- A machine smoke: exact EXE alive, native synthetic login, spawned account Backend `/api/health` ok, workspace and materials surfaces PASS.
+  Prior UserTest profile restored; only new synthetic smoke profile retained. No Workbench CURRENT update; 02 full Frozen GUI A/B still pending.
+- Fresh runtime `MF-A-UAT-28-5ebe30cf`, root `E:/Codex/Temp/MF-A-UAT-28-5ebe30cf`.
+  Lease ends `2026-09-15T20:11:36.352844Z` (Beijing September 16 04:11:36); no automatic cleanup.
+  Backend `https://127.0.0.1:55303`; issuer `https://127.0.0.1:55302/realms/mf-uat28-fad456f1`; PG `127.0.0.1:57760`.
+  JWKS, Backend live/startup/ready, native synthetic member/admin, head0040 and RLS PASS. UAT26 is unavailable/expired, not current authority.
+  New registration remains unverified; realm SMTP unconfigured. Separate approved SMTP TLS/AUTH/NOOP readiness PASS, real sends=0.
+- EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE; sole Owner input = QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED.
+- Tony exact-name bootstrap is POST_ACCEPTANCE, not release blocker; account mutations=0. Origin CA expiry2041-09-07 is a nonblocking OPS follow-up.
+- Worker04 retained restores/application/identity and schema0035→0040 rehearsal PASS; 530 workspaces / 88 plans / 330 resources.
+  This is not real old-data PostgreSQL migration. Fresh predeploy backups, canonical owner/domain mapping, exact server image/rollback bindings and authorized deployment remain outstanding.
+- FULL_ACCOUNT_REHYDRATION=NOT_YET_COMPLETE; PRODUCT_ACCEPTANCE=PENDING. No real-user mutation, VPS deployment, integration promotion or GitHub Actions.
 
 ## External authority / human UAT blockers
 
 真实邮箱 inbox receipt、verify/reset link consume、replay、expiry、same-user continuation 尚未完成。
 未找到已批准 QQ inbox resolver；不能借用无关 SSO/不明 credential。
-TonySwift 精确 SUPER_ADMIN 绑定未获 authority；历史 TEST `tonyswift555` 不可替代 `tonyswift`。
+Exact `tonyswift` is not a release prerequisite: worker03 classified it as POST_ACCEPTANCE_OPERATOR_BOOTSTRAP; `tonyswift555` remains a distinct identity. No account mutation is authorized.
 本轮真实 SMTP send = 0；TonySwift account mutation = 0；secret exposure = 0。
 未来真实发送、角色绑定、共享环境写入、Frozen 用户验收须新的明确授权。旧 TEST 已过期；本轮获准创建的新隔离环境见下方，不能借此宣称邮件或产品验收通过。
 
@@ -125,11 +150,11 @@ Deployment/restore procedures: [staging orchestrator](docs/enterprise/staging-or
   never the resident identity/account data. No native-password or GUI-UAT claim from this harness.
 
 SERVER_INVENTORY_COMPLETE = PARTIAL_VERIFIED
-SERVER_OWNER_INPUT_REQUIRED = Named Cloudflare origin certificate owner and expiry monitor; future deployment writer/backup acceptance; approved inbox resolver and exact identity/role authority.
+SERVER_OWNER_INPUT_REQUIRED = QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED. Deployment authorization remains a future dispatch gate; named operator bootstrap and Origin CA monitoring are nonblocking OPS follow-ups.
 Existing SSH runtime, compose labels/mounts, realm metadata, proxy config, renewal timer, local approved configs,
 and repo runbooks were checked. Unknown operational approval is not invented from configuration presence.
 
-## Dispatch 26 — fresh UAT and external authority qualification
+## Dispatch 26 — historical UAT and external authority qualification (superseded runtime)
 
 Canonical machine-readable evidence: [acceptance authority matrix](docs/governance/receipts/20260915-main3-authority-uat-requalification.json).
 Result: PASS_WITH_EXTERNAL_AUTHORITY_BLOCKERS. Product code unchanged; prior 51 A/B PASS and 554 source PASS / 4 environment skips retained, not rerun.
@@ -168,13 +193,11 @@ Result: PASS_WITH_EXTERNAL_AUTHORITY_BLOCKERS. Product code unchanged; prior 51 
 - Human Frozen A/B UAT remains next-dispatch work. Current authorization covers synthetic local runtime/accounts/workspaces;
   no real user roots, production credential mutation, actual Frozen launch or screenshots used.
 
-Owner actions (2):
-1. 为批准的 QQ 测试邮箱配置只读读取工具，并提供工具名称或安全引用，不要发送密码。
-2. 确认要验收的 exact tonyswift 身份，并指定 VPS/Cloudflare 证书维护负责人；后续写入与 Frozen 人测按下一调度授权。
+Dispatch 26 historical action list superseded by dispatch 28: only QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED remains an Owner input for acceptance. Exact-name operator bootstrap and certificate monitoring are not release blockers.
 
 ## DO_NOT_REDO / NEXT_TASK
 
-Do not recreate a ChatGPT review branch, reconsume old deliveries, rerun ICU/Frozen builds, modify Workbench CURRENT,
+Do not recreate a ChatGPT review branch, reconsume old deliveries, run additional unrequested builds, modify Workbench CURRENT,
 reset credentials, send real email, migrate user data, cut over issuer, or promote integration/main3/main2.
 Do not turn old Frozen failure into the current source blocker or source transport PASS into product acceptance.
 Next work requires explicit Owner dispatch for remaining external authority and human UAT gates; this task stops after control publication.

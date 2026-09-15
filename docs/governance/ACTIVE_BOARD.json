@@ -6,20 +6,20 @@
   "baseline_sha": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
   "baseline_tree": "61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031",
   "integration_branch": "integration/main3",
-  "refs_verified": "EXACT_0325_BASE_3_DELIVERIES_PLUS_AUTHORIZED_A_WIRING_UNKNOWN_0",
+  "refs_verified": "EXACT_CONTROL_BASE_AND_FOUR_PARENT_PATCHES_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "CONTROL_CONVERGENCE_CODE_INTEGRATION",
+  "authority": "WORKER_CONVERGENCE_FROZEN_TEST_CANDIDATE",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "MAIN3_CONTROL_CONVERGENCE_AND_CURRENT_HANDOFF_SEAL_V1",
+      "task_id": "MAIN3_WORKER_DELIVERIES_CONVERGENCE_AND_NEW_FROZEN_CANDIDATE_V1",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "STOP; external gates require separate authority.",
+      "next_action": "STOP; no Worker02 full GUI acceptance in this task.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "Control-only convergence; no new UAT publication."
+      "summary_zh": "Four exact deliveries consumed; new TEST candidate/runtime ready."
     },
     "01": {
       "status": "SILENT",
@@ -27,15 +27,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "453e94000dadc4387654f3cfa2f3b6171f8d9efd",
-      "next_action": "SILENT; exact delivery consumed, no new dispatch.",
+      "delivery_commit": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11",
+      "next_action": "STOP; next dispatch belongs to Owner.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
-      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
-      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
+      "integrated_commit": "3bc6f02f25df73fa72f2a944e47a01c05b0bd2e8",
+      "delivery_state": "EXACT_PATCH_CONSUMED",
+      "acceptance_state": "BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE",
       "ordered_source_commits": [
-        "453e94000dadc4387654f3cfa2f3b6171f8d9efd"
+        "8dddcd2b29097f0d8e539d5a987183c28cf5cd11"
       ],
       "batch01_consumed_source": "f5eab83483c827ef9be03e67800dba14af7d8e74",
       "batch02_delivery_snapshot": {
@@ -51,7 +51,7 @@
         "delivery_state": "NATIVE_LOGIN_PASS; NATIVE_VERIFIER_PASS; TOKEN_ATOMICITY_INDEPENDENTLY_CONFIRMED",
         "acceptance_state": "GATE_A_REAL_DEPLOYMENT_NOT_RUN_AFTER_FIX"
       },
-      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
+      "summary_zh": "BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE",
       "batch03_delivery_snapshot": {
         "delivery_commit": "b8cc25d266c2ff549b9af86ec23b187a200d991c",
         "integrated_commit": "c064f1e97bc944460cdb0e82c6b1e96258d5e81d",
@@ -88,6 +88,11 @@
         ],
         "delivery_state": "CANONICAL_BACKEND_IMPORT_SOURCE_INTEGRATED",
         "acceptance_state": "SOURCE_AND_FROZEN_DIAGNOSTIC_BACKEND_SPAWN_PASS"
+      },
+      "prior_delivery_snapshot": {
+        "delivery_commit": "453e94000dadc4387654f3cfa2f3b6171f8d9efd",
+        "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
+        "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
       }
     },
     "02": {
@@ -96,15 +101,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1",
-      "next_action": "SILENT; exact delivery consumed, no new dispatch.",
+      "delivery_commit": "6227abafd5d444e4c71d0e25bd9440d066b12f52",
+      "next_action": "STOP; next dispatch belongs to Owner.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "a5ee60f4940c50480d8397286370516f684ffe5e",
-      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
-      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
+      "integrated_commit": "4eebe4aa0f2ff4be5d7d35d87ef6386db3c50cd9",
+      "delivery_state": "EXACT_PATCH_CONSUMED",
+      "acceptance_state": "SOURCE_FIX_AND_A_MACHINE_SMOKE_PASS_FULL_GUI_UAT_PENDING",
       "ordered_source_commits": [
-        "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1"
+        "6227abafd5d444e4c71d0e25bd9440d066b12f52"
       ],
       "batch01_consumed_source": "7b6caf58de601adabf26eced4f94dd1e1f2a5994",
       "batch02_delivery_snapshot": {
@@ -117,7 +122,7 @@
         "delivery_state": "MANDATORY_FLOOR_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
+      "summary_zh": "SOURCE_FIX_AND_A_MACHINE_SMOKE_PASS_FULL_GUI_UAT_PENDING",
       "batch03_delivery_snapshot": {
         "delivery_commit": "5c8eed29f607b5c16bddda0efb9c71ae91560b64",
         "integrated_commit": "b8716c1e70bf4be8993661a558ab8c7db1843728",
@@ -155,6 +160,11 @@
         ],
         "delivery_state": "FROZEN_LOGIN_V2_SOURCE_INTEGRATED",
         "acceptance_state": "FROZEN_NATIVE_LOGIN_PASS_AB_NOT_RUN"
+      },
+      "prior_delivery_snapshot": {
+        "delivery_commit": "fba57de5640c742fed5e2eee8e0a6b1f85bbd7a1",
+        "integrated_commit": "a5ee60f4940c50480d8397286370516f684ffe5e",
+        "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
       }
     },
     "03": {
@@ -163,15 +173,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "80b619d263d81f5e684af67528da898cbfbda178",
-      "next_action": "SILENT; sealing consumed.",
+      "delivery_commit": "c7943a9aaccbfdddcc045239858dd8c55b8bd401",
+      "next_action": "STOP; next dispatch belongs to Owner.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "8ef402b4a48e7f45c45e6909d7dbf3a1f8e1931f",
-      "delivery_state": "REAL_AB_SEALING_CONSUMED",
-      "acceptance_state": "NATIVE_POSTGRES_HTTP_SCOPE; NOT_FROZEN_UAT",
+      "integrated_commit": "fae5292ce287a50ebce38f4fca2f79399e0eaea2",
+      "delivery_state": "EXACT_PATCH_CONSUMED",
+      "acceptance_state": "PASS_BLOCKER_CLASSIFIED_NOT_RELEASE_BLOCKER",
       "ordered_source_commits": [
-        "03f7289b81a489fe22745f2032078ed2eacb1c52"
+        "c7943a9aaccbfdddcc045239858dd8c55b8bd401"
       ],
       "batch01_consumed_source": "b4c34ab592ce98a7e7abf13fad73e152073c9008",
       "batch02_delivery_snapshot": {
@@ -184,7 +194,7 @@
         "delivery_state": "MANDATORY_REASON_UX_PASS",
         "acceptance_state": "REAL_INSTALL_QA_NOT_RUN"
       },
-      "summary_zh": "03 independent-device sealing integrated.",
+      "summary_zh": "PASS_BLOCKER_CLASSIFIED_NOT_RELEASE_BLOCKER",
       "batch03_delivery_snapshot": {
         "delivery_commit": "6c6af25d15ce10254e71ca4388452ee51c8c36ec",
         "integrated_commit": "54cced6c7716f5061b8a83cb1730656e4d33671d",
@@ -195,6 +205,11 @@
         ],
         "delivery_state": "BATCH03_SOURCE_INTEGRATED",
         "acceptance_state": "LIVE_AND_PRODUCT_ACCEPTANCE_PENDING"
+      },
+      "prior_delivery_snapshot": {
+        "delivery_commit": "80b619d263d81f5e684af67528da898cbfbda178",
+        "integrated_commit": "8ef402b4a48e7f45c45e6909d7dbf3a1f8e1931f",
+        "acceptance_state": "NATIVE_POSTGRES_HTTP_SCOPE; NOT_FROZEN_UAT"
       }
     },
     "04": {
@@ -203,15 +218,15 @@
       "task_id": null,
       "depends_on": [],
       "unlocks": [],
-      "delivery_commit": "3feb4b680d21a2744456fc97b3c80c78198db733",
-      "next_action": "SILENT; exact authorized delivery consumed; no new dispatch.",
+      "delivery_commit": "71efae533de930d83c16517d096f5f6701291b01",
+      "next_action": "STOP; next dispatch belongs to Owner.",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
-      "integrated_commit": "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
-      "delivery_state": "ACCOUNT_MVP_EXACT_SOURCE_INTEGRATED",
-      "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING",
+      "integrated_commit": "ef24a72682e7e06aa2725076aa84f49089645cfc",
+      "delivery_state": "EXACT_PATCH_CONSUMED",
+      "acceptance_state": "PARTIAL_RELEASE_READINESS_REHEARSAL_ONLY",
       "ordered_source_commits": [
-        "3feb4b680d21a2744456fc97b3c80c78198db733"
+        "71efae533de930d83c16517d096f5f6701291b01"
       ],
       "batch01_consumed_source": "f5a65e18167f70eb2c9a435d10cb7b3f150d3bfd",
       "batch02_delivery_commit": "f9634e24d759eb268c56d45b301046dc503ef714",
@@ -221,7 +236,7 @@
         "f9634e24d759eb268c56d45b301046dc503ef714"
       ],
       "schema_recovery_base": "f9634e24d759eb268c56d45b301046dc503ef714",
-      "summary_zh": "本轮 exact 交付已集成；Account MVP 用户验收待执行。",
+      "summary_zh": "PARTIAL_RELEASE_READINESS_REHEARSAL_ONLY",
       "continuity_receipt": "docs/governance/receipts/20260913-main3-batch03-continuity-evidence.json",
       "continuity_receipt_sha256": "110aa95f178734e0854b35fc80d5e17b21007b04e6f06cc423d3b828594281ae",
       "batch03_delivery_snapshot": {
@@ -260,6 +275,11 @@
         ],
         "delivery_state": "EXACT_CANDIDATE_SOURCE_INTEGRATED",
         "acceptance_state": "LOCAL_CANDIDATE_QUALIFIED_FULL_AB_NOT_RUN"
+      },
+      "prior_delivery_snapshot": {
+        "delivery_commit": "3feb4b680d21a2744456fc97b3c80c78198db733",
+        "integrated_commit": "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
+        "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
       }
     },
     "B": {
@@ -275,12 +295,12 @@
   },
   "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
   "knowledge_delivery": {
-    "ref": "1b8f30862f24ac989a6fbdef2f0819afb44a7b06",
-    "commit": "1b8f30862f24ac989a6fbdef2f0819afb44a7b06",
-    "tree": "fd285c9e42af0fbc4b2205ec479bc8416296ee98"
+    "ref": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
+    "commit": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
+    "tree": "bf0e13143177a3ec9e9b602f4bd65635961bc241"
   },
   "control_plane": {
-    "evidence": "docs/governance/receipts/20260915-control-convergence.json",
+    "evidence": "docs/governance/receipts/20260916-worker-convergence-frozen-candidate.json",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -291,13 +311,13 @@
       "03",
       "04"
     ],
-    "a_status_at_dispatch": "RUNNING",
+    "a_status_at_dispatch": "SILENT",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "NONE_NEW; 03 sealing consumed; PRE02 retained",
+    "worker_dispatches": "FOUR_EXACT_DELIVERIES_CONSUMED; NO_NEW_DISPATCH; NO_INTERNAL_AGENTS",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
-    "user_action_required": "Dispatch26: approved QQ read-only resolver; exact tonyswift identity and VPS/Cloudflare owner (see master context / authority matrix).",
-    "snapshot_scope": "Rebuilt exact integration Frozen; account MVP smoke PASS; user email click and A-F acceptance pending.",
+    "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
+    "snapshot_scope": "Dispatch28 exact Frozen TEST machine smoke PASS; full GUI UAT/email/deployment pending",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
@@ -406,7 +426,7 @@
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json",
   "chatgpt_read_branch": "control/main3-current",
   "current_stage": {
-    "CURRENT_PHASE": "CONTROL_CLOSEOUT; A_B_AND_PRE02_SOURCE_QUALIFICATION; EXTERNAL_GATES_BLOCKED",
+    "CURRENT_PHASE": "WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING",
     "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN",
     "PRODUCT_ACCEPTANCE": "PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT",
     "CHATGPT_READ_BRANCH": "control/main3-current"

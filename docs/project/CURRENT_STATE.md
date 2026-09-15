@@ -11,8 +11,8 @@ PRODUCT_ACCEPTANCE = PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT
 INTEGRATION_BRANCH = integration/main3
 INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-KNOWLEDGE_COMMIT = 1b8f30862f24ac989a6fbdef2f0819afb44a7b06
-KNOWLEDGE_TREE = fd285c9e42af0fbc4b2205ec479bc8416296ee98
+KNOWLEDGE_COMMIT = 20e976c7878401123ca2b20f63b2cf70a73e5f3e
+KNOWLEDGE_TREE = bf0e13143177a3ec9e9b602f4bd65635961bc241
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
 ALEMBIC_HEAD = 0040_admin_overview_aggregate
@@ -24,12 +24,12 @@ BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
 PRODUCER_UX_WIRING = PASS
 TEST_TARGET_STATUS = NO_NEW_USER_TEST_PUBLICATION
-FROZEN_CANDIDATE = HISTORICAL_EVIDENCE_ONLY
+FROZEN_CANDIDATE = DISPATCH28_MACHINE_SMOKE_PASS_GUI_UAT_PENDING
 REAL_A_B_REHYDRATION = PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = CONTROL_CLOSEOUT; A_B_AND_PRE02_SOURCE_QUALIFICATION; EXTERNAL_GATES_BLOCKED
+CURRENT_PHASE = WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING
 ```
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
@@ -41,17 +41,18 @@ PLAN_TASK = REAL_STORE_AND_VERSIONED_WRITE_ENTRY_REVIEW_REQUIRED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = NOT_YET_COMPLETE
 
-## 当前 control 收口（2026-09-15）
-唯一 Web 入口为 `control/main3-current`；integration/main3、main2 不自动推进。
-03 `80b619d` sealing delta 已收拢，保留 efb354c PRE02 修复；不再等待 03 回执。
-A/B 为 native PostgreSQL + authenticated HTTP + independent Python Desktop clients，非 Frozen/UI UAT。
-覆盖注册类型的 IDs/值、revision、隔离、B 重启、缺失本地资源；没有 A→B 文件复制。
-PRE02 包括 password binding、0040 exact RLS、reset consumer、startup、email readiness 和 admin/member。
-真实邮箱 consume/replay/expiry/reset/same-user continuation、TonySwift 精确映射及真实发送需独立 authority。
-本轮真实 SMTP 发送=0，TonySwift 修改=0；旧用户数据迁移=NO。
-[主上下文与服务器清单](../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md) 区分 VPS staging 与本机已过期 TEST 租约。
-DO_NOT_REDO：不重集成历史 delivery、不重建 Frozen、不改 CURRENT、不迁移、不切 public issuer。
-NEXT_TASK：Owner 批准 external lifecycle/角色映射与 human UAT 后单独派发；当前 STOP。
+## 当前 control 收口（2026-09-16 dispatch 28）
+唯一 Web 入口 `control/main3-current`；四份 exact worker patch 已消费，integration/main3、main2 未推进。
+唯一产品修改为02 long-path fix；原20测试、路径/资料22测试通过；source suite 596 PASS / 0 FAIL / 4 Windows symlink skips。
+Native PostgreSQL A/B 25、Desktop transport 26 PASS；仍非完整 Frozen GUI A/B。
+新 Frozen exact source/build/hash 见[收口回执](../governance/receipts/20260916-worker-convergence-frozen-candidate.json)。
+A 机器 smoke：EXE、原生 synthetic 登录、账户 Backend、workspace、资料页面 PASS；02完整 GUI UAT 待执行。
+UAT28已新建，租约北京时间09-16 04:11:36到期；UAT26已不可用，不作为当前服务。
+唯一 Owner 输入是 QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED；邮件 lifecycle 仍 BLOCKED。
+Tony exact-name 为 post-acceptance bootstrap，非 release blocker；Cloudflare证书监控为非阻塞OPS。
+04保留恢复/0035→0040 rehearsal PASS：530 workspaces / 88 plans / 330 resources，不是真实迁移。
+不改CURRENT、不迁移、不部署、不推进integration；下一轮02完整GUI验收另行派发，本轮STOP。
+[主上下文](../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md)记录新artifact、UAT28和后续release门禁。
 以下为历史证据，不代表当前 artifact、服务可用或当前唯一 blocker。
 
 ## Frozen V3 — historical real A/B stop before A product write
