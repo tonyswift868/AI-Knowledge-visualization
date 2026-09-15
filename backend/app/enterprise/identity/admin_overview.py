@@ -132,6 +132,11 @@ class AdminOverviewService:
             services = {name: {'status': 'unknown', 'code': 'NOT_OBSERVED'}
                         for name in ('keycloak', 'backend', 'database', 'email')}
             services['email'] = {'status': 'unavailable', 'code': 'EMAIL_AUTHORITY_UNAVAILABLE'}
+            if self.registry is not None:
+                services['backend'] = {
+                    'status': 'healthy' if self.registry.started else 'unavailable',
+                    'code': 'RUNTIME_STARTED' if self.registry.started else 'RUNTIME_STARTING',
+                }
             try:
                 health = await asyncio.wait_for(asyncio.to_thread(self._health), 2.5)
                 services.update(health)

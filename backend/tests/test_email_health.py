@@ -101,3 +101,13 @@ def test_overview_consumes_registry(ready, expected, monkeypatch):
 def test_overview_without_authority_fails_closed():
     result = asyncio.run(AdminOverviewService(Engine(), 'issuer', Provider([])).collect())
     assert result['services']['email'] == dict(status='unavailable', code='EMAIL_AUTHORITY_UNAVAILABLE')
+
+
+def test_dependency_observation_failure_preserves_backend_startup_authority():
+    class Registry:
+        started = True
+        def readiness(self):
+            raise TimeoutError('dependency observation unavailable')
+    result = asyncio.run(AdminOverviewService(Engine(), 'issuer', Provider([]), Registry()).collect())
+    assert result['services']['backend'] == dict(status='healthy', code='RUNTIME_STARTED')
+    assert result['services']['email']['status'] == 'unavailable'
