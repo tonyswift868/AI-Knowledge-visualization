@@ -41,6 +41,11 @@ def device(request):
                 'progress': {'plan_id':'plan-seal','mastery':0.25,'completed_tasks':1},
                 'learner_profile': {'display_name':'Disposable learner'},
                 'setting': {'theme':'dark','locale':'zh-CN'},
+                'task': {'plan_id':'plan-seal','title':'Read statistics','status':'pending'},
+                'calendar': {'plan_id':'plan-seal','task_id':'task-seal','day_date':'2026-09-15'},
+                'review': {'task_id':'task-seal','rating':3,'due':'2026-09-16'},
+                'learning_run': {'task_id':'task-seal','status':'completed','phase':'review'},
+                'history': {'run_id':'learning_run-seal','entries':[{'message_id':'message-seal','role':'user','content':'Synthetic study note'}]},
             }
             for kind, payload in payloads.items():
                 writes.append(client.write(kind,kind+'-seal',request_id='create-'+kind,
@@ -70,7 +75,7 @@ def device(request):
 
 
 def prove_continuity(source, endpoint, bearer, scratch):
-    base=Path('E:/Codex/Temp/MF04-FOUNDATION-20260915/devices-2')
+    base=Path(scratch)/'devices'
     run='seal-'+uuid.uuid4().hex
     roots={d:base/d/run for d in ('A','B')}
     assert all(not root.exists() for root in roots.values())
@@ -86,7 +91,7 @@ def prove_continuity(source, endpoint, bearer, scratch):
         return json.loads(p.stdout)
     a=invoke('A','create') # process is terminated and transport closed before B starts
     b=invoke('B','update')
-    for key in ('plans','progress','learner_profile','setting'):
+    for key in ('plans','tasks','calendars','progress','reviews','learner_profile','setting','learning_run','history'):
         assert a['after'][key] == b['before'][key], key
     assert a['workspace']['id']==b['workspace']['id']
     assert a['after']['resources'][0]['payload']==b['before']['resources'][0]['payload']
@@ -94,7 +99,7 @@ def prove_continuity(source, endpoint, bearer, scratch):
     assert not b['physical_file_exists']
     a_restart=invoke('A','read')
     b_restart=invoke('B','read')
-    for key in ('plans','progress','learner_profile','setting'):
+    for key in ('plans','tasks','calendars','progress','reviews','learner_profile','setting','learning_run','history'):
         assert b['after'][key]==a_restart['after'][key]==b_restart['after'][key], key
     isolation=invoke('B','isolation',subject='sealing-other-account',other=a['workspace'])
     assert not isolation['after']['plans']
@@ -102,7 +107,7 @@ def prove_continuity(source, endpoint, bearer, scratch):
         'a':a,'b':b,'a_restart':a_restart,'b_restart':b_restart,
         'isolation':{'status':isolation['denial_status'],'code':isolation['denial_code']},
         'auth':'EPHEMERAL_RS256_SERVER_VERIFIED', 'authority':'EXISTING_STRUCTURED_SYNC_HTTP_API',
-        'desktop_ui_uat':'NOT_RUN'}
+        'desktop_ui_uat':'NOT_RUN', 'coverage':'REGISTERED_SYNC_HTTP_PROJECTIONS; NOT_DOMAIN_PRODUCT_WRITE_UAT'}
     (scratch/'device-continuity.json').write_text(json.dumps(evidence,indent=2),encoding='utf-8')
     return evidence
 
