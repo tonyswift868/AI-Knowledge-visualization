@@ -6,6 +6,7 @@ import os
 import json
 import smtplib
 import ssl
+import socket
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -144,14 +145,30 @@ def _email_probe() -> tuple[bool, str]:
             credential = secret_path.read_text(encoding='utf-8').strip()
         if not credential or len(credential) > 4096:
             raise ValueError()
+        tunnel = config.get('SMTP_CONNECT_PORT')
+        if tunnel is not None and (type(tunnel) is not int or not 1 <= tunnel <= 65535
+                                   or config.get('SMTP_CONNECT_HOST') != '127.0.0.1'):
+            raise ValueError()
+        if 'SMTP_CONNECT_HOST' in config and tunnel is None:
+            raise ValueError()
     except Exception:
         return False, 'EMAIL_CONFIGURATION_UNAVAILABLE'
     try:
         context = ssl.create_default_context()
         kwargs = dict(host=config['SMTP_HOST'], port=int(config['SMTP_PORT']),
                       local_hostname='[127.0.0.1]', timeout=1)
-        client = (smtplib.SMTP_SSL(context=context, **kwargs) if config['SMTP_SSL']
-                  else smtplib.SMTP(**kwargs))
+        smtp_type = smtplib.SMTP_SSL if config['SMTP_SSL'] else smtplib.SMTP
+        if tunnel is not None:
+            # Optional operator-owned SSH forwarding changes only the TCP hop.
+            # SMTP_HOST remains the peer name for SNI and certificate validation.
+            class ForwardedSMTP(smtp_type):
+                def _get_socket(self, host, port, timeout):
+                    sock = socket.create_connection(('127.0.0.1', tunnel), timeout)
+                    if config['SMTP_SSL']:
+                        return context.wrap_socket(sock, server_hostname=host)
+                    return sock
+            smtp_type = ForwardedSMTP
+        client = smtp_type(context=context, **kwargs) if config['SMTP_SSL'] else smtp_type(**kwargs)
         client.set_debuglevel(0)
         if client.ehlo()[0] != 250:
             raise ValueError()

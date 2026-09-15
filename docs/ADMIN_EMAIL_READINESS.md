@@ -22,6 +22,13 @@ then uses Python's standard SMTP transport for verified TLS, AUTH and NOOP.
 Socket operations have a one-second timeout. No MAIL/RCPT/DATA or message send
 occurs; this is transport readiness, not proof of delivery or inbox receipt.
 
+For an existing approved SSH mail egress, operators may set `SMTP_CONNECT_HOST`
+to `127.0.0.1` and `SMTP_CONNECT_PORT` to its local forward port. This changes only
+the TCP connection destination; `SMTP_HOST` remains the real relay hostname for
+TLS certificate verification and SNI. The probe does not create a tunnel. Both
+fields must be supplied together; non-loopback overrides are rejected. The
+mail-sending service must use the same approved egress independently.
+
 Codes are fixed and contain no provider response text:
 
 - `EMAIL_TLS_AUTH_READY`: current authenticated TLS transport responded to NOOP.

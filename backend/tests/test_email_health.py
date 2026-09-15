@@ -111,3 +111,29 @@ def test_dependency_observation_failure_preserves_backend_startup_authority():
     result = asyncio.run(AdminOverviewService(Engine(), 'issuer', Provider([]), Registry()).collect())
     assert result['services']['backend'] == dict(status='healthy', code='RUNTIME_STARTED')
     assert result['services']['email']['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('extra', [
+    {'SMTP_CONNECT_HOST':'outside.invalid','SMTP_CONNECT_PORT':1234},
+    {'SMTP_CONNECT_HOST':'127.0.0.1'}, {'SMTP_CONNECT_PORT':1234},
+    {'SMTP_CONNECT_HOST':'127.0.0.1','SMTP_CONNECT_PORT':True},
+])
+def test_invalid_forward_configuration_fails_before_connect(relay, extra):
+    value = json.loads(relay[2].read_text()); value.update(extra)
+    relay[2].write_text(json.dumps(value))
+    assert health._email_probe() == (False, 'EMAIL_CONFIGURATION_UNAVAILABLE')
+    assert relay[1] == []
+
+
+def test_forward_preserves_relay_tls_hostname(relay, monkeypatch):
+    value = json.loads(relay[2].read_text())
+    value.update(SMTP_CONNECT_HOST='127.0.0.1', SMTP_CONNECT_PORT=1234)
+    relay[2].write_text(json.dumps(value))
+    sock = object(); connects = []
+    monkeypatch.setattr(health.socket, 'create_connection', lambda address, timeout: connects.append(address) or sock)
+    def connect(self, **kwargs):
+        assert kwargs['host'] == 'relay.invalid'
+        assert self._get_socket(kwargs['host'], kwargs['port'], kwargs['timeout']) is sock
+    monkeypatch.setattr(relay[0], '__init__', connect)
+    assert health._email_probe() == (True, 'EMAIL_TLS_AUTH_READY')
+    assert connects == [('127.0.0.1', 1234)]
