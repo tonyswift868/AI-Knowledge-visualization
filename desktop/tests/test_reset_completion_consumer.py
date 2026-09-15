@@ -85,24 +85,55 @@ def test_dialog_only_canonical_completion_returns_login_and_never_exchanges(monk
         pane.dispose(); app.processEvents()
 
 
-@pytest.mark.parametrize('outcome', ['canonical', 'untrusted_login', 'generic_error'])
+@pytest.mark.parametrize('outcome', ['canonical', 'accepted_only', 'generic_error'])
 def test_main_returns_to_login_only_after_canonical_signal(app_context, monkeypatch, outcome):
+    from PySide6.QtCore import Signal
+    from PySide6.QtWidgets import QWidget
+    from PySide6.QtTest import QTest
+    from desktop import lifecycle_pane
     from desktop.login_shell import LoginGateState
     target, app, _ = app_context
-    def create(config, **options):
-        options.pop('intent', None); options.pop('capabilities', None)
-        return Pane(config, **options)
-    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog', create)
+    class Client:
+        def __init__(self, config): pass
+        async def action(self, action, body):
+            if outcome == 'generic_error': raise RuntimeError('HTTP 200 is not completion')
+            return {'observation': {'transaction_id': 'synthetic-reset'}}
+        async def aclose(self): pass
+    class Observer:
+        def __init__(self, config): pass
+        async def wait_completed(self, transaction, cancelled):
+            assert transaction == 'synthetic-reset'
+            if outcome != 'canonical': raise TimeoutError('accepted is not completed')
+        async def aclose(self): pass
+    class NativePane(QWidget):
+        finished = Signal(bool)
+        def __init__(self, intent, parent=None):
+            super().__init__(parent)
+            assert intent == 'forgot_password'
+            self.bridge = lifecycle_pane.Bridge(self)
+            self.bridge.back.connect(self.finished.emit)
+        def cancel(self): self.bridge.cancelled.set()
+        def dispose(self): self.cancel(); self.hide()
+    monkeypatch.setattr(lifecycle_pane, 'LifecycleClient', Client)
+    monkeypatch.setattr(lifecycle_pane, 'ResetCompletionClient', Observer)
+    monkeypatch.setattr(lifecycle_pane, 'AccountLifecyclePane', NativePane)
     target._show_login_gate(); app.processEvents()
     gate = target.login_gate
-    gate.set_account_capabilities({'forgot_password': True})  # Synthetic UI seam, no release flag.
+    gate.set_account_capabilities({'forgot_password': True})
     accept = Mock(); monkeypatch.setattr(target, '_accept_login_result', accept)
     target._begin_account_action('forgot_password')
     pane = target._auth_pane
-    if outcome == 'canonical': pane.authentication_failed.emit(COMPLETED_CODE, 'ignored provider text')
-    elif outcome == 'untrusted_login': pane.authenticated.emit(login())
-    else: pane.authentication_failed.emit('HTTP_200', 'Password updated successfully')
+    pane.bridge.forgot('synthetic-user', 1)
+    import time
+    for _ in range(200):
+        app.processEvents(); time.sleep(0.01)
+        if not pane.bridge.busy: break
+    assert not pane.bridge.busy
     app.processEvents()
+    if outcome != 'canonical':
+        assert target._auth_pane is pane
+        assert gate.state == LoginGateState.AUTHENTICATING
+        pane.bridge.returnLogin(); app.processEvents()
     assert gate.state == LoginGateState.LOGIN_READY
     assert target._auth_pane is None and target._last_login_result is None and target.main is None
     assert gate.password_field.text() == ''
