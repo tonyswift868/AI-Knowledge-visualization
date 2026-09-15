@@ -49,6 +49,8 @@ class StructuredSyncClient:
         result = {'plans':[], 'progress':[], 'resources':[], 'learner_profile':[], 'setting':[], 'learning_run':[], 'history':[], 'tasks':[], 'calendars':[], 'reviews':[], 'tombstones':[]}
         resource_projection = {r['resource_id']: r for r in state['resources']}
         for entity in state['entities']:
+            if entity['kind'] not in self.SUPPORTED_KINDS:
+                raise ValueError('Unsupported structured sync kind')
             if entity['deleted']:
                 result['tombstones'].append(entity)
                 continue
@@ -71,7 +73,7 @@ class StructuredSyncClient:
                       'snapshot_revision', 'snapshot_authority', 'snapshot_scope',
                       'revision_ordering', 'supported_entity_types',
                       'unsupported_entity_types', 'learning_state',
-                      'progress_provenance'):
+                      'progress_provenance', 'entities'):
             if field in state:
                 result[field] = state[field]
         if 'snapshot_revision' not in result or 'snapshot_scope' not in result:

@@ -152,19 +152,23 @@ def test_new_structured_kinds_round_trip_without_keyerror(producer):
     assert restored['reviews'][0]['entity_id'] == 'review-a'
     assert restored['snapshot_scope']['workspace_id'] == 'ws-a'
     assert restored['snapshot_revision'] == 'pg-snapshot:7:7:'
+    assert restored['entities'] == entities
+    for field in ('complete', 'snapshot_scope', 'snapshot_authority', 'completeness_scope'):
+        assert restored[field] == envelope[field]
     for kind in ('learner_profile', 'setting', 'task', 'calendar', 'review', 'learning_run', 'history'):
         client.write(kind, 'entity-' + kind, request_id='write-' + kind,
                      expected_revision=0, payload={'value': kind})
     assert len(requests) == 8
 
 
-def test_unknown_server_kind_fails_closed(producer):
+@pytest.mark.parametrize('deleted', [False, True])
+def test_unknown_server_kind_fails_closed(producer, deleted):
     envelope = {'schema': 'mentorflow.structured-sync.v1', 'contract_version': 3,
         'complete': True, 'snapshot_revision': 'pg-snapshot:8:8:',
         'snapshot_scope': {'issuer': ISSUER, 'subject_id': 'a',
             'organization_id': 'org-a', 'workspace_id': 'ws-a'},
         'entities': [{'kind': 'future_kind', 'entity_id': 'x', 'revision': 1,
-                      'deleted': False, 'payload': {}}], 'resources': [],
+                      'deleted': deleted, 'payload': {}}], 'resources': [],
         'learning_state': {}, 'progress_provenance': [], 'observation': {}}
     client = producer(transport(lambda req: httpx.Response(200, json=envelope)))
     with pytest.raises(ValueError, match='Unsupported structured sync kind'):

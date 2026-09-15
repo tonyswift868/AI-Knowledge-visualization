@@ -140,7 +140,8 @@ def main():
             (test_vertical_slice.SyncTests, test_producer_contract.ProducerTests, test_empty_authority.EmptyAuthorityTests)])
         with (lab.home/'private-suite.log').open('w') as log:
             result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
-        report['protocol_tests'] = dict(run=result.testsRun, failures=len(result.failures), errors=len(result.errors))
+        report['protocol_tests'] = dict(run=result.testsRun, failures=len(result.failures), errors=len(result.errors), skips=len(result.skipped))
+        assert not result.skipped, 'POSTGRES_INTEGRATION_MUST_NOT_SKIP'
         if not result.wasSuccessful():
             report['test_failures'] = [(str(t), err.replace(lab.password, '[REDACTED]')) for t,err in result.failures+result.errors]
             raise AssertionError('PROTOCOL_TESTS_FAILED')
