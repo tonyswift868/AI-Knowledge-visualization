@@ -1,0 +1,37 @@
+{
+  "status": "BLOCKED",
+  "reason": "NO_APPROVED_CANONICAL_ACCOUNT_BINDING; no canonical import attempted",
+  "scope": "Real evidence clone admission-only rehearsal, not PostgreSQL business import",
+  "counts": {
+    "orm_workspaces": {
+      "input": 530,
+      "admitted": 0,
+      "held": 530,
+      "id_workspace_digest": "f086b7eaa280b3cb96a885fcf491d54c8747dd5cc081e082ebb9b75701d273ed"
+    },
+    "orm_plans": {
+      "input": 88,
+      "admitted": 0,
+      "held": 88,
+      "id_workspace_digest": "aa0ffe3285332cfe88c4a00452db66b10ac67544b910a54c6e482a7a53647b2f"
+    },
+    "orm_sources": {
+      "input": 330,
+      "admitted": 0,
+      "held": 330,
+      "id_workspace_digest": "d45b55c60238189692176e8ea5d884a0920d7bf1d270fa8ce4ed5ee31a754945"
+    }
+  },
+  "row_counts": "PASS_948_CLASSIFIED_0_ADMITTED",
+  "id_stability": "PASS_READ_ONLY_CLONE",
+  "relationship_stability": "PASS_REFERENCE_CLASSIFICATION",
+  "owner_mapping": "FAIL_CLOSED_ALL_UNRESOLVED",
+  "domain_mapping": "DOCUMENTED_NOT_IMPORTED",
+  "account_scope": "PASS_NO_ACCOUNT_WRITES",
+  "rls": "NOT_EXERCISED_NO_AUTHORIZED_CANONICAL_ACCOUNT",
+  "quarantine_behavior": "PASS_ALL_948_HELD",
+  "source_unchanged": true,
+  "actual_vps_writes": 0,
+  "real_old_data_migration": "NOT_RUN",
+  "private_audit": "E:\\Codex\\Temp\\MF04-BINDING29\\dry-run-admission.sqlite3"
+}
