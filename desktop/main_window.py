@@ -477,6 +477,10 @@ rehydration_session=None,
         self.account_vault_manager = account_vault_manager or AccountVaultManager(
             VaultLayout.from_env()
         )
+        if rehydration_session is not None:
+            from .product_settings import AccountProductSettings
+            self.settings = AccountProductSettings(self.settings, self.api,
+                lambda message: self.statusBar().showMessage(message))
         if (
             self.account_vault_manager.current is None
             or self.account_vault_manager.current.profile != self.account_profile
@@ -642,7 +646,19 @@ rehydration_session=None,
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
-        self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle)
+        if self._rehydration_session is not None:
+            from .product_asset_metadata import bind_vault_metadata, resource_rows
+            current_vault = self.account_vault_manager.current
+            bind_vault_metadata(current_vault,self.api)
+            def relink_synced_resource(key,path):
+                resources = self.api.request('GET','/api/product-resources')
+                resource = next(item for item in resources if item['id']==key)
+                return self.local_asset_lifecycle.bind_resource(key,path,fingerprint_sha256=resource['sha256'])
+            self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle,
+                list_resources=lambda: resource_rows(current_vault,self.local_asset_lifecycle,self.api),
+                relink_resource=relink_synced_resource)
+        else:
+            self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle)
         self.pages.addWidget(self.local_asset_page)
         self.admin_overview_page = None
         if self.admin_enabled:

@@ -25,13 +25,17 @@ class ProductSyncFailure(RuntimeError):
 
 
 class ProductSyncProducer:
-    def __init__(self, database, scope, send):
+    def __init__(self, database, scope, send, *, store='orm'):
         self.database = Path(database)
+        if store not in {'orm','legacy'}:
+            raise ProductSyncFailure('PRODUCT_SYNC_STORE_REQUIRED')
         self.scope = dict(scope)
         if set(scope) != {'issuer','subject_id','organization_id','workspace_id'} or any(not v for v in scope.values()):
             raise ProductSyncFailure('PRODUCT_SYNC_SCOPE_REQUIRED')
         self.send = send
         self.lock = threading.RLock()
+        self.records = {key: spec for key, spec in RECORDS.items() if spec.get('store', 'orm') == store}
+        self.store = store
 
     @contextmanager
     def connect(self):
@@ -52,15 +56,21 @@ class ProductSyncProducer:
             if old and old[0] != encoded(self.scope):
                 raise ProductSyncFailure('PRODUCT_SYNC_SCOPE_MISMATCH')
             if not old and any(table in tables and c.execute('SELECT 1 FROM "'+table+'" LIMIT 1').fetchone()
-                               for table in RECORDS):
+                               for table in (spec.get('table', key) for key, spec in self.records.items())):
                 raise ProductSyncFailure('PRODUCT_SYNC_EXISTING_DATA_REQUIRES_MIGRATION')
+            if self.store == 'orm':
+                from .product_sync_extensions import install_aggregate_tables
+                install_aggregate_tables(c)
+                tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             c.executescript("""
             CREATE TABLE IF NOT EXISTS product_sync_binding (singleton INTEGER PRIMARY KEY CHECK(singleton=1), scope TEXT NOT NULL, hydrating INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS product_sync_intents (seq INTEGER PRIMARY KEY AUTOINCREMENT, record_type TEXT NOT NULL, row_key TEXT NOT NULL, operation TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, payload TEXT, entity_id TEXT, base_revision INTEGER, status TEXT NOT NULL DEFAULT 'PENDING', error TEXT NOT NULL DEFAULT '');
             CREATE TABLE IF NOT EXISTS product_sync_revisions (record_type TEXT NOT NULL, row_key TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL, PRIMARY KEY(record_type,row_key));
+            CREATE TABLE IF NOT EXISTS product_sync_commands (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status TEXT NOT NULL, response TEXT, status_code INTEGER);
             """)
             c.execute('INSERT OR IGNORE INTO product_sync_binding(singleton,scope) VALUES(1,?)', (encoded(self.scope),))
-            for table, spec in RECORDS.items():
+            for record, spec in self.records.items():
+                table = spec.get('table', record)
                 if table not in tables:
                     raise ProductSyncFailure('PRODUCT_SYNC_SCHEMA_MISSING:' + table)
                 cols = {r[1] for r in c.execute('PRAGMA table_info("'+table+'")')}
@@ -72,7 +82,7 @@ class ProductSyncProducer:
                     c.execute(f"""CREATE TRIGGER IF NOT EXISTS "{name}" AFTER {operation} ON "{table}"
                         WHEN (SELECT hydrating FROM product_sync_binding WHERE singleton=1)=0
                         BEGIN INSERT INTO product_sync_intents(record_type,row_key,operation,request_id)
-                        VALUES('{table}',json_array({keys}),'{operation}',lower(hex(randomblob(16)))); END""")
+                        VALUES('{record}',json_array({keys}),'{operation}',lower(hex(randomblob(16)))); END""")
 
     def _scope_check(self, c):
         r = c.execute('SELECT scope FROM product_sync_binding WHERE singleton=1').fetchone()
@@ -98,8 +108,10 @@ class ProductSyncProducer:
             self._scope_check(c)
             pending = c.execute("SELECT COUNT(*) FROM product_sync_intents WHERE status!='ACKED'").fetchone()[0]
             error = c.execute("SELECT error FROM product_sync_intents WHERE status!='ACKED' ORDER BY seq LIMIT 1").fetchone()
-            return {'scope': 'ORM_ACTIVE_TEACHING_RECORDS', 'pending': pending,
-                    'status': (error[0] or 'PRODUCT_SYNC_PENDING') if error else 'SERVER_ACKNOWLEDGED'}
+            interrupted = c.execute("SELECT COUNT(*) FROM product_sync_commands WHERE status='RUNNING'").fetchone()[0]
+            return {'scope': 'SUPPORTED_PRODUCT_RECORDS', 'pending': pending, 'interrupted_commands':interrupted,
+                    'status': (error[0] or 'PRODUCT_SYNC_PENDING') if error else
+                    ('PRODUCT_SYNC_COMMAND_INTERRUPTED' if interrupted else 'SERVER_ACKNOWLEDGED')}
 
     def flush(self):
         with self.lock:
@@ -115,7 +127,7 @@ class ProductSyncProducer:
                     rev = c.execute('SELECT * FROM product_sync_revisions WHERE record_type=? AND row_key=?',(table,key)).fetchone()
                     if intent['payload'] is None:
                         where = ' AND '.join('"'+k+'"=?' for k in spec['keys'])
-                        domain = c.execute('SELECT * FROM "'+table+'" WHERE '+where, json.loads(key)).fetchone()
+                        domain = c.execute('SELECT * FROM "'+spec.get('table', table)+'" WHERE '+where, json.loads(key)).fetchone()
                         deleting = domain is None
                         if deleting and not rev:
                             c.execute("UPDATE product_sync_intents SET status='ACKED' WHERE seq=?",(intent['seq'],))
@@ -154,7 +166,7 @@ class ProductSyncProducer:
                         c.execute('UPDATE product_sync_intents SET error=? WHERE seq=?',(code,intent['seq']))
                     raise ProductSyncFailure(code) from None
 
-    def restore(self, snapshot):
+    def check_snapshot(self, snapshot):
         if snapshot.get('complete') is not True or snapshot.get('snapshot_scope') != self.scope:
             raise ProductSyncFailure('PRODUCT_SYNC_SCOPE_MISMATCH')
         if (snapshot.get('schema') != 'mentorflow.structured-sync.v1'
@@ -172,6 +184,10 @@ class ProductSyncProducer:
                 raise ProductSyncFailure('PRODUCT_SYNC_INVALID_SNAPSHOT')
             seen.add(identity)
             validate(item['kind'], item['entity_id'], item['payload'])
+        return items, seen
+
+    def restore(self, snapshot):
+        items, seen = self.check_snapshot(snapshot)
         with self.lock, self.connect() as c:
             self._scope_check(c)
             if c.execute("SELECT 1 FROM product_sync_intents WHERE status!='ACKED'").fetchone():
@@ -190,7 +206,7 @@ class ProductSyncProducer:
                             raise ProductSyncFailure('PRODUCT_SYNC_STALE_SNAPSHOT')
                         spec = RECORDS[prior['record_type']]
                         where = ' AND '.join('"'+k+'"=?' for k in spec['keys'])
-                        c.execute('DELETE FROM "'+prior['record_type']+'" WHERE '+where,json.loads(prior['row_key']))
+                        c.execute('DELETE FROM "'+spec.get('table', prior['record_type'])+'" WHERE '+where,json.loads(prior['row_key']))
                         c.execute('UPDATE product_sync_revisions SET revision=?,deleted=1 WHERE record_type=? AND row_key=?',
                                   (item['revision'],prior['record_type'],prior['row_key']))
                     continue
@@ -199,6 +215,8 @@ class ProductSyncProducer:
                     continue  # Existing non-product protocol items keep their existing consumers.
                 validate(item['kind'],item['entity_id'],payload)
                 record = payload['product_record']; table=record['record_type'];spec=RECORDS[table]
+                if table not in self.records:
+                    continue
                 values = record['values']; key=encoded([values[k] for k in spec['keys']])
                 prior = c.execute('SELECT revision FROM product_sync_revisions WHERE record_type=? AND row_key=?',(table,key)).fetchone()
                 if prior and prior[0] > item['revision']:
@@ -207,6 +225,109 @@ class ProductSyncProducer:
                 names=','.join('"'+k+'"' for k in inserting);params=','.join('?' for _ in inserting)
                 keys=','.join('"'+k+'"' for k in spec['keys'])
                 updates=','.join('"'+k+'"=excluded."'+k+'"' for k in columns if k not in spec['keys'])
-                c.execute(f'INSERT INTO "{table}" ({names}) VALUES({params}) ON CONFLICT({keys}) DO UPDATE SET {updates}',tuple(inserting.values()))
+                local_table = spec.get('table', table)
+                c.execute(f'INSERT INTO "{local_table}" ({names}) VALUES({params}) ON CONFLICT({keys}) DO UPDATE SET {updates}',tuple(inserting.values()))
                 c.execute('INSERT INTO product_sync_revisions VALUES(?,?,?,?,0) ON CONFLICT(record_type,row_key) DO UPDATE SET entity_id=excluded.entity_id,revision=excluded.revision,deleted=0',(table,key,item['entity_id'],item['revision']))
             c.execute('UPDATE product_sync_binding SET hydrating=0 WHERE singleton=1')
+
+    def begin_command(self, command_id, fingerprint):
+        with self.connect() as c:
+            self._scope_check(c)
+            old = c.execute('SELECT * FROM product_sync_commands WHERE id=?', (command_id,)).fetchone()
+            if old:
+                if old['fingerprint'] != fingerprint:
+                    raise ProductSyncFailure('PRODUCT_SYNC_COMMAND_REUSED')
+                if old['status'] != 'COMPLETED':
+                    # Never rerun an ambiguous partially executed business command.
+                    raise ProductSyncFailure('PRODUCT_SYNC_COMMAND_INTERRUPTED')
+                return dict(old)
+            c.execute("INSERT INTO product_sync_commands(id,fingerprint,status) VALUES(?,?,'RUNNING')", (command_id,fingerprint))
+        return None
+
+    def retry_conflict(self, request_id, expected_server_revision):
+        """Explicit keep-local resolution, fenced against a newly changed server."""
+        from uuid import uuid4
+        snapshot = self.send({'operation':'snapshot'})
+        items, _ = self.check_snapshot(snapshot)
+        with self.lock, self.connect() as c:
+            self._scope_check(c)
+            intent=c.execute("SELECT * FROM product_sync_intents WHERE request_id=? AND status!='ACKED'",(request_id,)).fetchone()
+            if not intent or intent['error']!='PRODUCT_SYNC_CONFLICT':
+                raise ProductSyncFailure('PRODUCT_SYNC_CONFLICT_REQUIRED')
+            kind=RECORDS[intent['record_type']]['kind']
+            remote=next((v for v in items if (v['kind'],v['entity_id'])==(kind,intent['entity_id'])),None)
+            if not remote or remote['deleted'] or type(expected_server_revision) is not int or remote['revision']!=expected_server_revision:
+                raise ProductSyncFailure('PRODUCT_SYNC_CONFLICT')
+            c.execute("UPDATE product_sync_intents SET request_id=?,base_revision=?,error='' WHERE seq=?",
+                (uuid4().hex,remote['revision'],intent['seq']))
+        self.flush()
+
+    def conflicts(self):
+        with self.connect() as c:
+            self._scope_check(c)
+            return [dict(r) for r in c.execute("SELECT request_id,record_type,entity_id,base_revision,error FROM product_sync_intents WHERE status!='ACKED' AND error='PRODUCT_SYNC_CONFLICT'")]
+
+    def complete_command(self, command_id, response, status_code, states):
+        with self.lock, self.connect() as c:
+            self._scope_check(c)
+            for table, key, state in states:
+                if table not in {'product_plan_state', 'product_review_state', 'product_account_settings'}:
+                    raise ProductSyncFailure('PRODUCT_SYNC_CONTRACT_REJECTED')
+                data = encoded(state)
+                # Validate before commit so an oversized state cannot silently
+                # become a durable but undeliverable business result.
+                try:
+                    project(table, {'id':key, 'state':data})
+                except ProductSyncRejected:
+                    raise ProductSyncFailure('PRODUCT_SYNC_INVALID_PROJECTION') from None
+                c.execute(f'INSERT INTO "{table}" VALUES(?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state WHERE state!=excluded.state', (key,data))
+            if command_id:
+                c.execute("UPDATE product_sync_commands SET status='COMPLETED',response=?,status_code=? WHERE id=?",
+                          (response,status_code,command_id))
+
+    def runtime_states(self, table):
+        if table not in {'product_plan_state','product_review_state','product_account_settings'}:
+            raise ProductSyncFailure('PRODUCT_SYNC_CONTRACT_REJECTED')
+        with self.connect() as c:
+            self._scope_check(c)
+            return {r['id']: json.loads(r['state']) for r in c.execute(f'SELECT * FROM "{table}"')}
+
+
+class ProductSyncStores:
+    """One producer contract across the two existing compatibility stores."""
+    def __init__(self, database, legacy_database, scope, send):
+        self.primary = ProductSyncProducer(database, scope, send)
+        self.legacy = ProductSyncProducer(legacy_database, scope, send, store='legacy')
+        self.scope = self.primary.scope
+
+    def __getattr__(self, name):
+        return getattr(self.primary, name)
+
+    def start(self):
+        self.primary.install()
+        self.legacy.install()
+        self.flush()
+        self.restore(self.primary.send({'operation':'snapshot'}))
+
+    def flush(self):
+        self.primary.flush()
+        self.legacy.flush()
+
+    def restore(self, snapshot):
+        self.primary.restore(snapshot)
+        self.legacy.restore(snapshot)
+
+    def status(self):
+        states = [p.status() for p in (self.primary,self.legacy)]
+        return dict(scope='SUPPORTED_PRODUCT_RECORDS', pending=sum(s['pending'] for s in states),
+                    interrupted_commands=sum(s['interrupted_commands'] for s in states),
+                    status=next((s['status'] for s in states if s['status']!='SERVER_ACKNOWLEDGED'), 'SERVER_ACKNOWLEDGED'))
+
+    def conflicts(self):
+        return self.primary.conflicts()+self.legacy.conflicts()
+
+    def retry_conflict(self, request_id, expected_server_revision):
+        for producer in (self.primary,self.legacy):
+            if any(row['request_id']==request_id for row in producer.conflicts()):
+                return producer.retry_conflict(request_id,expected_server_revision)
+        raise ProductSyncFailure('PRODUCT_SYNC_CONFLICT_REQUIRED')

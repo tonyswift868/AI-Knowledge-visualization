@@ -212,7 +212,8 @@ class LocalAssetPage(QWidget):
         self.table.setRowCount(len(assets))
         for row, asset in enumerate(assets):
             self.table.setItem(row, 0, self._text_item(asset.filename))
-            source_label = "MANAGED" if asset.source_kind == "MANAGED" else "LINKED · NOT_PORTABLE"
+            source_label = {'MANAGED':'MANAGED','LINKED':'LINKED · NOT_PORTABLE',
+                            'MODEL':'模型 · 本机安装'}.get(asset.source_kind,asset.source_kind)
             self.table.setItem(row, 1, self._text_item(source_label))
             state = asset.state
             display_state = STATE_CODES.get(state, state)

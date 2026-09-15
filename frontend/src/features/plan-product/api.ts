@@ -11,7 +11,6 @@ import type {
 } from "./types"
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
-const requestId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 export const planProductApi: PlanProductClient = {
   demo: () => apiRequest<DemoResponse>("/plan-product/demo"),
@@ -23,7 +22,6 @@ export const planProductApi: PlanProductClient = {
     method: "POST",
     body: JSON.stringify({
       explicitly_confirmed_by_user: true,
-      confirmation_id: requestId("publish-confirm"),
       published_on: todayIso(),
     }),
   }),
@@ -47,7 +45,7 @@ export const planProductApi: PlanProductClient = {
     unavailable_dates: string[]
   }) => apiRequest<ShiftPreviewResponse>(`/plan-product/published/${publicationId}/shifts/preview`, {
     method: "POST",
-    body: JSON.stringify({ ...value, request_id: requestId("shift") }),
+    body: JSON.stringify(value),
   }),
   confirmShift: (publicationId, previewId) => apiRequest<{ current_schedule: PublishedResponse["current_schedule"] }>(
     `/plan-product/published/${publicationId}/shifts/${previewId}/confirm`,
@@ -55,7 +53,6 @@ export const planProductApi: PlanProductClient = {
       method: "POST",
       body: JSON.stringify({
         explicitly_confirmed_by_user: true,
-        confirmation_id: requestId("shift-confirm"),
       }),
     },
   ),
@@ -65,7 +62,7 @@ export const planProductApi: PlanProductClient = {
       method: "POST",
       body: JSON.stringify({
         explicitly_requested_by_user: true,
-        creation: { ...creation, request_id: requestId("regenerate") },
+        creation,
       }),
     },
   ),

@@ -388,26 +388,16 @@ async def product_commit_boundary(request: Request, call_next):
         lock = request.app.state.product_sync_request_lock = asyncio.Lock()
     async with lock:
         try:
-            await asyncio.to_thread(producer.authorize)
-            if request.url.path == '/api/product-sync/status' and request.method == 'GET':
-                return JSONResponse(content=await asyncio.to_thread(producer.status))
-            # Deliver a previous ambiguous commit before allowing another write.
-            await asyncio.to_thread(producer.flush)
-            response = await call_next(request)
-            # Also drain after failed commands: ingestion may have committed
-            # before a later provider/planning precondition rejected the command.
-            await asyncio.to_thread(producer.flush)
-            response.headers['X-MentorFlow-Product-Sync-Scope'] = 'ORM_ACTIVE_TEACHING_RECORDS'
-            response.headers['X-MentorFlow-Product-Sync'] = (
-                'SERVER_ACKNOWLEDGED' if request.url.path.startswith('/api/active-teaching/')
-                else 'PARTIAL_PRODUCT_COVERAGE')
-            return response
+            from .product_command_boundary import invoke
+            return await invoke(request, call_next, producer)
         except ProductSyncFailure as exc:
             messages = {
                 'PRODUCT_SYNC_CONFLICT': '云端已有较新修订。本机更改已保留，需解决冲突后继续。',
                 'PRODUCT_SYNC_DENIED': '当前账号或学习空间无权提交更改，请重新登录。',
                 'PRODUCT_SYNC_CONTRACT_REJECTED': '云端未接受当前数据格式。本机更改已保留，需要兼容的数据合同后才能提交。',
                 'PRODUCT_SYNC_INVALID_PROJECTION': '本机记录不符合已支持的同步格式。更改已保留，尚未提交到云端。',
+                'PRODUCT_SYNC_COMMAND_REUSED': '重试标识对应不同的操作内容，已阻止重复执行。',
+                'PRODUCT_SYNC_COMMAND_INTERRUPTED': '上次操作在返回结果前中断。请先查看已有业务结果，不能自动重新执行。',
             }
             return JSONResponse(status_code=409 if exc.code == 'PRODUCT_SYNC_CONFLICT' else 503,
                 content={'error': {'code': exc.code, 'message': messages.get(exc.code,
@@ -416,6 +406,10 @@ async def product_commit_boundary(request: Request, call_next):
 configure_default_health_probes()
 install_review_product(app)
 install_plan_product(app)
+from .product_settings_api import router as product_settings_router
+app.include_router(product_settings_router)
+from .product_resources_api import router as product_resources_router
+app.include_router(product_resources_router)
 install_document_import(app)
 install_enterprise_identity(app)
 app.include_router(enterprise_learning_runs_router)
@@ -1776,11 +1770,7 @@ def start_task_v2(task_id: str):
 
 @app.post("/api/tasks/{task_id}/start-legacy")
 def start_task(task_id: str):
-    for ws in db.rows("workspaces", "status", "active"):
-        plan = active_plan(ws["id"]); day, task = find_task(plan, task_id)
-        if task:
-            task["status"] = "in_progress"; return task
-    fail("TASK_NOT_FOUND", "任务不存在", 404)
+    return start_task_v2(task_id)
 
 
 @app.post("/api/tasks/{task_id}/complete")
@@ -1868,13 +1858,7 @@ def learning_run_hint(run_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/complete-legacy")
 def complete_task(task_id: str):
-    for ws in db.rows("workspaces", "status", "active"):
-        plan = active_plan(ws["id"]); day, task = find_task(plan, task_id)
-        if task:
-            task["status"] = "completed"; task["completed_at"] = db.now()
-            with db.connection() as conn: conn.execute("UPDATE plans SET payload=? WHERE id=?", (json.dumps(plan, ensure_ascii=False), plan["id"]))
-            return task
-    fail("TASK_NOT_FOUND", "任务不存在", 404)
+    return complete_task_v2(task_id)
 
 
 @app.post("/api/workspaces/{workspace_id}/sessions")

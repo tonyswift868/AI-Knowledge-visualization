@@ -1,0 +1,78 @@
+file,entry,line,route,status,contract
+backend/app/main.py,create_workspace,778,POST /api/workspaces,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,patch_workspace,834,PATCH /api/workspaces/{workspace_id},WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,patch_workspace_persona,849,PATCH /api/workspaces/{workspace_id}/persona,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,delete_workspace,860,DELETE /api/workspaces/{workspace_id},WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,add_text_source,1121,POST /api/workspaces/{workspace_id}/sources/text,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,add_local_source,1132,POST /api/workspaces/{workspace_id}/sources/local-path,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,upload_source,1173,POST /api/workspaces/{workspace_id}/sources/upload,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,preview_archive_source,1262,POST /api/workspaces/{workspace_id}/sources/archive/preview,LOCAL_ONLY_BY_CONTRACT,device preview/export; no server business state
+backend/app/main.py,import_archive_source,1284,POST /api/workspaces/{workspace_id}/sources/archive/import,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,cancel_archive_preview,1293,DELETE /api/workspaces/{workspace_id}/sources/archive/preview/{preview_id},LOCAL_ONLY_BY_CONTRACT,device preview/export; no server business state
+backend/app/main.py,add_url_source,1302,POST /api/workspaces/{workspace_id}/sources/url,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,delete_source,1335,DELETE /api/sources/{source_id},WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,set_goal,1376,POST /api/workspaces/{workspace_id}/goal,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,patch_goal,1400,PATCH /api/workspaces/{workspace_id}/goal,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,feasibility_analyze,1408,POST /api/workspaces/{workspace_id}/feasibility/analyze,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,confirm_feasibility,1448,POST /api/workspaces/{workspace_id}/feasibility/confirm,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,generate_plan,1479,POST /api/workspaces/{workspace_id}/plans/generate,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,activate_plan,1536,POST /api/plans/{plan_id}/activate,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,replan,1554,POST /api/plans/{plan_id}/replan,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,export_plan,1652,POST /api/plans/{plan_id}/export,LOCAL_ONLY_BY_CONTRACT,device preview/export; no server business state
+backend/app/main.py,start_task_v2,1761,POST /api/tasks/{task_id}/start,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,start_task,1772,POST /api/tasks/{task_id}/start-legacy,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,complete_task_v2,1777,POST /api/tasks/{task_id}/complete,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,learning_run_create,1796,POST /api/tasks/{task_id}/learning-runs,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,learning_run_message,1808,POST /api/learning-runs/{run_id}/messages,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,learning_run_quick_quiz,1843,POST /api/learning-runs/{run_id}/quick-quiz,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,learning_run_submit,1849,POST /api/learning-runs/{run_id}/submit,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,learning_run_hint,1855,POST /api/learning-runs/{run_id}/request-hint,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,complete_task,1860,POST /api/tasks/{task_id}/complete-legacy,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,create_session,1865,POST /api/workspaces/{workspace_id}/sessions,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,message_session,1885,POST /api/sessions/{session_id}/messages,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,evaluate_lesson_v2,1925,POST /api/lessons/{lesson_id}/evaluate,WIRED,legacy compatibility + existing ORM producer
+backend/app/main.py,evaluate_lesson,1973,POST /api/lessons/{lesson_id}/evaluate-legacy,WIRED,legacy compatibility + existing ORM producer
+backend/app/active_teaching.py,_capture_knowledge_progress,496,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,upload_material,2313,POST /workspaces/{workspace_id}/materials,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_set_material_disposition,2504,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,delete_material,2591,DELETE /workspaces/{workspace_id}/materials/{material_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_sync_receipt_learner_preference_profile,3336,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,save_receipt,3387,PUT /workspaces/{workspace_id}/receipt,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,generate_plan,4150,POST /workspaces/{workspace_id}/plans/generate,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_complete_execution_task,4561,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_refresh_plan_calendar,4671,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_materialize_review_occurrence,4935,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_record_message,5625,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_v1_self_attested_completion,6892,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,start_review,10614,POST /sessions/{session_id}/reviews/{review_id}/start,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,submit_review,10768,POST /sessions/{session_id}/reviews/{review_id}/submit,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,update_learning_workspace,12161,PATCH /workspaces/{workspace_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/plan_product_api.py,create_preview,582,POST /previews,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/plan_product_api.py,publish_preview,593,POST /previews/{preview_id}/publish,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/plan_product_api.py,complete_task,628,POST /published/{publication_id}/tasks/{task_id}/complete,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/plan_product_api.py,preview_shift,641,POST /published/{publication_id}/shifts/preview,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/plan_product_api.py,confirm_shift,653,POST /published/{publication_id}/shifts/{preview_id}/confirm,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/plan_product_api.py,regenerate_plan,666,POST /published/{publication_id}/regenerate,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,create_campaign,55,POST /campaigns,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,start_round,66,POST /campaigns/{campaign_id}/rounds/start,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,next_question,71,POST /campaigns/{campaign_id}/questions/next,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,submit_answer,76,POST /campaigns/{campaign_id}/answers,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,request_hint,90,POST /campaigns/{campaign_id}/hints,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,request_explanation,95,POST /campaigns/{campaign_id}/explanations,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,pause,104,POST /campaigns/{campaign_id}/pause,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,resume,109,POST /campaigns/{campaign_id}/resume,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/review_product_v1/api.py,finish,114,POST /campaigns/{campaign_id}/finish,WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/product_settings_api.py,write_setting,42,PUT /{key:path},WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/product_resources_api.py,put_resource,25,PUT /{resource_id},WIRED,typed durable state + command receipt + existing producer/ACK
+backend/app/product_resources_api.py,delete_resource,40,DELETE /{resource_id},WIRED,typed durable state + command receipt + existing producer/ACK
+desktop/main_window.py,_open_news_preferences,1705,native method,WIRED,explicit account setting mapping
+desktop/main_window.py,_set_task_color,2484,native method,WIRED,explicit account setting mapping
+desktop/account_vault.py,import_managed,330,native method,WIRED,same Vault transaction metadata intent; local API producer
+desktop/account_vault.py,import_linked,391,native method,WIRED,same Vault transaction metadata intent; local API producer
+desktop/account_vault.py,install_shared_model,627,local installation,LOCAL_ONLY_BY_CONTRACT,shared device binary cache; not an account history writer
+desktop/local_asset_lifecycle.py,bind_resource,397,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
+desktop/local_asset_lifecycle.py,bind_resource_to_asset,430,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
+desktop/local_asset_lifecycle.py,relink_resource,475,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
+desktop/local_asset_lifecycle.py,relink,492,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
+desktop/local_asset_lifecycle.py,redownload,550,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
+desktop/local_asset_lifecycle.py,restore_from_package,618,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged

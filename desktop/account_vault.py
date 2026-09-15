@@ -317,11 +317,22 @@ class AccountVault:
                 int(record.restorable_from_package),
             ),
         )
+        from .product_asset_metadata import enqueue_vault_metadata
+        try:
+            enqueue_vault_metadata(self,record)
+        except Exception:
+            self._database.rollback()
+            raise
         self._database.commit()
+        from .product_asset_metadata import flush_vault_metadata
+        flush_vault_metadata(self)
 
     def import_managed(self, source: Path | str) -> AssetRecord:
         self._require_open()
         source_path = _regular_source(Path(source))
+        from .product_asset_metadata import resume_pending_import
+        pending=resume_pending_import(self,source_path,'MANAGED')
+        if pending is not None:return pending
         staging = _safe_child(
             self.root,
             "managed-assets",
@@ -380,6 +391,9 @@ class AccountVault:
     def import_linked(self, source: Path | str) -> AssetRecord:
         self._require_open()
         source_path = _regular_source(Path(source))
+        from .product_asset_metadata import resume_pending_import
+        pending=resume_pending_import(self,source_path,'LINKED')
+        if pending is not None:return pending
         info = source_path.stat()
         record = AssetRecord(
             local_asset_id="la_" + uuid.uuid4().hex,

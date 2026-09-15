@@ -1,3 +1,4 @@
+import { productFetch } from "../../api/productCommand"
 export type ReviewOutcome = 'recalled' | 'recalled_with_difficulty' | 'partial' | 'failed' | 'hint_dependent'
 
 export type ReviewQuestion = {
@@ -76,7 +77,7 @@ const REVIEW_API_BASE = (import.meta.env.VITE_REVIEW_API_BASE as string | undefi
   ?? '/api/review'
 
 async function reviewRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${REVIEW_API_BASE}${path}`, {
+  const response = await productFetch(`${REVIEW_API_BASE}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })

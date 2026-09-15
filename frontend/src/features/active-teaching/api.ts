@@ -1,3 +1,4 @@
+import { productFetch } from "../../api/productCommand"
 export type ActiveSnapshot = {
   workspace_id: string;
   materials: any[];
@@ -275,7 +276,7 @@ export async function activeRequest(
     ? window.setTimeout(() => controller.abort(), timeoutMs)
     : null;
   try {
-    return await parseResponse(await fetch(`/api/active-teaching${path}`, {
+    return await parseResponse(await productFetch(`/api/active-teaching${path}`, {
       ...init,
       headers,
       signal: init?.signal || controller?.signal,

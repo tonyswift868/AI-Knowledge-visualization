@@ -546,7 +546,7 @@ class ReviewProductService:
             "campaign_id": snapshot.campaign_id,
             "mode": "demo",
             "demo": True,
-            "demo_label": "DEMO · 完全离线",
+            "demo_label": "DEMO · 本地题库，账号学习记录" if getattr(self,'account_sync_enabled',False) else "DEMO · 完全离线",
             "state": snapshot.state.value,
             "round": {
                 "current": snapshot.current_round_number,

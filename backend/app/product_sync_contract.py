@@ -535,6 +535,10 @@ RECORDS['active_plan_calendars'] = {
 class ProductSyncRejected(ValueError):
     pass
 
+from .product_sync_extensions import LEGACY_RECORDS, AGGREGATE_RECORDS
+RECORDS.update(LEGACY_RECORDS)
+RECORDS.update(AGGREGATE_RECORDS)
+
 
 _PRIVATE = ('password', 'token', 'secret', 'credential', 'private_key', 'api_key',
             'provider_session', 'stored_path', 'local_path', 'file_path',
@@ -571,13 +575,19 @@ def record_id(table, values):
 def project(table, row):
     spec = RECORDS[table]
     values = {key: public_value(row[key]) for key in spec['columns']}
+    if table == 'legacy_sources':
+        from pathlib import PureWindowsPath
+        values['original_filename'] = PureWindowsPath(values['original_filename']).name
+        if values['source_type'] in {'upload','local_file','archive','archive_file'}:
+            values['title'] = PureWindowsPath(values['title']).name
     record = dict(schema=SCHEMA, record_type=table, values=values)
     payload = {'product_record': record}
     if spec.get('auxiliary'):
         payload['product_auxiliary'] = True
     if spec['kind'] == 'resource':
-        payload.update(product_classification='USER_FILE', filename=values['original_filename'],
-                       media_type=values['media_type'], sha256=values['sha256'], size_bytes=values['size_bytes'])
+        payload.update(product_classification=values.get('classification','USER_FILE'), filename=values['original_filename'] or values.get('title') or 'resource',
+                       media_type=values.get('media_type', 'application/octet-stream'),
+                       sha256=values.get('sha256', values.get('content_hash')), size_bytes=values.get('size_bytes', 0))
     elif spec['kind'] == 'plan':
         receipt = values.get('receipt') or '{}'
         receipt = json.loads(receipt) if isinstance(receipt, str) else receipt
@@ -619,3 +629,16 @@ def validate(kind, entity_id, payload):
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_ID')
     if len(json.dumps(payload, allow_nan=False).encode()) > 262144:
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_TOO_LARGE')
+    table=record['record_type']
+    try:
+        if table=='product_plan_state':
+            from .product_runtime_state import validate_plan_record
+            validate_plan_record(values['id'],json.loads(values['state']))
+        elif table=='product_account_settings':
+            from .product_settings_api import validate_setting
+            validate_setting(values['id'],json.loads(values['state']))
+        elif table=='product_review_state':
+            from .product_runtime_state import restore_review
+            restore_review({values['id']:json.loads(values['state'])})
+    except (ValueError,TypeError,KeyError,AttributeError):
+        raise ProductSyncRejected('PRODUCT_SYNC_STATE_INVALID') from None

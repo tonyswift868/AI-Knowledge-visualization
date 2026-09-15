@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import mimetypes
+import hashlib
+import json
+from uuid import uuid4
 
 import httpx
 
@@ -25,11 +28,30 @@ class DesktopApi:
         # migrated to the local single-user contract.  Keep it inert: no
         # cookie is read, written, or sent by the API client.
         self.session_token = ""
+        self._pending_commands = {}
 
     def close(self) -> None:
         self.client.close()
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
+        fingerprint = None
+        if method.upper() in {'POST','PUT','PATCH','DELETE'} and path.startswith((
+            '/api/active-teaching/', '/api/plan-product/', '/api/review/', '/api/product-resources', '/api/product-settings',
+            '/api/workspaces', '/api/plans/', '/api/tasks/', '/api/sources/', '/api/sessions/', '/api/learning-runs/')):
+            digest = hashlib.sha256((method.upper()+'\0'+path).encode())
+            digest.update(json.dumps({k:kwargs[k] for k in ('json','data','params') if k in kwargs},sort_keys=True,default=str).encode())
+            for key,value in (kwargs.get('files') or {}).items():
+                filename, stream, *metadata = value if isinstance(value,tuple) else ('',value)
+                digest.update(str((key,filename,metadata)).encode())
+                if hasattr(stream,'read'):
+                    offset = stream.tell()
+                    try:
+                        while chunk := stream.read(1024*1024): digest.update(chunk)
+                    finally: stream.seek(offset)
+                else: digest.update(stream.encode() if isinstance(stream,str) else stream)
+            fingerprint = digest.hexdigest()
+            identity = self._pending_commands.setdefault(fingerprint,kwargs.get('headers',{}).get('X-MentorFlow-Command-ID') or uuid4().hex)
+            kwargs['headers'] = {**kwargs.get('headers',{}),'X-MentorFlow-Command-ID':identity}
         response = self.client.request(method, path, **kwargs)
         if response.status_code >= 400:
             try:
@@ -41,6 +63,8 @@ class DesktopApi:
                 str(error.get("code") or "HTTP_ERROR"),
                 str(error.get("message") or response.text or "请求失败"),
             )
+        if fingerprint:
+            self._pending_commands.pop(fingerprint,None)
         if response.status_code == 204:
             return None
         return response.json()

@@ -14,7 +14,7 @@ from threading import RLock
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .planning.effort import EffortEstimate, EffortFeatures
@@ -547,8 +547,8 @@ def demo_plan_request(*, today: date | None = None) -> PlanPreviewCreateIn:
 _default_service = PlanProductApiService()
 
 
-def get_plan_product_api_service() -> PlanProductApiService:
-    return _default_service
+def get_plan_product_api_service(request: Request) -> PlanProductApiService:
+    return getattr(request.app.state, 'plan_product_service', _default_service)
 
 
 router = APIRouter(prefix="/api/plan-product", tags=["plan-product"])

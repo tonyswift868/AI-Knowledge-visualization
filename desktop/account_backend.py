@@ -32,10 +32,10 @@ def run_account_backend(listener, data_root: str, stop_event, product_pipe=None,
     import uvicorn
     app = load_app()
     if product_pipe is not None:
-        from app.product_sync import ProductSyncProducer
+        from app.product_sync import ProductSyncStores
         from .product_sync_bridge import ChildProductSyncPort
-        app.state.product_sync = ProductSyncProducer(
-            root / 'data' / 'mentorflow_v2.db', product_scope,
+        app.state.product_sync = ProductSyncStores(
+            root / 'data' / 'mentorflow_v2.db', root / 'data' / 'app.db', product_scope,
             ChildProductSyncPort(product_pipe))
     server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", port=listener.getsockname()[1],
