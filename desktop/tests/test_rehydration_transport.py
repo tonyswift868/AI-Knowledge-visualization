@@ -1,10 +1,8 @@
 """Product adapter against the exact Batch04 producer; synthetic sessions only."""
 import asyncio
 import os
-import subprocess
 import sys
 import threading
-import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,17 +19,10 @@ from desktop.tests.test_native_login import pair, client_for
 from desktop.enterprise_oidc import DesktopOidcConfig
 from desktop.tests.test_login_gate_bootstrap import short_root
 
-INTEGRATION = '04e2d61e3e39729886b3a2e6c7aff022b65a382a'
-
-
 @pytest.fixture(autouse=True)
 def producer(monkeypatch):
-    # Read-only dependency fixture. Never checkout or rewrite integration/04 files.
-    source = subprocess.check_output(['git', 'show', INTEGRATION + ':desktop/structured_sync.py'],
-                                     cwd=Path(__file__).resolve().parents[2])
-    module = types.ModuleType('desktop.structured_sync')
-    exec(compile(source, 'batch04/desktop/structured_sync.py', 'exec'), module.__dict__)
-    monkeypatch.setitem(sys.modules, 'desktop.structured_sync', module)
+    # Exercise the current worker client; integration branches remain read-only.
+    import desktop.structured_sync as module
     invalidate_active()
     yield module.StructuredSyncClient
     invalidate_active()
@@ -45,9 +36,15 @@ def state(subject='a'):
 
 
 def snapshot(subject='a'):
-    return {'schema': 'mentorflow.structured-sync.v1', 'complete': True, 'entities': [
-        {'kind': 'plan', 'entity_id': 'plan-' + subject, 'deleted': False, 'revision': 1,
-         'payload': {'title': subject, 'resource_ids': []}}]}
+    return {'schema': 'mentorflow.structured-sync.v1', 'contract_version': 3,
+        'complete': True, 'completeness_scope': 'SUPPORTED_ENTITIES_ONLY',
+        'snapshot_revision': 'pg-snapshot:1:1:',
+        'snapshot_scope': {'issuer': ISSUER, 'subject_id': subject,
+            'organization_id': 'org-' + subject, 'workspace_id': 'ws-' + subject},
+        'entities': [{'kind': 'plan', 'entity_id': 'plan-' + subject, 'deleted': False,
+            'revision': 1, 'payload': {'title': subject, 'resource_ids': []}}],
+        'resources': [], 'learning_state': {}, 'progress_provenance': [],
+        'observation': {'counts': {}, 'unsupported_counts': {}}}
 
 
 def transport(handler=None, *, subject='a', clock=None, activate=True, server_state=None):
@@ -117,6 +114,61 @@ def test_callers_cannot_override_authority(producer):
     client.delete('plan', 'a', request_id='r2', expected_revision=1)
     assert [r.method for r in requests] == ['PUT', 'POST']
     assert all(r.headers['x-mentorflow-workspace-id'] == 'ws-a' for r in requests)
+
+
+def test_new_structured_kinds_round_trip_without_keyerror(producer):
+    """Profile/settings and the other registered kinds use the same authority."""
+    requests = []
+    entities = [
+        {'kind': 'learner_profile', 'entity_id': 'account-a', 'revision': 4,
+         'deleted': False, 'payload': {'display_name': 'A'}},
+        {'kind': 'setting', 'entity_id': 'account-a', 'revision': 4,
+         'deleted': False, 'payload': {'theme': 'dark'}},
+        {'kind': 'task', 'entity_id': 'task-a', 'revision': 2,
+         'deleted': False, 'payload': {'title': 'Read'}},
+        {'kind': 'calendar', 'entity_id': 'calendar-a', 'revision': 2,
+         'deleted': False, 'payload': {'day_date': '2026-09-15'}},
+        {'kind': 'review', 'entity_id': 'review-a', 'revision': 1,
+         'deleted': False, 'payload': {'status': 'due'}},
+    ]
+    envelope = {'schema': 'mentorflow.structured-sync.v1', 'contract_version': 3,
+        'complete': True, 'completeness_scope': 'SUPPORTED_ENTITIES_ONLY',
+        'snapshot_revision': 'pg-snapshot:7:7:',
+        'snapshot_authority': 'POSTGRESQL_SINGLE_STATEMENT_MVCC',
+        'snapshot_scope': {'issuer': ISSUER, 'subject_id': 'a',
+            'organization_id': 'org-a', 'workspace_id': 'ws-a'},
+        'revision_ordering': 'OPAQUE_OBSERVATION_NOT_INCREMENTAL_CURSOR',
+        'supported_entity_types': ['learner_profile', 'setting', 'task', 'calendar', 'review'],
+        'unsupported_entity_types': ['model_binary'], 'learning_state': {},
+        'progress_provenance': [], 'entities': entities, 'resources': [],
+        'observation': {'counts': {}, 'unsupported_counts': {}}}
+    adapter = transport(lambda req: requests.append(req) or httpx.Response(200, json=envelope))
+    client = producer(adapter)
+    restored = client.rehydrate()
+    assert restored['learner_profile'][0]['payload']['display_name'] == 'A'
+    assert restored['setting'][0]['payload']['theme'] == 'dark'
+    assert restored['tasks'][0]['entity_id'] == 'task-a'
+    assert restored['calendars'][0]['entity_id'] == 'calendar-a'
+    assert restored['reviews'][0]['entity_id'] == 'review-a'
+    assert restored['snapshot_scope']['workspace_id'] == 'ws-a'
+    assert restored['snapshot_revision'] == 'pg-snapshot:7:7:'
+    for kind in ('learner_profile', 'setting', 'task', 'calendar', 'review', 'learning_run', 'history'):
+        client.write(kind, 'entity-' + kind, request_id='write-' + kind,
+                     expected_revision=0, payload={'value': kind})
+    assert len(requests) == 8
+
+
+def test_unknown_server_kind_fails_closed(producer):
+    envelope = {'schema': 'mentorflow.structured-sync.v1', 'contract_version': 3,
+        'complete': True, 'snapshot_revision': 'pg-snapshot:8:8:',
+        'snapshot_scope': {'issuer': ISSUER, 'subject_id': 'a',
+            'organization_id': 'org-a', 'workspace_id': 'ws-a'},
+        'entities': [{'kind': 'future_kind', 'entity_id': 'x', 'revision': 1,
+                      'deleted': False, 'payload': {}}], 'resources': [],
+        'learning_state': {}, 'progress_provenance': [], 'observation': {}}
+    client = producer(transport(lambda req: httpx.Response(200, json=envelope)))
+    with pytest.raises(ValueError, match='Unsupported structured sync kind'):
+        client.rehydrate()
 
 
 @pytest.mark.parametrize('trigger', ['expiry', '401'])
