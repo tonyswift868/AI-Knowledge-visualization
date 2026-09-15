@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import json
+import smtplib
+import ssl
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -105,6 +108,72 @@ class HealthRegistry:
 
 def _configured(value: str | None, missing_code: str) -> tuple[bool, str]:
     return (True, "CONFIGURED") if str(value or "").strip() else (False, missing_code)
+
+
+def _email_probe() -> tuple[bool, str]:
+    """Current relay readiness, never delivery: EHLO/TLS/AUTH/NOOP only.
+
+    Uses the deployment smtp.example.json contract and its env/file resolver.
+    It intentionally does not consume historical acceptance receipts.
+    """
+    reference = os.getenv('MENTORFLOW_SMTP_CONFIG')
+    if not reference:
+        return False, 'EMAIL_AUTHORITY_NOT_CONFIGURED'
+    client = None
+    credential = None
+    try:
+        path = Path(reference)
+        if not path.is_absolute() or path.is_symlink() or path.stat().st_size > 8192:
+            raise ValueError()
+        config = json.loads(path.read_text(encoding='utf-8'))
+        if (config['SMTP_MODE'] != 'REAL_RELAY'
+                or not all(isinstance(config[k], str) and config[k].strip()
+                           for k in ('SMTP_HOST', 'SMTP_USER', 'SMTP_FROM'))
+                or not 1 <= int(config['SMTP_PORT']) <= 65535
+                or type(config['SMTP_STARTTLS']) is not bool
+                or type(config['SMTP_SSL']) is not bool
+                or config['SMTP_STARTTLS'] == config['SMTP_SSL']):
+            raise ValueError()
+        credential = os.getenv(config.get('SMTP_SECRET_ENV', 'SMTP_SECRET'))
+        if not credential:
+            secret_path = Path(config['SMTP_SECRET_FILE'])
+            if (not secret_path.is_absolute() or secret_path.is_symlink()
+                    or secret_path.stat().st_size > 4096
+                    or (os.name != 'nt' and secret_path.stat().st_mode & 0o077)):
+                raise ValueError()
+            credential = secret_path.read_text(encoding='utf-8').strip()
+        if not credential or len(credential) > 4096:
+            raise ValueError()
+    except Exception:
+        return False, 'EMAIL_CONFIGURATION_UNAVAILABLE'
+    try:
+        context = ssl.create_default_context()
+        kwargs = dict(host=config['SMTP_HOST'], port=int(config['SMTP_PORT']),
+                      local_hostname='[127.0.0.1]', timeout=1)
+        client = (smtplib.SMTP_SSL(context=context, **kwargs) if config['SMTP_SSL']
+                  else smtplib.SMTP(**kwargs))
+        client.set_debuglevel(0)
+        if client.ehlo()[0] != 250:
+            raise ValueError()
+        if config['SMTP_STARTTLS']:
+            if not client.has_extn('starttls') or client.starttls(context=context)[0] != 220:
+                raise ValueError()
+            if client.ehlo()[0] != 250:
+                raise ValueError()
+        # No MAIL FROM, RCPT TO, DATA, sendmail or send_message is permitted here.
+        if client.login(config['SMTP_USER'], credential)[0] != 235 or client.noop()[0] != 250:
+            raise ValueError()
+        return True, 'EMAIL_TLS_AUTH_READY'
+    except Exception:
+        # Provider exceptions may contain credentials or arbitrary remote text.
+        return False, 'EMAIL_TRANSPORT_UNAVAILABLE'
+    finally:
+        credential = None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def _postgres_probe() -> tuple[bool, str]:
@@ -210,6 +279,9 @@ def configure_default_health_probes(
 ) -> HealthRegistry:
     target = registry or health_registry
     target.clear()
+    # Email is observable even while public lifecycle capabilities are disabled.
+    # A relay outage must not prevent existing users from logging in.
+    target.register('email', _email_probe, required=False)
     resolved_profile = str(
         runtime_profile or os.getenv("MENTORFLOW_RUNTIME_PROFILE") or ""
     ).strip().upper()

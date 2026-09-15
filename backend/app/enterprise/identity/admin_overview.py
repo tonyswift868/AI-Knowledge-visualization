@@ -131,7 +131,7 @@ class AdminOverviewService:
             payload = {key: None for key in COUNTERS}
             services = {name: {'status': 'unknown', 'code': 'NOT_OBSERVED'}
                         for name in ('keycloak', 'backend', 'database', 'email')}
-            services['email']['code'] = 'NO_EMAIL_HEALTH_AUTHORITY'
+            services['email'] = {'status': 'unavailable', 'code': 'EMAIL_AUTHORITY_UNAVAILABLE'}
             try:
                 health = await asyncio.wait_for(asyncio.to_thread(self._health), 2.5)
                 services.update(health)

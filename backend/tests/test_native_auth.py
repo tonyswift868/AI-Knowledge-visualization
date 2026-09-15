@@ -1,6 +1,7 @@
 """Synthetic identity bridge; no live credentials, provider, SMTP or deployment."""
 import asyncio
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -19,11 +20,58 @@ ISSUER = 'https://identity.example.test/realms/mentorflow'
 
 
 def principal(subject='user-a', **changes):
-    now = datetime.now(timezone.utc)
+    # Match MtlsIdentityVerifier issuance. On Windows/Python 3.11, microsecond
+    # datetime timestamps can round one float ULP ahead of time.time(), which
+    # correctly trips NativeSessions' strict future-issued principal rejection.
+    now = datetime.fromtimestamp(int(time.time()), timezone.utc)
     value = AuthenticatedPrincipal(issuer=ISSUER, subject=subject, audiences=('mentorflow-api',),
         token_id='synthetic-native', issued_at=now, expires_at=now + timedelta(minutes=5),
         authentication_time=now, authentication_strength='password_verified', client_id='mentorflow-desktop')
     return value.model_copy(update=changes)
+
+
+def test_principal_fixture_uses_native_verifier_integer_second_issuance(monkeypatch):
+    import sys
+    # Exact clock sampled when the old fixture was rejected on Python 3.11.15.
+    sampled = 1789458520.3959029
+    monkeypatch.setattr(sys.modules[__name__], 'time', SimpleNamespace(time=lambda: sampled))
+    issued = principal()
+    assert type(issued) is AuthenticatedPrincipal
+    assert issued.issued_at.timestamp() == int(sampled)
+    assert issued.expires_at.timestamp() == int(sampled) + 300
+    sessions = NativeSessions(None, ISSUER, clock=lambda: sampled)
+    sessions._principal(issued)
+    # Preserve the strict security boundary even for the original tiny skew.
+    rounded_future = datetime(2026, 9, 15, 7, 48, 40, 395903, tzinfo=timezone.utc)
+    assert rounded_future.timestamp() > sampled
+    with pytest.raises(IdentityError, match='账号或密码不正确'):
+        sessions._principal(issued.model_copy(update={'issued_at': rounded_future}))
+
+
+@pytest.mark.parametrize('malformed', [None, {}, {'issuer': ISSUER, 'subject': 'user-a'}, SimpleNamespace()])
+def test_unvalidated_principal_objects_remain_rejected(malformed):
+    with pytest.raises(IdentityError):
+        NativeSessions(None, ISSUER)._principal(malformed)
+
+
+@pytest.mark.parametrize('change', [
+    {'issuer': 'https://other.invalid/realm'},
+    {'audiences': ('other-api',)},
+    {'client_id': 'other-client'},
+    {'authentication_strength': 'unverified'},
+])
+def test_principal_authority_fields_remain_strict(change):
+    with pytest.raises(IdentityError):
+        NativeSessions(None, ISSUER)._principal(principal(**change))
+
+
+@pytest.mark.parametrize('missing', ['issuer', 'subject'])
+def test_missing_identity_fields_cannot_construct_validated_principal(missing):
+    from pydantic import ValidationError
+    fields = principal().model_dump()
+    fields.pop(missing)
+    with pytest.raises(ValidationError):
+        AuthenticatedPrincipal.model_validate(fields)
 
 
 class Verifier:
