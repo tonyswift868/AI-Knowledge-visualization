@@ -143,7 +143,7 @@ async def forgot(request: Request):
 
 @router.post(PREFIX + '/change-password')
 async def change_password(request: Request):
-    """Authenticated self-service change; identity and subject come from session."""
+    """Authenticated self-service change; identity comes from the validated actor."""
     runtime = getattr(request.app.state, 'enterprise_identity_runtime', None)
     svc = getattr(runtime, 'lifecycle', None)
     if runtime is None or svc is None or not svc.active:
@@ -152,9 +152,11 @@ async def change_password(request: Request):
             or not request.headers.get('Authorization', '').startswith('Bearer mfn1_a_')):
         raise IdentityError('LIFECYCLE_TRANSPORT_REQUIRED', '需要安全的原生账号连接。', status=403)
     binding = await runtime.revalidate_product_identity(request)
-    session = binding.session
     actor = binding.context.actor if binding.context else None
-    if session is None or actor is None:
+    # Bearer bindings need no browser/server session. Revalidation above owns
+    # token validity and membership; credential reauthentication below must
+    # still match this exact actor before any credential update.
+    if actor is None:
         raise IdentityError('ENTERPRISE_SESSION_REQUIRED', '请先登录。', status=401)
     try:
         value = await body(request, {'current_password', 'new_password'})
