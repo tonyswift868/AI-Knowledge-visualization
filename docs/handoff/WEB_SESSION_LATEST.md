@@ -12,8 +12,8 @@ KNOWLEDGE_TREE = fd285c9e42af0fbc4b2205ec479bc8416296ee98
 CURRENT_INTEGRATION_REF = integration/main3
 CURRENT_INTEGRATION_COMMIT = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-CONTROL_SOURCE_SNAPSHOT = 809399a107dfb1595b6742b4dfb679a308530668
-CONTROL_SOURCE_TREE = 9ca96e2e204dadbf46dd8ff5e5970b0d13142489
+CONTROL_SOURCE_SNAPSHOT = eb68df7ac2b649d0289bb4c8ee958855c31136bc
+CONTROL_SOURCE_TREE = 99f00c7a5d1af082d2f644f8091b50a0d9320e46
 COMMIT_KIND = SOURCE_SNAPSHOT; publication HEAD is supplied by ref/immutable receipt.
 ACTIVE_SLOTS = A/01/02/03/04
 SLOT_STATE = A:SILENT; 01:SILENT; 02:SILENT; 03:SILENT; 04:SILENT; B:SILENT
@@ -36,7 +36,7 @@ CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
 BLOCKERS = FINAL_QA_USER_ACCEPTANCE, INTERVIEW_ACCEPTANCE_BUNDLE, MAIN3_PROMOTION, DATA_TARGET_STABILITY, SERVER_SYNC_REHYDRATION, OLD_DATA_CONTINUITY, MAIN3_CROSS_DEVICE_AB_ACCEPTANCE
-USER_ACTION_REQUIRED = NONE
+USER_ACTION_REQUIRED = Dispatch26: approved QQ read-only resolver; exact tonyswift identity and VPS/Cloudflare owner (see master context / authority matrix).
 ```
 Next live gates are planning only; no execution is authorized by this snapshot.
 
@@ -53,7 +53,7 @@ READ_FIRST:
 - [COMPONENT_MAP.md](../project/COMPONENT_MAP.md)
 
 ```text
-GENERATED_FROM = 809399a107dfb1595b6742b4dfb679a308530668; GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md, AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
-generated_at = 2026-09-15T14:28:04Z
+GENERATED_FROM = eb68df7ac2b649d0289bb4c8ee958855c31136bc; GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md, AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
+generated_at = 2026-09-15T14:59:37Z
 ```
 Timestamp is source commit time; board is a receipt-derived snapshot, not live telemetry.
