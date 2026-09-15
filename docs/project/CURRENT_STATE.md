@@ -6,32 +6,34 @@ GENERATION = MAIN3
 BASELINE_BRANCH = main2
 MAIN2_CANONICAL_SHA = 04faf2a9fbb50c5f9403dad5abf46354c9b53d82
 MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
-SOURCE_BASELINE = CANONICAL_SOURCE_BASELINE
-PRODUCT_ACCEPTANCE = PENDING_E109_FINAL_QA
+SOURCE_BASELINE = CONTROL_CONVERGENCE_SOURCE
+PRODUCT_ACCEPTANCE = PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT
 INTEGRATION_BRANCH = integration/main3
-KNOWLEDGE_COMMIT = 06e5ebcb8d084caf675611518dfac490b9168093
-KNOWLEDGE_TREE = 498238eb6be9b15f816012d0b402a87647a5f41b
+INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
+CHATGPT_READ_BRANCH = control/main3-current
+KNOWLEDGE_COMMIT = 1b8f30862f24ac989a6fbdef2f0819afb44a7b06
+KNOWLEDGE_TREE = fd285c9e42af0fbc4b2205ec479bc8416296ee98
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
-ALEMBIC_HEAD = 0039_generic_sync_kinds
-BACKEND_EXPECTED_HEAD = 0039_generic_sync_kinds
+ALEMBIC_HEAD = 0040_admin_overview_aggregate
+BACKEND_EXPECTED_HEAD = 0040_admin_overview_aggregate
 GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
 GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
 BATCH03_SOURCE = INTEGRATED
 BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
 PRODUCER_UX_WIRING = PASS
-TEST_TARGET_STATUS = CURRENT_DEVELOPMENT_PENDING_USER
-FROZEN_CANDIDATE = ACCOUNT_MVP_FROZEN_SMOKE_PASS
-REAL_A_B_REHYDRATION = BLOCKED_BEFORE_A_WRITE
+TEST_TARGET_STATUS = NO_NEW_USER_TEST_PUBLICATION
+FROZEN_CANDIDATE = HISTORICAL_EVIDENCE_ONLY
+REAL_A_B_REHYDRATION = PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = MAIN3 当前源码已发布；structured rehydration partial，domain correctness 与用户验收待完成
+CURRENT_PHASE = CONTROL_CLOSEOUT; A_B_AND_PRE02_SOURCE_QUALIFICATION; EXTERNAL_GATES_BLOCKED
 ```
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`STRUCTURED_REHYDRATION_SOURCE_PARTIAL`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`CONTROL_CONVERGENCE_CODE_INTEGRATION`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
 PROFILE_SETTINGS_EVIDENCE = LOCAL_FIXTURE_PARTIAL_CORRECTNESS_REVIEW_REQUIRED
 LEARNING_RUN_HISTORY = PARTIAL
@@ -39,18 +41,18 @@ PLAN_TASK = REAL_STORE_AND_VERSIONED_WRITE_ENTRY_REVIEW_REQUIRED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = NOT_YET_COMPLETE
 
-## 当前 Account MVP 用户测试入口
-
-基于 `0325c82e` 保留全部历史，01/02/04 exact delta 已集成，UNKNOWN_COMMITS=0。
-最终 product source `83186d3ce20792e4a9ee98f9228a189c356085b2`；后续提交仅发布 authority/证据。
-当前 Frozen 管理员 SUPER_ADMIN、普通 LEARNER、主界面、多账号隔离、WinVault set/get/overwrite/delete、两种自动登录实测 PASS；错误密码／未知账号／bad CA 拒绝。
-官方 Keycloak client_credentials + manage-users/query-users；createUser/sendVerifyEmail/executeActionsEmail；无 realm-admin/password grant/新身份协议。
-注册／忘记密码仅本轮 test runtime/candidate 开放；普通 release 仍关闭。公开测试 action 邮件可点击，native issuer 未迁移。
-官方邮件生成与受控真实 after-commit 验证/重置 PASS；批准 QQ 邮箱用户点击与完整用户验收仍 PENDING。
-[用户 A-F 清单](../governance/ACCOUNT_MVP_USER_TEST.md)：打开 Workbench → 启动最新开发版；无需配置或寻找 EXE。
-环境保留至北京时间 2026-09-15 04:20:39；AUTO_CLEANUP=FORBIDDEN。最新已验收候选=NONE；旧 V3 FAIL 不被重新合格化。
-[Account MVP receipt](../governance/receipts/20260914-account-mvp-user-test-ready.json) 绑定 source/artifact、聚焦及真实 Frozen 证据。
-A/B 云恢复、Portable Pack、旧 88 plans、真实迁移、生产 Gate A/B/C 均未在本轮执行或提升验收。
+## 当前 control 收口（2026-09-15）
+唯一 Web 入口为 `control/main3-current`；integration/main3、main2 不自动推进。
+03 `80b619d` sealing delta 已收拢，保留 efb354c PRE02 修复；不再等待 03 回执。
+A/B 为 native PostgreSQL + authenticated HTTP + independent Python Desktop clients，非 Frozen/UI UAT。
+覆盖注册类型的 IDs/值、revision、隔离、B 重启、缺失本地资源；没有 A→B 文件复制。
+PRE02 包括 password binding、0040 exact RLS、reset consumer、startup、email readiness 和 admin/member。
+真实邮箱 consume/replay/expiry/reset/same-user continuation、TonySwift 精确映射及真实发送需独立 authority。
+本轮真实 SMTP 发送=0，TonySwift 修改=0；旧用户数据迁移=NO。
+[主上下文与服务器清单](../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md) 区分 VPS staging 与本机已过期 TEST 租约。
+DO_NOT_REDO：不重集成历史 delivery、不重建 Frozen、不改 CURRENT、不迁移、不切 public issuer。
+NEXT_TASK：Owner 批准 external lifecycle/角色映射与 human UAT 后单独派发；当前 STOP。
+以下为历史证据，不代表当前 artifact、服务可用或当前唯一 blocker。
 
 ## Frozen V3 — historical real A/B stop before A product write
 
@@ -144,10 +146,6 @@ reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 | 04 native RLS | PostgreSQL 17.6 原生 120 denial probes 与 controls；独立 retest 直接非特权 application login smoke PASS | E109 原报告整体 PARTIAL 保留；其中 token 缺陷由新独立 receipt supersede。A 未重新跑 RLS，不把 retained PASS 写成 A 执行 |
 | 当前生产/最终候选 | REAL_SMTP_SEND=0；VERIFY/RESET NOT_RUN；REAL_INSTALL_QA NOT_RUN；最终 1.5.0→1.5.1 NOT_RUN | LIVE_PRODUCTION_LOGIN NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；用户最终验收 PENDING |
 
-Batch02 默认后端连接下两项 native-DSN 测试跳过；并不否定 04 的独立原生 RLS 证据。
-Batch02 两次 A fixture 均已停止进程、删除私钥；递归清理目录被自动审批拒绝，临时数据目录留在 E:，该限制见 receipt。
-当前 session/限流有单进程内存状态边界；实际分布式 session/revocation、SPI 版本和
-共享 token single-use authority、长期主窗口 session renewal 均需部署拓扑验收。
 
 [auth-authority](../../release/auth-authority.json) 保持 PREPARED_NOT_ACTIVE / migration=null；
 [account-capabilities](../../release/account-capabilities.json) 保持 register=false / forgot_password=false。
@@ -171,7 +169,7 @@ SUPERSEDED / BRIDGE CLOSED；12/12 repo-native authority 见 [handoff contract](
 [知识 intake receipt](../governance/receipts/20260912-repository-knowledge-intake.json) 保留原始证据。
 MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 canonical baseline。
 56bcc 属 MAIN1_HISTORY；a198 含排除的 21337c1 ancestry，QUARANTINED_NOT_CANONICAL。
-旧 GPT_WEB/READ_FIRST/HANDOFF 及员工编号仅作历史，不覆盖当前 authority。
+旧 READ_FIRST/HANDOFF 历史不覆盖本轮重写的 GPT_WEB 当前主上下文。
 最终 publication SHA/tree 由 immutable receipt 和 remote 回读绑定，避免文档自引用 SHA。
 
 ## Generic sync foundation (2026-09-14)

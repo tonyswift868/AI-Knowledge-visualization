@@ -123,7 +123,7 @@
         "INTERVIEW_ACCEPTANCE_BUNDLE"
       ],
       "user_action_required": null,
-      "reason": "One exact signed candidate, retained user data and user acceptance. Source, synthetic regression, local native fixture, retained independent evidence and production/package/user gates stay separate."
+      "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required."
     },
     {
       "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
@@ -199,7 +199,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Supported plans/progress/resource metadata wired and candidate-qualified. Full server sync remains PARTIAL; independent A/B cloud restoration remains NOT_RUN.",
+      "reason": "Native PG authenticated HTTP independent A/B PASS; 03 consumed. Full domain business-path/Frozen acceptance is separate.",
       "workbench_visible": true
     },
     {
@@ -295,7 +295,7 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "历史 V3 在 A 写入前 local backend import 失败；a98584a 已集成并通过 source/Frozen 诊断包 spawn。旧 V3 仍 FAIL，新验收候选及 A/B 本轮未执行；环境保留，无新派工。",
+      "reason": "03 native PG A/B source sealing consumed. Frozen product UI A/B needs separate exact candidate authority; historical V3 is not current source blocker.",
       "workbench_visible": true
     },
     {
@@ -343,8 +343,8 @@
         "ACCOUNT_MVP_FROZEN_REBUILD_READY"
       ],
       "unlocks": [],
-      "user_action_required": "Run docs/governance/ACCOUNT_MVP_USER_TEST.md A-F checklist.",
-      "reason": "Fresh exact integration Frozen 83186d3ce207 ready in Workbench. Admin/learner, multi-account, WinVault set/get/overwrite/delete and both auto-login paths PASS; user mailbox click pending."
+      "user_action_required": null,
+      "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required."
     },
     {
       "task_id": "ACCOUNT_MVP_FROZEN_REBUILD_READY",
@@ -358,10 +358,23 @@
       ],
       "user_action_required": null,
       "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS."
+    },
+    {
+      "task_id": "CONTROL_CONVERGENCE_20260915",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "03 exact sealing consumed on efb control; PRE02 retained. No integration promotion."
     }
   ],
-  "authority": "STRUCTURED_REHYDRATION_SOURCE_PARTIAL",
-  "assignment_scope": "Knowledge refresh closeout; foundation qualified; domain adapters not dispatched."
+  "authority": "CONTROL_CONVERGENCE_CODE_INTEGRATION",
+  "assignment_scope": "Knowledge refresh closeout; foundation qualified; domain adapters not dispatched.",
+  "current_stage": {
+    "CURRENT_PHASE": "CONTROL_CLOSEOUT; A_B_AND_PRE02_SOURCE_QUALIFICATION; EXTERNAL_GATES_BLOCKED",
+    "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN",
+    "PRODUCT_ACCEPTANCE": "PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT",
+    "CHATGPT_READ_BRANCH": "control/main3-current"
+  }
 }
-
-

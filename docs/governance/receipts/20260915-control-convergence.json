@@ -1,0 +1,244 @@
+{
+  "dispatch_id": "MF-MAIN3-A-CONTROL-CONVERGENCE-HANDOFF-SEAL-20260915-25",
+  "authority": "CODE_INTEGRATION_NOT_PRODUCT_UAT",
+  "base_control_sha": "efb354c44a038253a86da6ab0fd62566b4ba0a8d",
+  "source_ab_sha": "80b619d263d81f5e684af67528da898cbfbda178",
+  "source_ab_tree": "c78a18ed2e9734d91a1de933a4be78aa7bf1531f",
+  "merge_base": "e6bac890657103e20266f0f7b796b4d8aa54f623",
+  "convergence_source_sha": "1b8f30862f24ac989a6fbdef2f0819afb44a7b06",
+  "convergence_source_tree": "fd285c9e42af0fbc4b2205ec479bc8416296ee98",
+  "publication_identity": "Resolve control/main3-current; docs publication cannot embed its own SHA",
+  "consumed_exact_deltas": [
+    "dfe77c9e35b7458163dc146902f0dd19802adb5e",
+    "2a9be822b4f84671e9246baa8d1e789fdbe1bb16",
+    "80b619d263d81f5e684af67528da898cbfbda178"
+  ],
+  "excluded_predecessor_semantics": [
+    "R2 account_preferences seam",
+    "system_page preference callback",
+    "settings allowlist contraction"
+  ],
+  "conflicts": [],
+  "source_suite": {
+    "passed": 554,
+    "failed": 0,
+    "skipped": 4,
+    "scope": "503 main source + 51 prebuild supplement; not whole repository",
+    "skip_reason": "Windows WinError 1314; no symlink creation privilege",
+    "skipped_tests": [
+      "test_symlink_escape_is_rejected_when_supported",
+      "test_package_root_reparse_alias_is_rejected_when_supported",
+      "test_distributable_cleanup_guard_refuses_reparse_path_when_supported",
+      "test_stage_update_rejects_reparse_staging_root_when_supported"
+    ]
+  },
+  "knowledge_boundary_tests": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0
+  },
+  "ab": {
+    "postgres": 25,
+    "postgres_composition": "22 protocol + 3 real profile/settings PostgreSQL tests",
+    "desktop": 26,
+    "failed": 0,
+    "skipped": 0,
+    "directions": [
+      "A_TO_SERVER",
+      "SERVER_TO_B",
+      "B_TO_SERVER",
+      "SERVER_TO_A"
+    ],
+    "same_workspace_id": true,
+    "domains": {
+      "plans": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "plan-seal"
+        ],
+        "latest_revisions": [
+          3
+        ]
+      },
+      "tasks": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "task-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "calendars": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "calendar-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "progress": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "progress-seal"
+        ],
+        "latest_revisions": [
+          2
+        ]
+      },
+      "reviews": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "review-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "learner_profile": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "learner_profile-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "setting": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "setting-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "learning_run": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "learning_run-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      },
+      "history": {
+        "a_to_b_equal": true,
+        "b_to_a_restart_equal": true,
+        "stable_ids": [
+          "history-seal"
+        ],
+        "latest_revisions": [
+          1
+        ]
+      }
+    },
+    "account_isolation_status": 403,
+    "b_restart": true,
+    "filesystem_copy_a_to_b": 0,
+    "physical_payload_copied": false,
+    "missing_resource": "MISSING_ON_THIS_DEVICE",
+    "scope": "REGISTERED_SYNC_HTTP_PROJECTIONS; NOT_DOMAIN_PRODUCT_WRITE_OR_FROZEN_UI_UAT"
+  },
+  "migration_checks": {
+    "FRESH_TO_HEAD": "PASS",
+    "0036_TO_HEAD": "PASS",
+    "0037_TO_HEAD": "PASS",
+    "ALREADY_CURRENT": "PASS_READ_ONLY",
+    "FUTURE_REJECTED": "PASS",
+    "DRIFT_REJECTED": "PASS_12_CASES",
+    "QUERY_FAILED": "PASS_REAL_DATABASE_OUTAGE"
+  },
+  "pre02_regression": "PASS_SOURCE",
+  "identity_password": "PASS_SOURCE",
+  "reset_lifecycle": "PASS_CONTRACT; REAL_INBOX_CHAIN_BLOCKED",
+  "email_health": "PASS_TLS_AUTH_NOOP_CLASSIFICATION_AND_DEADLINE_SOURCE",
+  "admin_member_authority": "PASS_SOURCE_200_403",
+  "real_smtp_send_count": 0,
+  "tonyswift_account_mutation": 0,
+  "secret_exposure_count": 0,
+  "control_branch": "control/main3-current",
+  "redundant_branch_deleted": "handoff/chatgpt-main3-review",
+  "deletion_audit": {
+    "same_sha": "efb354c44a038253a86da6ab0fd62566b4ba0a8d",
+    "unique_commits": 0,
+    "github_pr_head_matches": 0,
+    "github_pr_base_matches": 0
+  },
+  "integration_remote_preserved": "a0b40f0c3c4972668e4c227b5287344c60c863b9",
+  "integration_local_preserved": "efb354c44a038253a86da6ab0fd62566b4ba0a8d",
+  "main2_preserved": "04faf2a9fbb50c5f9403dad5abf46354c9b53d82",
+  "remaining_external_blockers": [
+    "approved inbox/token lifecycle",
+    "exact TonySwift role authority",
+    "real SMTP delivery authority",
+    "expired local TEST lease and human UAT",
+    "Cloudflare origin renewal ownership/schedule"
+  ],
+  "cleanup": "A/B fixture cleaned; regression PostgreSQL stopped; read-only Git object prevented full scratch deletion; retained outside repo",
+  "evidence_sha256": {
+    "delivery-stat.txt": "5f777ac58e508aa01500a6a32f3f57d2be3b3d9d5c621ef641c02c318b365688",
+    "delivery-diff.txt": "dcea2d8d35cc4339a7549a76b158fcbcc8e6de950b7409b37833b90ac8d6d3ed",
+    "merge-base.txt": "acf57721d86599101507901d0e4d6eb66fd927a2aa9ce9399c5b7b6cd5ce8e8e",
+    "final/manifest.json": "8a526f96b31ecd22f163d9073dbfe33782495492141538ecf62b9ba7e03ada1e",
+    "final/ab/candidate-receipt.json": "f9caa8ea724ef65570c096034a482d6fc755759e5d45ed166555f7d83168e21d",
+    "final/ab/device-continuity.json": "130c1b69106290427af59d962c0692ca6721a76501441af7847e0db88d4340b4",
+    "tests.xml": "804f97b0fdf906a642a58f0081d043c040a277a225398bc00c89c06fb303e4cd",
+    "desktop.xml": "9fc5fc326ff5efcbc4bed0e99ccca549ef3609060351c7c403a1e5506fec2238",
+    "supplement.xml": "b57d168608146a2dcace99313c4098fc5a27be1494aef53cbd404ea4b3aefefe",
+    "knowledge-tests.xml": "e63bb2d1e87ef6ace8b103383d3408d7e75f7bb295040e48d4cfb48749852cf1",
+    "server-inventory.jsonl": "02d702b7ff71c22fd8880a35e0184f7a6a83fc203bfa6f1de83473256eef5ae0",
+    "server-routing.txt": "870978aa24253ae7ba241ddcdce2b3c09f4f65f9ee9e04faa327b134a43596d3",
+    "server-details.txt": "bf58f19c147411218a2f6bfa297ccd4e747953031f30e0a1d1769ffb1f0c988c",
+    "server-identities.txt": "0cfbea9a1f00a2393dc9245c94baae0b6ed19191ec89c6679bc2e037309346d5"
+  },
+  "test_files": [
+    "backend.tests.test_account_core_package_launch",
+    "backend.tests.test_account_core_recovery_seams",
+    "backend.tests.test_account_import_ledger_schema",
+    "backend.tests.test_account_lifecycle_admin",
+    "backend.tests.test_admin_overview",
+    "backend.tests.test_application_roles",
+    "backend.tests.test_authenticated_rehydration",
+    "backend.tests.test_change_password_binding",
+    "backend.tests.test_e109_account_email_security_preflight",
+    "backend.tests.test_email_health",
+    "backend.tests.test_enterprise_identity_runtime",
+    "backend.tests.test_enterprise_migration_head_contract",
+    "backend.tests.test_learning_run_history_sync",
+    "backend.tests.test_native_auth",
+    "backend.tests.test_plan_task_calendar_sync",
+    "backend.tests.test_profile_settings_local_store",
+    "backend.tests.test_profile_settings_postgres",
+    "backend.tests.test_recovery_correctness_regressions",
+    "backend.tests.test_rehydration_dispatcher",
+    "backend.tests.test_reset_completion",
+    "backend.tests.test_sync_policy_contract",
+    "backend.tests.test_sync_registry",
+    "backend.tests.test_windows_launch_gate",
+    "backend.tests.test_windows_package_privacy",
+    "desktop.tests.test_account_metadata_sync",
+    "desktop.tests.test_change_password_wiring",
+    "desktop.tests.test_e109_capability_config",
+    "desktop.tests.test_native_login",
+    "desktop.tests.test_rehydration_integration",
+    "desktop.tests.test_rehydration_transport",
+    "desktop.tests.test_rehydration_ux",
+    "desktop.tests.test_reset_completion_consumer",
+    "desktop.tests.test_reset_password_boundary",
+    "scripts.test_package_hash_buffers.HashBufferTests",
+    "tests.theme.test_account_lifecycle_shell",
+    "tools.dev_workbench.test_candidate_identity",
+    "tools.dev_workbench.test_two_targets",
+    "tools.dev_workbench.test_workbench"
+  ]
+}

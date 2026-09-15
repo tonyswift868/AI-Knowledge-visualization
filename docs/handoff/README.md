@@ -2,7 +2,8 @@
 
 Authority: `MF-MAIN3-A-KNOWLEDGE-INTEGRATION-WEB-HANDOFF-20260912-02`.
 Repository: MentorFlow / `tonyswift868/AI-Knowledge-visualization`, generation main3.
-Use the published `integration/main3` ref and its exact receipt; default branch
+Use only `control/main3-current` and [current master context](../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md).
+`integration/main3` is a separately authorized stage branch, never auto-advanced; default branch
 and local absolute paths are not assumptions about what a web session can read.
 
 ## Read order

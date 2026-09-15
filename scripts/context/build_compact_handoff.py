@@ -18,7 +18,7 @@ READ_FIRST = (
 OUTPUT = "artifacts/handoff/mentorflow-handoff.txt"
 WEB_OUTPUT = "docs/handoff/WEB_SESSION_LATEST.md"
 REPOSITORY_URL = "https://github.com/tonyswift868/AI-Knowledge-visualization"
-WEB_INPUTS = (*READ_FIRST, "docs/handoff/README.md", "docs/governance/HANDOFF_CONTRACT.md",
+WEB_INPUTS = ("GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md", *READ_FIRST, "docs/handoff/README.md", "docs/governance/HANDOFF_CONTRACT.md",
               "docs/PRODUCT_FLOW.md", "docs/project/COMPONENT_MAP.md", "docs/decisions/index.md",
               "docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md",
               "scripts/context/build_compact_handoff.py")
@@ -210,7 +210,7 @@ def build_web(root: Path) -> bytes:
     require(not git(root, "ls-files", "--others", "--exclude-standard", "--", *SOURCE_PATHS),
             "untracked source files before web generation")
     branch = git(root, "symbolic-ref", "--quiet", "--short", "HEAD", detached=True)
-    require(branch in {fields["INTEGRATION_BRANCH"], "DETACHED"}, "wrong integration checkout")
+    require(branch in {fields["INTEGRATION_BRANCH"], fields.get("CHATGPT_READ_BRANCH"), "DETACHED"}, "wrong review checkout")
     for path in WEB_INPUTS:
         read(root, path)
         git(root, "cat-file", "-e", f"{snapshot}:{path}")
@@ -223,7 +223,10 @@ def build_web(root: Path) -> bytes:
             f"GENERATION = {fields['GENERATION'].lower()}", f"KNOWLEDGE_REF = {knowledge['ref']}",
             f"KNOWLEDGE_COMMIT = {knowledge['commit']}", f"KNOWLEDGE_TREE = {knowledge['tree']}",
             f"CURRENT_INTEGRATION_REF = {fields['INTEGRATION_BRANCH']}",
-            f"CURRENT_INTEGRATION_COMMIT = {snapshot}",
+            f"CURRENT_INTEGRATION_COMMIT = {fields.get('INTEGRATION_REMOTE_SHA', snapshot)}",
+            f"CHATGPT_READ_BRANCH = {fields.get('CHATGPT_READ_BRANCH', fields['INTEGRATION_BRANCH'])}",
+            f"CONTROL_SOURCE_SNAPSHOT = {snapshot}",
+            f"CONTROL_SOURCE_TREE = {git(root, 'rev-parse', snapshot + '^{tree}')}",
             "COMMIT_KIND = SOURCE_SNAPSHOT; publication HEAD is supplied by ref/immutable receipt.",
             "ACTIVE_SLOTS = " + "/".join(control["active_slots"]),
             "SLOT_STATE = " + "; ".join(f"{k}:{w['status']}" for k, w in board["workers"].items()),
@@ -249,7 +252,7 @@ def build_web(root: Path) -> bytes:
              "```",
              "Next live gates are planning only; no execution is authorized by this snapshot.",
              "", "READ_FIRST:"]
-    for path in ("docs/handoff/README.md", *READ_FIRST, "docs/PRODUCT_FLOW.md", "docs/project/COMPONENT_MAP.md"):
+    for path in ("GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md", "docs/handoff/README.md", *READ_FIRST, "docs/PRODUCT_FLOW.md", "docs/project/COMPONENT_MAP.md"):
         target = "../" + path[len("docs/"):] if path.startswith("docs/") else "../../" + path
         rows.append(f"- [{Path(path).name}]({target})")
     rows += ["", "```text", f"GENERATED_FROM = {snapshot}; " + ", ".join(WEB_INPUTS),

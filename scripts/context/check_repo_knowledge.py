@@ -120,12 +120,12 @@ def scan(root, session_delta="NONE"):
     attempt("COMPACT_HANDOFF", lambda: check_output(root, OUTPUT, build(root, session_delta)), "STALE_COMPACT_HANDOFF")
     attempt("WEB_HANDOFF", lambda: check_output(root, WEB_OUTPUT, build_web(root)), "STALE_WEB_HANDOFF")
 
-    docs = sorted((root / "docs").rglob("*.md")) + [root / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", "installer/inno/README.md")]
+    docs = sorted((root / "docs").rglob("*.md")) + [root / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", "installer/inno/README.md", "GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md")]
     for file in docs:
         attempt("INTERNAL_LINKS", lambda f=file: require(not link_failures(root, [f])[0],
                 "broken internal documentation links"), "BROKEN_INTERNAL_LINK", file.relative_to(root).as_posix())
 
-    files = [root / n for n in ("AGENTS.md", "ARCHITECTURE.md", "README.md", ".gitignore", ".gitattributes", "docs/legacy-koikatsu/KKS_SPARK_TASK_COMPLETION_REPORT.md")]
+    files = [root / n for n in ("GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md", "AGENTS.md", "ARCHITECTURE.md", "README.md", ".gitignore", ".gitattributes", "docs/legacy-koikatsu/KKS_SPARK_TASK_COMPLETION_REPORT.md")]
     for directory in KNOWLEDGE_DIRS:
         files.extend(p for p in (root / directory).rglob("*") if p.suffix in {".md", ".json", ".py"})
     files.extend(root / name for name in EXTRA_KNOWLEDGE)

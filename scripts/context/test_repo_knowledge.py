@@ -151,7 +151,11 @@ class WebHandoffBoundaryTests(unittest.TestCase):
         output = self.generate()
         publication = self.commit()
         self.assertNotEqual(publication, self.snapshot)
-        self.assertIn(f"CURRENT_INTEGRATION_COMMIT = {self.snapshot}".encode(), output)
+        self.assertIn(f"CONTROL_SOURCE_SNAPSHOT = {self.snapshot}".encode(), output)
+        fields, _, _ = handoff.load_state(self.root)
+        self.assertIn(f"CURRENT_INTEGRATION_COMMIT = {fields['INTEGRATION_REMOTE_SHA']}".encode(), output)
+        self.git("checkout", "-qb", "control/main3-current")
+        self.assertEqual(output, handoff.build_web(self.root))
         self.assertIn(b"DERIVED / NOT SOURCE OF TRUTH", output)
         for slot in ('01', '02', '03', '04'):
             worker = self.board['workers'][slot]
