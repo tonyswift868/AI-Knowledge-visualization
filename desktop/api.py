@@ -54,6 +54,10 @@ class DesktopApi:
 
         return self.request("GET", "/api/enterprise/account/metadata")
 
+    def admin_overview(self) -> dict[str, Any]:
+        """Fetch aggregate administrator metrics; no identity PII is returned."""
+        return self.request("GET", "/api/enterprise/auth/admin/overview")
+
     def put_account_progress(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Persist one metadata-only progress snapshot for the current account."""
 

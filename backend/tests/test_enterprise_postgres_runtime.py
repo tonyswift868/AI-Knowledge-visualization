@@ -260,6 +260,9 @@ def test_enterprise_runtime_schema_check_requires_role_and_exact_head(
             "detect_enterprise_schema_version",
             lambda _connection: ENTERPRISE_MIGRATION_REVISION,
         )
+        from app.enterprise_tenancy import import_ledger_schema, sync_schema
+        test_state.setattr(import_ledger_schema, "require_account_import_ledger_schema", lambda _connection: None)
+        test_state.setattr(sync_schema, "require_structured_sync_schema", lambda _connection: None)
         orm.verify_enterprise_runtime_schema()
         assert role_checks == [connection]
 
@@ -318,7 +321,7 @@ def test_current_migration_graph_and_rls_contract_are_canonical() -> None:
     assert scripts.get_heads() == [ENTERPRISE_MIGRATION_REVISION]
     revision = scripts.get_revision(ENTERPRISE_MIGRATION_REVISION)
     assert revision is not None
-    assert revision.down_revision == "0033_enterprise_workspace_persistence"
+    assert revision.down_revision == "0039_generic_sync_kinds"
     jobs = scripts.get_revision("0030_enterprise_jobs_v1")
     assert jobs is not None
     assert jobs.down_revision == "0029_enterprise_tenancy_rls"

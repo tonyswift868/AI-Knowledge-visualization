@@ -41,9 +41,9 @@ def local_scope(actor, tenant):
 
 def test_canonical_schema_and_app_role(server):
     native, _, _ = server
-    assert ScriptDirectory.from_config(native.config).get_heads() == ['0039_generic_sync_kinds']
+    assert ScriptDirectory.from_config(native.config).get_heads() == ['0040_admin_overview_aggregate']
     with native.app.connect() as c:
-        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0039_generic_sync_kinds'
+        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0040_admin_overview_aggregate'
         require_safe_application_role(c)
         require_structured_sync_schema(c)
 

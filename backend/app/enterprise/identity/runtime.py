@@ -803,6 +803,8 @@ def install_enterprise_identity(
     account_core_only: bool = False,
 ) -> None:
     app.include_router(_account_core_identity_router() if account_core_only else router)
+    from .admin_overview import router as admin_overview_router
+    app.include_router(admin_overview_router)
     from .native import router as native_router
     app.include_router(native_router)
     from .reset_completion import router as reset_router

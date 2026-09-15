@@ -362,9 +362,9 @@ def test_account_core_reuses_existing_schema_with_bootstrap_forward_migration() 
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     assert ScriptDirectory.from_config(config).get_heads() == [
-        "0036_account_import_ledger"
+        "0040_admin_overview_aggregate"
     ]
-    assert ENTERPRISE_MIGRATION_REVISION == "0036_account_import_ledger"
+    assert ENTERPRISE_MIGRATION_REVISION == "0040_admin_overview_aggregate"
     assert not (
         BACKEND_ROOT
         / "alembic"

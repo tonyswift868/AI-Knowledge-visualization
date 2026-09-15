@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import re
 import secrets
 import json
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -38,6 +39,7 @@ from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from app.enterprise.structured_sync_api import router as structured_sync_router
 from app.enterprise_tenancy.structured_sync import StructuredSyncService
 from app.enterprise_tenancy.context import PostgresTenantTransactionManager
+from app.enterprise.identity.admin_overview import from_env as overview_from_env
 from app.observability.health import (
     ACCOUNT_CORE_MVP_PROFILE,
     HealthRegistry,
@@ -82,12 +84,17 @@ async def lifespan(app: FastAPI):
         )
         identity_runtime = build_enterprise_identity_runtime(engine=engine)
         app.state.enterprise_identity_runtime = identity_runtime
+        app.state.admin_overview_service = overview_from_env(
+            engine, config, account_core_health_registry, os.environ)
         account_core_health_registry.started = True
         yield
     finally:
         account_core_health_registry.started = False
         if identity_runtime is not None:
             await identity_runtime.aclose()
+        overview = getattr(app.state, "admin_overview_service", None)
+        if overview is not None:
+            await overview.aclose()
         if engine is not None:
             engine.dispose()
 

@@ -111,6 +111,7 @@ from .enterprise.jobs_v1.learning_runs_api import (
 from .enterprise.jobs_v1.learning_runs import LearningRunService
 from .enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from .enterprise_tenancy.teaching import EnterpriseTeachingService
+from .enterprise.identity.admin_overview import from_env as overview_from_env
 from .enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from .qwen_base_clone_runtime import (
     bootstrap_production_qwen_base_clone_runtime,
@@ -256,6 +257,12 @@ async def lifespan(_app):
     _app.state.enterprise_identity_runtime = build_enterprise_identity_runtime(
         engine=orm_runtime.engine,
     )
+    if identity_mode is TenantMode.ENTERPRISE_SERVER:
+        _app.state.admin_overview_service = overview_from_env(
+            orm_runtime.engine, _app.state.enterprise_identity_runtime.config,
+            health_registry, os.environ)
+    else:
+        _app.state.admin_overview_service = None
     if identity_mode is TenantMode.PERSONAL_LOCAL:
         initialize_active_teaching_storage()
         recover_interrupted_knowledge_map_jobs()
@@ -285,6 +292,9 @@ async def lifespan(_app):
         )
         if isinstance(identity_runtime, EnterpriseIdentityRuntime):
             await identity_runtime.aclose()
+        overview = getattr(_app.state, "admin_overview_service", None)
+        if overview is not None:
+            await overview.aclose()
         if enterprise_engine is not None:
             await asyncio.to_thread(enterprise_engine.dispose)
         document_import_host = getattr(

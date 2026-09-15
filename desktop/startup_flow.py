@@ -261,6 +261,7 @@ class AccountBootstrapResult:
             "issuer": self.identity.issuer,
             "username": str(safe.get("preferred_username") or self.identity.subject),
             "display_name": str(safe.get("display_name") or self.identity.display_name),
+            "role": str(self.server_state.get("role") or "LEARNER"),
             "organization_id": self.identity.organization_id,
             "workspace_id": self.identity.workspace_id,
         }

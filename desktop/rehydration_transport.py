@@ -286,6 +286,12 @@ class AuthenticatedRehydrationTransport:
     def account_metadata(self):
         return self._send('GET', '/api/enterprise/account/metadata')
 
+    def admin_overview(self):
+        """Use the already authenticated enterprise session; never expose its token."""
+        response = self._send('GET', '/api/enterprise/auth/admin/overview')
+        response.raise_for_status()
+        return response.json()
+
     def put_account_progress(self, payload):
         return self._send('PUT', '/api/enterprise/account/metadata/progress', json=payload)
 

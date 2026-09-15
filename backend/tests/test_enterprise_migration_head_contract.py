@@ -55,12 +55,12 @@ def test_enterprise_migration_revision_tracks_real_single_alembic_head() -> None
     assert len(heads) == 1
     current_head = scripts.get_current_head()
     assert current_head == heads[0]
-    assert current_head == "0039_generic_sync_kinds"
+    assert current_head == "0040_admin_overview_aggregate"
     assert ENTERPRISE_MIGRATION_REVISION == current_head
 
     head_revision = scripts.get_revision(current_head)
     assert head_revision is not None
-    assert head_revision.down_revision == "0038_rehydration_manifest"
+    assert head_revision.down_revision == "0039_generic_sync_kinds"
 
 
 def test_rp05_runtime_upgrade_target_is_symbolic_repository_head(

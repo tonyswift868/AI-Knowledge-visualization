@@ -67,6 +67,7 @@ from .materials_page import MaterialsPage
 from .plans_page import PlanCalendar, PlansPage, flattened_tasks
 from .classroom_page import ClassroomPage
 from .system_page import SystemPage
+from .admin_overview_page import AdminOverviewPage, admin_role_visible
 from .official_feed import OfficialFeedService, OfficialUpdate
 from .version import version_display
 from .web_links import install_external_link_handler
@@ -453,12 +454,16 @@ class MainWindow(QMainWindow):
         bootstrap_snapshot: object | None = None,
         open_recovery_center=None,
         return_to_login_gate=None,
-        rehydration_session=None,
+rehydration_session=None,
+        admin_transport=None,
     ):
         super().__init__()
         self.api = api
         self.user = user
         self.origin = origin
+        self.is_super_admin = str(user.get("role") or user.get("application_role") or "").upper() == "SUPER_ADMIN"
+        self.admin_transport = admin_transport
+        self.admin_enabled = admin_role_visible(user, self.admin_transport)
         self.settings = create_settings(QSettings, "MentorFlow", "MentorFlow")
         self.account_preferences = AccountPreferenceStore(self.settings)
         if account_profile is not None:
@@ -563,6 +568,8 @@ class MainWindow(QMainWindow):
             ("账号与数据", 10),
             ("更多工具", 11),
         )
+        if self.admin_enabled:
+            navigation_items += (("管理员概览", 13),)
         self._navigation_page_indices = [page_index for _label, page_index in navigation_items]
         for label, _page_index in navigation_items:
             QListWidgetItem(label, self.navigation)
@@ -637,6 +644,10 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self._more_tools())
         self.local_asset_page = LocalAssetPage(self.local_asset_lifecycle)
         self.pages.addWidget(self.local_asset_page)
+        self.admin_overview_page = None
+        if self.admin_enabled:
+            self.admin_overview_page = AdminOverviewPage(self.admin_transport)
+            self.pages.addWidget(self.admin_overview_page)
         self.set_device_recovery_snapshot(self.bootstrap_snapshot)
         layout.addWidget(self.pages, 1)
         self.navigation.setCurrentRow(0)
