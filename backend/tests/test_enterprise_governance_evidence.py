@@ -37,7 +37,7 @@ def test_governance_evidence_generator_emits_required_reports_and_qa_templates(t
         {
             "class_name": "LegacyLocalVroidHubCompatibilityAdapter",
             "function_name": "credential_snapshot",
-            "line": 108,
+            "line": 109,
             "path": "teacher_avatar_registry.py",
             "symbol": "VROID_HUB_CLIENT_SECRET",
         }
