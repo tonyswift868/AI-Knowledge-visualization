@@ -138,7 +138,10 @@ class AdminOverviewService:
                     'code': 'RUNTIME_STARTED' if self.registry.started else 'RUNTIME_STARTING',
                 }
             try:
-                health = await asyncio.wait_for(asyncio.to_thread(self._health), 2.5)
+                # The SMTP probe performs several bounded TLS/AUTH round trips.
+                # Keep it inside the route's ten-second overall deadline without
+                # discarding a healthy relay solely at the former short budget.
+                health = await asyncio.wait_for(asyncio.to_thread(self._health), 7)
                 services.update(health)
             except Exception:
                 pass
