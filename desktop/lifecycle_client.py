@@ -5,7 +5,7 @@ from .enterprise_oidc import EnterpriseOidcError
 
 class LifecycleClient(NativeCredentialClient):
     async def action(self, action, payload=None):
-        if action not in ('capabilities','register','forgot'): raise ValueError('Invalid lifecycle action')
+        if action not in ('capabilities','register','forgot','change-password'): raise ValueError('Invalid lifecycle action')
         try:
             async with self._http.stream('GET' if action=='capabilities' else 'POST',
                     self.config.api_base_url+'/api/enterprise/auth/lifecycle/'+action, json=payload) as response:

@@ -1,6 +1,6 @@
 """Candidate-scoped lifecycle wiring over official Keycloak administration."""
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import logging
 import secrets
@@ -8,7 +8,7 @@ import ssl
 from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from .account_lifecycle import KeycloakAccountAdmin, LifecycleError
+from .account_lifecycle import KeycloakAccountAdmin, LifecycleError, validate_new_password
 from .service_account import ServiceAccountTokenResolver
 from .reset_completion import _throttle, _object
 from .oidc import IdentityError
@@ -43,8 +43,18 @@ def from_env(env):
     path = Path(env['MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG'])
     if path.is_symlink() or path.stat().st_size > 8192: raise ValueError('Invalid lifecycle configuration')
     config = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=_object)
-    if set(config) != {'origin', 'realm', 'client_id', 'secret_file', 'ca_file', 'expires_at'}:
+    required = {'origin', 'realm', 'client_id', 'secret_file', 'ca_file', 'expires_at'}
+    if not required.issubset(config) or set(config) - required - {'candidate_sha'}:
         raise ValueError('Invalid lifecycle configuration')
+    candidate = env.get('MENTORFLOW_ACCOUNT_LIFECYCLE_CANDIDATE', '').strip()
+    if candidate:
+        if not re.fullmatch(r'[0-9a-f]{40,64}', candidate) or config.get('candidate_sha') != candidate:
+            raise ValueError('Lifecycle candidate binding mismatch')
+    expiry = datetime.fromisoformat(config['expires_at'])
+    if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+        raise ValueError('Lifecycle candidate expired')
+    if expiry - datetime.now(timezone.utc) > timedelta(days=7):
+        raise ValueError('Lifecycle candidate expiry too long')
     return LifecycleRuntime(config)
 
 
@@ -128,3 +138,48 @@ async def forgot(request: Request):
     task = asyncio.create_task(send())
     svc.jobs.add(task); task.add_done_callback(svc.jobs.discard)
     return JSONResponse({'state':'RESET_WAITING','message':MESSAGE,'observation':observation}, status_code=202, headers={'Cache-Control':'no-store'})
+
+
+@router.post(PREFIX + '/change-password')
+async def change_password(request: Request):
+    """Authenticated self-service change; identity and subject come from session."""
+    runtime = getattr(request.app.state, 'enterprise_identity_runtime', None)
+    svc = getattr(runtime, 'lifecycle', None)
+    if runtime is None or svc is None or not svc.active:
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '当前账号服务暂未开放此功能。', status=503)
+    if (request.url.scheme != 'https' or request.headers.get('Origin') or request.cookies
+            or not request.headers.get('Authorization', '').startswith('Bearer mfn1_a_')):
+        raise IdentityError('LIFECYCLE_TRANSPORT_REQUIRED', '需要安全的原生账号连接。', status=403)
+    binding = await runtime.revalidate_product_identity(request)
+    session = binding.session
+    actor = binding.context.actor if binding.context else None
+    if session is None or actor is None:
+        raise IdentityError('ENTERPRISE_SESSION_REQUIRED', '请先登录。', status=401)
+    try:
+        value = await body(request, {'current_password', 'new_password'})
+        if not value['current_password'] or len(value['current_password']) > 1024:
+            raise ValueError()
+        validate_new_password(value['new_password'])
+        runtime.native_sessions.throttle(actor.subject_id, request.client.host if request.client else 'unknown')
+        username = await svc.admin.username_for_subject(actor.subject_id)
+        try:
+            principal = await runtime.native_sessions.verifier.authenticate(username, value['current_password'])
+        except IdentityError as exc:
+            if exc.code != 'NATIVE_CREDENTIALS_INVALID': raise
+            return JSONResponse({'code': 'CURRENT_PASSWORD_INVALID', 'message': '当前密码不正确。'},
+                                status_code=400, headers={'Cache-Control': 'no-store'})
+        if (principal.issuer, principal.subject) != (actor.issuer, actor.subject_id):
+            raise IdentityError('NATIVE_CREDENTIALS_INVALID', '账号或密码不正确', status=401)
+        await svc.admin.change_password(actor.subject_id, value['new_password'])
+        return JSONResponse({'state': 'PASSWORD_CHANGED'}, headers={'Cache-Control': 'no-store'})
+    except ValueError:
+        return JSONResponse({'code': 'PASSWORD_INPUT_INVALID', 'message': '请检查密码长度。'}, status_code=400,
+                            headers={'Cache-Control': 'no-store'})
+    except LifecycleError as exc:
+        if exc.code == 'PASSWORD_INPUT_INVALID':
+            return JSONResponse({'code': exc.code, 'message': '请检查密码长度。'}, status_code=400,
+                                headers={'Cache-Control': 'no-store'})
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '密码暂未修改，请稍后重试。', status=503)
+    finally:
+        value = locals().get('value')
+        if isinstance(value, dict): value.clear()

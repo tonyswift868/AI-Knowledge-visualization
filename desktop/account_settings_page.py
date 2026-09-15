@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -70,6 +71,7 @@ class AccountSettingsPage(QWidget):
         oidc_login: Callable[[], EnterpriseOidcLoginResult] | None = None,
         begin_account_switch: Callable[[], None] | None = None,
         open_recovery_center: Callable[[], None] | None = None,
+        change_password: Callable[[str, str], object] | None = None,
     ) -> None:
         super().__init__()
         self.profile = profile
@@ -83,6 +85,7 @@ class AccountSettingsPage(QWidget):
         self.oidc_login = oidc_login
         self.begin_account_switch = begin_account_switch
         self.open_recovery_center = open_recovery_center
+        self.change_password = change_password
         self._synced_resource_count = 0
         self._resource_device_states: tuple[str, ...] | None = None
         self._oidc_thread: threading.Thread | None = None
@@ -123,6 +126,19 @@ class AccountSettingsPage(QWidget):
         card_layout.addWidget(self.data_root_label)
         card_layout.addWidget(self.device_state_label)
         layout.addWidget(card)
+
+        security = QFrame(); security.setObjectName("settingsCard")
+        security_layout = QVBoxLayout(security)
+        security_layout.addWidget(QLabel("账号与安全"))
+        self.current_password = QLineEdit(); self.current_password.setPlaceholderText("当前密码"); self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.new_password = QLineEdit(); self.new_password.setPlaceholderText("新密码（8–128 位）"); self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.confirm_password = QLineEdit(); self.confirm_password.setPlaceholderText("确认新密码"); self.confirm_password.setEchoMode(QLineEdit.EchoMode.Password)
+        for field in (self.current_password, self.new_password, self.confirm_password): security_layout.addWidget(field)
+        self.change_password_button = QPushButton("修改密码")
+        self.change_password_button.setEnabled(change_password is not None)
+        self.change_password_button.clicked.connect(self._submit_change_password)
+        security_layout.addWidget(self.change_password_button)
+        layout.addWidget(security)
 
         actions = QHBoxLayout()
         managed = QPushButton("Managed Import（复制到当前 Vault）")
@@ -173,6 +189,22 @@ class AccountSettingsPage(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.refresh()
+
+    def _submit_change_password(self) -> None:
+        if self.change_password is None: return
+        current, new, confirm = self.current_password.text(), self.new_password.text(), self.confirm_password.text()
+        if len(new) < 8 or len(new) > 128 or new != confirm:
+            self.status.setText("请检查新密码长度，并确认两次输入一致。")
+            return
+        self.change_password_button.setEnabled(False)
+        try:
+            self.change_password(current, new)
+            self.status.setText("密码已修改，请使用新密码登录。")
+            for field in (self.current_password, self.new_password, self.confirm_password): field.clear()
+        except Exception:
+            self.status.setText("当前密码不正确或密码暂未修改，请稍后重试。")
+        finally:
+            self.change_password_button.setEnabled(True)
 
     @property
     def current_data_root(self) -> Path:

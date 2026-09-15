@@ -24,6 +24,11 @@ class LifecycleError(RuntimeError):
         super().__init__(code)
 
 
+def validate_new_password(password):
+    if not isinstance(password, str) or not 8 <= len(password) <= 128:
+        raise LifecycleError('PASSWORD_INPUT_INVALID')
+
+
 def _identifier(value: str) -> str:
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,255}', value):
         raise LifecycleError('INVALID_PROVIDER_IDENTIFIER')
@@ -95,10 +100,13 @@ class KeycloakAccountAdmin:
         """
         if (not isinstance(username, str) or not username.strip() or len(username) > 255
                 or username != username.strip() or any(ord(c) < 32 for c in username)
-                or not isinstance(password, str) or not 8 <= len(password) <= 128
                 or not isinstance(email, str) or len(email) > 254
                 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
             raise LifecycleError('REGISTRATION_INPUT_INVALID')
+        try:
+            validate_new_password(password)
+        except LifecycleError:
+            raise LifecycleError('REGISTRATION_INPUT_INVALID') from None
         credential = {'type': 'password', 'value': password, 'temporary': False}
         payload = {'username': username, 'email': email, 'enabled': True,
                    'emailVerified': False, 'requiredActions': ['VERIFY_EMAIL'],
@@ -127,6 +135,24 @@ class KeycloakAccountAdmin:
         """
         await self._call('PUT', '/users/' + _identifier(subject) + '/execute-actions-email',
                          payload=['UPDATE_PASSWORD'], params={'lifespan': 600})
+
+    async def change_password(self, subject: str, password: str):
+        """Replace a credential only after the caller verified the current one."""
+        validate_new_password(password)
+        payload = {'type': 'password', 'value': password, 'temporary': False}
+        try:
+            await self._call('PUT', '/users/' + _identifier(subject) + '/reset-password',
+                             payload=payload)
+        finally:
+            payload.clear()
+
+    async def username_for_subject(self, subject: str) -> str:
+        value, _ = await self._call('GET', '/users/' + _identifier(subject), expected=200)
+        if (not isinstance(value, dict) or value.get('id') != subject
+                or not isinstance(value.get('username'), str) or not value['username']
+                or len(value['username']) > 255 or value.get('enabled') is not True):
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        return value['username']
 
     async def find_username(self, username: str) -> str | None:
         """Private reconciliation only; never return this result to anonymous UI."""

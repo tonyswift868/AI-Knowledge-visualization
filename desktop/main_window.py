@@ -453,6 +453,7 @@ class MainWindow(QMainWindow):
         bootstrap_snapshot: object | None = None,
         open_recovery_center=None,
         return_to_login_gate=None,
+        rehydration_session=None,
     ):
         super().__init__()
         self.api = api
@@ -481,6 +482,7 @@ class MainWindow(QMainWindow):
             account_identity=self.user,
         )
         self.bootstrap_snapshot = bootstrap_snapshot
+        self._rehydration_session = rehydration_session
         self._open_recovery_center_callback = open_recovery_center
         self._return_to_login_gate_callback = return_to_login_gate
         self.account_credential_vault = AccountCredentialVault()
@@ -629,6 +631,7 @@ class MainWindow(QMainWindow):
                 else None
             ),
             open_recovery_center=self._open_recovery_center_callback,
+            change_password=self._change_enterprise_password,
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
@@ -661,6 +664,17 @@ class MainWindow(QMainWindow):
             self.device_recovery_button.setVisible(True)
         else:
             self.device_recovery_button.setVisible(False)
+
+    def _change_enterprise_password(self, current_password: str, new_password: str) -> None:
+        transport = self._rehydration_session
+        if transport is None:
+            # AccountBootstrapResult owns the live session; snapshots do not.
+            raise RuntimeError("AUTHENTICATED_SESSION_REQUIRED")
+        response = transport.post(
+            "/api/enterprise/auth/lifecycle/change-password",
+            json={"current_password": current_password, "new_password": new_password},
+        )
+        response.raise_for_status()
 
     def _begin_account_switch_at_login_gate(self) -> None:
         callback = self._return_to_login_gate_callback

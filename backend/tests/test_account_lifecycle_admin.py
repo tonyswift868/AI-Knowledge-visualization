@@ -68,6 +68,27 @@ def test_official_email_methods_do_not_create_or_return_action_tokens(method, pa
     assert len(calls) == 1
 
 
+def test_change_password_uses_official_reset_credentials_and_clears_payload():
+    calls = []
+    def handler(request):
+        calls.append(request)
+        assert request.method == 'PUT'
+        assert request.url.path == '/admin/realms/fixture/users/test-subject/reset-password'
+        assert json.loads(request.content) == {
+            'type': 'password', 'value': 'new-password', 'temporary': False,
+        }
+        return httpx.Response(204)
+    assert exercise(handler, lambda a: a.change_password('test-subject', 'new-password')) is None
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('password', ['', 'a' * 7, 'a' * 129, None])
+def test_change_password_rejects_invalid_length_without_network(password):
+    with pytest.raises(LifecycleError, match='PASSWORD_INPUT_INVALID'):
+        exercise(lambda r: pytest.fail('Network should not be used'),
+                 lambda a: a.change_password('test-subject', password))
+
+
 @pytest.mark.parametrize('response', [
     httpx.Response(302, headers={'location': 'https://foreign.example.test'}),
     httpx.Response(400, text='sensitive-provider-input'),
