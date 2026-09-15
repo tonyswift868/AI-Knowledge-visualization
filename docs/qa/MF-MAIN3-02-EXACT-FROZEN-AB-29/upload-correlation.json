@@ -1,0 +1,22 @@
+{
+  "observed_at": "2026-09-15T18:28:19.097535+00:00",
+  "migration_heads": [
+    "0040_admin_overview_aggregate"
+  ],
+  "app_role_superuser": false,
+  "app_role_bypassrls": false,
+  "materials": [
+    {
+      "id": "material_5d5109f953284f3098c3",
+      "workspace_id": "learning-task-0fa29d22",
+      "original_filename": "中文学习资料.txt",
+      "status": "ready",
+      "sha256": "290a0b7503ddf6f779722b5bd1537cc23b5aca024ab3575691aa5a40dd145d7c",
+      "stored_path": "\\\\?\\E:\\Codex\\TestDevices\\MentorFlow\\A\\vault\\accounts\\978652df0025c22462c69b48730463184f925fab68033d11f1bfc39a02de9612\\c59d966771a524b0fef14c27117089b10f40a407ea752f8e913f9c21d6e8f4aa\\data\\active_teaching\\uploads\\learning-task-0fa29d22\\290a0b7503ddf6f7-中文学习资料.txt",
+      "ordinary_path_length": 258,
+      "bytes_hash_verified": true,
+      "server_matching_resource_count": 0
+    }
+  ],
+  "filesystem_copy_A_to_B": 0
+}
