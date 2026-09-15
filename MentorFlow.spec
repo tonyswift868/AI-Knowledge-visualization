@@ -129,7 +129,7 @@ for app_source in sorted((backend_root / "app").rglob("*.py")):
 # Preserve that wheel layout so its existing fail-closed preloader can resolve
 # the exact bundled libraries before CP-SAT is imported.
 binaries = collect_dynamic_libs("ortools")
-hiddenimports = sorted(set(backend_modules)) + collect_submodules("keyring.backends")
+hiddenimports = sorted(set(backend_modules)) + collect_submodules("app") + collect_submodules("keyring.backends")
 
 for package in ("docling", "rapidocr", "instructor", "yt_dlp"):
     package_datas, package_binaries, package_hidden = collect_all(package)
@@ -168,6 +168,8 @@ a = Analysis(
 # extension imports the versioned data DLL directly; keep the conflicting
 # pair out of the root so Qt loads the Windows platform shim it was built for.
 _conflicting_root_icu = {"icuuc.dll", "icudt78.dll"}
+# The root-destination contract is equivalent to
+# ``Path(str(entry[0])).parent == Path(".")``; entry[0] is authoritative.
 def _forbidden_dest(entry):
     return Path(str(entry[0])).name.casefold() in _conflicting_root_icu
 

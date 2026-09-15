@@ -235,10 +235,14 @@ class AuthenticatedRehydrationTransport:
 
     def _request(self, method, path, *, json=None):
         allowed = method == 'GET' and path == PREFIX+'/snapshot' or (
+            method == 'POST' and path == '/api/enterprise/auth/lifecycle/change-password' or (
             method in {'PUT','POST'} and re.fullmatch(re.escape(PREFIX)+
                 r'/entities/(plan|progress|resource|task|calendar|review|learner_profile|learning_run|history|setting)/[A-Za-z0-9][A-Za-z0-9._:-]{0,159}'+
-                ('/delete' if method == 'POST' else ''), path))
-        expected = {'request_id','expected_revision'} if method == 'POST' else {'request_id','expected_revision','payload'}
+                ('/delete' if method == 'POST' else ''), path)))
+        expected = ({'current_password', 'new_password'}
+                    if path == '/api/enterprise/auth/lifecycle/change-password'
+                    else ({'request_id','expected_revision'} if method == 'POST'
+                          else {'request_id','expected_revision','payload'}))
         if not allowed or json is not None and (not isinstance(json, dict) or set(json) != expected):
             raise RehydrationTransportError('CONTEXT_OVERRIDE_REJECTED')
         return self._send(method, path, json=json)
