@@ -347,11 +347,15 @@ def test_stale_account_service_signals_cannot_open_or_fail_the_new_session(app_c
     import desktop.main as entry
     target, qt, _ = app_context
     target._show_login_gate(); qt.processEvents()
-    target.bootstrap_result = SimpleNamespace(profile=login().identity.profile(), close=lambda: None)
+    product_transport = object()
+    target.bootstrap_result = SimpleNamespace(profile=login().identity.profile(), close=lambda: None,
+                                             rehydration_session=product_transport)
     class Service(QObject):
         ready = Signal(str)
         failed = Signal(str)
-        def __init__(self, **kwargs): super().__init__()
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.product_transport = kwargs.get('product_transport')
         def start(self):
             startup_order.append('service')
             started.set()
@@ -366,6 +370,7 @@ def test_stale_account_service_signals_cannot_open_or_fail_the_new_session(app_c
     target._start_enterprise_local_service()
     assert started.wait(2)
     assert startup_order == ['frontend', 'service']
+    assert target.service.product_transport is product_transport
     previous = target.service
     target._invalidate_login_jobs()
     target.service = Service()

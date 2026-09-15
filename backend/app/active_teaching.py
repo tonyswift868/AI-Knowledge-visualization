@@ -2189,6 +2189,11 @@ def _public_material(connection: sqlite3.Connection, material_id: str) -> dict[s
     if not row:
         _error("MATERIAL_NOT_FOUND", "学习资料不存在", 404)
     output = dict(row)
+    local_path = str(row['stored_path'] or '')
+    output['device_availability'] = (
+        'AVAILABLE_LOCAL' if local_path and _native_path(Path(local_path)).is_file()
+        else 'MISSING_ON_THIS_DEVICE'
+    )
     # ``stored_path`` is an internal filesystem locator. Keep it in the
     # database for parsing/cleanup, but never expose the absolute path through
     # public material routes.

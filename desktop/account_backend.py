@@ -10,7 +10,7 @@ from pathlib import Path
 import threading
 
 
-def run_account_backend(listener, data_root: str, stop_event) -> None:
+def run_account_backend(listener, data_root: str, stop_event, product_pipe=None, product_scope=None) -> None:
     # Rebind after spawn's entry-point imports (including package launch config)
     # and before any backend import. Never consume an inherited database URL.
     root = Path(data_root).resolve(strict=True)
@@ -31,6 +31,12 @@ def run_account_backend(listener, data_root: str, stop_event) -> None:
     from .backend_imports import load_app
     import uvicorn
     app = load_app()
+    if product_pipe is not None:
+        from app.product_sync import ProductSyncProducer
+        from .product_sync_bridge import ChildProductSyncPort
+        app.state.product_sync = ProductSyncProducer(
+            root / 'data' / 'mentorflow_v2.db', product_scope,
+            ChildProductSyncPort(product_pipe))
     server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", port=listener.getsockname()[1],
         access_log=False, log_level="warning", log_config=None,

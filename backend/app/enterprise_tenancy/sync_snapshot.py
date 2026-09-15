@@ -44,7 +44,7 @@ def observe(connection, scope, *, requested_scope=None, scope_version=None):
         plan_ids=sorted(references.get(e['entity_id'], [])),
         device_availability='NOT_OBSERVED_BY_SERVER',
     ) for e in live if e['kind'] == 'resource']
-    counts = {v.domain: sum(e['kind'] == k for e in live)
+    counts = {v.domain: sum(e['kind'] == k and not e['payload'].get('product_auxiliary', False) for e in live)
               for k, v in SYNC_ITEM_REGISTRY.items()}
     counts['tombstones'] = len(entities) - len(live)
     manifest = row['manifest']

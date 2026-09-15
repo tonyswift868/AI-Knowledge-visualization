@@ -93,6 +93,12 @@ class _Response:
     def __init__(self, session, epoch, response):
         self._session, self._epoch, self._response = session, epoch, response
 
+    @property
+    def status_code(self):
+        with _gate:
+            self._session._require(self._epoch)
+            return self._response.status_code
+
     def raise_for_status(self):
         with _gate:
             self._session._require(self._epoch)

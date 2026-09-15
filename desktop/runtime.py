@@ -271,7 +271,7 @@ class LocalService(QObject):
     failed = Signal(str)
     stopped = Signal()
 
-    def __init__(self, *, resolved_profile: AccountProfile | None = None) -> None:
+    def __init__(self, *, resolved_profile: AccountProfile | None = None, product_transport=None) -> None:
         super().__init__()
         global _active_local_service
         _active_local_service = self
@@ -289,6 +289,8 @@ class LocalService(QObject):
         self._server_error: Exception | None = None
         self._resolved_profile = resolved_profile
         self._process_stop = None
+        self._product_transport = product_transport
+        self._product_relay_thread = None
 
     @staticmethod
     def _bind_listener(port: int = 0) -> socket.socket:
@@ -372,12 +374,33 @@ class LocalService(QObject):
         self._server_error = None
         # spawn transfers the reserved socket handle; there is no free-port
         # selection/rebind race and no reuse of A's module-global engines.
+        child_port = None
+        product_scope = None
+        if self._product_transport is not None:
+            from .product_sync_bridge import ProductSyncRelay
+            relay = ProductSyncRelay(self._product_transport)
+            parent_port, child_port = context.Pipe()
+            product_scope = relay.scope
+            self._product_relay_thread = threading.Thread(
+                target=relay.serve, args=(parent_port, self._stop_event),
+                name='product-sync-relay', daemon=True)
+            self._product_relay_thread.start()
         self.thread = context.Process(
             target=run_account_backend,
-            args=(self._listener, os.environ["MENTORFLOW_USER_DATA_ROOT"], self._process_stop),
+            args=(self._listener, os.environ["MENTORFLOW_USER_DATA_ROOT"], self._process_stop, child_port, product_scope),
             name="mentorflow-account-api", daemon=True,
         )
-        self.thread.start()
+        try:
+            self.thread.start()
+        except BaseException:
+            self._stop_event.set()
+            if self._product_relay_thread is not None:
+                self._product_relay_thread.join(timeout=1)
+            self.thread = None
+            raise
+        finally:
+            if child_port is not None:
+                child_port.close()
         self.health_thread = threading.Thread(
             target=self._wait_until_ready, name="mentorflow-account-health", daemon=True,
         )
@@ -462,6 +485,8 @@ class LocalService(QObject):
             self.thread.join(timeout=3)
         if self.health_thread and self.health_thread.is_alive():
             self.health_thread.join(timeout=3)
+        if self._product_relay_thread and self._product_relay_thread.is_alive():
+            self._product_relay_thread.join(timeout=3)
         self._close_listener()
         self.stopped.emit()
 
@@ -471,6 +496,7 @@ class LocalService(QObject):
             self._listener is None
             and (self.thread is None or not self.thread.is_alive())
             and (self.health_thread is None or not self.health_thread.is_alive())
+            and (self._product_relay_thread is None or not self._product_relay_thread.is_alive())
         )
 
     def wait_until_stopped(self, timeout_seconds: float = 15.0) -> bool:

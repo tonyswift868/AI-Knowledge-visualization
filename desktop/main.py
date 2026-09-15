@@ -1593,7 +1593,8 @@ class MentorFlowApplication:
                 detail="正在打开你的学习空间…",
             )
         from .runtime import LocalService
-        self.service = LocalService(resolved_profile=self.bootstrap_result.profile)
+        self.service = LocalService(resolved_profile=self.bootstrap_result.profile,
+                                    product_transport=self.bootstrap_result.rehydration_session)
         service = self.service
         generation = self._login_generation
         service.ready.connect(lambda origin: self._service_ready(origin)

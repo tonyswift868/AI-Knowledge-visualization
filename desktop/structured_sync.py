@@ -54,6 +54,8 @@ class StructuredSyncClient:
             if entity['deleted']:
                 result['tombstones'].append(entity)
                 continue
+            if entity['payload'].get('product_auxiliary') is True:
+                continue  # Retained in the envelope for product relationship restoration.
             if entity['kind'] == 'resource':
                 projection = resource_projection[entity['entity_id']]
                 entity = dict(entity, product_classification=projection['product_classification'],

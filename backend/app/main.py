@@ -268,6 +268,9 @@ async def lifespan(_app):
         recover_interrupted_knowledge_map_jobs()
         recover_interrupted_video_collection_jobs()
         cleanup_expired_previews()
+        product_sync = getattr(_app.state, 'product_sync', None)
+        if product_sync is not None:
+            await asyncio.to_thread(product_sync.start)
     # Missing or invalid engine release material is recorded fail-closed. The
     # bootstrap accepts only the fixed registry -> root-signed policy -> leaf
     # receipt -> signed engine chain and never starts its child/model.
@@ -281,9 +284,27 @@ async def lifespan(_app):
             (bootstrap_status.get("error") or {}).get("code", "unknown"),
         )
     health_registry.started = True
+    product_drain_stop = asyncio.Event()
+    async def drain_product_commits():
+        from .product_sync import ProductSyncFailure
+        producer = _app.state.product_sync
+        while not product_drain_stop.is_set():
+            try:
+                await asyncio.to_thread(producer.flush)
+            except ProductSyncFailure:
+                pass  # Durable intent error is exposed by the status/command boundary.
+            try:
+                await asyncio.wait_for(product_drain_stop.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                pass
+    product_drain = (asyncio.create_task(drain_product_commits())
+                     if getattr(_app.state, 'product_sync', None) is not None else None)
     try:
         yield
     finally:
+        product_drain_stop.set()
+        if product_drain is not None:
+            await product_drain
         health_registry.started = False
         identity_runtime = getattr(
             _app.state,
@@ -354,6 +375,44 @@ async def lifespan(_app):
         shutdown_open_telemetry()
 
 app = FastAPI(title="MentorFlow", version="2.0.0", lifespan=lifespan)
+
+
+@app.middleware('http')
+async def product_commit_boundary(request: Request, call_next):
+    producer = getattr(request.app.state, 'product_sync', None)
+    if producer is None or not request.url.path.startswith('/api/'):
+        return await call_next(request)
+    from .product_sync import ProductSyncFailure
+    lock = getattr(request.app.state, 'product_sync_request_lock', None)
+    if lock is None:
+        lock = request.app.state.product_sync_request_lock = asyncio.Lock()
+    async with lock:
+        try:
+            await asyncio.to_thread(producer.authorize)
+            if request.url.path == '/api/product-sync/status' and request.method == 'GET':
+                return JSONResponse(content=await asyncio.to_thread(producer.status))
+            # Deliver a previous ambiguous commit before allowing another write.
+            await asyncio.to_thread(producer.flush)
+            response = await call_next(request)
+            # Also drain after failed commands: ingestion may have committed
+            # before a later provider/planning precondition rejected the command.
+            await asyncio.to_thread(producer.flush)
+            response.headers['X-MentorFlow-Product-Sync-Scope'] = 'ORM_ACTIVE_TEACHING_RECORDS'
+            response.headers['X-MentorFlow-Product-Sync'] = (
+                'SERVER_ACKNOWLEDGED' if request.url.path.startswith('/api/active-teaching/')
+                else 'PARTIAL_PRODUCT_COVERAGE')
+            return response
+        except ProductSyncFailure as exc:
+            messages = {
+                'PRODUCT_SYNC_CONFLICT': '云端已有较新修订。本机更改已保留，需解决冲突后继续。',
+                'PRODUCT_SYNC_DENIED': '当前账号或学习空间无权提交更改，请重新登录。',
+                'PRODUCT_SYNC_CONTRACT_REJECTED': '云端未接受当前数据格式。本机更改已保留，需要兼容的数据合同后才能提交。',
+                'PRODUCT_SYNC_INVALID_PROJECTION': '本机记录不符合已支持的同步格式。更改已保留，尚未提交到云端。',
+            }
+            return JSONResponse(status_code=409 if exc.code == 'PRODUCT_SYNC_CONFLICT' else 503,
+                content={'error': {'code': exc.code, 'message': messages.get(exc.code,
+                    '本机更改已保留，但尚未获得云端提交确认。请恢复连接后重试。')},
+                         'sync_status': exc.code}, headers={'Cache-Control': 'no-store'})
 configure_default_health_probes()
 install_review_product(app)
 install_plan_product(app)

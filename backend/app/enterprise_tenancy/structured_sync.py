@@ -16,6 +16,7 @@ from sqlalchemy import (MetaData, Table, Column, String, Integer, Boolean, JSON,
 from .context import TenantTransactionContext
 from .models import EnterprisePersistenceRequestError
 from .sync_registry import SYNC_KINDS, SYNC_ITEM_REGISTRY
+from ..product_sync_contract import validate as validate_product_record, ProductSyncRejected
 
 _SECRET_KEYS = frozenset({'password', 'access_token', 'refresh_token', 'token', 'credential',
                           'api_key', 'provider_secret', 'private_key', 'signing_key', 'secret'})
@@ -53,13 +54,16 @@ ID_PATTERN = r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$'
 class Plan(StrictModel):
     title: str = Field(min_length=1, max_length=300)
     resource_ids: list[str] = Field(default_factory=list, max_length=100)
+    product_record: dict | None = None
 
 class Progress(StrictModel):
-    plan_id: str = Field(pattern=ID_PATTERN)
+    plan_id: str | None = Field(pattern=ID_PATTERN)
     mastery: float = Field(ge=0, le=1)
     completed_tasks: int = Field(ge=0)
+    product_record: dict | None = None
 
 class Resource(StrictModel):
+    product_record: dict | None = None
     product_classification: Literal["USER_FILE", "MODEL", "OTHER", "UNKNOWN"] = "UNKNOWN"
     filename: str = Field(min_length=1, max_length=300, pattern=r'^[^/\\\x00-\x1f]+$')
     media_type: str = Field(min_length=1, max_length=120, pattern=r'^[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+$')
@@ -110,8 +114,15 @@ class StructuredSyncService:
         if not deleting:
             try:
                 _reject_secret(body.payload)
+                validate_product_record(kind, entity_id, body.payload)
+                if kind == 'progress' and body.payload.get('plan_id') is None and not body.payload.get('product_record'):
+                    raise error('SYNC_PAYLOAD_INVALID', 422)
                 model = {'plan': Plan, 'progress': Progress, 'resource': Resource}.get(kind)
                 payload = (model.model_validate(body.payload).model_dump() if model else SYNC_ITEM_REGISTRY[kind].project(body.payload))
+                if payload.get('product_record') is None:
+                    payload.pop('product_record', None)
+            except ProductSyncRejected as exc:
+                raise error(str(exc), 422) from exc
             except ValidationError as exc:
                 raise error('SYNC_PAYLOAD_INVALID', 422) from exc
             # Preserve pre-contract request fingerprints when the optional field is absent.
@@ -143,7 +154,7 @@ class StructuredSyncService:
                 if current and current['deleted']:
                     raise error('SYNC_ENTITY_TOMBSTONED', 410)
                 refs = [('resource', r) for r in payload.get('resource_ids', [])]
-                if kind == 'progress' and not deleting:
+                if kind == 'progress' and not deleting and payload.get('plan_id'):
                     refs.append(('plan', payload['plan_id']))
                 for ref_kind, ref_id in refs:
                     found = c.execute(select(entities.c.entity_id).where(predicate(entities, scope),

@@ -7,7 +7,7 @@ SCOPE_VERSION = 'SUPPORTED_REHYDRATION_SCOPE_V1'
 # All structured domains have a server snapshot/apply path.  Binary resources
 # remain metadata-only and are intentionally outside this scope.
 SUPPORTED_SCOPE = ('plans', 'progress', 'resource_metadata', 'plan_tasks', 'calendars',
-                   'learner_profile', 'learning_runs', 'teaching_chat_history', 'nonsecret_settings')
+                   'review_fsrs', 'learner_profile', 'learning_runs', 'teaching_chat_history', 'nonsecret_settings')
 WHERE_SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 
 
