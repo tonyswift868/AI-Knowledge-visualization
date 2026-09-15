@@ -1,0 +1,1788 @@
+{
+  "selected_backups": {
+    "application": {
+      "path": "/opt/mentorflow/backups/e106-import-20260906/mentorflow-before-0036-20260906T053132Z.dump",
+      "bytes": 497649,
+      "mtime_utc": "2026-09-06T05:31:33.093688+00:00",
+      "sha256": "f0edc5b2154ad0eebf44fef546126a449753dca148c74fb80413ce6244fb5190",
+      "format": "PG_CUSTOM",
+      "local_copy": "E:\\Codex\\Temp\\MF04-RELEASE27\\application.dump",
+      "copy_checksum": "PASS"
+    },
+    "identity": {
+      "path": "/opt/mentorflow/backups/e106-import-20260906/mentorflow_keycloak-before-0036-20260906T053133Z.dump",
+      "bytes": 276254,
+      "mtime_utc": "2026-09-06T05:31:34.031708+00:00",
+      "sha256": "01d2ddd2e09510f0abe3e7197fa541a934fabd26b981212272403edcf917bb11",
+      "format": "PG_CUSTOM",
+      "local_copy": "E:\\Codex\\Temp\\MF04-RELEASE27\\identity.dump",
+      "copy_checksum": "PASS"
+    }
+  },
+  "scope": "Latest found in both documented retained backup roots; not a host-wide guarantee.",
+  "checksum_scope": "Remote SHA256 equals copied bytes; no independent signed checksum for this latest pair found.",
+  "freshness_gate": "BLOCKED_NEW_PREDEPLOY_BACKUPS_REQUIRED",
+  "drill": {
+    "candidate_sha": "69b7e210ce7ff4abeb14337e4d969b0420db476a",
+    "isolated_restore": {
+      "application": {
+        "exit_code": 0,
+        "tables": {
+          "enterprise_jobs.dead_letters": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "enterprise_jobs.jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "enterprise_jobs.outbox": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_external_resources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_extraction_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_knowledge_points": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_materials": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plan_calendars": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plan_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plans": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_point_details": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_resource_discovery_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.alembic_version": {
+            "rows": 1,
+            "digest": "6179aa30c40ee9526f54453830fd8fa0ef1f8b3717b38402252762266c6aaf0b"
+          },
+          "public.archive_preview_items": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.archive_previews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.asset_manifests": {
+            "rows": 5,
+            "digest": "2157dd0cef7cb4d74886afffa0caaea5b5bb4f259765f63cdda399200ea00bac"
+          },
+          "public.asset_revisions": {
+            "rows": 5,
+            "digest": "ba05a6a8f1e2f182c610271fce5324374266ead88a26f3943cc7866bd94d7b97"
+          },
+          "public.cost_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.documents": {
+            "rows": 10,
+            "digest": "db175132637d4f888755e7e0d5c64f229e6ca9961b24cdb42c4c494905d43679"
+          },
+          "public.enterprise_provider_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.evidence": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.knowledge_maps": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.learning_plans": {
+            "rows": 2,
+            "digest": "6a6cf92fe5715916c299de892824db72d2bbb545f8dcd48f8e68cfed4051ad1f"
+          },
+          "public.organization_memberships": {
+            "rows": 7,
+            "digest": "879bf5d0197eba8712ac02397da8c0a70eb9a671bc3cf5f61da92d0366b1d837"
+          },
+          "public.organizations": {
+            "rows": 7,
+            "digest": "934af713f44d7490b6b612787dab1a7180ece2849902e60b4bee08b14cb5d104"
+          },
+          "public.orm_blocks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_campaign_adaptation_blueprints": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_characters": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_chunks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_citations": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_conflicts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_conversion_manifests": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_days": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_active_art_pack": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_pack_versions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_packs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_reviews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_asset_registry": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_battle_event_logs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_battle_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_equipment_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_equipment_instances": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_gacha_banners": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_gacha_pull_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_assets": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_awakening": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_star_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_lineup_members": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_lineup_presets": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_milestone_reward_claims": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_pet_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_pet_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_profiles": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_skin_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_stage_definition_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_stage_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_feasibility": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_fusion_adapter_versions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_generated_narrative_scenes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_goals": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_edges": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_map_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_map_revisions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_nodes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_review_candidates": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learner_preferences": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_artifacts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_resources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_run_messages": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_lessons": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_phone_challenges": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_users": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_mastery_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_material_dispositions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_messages": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_milestones": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_mistakes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_modules": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_campaigns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_continuity_snapshots": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_dialogues": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_voice_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_activation_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_execution_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_mastery_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_assistant_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_candidates": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pool_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pool_requests": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pools": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plans": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_review_attempts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_reviews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_scene_contracts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_source_revisions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_sources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_story_objects": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_task_semantic_profiles": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_memories": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_turns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_training_slots": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_verified_learning_reward_ledger": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_collection_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_collections": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_episodes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_subtitle_segments": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_summaries": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_workspace_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_workspaces": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_periodic_defers": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_workers": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_scopes": {
+            "rows": 14,
+            "digest": "d0c614b946058dcf0fb6c3b6592962cb36124e827cb906b26ea5d86dc0427526"
+          },
+          "public.review_campaigns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.student_events": {
+            "rows": 2,
+            "digest": "438b6b03d6defc5b12a2ca3e526dc2fbbe7e965cfa940ef1be940ae368d928d9"
+          },
+          "public.teacher_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.workspace_goals": {
+            "rows": 2,
+            "digest": "1fcb766ad559c1e524b89abea0040536f5a5f7aa651696e60e19a1d368e56f12"
+          },
+          "public.workspace_memberships": {
+            "rows": 7,
+            "digest": "5b6a8db56c26fbd243dc7d6611d23ba6235048affe7bdca331d5f3858230f840"
+          },
+          "public.workspace_profiles": {
+            "rows": 7,
+            "digest": "81c7ac7d5ff629e5412572f61ea91f8a17f1bee27cace287ab6401be0fedd62b"
+          },
+          "public.workspace_role_bindings": {
+            "rows": 7,
+            "digest": "5cda2670dceaa165d9cce8a0d5dc4d463649926956a93fa479fdea6b2d49077b"
+          },
+          "public.workspaces": {
+            "rows": 7,
+            "digest": "11e9d6bf7b0beb3abe453aa6b81ebbf49ad3d841ae96c11001e71ce949abb6ff"
+          }
+        }
+      },
+      "identity": {
+        "exit_code": 0,
+        "tables": {
+          "public.admin_event_entity": {
+            "rows": 59,
+            "digest": "30905c4eb7e8529ee36761c739ae18231eb809f36fec8f0002f61f675ff87aaf"
+          },
+          "public.associated_policy": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.auth_session": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.authentication_execution": {
+            "rows": 105,
+            "digest": "66cf310dac716e5c483048e989fe8029ee0ecfb11aef1c473599134a45ffc580"
+          },
+          "public.authentication_flow": {
+            "rows": 39,
+            "digest": "687bfbbfb5da41055319f480809279253ed179483354a20c6773a89e56159fdc"
+          },
+          "public.authenticator_config": {
+            "rows": 8,
+            "digest": "645316dfe358a74a06be2f681af4f8669899dad0120f92dad90db978c9bb23df"
+          },
+          "public.authenticator_config_entry": {
+            "rows": 8,
+            "digest": "f2fd5bdcddda0ed9bc4a88742145f16ff0d1242d78d450ba5ef4aaf37c3c9e0f"
+          },
+          "public.broker_link": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.client": {
+            "rows": 18,
+            "digest": "5e5540cd49e4d6c8e8f7b067134ba628ada01f83bd9f559700ed86fd18d538fb"
+          },
+          "public.client_attributes": {
+            "rows": 33,
+            "digest": "e74141d22958c0789d1724a0a0645c8dc59a71b085c1f4f2ead89d318975d032"
+          },
+          "public.client_auth_flow_bindings": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.client_initial_access": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.client_node_registrations": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.client_scope": {
+            "rows": 30,
+            "digest": "1696c9c66845278d17718a985c7e243813490d24ad1331f07393813c1e64a95a"
+          },
+          "public.client_scope_attributes": {
+            "rows": 68,
+            "digest": "7a435241a2cfed7d6713f05000539a9f5fde0cb8884d0fef370bc0ee8c9ed8d0"
+          },
+          "public.client_scope_client": {
+            "rows": 161,
+            "digest": "8bb4ff86a6da6a08a6e481ce59319effce496ba8c518158f5c021fd4b1e811e1"
+          },
+          "public.client_scope_role_mapping": {
+            "rows": 2,
+            "digest": "a6e7b59e601e0078aca9512455ee0c4213220527be4abce3af9a2e4bec546bee"
+          },
+          "public.cluster_event": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.component": {
+            "rows": 30,
+            "digest": "5319c453a6ef711627efa06d0c081e2d28120fb1d39229014499f7fd65332305"
+          },
+          "public.component_config": {
+            "rows": 76,
+            "digest": "240d283940b7d73006bf498efe905a9610705ed89a472897098e62a216df0a97"
+          },
+          "public.composite_role": {
+            "rows": 88,
+            "digest": "85dd38f3c6025ba05ee00e784aa9ca3b94fd1e93e713c94887179d139a050e01"
+          },
+          "public.credential": {
+            "rows": 8,
+            "digest": "33b37c0f03744c2789fba9a1cf50b9e07123deee05ec770f9d2bd9c46fc3e0b0"
+          },
+          "public.databasechangelog": {
+            "rows": 210,
+            "digest": "b60e738c06ec704a6c0353fdb6aba05acc857ea223fcf0edc642cdcb4a8bb0f5"
+          },
+          "public.databasechangeloglock": {
+            "rows": 2,
+            "digest": "8e5b117eefdd0b73cea488d28f1c5e529df6c9b6fb0aa166b728f22a3c186b2b"
+          },
+          "public.default_client_scope": {
+            "rows": 28,
+            "digest": "df422fdbd5e1fdef5e7cc0df9498350972084936e291181a25545a84eb90ca06"
+          },
+          "public.event_entity": {
+            "rows": 172,
+            "digest": "db0c6ec6680688ded2f77dd9e8923bbbad080f95bfc6223225b9d7704f59f4da"
+          },
+          "public.fed_issued_ver_credential": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_attribute": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_consent": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_consent_cl_scope": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_credential": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_group_membership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_required_action": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_role_mapping": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.fed_user_ver_credential": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.federated_identity": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.federated_user": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.group_attribute": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.group_role_mapping": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.identity_provider": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.identity_provider_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.identity_provider_mapper": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.idp_mapper_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.issued_ver_credential": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.jgroups_ping": {
+            "rows": 1,
+            "digest": "258d81351a0460b03182df3c2e9e9ac994c19f5bcffbfcc3d84945014da8ae21"
+          },
+          "public.keycloak_group": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.keycloak_role": {
+            "rows": 100,
+            "digest": "377bc4881a1380d06f09f2655ec161643f6a61449d1f3d59348ea9aeec2a274e"
+          },
+          "public.login_failure": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.migration_model": {
+            "rows": 1,
+            "digest": "1ec8db2c560f7c10c36f26251e0cae6b36e62ac9f42170e9d7c3eac692bc4da0"
+          },
+          "public.offline_client_session": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.offline_user_session": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.org": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.org_domain": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.org_invitation": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.outbox_entry": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.policy_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.protocol_mapper": {
+            "rows": 78,
+            "digest": "ef76a567085eaa61fe148f7f6b287fc4b5b7a91d643d7adfc26d01fb3a40bfb2"
+          },
+          "public.protocol_mapper_config": {
+            "rows": 436,
+            "digest": "97dcf137730d130b71a4d501f1c701b7e05305286662c89225d58837d7252ec4"
+          },
+          "public.realm": {
+            "rows": 2,
+            "digest": "a298be4dc3046fcaad75cfeb81083f4e0cd9ee659f502fd9e41f5b3f42175db9"
+          },
+          "public.realm_attribute": {
+            "rows": 87,
+            "digest": "00f83f5b6bac01a1722d4563a2296f49fdc1a92aadaa6cfeb5c4f74c181e6a35"
+          },
+          "public.realm_default_groups": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.realm_enabled_event_types": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.realm_events_listeners": {
+            "rows": 2,
+            "digest": "c274250f00a45cdf3147ce17901dcf24e1610874029e32232232fc4b93ef4385"
+          },
+          "public.realm_localizations": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.realm_required_credential": {
+            "rows": 2,
+            "digest": "36e768ee164b0e60ac56ea8d161b649c8c4389c3937008d047fdfb85dcd5c721"
+          },
+          "public.realm_smtp_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.realm_supported_locales": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.redirect_uris": {
+            "rows": 9,
+            "digest": "9cf9fa1c9461c313a53ed46aca3fde207acd6b03ace458f5cd1177a6d349d090"
+          },
+          "public.required_action_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.required_action_provider": {
+            "rows": 28,
+            "digest": "b855fe8544dfbc4122b127b096acd2b537510973bc929e7511d7fad947e7d198"
+          },
+          "public.resource_attribute": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_policy": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_scope": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_server": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_server_perm_ticket": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_server_policy": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_server_resource": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_server_scope": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_uris": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.revoked_token": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.role_attribute": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.root_auth_session": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.scope_mapping": {
+            "rows": 4,
+            "digest": "cc1822b13a3c850c26f8b55ad24b0ec8d8e41a268226c4c3027ca7b394942f6d"
+          },
+          "public.scope_policy": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.server_config": {
+            "rows": 2,
+            "digest": "44795ed83a3246f103bdacda416cdb9b63947acb9104015f3a5c1cdd95eb8573"
+          },
+          "public.single_use_object": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_attribute": {
+            "rows": 1,
+            "digest": "9367683ba3e862a7f7b23508d9a5a076dfed4a88c3ef8ba4675c65bd389d1848"
+          },
+          "public.user_consent": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_consent_client_scope": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_entity": {
+            "rows": 9,
+            "digest": "be4dc51ca421cbd7bcff50dc7bbd241481acf8f3f54f242af93526e635d330f3"
+          },
+          "public.user_federation_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_federation_mapper": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_federation_mapper_config": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_federation_provider": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_group_membership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_required_action": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.user_role_mapping": {
+            "rows": 12,
+            "digest": "8862b221cf32d29fe1a6522bd1f82a6faeb6c4d6672d3c75d924e6985f8a2b18"
+          },
+          "public.user_ver_credential": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.web_origins": {
+            "rows": 5,
+            "digest": "1b5b3e57982b939599ea75c1b3bf04926f454fd67d0824354215930ac1df0cd5"
+          },
+          "public.workflow_state": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      },
+      "rollback": {
+        "exit_code": 0,
+        "tables": {
+          "enterprise_jobs.dead_letters": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "enterprise_jobs.jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "enterprise_jobs.outbox": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_external_resources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_extraction_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_knowledge_points": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_materials": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plan_calendars": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plan_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_plans": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_point_details": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.active_resource_discovery_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.alembic_version": {
+            "rows": 1,
+            "digest": "6179aa30c40ee9526f54453830fd8fa0ef1f8b3717b38402252762266c6aaf0b"
+          },
+          "public.archive_preview_items": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.archive_previews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.asset_manifests": {
+            "rows": 5,
+            "digest": "2157dd0cef7cb4d74886afffa0caaea5b5bb4f259765f63cdda399200ea00bac"
+          },
+          "public.asset_revisions": {
+            "rows": 5,
+            "digest": "ba05a6a8f1e2f182c610271fce5324374266ead88a26f3943cc7866bd94d7b97"
+          },
+          "public.cost_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.documents": {
+            "rows": 10,
+            "digest": "db175132637d4f888755e7e0d5c64f229e6ca9961b24cdb42c4c494905d43679"
+          },
+          "public.enterprise_provider_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.evidence": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.knowledge_maps": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.learning_plans": {
+            "rows": 2,
+            "digest": "6a6cf92fe5715916c299de892824db72d2bbb545f8dcd48f8e68cfed4051ad1f"
+          },
+          "public.organization_memberships": {
+            "rows": 7,
+            "digest": "879bf5d0197eba8712ac02397da8c0a70eb9a671bc3cf5f61da92d0366b1d837"
+          },
+          "public.organizations": {
+            "rows": 7,
+            "digest": "934af713f44d7490b6b612787dab1a7180ece2849902e60b4bee08b14cb5d104"
+          },
+          "public.orm_blocks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_campaign_adaptation_blueprints": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_characters": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_chunks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_citations": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_conflicts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_conversion_manifests": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_days": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_active_art_pack": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_pack_versions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_packs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_art_reviews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_asset_registry": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_battle_event_logs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_battle_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_equipment_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_equipment_instances": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_gacha_banners": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_gacha_pull_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_assets": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_awakening": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_hero_star_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_lineup_members": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_lineup_presets": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_milestone_reward_claims": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_pet_definitions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_pet_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_profiles": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_skin_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_stage_definition_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_expedition_stage_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_feasibility": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_fusion_adapter_versions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_generated_narrative_scenes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_goals": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_edges": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_map_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_map_revisions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_nodes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_knowledge_review_candidates": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learner_preferences": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_artifacts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_resources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_run_messages": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_learning_runs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_lessons": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_phone_challenges": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_local_users": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_mastery_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_material_dispositions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_messages": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_milestones": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_mistakes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_modules": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_campaigns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_continuity_snapshots": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_dialogues": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_narrative_voice_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_activation_records": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_execution_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plan_mastery_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_assistant_cache": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_candidates": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pool_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pool_requests": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_planning_resource_pools": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_plans": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_progress": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_review_attempts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_reviews": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_scene_contracts": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_source_revisions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_sources": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_story_objects": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_task_semantic_profiles": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_tasks": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_memories": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_teacher_turns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_training_slots": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_verified_learning_reward_ledger": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_collection_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_collections": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_episodes": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_subtitle_segments": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_video_summaries": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_workspace_ownership": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.orm_workspaces": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_events": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_jobs": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_periodic_defers": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.procrastinate_workers": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.resource_scopes": {
+            "rows": 14,
+            "digest": "d0c614b946058dcf0fb6c3b6592962cb36124e827cb906b26ea5d86dc0427526"
+          },
+          "public.review_campaigns": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.student_events": {
+            "rows": 2,
+            "digest": "438b6b03d6defc5b12a2ca3e526dc2fbbe7e965cfa940ef1be940ae368d928d9"
+          },
+          "public.teacher_sessions": {
+            "rows": 0,
+            "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "public.workspace_goals": {
+            "rows": 2,
+            "digest": "1fcb766ad559c1e524b89abea0040536f5a5f7aa651696e60e19a1d368e56f12"
+          },
+          "public.workspace_memberships": {
+            "rows": 7,
+            "digest": "5b6a8db56c26fbd243dc7d6611d23ba6235048affe7bdca331d5f3858230f840"
+          },
+          "public.workspace_profiles": {
+            "rows": 7,
+            "digest": "81c7ac7d5ff629e5412572f61ea91f8a17f1bee27cace287ab6401be0fedd62b"
+          },
+          "public.workspace_role_bindings": {
+            "rows": 7,
+            "digest": "5cda2670dceaa165d9cce8a0d5dc4d463649926956a93fa479fdea6b2d49077b"
+          },
+          "public.workspaces": {
+            "rows": 7,
+            "digest": "11e9d6bf7b0beb3abe453aa6b81ebbf49ad3d841ae96c11001e71ce949abb6ff"
+          }
+        }
+      }
+    },
+    "real_database_mutation": false,
+    "postgres_version": "17.6",
+    "before_revision": "0035_account_workspace_bootstrap",
+    "migration_exit_code": 0,
+    "unchanged_existing_tables": {
+      "enterprise_jobs.dead_letters": true,
+      "enterprise_jobs.jobs": true,
+      "enterprise_jobs.outbox": true,
+      "public.active_external_resources": true,
+      "public.active_extraction_runs": true,
+      "public.active_knowledge_points": true,
+      "public.active_materials": true,
+      "public.active_plan_calendars": true,
+      "public.active_plan_tasks": true,
+      "public.active_plans": true,
+      "public.active_point_details": true,
+      "public.active_resource_discovery_runs": true,
+      "public.archive_preview_items": true,
+      "public.archive_previews": true,
+      "public.asset_manifests": true,
+      "public.asset_revisions": true,
+      "public.cost_events": true,
+      "public.documents": true,
+      "public.enterprise_provider_sessions": true,
+      "public.evidence": true,
+      "public.knowledge_maps": true,
+      "public.learning_plans": true,
+      "public.organization_memberships": true,
+      "public.organizations": true,
+      "public.orm_blocks": true,
+      "public.orm_campaign_adaptation_blueprints": true,
+      "public.orm_characters": true,
+      "public.orm_chunks": true,
+      "public.orm_citations": true,
+      "public.orm_conflicts": true,
+      "public.orm_conversion_manifests": true,
+      "public.orm_days": true,
+      "public.orm_expedition_active_art_pack": true,
+      "public.orm_expedition_art_pack_versions": true,
+      "public.orm_expedition_art_packs": true,
+      "public.orm_expedition_art_reviews": true,
+      "public.orm_expedition_asset_registry": true,
+      "public.orm_expedition_battle_event_logs": true,
+      "public.orm_expedition_battle_records": true,
+      "public.orm_expedition_equipment_definitions": true,
+      "public.orm_expedition_equipment_instances": true,
+      "public.orm_expedition_gacha_banners": true,
+      "public.orm_expedition_gacha_pull_records": true,
+      "public.orm_expedition_hero_assets": true,
+      "public.orm_expedition_hero_awakening": true,
+      "public.orm_expedition_hero_definitions": true,
+      "public.orm_expedition_hero_ownership": true,
+      "public.orm_expedition_hero_star_progress": true,
+      "public.orm_expedition_lineup_members": true,
+      "public.orm_expedition_lineup_presets": true,
+      "public.orm_expedition_milestone_reward_claims": true,
+      "public.orm_expedition_pet_definitions": true,
+      "public.orm_expedition_pet_ownership": true,
+      "public.orm_expedition_profiles": true,
+      "public.orm_expedition_skin_ownership": true,
+      "public.orm_expedition_stage_definition_cache": true,
+      "public.orm_expedition_stage_progress": true,
+      "public.orm_feasibility": true,
+      "public.orm_fusion_adapter_versions": true,
+      "public.orm_generated_narrative_scenes": true,
+      "public.orm_goals": true,
+      "public.orm_jobs": true,
+      "public.orm_knowledge_edges": true,
+      "public.orm_knowledge_map_jobs": true,
+      "public.orm_knowledge_map_revisions": true,
+      "public.orm_knowledge_nodes": true,
+      "public.orm_knowledge_review_candidates": true,
+      "public.orm_learner_preferences": true,
+      "public.orm_learning_artifacts": true,
+      "public.orm_learning_resources": true,
+      "public.orm_learning_run_messages": true,
+      "public.orm_learning_runs": true,
+      "public.orm_lessons": true,
+      "public.orm_local_phone_challenges": true,
+      "public.orm_local_sessions": true,
+      "public.orm_local_users": true,
+      "public.orm_mastery_events": true,
+      "public.orm_material_dispositions": true,
+      "public.orm_messages": true,
+      "public.orm_milestones": true,
+      "public.orm_mistakes": true,
+      "public.orm_modules": true,
+      "public.orm_narrative_campaigns": true,
+      "public.orm_narrative_continuity_snapshots": true,
+      "public.orm_narrative_dialogues": true,
+      "public.orm_narrative_events": true,
+      "public.orm_narrative_voice_cache": true,
+      "public.orm_plan_activation_records": true,
+      "public.orm_plan_execution_tasks": true,
+      "public.orm_plan_mastery_events": true,
+      "public.orm_planning_assistant_cache": true,
+      "public.orm_planning_resource_candidates": true,
+      "public.orm_planning_resource_pool_events": true,
+      "public.orm_planning_resource_pool_requests": true,
+      "public.orm_planning_resource_pools": true,
+      "public.orm_plans": true,
+      "public.orm_progress": true,
+      "public.orm_review_attempts": true,
+      "public.orm_reviews": true,
+      "public.orm_scene_contracts": true,
+      "public.orm_sessions": true,
+      "public.orm_source_revisions": true,
+      "public.orm_sources": true,
+      "public.orm_story_objects": true,
+      "public.orm_task_semantic_profiles": true,
+      "public.orm_tasks": true,
+      "public.orm_teacher_events": true,
+      "public.orm_teacher_memories": true,
+      "public.orm_teacher_turns": true,
+      "public.orm_training_slots": true,
+      "public.orm_verified_learning_reward_ledger": true,
+      "public.orm_video_collection_jobs": true,
+      "public.orm_video_collections": true,
+      "public.orm_video_episodes": true,
+      "public.orm_video_subtitle_segments": true,
+      "public.orm_video_summaries": true,
+      "public.orm_workspace_ownership": true,
+      "public.orm_workspaces": true,
+      "public.procrastinate_events": true,
+      "public.procrastinate_jobs": true,
+      "public.procrastinate_periodic_defers": true,
+      "public.procrastinate_workers": true,
+      "public.resource_scopes": true,
+      "public.review_campaigns": true,
+      "public.student_events": true,
+      "public.teacher_sessions": true,
+      "public.workspace_goals": true,
+      "public.workspace_memberships": true,
+      "public.workspace_profiles": true,
+      "public.workspace_role_bindings": true,
+      "public.workspaces": true
+    },
+    "row_and_semantic_stability": true,
+    "rollback_restore_matches_pre_migration": true,
+    "application_counts": {
+      "enterprise_jobs.dead_letters": 0,
+      "enterprise_jobs.jobs": 0,
+      "enterprise_jobs.outbox": 0,
+      "public.account_import_ledger": 0,
+      "public.active_external_resources": 0,
+      "public.active_extraction_runs": 0,
+      "public.active_knowledge_points": 0,
+      "public.active_materials": 0,
+      "public.active_plan_calendars": 0,
+      "public.active_plan_tasks": 0,
+      "public.active_plans": 0,
+      "public.active_point_details": 0,
+      "public.active_resource_discovery_runs": 0,
+      "public.alembic_version": 1,
+      "public.archive_preview_items": 0,
+      "public.archive_previews": 0,
+      "public.asset_manifests": 5,
+      "public.asset_revisions": 5,
+      "public.cost_events": 0,
+      "public.documents": 10,
+      "public.enterprise_provider_sessions": 0,
+      "public.evidence": 0,
+      "public.knowledge_maps": 0,
+      "public.learning_plans": 2,
+      "public.organization_memberships": 7,
+      "public.organizations": 7,
+      "public.orm_blocks": 0,
+      "public.orm_campaign_adaptation_blueprints": 0,
+      "public.orm_characters": 0,
+      "public.orm_chunks": 0,
+      "public.orm_citations": 0,
+      "public.orm_conflicts": 0,
+      "public.orm_conversion_manifests": 0,
+      "public.orm_days": 0,
+      "public.orm_expedition_active_art_pack": 0,
+      "public.orm_expedition_art_pack_versions": 0,
+      "public.orm_expedition_art_packs": 0,
+      "public.orm_expedition_art_reviews": 0,
+      "public.orm_expedition_asset_registry": 0,
+      "public.orm_expedition_battle_event_logs": 0,
+      "public.orm_expedition_battle_records": 0,
+      "public.orm_expedition_equipment_definitions": 0,
+      "public.orm_expedition_equipment_instances": 0,
+      "public.orm_expedition_gacha_banners": 0,
+      "public.orm_expedition_gacha_pull_records": 0,
+      "public.orm_expedition_hero_assets": 0,
+      "public.orm_expedition_hero_awakening": 0,
+      "public.orm_expedition_hero_definitions": 0,
+      "public.orm_expedition_hero_ownership": 0,
+      "public.orm_expedition_hero_star_progress": 0,
+      "public.orm_expedition_lineup_members": 0,
+      "public.orm_expedition_lineup_presets": 0,
+      "public.orm_expedition_milestone_reward_claims": 0,
+      "public.orm_expedition_pet_definitions": 0,
+      "public.orm_expedition_pet_ownership": 0,
+      "public.orm_expedition_profiles": 0,
+      "public.orm_expedition_skin_ownership": 0,
+      "public.orm_expedition_stage_definition_cache": 0,
+      "public.orm_expedition_stage_progress": 0,
+      "public.orm_feasibility": 0,
+      "public.orm_fusion_adapter_versions": 0,
+      "public.orm_generated_narrative_scenes": 0,
+      "public.orm_goals": 0,
+      "public.orm_jobs": 0,
+      "public.orm_knowledge_edges": 0,
+      "public.orm_knowledge_map_jobs": 0,
+      "public.orm_knowledge_map_revisions": 0,
+      "public.orm_knowledge_nodes": 0,
+      "public.orm_knowledge_review_candidates": 0,
+      "public.orm_learner_preferences": 0,
+      "public.orm_learning_artifacts": 0,
+      "public.orm_learning_resources": 0,
+      "public.orm_learning_run_messages": 0,
+      "public.orm_learning_runs": 0,
+      "public.orm_lessons": 0,
+      "public.orm_local_phone_challenges": 0,
+      "public.orm_local_sessions": 0,
+      "public.orm_local_users": 0,
+      "public.orm_mastery_events": 0,
+      "public.orm_material_dispositions": 0,
+      "public.orm_messages": 0,
+      "public.orm_milestones": 0,
+      "public.orm_mistakes": 0,
+      "public.orm_modules": 0,
+      "public.orm_narrative_campaigns": 0,
+      "public.orm_narrative_continuity_snapshots": 0,
+      "public.orm_narrative_dialogues": 0,
+      "public.orm_narrative_events": 0,
+      "public.orm_narrative_voice_cache": 0,
+      "public.orm_plan_activation_records": 0,
+      "public.orm_plan_execution_tasks": 0,
+      "public.orm_plan_mastery_events": 0,
+      "public.orm_planning_assistant_cache": 0,
+      "public.orm_planning_resource_candidates": 0,
+      "public.orm_planning_resource_pool_events": 0,
+      "public.orm_planning_resource_pool_requests": 0,
+      "public.orm_planning_resource_pools": 0,
+      "public.orm_plans": 0,
+      "public.orm_progress": 0,
+      "public.orm_review_attempts": 0,
+      "public.orm_reviews": 0,
+      "public.orm_scene_contracts": 0,
+      "public.orm_sessions": 0,
+      "public.orm_source_revisions": 0,
+      "public.orm_sources": 0,
+      "public.orm_story_objects": 0,
+      "public.orm_task_semantic_profiles": 0,
+      "public.orm_tasks": 0,
+      "public.orm_teacher_events": 0,
+      "public.orm_teacher_memories": 0,
+      "public.orm_teacher_turns": 0,
+      "public.orm_training_slots": 0,
+      "public.orm_verified_learning_reward_ledger": 0,
+      "public.orm_video_collection_jobs": 0,
+      "public.orm_video_collections": 0,
+      "public.orm_video_episodes": 0,
+      "public.orm_video_subtitle_segments": 0,
+      "public.orm_video_summaries": 0,
+      "public.orm_workspace_ownership": 0,
+      "public.orm_workspaces": 0,
+      "public.procrastinate_events": 0,
+      "public.procrastinate_jobs": 0,
+      "public.procrastinate_periodic_defers": 0,
+      "public.procrastinate_workers": 0,
+      "public.rehydration_manifests": 0,
+      "public.resource_scopes": 14,
+      "public.review_campaigns": 0,
+      "public.structured_sync_entities": 0,
+      "public.structured_sync_requests": 0,
+      "public.student_events": 2,
+      "public.teacher_sessions": 0,
+      "public.workspace_goals": 2,
+      "public.workspace_memberships": 7,
+      "public.workspace_profiles": 7,
+      "public.workspace_role_bindings": 7,
+      "public.workspaces": 7
+    },
+    "schema_preflight": "PASS",
+    "after_revision": "0040_admin_overview_aggregate",
+    "rls_app_unscoped_counts": {
+      "learning_plans": 0,
+      "workspace_memberships": 0,
+      "asset_manifests": 0
+    },
+    "isolated_cluster_cleaned": true
+  },
+  "private_evidence_root": "E:\\Codex\\Temp\\MF04-RELEASE27",
+  "source_data_mutation": false
+}
