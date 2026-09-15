@@ -72,7 +72,7 @@ class EmptyAuthorityTests(unittest.TestCase):
             self.assertEqual(r.status_code,200)
             self.assertEqual(r.json()['learning_state']['status'],'PARTIAL_UNSUPPORTED')
             self.assertFalse(r.json()['learning_state']['known_empty'])
-            self.assertIsNone(r.json()['observation']['unsupported_counts']['messages'])
+            self.assertIsNone(r.json()['observation']['unsupported_counts']['model_binary'])
         with self.admin.begin() as db:
             db.execute(text("UPDATE rehydration_manifests SET scope_version='FUTURE_SCOPE' WHERE subject_id=:subject"),
                        {'subject':self.sessions['A'].principal.subject})

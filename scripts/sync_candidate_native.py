@@ -64,7 +64,8 @@ def main():
         config = Config(str(ROOT/'backend/alembic.ini'))
         config.set_main_option('script_location', str(ROOT/'backend/alembic'))
         config.attributes['configure_logger'] = False
-        head='0038_rehydration_manifest'
+        from app.enterprise_tenancy.schema import ENTERPRISE_MIGRATION_REVISION
+        head=ENTERPRISE_MIGRATION_REVISION
         assert ScriptDirectory.from_config(config).get_heads() == [head]
         os.environ['MENTORFLOW_DEPLOYMENT_MODE'] = 'ENTERPRISE_SERVER'
         def database(name):
@@ -229,7 +230,8 @@ def main():
             assert state['resources'][0]['device_availability']=='MISSING_ON_THIS_DEVICE'
             assert state['observation']['counts']['plans']==2 and len(state['progress'])==1
             assert state['progress_provenance'][0]['snapshot_revision']==state['snapshot_revision']
-            assert state['observation']['supported_entity_types']==['plans','progress','resources']
+            from app.enterprise_tenancy.sync_snapshot import SUPPORTED
+            assert state['observation']['supported_entity_types']==list(SUPPORTED)
             (args.scratch/'observation.json').write_text(json.dumps(state['observation'],indent=2))
             report['snapshot_result']=state
             report['empty_observations']['nonempty']=state['observation']
@@ -240,6 +242,8 @@ def main():
             assert len(empty_after['tombstones'])==4
             report['empty_observations']['delete_to_empty']=empty_after['observation']
             (args.scratch/'empty-observations.json').write_text(json.dumps(report['empty_observations'],indent=2))
+        from sync_device_continuity import prove_continuity
+        report['device_continuity'] = prove_continuity(ROOT, endpoint, bearer, args.scratch)
         report.update(endpoint=endpoint,backend_runtime_pass=True,independent_client_rehydrate=True,
             auth_evidence='REAL_RS256_VALIDATION_AND_DB_BOOTSTRAP; EPHEMERAL_LOOPBACK_JWKS_ISSUER; NO_NATIVE_LOGIN_CLAIM')
         # A real database outage must not produce an empty or partially successful snapshot.

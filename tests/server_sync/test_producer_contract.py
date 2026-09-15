@@ -22,7 +22,7 @@ class ProducerTests(unittest.TestCase):
         self.assertFalse(state['learning_state']['supported_scope_initialized'])
         self.assertIsNone(state['learning_state']['supported_scope_empty'])
         self.assertEqual(state['learning_state']['account_initialized'], 'UNKNOWN')
-        self.assertIsNone(state['observation']['unsupported_counts']['messages'])
+        self.assertIsNone(state['observation']['unsupported_counts']['model_binary'])
         self.seed(c)
         self.assertFalse(c.rehydrate()['learning_state']['supported_scope_initialized'])
 
