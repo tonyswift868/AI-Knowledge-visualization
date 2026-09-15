@@ -26,7 +26,7 @@ try {
     $logPath = Join-Path $logRoot "launch-$stamp.log"
     $stdoutPath = Join-Path $logRoot "launch-$stamp.stdout.log"
     $child = Start-Process -FilePath $workbenchWindowPython -ArgumentList @('-m', 'tools.dev_workbench') `
-        -WorkingDirectory $workbenchRoot -WindowStyle Hidden -PassThru `
+        -WorkingDirectory $workbenchRoot -WindowStyle Normal -PassThru `
         -RedirectStandardError $logPath -RedirectStandardOutput $stdoutPath
     Start-Sleep -Milliseconds 1500
     if ($child.HasExited) {
