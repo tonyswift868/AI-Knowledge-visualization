@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import traceback
 
 from .authority import RepoSource, export_projection, load_view, receipt_to_manifest
 from .targets import Refused, TrustedPaths, json_bytes, read_checked
@@ -38,6 +39,9 @@ def main():
     except Refused as error:
         print(str(error), file=sys.stderr)
         return 2
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        return 1
 
 
 if __name__ == '__main__':

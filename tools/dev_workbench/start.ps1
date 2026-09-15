@@ -20,7 +20,20 @@ try {
     }
     $workbenchWindowPython = Join-Path (Split-Path -Parent $workbenchPython) 'pythonw.exe'
     if (-not (Test-Path -LiteralPath $workbenchWindowPython)) { $workbenchWindowPython = $workbenchPython }
-    Start-Process -FilePath $workbenchWindowPython -ArgumentList @('-m', 'tools.dev_workbench') -WorkingDirectory $workbenchRoot -WindowStyle Hidden
+    $logRoot = 'E:\Codex\Temp\mentorflow-dev-workbench'
+    New-Item -ItemType Directory -Force $logRoot | Out-Null
+    $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
+    $logPath = Join-Path $logRoot "launch-$stamp.log"
+    $stdoutPath = Join-Path $logRoot "launch-$stamp.stdout.log"
+    $child = Start-Process -FilePath $workbenchWindowPython -ArgumentList @('-m', 'tools.dev_workbench') `
+        -WorkingDirectory $workbenchRoot -WindowStyle Hidden -PassThru `
+        -RedirectStandardError $logPath -RedirectStandardOutput $stdoutPath
+    Start-Sleep -Milliseconds 1500
+    if ($child.HasExited) {
+        $detail = ((Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue) + (Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue)).Trim()
+        if (-not $detail) { $detail = "Workbench exited with code $($child.ExitCode)." }
+        throw "启动失败：$detail`n诊断日志：$logPath"
+    }
 } catch {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'MentorFlow Dev Workbench') | Out-Null
