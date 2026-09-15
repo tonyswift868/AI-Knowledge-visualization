@@ -1,4 +1,4 @@
-"""Read-only admission of immutable 0037 sync and 0038 initialization storage."""
+"""Read-only admission of sync storage through the accepted 0040 policies."""
 from sqlalchemy import inspect, text
 from .import_ledger_schema import _expression
 from .schema import rls_predicate_for
@@ -43,12 +43,26 @@ def require_structured_sync_schema(connection):
         require(tuple(info) == ('mentorflow_migrator', True, True))
         policies = connection.execute(text('''SELECT policyname,permissive,roles,cmd,qual,with_check
             FROM pg_policies WHERE schemaname='public' AND tablename=:table'''), {'table': table}).mappings().all()
-        require(len(policies) == 1)
-        p = policies[0]
+        tenant_policy = 'tenant_isolation_'+table
+        expected_names = {tenant_policy}
+        if table == 'rehydration_manifests':
+            expected_names.add('admin_overview_read')
+        require(len(policies) == len(expected_names)
+                and {p['policyname'] for p in policies} == expected_names)
+        by_name = {p['policyname']: p for p in policies}
+        p = by_name[tenant_policy]
         require(p['policyname'] == 'tenant_isolation_'+table and p['cmd'] == 'ALL'
                 and p['permissive'] == 'PERMISSIVE' and list(p['roles']) == ['public']
                 and _expression(p['qual']) == _expression(rls_predicate_for(table))
                 and _expression(p['with_check']) == _expression(rls_predicate_for(table)))
+        if table == 'rehydration_manifests':
+            # 0040 grants the SECURITY DEFINER aggregate's migration-role owner
+            # read access only. It does not grant the application a global policy.
+            p = by_name['admin_overview_read']
+            require(p['cmd'] == 'SELECT' and p['permissive'] == 'PERMISSIVE'
+                    and list(p['roles']) == ['mentorflow_migrator']
+                    and _expression(p['qual']) == 'true'
+                    and p['with_check'] is None)
         for privilege in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'):
             allowed = connection.execute(text("SELECT has_table_privilege('mentorflow_app', :table, :privilege)"),
                 dict(table='public.'+table, privilege=privilege)).scalar_one()
