@@ -16,6 +16,7 @@ from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from .runtime_resources import project_resource_root
+from .plain_file_copy import _native_path
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
@@ -2353,7 +2354,10 @@ async def upload_material(workspace_id: str, file: UploadFile = File(...)) -> di
             result["deduplicated"] = True
             return result
         material_id = _id("material")
-        target_dir = UPLOAD_ROOT / re.sub(r"[^0-9A-Za-z._-]", "_", workspace_id)
+        # Hashed account + workspace components exceed MAX_PATH on Windows.
+        # Keep the same account-owned location; use the existing native I/O
+        # spelling instead of requiring a machine-wide long-path policy.
+        target_dir = _native_path(UPLOAD_ROOT / re.sub(r"[^0-9A-Za-z._-]", "_", workspace_id))
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{sha256[:16]}-{filename}"
         target.write_bytes(payload)
@@ -2709,8 +2713,8 @@ def delete_material(
         connection.commit()
         if stored_path:
             try:
-                path = Path(stored_path).resolve()
-                if path.is_file() and UPLOAD_ROOT.resolve() in path.parents:
+                path = _native_path(Path(stored_path)).resolve()
+                if path.is_file() and _native_path(UPLOAD_ROOT).resolve() in path.parents:
                     path.unlink()
             except (OSError, ValueError):
                 # The database deletion is complete; a missing artifact is
