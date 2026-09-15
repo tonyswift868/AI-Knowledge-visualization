@@ -1,0 +1,249 @@
+{
+  "dispatch_id": "MF-MAIN3-03-REAL-AB-CONTINUITY-SEALING-20260915-24",
+  "source_commit": "2a9be822b4f84671e9246baa8d1e789fdbe1bb16",
+  "source_tree": "acf0819ea910585613070a2b4947fe9b3781c444",
+  "base": "e6bac890657103e20266f0f7b796b4d8aa54f623",
+  "new_control": "3742e82431c8685df260dc36f2e950ea3c5a3afd",
+  "relevant_control_blobs_changed": [],
+  "postgres": "17.6",
+  "protocol_tests": {
+    "run": 22,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "profile_tests": [
+    {
+      "case": "backend/tests/test_profile_settings_postgres.py::test_canonical_schema_and_app_role",
+      "phase": "call",
+      "outcome": "passed"
+    },
+    {
+      "case": "backend/tests/test_profile_settings_postgres.py::test_real_snapshot_restores_both_profile_and_settings",
+      "phase": "call",
+      "outcome": "passed"
+    },
+    {
+      "case": "backend/tests/test_profile_settings_postgres.py::test_scope_isolation_retry_idempotency_and_secret_rejection",
+      "phase": "call",
+      "outcome": "passed"
+    }
+  ],
+  "desktop_tests": {
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0
+  },
+  "device_roots": {
+    "A": "E:\\Codex\\Temp\\MF04-FOUNDATION-20260915\\devices-2\\A\\seal-353cb9a25e6540e695a11b58e01e3fb9",
+    "B": "E:\\Codex\\Temp\\MF04-FOUNDATION-20260915\\devices-2\\B\\seal-353cb9a25e6540e695a11b58e01e3fb9"
+  },
+  "workspace_id": "personal_ws_9853b4d7b599e95b1ebb1bbeb84e127e0e3d0a7f9a313adb22b6bed6b0b16361",
+  "process_ids": {
+    "a": 7384,
+    "b": 95952,
+    "a_restart": 63516,
+    "b_restart": 52972
+  },
+  "filesystem_copy_a_to_b": 0,
+  "physical_payload_copied": false,
+  "resource_missing": "MISSING_ON_THIS_DEVICE",
+  "domain_results": [
+    {
+      "domain": "plans",
+      "entity_id": "plan-seal",
+      "a_revision": 2,
+      "b_restored_revision": 2,
+      "latest_revision": 3,
+      "a_values": {
+        "title": "Learn statistics A revised",
+        "resource_ids": [
+          "resource-seal"
+        ]
+      },
+      "latest_values": {
+        "title": "Learn statistics B revised",
+        "resource_ids": [
+          "resource-seal"
+        ]
+      },
+      "result": "PASS"
+    },
+    {
+      "domain": "progress",
+      "entity_id": "progress-seal",
+      "a_revision": 1,
+      "b_restored_revision": 1,
+      "latest_revision": 2,
+      "a_values": {
+        "plan_id": "plan-seal",
+        "mastery": 0.25,
+        "completed_tasks": 1
+      },
+      "latest_values": {
+        "plan_id": "plan-seal",
+        "mastery": 0.75,
+        "completed_tasks": 3
+      },
+      "result": "PASS"
+    },
+    {
+      "domain": "learner_profile",
+      "entity_id": "learner_profile-seal",
+      "a_revision": 1,
+      "b_restored_revision": 1,
+      "latest_revision": 1,
+      "a_values": {
+        "display_name": "Disposable learner"
+      },
+      "latest_values": {
+        "display_name": "Disposable learner"
+      },
+      "result": "PASS"
+    },
+    {
+      "domain": "setting",
+      "entity_id": "setting-seal",
+      "a_revision": 1,
+      "b_restored_revision": 1,
+      "latest_revision": 1,
+      "a_values": {
+        "theme": "dark",
+        "locale": "zh-CN"
+      },
+      "latest_values": {
+        "theme": "dark",
+        "locale": "zh-CN"
+      },
+      "result": "PASS"
+    },
+    {
+      "domain": "resources",
+      "entity_id": "resource-seal",
+      "a_revision": 1,
+      "b_restored_revision": 1,
+      "latest_revision": 1,
+      "a_values": {
+        "product_classification": "MODEL",
+        "filename": "local-only-model.bin",
+        "media_type": "application/octet-stream",
+        "sha256": "1c19fdd89022988e1365eb9765ee25e348581c59ac6cfca6d0876c589a94d342",
+        "size_bytes": 118784
+      },
+      "latest_values": {
+        "product_classification": "MODEL",
+        "filename": "local-only-model.bin",
+        "media_type": "application/octet-stream",
+        "sha256": "1c19fdd89022988e1365eb9765ee25e348581c59ac6cfca6d0876c589a94d342",
+        "size_bytes": 118784
+      },
+      "result": "PASS"
+    }
+  ],
+  "observations": {
+    "a": "pg-snapshot:887:887:",
+    "b": "pg-snapshot:890:890:",
+    "a_restart": "pg-snapshot:891:891:",
+    "b_restart": "pg-snapshot:892:892:"
+  },
+  "isolation": {
+    "status": 403,
+    "code": null
+  },
+  "fixture_cleaned_up": true,
+  "authentication": "EPHEMERAL_RS256_SERVER_VERIFIED",
+  "authority": "EXISTING_STRUCTURED_SYNC_HTTP_API",
+  "native_password_login": "NOT_CLAIMED",
+  "desktop_ui_uat": "NOT_RUN",
+  "sync_failure_matrix": [],
+  "closed_findings": [
+    "outdated 0038 runner schema assertion",
+    "outdated unsupported messages expectation",
+    "unknown tombstone accepted",
+    "raw entities envelope omitted"
+  ],
+  "source_sha256": {
+    "desktop/structured_sync.py": "6020b100a3246559779f6d23578e63d9565eeb31866c3ed5808b11040678063d",
+    "desktop/rehydration_transport.py": "6b6b31010f20f7034b0a33a4c9e61a9c0c016d7e30a817ff359b402c34e6cc39",
+    "backend/app/enterprise/structured_sync_api.py": "5cdd7de9f166771b71b36831e26ac104424b46a8c42e805f9f40cd6bd585aeab",
+    "backend/app/enterprise_tenancy/account_preferences.py": "6b0d20d2fc90f92d394c4bf01e71bd53b63a3b86db6d6af51da13554ddfbcf0f",
+    "backend/app/enterprise_tenancy/adapters.py": "5e0a323874246d8064e0ea0cb0e00d5300bfade9d45500da6819f2b3162f0e15",
+    "backend/app/enterprise_tenancy/asset_manifests.py": "a42416ad6f5435b8796e05c77157f953227e3ed7e4bcdd162a1c150a83ae9a93",
+    "backend/app/enterprise_tenancy/cache_boundary.py": "aac10e09b93c3e3a2b43aaaa2ea278e765ab5ea0a38e3d778af49c6abb3d056d",
+    "backend/app/enterprise_tenancy/context.py": "17ae0f429077de9669f09f52fb63c3e1961ece1bd9a0cd83e7d81c2f66e34a82",
+    "backend/app/enterprise_tenancy/document_import.py": "d6ffaf0fd752b3d65e542be15a468a3b143e4d042a3a06097e0a933e41a1ed54",
+    "backend/app/enterprise_tenancy/factory.py": "12df572d3026a74cd1a9b408a4bebf3dacea880df78dfdfdf69bde01a7c62ffe",
+    "backend/app/enterprise_tenancy/import_ledger_schema.py": "de4dde871893d70244adeb7e594dc1725120eed166cba8a5a2dbb8c091122a84",
+    "backend/app/enterprise_tenancy/import_seam.py": "350fc3e9051af9908961f73f36d8029e91fc3fc328971c0069e72d78dfc89572",
+    "backend/app/enterprise_tenancy/inventory.py": "abcd2feef16254b5c9eaa22c936206cef0c562f6498fed20db9c92cb6ca9ef21",
+    "backend/app/enterprise_tenancy/isolation_corpus.py": "003e441ff31232328c9e6be8b6f831461b87ef893905c496d471827723fe0b8a",
+    "backend/app/enterprise_tenancy/job_context.py": "9b09841704b1de0ac45c6ae0b345903d1faab6f1b79dba445c51f697724e4093",
+    "backend/app/enterprise_tenancy/learning_run_history_sync.py": "832d7f6c86f366f6f9403483d080f9b39f6c37560ad0917ff7386fc64158a79f",
+    "backend/app/enterprise_tenancy/models.py": "260a7944f93e0ee2dd8e33131e48c3f0ca5e0d99e5b1dd3cbe6f3d97e975e91d",
+    "backend/app/enterprise_tenancy/object_reference.py": "197c81c0b9e5241e7ea94c8b5e8d2399d8307bbdb5cd83a2a92b59b852ea29af",
+    "backend/app/enterprise_tenancy/object_storage.py": "a5e9c08df7658ee3a0b129cdcb9f2347df4011e7ca985c5e0202eaea5fd42f0d",
+    "backend/app/enterprise_tenancy/plan_task_calendar_sync.py": "b130134f0052dc6cf4dd46e33f35d9852f479ac8a34051414451c838b7e24b26",
+    "backend/app/enterprise_tenancy/plan_task_mutation.py": "c8f0d67b658262775a52a872856294b1a2010af661cd840895ee03c540865299",
+    "backend/app/enterprise_tenancy/ports.py": "4e59ae51f60023c91995b1a5893e89eacdbb59793cf74fa1d289a9c4c69f689a",
+    "backend/app/enterprise_tenancy/profile_settings_store.py": "03ba7fcbc15a04c697e603afbc9ddae025b9c9c1ae5e60355986f6474f3006a6",
+    "backend/app/enterprise_tenancy/profile_settings_sync.py": "7f7ba3404a4f2f46b1f72cd4065dbe3904ae1c06910b84a82c1e2c2a2f7f3ecb",
+    "backend/app/enterprise_tenancy/rehydration_dispatcher.py": "fd0a6834b2f9f3798a3239a563702b072148abea129db40fdd162a549c98dfa8",
+    "backend/app/enterprise_tenancy/rehydration_manifest.py": "c519c060b5fcd2facef77ebf0490995bf8efdbc5a569bd3153fe5127e9084de0",
+    "backend/app/enterprise_tenancy/repository.py": "85c686e9eb29199d7c2b9c64b8f307fcc43ae985211633c6879c18f918fce0bd",
+    "backend/app/enterprise_tenancy/schema.py": "fc1cef7deb691e2429161a2899a988d70a2122b35aef30e6ed48076f785b15ba",
+    "backend/app/enterprise_tenancy/structured_sync.py": "1821836527f5246cc03611af9347f49edf02b386d8c4bfafdf0a23a07ecd0213",
+    "backend/app/enterprise_tenancy/sync_registry.py": "df353891c59e04e6a8fec4d2ceabed259c2b979090acfa440d56f4787d1e87fd",
+    "backend/app/enterprise_tenancy/sync_schema.py": "7ad725249476940fbfcfb08dcca1ddf1197e9d876d74d78ae9243db4b4d0a873",
+    "backend/app/enterprise_tenancy/sync_snapshot.py": "1a87e185568b0f5829bb3a186e981ceb65da91d2634adc543e39bec6a37abc89",
+    "backend/app/enterprise_tenancy/synthetic.py": "5e19a439982beef4df6deb06a9088b4403a1cd6e859ece602e5f9295fc1083fc",
+    "backend/app/enterprise_tenancy/teaching.py": "ea8eae538bcc1c8c2f4eba25612f85f6a5db28635f255dc614239aaf73b2903d",
+    "backend/app/enterprise_tenancy/test_profile_settings_sync.py": "ae4617e22ef4fbcdff24d1ba33d45d17150953c1433ecfb33864b1c2ea27323b",
+    "backend/app/enterprise_tenancy/unit_of_work.py": "429baccb6a7192a35a1be186e594865bc2b610c26d228e9549b7e76c0ccacd05",
+    "backend/app/enterprise_tenancy/workspaces.py": "52dc99a472ac6a2cfc776b47b8a7f3e06fd08bb006adc296a158691cdc6d125d",
+    "backend/app/enterprise_tenancy/workspace_bootstrap.py": "4be7f5546e3cd0fb9ddd5dea91ae2fc2fcb4e0e7b1005638400d04faf27243e3",
+    "backend/app/enterprise_tenancy/__init__.py": "02dea3e1462affb6e90292bdcaa2f40892cd33772ea2728fc371196f6f9b0e3e",
+    "backend/alembic/versions/0001_mentorflow_v2.py": "58430cb2dba35b6ad423303e9e6f4ccf4dc169ae79a7f7a828aec715f78b3329",
+    "backend/alembic/versions/0002_conflict_record_fields.py": "402e80dc82e9a568ec9c7204ae804f725c66327ae306246fcf2834bd0c9cf2fa",
+    "backend/alembic/versions/0003_provider_workspace_mode.py": "aad224c806b3014bf97c35685251b0d9574b4b0d4d9e3550efed30f53f24268e",
+    "backend/alembic/versions/0004_archive_import.py": "4eb5a0fb4fa24f4552364b4780cabbb943767a4607cb7e484691b0500f1ccea1",
+    "backend/alembic/versions/0005_narrative_runtime_v1.py": "212112e4bae15616285992fb2f12b4a4ca3ac48cccd66870d821a7941a984833",
+    "backend/alembic/versions/0006_learning_runs_and_dialogue.py": "d062df863c826ac6b18c33444015a8299cd30e0b0f5bdc1be063a10b1f4b9863",
+    "backend/alembic/versions/0007_learning_run_idempotency.py": "6ac15d8218bf13a7f284cdf18ad16cbfec0473c3c98ea38ecb17f88e93055665",
+    "backend/alembic/versions/0008_adaptive_narrative_compiler.py": "8f35151ca6d864f95fe6f4a58ceae15abee5a4eb3efedec603341280ad1813b1",
+    "backend/alembic/versions/0009_story_object_campaign_scope.py": "85f1355e198bd932255da77bcbf16c006c188556687783e65b5dd6af87bcf188",
+    "backend/alembic/versions/0010_learning_expedition_v1.py": "961d89be6ad01a127566c4d1dc2eb2090012e776827c106a67d30ed8b4848b0e",
+    "backend/alembic/versions/0011_expedition_art_pipeline_v1.py": "6b8a3a1258596935d9d73c430fdbdbd7592a8588d3a9904147657c5faf9c110b",
+    "backend/alembic/versions/0012_knowledge_map_foundation.py": "4fd9f482b0068eb9438c96de0f17861dc25914f8a5308d2e1171be5128811f7c",
+    "backend/alembic/versions/0013_knowledge_map_teacher_v1.py": "42726568c88739c431e94f44d1070506d099d6e5eb28d97d8105b51d40e20bd1",
+    "backend/alembic/versions/0014_material_disposition_revision_scope.py": "7b0a1b07c1872044bf56f5bb6c64a62f59ceb6007082f29411018b20f2244f07",
+    "backend/alembic/versions/0015_mark_unverified_legacy_maps.py": "afa5628a73acf9c93c278ce2a6c613b1bdb4020f6a22df44ad9fb4c1bde15bd8",
+    "backend/alembic/versions/0016_migrate_generic_knowledge_support_tables.py": "28056557365eb5024e1ba39f4258c0308cba98efa1b4e9fbe4be9f0609f14197",
+    "backend/alembic/versions/0017_canonical_plan_execution.py": "8fde3ea12751a71cd7aeedafe3b6b3fbb439226ce878fc6ffe4f78ca28b665cb",
+    "backend/alembic/versions/0018_local_user_authentication.py": "7e25fb003fd275f6103151db8b1fe54af72b5dcd5df7f68dfaad58a250ee4f03",
+    "backend/alembic/versions/0020_local_phone_recovery.py": "9aa398ea7ef2fa1f1739a3fecee7ff35135305417982c0e1e290fa9d49e5cc53",
+    "backend/alembic/versions/0021_local_login_throttle.py": "8d2dea92cb9b2b3d66cff0b7fd3fbc0085803f5a9e8583f423307121368ba4f7",
+    "backend/alembic/versions/0022_material_disposition.py": "bd2f682fdfb0a6c5addf3f01b3879b9666816a6a64d19d7a83f69bcb1cd7f650",
+    "backend/alembic/versions/0023_task_completion_time.py": "c55beabb44221c59875167a969cd0d7b53fc9a28c4a261f5db9ecd6f7906bddb",
+    "backend/alembic/versions/0024_knowledge_map_job_progress.py": "6aac8d41e02074310f4128d1a981051326e50cbff47e5d48ada09aa188f94163",
+    "backend/alembic/versions/0025_planning_assistant_cache.py": "be69e41aeeb64c92b856b08945485ab8e28edbe26e565661755210e7c57ab156",
+    "backend/alembic/versions/0026_planning_resource_pool.py": "b08cb3d22ee6acf8b33ca276dfeb1273b3123b6fcdd64a178dbcd0cc0b7ff252",
+    "backend/alembic/versions/0027_knowledge_map_scope_anchor.py": "98d9abfcc086cec18b11f512b7d60f3882f523393b0314fdf3bf20c9e558a7d3",
+    "backend/alembic/versions/0028_video_collection_v1.py": "b8c7e082a65916aae8354d802babb10d0b0e8f115230564f81e1aecccbff69a4",
+    "backend/alembic/versions/0029_enterprise_tenancy_rls.py": "e648434f3c3df385fdf656451816d718b09b5d466ecb7189aee81b10dbabcfe1",
+    "backend/alembic/versions/0030_enterprise_jobs_v1.py": "10c59bc9cff70138b533d0fc130d717c4f6abbee46fb798e5de04489f77cd138",
+    "backend/alembic/versions/0031_enterprise_tenancy_completion.py": "c1ddfa92d05a8db2c3a8f05c5ef33424dfa3b5e999a567f39941ce181129c635",
+    "backend/alembic/versions/0032_enterprise_provider_sessions.py": "4ad4534d1b9c264c0b3803885dfe20e05f71327ffc0cd6de43f811e9302a36e4",
+    "backend/alembic/versions/0033_enterprise_workspace_persistence.py": "ab697d43abea39b85a1bd6995ff1754e2f694767f0dc78fbcaf668a85966b3bc",
+    "backend/alembic/versions/0034_enterprise_asset_manifests.py": "b5b8b9e9664f8e785787a81ea3ab4457b7e16597383d2133df56cfa42875a539",
+    "backend/alembic/versions/0035_account_workspace_bootstrap.py": "db2be9f29b4f0740247e18427434de9a3df99935885711969aa6955b69d89572",
+    "backend/alembic/versions/0036_account_import_ledger.py": "45ff4a9483a072fb6299b0ae4c7e2634e5c616db72a6a761fa14058aafe6a5ac",
+    "backend/alembic/versions/0037_structured_sync.py": "b1b69a9c4871ad1c75623c2a418b20f9956474a054bc265ad0c23edae76d4e80",
+    "backend/alembic/versions/0038_rehydration_manifest.py": "fd8b356f9d7d630fd2686525a6877c051d7c05ffb1daf1f3181bf6d5f7d70b04",
+    "backend/alembic/versions/0039_generic_sync_kinds.py": "a9898c78882c8f35418bae7e604628c563d822e8614d0ddd42e6042403b6470b",
+    "backend/alembic/versions/0040_admin_overview_aggregate.py": "3c70bd656567f954ea3cbb63204713db28b29bdc00a7b91576fc7542577dfde2"
+  },
+  "evidence_sha256": {
+    "roundtrip-final\\candidate-receipt.json": "7d7d7610fb3f8408e706cc47abd7801d0a8ca84bedddd7732e3ddc939e351013",
+    "roundtrip-final\\device-continuity.json": "0b4e32bd36b365b5c858e771df8b5917140b1e8fe36cda7c35dc6920303452d6"
+  }
+}
