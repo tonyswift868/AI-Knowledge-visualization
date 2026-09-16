@@ -1,0 +1,19 @@
+{
+  "path": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-GUI-ISOLATION-AB-FINAL-20260916-34\\02\\documents\\long-path-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nested-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\long-learning-resource.txt",
+  "path_length": 352,
+  "exists_extended": true,
+  "sha256_extended": "224bc98b41d5c693ba10b1d2ac6f4c851860ec422dc4d5bc157bee9eb3332a7c",
+  "expected_sha256": "224bc98b41d5c693ba10b1d2ac6f4c851860ec422dc4d5bc157bee9eb3332a7c",
+  "source_mode_regular_path_exists": false,
+  "frozen_long_path_manifest": [
+    "mlns=\"urn:schemas-microsoft-com:asm.v3\">\n    <windowsSettings>\n      <longPathAware xmlns=\"http://schemas.microsoft.com/SMI/2016/WindowsSettings\">true</longPathAware>\n    </windowsSettings>\n  </application>\n  <dependency>\n    <dependentAssembly>\n    "
+  ],
+  "frozen_manifest_count": 1,
+  "first_failure": "Frozen DesktopApi.upload_material source.open before HTTP POST",
+  "product_fix_applied": false,
+  "LongPathsEnabled": 0,
+  "root_cause": "DesktopApi.upload_material uses plain Path.open; this Windows host disables long paths. Existing 352-character file is readable with extended-length path, but ordinary path lookup fails. EXE manifest already has longPathAware=true.",
+  "likely_owner": "desktop file-I/O adapter / Windows long-path compatibility",
+  "third_independent_defect": "MF02-D34-03-LONG-PATH-UPLOAD",
+  "global_setting_changed": false
+}

@@ -1,0 +1,21 @@
+{
+  "previous_source": "76b9b946bac8b15084e7e591c2f85a5abfd05fa1",
+  "previous_build": "MF-02-FROZEN-33-76b9b946",
+  "previous_sha256": "c21cb6693ccb37a813041b1a038a201a094a6a16101a3ce370feb02aa34000d5",
+  "copied_sha256": "c21cb6693ccb37a813041b1a038a201a094a6a16101a3ce370feb02aa34000d5",
+  "new_candidate": {
+    "source_sha": "1d65c2c4f174a8639b8a10ddc9f349942616e5b2",
+    "source_tree": "c34abedfd2982242e323803637aed86fa6552927",
+    "build_id": "MF-02-FROZEN-34-1d65c2c4",
+    "artifact": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-GUI-ISOLATION-AB-FINAL-20260916-34\\02\\frozen\\rebuild\\dist\\MentorFlow\\MentorFlow.exe",
+    "artifact_sha256": "f7bed7c1c267d4b81010df76ca68f81167d9b6abe26013ff07e4ebdd34083711",
+    "selfcheck_sha256": "4fca45d259c3ca4a112aac8fd680c804d83cd5a52f8bbd39bf2e0b5d4581c002",
+    "package_manifest_sha256": "e008b35cef0e98190b639dd619451fcdc90568841c0693da09fa9aa3a0afe51e",
+    "spec_sha256": "95964fdad1a02278231ee47922c7ae0cb410cde0b68f7cbcfb44028042ba947e",
+    "generated_icon_sha256": "963bf6cff5ab6d7778a56021b6a1b6c27338ff8bffe47d17752a2336a4cacb55",
+    "package_verifier": "PASS",
+    "forbidden_icu_dest_count": 0,
+    "scope": "TEST_ONLY_NOT_WORKBENCH_CURRENT",
+    "reproducibility": "EXACT_SOURCE_AND_COMMANDS_RECORDED; BITWISE_REBUILD_NOT_TESTED"
+  }
+}

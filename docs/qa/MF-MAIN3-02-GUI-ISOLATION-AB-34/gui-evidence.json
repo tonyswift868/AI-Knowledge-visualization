@@ -1,0 +1,3467 @@
+{
+  "A-login": {
+    "pid": 29024,
+    "hwnd": 19142590,
+    "title": "登录 MentorFlow",
+    "foreground": {
+      "target": false,
+      "pid": 55540,
+      "hwnd": 17237750
+    },
+    "elements": [
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "name": "登录 MentorFlow",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow",
+        "offscreen": false,
+        "hwnd": 19142590,
+        "type": "ControlType.Window"
+      },
+      {
+        "enabled": true,
+        "patterns": [],
+        "name": "登录 MentorFlow",
+        "focused": false,
+        "automation_id": "TitleBar",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.TitleBar"
+      },
+      {
+        "enabled": true,
+        "patterns": [],
+        "name": "System Menu Bar",
+        "focused": false,
+        "automation_id": "SystemMenuBar",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.MenuBar"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "name": "System",
+        "focused": false,
+        "automation_id": "Item 1",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.MenuItem"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "Minimize",
+        "focused": false,
+        "automation_id": "Minimize",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "Maximize",
+        "focused": false,
+        "automation_id": "Maximize",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "Close",
+        "focused": false,
+        "automation_id": "Close",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "MentorFlow",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginTitle",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "回到属于你的学习空间",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginSubtitle",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "登录你的账号",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.loginStateTitle",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "学习计划、进度和本机资料会在登录后安全恢复。",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.loginStateDetail",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "name": "本机账号列表",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.QComboBox",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.ComboBox"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "添加账号",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.QPushButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "移除本机账号",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.QPushButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TextPatternIdentifiers.Pattern"
+        ],
+        "name": "账号",
+        "focused": true,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativeUsername",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Edit"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TextPatternIdentifiers.Pattern"
+        ],
+        "name": "[PASSWORD_CONTROL]",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativePassword",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Edit"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "name": "显示密码",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.QCheckBox",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.CheckBox"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "登录 MentorFlow",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.loginPrimaryButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "name": "记住密码",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.rememberPasswordCheckBox",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.CheckBox"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "name": "自动登录",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.autoLoginCheckBox",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.CheckBox"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "取消并选择其他账号",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginCancelButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "仅勾选记住密码才保存密码；密码和会话仅保存在 Windows 凭据管理器。移除本机账号不删除学习资料。",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginSubtitle",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "关于与检查更新",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.loginAboutUpdates",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "注册账号",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.QPushButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "忘记密码",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.QPushButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "版本 1.1.0 ·",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.updateCenter.QLabel",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "name": "暂时无法检查更新，请稍后重试。",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.updateCenter.QLabel",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text"
+      },
+      {
+        "enabled": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "name": "重试",
+        "focused": false,
+        "automation_id": "QApplication.mentorflowLoginGateWindow.updateCenter.QPushButton",
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button"
+      }
+    ]
+  },
+  "A-recovery": {
+    "pid": 29024,
+    "hwnd": 17507466,
+    "title": "MentorFlow · 学习空间恢复",
+    "foreground": {
+      "target": true,
+      "hwnd": 17507466,
+      "pid": 29024
+    },
+    "elements": [
+      {
+        "focused": false,
+        "name": "MentorFlow · 学习空间恢复",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 17507466,
+        "type": "ControlType.Window",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage"
+      },
+      {
+        "focused": false,
+        "name": "MentorFlow · 学习空间恢复",
+        "patterns": [],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.TitleBar",
+        "enabled": true,
+        "automation_id": "TitleBar"
+      },
+      {
+        "focused": true,
+        "name": "System Menu Bar",
+        "patterns": [],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.MenuBar",
+        "enabled": true,
+        "automation_id": "SystemMenuBar"
+      },
+      {
+        "focused": false,
+        "name": "System",
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.MenuItem",
+        "enabled": true,
+        "automation_id": "Item 1"
+      },
+      {
+        "focused": false,
+        "name": "Minimize",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": true,
+        "automation_id": "Minimize"
+      },
+      {
+        "focused": false,
+        "name": "Maximize",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": true,
+        "automation_id": "Maximize"
+      },
+      {
+        "focused": false,
+        "name": "Close",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": true,
+        "automation_id": "Close"
+      },
+      {
+        "focused": false,
+        "name": "你的学习空间已恢复。",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.pageHeading"
+      },
+      {
+        "focused": false,
+        "name": "计划 1 · 进度 0 · 复习 暂不支持 · 历史 暂不支持",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "d33-plan",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.sectionHeading"
+      },
+      {
+        "focused": false,
+        "name": "学习进度：尚无进度记录",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "我的资料与模型",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "fixture-only.txt",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "这份资料还没有下载到这台设备。",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "从迁移包恢复",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": false,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QPushButton"
+      },
+      {
+        "focused": false,
+        "name": "稍后处理",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QPushButton"
+      },
+      {
+        "focused": false,
+        "name": "可稍后从旧设备迁移包恢复。",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QScrollArea.qt_scrollarea_viewport.QWidget.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "导入 MentorFlow 迁移包",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": false,
+        "automation_id": "QApplication.RehydrationPage.PortablePackEntry.portablePackV2Entry"
+      },
+      {
+        "focused": false,
+        "name": "迁移包导入功能准备中；当前不会执行导入。",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Text",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.PortablePackEntry.QLabel"
+      },
+      {
+        "focused": false,
+        "name": "技术详情",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.CheckBox",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QToolButton"
+      },
+      {
+        "focused": false,
+        "name": "进入学习空间",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "type": "ControlType.Button",
+        "enabled": true,
+        "automation_id": "QApplication.RehydrationPage.QPushButton"
+      }
+    ]
+  },
+  "A-materials-targeted": {
+    "pid": 29024,
+    "hwnd": 22416572,
+    "title": "MentorFlow",
+    "foreground": {
+      "target": true,
+      "hwnd": 22416572,
+      "pid": 29024
+    },
+    "elements": [
+      {
+        "enabled": true,
+        "type": "ControlType.Window",
+        "automation_id": "QApplication.MainWindow",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 22416572,
+        "name": "MentorFlow",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.TitleBar",
+        "automation_id": "TitleBar",
+        "patterns": [],
+        "hwnd": 0,
+        "name": "MentorFlow",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.MenuBar",
+        "automation_id": "SystemMenuBar",
+        "patterns": [],
+        "hwnd": 0,
+        "name": "System Menu Bar",
+        "offscreen": false,
+        "focused": true
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.MenuItem",
+        "automation_id": "Item 1",
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "System",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Button",
+        "automation_id": "Minimize",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "Minimize",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Button",
+        "automation_id": "Maximize",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "Maximize",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Button",
+        "automation_id": "Close",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "Close",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.sideLogo",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "🌿  MentorFlow",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "概览",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "我的计划",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "资料管理",
+        "offscreen": false,
+        "focused": true
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "本地资料",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "原生课堂",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "创建计划",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "模型连接",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "设置",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "账号与数据",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "更多工具",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.accountBadge",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "Enterprise Account\nSynthetic",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageHeading",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "资料管理",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageSubtitle",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "把资料加入当前计划后，系统会保留原文件、解析状态和证据位置。支持 PDF、Word、PowerPoint、纯文本、Markdown、CSV/JSON，以及常见音频；视频在当前版本暂不解析。",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QLabel",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "学习任务",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.CheckBox",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QCheckBox",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "显示已归档资料",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Button",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.primaryButton",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "添加资料",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Button",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QPushButton",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "支持的格式",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.inlineStatus",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "当前计划共有 1 份资料。可归档资料，之后仍可恢复；删除前会再次确认。",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "文件",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "状态",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "类型",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "大小",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "分段",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "解析器",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "操作",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.Header",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "1",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "fixture-only.txt",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "可使用",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "text/plain",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "74 B",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "0",
+        "offscreen": false,
+        "focused": false
+      },
+      {
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0,
+        "name": "native-text",
+        "offscreen": false,
+        "focused": false
+      }
+    ]
+  },
+  "A-short-result": {
+    "pid": 29024,
+    "hwnd": 22416572,
+    "title": "MentorFlow",
+    "foreground": {
+      "pid": 29024,
+      "target": true,
+      "hwnd": 22416572
+    },
+    "elements": [
+      {
+        "automation_id": "QApplication.MainWindow",
+        "enabled": true,
+        "name": "MentorFlow",
+        "type": "ControlType.Window",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 22416572
+      },
+      {
+        "automation_id": "TitleBar",
+        "enabled": true,
+        "name": "MentorFlow",
+        "type": "ControlType.TitleBar",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "SystemMenuBar",
+        "enabled": true,
+        "name": "System Menu Bar",
+        "type": "ControlType.MenuBar",
+        "offscreen": false,
+        "focused": true,
+        "patterns": [],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "Item 1",
+        "enabled": true,
+        "name": "System",
+        "type": "ControlType.MenuItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "Minimize",
+        "enabled": true,
+        "name": "Minimize",
+        "type": "ControlType.Button",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "Maximize",
+        "enabled": true,
+        "name": "Maximize",
+        "type": "ControlType.Button",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "Close",
+        "enabled": true,
+        "name": "Close",
+        "type": "ControlType.Button",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.sideLogo",
+        "enabled": true,
+        "name": "🌿  MentorFlow",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "概览",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "我的计划",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "资料管理",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "本地资料",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "原生课堂",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "创建计划",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "模型连接",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "设置",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "账号与数据",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "enabled": true,
+        "name": "更多工具",
+        "type": "ControlType.ListItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.accountBadge",
+        "enabled": true,
+        "name": "Enterprise Account\nSynthetic",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageHeading",
+        "enabled": true,
+        "name": "资料管理",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageSubtitle",
+        "enabled": true,
+        "name": "把资料加入当前计划后，系统会保留原文件、解析状态和证据位置。支持 PDF、Word、PowerPoint、纯文本、Markdown、CSV/JSON，以及常见音频；视频在当前版本暂不解析。",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QLabel",
+        "enabled": true,
+        "name": "学习任务",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QCheckBox",
+        "enabled": true,
+        "name": "显示已归档资料",
+        "type": "ControlType.CheckBox",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.primaryButton",
+        "enabled": true,
+        "name": "添加资料",
+        "type": "ControlType.Button",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QPushButton",
+        "enabled": true,
+        "name": "支持的格式",
+        "type": "ControlType.Button",
+        "offscreen": false,
+        "focused": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.inlineStatus",
+        "enabled": true,
+        "name": "当前计划共有 2 份资料。可归档资料，之后仍可恢复；删除前会再次确认。",
+        "type": "ControlType.Text",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "文件",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "状态",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "类型",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "大小",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "分段",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "解析器",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "操作",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "1",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "fixture-only.txt",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "可使用",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "text/plain",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "74 B",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "0",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "native-text",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "2",
+        "type": "ControlType.Header",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "short.txt",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "可使用",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "text/plain",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "116 B",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "1",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      },
+      {
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "enabled": true,
+        "name": "native-text",
+        "type": "ControlType.DataItem",
+        "offscreen": false,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "hwnd": 0
+      }
+    ]
+  },
+  "A-chinese-result": {
+    "pid": 29024,
+    "hwnd": 22416572,
+    "title": "MentorFlow",
+    "foreground": {
+      "pid": 29024,
+      "hwnd": 22416572,
+      "target": true
+    },
+    "elements": [
+      {
+        "offscreen": false,
+        "name": "MentorFlow",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow",
+        "type": "ControlType.Window",
+        "hwnd": 22416572,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "MentorFlow",
+        "enabled": true,
+        "automation_id": "TitleBar",
+        "type": "ControlType.TitleBar",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": []
+      },
+      {
+        "offscreen": false,
+        "name": "System Menu Bar",
+        "enabled": true,
+        "automation_id": "SystemMenuBar",
+        "type": "ControlType.MenuBar",
+        "hwnd": 0,
+        "focused": true,
+        "patterns": []
+      },
+      {
+        "offscreen": false,
+        "name": "System",
+        "enabled": true,
+        "automation_id": "Item 1",
+        "type": "ControlType.MenuItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "Minimize",
+        "enabled": true,
+        "automation_id": "Minimize",
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "Maximize",
+        "enabled": true,
+        "automation_id": "Maximize",
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "Close",
+        "enabled": true,
+        "automation_id": "Close",
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "🌿  MentorFlow",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.sideLogo",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "概览",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "我的计划",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "资料管理",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "本地资料",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "原生课堂",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "创建计划",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "模型连接",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "设置",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "账号与数据",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "更多工具",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "Enterprise Account\nSynthetic",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.accountBadge",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "资料管理",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageHeading",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "把资料加入当前计划后，系统会保留原文件、解析状态和证据位置。支持 PDF、Word、PowerPoint、纯文本、Markdown、CSV/JSON，以及常见音频；视频在当前版本暂不解析。",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageSubtitle",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "学习任务",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QLabel",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "显示已归档资料",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QCheckBox",
+        "type": "ControlType.CheckBox",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "添加资料",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.primaryButton",
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "支持的格式",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QPushButton",
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "focused": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "当前计划共有 3 份资料。可归档资料，之后仍可恢复；删除前会再次确认。",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.inlineStatus",
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "文件",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "状态",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "类型",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "大小",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "分段",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "解析器",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "操作",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "1",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "fixture-only.txt",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "可使用",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "text/plain",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "74 B",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "0",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "native-text",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "2",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "short.txt",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "可使用",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "text/plain",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "116 B",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "1",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "native-text",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "3",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "中文学习资料.txt",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "可使用",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "text/plain",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "116 B",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "1",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      },
+      {
+        "offscreen": false,
+        "name": "native-text",
+        "enabled": true,
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ]
+      }
+    ]
+  },
+  "A-long-result-dialog": {
+    "pid": 29024,
+    "hwnd": 11670670,
+    "title": "部分资料未纳入",
+    "foreground": {
+      "hwnd": 11670670,
+      "pid": 29024,
+      "target": true
+    },
+    "elements": [
+      {
+        "name": "部分资料未纳入",
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 11670670,
+        "automation_id": "QApplication.QMessageBox",
+        "enabled": true,
+        "type": "ControlType.Window"
+      },
+      {
+        "name": "部分资料未纳入",
+        "focused": false,
+        "patterns": [],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "TitleBar",
+        "enabled": true,
+        "type": "ControlType.TitleBar"
+      },
+      {
+        "name": "System Menu Bar",
+        "focused": true,
+        "patterns": [],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "SystemMenuBar",
+        "enabled": true,
+        "type": "ControlType.MenuBar"
+      },
+      {
+        "name": "System",
+        "focused": false,
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "Item 1",
+        "enabled": true,
+        "type": "ControlType.MenuItem"
+      },
+      {
+        "name": "Close",
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "Close",
+        "enabled": true,
+        "type": "ControlType.Button"
+      },
+      {
+        "name": "long-learning-resource.txt：[Errno 2] No such file or directory: 'D:\\\\CodexScratch\\\\MentorFlow\\\\MF-MAIN3-02-GUI-ISOLATION-AB-FINAL-20260916-34\\\\02\\\\documents\\\\long-path-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\\nested-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\\\long-learning-resource.txt'",
+        "focused": false,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "QApplication.QMessageBox.qt_msgbox_label",
+        "enabled": true,
+        "type": "ControlType.Text"
+      },
+      {
+        "name": "OK",
+        "focused": true,
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "offscreen": false,
+        "hwnd": 0,
+        "automation_id": "QApplication.QMessageBox.qt_msgbox_buttonbox.QPushButton",
+        "enabled": true,
+        "type": "ControlType.Button"
+      }
+    ]
+  },
+  "A-final-main": {
+    "pid": 29024,
+    "hwnd": 22416572,
+    "title": "MentorFlow",
+    "foreground": {
+      "hwnd": 22416572,
+      "target": true,
+      "pid": 29024
+    },
+    "elements": [
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "WindowPatternIdentifiers.Pattern",
+          "TransformPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Window",
+        "hwnd": 22416572,
+        "name": "MentorFlow",
+        "automation_id": "QApplication.MainWindow",
+        "offscreen": false
+      },
+      {
+        "patterns": [],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.TitleBar",
+        "hwnd": 0,
+        "name": "MentorFlow",
+        "automation_id": "TitleBar",
+        "offscreen": false
+      },
+      {
+        "patterns": [],
+        "focused": true,
+        "enabled": true,
+        "type": "ControlType.MenuBar",
+        "hwnd": 0,
+        "name": "System Menu Bar",
+        "automation_id": "SystemMenuBar",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ExpandCollapsePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.MenuItem",
+        "hwnd": 0,
+        "name": "System",
+        "automation_id": "Item 1",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "name": "Minimize",
+        "automation_id": "Minimize",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "name": "Maximize",
+        "automation_id": "Maximize",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "name": "Close",
+        "automation_id": "Close",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "🌿  MentorFlow",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.sideLogo",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "概览",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "我的计划",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": true,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "资料管理",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "本地资料",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "原生课堂",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "创建计划",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "模型连接",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "设置",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "账号与数据",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.ListItem",
+        "hwnd": 0,
+        "name": "更多工具",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.navigation",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "Enterprise Account\nSynthetic",
+        "automation_id": "QApplication.MainWindow.QWidget.sidebar.accountBadge",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "资料管理",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageHeading",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "把资料加入当前计划后，系统会保留原文件、解析状态和证据位置。支持 PDF、Word、PowerPoint、纯文本、Markdown、CSV/JSON，以及常见音频；视频在当前版本暂不解析。",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.pageSubtitle",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "学习任务",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QLabel",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "TogglePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.CheckBox",
+        "hwnd": 0,
+        "name": "显示已归档资料",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QCheckBox",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "name": "添加资料",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.primaryButton",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern"
+        ],
+        "focused": true,
+        "enabled": true,
+        "type": "ControlType.Button",
+        "hwnd": 0,
+        "name": "支持的格式",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QPushButton",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Text",
+        "hwnd": 0,
+        "name": "当前计划共有 3 份资料。可归档资料，之后仍可恢复；删除前会再次确认。",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.inlineStatus",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "文件",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "状态",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "类型",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "大小",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "分段",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "解析器",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "操作",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "1",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "fixture-only.txt",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "可使用",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "text/plain",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "74 B",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "0",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "native-text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "2",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "short.txt",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "可使用",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "text/plain",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "116 B",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "1",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "native-text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "ValuePatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.Header",
+        "hwnd": 0,
+        "name": "3",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "中文学习资料.txt",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "可使用",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "text/plain",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "116 B",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "1",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      },
+      {
+        "patterns": [
+          "InvokePatternIdentifiers.Pattern",
+          "ValuePatternIdentifiers.Pattern",
+          "GridItemPatternIdentifiers.Pattern",
+          "SelectionItemPatternIdentifiers.Pattern",
+          "TableItemPatternIdentifiers.Pattern"
+        ],
+        "focused": false,
+        "enabled": true,
+        "type": "ControlType.DataItem",
+        "hwnd": 0,
+        "name": "native-text",
+        "automation_id": "QApplication.MainWindow.QWidget.QStackedWidget.MaterialsPage.QTableWidget",
+        "offscreen": false
+      }
+    ]
+  }
+}

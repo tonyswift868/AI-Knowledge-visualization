@@ -7,7 +7,7 @@ param(
     [Parameter(Mandatory)][string]$ExePath,
     [Parameter(Mandatory)][string]$Sha256,
     [long]$Hwnd = 0,
-    [ValidateSet('Windows','Inspect','Invoke','SetValue','Select','Toggle','Close')][string]$Action = 'Inspect',
+    [ValidateSet('Windows','Inspect','Invoke','SetValue','Select','Toggle','Close','ClickTarget')][string]$Action = 'Inspect',
     [string]$AutomationId = '', [string]$Name = '', [string]$ControlType = '',
     [string]$Value = '', [string]$ValueFile = '', [string]$ValueKey = '',
     [Parameter(Mandatory)][string]$EvidenceRoot
@@ -19,6 +19,9 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class MFGuiIdentity {
+ [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+ [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr h, ref POINT p);
+ [DllImport("user32.dll",SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h,uint m,IntPtr w,IntPtr l,uint flags,uint timeout,out IntPtr result);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -93,6 +96,25 @@ if ($ValueFile) {
     $privateRoot='D:\CodexScratch\MentorFlow\MF-MAIN3-02-FROZEN-GUI-AB-CLOSEOUT-20260916-33\02\uat\MF-02-UAT-33-1494a290'
     if ([IO.Path]::GetFullPath($ValueFile) -ne ($privateRoot+'\fixture-credentials.json') -or $ValueKey -ne 'password') { throw 'PRIVATE_REFERENCE_NOT_AUTHORIZED' }
     $Value=(Get-Content -LiteralPath $ValueFile -Raw | ConvertFrom-Json).$ValueKey
+}
+if ($Action -eq 'ClickTarget') {
+    if (-not $element.Current.IsEnabled -or $element.Current.IsOffscreen) { throw 'TARGET_NOT_INTERACTABLE' }
+    $bounds=$element.Current.BoundingRectangle
+    $point=[MFGuiIdentity+POINT]::new();$point.X=[int]($bounds.X+$bounds.Width/2);$point.Y=[int]($bounds.Y+$bounds.Height/2)
+    if(-not [MFGuiIdentity]::ScreenToClient([IntPtr]$Hwnd,[ref]$point)){throw 'COORDINATE_CONVERSION_FAILED'}
+    $position=[IntPtr](($point.Y -shl 16) -bor ($point.X -band 65535))
+    [IntPtr]$result=0
+    foreach($message in @(0x201,0x202)) {
+        Assert-Process
+        if($window.Current.ProcessId -ne $TargetPid -or $element.Current.ProcessId -ne $TargetPid){throw 'STALE_PROCESS_IDENTITY'}
+        $buttons=if($message -eq 0x201){1}else{0}
+        if([MFGuiIdentity]::SendMessageTimeout([IntPtr]$Hwnd,$message,[IntPtr]$buttons,$position,2,2000,[ref]$result) -eq [IntPtr]::Zero){throw 'TARGET_MESSAGE_FAILED'}
+    }
+    $event=@{action=$Action;pattern='HWND_WM_LBUTTON';pid=$TargetPid;hwnd=$Hwnd;automation_id=$AutomationId;foreground_before=$before;foreground_after=(Foreground);os_sendinput_count=0;value_recorded=$false;success=$true}
+    $line=$event|ConvertTo-Json -Depth 6 -Compress
+    [IO.File]::AppendAllText((Join-Path $EvidenceRoot 'uia-events.jsonl'),$line+[Environment]::NewLine)
+    $line
+    exit
 }
 $patternName=@{Invoke='InvokePattern';SetValue='ValuePattern';Select='SelectionItemPattern';Toggle='TogglePattern';Close='WindowPattern'}[$Action]
 $patternType=[Type]('System.Windows.Automation.'+$patternName)
