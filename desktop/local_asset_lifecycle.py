@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 from urllib.request import urlopen
+from backend.app.plain_file_copy import _native_path
 
 from .account_portability import (
     RECOVERY_INDEX_MEMBER,
@@ -87,7 +88,7 @@ Downloader = Callable[[str, Path], None]
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with _native_path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(_CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -739,9 +740,9 @@ class LocalAssetLifecycle:
                 current = self.resolve_resource_binding(resource_id)
                 if current.availability is AssetAvailability.AVAILABLE_LOCAL:
                     return current
-            with tempfile.TemporaryDirectory(dir=self._vault.root / 'managed-assets' / 'staging') as folder:
+            with tempfile.TemporaryDirectory(dir=_native_path(self._vault.root / 'managed-assets' / 'staging')) as folder:
                 source = Path(folder) / filename
-                source.write_bytes(raw)
+                _native_path(source).write_bytes(raw)
                 check_cancel()
                 # This restores bytes for an existing server resource. Publishing
                 # the new device-local asset ID would duplicate cloud metadata.

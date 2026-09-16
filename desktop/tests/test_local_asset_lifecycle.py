@@ -257,9 +257,12 @@ def test_account_b_cannot_enumerate_account_a_local_metadata(scratch_root: Path)
     assert manager.layout.shared_models_root not in (vault_a.root, vault_b.root)
 
 
-def test_empty_device_restores_package_resource_by_server_id(scratch_root: Path) -> None:
+@pytest.mark.parametrize('long_root', [False, True])
+def test_empty_device_restores_package_resource_by_server_id(scratch_root: Path, long_root) -> None:
+    if long_root and os.name != 'nt':pytest.skip('Windows long-path regression')
+    from backend.app.plain_file_copy import _native_path
     manager_a, vault_a, lifecycle_a = _service(scratch_root / 'a')
-    source = scratch_root / 'original.txt'
+    source = scratch_root / ('x' * 45 + '.txt' if long_root else 'original.txt')
     source.write_bytes(b'User original document, not redownloadable.')
     asset = lifecycle_a.import_managed(source)
     record = vault_a.list_assets()[0]
@@ -273,7 +276,11 @@ def test_empty_device_restores_package_resource_by_server_id(scratch_root: Path)
             vault_relative_path=record.object_relative_path)])
     manager_a.unmount()
     source.unlink()
-    manager_b, vault_b, lifecycle_b = _service(scratch_root / 'b')
+    b_root=scratch_root/'b'
+    if long_root:
+        baseline=VaultLayout(b_root/'v').root_for_profile(_profile())
+        b_root=scratch_root/('b'*max(1,187-len(str(baseline))))
+    manager_b, vault_b, lifecycle_b = _service(b_root)
     assert vault_b.list_assets() == []
     from desktop.product_asset_metadata import bind_vault_metadata
     class NoCloudWrite:
@@ -282,7 +289,13 @@ def test_empty_device_restores_package_resource_by_server_id(scratch_root: Path)
     bind_vault_metadata(vault_b, NoCloudWrite())
     result = lifecycle_b.restore_resource_from_package('server-resource-1', package, fingerprint_sha256=asset.sha256)
     assert result.resource_id == 'server-resource-1'
-    assert result.local_path.read_bytes() == b'User original document, not redownloadable.'
+    assert _native_path(result.local_path).read_bytes() == b'User original document, not redownloadable.'
+    assert not str(result.local_path).startswith('\\\\?\\')
+    assert vault_b.availability(vault_b.list_assets()[0]) is AssetAvailability.AVAILABLE_LOCAL
+    if long_root:
+        assert len(str(vault_b.root))>=186 and len(str(result.local_path))>271
+        assert lifecycle_b.server_manifest_dto(vault_b.list_assets()[0].local_asset_id)['filename']==source.name
+        assert set(result.sync_safe_projection())=={'resource_id','fingerprint_sha256'}
     assert result.fingerprint_sha256 == asset.sha256
     repeated = lifecycle_b.restore_resource_from_package('server-resource-1', package, fingerprint_sha256=asset.sha256)
     assert (repeated.resource_id, repeated.local_path, repeated.fingerprint_sha256) == (

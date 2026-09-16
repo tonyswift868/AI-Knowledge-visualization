@@ -17,6 +17,7 @@ from typing import BinaryIO, Protocol
 
 from .account_identity import AccountProfile, ProfileMode
 from .account_storage import DEFAULT_ROOT
+from backend.app.plain_file_copy import _native_path, canonical_io_path
 
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -54,7 +55,7 @@ class AssetAvailability(str, Enum):
 
 
 def _lexical_path(value: Path | str) -> Path:
-    return Path(os.path.abspath(os.path.normpath(str(value))))
+    return canonical_io_path(Path(os.path.abspath(os.path.normpath(str(value)))))
 
 
 def _normalized_path(value: Path | str) -> str:
@@ -63,7 +64,7 @@ def _normalized_path(value: Path | str) -> str:
 
 def _is_reparse_point(path: Path) -> bool:
     try:
-        info = path.lstat()
+        info = _native_path(path).lstat()
     except FileNotFoundError:
         return False
     attributes = int(getattr(info, "st_file_attributes", 0) or 0)
@@ -78,7 +79,7 @@ def _reject_reparse_chain(path: Path, *, allow_missing_leaf: bool = True) -> Non
     current = anchor
     for part in candidate.parts[1:]:
         current = current / part
-        if not current.exists() and not current.is_symlink():
+        if not _native_path(current).exists() and not _native_path(current).is_symlink():
             if allow_missing_leaf:
                 continue
             raise FileNotFoundError(current)
@@ -102,9 +103,9 @@ def _safe_child(root: Path, *parts: str) -> Path:
 def _ensure_directory(path: Path) -> Path:
     candidate = _lexical_path(path)
     _reject_reparse_chain(candidate.parent)
-    candidate.mkdir(parents=True, exist_ok=True)
+    _native_path(candidate).mkdir(parents=True, exist_ok=True)
     _reject_reparse_chain(candidate, allow_missing_leaf=False)
-    if not candidate.is_dir():
+    if not _native_path(candidate).is_dir():
         raise ValueError(f"Vault path is not a directory: {candidate}")
     return candidate
 
@@ -112,7 +113,7 @@ def _ensure_directory(path: Path) -> Path:
 def _regular_source(path: Path) -> Path:
     candidate = _lexical_path(path)
     _reject_reparse_chain(candidate, allow_missing_leaf=False)
-    info = candidate.lstat()
+    info = _native_path(candidate).lstat()
     if not stat.S_ISREG(info.st_mode):
         raise ValueError("Import source must be a regular file")
     return candidate
@@ -129,7 +130,7 @@ def _validate_sha256(value: str) -> str:
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with _native_path(path).open("rb") as stream:
         while True:
             chunk = stream.read(1024 * 1024)
             if not chunk:
@@ -235,7 +236,7 @@ class AccountVault:
         self._closed = False
         self._handles: list[ClosableHandle] = []
         self._database = sqlite3.connect(
-            str(_safe_child(self.root, "metadata", "vault.sqlite")),
+            str(_native_path(_safe_child(self.root, "metadata", "vault.sqlite"))),
             check_same_thread=False,
         )
         self._database.row_factory = sqlite3.Row
@@ -347,7 +348,7 @@ class AccountVault:
         digest = hashlib.sha256()
         size = 0
         try:
-            with source_path.open("rb") as reader, staging.open("xb") as writer:
+            with _native_path(source_path).open("rb") as reader, _native_path(staging).open("xb") as writer:
                 while True:
                     chunk = reader.read(1024 * 1024)
                     if not chunk:
@@ -367,13 +368,13 @@ class AccountVault:
                 )
             )
             target = _safe_child(object_directory, checksum)
-            if target.exists():
+            if _native_path(target).exists():
                 existing = _sha256_file(target)
                 if existing != checksum:
                     raise RuntimeError("Managed object checksum collision")
-                staging.unlink(missing_ok=True)
+                _native_path(staging).unlink(missing_ok=True)
             else:
-                os.replace(staging, target)
+                os.replace(_native_path(staging), _native_path(target))
             relative = target.relative_to(self.root).as_posix()
             record = AssetRecord(
                 local_asset_id="la_" + uuid.uuid4().hex,
@@ -391,7 +392,7 @@ class AccountVault:
             self._insert_asset(record, publish_metadata=publish_metadata)
             return record
         finally:
-            staging.unlink(missing_ok=True)
+            _native_path(staging).unlink(missing_ok=True)
 
     def import_linked(self, source: Path | str) -> AssetRecord:
         self._require_open()
@@ -399,7 +400,7 @@ class AccountVault:
         from .product_asset_metadata import resume_pending_import
         pending=resume_pending_import(self,source_path,'LINKED')
         if pending is not None:return pending
-        info = source_path.stat()
+        info = _native_path(source_path).stat()
         record = AssetRecord(
             local_asset_id="la_" + uuid.uuid4().hex,
             import_mode=ImportMode.LINKED,
@@ -458,12 +459,12 @@ class AccountVault:
             linked = Path(asset.linked_path or "")
             return (
                 AssetAvailability.AVAILABLE_LOCAL
-                if linked.is_file() and not _is_reparse_point(linked)
+                if _native_path(linked).is_file() and not _is_reparse_point(linked)
                 else AssetAvailability.LINKED_FILE_MISSING
             )
         if asset.object_relative_path:
             target = _safe_child(self.root, *Path(asset.object_relative_path).parts)
-            if target.is_file() and not _is_reparse_point(target):
+            if _native_path(target).is_file() and not _is_reparse_point(target):
                 return AssetAvailability.AVAILABLE_LOCAL
         if asset.verified_source_url:
             return AssetAvailability.REDOWNLOAD_AVAILABLE
@@ -599,7 +600,7 @@ class AccountVaultManager:
             _ensure_directory(_safe_child(root, *Path(relative).parts))
         for database_name in ("app.db", "mentorflow_v2.db"):
             database = _safe_child(root, "data", database_name)
-            connection = sqlite3.connect(str(database))
+            connection = sqlite3.connect(str(_native_path(database)))
             connection.close()
         return root
 
