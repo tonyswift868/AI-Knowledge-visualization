@@ -67,13 +67,13 @@ POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = PASS
 ## 当前 R1 功能集成（MF-R1-A-FUNCTIONAL-INTEGRATION）
 本轮新授权取代 A 的 baseline-only 限制：仅 control/main3-current 消费九个 exact patches，完成必要接线、聚焦验证和后端限定路由部署；不推进 integration/main3/default/main2。
-产品 source `7719096bfa52a73d8dade04e4b45acd22a41d074`；部署后923个backend文件逐字节匹配 Git archive，schema0040不变；应用/身份库部署前备份及隔离恢复验证PASS。
+后端 source `7719096bfa52a73d8dade04e4b45acd22a41d074`；部署后923个backend文件逐字节匹配 Git archive，schema0040不变；应用/身份库部署前备份及隔离恢复验证PASS。
 真实 native client 登录tonyswift、SUPER_ADMIN、workspace发现、snapshot、错误workspace拒绝PASS；公开TLS与OLD canonical issuer保持，未保存密码/未发信/未播种账号数据。
 正常 Workbench 以远端control/default两个按钮固定各自SHA；开发稳定profile为 `E:/MentorFlowWorkbenchData/development`，正式为 `E:/MentorFlowWorkbenchData/release`，源码/cache在D；不重建Frozen。
 账号内验证码页面来自现有renderer；bootstrap将当前vault资源服务绑定恢复页，原件恢复后台执行、可取消，账号切换丢弃旧完成回调；公共模型缓存仅复用固定catalog大小/hash匹配文件。
 04追加 `0da5f80d62d669195f3765b07f5ff2309f4fa7a2`：已确认面试整组+当前学习内容共2941条准备，4个真实原件；旧prepared.json/58文件包仅历史。混合画像及未确认组保留备份，6条诊断孤儿行保留，不删除源数据。
 真实迁入/业务清理由04获后续授权执行；A未迁移。当前环境见[功能集成回执](../governance/receipts/20260917-r1-functional-integration.json)，具体筛选见[04证据](../release/MF-R1-04-DATA-REPAIR/README.md)。
-本轮不是Gate1–8重验收；PRODUCT_ACCEPTANCE=PENDING。下面2026-09-16的56条超限/55条quarantine/owner UNPROVEN是历史判断，不覆盖本轮合同及canonical绑定。
+真实Workbench开发版 `59c7b87ed7c82173f6e909696da9557edeca25c3`：启动仅登录、主动找回同窗完整页面、返回/再次进入PASS；70项相关回归PASS，截图见功能回执。本轮不是Gate1–8重验收；PRODUCT_ACCEPTANCE=PENDING。下面2026-09-16的56条超限/55条quarantine/owner UNPROVEN是历史判断，不覆盖本轮合同及canonical绑定。
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
 原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。

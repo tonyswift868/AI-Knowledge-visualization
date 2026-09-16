@@ -19,7 +19,7 @@
       "delivery_commit": "7719096bfa52a73d8dade04e4b45acd22a41d074",
       "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "R1 exact integration and deployed runtime verified; publication/normal desktop validation recorded in functional receipt.",
+      "summary_zh": "Nine exact deliveries and minimal wiring integrated/pushed; backup/923 backend files/0040/live native login verified. Actual Workbench normal buttons and lifecycle visibility PASS; no user migration/cleanup.",
       "active_dispatch": "NONE",
       "delivery_state": "EXACT_R1_SOURCE_INTEGRATED",
       "acceptance_state": "BACKEND_LIVE_PASS_USER_UAT_PENDING",
@@ -843,6 +843,7 @@
     "functional_source": "7719096bfa52a73d8dade04e4b45acd22a41d074",
     "receipt": "docs/governance/receipts/20260917-r1-functional-integration.json",
     "migration_executor": "04_AFTER_COORDINATOR_DISPATCH",
-    "development_profile": "E:/MentorFlowWorkbenchData/development"
+    "development_profile": "E:/MentorFlowWorkbenchData/development",
+    "desktop_tested_sha": "59c7b87ed7c82173f6e909696da9557edeca25c3"
   }
 }
