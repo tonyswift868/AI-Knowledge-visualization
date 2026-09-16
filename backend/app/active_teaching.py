@@ -16,7 +16,7 @@ from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from .runtime_resources import project_resource_root
-from .plain_file_copy import _native_path
+from .plain_file_copy import _native_path, canonical_io_path, assert_no_reparse_ancestors, PlainFileCopyError
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
@@ -2722,10 +2722,14 @@ def delete_material(
         connection.commit()
         if stored_path:
             try:
-                path = _native_path(Path(stored_path)).resolve()
-                if path.is_file() and _native_path(UPLOAD_ROOT).resolve() in path.parents:
+                identity = canonical_io_path(stored_path)
+                owned = canonical_io_path(UPLOAD_ROOT / re.sub(r"[^0-9A-Za-z._-]", "_", workspace_id))
+                assert_no_reparse_ancestors(identity, owned)
+                assert_no_reparse_ancestors(owned, Path(owned.anchor))
+                path = _native_path(identity)
+                if path.is_file() and identity != owned:
                     path.unlink()
-            except (OSError, ValueError):
+            except (OSError, ValueError, PlainFileCopyError):
                 # The database deletion is complete; a missing artifact is
                 # retained in the response for operator reconciliation.
                 pass

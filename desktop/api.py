@@ -8,6 +8,9 @@ import mimetypes
 import hashlib
 import json
 from uuid import uuid4
+from contextlib import contextmanager, ExitStack
+
+from backend.app.plain_file_copy import open_resource_source, PlainFileCopyError
 
 import httpx
 
@@ -18,6 +21,18 @@ class ApiError(RuntimeError):
         self.status = status
         self.code = code
         self.message = message
+
+
+@contextmanager
+def _upload_source(path):
+    with ExitStack() as stack:
+        try:
+            source = stack.enter_context(open_resource_source(path))
+        except FileNotFoundError as exc:
+            raise ApiError(404, "RESOURCE_SOURCE_MISSING", "所选资料文件不存在或已被移动，请重新选择。") from exc
+        except (ValueError, PlainFileCopyError) as exc:
+            raise ApiError(400, "RESOURCE_SOURCE_UNSAFE", "所选资料路径不安全，请选择实际的本机文件。") from exc
+        yield source
 
 
 class DesktopApi:
@@ -252,8 +267,7 @@ class DesktopApi:
         )
 
     def upload_material(self, workspace_id: str, path: str | Path) -> dict[str, Any]:
-        source = Path(path)
-        with source.open("rb") as handle:
+        with _upload_source(path) as (source, handle):
             return self.request(
                 "POST",
                 f"/api/active-teaching/workspaces/{workspace_id}/materials",
@@ -393,8 +407,7 @@ class DesktopApi:
         )
 
     def upload_teaching_attachment(self, session_id: str, path: str | Path) -> dict[str, Any]:
-        source = Path(path)
-        with source.open("rb") as handle:
+        with _upload_source(path) as (source, handle):
             return self.request(
                 "POST",
                 f"/api/active-teaching/sessions/{session_id}/attachments",
@@ -402,8 +415,7 @@ class DesktopApi:
             )
 
     def transcribe_teaching_voice(self, session_id: str, path: str | Path) -> dict[str, Any]:
-        source = Path(path)
-        with source.open("rb") as handle:
+        with _upload_source(path) as (source, handle):
             return self.request(
                 "POST",
                 f"/api/active-teaching/sessions/{session_id}/voice/transcribe",

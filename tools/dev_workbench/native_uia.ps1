@@ -27,7 +27,7 @@ public static class MFGuiIdentity {
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
 }
 '@
-$allowed = 'D:\CodexScratch\MentorFlow\MF-MAIN3-02-GUI-ISOLATION-AB-FINAL-20260916-34\02'
+$allowed = 'D:\CodexScratch\MentorFlow\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\02'
 function Require-OwnedPath([string]$path) {
     $full = [IO.Path]::GetFullPath($path)
     if (-not $full.StartsWith($allowed+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'OUTSIDE_ASSIGNED_SCRATCH' }

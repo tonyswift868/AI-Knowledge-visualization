@@ -13,6 +13,7 @@ import hashlib
 import os
 import shutil
 import stat
+from contextlib import contextmanager
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,6 +112,53 @@ def _extended_windows_path(path: Path) -> str:
 
 def _native_path(path: Path) -> Path:
     return Path(_extended_windows_path(path)) if os.name == "nt" else path
+
+
+def canonical_io_path(value: str | Path) -> Path:
+    """Absolute identity for resource I/O; extended syntax grants no authority.
+
+    Callers still enforce their account/workspace boundary. Relative paths and
+    traversal are rejected before normalization, never silently made absolute.
+    Only the existing _native_path converts identity to Win32 I/O spelling.
+    """
+    text = os.fspath(value)
+    if os.name == "nt":
+        text = text.replace("/", "\\")
+        if text.upper().startswith("\\\\?\\UNC\\"):
+            text = "\\\\" + text[8:]
+        elif text.startswith("\\\\?\\"):
+            text = text[4:]
+        if text.startswith(("\\\\.\\", "\\??\\")):
+            raise ValueError("RESOURCE_DEVICE_PATH_FORBIDDEN")
+    path = Path(text)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("RESOURCE_ABSOLUTE_PLAIN_PATH_REQUIRED")
+    if os.name == "nt" and any(":" in part for part in path.parts[1:]):
+        raise ValueError("RESOURCE_STREAM_PATH_FORBIDDEN")
+    return path
+
+
+@contextmanager
+def open_resource_source(value: str | Path):
+    """Open a user-selected plain source without changing its domain identity.
+
+    This does not authorize an account destination or copy/delete the source.
+    Stat, reparse checks, and open share the same native I/O representation.
+    The descriptor must still identify the checked regular file before reads.
+    """
+    path = canonical_io_path(value)
+    native = _native_path(path)
+    before = native.lstat()  # Preserve FileNotFoundError for the product adapter.
+    assert_no_reparse_ancestors(path, Path(path.anchor))
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise ValueError("RESOURCE_PLAIN_FILE_REQUIRED")
+    with native.open("rb") as stream:
+        after = os.fstat(stream.fileno())
+        if (before.st_dev, before.st_ino, before.st_nlink) != (
+            after.st_dev, after.st_ino, after.st_nlink
+        ) or not stat.S_ISREG(after.st_mode):
+            raise ValueError("RESOURCE_SOURCE_CHANGED")
+        yield path, stream
 
 
 def _copy_file_windows(source: Path, destination: Path) -> None:

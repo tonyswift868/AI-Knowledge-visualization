@@ -1,5 +1,7 @@
 """Convergence checks for account-owned material I/O on Windows."""
 import hashlib
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -54,3 +56,32 @@ def test_long_nested_exact_copy_move_and_cleanup(tmp_path):
     assert moved.read_bytes() == source.read_bytes() == payload
     moved.unlink()
     assert not moved.exists() and source.exists()
+
+
+@pytest.mark.parametrize('escape', ['workspace', 'reparse'])
+def test_purge_preserves_other_workspace_and_junction_target(client, tmp_path, monkeypatch, escape):
+    root = tmp_path / 'uploads'
+    monkeypatch.setattr(active_teaching, 'UPLOAD_ROOT', root)
+    url = '/api/active-teaching/workspaces/owned/materials'
+    result = client.post(url, files={'file': ('lesson.txt', b'Synthetic owned lesson.', 'text/plain')})
+    assert result.status_code == 200
+    material_id = result.json()['id']
+    foreign = _native_path(root / 'other-workspace' / 'keep.txt')
+    foreign.parent.mkdir(parents=True, exist_ok=True); foreign.write_bytes(b'keep sibling')
+    alias = None
+    locator = foreign
+    if escape == 'reparse':
+        if os.name != 'nt': pytest.skip('Windows junction')
+        alias = root / 'owned' / 'alias'
+        result = subprocess.run(['cmd.exe', '/d', '/c', 'mklink', '/J', str(alias), str(root / 'other-workspace')], capture_output=True)
+        assert result.returncode == 0
+        locator = alias / 'keep.txt'
+    try:
+        with active_teaching._connect() as connection:
+            connection.execute('UPDATE active_materials SET stored_path=? WHERE id=?', (str(locator), material_id))
+            connection.commit()
+        result = client.request('DELETE', url + '/' + material_id, json={'physical': True, 'confirm_unreferenced': True})
+        assert result.status_code == 200
+        assert foreign.read_bytes() == b'keep sibling'
+    finally:
+        if alias is not None: alias.rmdir()
