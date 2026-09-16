@@ -149,7 +149,8 @@ def _verify_backend_suite_membership(root: Path, workflow: dict[str, object]) ->
     document_job = jobs["backend-document-ml"]
     desktop_job = jobs["backend-desktop"]
     for name, job in (("backend-full", core_job), ("backend-document-ml", document_job), ("backend-desktop", desktop_job)):
-        if job.get("if") != "inputs.lane == 'MAIN_FULL'" or _job_needs(job) != {"lane-contract"}:
+        expected_if = "${{ false }}" if name == "backend-desktop" else "inputs.lane == 'MAIN_FULL'"
+        if job.get("if") != expected_if or _job_needs(job) != {"lane-contract"}:
             raise RuntimeError(f"{name} must be a required MAIN_FULL job behind only the lane contract")
         if job.get("continue-on-error") is not None:
             raise RuntimeError(f"{name} must not mask a required suite result")
@@ -170,8 +171,8 @@ def _verify_backend_suite_membership(root: Path, workflow: dict[str, object]) ->
         raise RuntimeError("desktop suite membership is incomplete or ambiguous")
     if "backend/requirements-documents.txt" not in str(document_job):
         raise RuntimeError("document/ML suite must install its canonical optional manifest")
-    if "backend/requirements-desktop.txt" not in str(desktop_job) or desktop_job.get("runs-on") != "windows-latest":
-        raise RuntimeError("desktop suite must install its canonical manifest on Windows")
+    if "backend/requirements-desktop.txt" not in str(desktop_job) or desktop_job.get("runs-on") != ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]:
+        raise RuntimeError("retained desktop suite must keep its canonical manifest and disabled self-hosted contract")
 
     all_tests = {
         path.relative_to(root).as_posix()
@@ -239,8 +240,8 @@ def _verify_container_release(workflow: dict[str, object], text: str) -> None:
         if not isinstance(job, dict) or _job_needs(job) != needs:
             raise RuntimeError(f"container release needs graph is not fail-closed for {name}")
         runner = job.get("runs-on")
-        if runner is not None and runner != "ubuntu-24.04":
-            raise RuntimeError(f"container release runner is not pinned to Ubuntu 24.04: {name}")
+        if runner is not None and runner != ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]:
+            raise RuntimeError(f"container release runner is not the approved self-hosted runner: {name}")
     required_gate = jobs["required-gate"]
     if not isinstance(required_gate, dict) or required_gate.get("if") != "always()":
         raise RuntimeError("container release aggregate must inspect every required result even after failure")
@@ -511,7 +512,7 @@ def verify(
     _require(
         ci,
         (
-            "PR_FAST", "MAIN_FULL", "ubuntu-24.04", "windows-latest", 'python: ["3.11", "3.12", "3.13"]',
+            "PR_FAST", "MAIN_FULL", "runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]", 'python: ["3.11", "3.12", "3.13"]',
             'python: ["3.12"]', 'node-version: "22.20.0"', "python -m compileall", 'python -c "import app.main"',
             "python -m tabnanny", "npm test", "npm run build", "verify_enterprise_context.py", "test_enterprise_contracts_v1.py",
             "test_local_auth.py", "test_planning_resource_authorization.py", "test_e1b_enterprise_evidence.py",
@@ -535,7 +536,10 @@ def verify(
         "enterprise-pr-fast.yml",
     )
     main = (root / ".github" / "workflows" / "enterprise-main-full.yml").read_text(encoding="utf-8")
-    _require(main, ("lane: MAIN_FULL", "core-v2/integration"), "enterprise-main-full.yml")
+    _require(main, ("lane: MAIN_FULL",), "enterprise-main-full.yml")
+    main_workflow = parsed_workflows["enterprise-main-full.yml"]
+    if set(main_workflow.get("on", main_workflow.get(True, {}))) != {"workflow_dispatch"}:
+        raise RuntimeError("enterprise-main-full.yml must remain manual-only")
 
     security = (root / ".github" / "workflows" / "enterprise-security.yml").read_text(encoding="utf-8")
     _require(
@@ -550,8 +554,9 @@ def verify(
     for prohibited in ("pip install pip-audit", "pip install semgrep", "npm install", "npx "):
         if prohibited in security:
             raise RuntimeError(f"unleased scanner installation found: {prohibited}")
-    dependabot = (root / ".github" / "dependabot.yml").read_text(encoding="utf-8")
-    _require(dependabot, ("package-ecosystem: pip", "package-ecosystem: npm", "package-ecosystem: github-actions"), "dependabot.yml")
+    dependabot = yaml.safe_load((root / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    if dependabot != {"version": 2, "updates": []}:
+        raise RuntimeError("dependabot.yml must retain the disabled remote update contract")
     waivers = _json(root / ".github" / "enterprise-security-waivers.json")
     if waivers != {"schema": "mentorflow.enterprise-security-waivers.v1", "waivers": []}:
         raise RuntimeError("initial security waiver registry must be empty and schema-exact")

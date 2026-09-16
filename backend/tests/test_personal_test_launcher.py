@@ -19,7 +19,8 @@ def test_connection_can_overlap_but_application_requires_integrity_pass():
 
 def test_personal_launcher_preserves_fixed_trust_and_no_tenant_hint():
     text = SOURCE.read_text(encoding='utf-8')
-    assert 'StrictHostKeyChecking=yes' in text and '--cacert $certificate' in text
+    assert 'StrictHostKeyChecking=yes' in text
+    assert '''--cacert "' + $certificate + '"''' in text
     assert "discovery.issuer -ceq 'https://localhost:18080/realms/mentorflow'" in text
     assert 'PRIVATE KEY-----' not in text
     assert 'MENTORFLOW_DESKTOP_WORKSPACE_ID' not in text

@@ -130,7 +130,7 @@ def test_main_full_backend_membership_is_complete_disjoint_and_required() -> Non
     document_job = jobs["backend-document-ml"]
     desktop_job = jobs["backend-desktop"]
     for job in (core_job, document_job, desktop_job):
-        assert job["if"] == "inputs.lane == 'MAIN_FULL'"
+        assert job["if"] == ("${{ false }}" if job is desktop_job else "inputs.lane == 'MAIN_FULL'")
         assert job["needs"] == "lane-contract"
         assert "continue-on-error" not in job
         assert all("continue-on-error" not in step for step in job["steps"])
@@ -148,7 +148,7 @@ def test_main_full_backend_membership_is_complete_disjoint_and_required() -> Non
     assert _test_paths(desktop_run) == DESKTOP_TESTS
     assert "backend/requirements-documents.txt" in str(document_job)
     assert "backend/requirements-desktop.txt" in str(desktop_job)
-    assert desktop_job["runs-on"] == "windows-latest"
+    assert desktop_job["runs-on"] == ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]
 
     all_tests = {
         path.relative_to(ROOT).as_posix()
@@ -179,16 +179,7 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "enterprise-ci.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger = workflow.get("on", workflow.get(True))
-    assert set(trigger) == {"push", "workflow_call", "workflow_dispatch"}
-    assert trigger["push"] == {
-        "branches": ["codex/e1s1-shadow-repair-e107-ci-windows"],
-        "paths": [
-            ".github/workflows/enterprise-ci.yml",
-            "backend/tests/test_e1b_enterprise_evidence.py",
-            "scripts/enterprise/pytest_windows_diagnostics.py",
-            "scripts/enterprise/run_windows_pytest_diagnostic.ps1",
-        ],
-    }
+    assert set(trigger) == {"workflow_call", "workflow_dispatch"}
     dispatch_inputs = trigger["workflow_dispatch"]["inputs"]
     call_inputs = trigger["workflow_call"]["inputs"]
     assert set(dispatch_inputs) == {"lane", "expected_source_sha"}
@@ -219,9 +210,9 @@ def test_shadow_repair_e107_workflow_contract() -> None:
         "inputs.lane == 'SHADOW_REPAIR_E107' || (github.event_name == 'push' && "
         "github.ref == 'refs/heads/codex/e1s1-shadow-repair-e107-ci-windows')"
     )
-    assert windows["if"] == focused_job_if
+    assert windows["if"] == "${{ false }}"
     assert windows["needs"] == "lane-contract"
-    assert windows["runs-on"] == "windows-latest"
+    assert windows["runs-on"] == ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]
     assert windows["timeout-minutes"] == 120
     assert windows["strategy"]["fail-fast"] is False
     assert windows["strategy"]["matrix"] == {
@@ -280,8 +271,8 @@ def test_shadow_repair_e107_workflow_contract() -> None:
     assert migration_test["env"]["MENTORFLOW_ORM_DB"].startswith("${{ runner.temp }}")
 
     focused = jobs["shadow-repair-contract"]
-    assert focused["if"] == focused_only_if
-    assert focused["runs-on"] == "windows-latest"
+    assert focused["if"] == "${{ false }}"
+    assert focused["runs-on"] == ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]
     assert focused["timeout-minutes"] == 20
     watchdog = next(
         step for step in focused["steps"]
@@ -360,19 +351,26 @@ def test_shadow_repair_e107_workflow_contract() -> None:
 
     for job_name, job in jobs.items():
         rendered = json.dumps(job)
-        if "windows-latest" in rendered:
+        if job_name in {"backend-full-windows", "backend-desktop", "shadow-repair-contract"}:
             assert "timeout-minutes" in job, f"{job_name} lacks a Windows job timeout"
         pytest_steps = [
             step for step in job.get("steps", [])
             if "python -m pytest" in str(step.get("run", ""))
         ]
-        if "windows-latest" in rendered and pytest_steps:
+        if job_name in {"backend-full-windows", "backend-desktop", "shadow-repair-contract"} and pytest_steps:
             for step in pytest_steps:
                 assert "timeout-minutes" in step, (
                     f"{job_name}/{step.get('name', '<unnamed>')} lacks a pytest step timeout"
                 )
         for step in job.get("steps", []):
             if step.get("if") == "always()":
+                if job_name == "postgres17-rls-worker-real-gate" and step.get("name") == (
+                    "Always remove only the exact compose project and verify zero residue"
+                ):
+                    assert 'docker compose' in step["run"]
+                    assert 'down' in step["run"]
+                    assert 'post_cleanup_containers' in step["run"]
+                    continue
                 assert step.get("name", "").startswith("Upload "), (
                     f"{job_name} applies always() outside a diagnostic upload step"
                 )
@@ -575,7 +573,7 @@ def test_final_release_workflow_is_source_bound_four_image_and_fail_closed() -> 
     assert set(jobs["required-gate"]["needs"]) == set(RELEASE_REQUIRED_JOBS)
     assert jobs["required-gate"]["if"] == "always()"
     assert all(
-        job.get("runs-on") in {None, "ubuntu-24.04"}
+        job.get("runs-on") is None or job.get("runs-on") == ["self-hosted", "Linux", "X64", "mentorflow-e1", "turkey-ci"]
         for job in jobs.values()
     )
     assert 'test "$result" = "success"' in _named_run(

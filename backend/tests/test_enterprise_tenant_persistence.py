@@ -80,7 +80,7 @@ PROVIDER_MIGRATION_REVISION = "0032_enterprise_provider_sessions"
 WORKSPACE_MIGRATION_REVISION = "0033_enterprise_workspace_persistence"
 ASSET_MIGRATION_REVISION = "0034_enterprise_asset_manifests"
 BOOTSTRAP_MIGRATION_REVISION = "0035_account_workspace_bootstrap"
-MIGRATION_REVISION = "0038_rehydration_manifest"
+MIGRATION_REVISION = "0040_admin_overview_aggregate"
 CANONICAL_TABLES = {
     "structured_sync_entities",
     "structured_sync_requests",
@@ -876,7 +876,9 @@ def test_canonical_migrations_form_one_linear_head_through_0036() -> None:
     assert assets.down_revision == WORKSPACE_MIGRATION_REVISION
     bootstrap = ScriptDirectory.from_config(config).get_revision(BOOTSTRAP_MIGRATION_REVISION)
     assert bootstrap.down_revision == ASSET_MIGRATION_REVISION
-    assert head.down_revision == "0037_structured_sync"
+    assert head.down_revision == "0039_generic_sync_kinds"
+    assert ScriptDirectory.from_config(config).get_revision("0039_generic_sync_kinds").down_revision == "0038_rehydration_manifest"
+    assert ScriptDirectory.from_config(config).get_revision("0038_rehydration_manifest").down_revision == "0037_structured_sync"
     assert ENTERPRISE_MIGRATION_REVISION == MIGRATION_REVISION
     assert "workspace_memberships" in source
     assert "learning_plans" in source

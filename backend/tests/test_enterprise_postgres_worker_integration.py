@@ -175,10 +175,10 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
         "environment"
     ]
 
-    assert f'      - "{REAL_GATE_BRANCH}"' in workflow
+    assert set(workflow_triggers) == {"workflow_call", "workflow_dispatch"}
     assert "github.event_name == 'push'" in job
     assert f"github.ref == 'refs/heads/{REAL_GATE_BRANCH}'" in job
-    assert "runs-on: [self-hosted, linux, x64, mentorflow-e1, turkey-ci]" in job
+    assert "runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]" in job
     assert EXPECTED_RUNNER in job
     assert EXPECTED_SOURCE_HEAD in job
     assert EXPECTED_SOURCE_TREE in job
@@ -193,17 +193,6 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     )
     assert "test ! -s /tmp/e102-unauthorized.txt" in job
     assert "diff -u /tmp/e102-allowed.txt /tmp/e102-changed.txt" not in job
-    assert workflow_triggers["push"]["paths"] == [
-        ".github/workflows/enterprise-ci.yml",
-        "backend/tests/test_enterprise_tenant_persistence.py",
-        "backend/tests/test_enterprise_postgres_worker_integration.py",
-        "enterprise_e1/staging/e1_02/compose.yaml",
-        "enterprise_e1/staging/e1_02/run.sh",
-        "backend/app/enterprise/jobs_v1/postgres_schema.py",
-        "backend/tests/test_enterprise_worker_runtime.py",
-        "backend/app/enterprise/jobs_v1/repository.py",
-        "backend/app/enterprise/worker_entry.py",
-    ]
     assert "ubuntu-latest" not in job
     assert "ubuntu-24.04" not in job
     assert "windows-latest" not in job
@@ -213,8 +202,8 @@ def test_postgres17_real_gate_assets_are_exact_and_runner_scoped() -> None:
     assert f"github.ref != 'refs/heads/{REAL_GATE_BRANCH}'" in lane_contract
     assert jobs["postgres17-rls-worker-real-gate"]["runs-on"] == [
         "self-hosted",
-        "linux",
-        "x64",
+        "Linux",
+        "X64",
         "mentorflow-e1",
         "turkey-ci",
     ]

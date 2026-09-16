@@ -903,6 +903,7 @@ def test_overview_calendar_and_tutorial_stay_inside_responsive_bounds(monkeypatc
     for width, height in ((870, 720), (1266, 979)):
         window = MainWindow.__new__(MainWindow)
         window.user = {"display_name": "测试"}
+        window.bootstrap_snapshot = None
         window._render_fact = lambda: None
         page = window._overview()
         page.resize(width, height)

@@ -652,9 +652,11 @@ def test_migration_0031_to_0032_upgrade_downgrade_and_single_head(
 
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == [
-        "0032_enterprise_provider_sessions"
-    ]
+    graph = ScriptDirectory.from_config(config)
+    assert graph.get_heads() == ["0040_admin_overview_aggregate"]
+    assert "0032_enterprise_provider_sessions" in {
+        revision.revision for revision in graph.walk_revisions()
+    }
 
 
 def test_migration_enables_forces_rls_and_grants_minimal_crud(

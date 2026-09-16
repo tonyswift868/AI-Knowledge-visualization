@@ -237,6 +237,35 @@ def test_release_assets_are_static_provider_zero_and_lease_gated() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("relative_path", "before", "after", "message"),
+    [
+        (".github/workflows/enterprise-main-full.yml", "  workflow_dispatch:",
+         "  workflow_dispatch:\n  push:", "manual-only"),
+        (".github/dependabot.yml", "updates: []",
+         "updates: [{package-ecosystem: pip}]", "disabled remote update"),
+        (".github/workflows/container-release.yml",
+         "runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]",
+         "runs-on: ubuntu-latest", "approved self-hosted runner"),
+    ],
+)
+def test_release_checks_reject_remote_execution_contract_drift(
+    monkeypatch: pytest.MonkeyPatch, relative_path: str, before: str,
+    after: str, message: str,
+) -> None:
+    target = ROOT / relative_path
+    original = Path.read_text
+    assert before in original(target, encoding="utf-8")
+
+    def read_text(path, *args, **kwargs):
+        text = original(path, *args, **kwargs)
+        return text.replace(before, after) if path == target else text
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    with pytest.raises(RuntimeError, match=message):
+        verify_assets(ROOT)
+
+
 def test_frozen_context_gate_fails_closed_then_accepts_only_exact_bundle(tmp_path: Path) -> None:
     (tmp_path / ".github").mkdir()
     shutil.copy2(ROOT / ".github" / "enterprise-context.lock.json", tmp_path / ".github")

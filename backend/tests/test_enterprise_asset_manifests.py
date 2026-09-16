@@ -203,11 +203,12 @@ def test_0034_is_single_head_and_supports_fresh_incremental_downgrade(
     tmp_path: Path,
 ) -> None:
     scripts = ScriptDirectory.from_config(_config(tmp_path / "unused.sqlite3"))
-    assert scripts.get_heads() == [MIGRATION_REVISION]
+    assert scripts.get_heads() == ["0040_admin_overview_aggregate"]
+    assert MIGRATION_REVISION in {revision.revision for revision in scripts.walk_revisions()}
     assert scripts.get_revision(MIGRATION_REVISION).down_revision == PREVIOUS_REVISION
 
     fresh = tmp_path / "fresh.sqlite3"
-    command.upgrade(_config(fresh), "head")
+    command.upgrade(_config(fresh), MIGRATION_REVISION)
     with sqlite3.connect(fresh) as connection:
         tables = {
             row[0]
@@ -233,7 +234,7 @@ def test_0034_is_single_head_and_supports_fresh_incremental_downgrade(
             "VALUES ('workspace-old', 'org-old', 'workspace-old', 'Old', 'active')"
         )
         connection.commit()
-    command.upgrade(config, "head")
+    command.upgrade(config, MIGRATION_REVISION)
     with sqlite3.connect(incremental) as connection:
         assert connection.execute(
             "SELECT name FROM workspaces WHERE id = 'workspace-old'"
