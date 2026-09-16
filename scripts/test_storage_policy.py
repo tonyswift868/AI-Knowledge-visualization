@@ -24,7 +24,12 @@ GUI_AB_ROOT = Path(
     "D:/CodexScratch/MentorFlow/"
     "MF-MAIN3-02-FROZEN-GUI-AB-CLOSEOUT-20260916-33/02"
 )
-AUTHORIZED_ROOTS = frozenset((ASSIGNED_ROOT, GUI_AB_ROOT))
+GUI_AB_FINAL_ROOT = Path(
+    "D:/CodexScratch/MentorFlow/"
+    "MF-MAIN3-02-GUI-ISOLATION-AB-FINAL-20260916-34/02"
+)
+GUI_AB_ROOTS = frozenset((GUI_AB_ROOT, GUI_AB_FINAL_ROOT))
+AUTHORIZED_ROOTS = frozenset((ASSIGNED_ROOT, *GUI_AB_ROOTS))
 
 
 def _plain(path: Path) -> None:

@@ -14,8 +14,8 @@ _run_lock = None
 
 
 def device_names(base):
-    from scripts.test_storage_policy import GUI_AB_ROOT
-    return ('A', 'B', 'UserTest', 'NEGATIVE') if Path(base) == GUI_AB_ROOT / 'devices' else ('A', 'B', 'UserTest')
+    from scripts.test_storage_policy import GUI_AB_ROOTS
+    return ('A', 'B', 'UserTest', 'NEGATIVE') if Path(base).parent in GUI_AB_ROOTS and Path(base).name == 'devices' else ('A', 'B', 'UserTest')
 
 
 def plain(path):

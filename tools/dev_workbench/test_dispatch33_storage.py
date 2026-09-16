@@ -13,12 +13,12 @@ from tools.dev_workbench.targets import Refused
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='Windows assigned roots')
 
 
-@pytest.mark.parametrize('selected', [policy.ASSIGNED_ROOT, policy.GUI_AB_ROOT])
+@pytest.mark.parametrize('selected', list(policy.AUTHORIZED_ROOTS))
 def test_exact_assignment_and_cross_dispatch_denial(selected):
     env = {policy.SCRATCH_ENV: str(selected), policy.TEST_MODE_ENV: '1'}
     assert policy.require_test_path(selected / 'devices/A', environ=env)
-    other = next(root for root in policy.AUTHORIZED_ROOTS if root != selected)
-    for path in (other / 'devices/A', selected, selected.parent / '03/x', selected / '../03/x'):
+    others = [root / 'devices/A' for root in policy.AUTHORIZED_ROOTS if root != selected]
+    for path in (*others, selected, selected.parent / '03/x', selected / '../03/x'):
         with pytest.raises(ValueError):
             policy.require_test_path(path, environ=env)
     for root in (selected.parent, selected / 'subroot', Path('D:/arbitrary')):
@@ -28,9 +28,10 @@ def test_exact_assignment_and_cross_dispatch_denial(selected):
 
 def test_negative_profile_is_only_explicit_dispatch33_device(monkeypatch):
     monkeypatch.setenv(policy.TEST_MODE_ENV, '1')
-    monkeypatch.setenv(policy.SCRATCH_ENV, str(policy.GUI_AB_ROOT))
-    devices = Devices(policy.GUI_AB_ROOT / 'devices')
-    assert devices.root('NEGATIVE') == policy.GUI_AB_ROOT / 'devices/NEGATIVE'
+    selected = Path(os.environ.get(policy.SCRATCH_ENV, policy.GUI_AB_ROOT))
+    monkeypatch.setenv(policy.SCRATCH_ENV, str(selected))
+    devices = Devices(selected / 'devices')
+    assert devices.root('NEGATIVE') == selected / 'devices/NEGATIVE'
     for base in (policy.ASSIGNED_ROOT / 'devices', policy.GUI_AB_ROOT / 'other', Path('E:/Codex/TestDevices/MentorFlow')):
         assert 'NEGATIVE' not in device_names(base)
     for name in ('../B', 'C', 'negative'):
@@ -44,7 +45,8 @@ def test_new_root_still_requires_explicit_test_mode():
 
 def test_device_ownership_isolation_and_reparse_guard(tmp_path, monkeypatch):
     monkeypatch.setenv(policy.TEST_MODE_ENV, '1')
-    monkeypatch.setenv(policy.SCRATCH_ENV, str(policy.GUI_AB_ROOT))
+    selected = Path(os.environ.get(policy.SCRATCH_ENV, policy.GUI_AB_ROOT))
+    monkeypatch.setenv(policy.SCRATCH_ENV, str(selected))
     devices = Devices(tmp_path / 'devices')
     a, b = devices.prepare('A'), devices.prepare('B')
     assert a['owner'] != b['owner'] and a['generation'] != b['generation']
