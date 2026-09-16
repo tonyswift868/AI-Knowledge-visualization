@@ -105,6 +105,24 @@ def test_old_registry_without_username_preserved(session):
     assert session.registry.get(a.account_id) is not None
 
 
+def test_embedded_lifecycle_replaces_native_form_without_changing_consent(app_context, monkeypatch):
+    from PySide6.QtWidgets import QWidget
+    app,qt,_=app_context
+    monkeypatch.setattr(app,'_load_account_capabilities',lambda:None)
+    app._show_login_gate();gate=app.login_gate
+    gate.remember_password_box.setChecked(True)
+    pane=QWidget();gate.set_auth_content(pane);qt.processEvents()
+    controls=(gate.account_selector,gate.username_field,gate.password_field,
+              gate.show_password,gate.remember_password_box,gate.auto_box)
+    assert all(w.isHidden() for w in controls)
+    assert pane.height()>=200
+    gate._update_login_policy(False)
+    assert all(w.isHidden() for w in controls)
+    gate.set_auth_content(None);qt.processEvents()
+    assert all(not w.isHidden() for w in controls)
+    assert gate.remember_password_box.isChecked()
+
+
 def test_backend_capabilities_gate(app_context,monkeypatch):
     from desktop.lifecycle_client import LifecycleClient
     from desktop.enterprise_oidc import DesktopOidcConfig

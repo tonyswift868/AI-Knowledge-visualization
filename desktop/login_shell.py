@@ -275,6 +275,7 @@ class LoginGateWindow(QWidget):
         if self.auth_content is not None:
             self.auth_content.setEnabled(not blocked)
             self.auth_content.setVisible(not blocked)
+        self._set_native_form_visible(self.auth_content is None and not blocked)
         self.set_account_capabilities(self.account_capabilities)
         self.update_blocked.emit(blocked)
 
@@ -315,10 +316,20 @@ class LoginGateWindow(QWidget):
         self.state_title.setVisible(content is None)
         self.state_detail.setVisible(content is None)
         self.primary_button.setVisible(content is None)
+        self._set_native_form_visible(content is None)
         if content is not None:
             self.content_layout.addWidget(content, 1)
             content.setEnabled(not self.login_is_blocked)
             content.show()
+
+    def _set_native_form_visible(self, visible: bool) -> None:
+        # The lifecycle form replaces the credential form in the same card.
+        # Disabled native controls must not consume the WebEngine form's space.
+        for widget in (self.account_selector, self.add_account_button,
+                       self.remove_account_button, self.username_field,
+                       self.password_field, self.show_password,
+                       self.remember_password_box, self.auto_box):
+            widget.setVisible(visible)
 
     def set_startup_policy(self, snapshot):
         self.startup_update_state = dict(snapshot)
