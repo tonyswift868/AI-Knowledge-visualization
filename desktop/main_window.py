@@ -2589,7 +2589,7 @@ rehydration_session=None,
     def _refresh_overview(self) -> None:
         if not hasattr(self, "overview_task_list"):
             return
-        if self.bootstrap_snapshot is not None:
+        if self.bootstrap_snapshot is not None and getattr(self, "_rehydration_session", None) is None:
             snapshot = self.bootstrap_snapshot
             self.overview_metric_values["active"].setText(str(len(snapshot.plans)))
             self.overview_metric_values["progress"].setText(str(len(snapshot.progress)))
@@ -3005,7 +3005,7 @@ rehydration_session=None,
             self.provider_status.setText(f"连接失败：{exc.code}：{exc.message}")
 
     def _refresh_tasks(self, _checked: bool = False) -> None:
-        if self.bootstrap_snapshot is not None:
+        if self.bootstrap_snapshot is not None and getattr(self, "_rehydration_session", None) is None:
             self._show_account_plan_metadata(self.task_list)
             self.task_loading_status.setText("已恢复当前账号的计划与进度记录")
             return
