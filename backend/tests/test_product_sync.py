@@ -122,6 +122,9 @@ def test_independent_b_reads_resource_and_returns_setting_change(product, tmp_pa
         files={'file':('中文资料.txt',b'Synthetic resource kept only on device A.','text/plain')})
     assert material.status_code==200,material.text
     a_path=orm.ORM_DB
+    with a.connect() as c:
+        original_chunks=[tuple(r) for r in c.execute('SELECT * FROM active_chunks ORDER BY id')]
+    assert original_chunks
     b_path=tmp_path/'device-b'/'mentorflow_v2.db'
     b_path.parent.mkdir()
     try:
@@ -136,7 +139,7 @@ def test_independent_b_reads_resource_and_returns_setting_change(product, tmp_pa
         assert restored[0]['original_filename']=='中文资料.txt'
         with b.connect() as c:
             assert c.execute('SELECT stored_path FROM active_materials').fetchone()[0]==''
-            assert c.execute('SELECT COUNT(*) FROM active_chunks').fetchone()[0]==0
+            assert [tuple(r) for r in c.execute('SELECT * FROM active_chunks ORDER BY id')]==original_chunks
         active_teaching.update_learning_workspace('ab',{'archived':True})
         b.flush()
         a.restore(service.snapshot(actor,tenant))
@@ -220,6 +223,9 @@ def test_plan_task_progress_and_history_real_domain_consumer(product,tmp_path):
         active_teaching._record_message(c,'session','learner','answer','Synthetic learning history.',[])
         active_teaching._refresh_plan_calendar(c,'plan',receipt)
         c.commit()
+    # This fixture writes directly to domain stores. Reads deliberately do not
+    # flush the queue; acknowledge these writes through the existing producer.
+    a.flush()
     response=client.get('/api/active-teaching/workspaces/domain/plans/current')
     assert response.status_code==200,response.text
     assert response.json()['tasks'][0]['status']=='completed'
@@ -227,6 +233,8 @@ def test_plan_task_progress_and_history_real_domain_consumer(product,tmp_path):
     assert {'plan','task','progress','learning_run','history'} <= {e['kind'] for e in snapshot['entities']}
     assert next(e for e in snapshot['entities'] if e['kind']=='plan')['payload']['title']==receipt['learning_goal']
     a_path=orm.ORM_DB
+    with a.connect() as c:
+        original_chunks=[tuple(r) for r in c.execute('SELECT * FROM active_chunks ORDER BY id')]
     try:
         orm.configure_orm(tmp_path/'b.db');orm.upgrade_orm_schema();orm.init_orm()
         active_teaching.initialize_active_teaching_storage()
@@ -237,7 +245,7 @@ def test_plan_task_progress_and_history_real_domain_consumer(product,tmp_path):
         with b.connect() as c:
             assert c.execute('SELECT completed_task_count FROM active_knowledge_progress_snapshots').fetchone()[0]==1
             assert c.execute("SELECT content FROM active_teaching_messages").fetchone()[0]=='Synthetic learning history.'
-            assert c.execute('SELECT COUNT(*) FROM active_chunks').fetchone()[0]==0
+            assert [tuple(r) for r in c.execute('SELECT * FROM active_chunks ORDER BY id')]==original_chunks
     finally:
         orm.configure_orm(a_path)
 

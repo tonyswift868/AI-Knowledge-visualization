@@ -31,8 +31,11 @@ Normal data roots are stable `E:/MentorFlowWorkbenchData/development` and
 `E:/MentorFlowWorkbenchData/release`. They survive restarts/source updates and
 never share a database. The Workbench source wrapper scopes QSettings to INI
 files and Windows Locker to each profile (including old main2 without a device
-adapter). Existing issuer/client/API/TLS environment configuration is retained;
-no synthetic account, UAT server or demo data is injected. The selected version
+adapter). Nonsecret defaults come from `public-runtime.json`, with verified TLS
+using system-independent certifi roots plus the approved public API certificate
+in `trust/account-api.pem`. Public transport uses auth.clannad.win; canonical
+identity remains the existing localhost issuer. No issuer-migration mapping,
+synthetic account, UAT server or demo data is injected. The selected version
 continues its ordinary configured product flow.
 
 **Existing installed data/accounts remain in their original location.** These
@@ -41,7 +44,7 @@ databases. The home says so explicitly. Restoring prior data remains the existin
 product migration/sync owner's responsibility; this repair adds no migration.
 
 Source/build caches and diagnostic logs live under
-`E:/Codex/Temp/mentorflow-workbench-launch`. Actual startup is acknowledged only
+`D:/CodexScratch/MentorFlow/workbench-launch`. Actual startup is acknowledged only
 after the selected process reports a visible product window and its exact
 `desktop.main` path. A Windows venv redirector's child PID is distinguished from
 its parent launcher PID. Failure messages retain a log path. UI startup is not

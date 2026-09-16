@@ -138,7 +138,7 @@ def test_bound_original_package_button_uses_server_id_hash_and_account_fence(pag
     calls = []
     class Lifecycle:
         account_key = 'account-a'
-        def restore_resource_from_package(self, resource, package, *, fingerprint_sha256):
+        def restore_resource_from_package(self, resource, package, *, fingerprint_sha256, cancel=None):
             calls.append((resource, package, fingerprint_sha256))
     resource = projection['resources'][0]
     resource.update(fingerprint_sha256='a' * 64, verified_redownload=False)
@@ -147,6 +147,8 @@ def test_bound_original_package_button_uses_server_id_hash_and_account_fence(pag
     assert page.resource_buttons[resource['key']]['package'].isEnabled()
     monkeypatch.setattr(QFileDialog, 'getOpenFileName', lambda *a, **k: ('fixture.mentorflowpack', ''))
     page.resource_buttons[resource['key']]['package'].click()
+    page._download_job[0].result(timeout=5)
+    page._poll_model_download()
     assert calls == [(resource['key'], 'fixture.mentorflowpack', 'a' * 64)]
     assert not next(r for r in page.model.snapshot.resources if r.key == resource['key']).missing
     assert page.model.snapshot.plans[0].key == 'plan-a'
@@ -267,3 +269,31 @@ def test_bound_public_model_runs_background_and_publishes_current_generation(pag
         if page._download_job is None:break
     assert calls==[(resource['key'],'a'*64)]
     assert not page.model.snapshot.resources[0].missing
+
+
+def test_background_original_recovery_is_cancelled_and_fenced_on_switch(page, projection, monkeypatch):
+    from threading import Event, get_ident
+    from PySide6.QtWidgets import QFileDialog
+    started, release = Event(), Event()
+    ui_thread = get_ident()
+    class Lifecycle:
+        account_key = 'account-a'
+        def restore_resource_from_package(self, *args, cancel, **kwargs):
+            assert get_ident() != ui_thread
+            started.set()
+            release.wait(5)
+            assert cancel.is_set()
+    projection['resources'][0]['fingerprint_sha256']='a'*64
+    page.receive(begin(page), SyncState.SYNC_COMPLETE, projection)
+    page.bind_resource_recovery(Lifecycle())
+    monkeypatch.setattr(QFileDialog,'getOpenFileName',lambda *a,**k:('fixture.mentorflowpack',''))
+    page.resource_buttons['pdf-stable-private']['package'].click()
+    future = page._download_job[0]
+    assert started.wait(3)
+    page.authenticated('account-b')
+    release.set()
+    future.result(timeout=5)
+    page._poll_model_download()
+    assert page._resource_lifecycle is None
+    assert page.model.snapshot is None
+    assert page.model.account_key == 'account-b'

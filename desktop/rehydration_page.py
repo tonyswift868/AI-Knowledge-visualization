@@ -67,6 +67,9 @@ class RehydrationPage(QWidget):
         layout.addWidget(self.scroll, 1)
         self.portable_pack = PortablePackEntry()
         layout.addWidget(self.portable_pack)
+        self.model_cache_button = QPushButton('选择已有公共模型缓存（可选）')
+        self.model_cache_button.clicked.connect(self._select_model_cache)
+        layout.addWidget(self.model_cache_button)
         self.details_toggle = QToolButton()
         self.details_toggle.setText('技术详情')
         self.details_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -91,10 +94,30 @@ class RehydrationPage(QWidget):
 
     def _stop_downloads(self):
         if self._download_job: self._download_job[1].set()
+        self._download_job = None
+        self._resource_lifecycle = None
+        self._model_cache_root = None
         self._download_pool.shutdown(wait=False, cancel_futures=True)
+
+    def closeEvent(self, event):
+        self._stop_downloads()
+        super().closeEvent(event)
+
+    def _select_model_cache(self):
+        generation = self.model.generation
+        selected = QFileDialog.getExistingDirectory(self, '选择公共模型文件目录（逐文件校验，不修改来源）')
+        if selected and generation == self.model.generation and self._resource_lifecycle is not None:
+            try:
+                path = self._resource_lifecycle.validate_model_cache(selected)
+            except (OSError, ValueError):
+                self.model_cache_button.setText('缓存目录不可用，请重新选择')
+                return
+            self._model_cache_root = path
+            self.model_cache_button.setText('已选择公共缓存（仅复用大小和 SHA-256 匹配文件）')
 
     def authenticated(self, account_key):
         if self._download_job: self._download_job[1].set()
+        self._model_cache_root = None
         if self._resource_lifecycle is not None and self._resource_lifecycle.account_key != account_key:
             self._resource_lifecycle = None
         generation = self.model.authenticated(account_key)
@@ -139,7 +162,7 @@ class RehydrationPage(QWidget):
     def _poll_model_download(self):
         job = self._download_job
         if job is None: return
-        future, cancel, generation, key = job
+        future, cancel, generation, key, operation = job
         if not future.done():
             QTimer.singleShot(100, self._poll_model_download)
             return
@@ -149,7 +172,7 @@ class RehydrationPage(QWidget):
             future.result()
         except Exception:
             if key in self.resource_status:
-                self.resource_status[key].setText('下载已取消，可重试。' if cancel.is_set() else '下载或校验失败，请重试。')
+                self.resource_status[key].setText('操作已取消，可重试。' if cancel.is_set() else '恢复或校验失败，请重试。')
             return
         self.model.snapshot = replace(self.model.snapshot, resources=tuple(
             replace(item, missing=False) if item.key == key else item for item in self.model.snapshot.resources))
@@ -169,11 +192,15 @@ class RehydrationPage(QWidget):
             cancel = Event()
             future = self._download_pool.submit(lifecycle.install_public_model, resource.key,
                 fingerprint_sha256=resource.fingerprint_sha256, cancel=cancel, cache_root=self._model_cache_root)
-            self._download_job = (future, cancel, self.model.generation, resource.key)
+            self._download_job = (future, cancel, self.model.generation, resource.key, 'model')
             self.resource_status[resource.key].setText('正在下载并校验模型；再次点击可取消。')
             QTimer.singleShot(100, self._poll_model_download)
             return
         if action == 'package' and self._package_enabled(resource):
+            if self._download_job:
+                self._download_job[1].set()
+                self.resource_status[resource.key].setText('正在取消资源操作…')
+                return
             generation, account = self.model.generation, self.model.account_key
             lifecycle = self._resource_lifecycle
             selected, _ = QFileDialog.getOpenFileName(self, '选择当前账号的原资料包', '', 'MentorFlow 资料包 (*.mentorflowpack)')
@@ -182,16 +209,15 @@ class RehydrationPage(QWidget):
             if (not selected or generation != self.model.generation or account != self.model.account_key
                     or lifecycle is not self._resource_lifecycle or not self._package_enabled(resource)):
                 return
-            try:
-                lifecycle.restore_resource_from_package(resource.key, selected,
-                    fingerprint_sha256=resource.fingerprint_sha256)
-            except Exception as exc:
-                self.resource_status[resource.key].setText(getattr(exc, 'user_message', '资料恢复未完成，请检查恢复包。'))
+            if self._download_job:
+                self.resource_status[resource.key].setText('请先等待或取消正在进行的资源操作。')
                 return
-            snapshot = self.model.snapshot
-            self.model.snapshot = replace(snapshot, resources=tuple(
-                replace(item, missing=False) if item.key == resource.key else item for item in snapshot.resources))
-            self.render()
+            cancel = Event()
+            future = self._download_pool.submit(lifecycle.restore_resource_from_package,
+                resource.key, selected, fingerprint_sha256=resource.fingerprint_sha256, cancel=cancel)
+            self._download_job = (future, cancel, generation, resource.key, 'package')
+            self.resource_status[resource.key].setText('正在校验并恢复原件；再次点击可取消。')
+            QTimer.singleShot(100, self._poll_model_download)
             return
         if action == 'later':
             self.model.deferred.add(resource.key)
@@ -204,6 +230,7 @@ class RehydrationPage(QWidget):
 
     def render(self):
         model, snapshot = self.model, self.model.snapshot
+        self.model_cache_button.setEnabled(self._resource_lifecycle is not None)
         self.title.setText(model.headline)
         self.progress.setVisible(model.state in (SyncState.AUTH_SUCCESS, SyncState.SYNCING))
         self.retry.setVisible(model.state in (SyncState.SYNC_OFFLINE, SyncState.SYNC_FAILED) or

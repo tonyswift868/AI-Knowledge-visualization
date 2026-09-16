@@ -1515,6 +1515,7 @@ class MentorFlowApplication:
         page.setWindowTitle('MentorFlow · 学习空间恢复')
         page.resize(820, 780)
         page.authenticated(result.rehydration_session.context.account_id)
+        page.bind_resource_recovery(result.local_asset_lifecycle)
         generation = page.start_sync()
         present(page, generation, result.rehydration_result)
         page.workspace_requested.connect(lambda _: self._enter_rehydrated_workspace(page, result))

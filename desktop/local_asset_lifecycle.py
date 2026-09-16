@@ -637,6 +637,15 @@ class LocalAssetLifecycle:
         finally:
             temporary.unlink(missing_ok=True)
 
+    @staticmethod
+    def validate_model_cache(selected):
+        from backend.app.plain_file_copy import assert_no_reparse_ancestors
+        path = Path(selected).absolute()
+        assert_no_reparse_ancestors(path, Path(path.anchor))
+        if not path.is_dir():
+            raise ValueError('MODEL_CACHE_DIRECTORY_REQUIRED')
+        return path
+
     def install_public_model(self, resource_id, *, fingerprint_sha256, cancel=None, progress=None, cache_root=None):
         """Install the byte-pinned public model tree and bind its stable resource.
 
@@ -647,6 +656,8 @@ class LocalAssetLifecycle:
         material = catalog.material_for_hash(fingerprint_sha256)
         if material is None:
             raise LocalAssetLifecycleError('MODEL_SOURCE_UNTRUSTED', 'No trusted public model material')
+        if cache_root is not None:
+            cache_root = self.validate_model_cache(cache_root)
         self._vault._require_open()
         root = self._vault.root / 'models' / catalog.TRUSTED_MODEL_REVISION
         root.mkdir(parents=True, exist_ok=True)
@@ -685,7 +696,7 @@ class LocalAssetLifecycle:
             verified_source_url=catalog.material_url(material[0]), verified_cache=root / material[0])
 
     def restore_resource_from_package(
-        self, resource_id: str, package: Path | str, *, fingerprint_sha256: str,
+        self, resource_id: str, package: Path | str, *, fingerprint_sha256: str, cancel=None,
     ) -> LocalResourceBinding:
         """Restore a server-known resource into an already rehydrated device.
 
@@ -694,12 +705,18 @@ class LocalAssetLifecycle:
         Device A's local asset ID need not exist on device B.
         """
         self._vault._require_open()
+        def check_cancel():
+            if cancel is not None and cancel.is_set():
+                raise LocalAssetLifecycleError('RESTORE_CANCELLED', '恢复已取消，可重试。')
+            self._vault._require_open()
+        check_cancel()
         expected = _valid_sha(fingerprint_sha256)
         package_path = Path(package)
         if package_path.suffix.casefold() != '.mentorflowpack' or not _regular_file(package_path):
             raise LocalAssetLifecycleError('PACKAGE_UNAVAILABLE', '请选择可用的 .mentorflowpack 恢复包。')
         try:
             manifest, payloads, _ = _read_verified_archive(package_path)
+            check_cancel()
             if manifest.get('account_identity_fingerprint') != self._account_fingerprint:
                 raise LocalAssetLifecycleError('PACKAGE_ACCOUNT_MISMATCH', '恢复包不属于当前账号。')
             recovery = json.loads(payloads[RECOVERY_INDEX_MEMBER].decode('utf-8'))
@@ -725,6 +742,7 @@ class LocalAssetLifecycle:
             with tempfile.TemporaryDirectory(dir=self._vault.root / 'managed-assets' / 'staging') as folder:
                 source = Path(folder) / filename
                 source.write_bytes(raw)
+                check_cancel()
                 # This restores bytes for an existing server resource. Publishing
                 # the new device-local asset ID would duplicate cloud metadata.
                 asset = self._vault.import_managed(source, publish_metadata=False)

@@ -15,7 +15,7 @@ import zipfile
 from .targets import ROOT
 from backend.app.plain_file_copy import assert_no_reparse_ancestors
 
-CACHE = Path('E:/Codex/Temp/mentorflow-workbench-launch')
+CACHE = Path('D:/CodexScratch/MentorFlow/workbench-launch')
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 
@@ -171,10 +171,22 @@ class BranchLauncher:
         assert_no_reparse_ancestors(profile, Path(profile.anchor))
         profile.mkdir(parents=True, exist_ok=True)
         env = {k:v for k,v in os.environ.items() if not k.startswith(('MENTORFLOW_', 'PYTHON', 'QT'))}
+        # Public endpoints are normal-launch configuration, never a TEST lease.
+        import certifi
+        config_root = Path(__file__).parent
+        public = json.loads((config_root / 'public-runtime.json').read_text(encoding='utf-8'))
+        env.update(public)
+        trust = self.safe(self.cache / 'trust'); trust.mkdir(parents=True, exist_ok=True)
+        bundle = trust / 'account-api-ca.pem'
+        bundle.write_bytes(Path(certifi.where()).read_bytes() + b'\n' +
+                           (config_root / 'trust/account-api.pem').read_bytes())
+        env['SSL_CERT_FILE'] = str(bundle)
         for key in ('MENTORFLOW_DESKTOP_OIDC_ISSUER', 'MENTORFLOW_DESKTOP_OIDC_CLIENT_ID',
                     'MENTORFLOW_DESKTOP_OIDC_AUDIENCE', 'MENTORFLOW_ENTERPRISE_API_BASE_URL',
-                    'MENTORFLOW_DESKTOP_ORGANIZATION_ID', 'MENTORFLOW_DESKTOP_WORKSPACE_ID'):
+                    'MENTORFLOW_DESKTOP_ORGANIZATION_ID', 'MENTORFLOW_DESKTOP_WORKSPACE_ID',
+                    'MENTORFLOW_DESKTOP_IDENTITY_ISSUER'):
             if key in os.environ: env[key] = os.environ[key]
+        # Never inherit issuer cutover, synthetic auth or expired runtime flags.
         for name in ('temp', 'local', 'roaming', 'data', 'vault'):
             (profile / name).mkdir(exist_ok=True)
         env.update(PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1', TEMP=str(profile/'temp'), TMP=str(profile/'temp'),
