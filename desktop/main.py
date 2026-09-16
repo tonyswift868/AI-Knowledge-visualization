@@ -1762,6 +1762,7 @@ class MentorFlowApplication:
                 return_to_login_gate=self._return_to_login_gate,
 rehydration_session=self.bootstrap_result.rehydration_session,
                 admin_transport=self.bootstrap_result.rehydration_session,
+                password_changed=lambda profile=self.bootstrap_result.profile: self._login_session.forget_password(profile),
             )
         # Keep MentorFlow a normal desktop window.  In particular, it must
         # release focus and z-order when the user clicks another application.

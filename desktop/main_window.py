@@ -456,6 +456,7 @@ class MainWindow(QMainWindow):
         return_to_login_gate=None,
 rehydration_session=None,
         admin_transport=None,
+        password_changed=None,
     ):
         super().__init__()
         self.api = api
@@ -569,7 +570,7 @@ rehydration_session=None,
             ("创建计划", 6),
             ("模型连接", 8),
             (settings_label, 9),
-            ("账号与数据", 10),
+            ("账号与安全", 10),
             ("更多工具", 11),
         )
         if self.admin_enabled:
@@ -642,7 +643,8 @@ rehydration_session=None,
                 else None
             ),
             open_recovery_center=self._open_recovery_center_callback,
-            change_password=self._change_enterprise_password,
+            change_password=self._change_enterprise_password if self._rehydration_session is not None else None,
+            password_changed=password_changed,
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
@@ -702,6 +704,8 @@ rehydration_session=None,
             json={"current_password": current_password, "new_password": new_password},
         )
         response.raise_for_status()
+        if response.json().get('state') != 'PASSWORD_CHANGED':
+            raise RuntimeError('PASSWORD_CHANGE_NOT_CONFIRMED')
 
     def _begin_account_switch_at_login_gate(self) -> None:
         callback = self._return_to_login_gate_callback
@@ -727,7 +731,9 @@ rehydration_session=None,
         self.navigation.setCurrentRow(4)
 
     def _open_settings_section(self, section: str) -> None:
-        if section == "provider":
+        if section == "account_security":
+            self.navigation.setCurrentRow(self._navigation_page_indices.index(10))
+        elif section == "provider":
             self.navigation.setCurrentRow(5)
         elif section == "resources":
             self.navigation.setCurrentRow(2)

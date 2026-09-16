@@ -29,10 +29,13 @@ class KeycloakOverviewReader:
     PAGE_SIZE = 50
     MAX_USERS = 100_000
 
-    def __init__(self, admin, resolver=None):
+    def __init__(self, admin, resolver=None, *, lifecycle=None):
         self.admin, self.resolver = admin, resolver
+        self.lifecycle = lifecycle
 
     async def users(self):
+        if self.lifecycle is not None and not self.lifecycle.active:
+            raise ValueError('IDENTITY_READER_AUTHORITY_EXPIRED')
         result, seen = [], set()
         for first in range(0, self.MAX_USERS + 1, self.PAGE_SIZE):
             page, _ = await self.admin._call('GET', '/users', expected=200,
@@ -63,7 +66,8 @@ class KeycloakOverviewReader:
         raise ValueError('IDENTITY_PAGE_LIMIT')
 
     async def aclose(self):
-        await self.admin.aclose()
+        if self.lifecycle is None:
+            await self.admin.aclose()
         if self.resolver is not None:
             await self.resolver.aclose()
 
@@ -137,25 +141,43 @@ class AdminOverviewService:
                     'status': 'healthy' if self.registry.started else 'unavailable',
                     'code': 'RUNTIME_STARTED' if self.registry.started else 'RUNTIME_STARTING',
                 }
-            try:
+            async def observe_health():
                 # The SMTP probe performs several bounded TLS/AUTH round trips.
                 # Keep it inside the route's ten-second overall deadline without
                 # discarding a healthy relay solely at the former short budget.
-                health = await asyncio.wait_for(asyncio.to_thread(self._health), 7)
-                services.update(health)
-            except Exception:
-                pass
+                try:
+                    return await asyncio.wait_for(asyncio.to_thread(self._health), 7)
+                except Exception:
+                    return {}
+
+            async def observe_users():
+                if self.reader is None:
+                    return None
+                try:
+                    return await asyncio.wait_for(self.reader.users(), TIMEOUT_SECONDS)
+                except Exception:
+                    return None
+
+            # Independent observations share the route deadline, rather than
+            # accumulating SMTP + Admin API waits before the database read.
+            health, users = await asyncio.gather(observe_health(), observe_users())
+            services.update(health)
             subjects = None
+            statistics = {'status': 'unavailable', 'code': 'ADMIN_READER_NOT_CONFIGURED'}
             if self.reader is not None:
                 try:
-                    users = await asyncio.wait_for(self.reader.users(), TIMEOUT_SECONDS)
+                    if users is None:
+                        raise ValueError('ADMIN_READ_FAILED')
                     counters, subjects = aggregate(users, now)
                     payload.update(counters)
                     services['keycloak'] = {'status': 'healthy', 'code': 'ADMIN_READ_OK'}
+                    statistics = {'status': 'healthy', 'code': 'ADMIN_READ_OK'}
                 except Exception:
-                    services['keycloak'] = {'status': 'unavailable', 'code': 'ADMIN_READ_FAILED'}
-            else:
-                services['keycloak'] = {'status': 'unknown', 'code': 'ADMIN_READER_NOT_CONFIGURED'}
+                    statistics = {'status': 'unavailable', 'code': 'ADMIN_READ_FAILED'}
+                    if services['keycloak']['status'] != 'healthy':
+                        services['keycloak'] = statistics.copy()
+            # Missing/denied Admin API authority is a statistics failure; it
+            # must not erase a successfully observed discovery dependency.
             try:
                 counts = await asyncio.wait_for(asyncio.to_thread(self._backend_counts, subjects or set()), 2.5)
                 payload.update(counts)
@@ -168,7 +190,7 @@ class AdminOverviewService:
             payload.update(schema='mentorflow.admin-overview.v1', services=services,
                 data_status='current' if complete else 'unavailable',
                 refreshed_at=now.isoformat() if complete else None, observed_at=now.isoformat(),
-                timezone='UTC', refresh_seconds=10)
+                timezone='UTC', refresh_seconds=60, identity_statistics=statistics)
             return payload
 
     async def aclose(self):
@@ -176,8 +198,12 @@ class AdminOverviewService:
             await self.reader.aclose()
 
 
-def from_env(engine, identity_config, registry, env):
-    """Separate read-only authority; never depends on lifecycle enablement."""
+def from_env(engine, identity_config, registry, env, *, lifecycle=None):
+    """Prefer a dedicated reader; reuse an already approved admin connection.
+
+    The borrowed connection only issues GET /users and remains owned by identity
+    runtime. Dedicated reader configuration works without public lifecycle.
+    """
     reader = None
     path = env.get('MENTORFLOW_ADMIN_OVERVIEW_CONFIG')
     if path:
@@ -185,17 +211,30 @@ def from_env(engine, identity_config, registry, env):
         if not path.is_absolute() or path.is_symlink() or path.stat().st_size > 8192:
             raise ValueError('Invalid overview reader configuration')
         config = json.loads(path.read_text(encoding='utf-8'))
-        if set(config) != {'origin', 'realm', 'client_id', 'secret_file', 'ca_file'}:
+        required = {'origin', 'realm', 'client_id', 'secret_file', 'ca_file'}
+        optional = {'client_cert_file', 'client_key_file'}
+        if not required.issubset(config) or set(config) - required - optional:
             raise ValueError('Invalid overview reader configuration')
+        if bool(config.get('client_cert_file')) != bool(config.get('client_key_file')):
+            raise ValueError('Overview mTLS requires certificate and key references')
         expected = urlsplit(identity_config.keycloak._transport_authority)
         if (config['origin'].rstrip('/') + '/realms/' + config['realm'] !=
                 f'{expected.scheme}://{expected.netloc}{expected.path}'):
             raise ValueError('Overview reader must use the configured identity realm')
         context = ssl.create_default_context(cafile=config['ca_file'] or None)
+        if config.get('client_cert_file'):
+            context.load_cert_chain(config['client_cert_file'], config['client_key_file'])
         resolver = ServiceAccountTokenResolver(config['origin'], config['realm'],
             config['client_id'], config['secret_file'], verify=context)
         reader = KeycloakOverviewReader(KeycloakAccountAdmin(config['origin'], config['realm'],
             resolver, verify=context), resolver)
+    elif lifecycle is not None and lifecycle.active:
+        # Internal mTLS origin may differ, but never aggregate another realm.
+        realm_path = urlsplit(identity_config.keycloak._transport_authority).path.rstrip('/')
+        admin_path = urlsplit(lifecycle.admin.base).path.rstrip('/')
+        if not realm_path.startswith('/realms/') or admin_path != '/admin' + realm_path:
+            raise ValueError('Overview reader must use the configured identity realm')
+        reader = KeycloakOverviewReader(lifecycle.admin, lifecycle=lifecycle)
     return AdminOverviewService(engine, identity_config.keycloak.canonical_identity_issuer, reader, registry)
 
 

@@ -260,7 +260,8 @@ async def lifespan(_app):
     if identity_mode is TenantMode.ENTERPRISE_SERVER:
         _app.state.admin_overview_service = overview_from_env(
             orm_runtime.engine, _app.state.enterprise_identity_runtime.config,
-            health_registry, os.environ)
+            health_registry, os.environ,
+            lifecycle=_app.state.enterprise_identity_runtime.lifecycle)
     else:
         _app.state.admin_overview_service = None
     if identity_mode is TenantMode.PERSONAL_LOCAL:

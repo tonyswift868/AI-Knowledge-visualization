@@ -332,6 +332,10 @@ class SystemPage(QWidget):
         heading = QLabel("设置")
         heading.setObjectName("pageHeading")
         layout.addWidget(heading)
+        account_security = QPushButton('账号与安全 · 邮箱状态 / 修改密码')
+        account_security.setObjectName('openAccountSecurity')
+        account_security.clicked.connect(lambda: self._open_section('account_security'))
+        layout.addWidget(account_security)
         subtitle = QLabel(
             "软件会自动读取当前数据目录；没有数据时会初始化新的学习空间。"
         )

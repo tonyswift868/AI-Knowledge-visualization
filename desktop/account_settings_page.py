@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -72,6 +74,10 @@ class AccountSettingsPage(QWidget):
         begin_account_switch: Callable[[], None] | None = None,
         open_recovery_center: Callable[[], None] | None = None,
         change_password: Callable[[str, str], object] | None = None,
+        password_changed: Callable[[], None] | None = None,
+        read_account_security: Callable[[], Mapping] | None = None,
+        request_email_code: Callable[[str], object] | None = None,
+        verify_email_code: Callable[[str], object] | None = None,
     ) -> None:
         super().__init__()
         self.profile = profile
@@ -86,21 +92,33 @@ class AccountSettingsPage(QWidget):
         self.begin_account_switch = begin_account_switch
         self.open_recovery_center = open_recovery_center
         self.change_password = change_password
+        self.password_changed = password_changed
+        self.read_account_security = read_account_security
+        self.request_email_code = request_email_code
+        self.verify_email_code = verify_email_code
+        self._security_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='account-security')
+        self._security_future = None
+        self._security_operation = None
         self._synced_resource_count = 0
         self._resource_device_states: tuple[str, ...] | None = None
         self._oidc_thread: threading.Thread | None = None
         self._oidc_succeeded.connect(self._finish_oidc)
         self._oidc_failed.connect(self._oidc_failed_safely)
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(38, 32, 38, 32)
         layout.setSpacing(12)
-        heading = QLabel("账号与本机数据")
+        heading = QLabel("账号与安全")
         heading.setObjectName("pageHeading")
         layout.addWidget(heading)
         subtitle = QLabel(
-            "Enterprise Account 的原始资料只保存在当前账号的本机 Vault；"
-            "切换账号会关闭当前服务并重新启动 MentorFlow。"
+            "查看绑定邮箱、验证邮箱或修改密码。学习资料保留在当前账号中。"
         )
         subtitle.setWordWrap(True)
         subtitle.setObjectName("pageSubtitle")
@@ -130,14 +148,49 @@ class AccountSettingsPage(QWidget):
         security = QFrame(); security.setObjectName("settingsCard")
         security_layout = QVBoxLayout(security)
         security_layout.addWidget(QLabel("账号与安全"))
+        self.email_status = QLabel('邮箱状态尚未读取')
+        self.email_status.setObjectName('accountEmailStatus')
+        self.email_status.setWordWrap(True)
+        security_layout.addWidget(self.email_status)
+        self.email_address = QLineEdit()
+        self.email_address.setPlaceholderText('绑定邮箱')
+        security_layout.addWidget(self.email_address)
+        self.refresh_security_button = QPushButton('刷新邮箱状态')
+        self.refresh_security_button.clicked.connect(self.refresh_security)
+        security_layout.addWidget(self.refresh_security_button)
+        self.send_email_code_button = QPushButton('发送邮箱验证码')
+        self.send_email_code_button.clicked.connect(self._request_email_code)
+        security_layout.addWidget(self.send_email_code_button)
+        self.email_code = QLineEdit()
+        self.email_code.setPlaceholderText('输入邮件中的验证码')
+        self.email_code.setMaxLength(32)
+        security_layout.addWidget(self.email_code)
+        self.verify_email_button = QPushButton('验证邮箱')
+        self.verify_email_button.clicked.connect(self._verify_email_code)
+        security_layout.addWidget(self.verify_email_button)
+        self._email_verified = None
+        self._email_code_requested = False
+        self.password_toggle = QPushButton('修改密码…')
+        security_layout.addWidget(self.password_toggle)
+        self.password_form = QWidget()
+        password_layout = QVBoxLayout(self.password_form)
         self.current_password = QLineEdit(); self.current_password.setPlaceholderText("当前密码"); self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.new_password = QLineEdit(); self.new_password.setPlaceholderText("新密码（8–128 位）"); self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.confirm_password = QLineEdit(); self.confirm_password.setPlaceholderText("确认新密码"); self.confirm_password.setEchoMode(QLineEdit.EchoMode.Password)
-        for field in (self.current_password, self.new_password, self.confirm_password): security_layout.addWidget(field)
+        for field in (self.current_password, self.new_password, self.confirm_password):
+            field.setMaxLength(128 if field is not self.current_password else 1024)
+            password_layout.addWidget(field)
         self.change_password_button = QPushButton("修改密码")
         self.change_password_button.setEnabled(change_password is not None)
         self.change_password_button.clicked.connect(self._submit_change_password)
-        security_layout.addWidget(self.change_password_button)
+        password_layout.addWidget(self.change_password_button)
+        security_layout.addWidget(self.password_form)
+        self.password_form.hide()
+        self.password_toggle.clicked.connect(lambda: self.password_form.setVisible(self.password_form.isHidden()))
+        self.security_status = QLabel('邮箱状态服务暂不可用。' if read_account_security is None else '')
+        self.security_status.setWordWrap(True)
+        security_layout.addWidget(self.security_status)
+        self._security_buttons()
         layout.addWidget(security)
 
         actions = QHBoxLayout()
@@ -193,18 +246,101 @@ class AccountSettingsPage(QWidget):
     def _submit_change_password(self) -> None:
         if self.change_password is None: return
         current, new, confirm = self.current_password.text(), self.new_password.text(), self.confirm_password.text()
-        if len(new) < 8 or len(new) > 128 or new != confirm:
-            self.status.setText("请检查新密码长度，并确认两次输入一致。")
+        if not current or len(new) < 8 or len(new) > 128 or new != confirm:
+            self.security_status.setText("请输入当前密码，检查新密码长度，并确认两次输入一致。")
             return
-        self.change_password_button.setEnabled(False)
+        if self._security_future is not None:
+            return
+        self._start_security('password', lambda: self.change_password(current, new))
+        for field in (self.current_password, self.new_password, self.confirm_password): field.clear()
+
+    def _security_buttons(self):
+        idle = self._security_future is None
+        self.refresh_security_button.setEnabled(idle and self.read_account_security is not None)
+        self.change_password_button.setEnabled(idle and self.change_password is not None)
+        self.send_email_code_button.setEnabled(idle and self._email_verified is False and self.request_email_code is not None)
+        self.verify_email_button.setEnabled(idle and self._email_code_requested and self.verify_email_code is not None)
+
+    def refresh_security(self):
+        if self.read_account_security is not None:
+            self._start_security('read', self.read_account_security)
+
+    def _request_email_code(self):
+        if self.request_email_code is None or self._email_verified is not False: return
+        address = self.email_address.text().strip()
+        if not address:
+            self.security_status.setText('请输入要绑定的邮箱。')
+            return
+        self._email_code_requested = False
+        self._start_security('request', lambda: self.request_email_code(address))
+
+    def _verify_email_code(self):
+        if self.verify_email_code is None or not self._email_code_requested: return
+        code = self.email_code.text().strip()
+        if not code: return
+        self._start_security('verify', lambda: self.verify_email_code(code))
+        self.email_code.clear()
+
+    def _start_security(self, operation, action):
+        if self._security_future is not None: return
+        self._security_operation = operation
+        self._security_profile = self.profile
+        self._security_future = self._security_executor.submit(action)
+        self.security_status.setText('正在处理…')
+        self._security_buttons()
+        QTimer.singleShot(30, self._finish_security)
+
+    def _finish_security(self):
+        future = self._security_future
+        if future is None: return
+        if not future.done():
+            QTimer.singleShot(40, self._finish_security)
+            return
+        operation = self._security_operation
+        self._security_future = None
+        if self._security_profile != self.profile:
+            self._security_buttons()
+            return
         try:
-            self.change_password(current, new)
-            self.status.setText("密码已修改，请使用新密码登录。")
-            for field in (self.current_password, self.new_password, self.confirm_password): field.clear()
+            value = future.result()
+            if operation == 'read':
+                if not isinstance(value, Mapping) or type(value.get('email_verified')) is not bool or not isinstance(value.get('email'), str):
+                    raise ValueError('INVALID_ACCOUNT_SECURITY')
+                self._email_verified = value['email_verified']
+                address = value['email']
+                self.email_address.setText(address)
+                self.email_address.setReadOnly(bool(address))
+                self.email_status.setText(('绑定邮箱：' + address + (' · 已验证' if self._email_verified else ' · 未验证')) if address else '尚未绑定邮箱')
+                self.security_status.clear()
+            elif operation == 'password':
+                self.security_status.setText('密码已修改，请使用新密码登录。')
+                if self.password_changed is not None:
+                    try: self.password_changed()
+                    except Exception:
+                        self.security_status.setText('密码已修改，但本机保存的登录信息未能清理；请取消记住密码并使用新密码登录。')
+            elif operation == 'request':
+                self._email_code_requested = True
+                self.security_status.setText('验证码已发送，请在此页面输入。')
+            elif operation == 'verify':
+                self._email_code_requested = False
+                self.security_status.setText('验证已完成，正在刷新邮箱状态。')
+                self.refresh_security()
         except Exception:
-            self.status.setText("当前密码不正确或密码暂未修改，请稍后重试。")
+            if operation == 'read':
+                self._email_verified = None
+                self.email_address.clear()
+                self.email_status.setText('邮箱状态暂不可用')
+            self.security_status.setText('操作未能确认完成，请检查输入或稍后刷新；不会自动重试。')
         finally:
-            self.change_password_button.setEnabled(True)
+            self._security_buttons()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_security()
+
+    def closeEvent(self, event):
+        self._security_executor.shutdown(wait=False, cancel_futures=True)
+        super().closeEvent(event)
 
     @property
     def current_data_root(self) -> Path:
@@ -212,6 +348,12 @@ class AccountSettingsPage(QWidget):
 
     def set_profile(self, profile: AccountProfile) -> None:
         self.profile = profile
+        self._email_verified = None
+        self._email_code_requested = False
+        self.email_address.clear()
+        self.email_code.clear()
+        self.email_status.setText('邮箱状态尚未读取')
+        self._security_buttons()
         self._synced_resource_count = 0
         self._resource_device_states = None
         self.refresh()

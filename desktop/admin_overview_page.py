@@ -17,7 +17,7 @@ def admin_role_visible(user, transport) -> bool:
 
 
 class AdminOverviewPage(QWidget):
-    REFRESH_SECONDS = 10
+    REFRESH_SECONDS = 60
 
     def __init__(self, api):
         super().__init__()
@@ -63,7 +63,15 @@ class AdminOverviewPage(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(self.REFRESH_SECONDS * 1000)
         self.timer.timeout.connect(self.refresh)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.refresh()
         self.timer.start()
+
+    def hideEvent(self, event) -> None:
+        self.timer.stop()
+        super().hideEvent(event)
 
     def refresh(self) -> None:
         if self.future is not None and not self.future.done():
@@ -85,11 +93,16 @@ class AdminOverviewPage(QWidget):
                 if key.startswith("service_"):
                     name = key[8:]
                     service = payload.get("services", {}).get(name, {})
-                    self.labels[key].setText(f"{name}: {service.get('status', 'unknown')}")
+                    status = {'healthy': '正常', 'unavailable': '不可用', 'unknown': '尚未观测'}.get(service.get('status'), '尚未观测')
+                    self.labels[key].setText(f"{name}: {status}（{service.get('code', 'NOT_OBSERVED')}）")
                 elif key in payload:
-                    self.labels[key].setText(str(payload[key]))
-            self.last_success = str(payload.get("refreshed_at") or "")
-            self.status.setText(f"最后刷新：{self.last_success}")
+                    self.labels[key].setText('—' if payload[key] is None else str(payload[key]))
+            if payload.get('data_status') == 'current':
+                self.last_success = str(payload.get("refreshed_at") or "")
+                self.status.setText(f"最后刷新：{self.last_success}")
+            else:
+                code = payload.get('identity_statistics', {}).get('code', 'AGGREGATE_UNAVAILABLE')
+                self.status.setText(f"部分统计暂不可用（{code}）；观测时间：{payload.get('observed_at', '—')}")
         except Exception as exc:
             detail = exc.code if isinstance(exc, ApiError) else type(exc).__name__
             suffix = f"；最后成功：{self.last_success}" if self.last_success else ""
