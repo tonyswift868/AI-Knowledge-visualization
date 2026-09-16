@@ -93,7 +93,7 @@
         "reason": "AFTER FIX: NOT_RUN / NOT_DISPATCHED by this task. Prior deployment found valid staging 0036 missing in Batch02 source; source blocker now resolved. Deployment/compatible native desktop/SPI/mTLS/session topology and old identity continuity still require Gate A execution and acceptance. No Gate A PASS claim.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "GATE_B_ACCOUNT_SECURITY",
@@ -113,7 +113,7 @@
         "reason": "Production account/public-issuer/capability acceptance remains pending. Real SMTP progresses under its independent 04 task; this schema unblock does not run, poll or accept that work. Retain Batch02 native security evidence and separately record A 0036 ledger RLS validation; capabilities remain false.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "GATE_C_UPDATE_FINAL_CANDIDATE",
@@ -133,7 +133,7 @@
         "reason": "PLANNING ONLY / NOT_RUN: one explicitly authorized integrated signed installer/updater; exact 1.5.0 -> 1.5.1, incremental/latest or full/latest, UAC/apply/restart/health, canonical recovery and rollback with data/old-version launchability. Optional can continue; mandatory blocks login/main and requires current latest.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "FINAL_QA_USER_ACCEPTANCE",
@@ -156,7 +156,7 @@
         "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
@@ -176,7 +176,7 @@
         "reason": "Mandatory final milestone: business-to-code/tests, ADR rationale, exact source/tree/candidate hashes; source/offline/live/package/user evidence separately; remaining gaps and explicit acceptance.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "MAIN3_PROMOTION",
@@ -194,7 +194,7 @@
         "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "BATCH03_EXACT_INTEGRATION",
@@ -243,7 +243,7 @@
         "reason": "Stable account identity/signed subject mapping and durable root source/fixtures PASS; live issuer mapping NOT_APPROVED, existing live candidate still Temp. No real migration.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "SERVER_SYNC_REHYDRATION",
@@ -277,7 +277,7 @@
         "reason": "Current V1 excludes model binaries and is plain ZIP/new-or-empty-vault only. V2 QUICK/FULL, optional models, encrypted/account-bound integrity, additive resource reconnection and idempotent crash recovery remain required.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "DATA_CLASSIFICATION_RECOMMENDATION",
@@ -297,7 +297,7 @@
         "reason": "Provenance/content classification and recommendations before choices; only true ambiguity prompts. Private 84-workspace chooser is QA; preview shell lacks producer/product wiring.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "OLD_DATA_CONTINUITY",
@@ -320,7 +320,7 @@
         "reason": "Read-only evidence verified: data exists, no loss confirmed without complete baseline. Source preservation, account binding, stable IDs and two-device tests required. MIGRATION_EXECUTED=NO; real migration needs separate authorization.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "BATCH04_EXACT_INTEGRATION",
@@ -436,7 +436,7 @@
         "reason": "Dispatch28 new Frozen TEST artifact and UAT28 machine smoke ready; independent full Frozen GUI A/B and real email lifecycle remain pending. Tony exact-name is not a release blocker.",
         "user_action_required": null
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK"
     },
     {
       "task_id": "ACCOUNT_MVP_FROZEN_REBUILD_READY",
@@ -486,7 +486,7 @@
         "reason": "Approved inbox resolver not found; TLS/AUTH/NOOP is not email lifecycle. Real send count zero.",
         "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED"
       },
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "owner_action_after_reassessment": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED"
     },
     {
@@ -510,10 +510,10 @@
       "execution_authorized": false
     }
   ],
-  "authority": "PAUSED_FOR_REASSESSMENT",
-  "assignment_scope": "ALL_EXECUTION_PAUSED; WAIT_FOR_OWNER_REASSESSMENT; historical dependencies are not dispatch authority.",
+  "authority": "MF-R1-A-BASELINE",
+  "assignment_scope": "R1 scoped repairs only via coordinator; historical queue entries do not independently authorize work.",
   "current_stage": {
-    "CURRENT_PHASE": "PAUSED_FOR_REASSESSMENT",
+    "CURRENT_PHASE": "R1_BASELINE_READY",
     "REAL_A_B_REHYDRATION": "PASS_FROZEN_GUI_GATE1",
     "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current",
@@ -522,9 +522,9 @@
     "FULL_ACCOUNT_REHYDRATION": "PASS",
     "COMPLETED_BIG_GATES": "1",
     "REMAINING_BIG_GATES": "7",
-    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
-    "EXECUTION_AUTHORIZED": "NO",
-    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "PROJECT_STATUS": "R1_SCOPED_REPAIR_AUTHORIZED",
+    "EXECUTION_AUTHORIZED": "R1_SCOPE_ONLY",
+    "NEW_DISPATCH_ALLOWED": "R1_ONLY_BY_COORDINATOR",
     "BIG_GATE_2": "BLOCKED_EXTERNAL_AUTHORITY",
     "BIG_GATE_3": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
   },
@@ -576,6 +576,8 @@
     "receipt": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
     "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
     "EXECUTION_AUTHORIZED": "NO",
-    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED"
-  }
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "scope": "HISTORICAL; superseded only for MF-R1 scoped repairs by explicit user decision conveyed through coordinator. Other work remains unauthorized."
+  },
+  "r1_scope_authority": "docs/governance/ACTIVE_BOARD.json#r1_batch"
 }

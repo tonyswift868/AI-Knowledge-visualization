@@ -8,7 +8,7 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_CONTROL_BASE_AND_NINE_PATCHES_TREE_EQUIVALENT_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "PAUSED_FOR_REASSESSMENT",
+  "authority": "MF-R1-A-BASELINE",
   "workers": {
     "A": {
       "status": "SILENT",
@@ -17,9 +17,9 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "Pause state sealed; no execution or new dispatch until Owner reassessment approved.",
+      "summary_zh": "R1 baseline and local offices ready; no product work or integration in this task.",
       "active_dispatch": "NONE"
     },
     "01": {
@@ -29,7 +29,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11",
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "3bc6f02f25df73fa72f2a944e47a01c05b0bd2e8",
@@ -95,7 +95,17 @@
         "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
         "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
       },
-      "active_dispatch": "NONE"
+      "active_dispatch": "NONE",
+      "current_office": {
+        "slot": "01",
+        "path": "E:/Codex/Data/worktrees/8831/MentorFlow",
+        "branch": "worker/main3/01-account-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/01",
+        "old_head": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11"
+      },
+      "delivery_fields_scope": "HISTORICAL_ACCEPTED_DELIVERY; new R1 office has no delivery yet."
     },
     "02": {
       "status": "SILENT",
@@ -104,7 +114,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2",
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "e3cfc2ac7be3900dce81f36d2c180c806fc5dca8",
@@ -184,7 +194,17 @@
         ],
         "acceptance_state": "SOURCE_FIX_AND_A_MACHINE_SMOKE_PASS_FULL_GUI_UAT_PENDING"
       },
-      "active_dispatch": "NONE"
+      "active_dispatch": "NONE",
+      "current_office": {
+        "slot": "02",
+        "path": "E:/Codex/Data/worktrees/08ac/MentorFlow",
+        "branch": "worker/main3/02-workbench-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/02",
+        "old_head": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2"
+      },
+      "delivery_fields_scope": "HISTORICAL_ACCEPTED_DELIVERY; new R1 office has no delivery yet."
     },
     "03": {
       "status": "SILENT",
@@ -193,7 +213,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "c7943a9aaccbfdddcc045239858dd8c55b8bd401",
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "fae5292ce287a50ebce38f4fca2f79399e0eaea2",
@@ -230,7 +250,17 @@
         "integrated_commit": "8ef402b4a48e7f45c45e6909d7dbf3a1f8e1931f",
         "acceptance_state": "NATIVE_POSTGRES_HTTP_SCOPE; NOT_FROZEN_UAT"
       },
-      "active_dispatch": "NONE"
+      "active_dispatch": "NONE",
+      "current_office": {
+        "slot": "03",
+        "path": "E:/Codex/Data/worktrees/bb70/MentorFlow",
+        "branch": "worker/main3/03-login-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/03",
+        "old_head": "c7943a9aaccbfdddcc045239858dd8c55b8bd401"
+      },
+      "delivery_fields_scope": "HISTORICAL_ACCEPTED_DELIVERY; new R1 office has no delivery yet."
     },
     "04": {
       "status": "SILENT",
@@ -239,7 +269,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "71efae533de930d83c16517d096f5f6701291b01",
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "ef24a72682e7e06aa2725076aa84f49089645cfc",
@@ -302,7 +332,16 @@
         "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
       },
       "active_dispatch": "NONE",
-      "delivery_fields_scope": "HISTORICAL_INTEGRATED_DELIVERY; latest Gate3 delivery below remains unintegrated."
+      "delivery_fields_scope": "HISTORICAL_ACCEPTED_DELIVERY; new R1 office has no delivery yet.",
+      "current_office": {
+        "slot": "04",
+        "path": "E:/Codex/Data/worktrees/b18c/MentorFlow",
+        "branch": "worker/main3/04-data-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/04",
+        "old_head": "bf8c35999e2c6752a928cf375b9091d9c68bd363"
+      }
     },
     "B": {
       "status": "SILENT",
@@ -311,7 +350,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "next_action": "ON_DEMAND_ONLY",
       "worktree_isolation": "VERIFIED",
       "active_dispatch": "NONE"
     }
@@ -323,7 +362,7 @@
     "tree": "61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8"
   },
   "control_plane": {
-    "evidence": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
+    "evidence": "docs/governance/ACTIVE_BOARD.json#r1_batch",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -336,17 +375,17 @@
     ],
     "a_status_at_dispatch": "SILENT",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "NONE; WAIT_FOR_OWNER_REASSESSMENT",
+    "worker_dispatches": "R1_SCOPED_REPAIR; COORDINATOR_OWNS_DISPATCH",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
-    "user_action_required": "OWNER_ARCHITECTURE_REASSESSMENT",
-    "snapshot_scope": "PAUSE_SEAL; Gate1 retained; Gate2 external authority; Gate3 projection and owner blockers; gates4-8 frozen",
+    "user_action_required": "NONE_FOR_BASELINE",
+    "snapshot_scope": "R1 baseline; repair existing implementation only; prior acceptance scope retained",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
     "open_children": 0,
     "active_children": 0,
-    "pool_state": "PAUSED"
+    "pool_state": "R1_SCOPED"
   },
   "batch02_receipt": "docs/governance/receipts/20260913-main3-batch02-integration.json",
   "acceptance_boundaries": {
@@ -449,7 +488,7 @@
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json",
   "chatgpt_read_branch": "control/main3-current",
   "current_stage": {
-    "CURRENT_PHASE": "PAUSED_FOR_REASSESSMENT",
+    "CURRENT_PHASE": "R1_BASELINE_READY",
     "REAL_A_B_REHYDRATION": "PASS_FROZEN_GUI_GATE1",
     "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current",
@@ -458,9 +497,9 @@
     "FULL_ACCOUNT_REHYDRATION": "PASS",
     "COMPLETED_BIG_GATES": "1",
     "REMAINING_BIG_GATES": "7",
-    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
-    "EXECUTION_AUTHORIZED": "NO",
-    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "PROJECT_STATUS": "R1_SCOPED_REPAIR_AUTHORIZED",
+    "EXECUTION_AUTHORIZED": "R1_SCOPE_ONLY",
+    "NEW_DISPATCH_ALLOWED": "R1_ONLY_BY_COORDINATOR",
     "BIG_GATE_2": "BLOCKED_EXTERNAL_AUTHORITY",
     "BIG_GATE_3": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
   },
@@ -625,7 +664,8 @@
     "receipt": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
     "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
     "EXECUTION_AUTHORIZED": "NO",
-    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED"
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "scope": "HISTORICAL; superseded only for MF-R1 scoped repairs by explicit user decision conveyed through coordinator. Other work remains unauthorized."
   },
   "latest_gate3_worker_delivery": {
     "commit": "bf8c35999e2c6752a928cf375b9091d9c68bd363",
@@ -717,5 +757,85 @@
     "ordinary_release_forgot_password_capability": false,
     "account_mvp_user_acceptance": "PENDING",
     "extra_mtls_negative_recheck": "NOT_RUN_AUTO_APPROVAL_REJECTED; retained prior boundary evidence only"
+  },
+  "r1_batch": {
+    "authority": "MF-R1-A-BASELINE",
+    "coordinator_task": "01a0ab4c-8a4a-7610-ac35-7b106b1420d8",
+    "base": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+    "scope": "Repair defects in existing implementations; reuse working code/configuration/acceptance evidence. No account/sync/Workbench rebuild from zero; no additional workflow or gate.",
+    "daily_integration_branch": "control/main3-current",
+    "stage_branch": "integration/main3",
+    "promotion": "Only after stage completion and coordinator assessment/user decision; default remains formal main2.",
+    "shared_boundary": "desktop/main.py owned by 03 for wiring. 01 supplies server/account interface, never edits that shared entry. A owns cross-domain integration.",
+    "account_authority": "User authorized tonyswift SUPER_ADMIN and own-data migration; execution belongs to separately scoped 01/04 tasks, not A baseline.",
+    "confirmed_email": "2153346834@qq.com",
+    "secret_boundary": "Initial account credential must not enter documents, dispatches, code or logs; 03/04 must not receive it.",
+    "offices": [
+      {
+        "slot": "01",
+        "path": "E:/Codex/Data/worktrees/8831/MentorFlow",
+        "branch": "worker/main3/01-account-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/01",
+        "old_head": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11"
+      },
+      {
+        "slot": "02",
+        "path": "E:/Codex/Data/worktrees/08ac/MentorFlow",
+        "branch": "worker/main3/02-workbench-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/02",
+        "old_head": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2"
+      },
+      {
+        "slot": "03",
+        "path": "E:/Codex/Data/worktrees/bb70/MentorFlow",
+        "branch": "worker/main3/03-login-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/03",
+        "old_head": "c7943a9aaccbfdddcc045239858dd8c55b8bd401"
+      },
+      {
+        "slot": "04",
+        "path": "E:/Codex/Data/worktrees/b18c/MentorFlow",
+        "branch": "worker/main3/04-data-r1",
+        "head": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+        "clean": true,
+        "old_branch": "worker/main3/04",
+        "old_head": "bf8c35999e2c6752a928cf375b9091d9c68bd363"
+      }
+    ],
+    "responsibilities": {
+      "01": {
+        "scope": "Server identity/account lifecycle",
+        "depends_on": [],
+        "provides": "Native session/lifecycle interface and safe runtime references for 03"
+      },
+      "02": {
+        "scope": "tools/dev_workbench and launchers",
+        "depends_on": [],
+        "provides": "Existing Workbench repair and exact launch evidence"
+      },
+      "03": {
+        "scope": "Desktop login/local credentials; exclusive desktop/main.py wiring",
+        "depends_on": [
+          "01 interface"
+        ],
+        "provides": "Existing native login wiring/credential repair"
+      },
+      "04": {
+        "scope": "Data sync/original-file migration",
+        "depends_on": [
+          "01 canonical identity binding"
+        ],
+        "provides": "Bounded user-owned data handling; keep original files/isolation; no credential access"
+      }
+    },
+    "A_scope": "Baseline/shared contracts only now; wait for explicit later integration task; no push in this task.",
+    "old_04_delivery": "bf8c35999e2c6752a928cf375b9091d9c68bd363 retained on worker/main3/04; not integrated",
+    "execution_evidence": "Office provisioning snapshot only; does not assert other visible tasks are running or completed."
   }
 }

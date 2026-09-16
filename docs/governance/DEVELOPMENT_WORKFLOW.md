@@ -5,6 +5,18 @@ Authority: `MF-MAIN3-A-REPOSITORY-KNOWLEDGE-BOOTSTRAP-20260912-01`，2026-09-12�
 后续 Batch 授权及结果以 CURRENT_STATE / exact receipts 为准。
 治理规则与实际 ref/worktree 状态分离；后者不得由旧会话或历史报告推断。
 
+## Current R1 user decision (MF-R1-A-BASELINE)
+
+User authorization conveyed by coordinator task `01a0ab4c-8a4a-7610-ac35-7b106b1420d8` supersedes the pause only for this batch.
+Repair existing defects; reuse working code, configuration and accepted evidence. Do not rebuild account/sync/Workbench from scratch or add workflows/gates.
+`control/main3-current` is the daily development/integration branch. Advance `integration/main3` only after stage completion and coordinator assessment/user decision. Default `main2` remains the formal version.
+The single current task table is [ACTIVE_BOARD.r1_batch](ACTIVE_BOARD.json); existing queue history is not new dispatch authority.
+01 owns server identity/account lifecycle and supplies interfaces; 03 owns Desktop login/local credentials and exclusively wires `desktop/main.py`. 01 must not edit that shared entry.
+02 owns `tools/dev_workbench` and launchers. 04 owns data sync/original-file migration, dependent on proven canonical identity from 01. A owns cross-domain integration.
+A has a one-shot exception to provision four clean R1 local branches from exact control `0536acb33a3a6694f71aa0dcd7074060b28e7f98`; original worker branches/history remain. No worker push or baseline-task deployment/account/email execution.
+User approved `tonyswift` SUPER_ADMIN and own-data migration; mailbox `2153346834@qq.com` confirmed. Initial credential never enters docs/dispatch/code/logs and is unavailable to 03/04. This baseline records authority only; scoped product execution belongs to the designated tasks.
+A commits baseline documentation locally, without push; later integration requires an explicit task. Historical role/ref wording below is subordinate to this scoped decision.
+
 ## Roles and refs
 
 | Authority | 边界 |

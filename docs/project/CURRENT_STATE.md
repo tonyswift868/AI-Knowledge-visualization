@@ -8,9 +8,9 @@ MAIN2_CANONICAL_SHA = 04faf2a9fbb50c5f9403dad5abf46354c9b53d82
 MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
 SOURCE_BASELINE = CONTROL_CONVERGENCE_SOURCE
 PRODUCT_ACCEPTANCE = PENDING
-PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
-EXECUTION_AUTHORIZED = NO
-NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+PROJECT_STATUS = R1_SCOPED_REPAIR_AUTHORIZED
+EXECUTION_AUTHORIZED = R1_SCOPE_ONLY
+NEW_DISPATCH_ALLOWED = R1_ONLY_BY_COORDINATOR
 BIG_GATE_2 = BLOCKED_EXTERNAL_AUTHORITY
 BIG_GATE_3 = BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING
 EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE
@@ -50,32 +50,32 @@ REAL_A_B_REHYDRATION = PASS_FROZEN_GUI_GATE1
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = PAUSED_FOR_REASSESSMENT
+CURRENT_PHASE = R1_BASELINE_READY
 BIG_GATE_1 = PASS
 FULL_FROZEN_GUI_AB = PASS
 COMPLETED_BIG_GATES = 1
 REMAINING_BIG_GATES = 7
 ```
-main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
+main2 保持正式默认版本；control/main3-current 为日常开发集成；阶段完成经协调者评估/用户决定后才推进 integration/main3。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`PAUSED_FOR_REASSESSMENT`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`MF-R1-A-BASELINE`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
 PROFILE_SETTINGS_EVIDENCE = PASS_GATE1_BOUNDED_GUI_SCOPE
 LEARNING_RUN_HISTORY = PASS_GATE1_BOUNDED_STRUCTURED_SCOPE
 PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = PASS
-## 暂停封存（dispatch38；唯一当前执行状态）
-封存输入 control `9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b`；Gate1集成authority `63731b6e062ff02264d1a08441a9d7c5d79bce0d`。
-Gate3 exact worker04 tree `8f2074633ec16d199d7ae0c1d81f31be99537b17`；仅证据读取，工具/源码未集成。
-56条超限：calendar=17、replan_history=35、plan_activation=4；55条悬空归属引用全部quarantine。
-禁止truncate、silent drop或未经架构评审直接提高限制；username/display-name/email文本不是canonical ownership authority。
-4项native PostgreSQL synthetic controls PASS不等于主旧数据import/RLS；真实迁移NOT_RUN。
-A/01/02/03/04/B全部SILENT；ACTIVE_DISPATCH=NONE；NEXT_ACTION=WAIT_FOR_OWNER_REASSESSMENT。
-[暂停与十项评审问题](REASSESSMENT_PAUSE_20260916.md)规定KEEP/ADAPT/REPLACE + WHY；参考项目不授权引依赖/重构。
-既有[连续性合同](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)仍保留，评审决定未经Owner批准不得改写。
-C runtime / D scratch / E durable；普通worker禁止改CODEX_HOME、CODEX_SQLITE_HOME或global SQLite/WAL/SHM；异常只报告。
-[机器回执](../governance/receipts/20260916-main3-pause-reassessment-seal.json)。以下历史与未来路线均不授权执行。
+## 当前 R1 有界恢复（MF-R1-A-BASELINE）
+用户经协调者明确恢复本批：只修已有实现的问题，复用可用代码、配置和验收证据；不重做账号/同步/工作台，不新加流程或门禁。
+协调者 task `01a0ab4c-8a4a-7610-ac35-7b106b1420d8`；exact start `0536acb33a3a6694f71aa0dcd7074060b28e7f98`。
+[现有board的r1_batch](../governance/ACTIVE_BOARD.json)是唯一当前任务表；职责/依赖/新办公室/旧分支保留均记于其中。
+01服务端身份与账号生命周期；02 Workbench/启动器；03 Desktop登录/本机凭据；04数据同步/原件迁移；A跨域集成。
+`desktop/main.py`仅03接线，01提供接口不得直接改；03/04不得取得初始账号密码，秘密不进文档/dispatch/代码/日志。
+用户已授权tonyswift超管及本人数据迁移，邮箱2153346834@qq.com已确认；A本轮仅基线，不部署/建账号/发信/迁移。
+[暂停封存](REASSESSMENT_PAUSE_20260916.md)保留历史，仅本批范围解除；不重启旧dispatch或全仓架构重评。
+Gate1原证据不重跑；04旧Gate3 exact `bf8c35999e2c6752a928cf375b9091d9c68bd363`仍未集成，56条超限/55条quarantine/owner UNPROVEN不改写为PASS。
+禁止truncate、silent drop及未经评审提高projection限制；username/display-name/email文本不是canonical ownership authority。
+C runtime / D scratch / E durable；不得改全局Codex存储；本轮暂不push，protected refs/default不动。
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
 原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。
@@ -92,8 +92,8 @@ COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。唯
 6. VPS exact Main3 deployment/live activation — NOT_RUN / FROZEN。
 7. Final signed installer/updater acceptance — PENDING / FROZEN。
 8. Final QA + acceptance bundle + Main3 promotion — PENDING / FROZEN。
-Gate2只记录：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
-本轮不研究邮箱、不发信、不进入Gate2；integration/main3、main1/main2和CURRENT不动。dispatch32存储违规是保留历史，未改写成PASS。
+Gate2保留历史：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
+历史Gate2–8状态不冒充当前执行授权；本批范围以r1_batch为准。dispatch32存储违规保持原回执。
 ## Frozen V3 — historical real A/B stop before A product write
 历史 V3 build base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。 新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
 FROZEN_NATIVE_LOGIN=PASS；手工与实际 Workbench A 按钮 → native login/workspace/auth-me/snapshot 均 200；同 EXE 错密码、未知账号、bad CA 拒绝。

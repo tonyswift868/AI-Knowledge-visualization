@@ -1,6 +1,6 @@
 # MentorFlow Main3 — paused for architecture reassessment
 
-Status: `PAUSED_FOR_REASSESSMENT`
+Historical seal: `PAUSED_FOR_REASSESSMENT`. MF-R1 explicit user authorization resumes only existing-implementation repairs; see [current state](CURRENT_STATE.md) and [board r1_batch](../governance/ACTIVE_BOARD.json). This retained seal does not override that bounded authorization. No other scope resumes.
 
 Date: 2026-09-16
 

@@ -6,7 +6,7 @@ UPDATED_AT = 2026-09-16
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38; Gate1 prior evidence retained with its original scope.
+Authority: MF-R1-A-BASELINE. Explicit user decision resumes scoped repairs only; reuse existing code/config/evidence, no new workflow/gate. Current scope/owners: [board r1_batch](docs/governance/ACTIVE_BOARD.json); [workflow](docs/governance/DEVELOPMENT_WORKFLOW.md). Daily integration is control/main3-current; integration/main3 only after stage review/user decision; default main2 unchanged.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -15,11 +15,11 @@ Authority: MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38; Gate1 prior evidence retaine
 旧的“本地单用户、禁止账号/登录/JWT/多租户/云账户/云同步”规则已被 Main3 明确取代。
 不得再据此否定现有 Keycloak、PostgreSQL、租户隔离和 cloud sync 实现。
 
-## 当前暂停封存（dispatch38）
+## 当前 R1 范围与保留的暂停证据
 ```text
-PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
-EXECUTION_AUTHORIZED = NO
-NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+PROJECT_STATUS = R1_SCOPED_REPAIR_AUTHORIZED
+EXECUTION_AUTHORIZED = R1_SCOPE_ONLY
+NEW_DISPATCH_ALLOWED = R1_ONLY_BY_COORDINATOR
 BIG_GATE_2 = BLOCKED_EXTERNAL_AUTHORITY
 BIG_GATE_3 = BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING
 EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE
@@ -45,11 +45,11 @@ Gate3 exact worker04 tree `8f2074633ec16d199d7ae0c1d81f31be99537b17`；仅证据
 56条超限：calendar=17、replan_history=35、plan_activation=4；55条悬空归属引用全部quarantine。
 禁止truncate、silent drop或未经架构评审直接提高限制；username/display-name/email文本不是canonical ownership authority。
 4项native PostgreSQL synthetic controls PASS不等于主旧数据import/RLS；真实迁移NOT_RUN。
-A/01/02/03/04/B全部SILENT；ACTIVE_DISPATCH=NONE；NEXT_ACTION=WAIT_FOR_OWNER_REASSESSMENT。
+办公室已准备，运行状态不由此推断；后续仅协调者明确R1任务可执行。账号邮箱2153346834@qq.com已确认。
 [暂停与十项评审问题](docs/project/REASSESSMENT_PAUSE_20260916.md)规定KEEP/ADAPT/REPLACE + WHY；参考项目不授权引依赖/重构。
 既有[连续性合同](docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)仍保留，评审决定未经Owner批准不得改写。
 C runtime / D scratch / E durable；普通worker禁止改CODEX_HOME、CODEX_SQLITE_HOME或global SQLite/WAL/SHM；异常只报告。
-[机器回执](docs/governance/receipts/20260916-main3-pause-reassessment-seal.json)。以下历史与未来路线均不授权执行。
+[机器回执](docs/governance/receipts/20260916-main3-pause-reassessment-seal.json)。以下历史不派工；本批授权以现有board的r1_batch为准。
 
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
@@ -259,4 +259,4 @@ Dispatch 26 historical action list superseded by dispatch 28: only QQ_TEST_MAILB
 Do not recreate a ChatGPT review branch, reconsume old deliveries, run additional unrequested builds, modify Workbench CURRENT,
 reset credentials, send real email, migrate user data, cut over issuer, or promote integration/main3/main2.
 Do not turn old Frozen failure into the current source blocker or source transport PASS into product acceptance.
-STOP. Any development or new dispatch requires completed architecture reassessment and explicit Owner reauthorization; previous task suggestions below historical headings are not executable.
+MF-R1 explicit user reauthorization covers existing-implementation repairs only; no whole-repository reassessment or old dispatch replay. A baseline finishes here and awaits explicit integration instructions.
