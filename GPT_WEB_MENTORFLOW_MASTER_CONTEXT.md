@@ -1,12 +1,12 @@
 AUTHORITATIVE_FOR = MAIN3_CURRENT
 CHATGPT_READ_BRANCH = control/main3-current
-LAST_VERIFIED_SHA = 20e976c7878401123ca2b20f63b2cf70a73e5f3e
-LAST_VERIFIED_TREE = bf0e13143177a3ec9e9b602f4bd65635961bc241
+LAST_VERIFIED_SHA = 64eb3043194bb9e4b8c5425204fba5cf2f4244a2
+LAST_VERIFIED_TREE = 8de8fdf2bf980497cccdf2967b4b6a2945411ca3
 UPDATED_AT = 2026-09-16
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-MAIN3-A-WORKER-CONVERGENCE-FROZEN-CANDIDATE-20260916-28; prior dispatch evidence retained with its original scope.
+Authority: MF-MAIN3-A-P0-SOURCE-INTEGRATION-FROZEN-REBUILD-20260916-32 / F1; prior dispatch evidence retained with its original scope.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -14,6 +14,22 @@ Authority: MF-MAIN3-A-WORKER-CONVERGENCE-FROZEN-CANDIDATE-20260916-28; prior dis
 
 旧的“本地单用户、禁止账号/登录/JWT/多租户/云账户/云同步”规则已被 Main3 明确取代。
 不得再据此否定现有 Keycloak、PostgreSQL、租户隔离和 cloud sync 实现。
+
+## 当前 control 收口（2026-09-16 dispatch32 / F1）
+唯一 review 分支 `control/main3-current`；P0 checkpoint、final、GUI blocker 与04 evidence 四份 exact delta 已消费。
+P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE：77入口 / 67 WIRED / 10 LOCAL_ONLY / 0缺口；账户设置10、设备设置28。
+source 4868 PASS / 0 FAIL / 66 SKIP；skip范围及复用/补测边界见[回执](docs/governance/receipts/20260916-p0-integration-frozen-f1.json)。
+Native PostgreSQL A/B25、Desktop26、真实强杀INTERRUPTED/no replay通过；完整Frozen GUI A/B仍PENDING。
+F1只授权本dispatch A的D scratch；拒绝任意D、兄弟worker、穿越和reparse；账户/workspace/删除边界保留，正式E durable语义不变。
+新TEST候选 `MF-A-FROZEN-32-64eb3043` 位于D；source `64eb3043194bb9e4b8c5425204fba5cf2f4244a2`，exact hash与A机器smoke见回执。旧Frozen28 superseded；CURRENT未更新。
+新隔离 `MF-A-UAT-32-5df7f994` 至 `2026-09-16T07:56:40.733674+00:00`；PG0040、Keycloak/JWKS、Backend、RLS、SMTP无发送readiness通过。
+整体 STATUS=BLOCKED_STORAGE_POLICY_VIOLATION：旧签名测试在E写入六个临时fixture目录，均已清理；不能改写成全轮PASS。
+EMAIL_LIFECYCLE仍缺QQ批准读取reference；Tony exact-name不是release blocker；旧530/88/330未迁移。
+ownerless 1workspace/5plans/797tasks及55 dangling refs只做admission quarantine，不合并、不修改历史数据。
+PRODUCT_ACCEPTANCE=PENDING；FULL_ACCOUNT_REHYDRATION=NOT_YET_COMPLETE；Owner另行授权02完整GUI A/B。
+integration/main3、main1/main2、tags不动；不部署VPS、不发真实邮件、不启动下一任务。
+
+以下 dispatch28 及更早段落为 retained history，不是当前candidate/runtime authority。
 
 ## Current source, boundaries and evidence
 

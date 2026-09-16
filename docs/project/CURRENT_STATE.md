@@ -7,12 +7,12 @@ BASELINE_BRANCH = main2
 MAIN2_CANONICAL_SHA = 04faf2a9fbb50c5f9403dad5abf46354c9b53d82
 MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
 SOURCE_BASELINE = CONTROL_CONVERGENCE_SOURCE
-PRODUCT_ACCEPTANCE = PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT
+PRODUCT_ACCEPTANCE = PENDING
 INTEGRATION_BRANCH = integration/main3
 INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-KNOWLEDGE_COMMIT = 20e976c7878401123ca2b20f63b2cf70a73e5f3e
-KNOWLEDGE_TREE = bf0e13143177a3ec9e9b602f4bd65635961bc241
+KNOWLEDGE_COMMIT = 64eb3043194bb9e4b8c5425204fba5cf2f4244a2
+KNOWLEDGE_TREE = 8de8fdf2bf980497cccdf2967b4b6a2945411ca3
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
 ALEMBIC_HEAD = 0040_admin_overview_aggregate
@@ -24,36 +24,36 @@ BATCH04_SOURCE = INTEGRATED
 FULL_SERVER_SYNC = PARTIAL
 PRODUCER_UX_WIRING = PASS
 TEST_TARGET_STATUS = NO_NEW_USER_TEST_PUBLICATION
-FROZEN_CANDIDATE = DISPATCH28_MACHINE_SMOKE_PASS_GUI_UAT_PENDING
-REAL_A_B_REHYDRATION = PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN
+FROZEN_CANDIDATE = DISPATCH32_MACHINE_SMOKE_PASS_GUI_AB_PENDING
+REAL_A_B_REHYDRATION = PASS_NATIVE_POSTGRES_HTTP_SCOPE; FULL_FROZEN_GUI_AB_PENDING
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING
+CURRENT_PHASE = P0_SOURCE_CLOSED; F1_QUALIFIED; STORAGE_VIOLATION_RECORDED; GUI_AB_PENDING
 ```
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`CONTROL_CONVERGENCE_CODE_INTEGRATION`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`P0_SOURCE_CONVERGENCE_F1_STORAGE_NONPASS_RECORDED`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
-PROFILE_SETTINGS_EVIDENCE = LOCAL_FIXTURE_PARTIAL_CORRECTNESS_REVIEW_REQUIRED
+PROFILE_SETTINGS_EVIDENCE = P0_SOURCE_PRODUCT_WRITE_SYNC_QUALIFIED; FULL_GUI_ACCEPTANCE_PENDING
 LEARNING_RUN_HISTORY = PARTIAL
-PLAN_TASK = REAL_STORE_AND_VERSIONED_WRITE_ENTRY_REVIEW_REQUIRED
+PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = NOT_YET_COMPLETE
 
-## 当前 control 收口（2026-09-16 dispatch 28）
-唯一 Web 入口 `control/main3-current`；四份 exact worker patch 已消费，integration/main3、main2 未推进。
-唯一产品修改为02 long-path fix；原20测试、路径/资料22测试通过；source suite 596 PASS / 0 FAIL / 4 Windows symlink skips。
-Native PostgreSQL A/B 25、Desktop transport 26 PASS；仍非完整 Frozen GUI A/B。
-新 Frozen exact source/build/hash 见[收口回执](../governance/receipts/20260916-worker-convergence-frozen-candidate.json)。
-A 机器 smoke：EXE、原生 synthetic 登录、账户 Backend、workspace、资料页面 PASS；02完整 GUI UAT 待执行。
-UAT28已新建，租约北京时间09-16 04:11:36到期；UAT26已不可用，不作为当前服务。
-唯一 Owner 输入是 QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED；邮件 lifecycle 仍 BLOCKED。
-Tony exact-name 为 post-acceptance bootstrap，非 release blocker；Cloudflare证书监控为非阻塞OPS。
-04保留恢复/0035→0040 rehearsal PASS：530 workspaces / 88 plans / 330 resources，不是真实迁移。
-不改CURRENT、不迁移、不部署、不推进integration；下一轮02完整GUI验收另行派发，本轮STOP。
-[主上下文](../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md)记录新artifact、UAT28和后续release门禁。
-以下为历史证据，不代表当前 artifact、服务可用或当前唯一 blocker。
+## 当前 control 收口（2026-09-16 dispatch32 / F1）
+唯一 review 分支 `control/main3-current`；P0 checkpoint、final、GUI blocker 与04 evidence 四份 exact delta 已消费。
+P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE：77入口 / 67 WIRED / 10 LOCAL_ONLY / 0缺口；账户设置10、设备设置28。
+source 4868 PASS / 0 FAIL / 66 SKIP；skip范围及复用/补测边界见[回执](../governance/receipts/20260916-p0-integration-frozen-f1.json)。
+Native PostgreSQL A/B25、Desktop26、真实强杀INTERRUPTED/no replay通过；完整Frozen GUI A/B仍PENDING。
+F1只授权本dispatch A的D scratch；拒绝任意D、兄弟worker、穿越和reparse；账户/workspace/删除边界保留，正式E durable语义不变。
+新TEST候选 `MF-A-FROZEN-32-64eb3043` 位于D；source `64eb3043194bb9e4b8c5425204fba5cf2f4244a2`，exact hash与A机器smoke见回执。旧Frozen28 superseded；CURRENT未更新。
+新隔离 `MF-A-UAT-32-5df7f994` 至 `2026-09-16T07:56:40.733674+00:00`；PG0040、Keycloak/JWKS、Backend、RLS、SMTP无发送readiness通过。
+整体 STATUS=BLOCKED_STORAGE_POLICY_VIOLATION：旧签名测试在E写入六个临时fixture目录，均已清理；不能改写成全轮PASS。
+EMAIL_LIFECYCLE仍缺QQ批准读取reference；Tony exact-name不是release blocker；旧530/88/330未迁移。
+ownerless 1workspace/5plans/797tasks及55 dangling refs只做admission quarantine，不合并、不修改历史数据。
+PRODUCT_ACCEPTANCE=PENDING；FULL_ACCOUNT_REHYDRATION=NOT_YET_COMPLETE；Owner另行授权02完整GUI A/B。
+integration/main3、main1/main2、tags不动；不部署VPS、不发真实邮件、不启动下一任务。
 
 ## Frozen V3 — historical real A/B stop before A product write
 

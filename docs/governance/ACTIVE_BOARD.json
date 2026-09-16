@@ -8,18 +8,18 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_CONTROL_BASE_AND_FOUR_PARENT_PATCHES_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "WORKER_CONVERGENCE_FROZEN_TEST_CANDIDATE",
+  "authority": "P0_SOURCE_CONVERGENCE_F1_STORAGE_NONPASS_RECORDED",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "MAIN3_WORKER_DELIVERIES_CONVERGENCE_AND_NEW_FROZEN_CANDIDATE_V1",
+      "task_id": "INTEGRATE_P0_PRODUCT_SYNC_CLOSURE_AND_BUILD_EXACT_FROZEN_V2",
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "STOP; no Worker02 full GUI acceptance in this task.",
+      "next_action": "STOP; report storage violation; no GUI A/B dispatch or CURRENT update.",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "Four exact deliveries consumed; new TEST candidate/runtime ready."
+      "summary_zh": "P0 source qualified; new TEST candidate machine smoke; E fixture violation prevents whole-dispatch PASS."
     },
     "01": {
       "status": "SILENT",
@@ -295,9 +295,9 @@
   },
   "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
   "knowledge_delivery": {
-    "ref": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
-    "commit": "20e976c7878401123ca2b20f63b2cf70a73e5f3e",
-    "tree": "bf0e13143177a3ec9e9b602f4bd65635961bc241"
+    "ref": "64eb3043194bb9e4b8c5425204fba5cf2f4244a2",
+    "commit": "64eb3043194bb9e4b8c5425204fba5cf2f4244a2",
+    "tree": "8de8fdf2bf980497cccdf2967b4b6a2945411ca3"
   },
   "control_plane": {
     "evidence": "docs/governance/receipts/20260916-worker-convergence-frozen-candidate.json",
@@ -426,9 +426,121 @@
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json",
   "chatgpt_read_branch": "control/main3-current",
   "current_stage": {
-    "CURRENT_PHASE": "WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING",
-    "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN",
-    "PRODUCT_ACCEPTANCE": "PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT",
+    "CURRENT_PHASE": "P0_SOURCE_CLOSED; F1_QUALIFIED; STORAGE_VIOLATION_RECORDED; GUI_AB_PENDING",
+    "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FULL_FROZEN_GUI_AB_PENDING",
+    "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current"
-  }
+  },
+  "dispatch32_receipt": "docs/governance/receipts/20260916-p0-integration-frozen-f1.json",
+  "dispatch32_source_sha": "64eb3043194bb9e4b8c5425204fba5cf2f4244a2",
+  "dispatch32_exact_deliveries": [
+    {
+      "slot": "GUI",
+      "source_sha": "2f32e74e822d69b27dab2186b3dbb115c71a134f",
+      "parent_sha": "6227abafd5d444e4c71d0e25bd9440d066b12f52",
+      "tree": "2a6aa422b28253840f728ef1475b7a5f56c2c23a",
+      "paths": [
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/A-empty-rehydration.png",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/A-plan-provider-gate.png",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/A-unicode-upload-success.png",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/README.md",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/evidence-hashes.json",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/runtime-recheck.json",
+        "docs/qa/MF-MAIN3-02-EXACT-FROZEN-AB-29/upload-correlation.json"
+      ],
+      "integrated_sha": "7030d25b439be9f00ddb9b1a4bfca78555ea0c13",
+      "conflicts": []
+    },
+    {
+      "slot": "P0_CHECKPOINT",
+      "source_sha": "0effc3ac7373b60b4c1b2d1e0a8edbea0cadc58e",
+      "parent_sha": "c975ab23ecd5efca98ffd8846353860833d336c8",
+      "tree": "6750a7657e6d6236479bc6e5a5826686280eb653",
+      "paths": [
+        "backend/app/active_teaching.py",
+        "backend/app/enterprise_tenancy/rehydration_manifest.py",
+        "backend/app/enterprise_tenancy/structured_sync.py",
+        "backend/app/enterprise_tenancy/sync_snapshot.py",
+        "backend/app/main.py",
+        "backend/app/product_sync.py",
+        "backend/app/product_sync_contract.py",
+        "backend/tests/test_product_sync.py",
+        "backend/tests/test_product_sync_contract.py",
+        "backend/tests/test_product_sync_regression.py",
+        "desktop/account_backend.py",
+        "desktop/main.py",
+        "desktop/product_sync_bridge.py",
+        "desktop/rehydration_transport.py",
+        "desktop/runtime.py",
+        "desktop/structured_sync.py",
+        "desktop/tests/test_login_smooth.py",
+        "desktop/tests/test_product_sync_bridge.py",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-30/README.md",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-30/domain-write-matrix.csv",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-30/test-results.json",
+        "scripts/product_sync_native.py"
+      ],
+      "integrated_sha": "a15de0c1b96be5b9ce1bdab13ecf32c4ee21192a",
+      "conflicts": []
+    },
+    {
+      "slot": "P0_FINAL",
+      "source_sha": "1ed2fac1119ddd557020613edd5666c2251ad91b",
+      "parent_sha": "0effc3ac7373b60b4c1b2d1e0a8edbea0cadc58e",
+      "tree": "7213efe04cb9ba4700bda553bc7b5639fc5759e7",
+      "paths": [
+        "backend/app/main.py",
+        "backend/app/plan_product_api.py",
+        "backend/app/product_command_boundary.py",
+        "backend/app/product_resources_api.py",
+        "backend/app/product_runtime_state.py",
+        "backend/app/product_settings_api.py",
+        "backend/app/product_sync.py",
+        "backend/app/product_sync_contract.py",
+        "backend/app/product_sync_extensions.py",
+        "backend/app/review_product_v1/service.py",
+        "backend/tests/test_product_sync_closure.py",
+        "desktop/account_backend.py",
+        "desktop/account_vault.py",
+        "desktop/api.py",
+        "desktop/local_asset_page.py",
+        "desktop/main_window.py",
+        "desktop/product_asset_metadata.py",
+        "desktop/product_setting_policy.py",
+        "desktop/product_settings.py",
+        "desktop/tests/test_product_settings.py",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-31/README.md",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-31/domain-write-entries.csv",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-31/entry-counts.json",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-31/previous-gaps.json",
+        "docs/qa/MF-MAIN3-02-PRODUCT-SYNC-31/test-results.json",
+        "frontend/src/api/client.ts",
+        "frontend/src/api/productCommand.ts",
+        "frontend/src/features/active-teaching/api.ts",
+        "frontend/src/features/plan-product/api.ts",
+        "frontend/src/features/review-demo/reviewApi.ts",
+        "frontend/src/test/product_command.test.ts",
+        "scripts/product_sync_closure_audit.py",
+        "scripts/product_sync_closure_evidence.py"
+      ],
+      "integrated_sha": "36e05a7bcbe06ae0a68c48b93469f335096fa8f4",
+      "conflicts": []
+    },
+    {
+      "slot": "04",
+      "source_sha": "b22028c3489ce583a5cfc61f0f47849691f80244",
+      "parent_sha": "71efae533de930d83c16517d096f5f6701291b01",
+      "tree": "dd0c6fb75cd83192ec172a84d28e1131976e3d38",
+      "paths": [
+        "docs/release/main3-20260916-29/CANONICAL_MIGRATION_DRY_RUN.json",
+        "docs/release/main3-20260916-29/CANONICAL_OWNER_MAPPING.json",
+        "docs/release/main3-20260916-29/LEGACY_DOMAIN_MAPPING.json",
+        "docs/release/main3-20260916-29/MAIN3_RELEASE_BINDINGS.json",
+        "docs/release/main3-20260916-29/PREDEPLOY_TRANSACTION.md",
+        "docs/release/main3-20260916-29/ROLLBACK_BINDINGS.json"
+      ],
+      "integrated_sha": "afe778a54ada48afc03983d133ab3208cbc4dd18",
+      "conflicts": []
+    }
+  ]
 }

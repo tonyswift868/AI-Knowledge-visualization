@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "scope": "A_BUILDER_MACHINE_SMOKE_NOT_FULL_FROZEN_GUI_AB",
+  "source_sha": "64eb3043194bb9e4b8c5425204fba5cf2f4244a2",
+  "source_tree": "8de8fdf2bf980497cccdf2967b4b6a2945411ca3",
+  "artifact_sha256": "de8b6adc1a922659c9601e8bc1dac7eb181d7d0af5aa860906c989c5b6641cae",
+  "pid": 52300,
+  "backend_child_pid": 76068,
+  "local_backend_port": 60455,
+  "main_window_handle": 2302984,
+  "observed_at": "2026-09-16T00:57:47.563336+00:00",
+  "EXE_START": "PASS",
+  "BACKEND_SPAWN": "PASS",
+  "LOGIN_SURFACE_LOAD": "PASS",
+  "WORKSPACE_SURFACE_LOAD": "PASS",
+  "RESOURCE_SURFACE_LOAD": "PASS",
+  "PLAN_SURFACE_LOAD": "PASS",
+  "PROGRESS_SURFACE_LOAD": "PASS",
+  "observations": [
+    "Native synthetic login succeeded without remember password or auto-login",
+    "Workspace recovery showed empty plan/progress/resource scope; entered learning workspace",
+    "Main window MentorFlow displayed Synthetic account and workspace overview with progress records card",
+    "MaterialsPage rendered supported formats, plan selector and empty resource table",
+    "My Plans rendered plan/progress restored status and empty plan list",
+    "Local packaged backend /api/health HTTP 200; real resource, plan and progress product writes acknowledged by server"
+  ],
+  "surface_scope": "First paint/navigation only; post-write GUI refresh and full A/B acceptance not claimed",
+  "real_user_data_mutated": false
+}

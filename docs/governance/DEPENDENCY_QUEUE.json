@@ -385,14 +385,23 @@
       "unlocks": [],
       "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
       "reason": "Approved inbox resolver not found; TLS/AUTH/NOOP is not email lifecycle. Real send count zero."
+    },
+    {
+      "task_id": "P0_SOURCE_FROZEN_F1_32",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Exact deliveries, source regression, F1, D Frozen and fresh UAT technical gates completed; overall BLOCKED_STORAGE_POLICY_VIOLATION, not PASS. Full GUI A/B remains separately authorized work."
     }
   ],
-  "authority": "WORKER_CONVERGENCE_FROZEN_TEST_CANDIDATE",
-  "assignment_scope": "Dispatch28 complete; no new worker dispatch.",
+  "authority": "P0_SOURCE_CONVERGENCE_F1_STORAGE_NONPASS_RECORDED",
+  "assignment_scope": "Dispatch32 technical delivery complete with storage-policy violation recorded; F1 is free storage adaptation, no extra global dispatch consumed.",
   "current_stage": {
-    "CURRENT_PHASE": "WORKER_CONVERGENCE; FROZEN_TEST_CANDIDATE_READY; GUI_UAT_PENDING",
-    "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FROZEN_PRODUCT_UAT_NOT_RUN",
-    "PRODUCT_ACCEPTANCE": "PENDING_EXTERNAL_AUTHORITY_AND_HUMAN_UAT",
+    "CURRENT_PHASE": "P0_SOURCE_CLOSED; F1_QUALIFIED; STORAGE_VIOLATION_RECORDED; GUI_AB_PENDING",
+    "REAL_A_B_REHYDRATION": "PASS_NATIVE_POSTGRES_HTTP_SCOPE; FULL_FROZEN_GUI_AB_PENDING",
+    "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current"
   }
 }

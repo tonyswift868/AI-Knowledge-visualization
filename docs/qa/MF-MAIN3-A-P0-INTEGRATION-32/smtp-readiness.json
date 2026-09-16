@@ -1,0 +1,16 @@
+{
+  "config_resolves": true,
+  "network_tls_auth_noop_ready": true,
+  "classification": "EMAIL_TLS_AUTH_READY",
+  "commands": [
+    "EHLO",
+    "STARTTLS",
+    "EHLO",
+    "AUTH",
+    "NOOP"
+  ],
+  "MAIL": false,
+  "RCPT": false,
+  "DATA": false,
+  "send_count": 0
+}

@@ -2,10 +2,12 @@
 
 MAIN3_BASE = main2
 
-Current authority: `CONTROL_CONVERGENCE_CODE_INTEGRATION`; review only `control/main3-current`。
-03 sealing 已消费，PRE02 保留；[当前主上下文](../../../GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md)。
-真实 PG/HTTP qualification 不等于 Frozen/UI acceptance；外部邮箱/角色/UAT 需独立授权。
-DO_NOT_REDO: 旧 delivery、Frozen rebuild、CURRENT、迁移。NEXT_TASK: Owner 明确外部门禁后另派；当前 STOP。
+Current authority: `P0_SOURCE_CONVERGENCE_F1`; review only `control/main3-current`。
+Dispatch32四份exact delta已消费，P0 77/67/10/0；source资格与D TEST Frozen机器smoke完成。
+F1只支持指定A scratch，SQLite长路径、账户/workspace/删除边界已复测；正式E durable不变。
+旧fixture本轮曾写E，整体BLOCKED_STORAGE_POLICY_VIOLATION；不是全轮PASS，详见[收口回执](../../governance/receipts/20260916-p0-integration-frozen-f1.json)。
+PRODUCT_ACCEPTANCE/FULL_FROZEN_GUI_AB仍PENDING；QQ credential reference、owner绑定/真实迁移独立待办。
+DO_NOT_REDO: 已消费delivery、CURRENT、真实迁移。NEXT_TASK: Owner决定storage回执及独立02 GUI A/B；当前STOP。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。
