@@ -55,6 +55,11 @@ def test_failed_child_reports_selected_version_not_success(tmp_path,monkeypatch)
     with pytest.raises(LaunchError,match='启动退出（7）.*未回退'):
         b.launch('release')
     assert b.resolve.call_count==1 and b.prepare.call_count==1
+    call = subprocess.Popen.call_args
+    startup_log = Path(call.kwargs['env']['MENTORFLOW_STARTUP_LOG'])
+    assert startup_log.parent.parent == Path('E:/Codex/Temp/mentorflow-dev-workbench/runs')
+    assert startup_log.parent.name == Path(call.args[0][5]).parent.name
+    assert startup_log.name == 'startup.jsonl'
 
 def test_old_branch_does_not_render_new_account_page(tmp_path):
     b=BranchLauncher(cache=tmp_path)

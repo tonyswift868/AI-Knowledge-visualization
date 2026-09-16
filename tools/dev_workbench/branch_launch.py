@@ -16,6 +16,7 @@ from .targets import ROOT
 from backend.app.plain_file_copy import assert_no_reparse_ancestors
 
 CACHE = Path('D:/CodexScratch/MentorFlow/workbench-launch')
+STARTUP_LOG_ROOT = Path('E:/Codex/Temp/mentorflow-dev-workbench/runs')
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 
@@ -204,7 +205,7 @@ class BranchLauncher:
         profile = self.profile_base / channel; env = self.environment(profile)
         run = self.safe(self.cache / 'runs' / uuid.uuid4().hex); run.mkdir(parents=True)
         log, identity = run / 'desktop.log', run / 'identity.json'
-        env['MENTORFLOW_STARTUP_LOG'] = str(run / 'startup.jsonl')
+        env['MENTORFLOW_STARTUP_LOG'] = str(STARTUP_LOG_ROOT / run.name / 'startup.jsonl')
         if smoke_seconds: env['MENTORFLOW_DESKTOP_SMOKE_SECONDS'] = str(smoke_seconds)
         progress('启动所选源码版本…')
         try:
