@@ -1,0 +1,11 @@
+{
+  "negative_fixture": "CREATED_VERIFIED_TEST_ONLY_NO_EMAIL",
+  "backend_live": "PASS",
+  "backend_startup": "PASS",
+  "backend_ready": "PASS",
+  "issuer": "https://127.0.0.1:51264/realms/mf-uat33-627562fa",
+  "jwks": "PASS",
+  "migration_head": "0040_admin_overview_aggregate",
+  "rls_no_context": "PASS",
+  "status": "PASS"
+}
