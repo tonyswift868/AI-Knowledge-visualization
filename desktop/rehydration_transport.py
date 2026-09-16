@@ -19,6 +19,10 @@ _gate = threading.RLock()
 _active = None
 _epoch = 0
 PREFIX = '/api/enterprise/sync/v1'
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# The server bounds full snapshots at 128 MiB of entity data. Match the
+# existing 160 MiB product-sync IPC envelope budget, including JSON framing.
+MAX_SNAPSHOT_RESPONSE_BYTES = 160 * 1024 * 1024
 
 
 class RehydrationTransportError(RuntimeError):
@@ -275,7 +279,10 @@ class AuthenticatedRehydrationTransport:
                     if response.status_code in {401,403}:
                         self.invalidate()
                         raise RehydrationTransportError('UNAUTHENTICATED')
-                    if len(response.content) > 8*1024*1024:
+                    response_limit = (MAX_SNAPSHOT_RESPONSE_BYTES
+                                      if method == 'GET' and path == PREFIX+'/snapshot'
+                                      else MAX_RESPONSE_BYTES)
+                    if len(response.content) > response_limit:
                         raise RehydrationTransportError('TRANSPORT_UNAVAILABLE')
                     return _Response(self, epoch, response)
             except RehydrationTransportError:

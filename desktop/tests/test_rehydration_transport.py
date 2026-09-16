@@ -59,6 +59,29 @@ def transport(handler=None, *, subject='a', clock=None, activate=True, server_st
     return adapter
 
 
+@pytest.mark.parametrize('snapshot_request,size,accepted', [
+    (True, 8 * 1024 * 1024 + 1, True),
+    (True, 160 * 1024 * 1024, True),
+    (True, 160 * 1024 * 1024 + 1, False),
+    (False, 8 * 1024 * 1024, True),
+    (False, 8 * 1024 * 1024 + 1, False),
+])
+def test_snapshot_transport_budget_does_not_relax_other_responses(monkeypatch, snapshot_request, size, accepted):
+    # Exercise byte boundaries without allocating another large-capacity fixture.
+    class SizedBody:
+        def __len__(self):return size
+    class Response:
+        status_code=200
+        is_success=True
+        content=SizedBody()
+    adapter=transport()
+    monkeypatch.setattr(adapter._client,'request',lambda *args,**kwargs:Response())
+    request=lambda: adapter.get(PREFIX+'/snapshot') if snapshot_request else adapter.account_metadata()
+    if accepted:request().raise_for_status()
+    else:
+        with pytest.raises(RehydrationTransportError,match='TRANSPORT_UNAVAILABLE'):request()
+
+
 def test_native_login_accept_bootstrap_uses_authenticated_transport():
     paths = []
     def handler(request):
