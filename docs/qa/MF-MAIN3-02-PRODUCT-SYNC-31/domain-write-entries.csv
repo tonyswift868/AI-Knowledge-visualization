@@ -67,9 +67,9 @@ backend/app/product_resources_api.py,put_resource,25,PUT /{resource_id},WIRED,ty
 backend/app/product_resources_api.py,delete_resource,40,DELETE /{resource_id},WIRED,typed durable state + command receipt + existing producer/ACK
 desktop/main_window.py,_open_news_preferences,1705,native method,WIRED,explicit account setting mapping
 desktop/main_window.py,_set_task_color,2484,native method,WIRED,explicit account setting mapping
-desktop/account_vault.py,import_managed,330,native method,WIRED,same Vault transaction metadata intent; local API producer
-desktop/account_vault.py,import_linked,391,native method,WIRED,same Vault transaction metadata intent; local API producer
-desktop/account_vault.py,install_shared_model,627,local installation,LOCAL_ONLY_BY_CONTRACT,shared device binary cache; not an account history writer
+desktop/account_vault.py,import_managed,333,native method,WIRED,same Vault transaction metadata intent; local API producer
+desktop/account_vault.py,import_linked,394,native method,WIRED,same Vault transaction metadata intent; local API producer
+desktop/account_vault.py,install_shared_model,630,local installation,LOCAL_ONLY_BY_CONTRACT,shared device binary cache; not an account history writer
 desktop/local_asset_lifecycle.py,bind_resource,397,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
 desktop/local_asset_lifecycle.py,bind_resource_to_asset,430,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged
 desktop/local_asset_lifecycle.py,relink_resource,475,resource recovery,LOCAL_ONLY_BY_CONTRACT,local bindings/bytes; canonical resource identity unchanged

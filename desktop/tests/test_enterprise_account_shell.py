@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 import httpx
@@ -90,7 +91,7 @@ def _state(identity: AccountIdentity) -> dict[str, object]:
 
 @pytest.fixture
 def vault_root() -> Path:
-    scratch = Path("D:/CodexScratch/r39")
+    scratch = configured_test_temp_root()
     scratch.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="account-shell-", dir=scratch))
     try:
@@ -139,7 +140,7 @@ def test_restart_validates_locker_and_server_before_mounting_saved_account(
         restore,
     )
     manager = AccountVaultManager(VaultLayout(vault_root))
-    env = {"MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
+    env = {"MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY": "1", "MENTORFLOW_TEST_SCRATCH_ROOT": os.environ.get("MENTORFLOW_TEST_SCRATCH_ROOT", ""), "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
 
     restored_profile = preflight_desktop_account_storage(
         settings=settings,
@@ -199,7 +200,7 @@ def test_failed_restart_never_mounts_previous_enterprise_vault(
         fail_restore,
     )
     manager = AccountVaultManager(VaultLayout(vault_root))
-    env = {"MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
+    env = {"MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY": "1", "MENTORFLOW_TEST_SCRATCH_ROOT": os.environ.get("MENTORFLOW_TEST_SCRATCH_ROOT", ""), "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
 
     selected = preflight_desktop_account_storage(
         settings=settings,
@@ -255,7 +256,7 @@ def test_restart_without_oidc_configuration_falls_back_before_database_open(
             logged_out.append(target)
 
     monkeypatch.setattr("desktop.runtime.AccountCredentialVault", Credentials)
-    env = {"MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
+    env = {"MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY": "1", "MENTORFLOW_TEST_SCRATCH_ROOT": os.environ.get("MENTORFLOW_TEST_SCRATCH_ROOT", ""), "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root)}
 
     selected = preflight_desktop_account_storage(settings=settings, source=env)
 
@@ -282,7 +283,7 @@ def test_stale_account_pointer_cannot_bypass_personal_profile_selection(
     layout = VaultLayout(vault_root)
     stale_account_root = layout.accounts_root / ("a" * 64) / ("b" * 64)
     env = {
-        "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root),
+        "MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY": "1", "MENTORFLOW_TEST_SCRATCH_ROOT": os.environ.get("MENTORFLOW_TEST_SCRATCH_ROOT", ""), "MENTORFLOW_ACCOUNT_VAULT_ROOT": str(vault_root),
         "MENTORFLOW_USER_DATA_ROOT": str(stale_account_root),
         "MENTORFLOW_DB": str(stale_account_root / "data" / "app.db"),
     }

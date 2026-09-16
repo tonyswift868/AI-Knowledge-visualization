@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 
@@ -15,9 +16,7 @@ pytest.importorskip("PySide6")
 os.environ.setdefault(
     "MENTORFLOW_USER_DATA_ROOT",
     str(
-        Path(
-            r"D:\CodexScratch\E1-R36-03-account-vault\single-user-boundary-import"
-        )
+        configured_test_temp_root() / 'single-user-boundary-import'
     ),
 )
 os.environ.setdefault("MENTORFLOW_LOCAL_DATA_MODE", "1")
@@ -26,7 +25,7 @@ from desktop.main import _copy_missing_tree  # noqa: E402
 import desktop.local_migration as local_migration_module  # noqa: E402
 
 
-TEST_ROOT = Path(r"D:\CodexScratch\E1-R36-03-account-vault\single-user-boundary")
+TEST_ROOT = configured_test_temp_root() / 'single-user-boundary'
 
 
 def _make_junction(link: Path, target: Path) -> None:

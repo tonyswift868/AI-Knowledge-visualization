@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 
@@ -34,7 +35,7 @@ def _profile(subject: str = "enterprise-lifecycle-user"):
 
 @pytest.fixture
 def scratch_root() -> Path:
-    base = Path(r"D:\CodexScratch\r")
+    base = configured_test_temp_root()
     base.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="", dir=base))
     try:
@@ -47,7 +48,7 @@ def scratch_root() -> Path:
         if package_temp.exists():
             shutil.rmtree(package_temp, ignore_errors=True)
         cleanup_target = str(root.resolve())
-        if os.name == "nt":
+        if os.name == "nt" and not cleanup_target.startswith("\\\\?\\"):
             cleanup_target = "\\\\?\\" + cleanup_target
         shutil.rmtree(cleanup_target, ignore_errors=True)
 

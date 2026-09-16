@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 import tempfile
 from typing import Any, Iterator
 
@@ -232,7 +233,7 @@ def _integrated_metadata_sync_types() -> tuple[type[Any], type[Exception]] | Non
 
 @pytest.fixture
 def isolated_device_roots() -> Iterator[tuple[Path, Path]]:
-    base = Path("E:/Codex/Temp")
+    base = configured_test_temp_root()
     base.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ac8-", dir=base) as temporary:
         root = Path(temporary)

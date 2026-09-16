@@ -23,7 +23,16 @@ def plain(path):
 
 
 def read_profile(root, *, base=None):
-    root, base = Path(root), Path(base or DEVICE_BASE)
+    root = Path(root)
+    if root.drive.upper() == 'D:':
+        from scripts.test_storage_policy import require_test_path
+        require_test_path(root)
+        # The D profile still requires an exact device name and owned marker.
+        # Its parent is passed explicitly by Workbench, or recovered by the
+        # child from its validated assigned-root location.
+        base = Path(base) if base is not None else root.parent
+        require_test_path(base)
+    root, base = root, Path(base or DEVICE_BASE)
     if root not in (base / 'A', base / 'B', base / 'UserTest') or not root.is_absolute():
         raise ValueError('TEST_DEVICE_UNOWNED_ROOT')
     plain(root); marker = plain(root / MARKER)
@@ -41,7 +50,7 @@ def environment(root, profile):
     """Code-owned locations only; manifests cannot provide environment overrides."""
     root = Path(root)
     vault = root / 'vault'
-    return {
+    result = {
         'MENTORFLOW_TEST_DEVICE_ROOT': str(root),
         'MENTORFLOW_TEST_DEVICE_GENERATION': profile['generation'],
         'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY': '1',
@@ -57,6 +66,11 @@ def environment(root, profile):
         'LOCALAPPDATA': str(root / 'profile/Local'), 'APPDATA': str(root / 'profile/Roaming'),
         'TEMP': str(root / 'temp'), 'TMP': str(root / 'temp'),
     }
+    if root.drive.upper() == 'D:':
+        from scripts.test_storage_policy import SCRATCH_ENV, assigned_root, require_test_path
+        require_test_path(root)
+        result[SCRATCH_ENV] = str(assigned_root())
+    return result
 
 
 def validate_storage(root):

@@ -151,6 +151,9 @@ class VaultLayout:
         if self.test_only is None:
             from .account_storage import TEST_ONLY_ENV
             object.__setattr__(self, "test_only", os.environ.get(TEST_ONLY_ENV) == '1')
+        if self.test_only and normalized.drive.upper() == 'D:':
+            from scripts.test_storage_policy import test_io_path
+            object.__setattr__(self, "root", test_io_path(normalized))
 
     @classmethod
     def from_env(cls, source=None, *, root=None):

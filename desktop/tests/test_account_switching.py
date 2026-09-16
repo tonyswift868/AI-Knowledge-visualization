@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from types import SimpleNamespace
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 
@@ -157,7 +158,7 @@ def test_device_indicator_tracks_real_file_binding_without_vault_asset(vault_roo
 
 @pytest.fixture
 def vault_root() -> Path:
-    scratch = Path("E:/Codex/Temp")
+    scratch = configured_test_temp_root()
     scratch.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="", dir=scratch))
     try:

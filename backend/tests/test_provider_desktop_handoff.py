@@ -11,6 +11,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import tempfile
 
 
 def _provider_session(session_id: str = "ps_acceptance_deepseek"):
@@ -264,7 +265,7 @@ def test_repeated_life_analogy_flow_records_success_failure_and_timing(client, m
     assert provider_calls["count"] >= 5
     assert validation_calls["count"] >= 3
 
-    log_path = Path("E:/Codex/Temp/live-acceptance-life-analogy.json")
+    log_path = Path(tempfile.gettempdir()) / "live-acceptance-life-analogy.json"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(
         json.dumps(

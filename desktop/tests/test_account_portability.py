@@ -11,6 +11,7 @@ import uuid
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 
@@ -44,7 +45,7 @@ DERIVED_BYTES = b'{"chunks":[{"id":"chunk-1","text":"portable"}]}\n'
 
 @contextmanager
 def _new_device_root():
-    base = Path(r"D:\CodexScratch")
+    base = configured_test_temp_root()
     base.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="E1-R36-05-new-device-", dir=base))
     try:

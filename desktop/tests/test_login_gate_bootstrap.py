@@ -8,6 +8,8 @@ import shutil
 import sys
 from types import SimpleNamespace
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
+import tempfile
 from typing import Any, Mapping
 
 import pytest
@@ -62,7 +64,7 @@ def isolated_startup_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def short_root() -> Path:
-    scratch = Path("E:/Codex/Temp")
+    scratch = configured_test_temp_root()
     scratch.mkdir(parents=True, exist_ok=True)
     root = None
     for name in "0123456789abcdefghijklmnopqrstuvwxyz":

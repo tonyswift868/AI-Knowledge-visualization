@@ -50,6 +50,11 @@ class Devices:
     def __init__(self, base=DEVICE_BASE):
         self.base = Path(base).absolute()
         allowed = (Path('E:/Codex/TestDevices'), Path('E:/Codex/Temp'))
+        if self.base.drive.upper() == 'D:':
+            from scripts.test_storage_policy import require_test_path
+            try: require_test_path(Path(base))
+            except ValueError: raise Refused('TEST_DEVICE_UNOWNED_ROOT') from None
+            allowed = (self.base.parent,)
         if '..' in self.base.parts or not any(self.base != root and self.base.is_relative_to(root) for root in allowed):
             raise Refused('TEST_DEVICE_UNOWNED_ROOT')
         self.processes = {}

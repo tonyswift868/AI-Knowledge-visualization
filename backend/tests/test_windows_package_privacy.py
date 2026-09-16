@@ -297,9 +297,9 @@ def test_symlink_escape_is_rejected_when_supported(tmp_path: Path) -> None:
 
 
 def test_fresh_install_report_is_read_only_and_clean(tmp_path: Path) -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-privacy-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-privacy-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -321,9 +321,9 @@ def test_fresh_install_report_is_read_only_and_clean(tmp_path: Path) -> None:
 
 
 def test_fresh_install_rejects_database_links_and_hardlinks(tmp_path: Path) -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-link-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-link-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -348,9 +348,9 @@ def test_fresh_install_rejects_database_links_and_hardlinks(tmp_path: Path) -> N
 
 
 def test_fresh_install_rejects_noncanonical_hardlink_text() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-text-link-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-text-link-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -375,9 +375,9 @@ def test_fresh_install_rejects_noncanonical_hardlink_text() -> None:
 
 
 def test_fresh_install_rejects_noncanonical_sqlite_database() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-extra-db-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-extra-db-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -401,9 +401,9 @@ def test_fresh_install_rejects_noncanonical_sqlite_database() -> None:
 
 
 def test_package_root_reparse_alias_is_rejected_when_supported() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-package-alias-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-package-alias-test-", dir=tempfile.gettempdir()))
     try:
         package = _package(root)
         alias = root / "package-alias"
@@ -418,9 +418,9 @@ def test_package_root_reparse_alias_is_rejected_when_supported() -> None:
 
 
 def test_distributable_cleanup_guard_accepts_missing_path_on_powershell_51() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-cleanup-missing-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-cleanup-missing-test-", dir=tempfile.gettempdir()))
     try:
         candidate = root / "generated" / "missing"
         result = _run_cleanup_guard(root, candidate)
@@ -431,9 +431,9 @@ def test_distributable_cleanup_guard_accepts_missing_path_on_powershell_51() -> 
 
 
 def test_distributable_cleanup_guard_refuses_reparse_path_when_supported() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-cleanup-reparse-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-cleanup-reparse-test-", dir=tempfile.gettempdir()))
     alias = root / "generated-alias"
     target = root / "outside-target"
     try:
@@ -456,9 +456,9 @@ def test_distributable_cleanup_guard_refuses_reparse_path_when_supported() -> No
 
 
 def test_fresh_install_rejects_nonempty_credential_table(tmp_path: Path) -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-credential-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-credential-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -478,9 +478,9 @@ def test_fresh_install_rejects_nonempty_credential_table(tmp_path: Path) -> None
 
 
 def test_fresh_install_rejects_retired_local_auth_state_tables() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-retired-auth-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-retired-auth-test-", dir=tempfile.gettempdir()))
     try:
         package = root / "package"
         package.mkdir()
@@ -553,9 +553,9 @@ def _update_fixture(root: Path) -> tuple[Path, dict[str, object], bytes]:
 
 
 def test_stage_update_rejects_negative_content_length(monkeypatch: pytest.MonkeyPatch) -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-header-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-header-test-", dir=tempfile.gettempdir()))
     try:
         version_file, release, body = _update_fixture(root)
         release_json = root / "release.json"
@@ -578,9 +578,9 @@ def test_stage_update_rejects_negative_content_length(monkeypatch: pytest.Monkey
 
 
 def test_stage_update_rejects_reparse_staging_root_when_supported() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-root-alias-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-root-alias-test-", dir=tempfile.gettempdir()))
     try:
         version_file, _, _ = _update_fixture(root)
         outside = root / "outside"
@@ -604,9 +604,9 @@ def test_stage_update_rejects_reparse_staging_root_when_supported() -> None:
 
 
 def test_stage_update_rejects_hardlinked_existing_asset() -> None:
-    if not Path("E:/Codex/Temp").is_dir():
-        pytest.skip("E: disposable staging root unavailable")
-    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-hardlink-test-", dir="E:/Codex/Temp"))
+    if not Path(tempfile.gettempdir()).is_dir():
+        pytest.skip("Configured disposable staging root unavailable")
+    root = Path(tempfile.mkdtemp(prefix="mentorflow-update-hardlink-test-", dir=tempfile.gettempdir()))
     try:
         version_file, _, body = _update_fixture(root)
         target_dir = root / "staging" / "2.0.0"

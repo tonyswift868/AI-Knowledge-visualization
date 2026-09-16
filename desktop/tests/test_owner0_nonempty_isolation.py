@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 import tempfile
 from types import SimpleNamespace
 
@@ -66,7 +67,7 @@ def metadata(identity, source):
 
 def test_nonempty_a_b_a_restart_real_vault_sync_and_bindings(tmp_path):
     application = QApplication.instance() or QApplication([])
-    scratch = Path('E:/Codex/Temp')
+    scratch = configured_test_temp_root()
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o0-', dir=scratch) as temporary:
         root = Path(temporary)
@@ -160,7 +161,7 @@ def test_late_nonempty_a_bootstrap_closes_only_a_while_b_remains_mounted(app_con
     target, qt, _ = app_context
     bound = []
     monkeypatch.setattr('desktop.runtime.bind_desktop_profile_data_root', lambda profile: bound.append(profile))
-    with tempfile.TemporaryDirectory(prefix='o0late-', dir='E:/Codex/Temp') as temporary:
+    with tempfile.TemporaryDirectory(prefix='o0late-', dir=configured_test_temp_root()) as temporary:
         root = Path(temporary)
         results = {}
         try:

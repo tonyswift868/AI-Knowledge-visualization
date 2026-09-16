@@ -196,8 +196,12 @@ if __name__ == '__main__':
     parser.add_argument('--exercise', choices=('', 'restart'), default='')
     parser.add_argument('--launch-index', type=int, default=0)
     args = parser.parse_args()
-    root = args.root.resolve()
-    if not root.is_relative_to(Path('E:/Codex/Temp').resolve()):
-        parser.error('fixture root must be under E:/Codex/Temp')
+    root = args.root
+    if root.drive.upper() == 'D:':
+        from scripts.test_storage_policy import require_test_path
+        require_test_path(root)
+    elif not root.resolve().is_relative_to(Path('E:/Codex/Temp').resolve()):
+        parser.error('fixture root must be under E:/Codex/Temp or the assigned TEST scratch')
+    root = root.resolve()
     environment(root)
     raise SystemExit(ui(root, args.version, args.exercise, args.launch_index) if args.ui else supervise(root, args.exercise))

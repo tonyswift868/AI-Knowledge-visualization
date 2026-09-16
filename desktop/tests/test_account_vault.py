@@ -7,6 +7,7 @@ import shutil
 import stat
 import tempfile
 from pathlib import Path
+from scripts.test_storage_policy import configured_test_temp_root
 
 import pytest
 
@@ -32,7 +33,7 @@ def _identity(subject: str, display_name: str) -> AccountIdentity:
 def vault_root() -> Path:
     # Keep the test root short: the frozen account layout intentionally uses
     # two full SHA-256 path components and must also run on non-long-path hosts.
-    scratch = Path("D:/CodexScratch/r")
+    scratch = configured_test_temp_root()
     scratch.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="", dir=scratch))
     try:

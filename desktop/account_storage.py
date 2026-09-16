@@ -25,6 +25,9 @@ def device_storage_root(source=None, *, root=None, legacy_profile=None):
             selected = legacy
     selected = Path(selected if selected is not None else DEFAULT_ROOT)
     reject_links(selected)
+    if (selected.drive.upper() == 'D:' or str(selected)[:7].upper() == '\\\\?\\D:\\') and env.get(TEST_ONLY_ENV) == '1':
+        from scripts.test_storage_policy import require_test_path
+        require_test_path(selected, environ=env)
     if not durable_path(selected) and env.get(TEST_ONLY_ENV) != '1':
         raise ValueError('TARGET_STORAGE_STABLE=NO: device storage is disposable')
     return selected
@@ -43,6 +46,9 @@ def durable_path(path: Path) -> bool:
     path = Path(path)
     if not path.is_absolute() or '..' in path.parts or path.drive.startswith('\\\\'):
         return False
+    from scripts.test_storage_policy import ASSIGNED_ROOT
+    if path == ASSIGNED_ROOT or path.is_relative_to(ASSIGNED_ROOT):
+        return False
     forbidden = {'temp', 'tmp', 'staging', 'installer-staging', 'build', 'dist',
                  'artifacts', 'worktrees', '.git', 'node_modules', '__pycache__',
                  'program files', 'program files (x86)'}
@@ -60,6 +66,10 @@ def durable_path(path: Path) -> bool:
 
 
 def reject_links(path: Path):
+    if os.name == 'nt' and str(path)[:7].upper() == '\\\\?\\D:\\':
+        from scripts.test_storage_policy import require_test_path
+        require_test_path(path)
+        return
     if not path.is_absolute() or '..' in path.parts or path.drive.startswith('\\\\'):
         raise ValueError('Absolute storage path without traversal required')
     for item in (*reversed(path.parents), path):
@@ -86,6 +96,9 @@ def resolve_account_storage(profile, *, root=DEFAULT_ROOT, test_only=False):
         raise ValueError('Validated account profile and explicit boolean test mode required')
     root = Path(root)
     reject_links(root)
+    if root.drive.upper() == 'D:' and test_only:
+        from scripts.test_storage_policy import test_io_path
+        root = test_io_path(root)
     if profile.mode is ProfileMode.PERSONAL_LOCAL:
         target = root / 'personal-local'
     else:
@@ -106,6 +119,9 @@ def require_migration_target(target, *, profile=None, root=DEFAULT_ROOT, test_on
     if test_only:
         if os.environ.get(TEST_ONLY_ENV) != '1':
             raise ValueError('Disposable fixture override must be explicit')
+        if target.drive.upper() == 'D:':
+            from scripts.test_storage_policy import require_test_path
+            require_test_path(target)
         return AccountStorageTarget(target, getattr(profile, 'account_id', None), False, True)
     if os.environ.get(TEST_ONLY_ENV) == '1':
         raise ValueError('TARGET_STORAGE_STABLE=NO: TEST_ONLY processes cannot run real migration')

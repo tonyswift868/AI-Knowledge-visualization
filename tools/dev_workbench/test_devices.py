@@ -287,7 +287,11 @@ def test_all_product_settings_and_persistent_browser_constructors_use_adapter():
                 assert node.func.id != 'QSettings', str(path)
                 # The unnamed login browser is off-the-record by existing contract.
                 if node.func.id == 'QWebEngineProfile':
-                    assert path.name == 'in_app_oidc.py' and not node.args
+                    assert path.name in {'in_app_oidc.py', 'lifecycle_pane.py'}
+                    assert not node.args or (
+                        path.name == 'lifecycle_pane.py' and len(node.args) == 1
+                        and isinstance(node.args[0], ast.Name) and node.args[0].id == 'self'
+                    )
 
 
 def test_missing_source_adapter_and_reserved_scenario_refused(devices, source, candidate):

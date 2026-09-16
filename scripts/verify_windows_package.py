@@ -435,6 +435,21 @@ def _ensure_e_drive(path: Path, *, label: str) -> None:
         raise PackageError(f"{label} must be on E: (got {path})")
 
 
+def _ensure_storage_root(path: Path, *, label: str) -> None:
+    """Keep production E: policy; opt in only to the assigned TEST root."""
+    if os.name == "nt" and path.drive.upper() == "D:":
+        try:
+            try:
+                from scripts.test_storage_policy import require_test_path
+            except ModuleNotFoundError:
+                from test_storage_policy import require_test_path
+            require_test_path(path)
+        except ValueError as exc:
+            raise PackageError(f"{label}: {exc}") from exc
+        return
+    _ensure_e_drive(path, label=label)
+
+
 def _normalise_secret_key(value: str) -> str:
     """Make common camelCase config keys comparable without exposing values."""
     value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
@@ -755,13 +770,14 @@ def _iter_data_entries(data_root: Path) -> Iterable[tuple[Path, bool]]:
 def check_sqlite_root(data_root: Path, *, package_root: Path | None = None) -> dict[str, Any]:
     import sqlite3
     data_root = data_root.expanduser()
+    _ensure_storage_root(data_root, label="data root")
     if _path_exists(data_root):
         _validate_data_entry(data_root, data_root.parent.resolve(strict=False), directory=True)
     data_root_resolved = data_root.resolve(strict=False)
     package_root_resolved = package_root.resolve(strict=False) if package_root else None
     if package_root_resolved and _is_within(data_root_resolved, package_root_resolved):
         raise PackageError("data root must not be inside the installer/package directory")
-    _ensure_e_drive(data_root_resolved, label="data root")
+    _ensure_storage_root(data_root_resolved, label="data root")
     report: dict[str, Any] = {"root": str(data_root_resolved), "databases": 0, "errors": []}
     if not _path_exists(data_root):
         return report
@@ -954,7 +970,7 @@ def smoke_launch(executable: Path, package_root: Path, *, seconds: float = 5.0) 
     if not executable.is_file():
         return {"ok": False, "error": f"executable is missing: {executable}"}
     staging = Path(os.getenv("MENTORFLOW_UPDATE_STAGING", r"E:\MentorFlowUpdates"))
-    _ensure_e_drive(staging, label="smoke staging root")
+    _ensure_storage_root(staging, label="smoke staging root")
     staging.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix="mentorflow-package-smoke-", dir=str(staging)))
     environment = os.environ.copy()
@@ -1160,8 +1176,11 @@ def stage_update(version_file: Path, *, owner: str | None, repo: str | None, rel
     if not download:
         result["action"] = "open release page and manually install after review"
         return result
-    target_root = (staging_root or Path(str(config.get("staging_root") or r"E:\MentorFlowUpdates"))).expanduser().absolute()
-    _ensure_e_drive(target_root, label="update staging root")
+    selected_root = (staging_root or Path(str(config.get("staging_root") or r"E:\MentorFlowUpdates"))).expanduser()
+    if selected_root.drive.upper() == "D:":
+        _ensure_storage_root(selected_root, label="update staging root")
+    target_root = selected_root.absolute()
+    _ensure_storage_root(target_root, label="update staging root")
     # Validate the lexical path before creating anything.  Resolving first
     # would follow a junction/symlink and could silently stage outside the
     # configured E: root.  Reuse the package-root validator after creation as

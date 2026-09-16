@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import pytest
 
@@ -64,7 +65,7 @@ def test_explicit_test_mode_mount_never_reports_ready(tmp_path):
 
 
 def test_source_environment_controls_single_resolver(tmp_path):
-    env = {'MENTORFLOW_ACCOUNT_VAULT_ROOT':str(tmp_path), 'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY':'1'}
+    env = {'MENTORFLOW_ACCOUNT_VAULT_ROOT':str(tmp_path), 'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY':'1', 'MENTORFLOW_TEST_SCRATCH_ROOT':os.environ.get('MENTORFLOW_TEST_SCRATCH_ROOT','')}
     layout = VaultLayout.from_env(env)
     assert layout.root_for_profile(profile()) == resolve_account_storage(profile(),root=tmp_path,test_only=True).root
     assert not layout.resolve(profile()).target_storage_stable
@@ -75,7 +76,7 @@ def test_source_environment_controls_single_resolver(tmp_path):
 def test_device_root_keeps_existing_accepted_layout_and_marks_fixtures(tmp_path):
     from desktop.account_storage import device_storage_root, prelaunch_storage_environment, DEFAULT_ROOT
     assert device_storage_root({}) == DEFAULT_ROOT
-    env = {'LOCALAPPDATA':str(tmp_path), 'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY':'1'}
+    env = {'LOCALAPPDATA':str(tmp_path), 'MENTORFLOW_ACCOUNT_STORAGE_TEST_ONLY':'1', 'MENTORFLOW_TEST_SCRATCH_ROOT':os.environ.get('MENTORFLOW_TEST_SCRATCH_ROOT','')}
     legacy = tmp_path/'MentorFlow'/'Accounts'/'personal'
     assert device_storage_root(env, legacy_profile='personal') == DEFAULT_ROOT
     legacy.mkdir(parents=True)

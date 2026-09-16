@@ -1,7 +1,8 @@
 param(
     [switch]$ValidateCleanupOnly,
     [string]$CleanupRoot,
-    [string]$CleanupPath
+    [string]$CleanupPath,
+    [string]$TestScratchRoot = $env:MENTORFLOW_TEST_SCRATCH_ROOT
 )
 
 $ErrorActionPreference = 'Stop'
@@ -90,6 +91,17 @@ if ($ValidateCleanupOnly) {
 }
 
 if (-not (Test-Path $Python)) { throw 'Run scripts\bootstrap.ps1 first.' }
+$CleanupAuthorityRoot = $Root
+if (-not [string]::IsNullOrWhiteSpace($TestScratchRoot)) {
+    # The shared policy requires TEST_ONLY and the exact assigned root;
+    # it preserves reparse/traversal checks before any cleanup or creation.
+    & $Python -c 'import sys; sys.path.insert(0, sys.argv[2]); from pathlib import Path; from scripts.test_storage_policy import assigned_root; assert Path(sys.argv[1]) == assigned_root()' $TestScratchRoot $Root
+    if ($LASTEXITCODE -ne 0) { throw 'Assigned TEST scratch validation failed.' }
+    $CleanupAuthorityRoot = $TestScratchRoot
+    $Release = Join-Path $TestScratchRoot 'build\dist'
+    $Package = Join-Path $Release 'MentorFlow'
+    $Work = Join-Path $TestScratchRoot 'build\work'
+}
 if (-not (Test-Path $VersionFile)) { throw "Single-source version manifest is missing: $VersionFile" }
 if (-not (Test-Path $Verifier)) { throw "Package verifier is missing: $Verifier" }
 if (-not (Test-Path (Join-Path $Root 'release\native\MentorFlow.ico'))) {
@@ -100,8 +112,8 @@ if (-not (Test-Path (Join-Path $Root 'release\native\MentorFlow.ico'))) {
 # A build must start from a known generated staging tree.  These are the only
 # two disposable paths this script is permitted to remove; source and user
 # data are never cleaned here.
-Remove-GeneratedPath -Path $Package -Label 'generated package directory' -ProjectRoot $Root
-Remove-GeneratedPath -Path $Work -Label 'PyInstaller work directory' -ProjectRoot $Root
+Remove-GeneratedPath -Path $Package -Label 'generated package directory' -ProjectRoot $CleanupAuthorityRoot
+Remove-GeneratedPath -Path $Work -Label 'PyInstaller work directory' -ProjectRoot $CleanupAuthorityRoot
 New-Item -ItemType Directory -Path $Release -Force | Out-Null
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 Push-Location $Root
@@ -132,6 +144,7 @@ New-Item -ItemType Directory -Path $SelfCheck -Force | Out-Null
 Copy-Item -LiteralPath $GeneratedSelfCheckExe -Destination (Join-Path $SelfCheck 'MentorFlowSelfCheck.exe') -Force
 Remove-Item -LiteralPath $GeneratedSelfCheckExe -Force
 Copy-Item -LiteralPath $Verifier -Destination (Join-Path $SelfCheck 'verify_windows_package.py') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'test_storage_policy.py') -Destination (Join-Path $SelfCheck 'test_storage_policy.py') -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'mentorflow-check.bat') -Destination (Join-Path $SelfCheck 'mentorflow-check.bat') -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'mentorflow-update.bat') -Destination (Join-Path $SelfCheck 'mentorflow-update.bat') -Force
 
