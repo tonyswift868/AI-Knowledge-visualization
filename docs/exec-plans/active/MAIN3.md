@@ -2,12 +2,12 @@
 
 MAIN3_BASE = main2
 
-Current authority: `P0_SOURCE_CONVERGENCE_F1`; review only `control/main3-current`。
-Dispatch32四份exact delta已消费，P0 77/67/10/0；source资格与D TEST Frozen机器smoke完成。
-F1只支持指定A scratch，SQLite长路径、账户/workspace/删除边界已复测；正式E durable不变。
-旧fixture本轮曾写E，整体BLOCKED_STORAGE_POLICY_VIOLATION；不是全轮PASS，详见[收口回执](../../governance/receipts/20260916-p0-integration-frozen-f1.json)。
-PRODUCT_ACCEPTANCE/FULL_FROZEN_GUI_AB仍PENDING；QQ credential reference、owner绑定/真实迁移独立待办。
-DO_NOT_REDO: 已消费delivery、CURRENT、真实迁移。NEXT_TASK: Owner决定storage回执及独立02 GUI A/B；当前STOP。
+Current authority: `GATE1_EXACT_INTEGRATED`; review only `control/main3-current`。
+Gate1 Frozen GUI A/B + Full Account Rehydration=PASS；Worker02原始范围和82/0/0保留；A集成96/0/1。
+COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。
+唯一八关及剩余路线见[当前状态](../../project/CURRENT_STATE.md)与[Gate1回执](../../governance/receipts/20260916-gate1-integration.json)。
+Gate2仍缺QQ批准读取reference；本轮不研究、不发送、不继续。不得另造Gate9/10。
+dispatch32存储违规仍是历史NONPASS；不撤销其回执。NEXT_TASK: Owner另派；当前STOP。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。

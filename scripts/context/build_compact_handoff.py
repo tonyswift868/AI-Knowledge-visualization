@@ -106,6 +106,16 @@ def load_state(root: Path):
     for key, state_key in (("commit", "KNOWLEDGE_COMMIT"), ("tree", "KNOWLEDGE_TREE")):
         require(bool(SHA.fullmatch(fields[state_key])) and knowledge.get(key) == fields[state_key], "knowledge identity disagreement")
     require(knowledge.get("ref") == knowledge["commit"], "knowledge ref must pin exact commit")
+    if "big_gates" in board:
+        gates = board["big_gates"]
+        require(isinstance(gates, list) and len(gates) == 8, "canonical eight gates required")
+        require(all(isinstance(g, dict) and g.get("number") == i
+                    and text_field(g.get("name")) and text_field(g.get("status"))
+                    for i, g in enumerate(gates, 1)), "invalid canonical gate order")
+        completed = sum(g["status"] == "PASS" for g in gates)
+        require(fields.get("COMPLETED_BIG_GATES") == str(completed)
+                and fields.get("REMAINING_BIG_GATES") == str(8 - completed), "gate count disagreement")
+        require(queue.get("big_gates") == gates, "gate authority disagreement")
     control = board.get("control_plane")
     require(isinstance(control, dict), "control-plane snapshot missing")
     require(control.get("active_slots") == ["A", "01", "02", "03", "04"], "active slot scope mismatch")
@@ -240,8 +250,11 @@ def build_web(root: Path) -> bytes:
              for slot, worker in board["workers"].items() if worker["delivery_commit"] is not None]
     rows += [f"FORMAL_MAIN3 = {control['formal_main3']}", f"BRIDGE = {control['bridge_status']}"]
     rows += [f"{key} = {fields[key]}" for key in
-             ("BATCH04_SOURCE", "FULL_SERVER_SYNC", "PRODUCER_UX_WIRING", "CROSS_DEVICE_DATA_CONTINUITY", "PORTABLE_PACK_V2", "MIGRATION_EXECUTED")
+             ("BATCH04_SOURCE", "FULL_SERVER_SYNC", "PRODUCER_UX_WIRING", "CROSS_DEVICE_DATA_CONTINUITY", "PORTABLE_PACK_V2", "MIGRATION_EXECUTED",
+              "BIG_GATE_1", "FULL_FROZEN_GUI_AB", "FULL_ACCOUNT_REHYDRATION", "COMPLETED_BIG_GATES", "REMAINING_BIG_GATES")
              if key in fields]
+    rows += [f"GATE_{gate['number']} = {gate['name']}; {gate['status']}"
+             for gate in board.get("big_gates", [])]
     blockers = [key for key, task in tasks.items() if task["state"] in {"BLOCKED", "UNKNOWN"}]
     actions = [f"{key}: {task['user_action_required']}" for key, task in tasks.items()
                if task["state"] != "DONE" and task["user_action_required"]]

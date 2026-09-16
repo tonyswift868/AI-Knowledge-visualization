@@ -1,0 +1,182 @@
+{
+  "base": "d15cdf7b12e28dbeb6f553af0040bfde7ead4c0c",
+  "worker_merge_baseline": "0b8d56c386c8c3095e274ee2354a5c7259ba6eb3",
+  "baseline_tree_equal": true,
+  "commits": [
+    {
+      "sha": "76b9b946bac8b15084e7e591c2f85a5abfd05fa1",
+      "parent": "0b8d56c386c8c3095e274ee2354a5c7259ba6eb3",
+      "tree": "4379005276860bf65c2e3735b72a40bd1bdc77b6",
+      "subject": "fix(test-storage): authorize exact worker02 GUI acceptance profiles",
+      "paths": [
+        "desktop/test_device_profile.py",
+        "scripts/test_storage_policy.py",
+        "tools/dev_workbench/devices.py",
+        "tools/dev_workbench/test_dispatch33_storage.py"
+      ],
+      "integrated_sha": "043bdfce2084c075d2785dae45028e15bad8bfd6"
+    },
+    {
+      "sha": "515514d0971a27647571f35f85ad8b39df3ba2ad",
+      "parent": "76b9b946bac8b15084e7e591c2f85a5abfd05fa1",
+      "tree": "41e5c835a7d2c6a1784615a2780e3a70dd5f0f53",
+      "subject": "docs(qa): record dispatch33 frozen gate evidence and GUI isolation blocker",
+      "paths": [
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/A-empty-rehydration.png",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/A-workspace.png",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/README.md",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/candidate.json",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/devices-tests.xml",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/initial-candidate.json",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/login-A.png",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/receipt.json",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/runtime-qualification.json",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/smtp-readiness.json",
+        "docs/qa/MF-MAIN3-02-FROZEN-GUI-AB-33/storage-tests.xml"
+      ],
+      "integrated_sha": "7b5649eec0497dd0d6f84db299c1d6191b1e8fbf"
+    },
+    {
+      "sha": "1d65c2c4f174a8639b8a10ddc9f349942616e5b2",
+      "parent": "515514d0971a27647571f35f85ad8b39df3ba2ad",
+      "tree": "c34abedfd2982242e323803637aed86fa6552927",
+      "subject": "fix(qa): bind native UIA patterns to exact process and authorize dispatch34 roots",
+      "paths": [
+        "desktop/test_device_profile.py",
+        "scripts/test_storage_policy.py",
+        "tools/dev_workbench/native_uia.ps1",
+        "tools/dev_workbench/test_dispatch33_storage.py"
+      ],
+      "integrated_sha": "f23e3e5be5ed71a16f068632e02e62afdabee0e9"
+    },
+    {
+      "sha": "247741ed87ceac075e8c9b2828bf56b7d3165fbc",
+      "parent": "1d65c2c4f174a8639b8a10ddc9f349942616e5b2",
+      "tree": "9721821f92948819638f33123e4097b6f02357b4",
+      "subject": "test(qa): close targeted GUI isolation and record long-path stop",
+      "paths": [
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/README.md",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/candidate-identity.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/devices.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/focused-final.xml",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/gui-evidence.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/long-path-failure.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/receipt.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/resources.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/runtime-qualification.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/tests.json",
+        "docs/qa/MF-MAIN3-02-GUI-ISOLATION-AB-34/uia-events.jsonl",
+        "tools/dev_workbench/native_uia.ps1"
+      ],
+      "integrated_sha": "28944b401b11877f1459addbcf44107cb0249f3e"
+    },
+    {
+      "sha": "258ba9f7f993ad9b96675faa801c2de98151bf08",
+      "parent": "247741ed87ceac075e8c9b2828bf56b7d3165fbc",
+      "tree": "30f898e1252d49ed485c016a388e329d89d017cf",
+      "subject": "fix(materials): use native long-path source I/O and preserve workspace purge boundary",
+      "paths": [
+        "backend/app/active_teaching.py",
+        "backend/app/plain_file_copy.py",
+        "backend/tests/test_material_path_convergence.py",
+        "desktop/api.py",
+        "desktop/tests/test_upload_source_paths.py",
+        "scripts/test_storage_policy.py",
+        "tools/dev_workbench/native_uia.ps1"
+      ],
+      "integrated_sha": "ac6ddd4604226909cb076abca795306443290fa1"
+    },
+    {
+      "sha": "990d1f5701884d17916069a83640e21544bd8fc9",
+      "parent": "258ba9f7f993ad9b96675faa801c2de98151bf08",
+      "tree": "09610cb08f4d94826b7539f8c96172fd036ffa43",
+      "subject": "fix(desktop): refresh bound product plans instead of stale bootstrap metadata",
+      "paths": [
+        "desktop/main_window.py",
+        "desktop/tests/test_product_plan_projection.py"
+      ],
+      "integrated_sha": "4c7a1bb4442017eb8eb43b596f1da9ae5c32d896"
+    },
+    {
+      "sha": "a0fcd3748d19cf6ed7cb54547736b300a0c611e0",
+      "parent": "990d1f5701884d17916069a83640e21544bd8fc9",
+      "tree": "32620f35e3ce2874831b45d89ff118d14c7248b1",
+      "subject": "fix(harness): validate nested long-path device resources on restart",
+      "paths": [
+        "desktop/test_device_profile.py",
+        "tools/dev_workbench/test_devices.py"
+      ],
+      "integrated_sha": "b0007f57423777434fbad43c78a51cd72b57c55f"
+    },
+    {
+      "sha": "a1190ca18753fdedb3e4c155efeb3a111cfbb94f",
+      "parent": "a0fcd3748d19cf6ed7cb54547736b300a0c611e0",
+      "tree": "aafbd810065b86f81cba400f2a60516960106501",
+      "subject": "fix(desktop): expose restored account review campaigns and observed counts",
+      "paths": [
+        "backend/app/review_product_v1/api.py",
+        "backend/app/review_product_v1/service.py",
+        "backend/tests/test_review_campaign_discovery.py",
+        "desktop/main_window.py",
+        "desktop/rehydration_adapter.py",
+        "desktop/tests/test_rehydration_integration.py",
+        "frontend/src/features/review-demo/ReviewDemoApp.tsx",
+        "frontend/src/features/review-demo/reviewApi.ts",
+        "frontend/src/test/review_demo.test.tsx",
+        "tools/dev_workbench/native_uia.ps1"
+      ],
+      "integrated_sha": "546411f9ad7239000d58ee740fb3e6a82f74c5b4"
+    },
+    {
+      "sha": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2",
+      "parent": "a1190ca18753fdedb3e4c155efeb3a111cfbb94f",
+      "tree": "61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8",
+      "subject": "test(qa): close long-path Frozen A/B rehydration gate with exact evidence",
+      "paths": [
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/A-interrupted.frame.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/A-interrupted.png",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/A-r4-delete-frame.frame.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/A-r4-delete-frame.png",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/README.md",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/ab-core-proof.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/candidate.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/capture.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/closeout.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Afinal-B.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Ainterrupted-A.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Ainterrupted-B.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Ar4deleted-B.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Bfinal-A.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare-Breview-A.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/compare_device.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/devices.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/evidence-index.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/frontend-review-tests.log",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/frozen-build.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/frozen-finalize.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/frozen-source-manifest.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/frozen-verify.log",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/gui-input-audit.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/interrupt_receipt.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/interruption-seam.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/long-path-proof.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/negative-r4-isolation.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/prove_ab.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/prove_r4.py",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/r4-proof.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/receipt.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/server-revision-ledger.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/storage.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/tests.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/ui-observations.json",
+        "docs/qa/MF-MAIN3-02-LONGPATH-AB-35/unchanged-upload-lineage.json"
+      ],
+      "integrated_sha": "e3cfc2ac7be3900dce81f36d2c180c806fc5dca8"
+    }
+  ],
+  "unknown_commits": 0,
+  "evidence_blob_hashes_verified": 36,
+  "artifact_sha256_verified": true,
+  "final_integrated_tree_equals_delivery": true,
+  "conflicts": []
+}

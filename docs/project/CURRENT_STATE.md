@@ -11,8 +11,8 @@ PRODUCT_ACCEPTANCE = PENDING
 INTEGRATION_BRANCH = integration/main3
 INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-KNOWLEDGE_COMMIT = 64eb3043194bb9e4b8c5425204fba5cf2f4244a2
-KNOWLEDGE_TREE = 8de8fdf2bf980497cccdf2967b4b6a2945411ca3
+KNOWLEDGE_COMMIT = e3cfc2ac7be3900dce81f36d2c180c806fc5dca8
+KNOWLEDGE_TREE = 61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
 ALEMBIC_HEAD = 0040_admin_overview_aggregate
@@ -21,39 +21,48 @@ GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
 GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
 BATCH03_SOURCE = INTEGRATED
 BATCH04_SOURCE = INTEGRATED
-FULL_SERVER_SYNC = PARTIAL
+FULL_SERVER_SYNC = PASS_GATE1_STRUCTURED_SCOPE
 PRODUCER_UX_WIRING = PASS
 TEST_TARGET_STATUS = NO_NEW_USER_TEST_PUBLICATION
-FROZEN_CANDIDATE = DISPATCH32_MACHINE_SMOKE_PASS_GUI_AB_PENDING
-REAL_A_B_REHYDRATION = PASS_NATIVE_POSTGRES_HTTP_SCOPE; FULL_FROZEN_GUI_AB_PENDING
+FROZEN_CANDIDATE = MF_02_FROZEN_35_GATE1_PASS
+REAL_A_B_REHYDRATION = PASS_FROZEN_GUI_GATE1
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = P0_SOURCE_CLOSED; F1_QUALIFIED; STORAGE_VIOLATION_RECORDED; GUI_AB_PENDING
+CURRENT_PHASE = GATE1_PASS; SEVEN_GATES_REMAIN; STOP
+BIG_GATE_1 = PASS
+FULL_FROZEN_GUI_AB = PASS
+COMPLETED_BIG_GATES = 1
+REMAINING_BIG_GATES = 7
 ```
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`P0_SOURCE_CONVERGENCE_F1_STORAGE_NONPASS_RECORDED`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`GATE1_EXACT_INTEGRATED`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
-PROFILE_SETTINGS_EVIDENCE = P0_SOURCE_PRODUCT_WRITE_SYNC_QUALIFIED; FULL_GUI_ACCEPTANCE_PENDING
-LEARNING_RUN_HISTORY = PARTIAL
+PROFILE_SETTINGS_EVIDENCE = PASS_GATE1_BOUNDED_GUI_SCOPE
+LEARNING_RUN_HISTORY = PASS_GATE1_BOUNDED_STRUCTURED_SCOPE
 PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
-FULL_ACCOUNT_REHYDRATION = NOT_YET_COMPLETE
+FULL_ACCOUNT_REHYDRATION = PASS
 
-## 当前 control 收口（2026-09-16 dispatch32 / F1）
-唯一 review 分支 `control/main3-current`；P0 checkpoint、final、GUI blocker 与04 evidence 四份 exact delta 已消费。
-P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE：77入口 / 67 WIRED / 10 LOCAL_ONLY / 0缺口；账户设置10、设备设置28。
-source 4868 PASS / 0 FAIL / 66 SKIP；skip范围及复用/补测边界见[回执](../governance/receipts/20260916-p0-integration-frozen-f1.json)。
-Native PostgreSQL A/B25、Desktop26、真实强杀INTERRUPTED/no replay通过；完整Frozen GUI A/B仍PENDING。
-F1只授权本dispatch A的D scratch；拒绝任意D、兄弟worker、穿越和reparse；账户/workspace/删除边界保留，正式E durable语义不变。
-新TEST候选 `MF-A-FROZEN-32-64eb3043` 位于D；source `64eb3043194bb9e4b8c5425204fba5cf2f4244a2`，exact hash与A机器smoke见回执。旧Frozen28 superseded；CURRENT未更新。
-新隔离 `MF-A-UAT-32-5df7f994` 至 `2026-09-16T07:56:40.733674+00:00`；PG0040、Keycloak/JWKS、Backend、RLS、SMTP无发送readiness通过。
-整体 STATUS=BLOCKED_STORAGE_POLICY_VIOLATION：旧签名测试在E写入六个临时fixture目录，均已清理；不能改写成全轮PASS。
-EMAIL_LIFECYCLE仍缺QQ批准读取reference；Tony exact-name不是release blocker；旧530/88/330未迁移。
-ownerless 1workspace/5plans/797tasks及55 dangling refs只做admission quarantine，不合并、不修改历史数据。
-PRODUCT_ACCEPTANCE=PENDING；FULL_ACCOUNT_REHYDRATION=NOT_YET_COMPLETE；Owner另行授权02完整GUI A/B。
-integration/main3、main1/main2、tags不动；不部署VPS、不发真实邮件、不启动下一任务。
+## 当前 Gate1 authority（2026-09-16 dispatch36）
+BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
+原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。
+352字符GUI上传、A→Server→B、B→Server→A、双方完整重启恢复、账户隔离、delete/tombstone与中断显式报错均PASS。
+最终候选 `MF-02-FROZEN-35-a1190ca1`；source `a1190ca18753fdedb3e4c155efeb3a111cfbb94f`；SHA256 `a31849225ba6a7becee8116b579b4d4bce35be6984673cbf2af97b320313c2de`。
+原始范围保留：synthetic TEST；R1长路径证据经逐字相同实现沿用至R4；review未声明提交答案/评分或视觉精修验收；不包含物理资源迁移。
+[Gate1集成回执](../governance/receipts/20260916-gate1-integration.json)记录完整ancestry、source/packaged/GUI证据及各自执行者。
+COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。唯一大关列表如下，普通缺陷归属现有关卡：
+1. Frozen GUI A/B + Full Account Rehydration — PASS。
+2. Email lifecycle E2E — BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE。
+3. Canonical old-data ownership / data target stability — PENDING。
+4. Portable Pack V2 + classification/recommendation — PENDING。
+5. Real old-data migration — NOT_RUN。
+6. VPS exact Main3 deployment/live activation — NOT_RUN。
+7. Final signed installer/updater acceptance — PENDING。
+8. Final QA + acceptance bundle + Main3 promotion — PENDING。
+Gate2只记录：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
+本轮不研究邮箱、不发信、不进入Gate2；integration/main3、main1/main2和CURRENT不动。dispatch32存储违规是保留历史，未改写成PASS。
 
 ## Frozen V3 — historical real A/B stop before A product write
 
@@ -152,18 +161,13 @@ reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 [account-capabilities](../../release/account-capabilities.json) 保持 register=false / forgot_password=false。
 两文件相对 frozen main2 字节未变。本轮没有迁移日期、真实邮件或 capability 激活。
 [历史 final QA](../../release/FINAL_E109_CANDIDATE_QA.json) 不替代最终集成候选验收。
-
 ## 下一波 gate（只定义，不执行）
-
 - Gate A：批准后的 native backend/SPI/desktop 兼容部署、TLS/mTLS、实际 session 拓扑、旧 identity continuity；issuer cutover 另行授权。
 - Gate B：保留已完成 native RLS/token 证据，补实际生产拓扑、public issuer、真实 SMTP verify/reset 与 native account-action capability 验收。
 - Gate C：一个 exact 签名候选的 1.5.0→1.5.1、增量/完整 latest、UAC、重启健康、恢复/rollback 与资料保持。
-
 详见 [MAIN3 plan](../exec-plans/active/MAIN3.md) 和 [queue](../governance/DEPENDENCY_QUEUE.json)。
 NOT_DISPATCHED 不代表执行授权；没有新增员工派发或自动等待。
-
 ## 长期知识与历史
-
 临时 `13_DURABLE_REQUIREMENTS_BRIDGE_UNTIL_REPO_KNOWLEDGE_LANDS.md` =
 SUPERSEDED / BRIDGE CLOSED；12/12 repo-native authority 见 [handoff contract](../handoff/README.md)。
 知识 COMPLETE / Batch02 source 与 native-fixture PASS 均不表示产品最终验收。
@@ -172,8 +176,5 @@ MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 can
 56bcc 属 MAIN1_HISTORY；a198 含排除的 21337c1 ancestry，QUARANTINED_NOT_CANONICAL。
 旧 READ_FIRST/HANDOFF 历史不覆盖本轮重写的 GPT_WEB 当前主上下文。
 最终 publication SHA/tree 由 immutable receipt 和 remote 回读绑定，避免文档自引用 SHA。
-
 ## Generic sync foundation (2026-09-14)
-
 `04` delivery `dd86307c387ed8012a6edbe130b6ccd7eb510d68` integrated through its exact parent chain (`f097cd4`, `c423bc9`, `6a15de5`, `dd86307`). `SYNC_ITEM_REGISTRY` and migration `0039_generic_sync_kinds` are now the canonical integration baseline. Unsupported kinds remain fail-closed; structured sync entities/projections remain non-authoritative. Full account rehydration is NOT_YET_COMPLETE; domain adapters remain pending.
-

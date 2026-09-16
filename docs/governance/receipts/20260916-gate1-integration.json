@@ -1,0 +1,141 @@
+{
+  "EMPLOYEE_SLOT": "A",
+  "DISPATCH_ID": "MF-MAIN3-A-GATE1-FINAL-INTEGRATION-20260916-36",
+  "TASK_ID": "INTEGRATE_FROZEN_GUI_AB_GATE1_PASS_V1",
+  "STATUS": "PASS_GATE1_INTEGRATED",
+  "START_CONTROL_HEAD": "d15cdf7b12e28dbeb6f553af0040bfde7ead4c0c",
+  "INTEGRATED_SOURCE_SHA": "e3cfc2ac7be3900dce81f36d2c180c806fc5dca8",
+  "INTEGRATED_SOURCE_TREE": "61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8",
+  "RESULT_BINDING": "Containing control publication commit; exact final SHA/tree supplied by remote readback receipt.",
+  "WORKER02_FINAL_CONSUMED": "YES",
+  "WORKER02_FINAL_SHA": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2",
+  "WORKER02_FINAL_TREE": "61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8",
+  "ORDERED_SOURCE_COMMITS": [
+    "76b9b946bac8b15084e7e591c2f85a5abfd05fa1",
+    "515514d0971a27647571f35f85ad8b39df3ba2ad",
+    "1d65c2c4f174a8639b8a10ddc9f349942616e5b2",
+    "247741ed87ceac075e8c9b2828bf56b7d3165fbc",
+    "258ba9f7f993ad9b96675faa801c2de98151bf08",
+    "990d1f5701884d17916069a83640e21544bd8fc9",
+    "a0fcd3748d19cf6ed7cb54547736b300a0c611e0",
+    "a1190ca18753fdedb3e4c155efeb3a111cfbb94f",
+    "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2"
+  ],
+  "UNKNOWN_COMMITS": 0,
+  "CONFLICTS_RESOLVED": [],
+  "LONG_PATH_PRODUCT_FIX": "ACCEPTED",
+  "GUI_HARNESS_FIX": "ACCEPTED_TEST_ONLY",
+  "GUI_HARNESS_REVIEW": "UIA-first; exact PID/HWND/executable hash; fresh frame-bound HWND fallback; no OS-wide SendInput; not business authority.",
+  "LONG_PATH_REVIEW": "Native I/O only; no LongPathsEnabled change/reboot/ID shortening/short-file staging. Workspace purge and reparse/account boundaries remain fail-closed.",
+  "INTEGRATION_TEST_PASS": 117,
+  "INTEGRATION_TEST_FAIL": 0,
+  "INTEGRATION_TEST_SKIP": 1,
+  "SKIP_DETAILS": [
+    {
+      "test": "test_existing_22_postgres_protocol_cases",
+      "reason": "requires scripts/schema_0036_native.py owned disposable PostgreSQL"
+    }
+  ],
+  "WORKER02_ACCEPTANCE_TESTS": "82 PASS / 0 FAIL / 0 SKIP",
+  "ACCEPTANCE_EXECUTOR": "Worker02; dispatch33/34/35 continuation as bounded by original README",
+  "ACCEPTANCE_LIMITS": "Synthetic TEST authority; review create/start/hint/pause/resume, not submitted-answer/grading or visual polish. R1 long upload carried via byte-identical source into R4, not relabeled repeated R4 upload. No payload transfer.",
+  "AB_POSTGRES": "PREVIOUSLY_QUALIFIED_25/0/0",
+  "AB_DESKTOP": "PREVIOUSLY_QUALIFIED_26/0/0",
+  "BIG_GATE_1": "PASS",
+  "FULL_FROZEN_GUI_AB": "PASS",
+  "FULL_ACCOUNT_REHYDRATION": "PASS",
+  "P0_PRODUCT_SYNC_WRITE_GAP": "CLOSED_SOURCE",
+  "A_TO_SERVER": "PASS",
+  "SERVER_TO_B": "PASS",
+  "B_TO_SERVER": "PASS",
+  "SERVER_TO_A": "PASS",
+  "RESTART_REHYDRATION": "PASS",
+  "ACCOUNT_ISOLATION": "PASS",
+  "DELETE_TOMBSTONE": "PASS",
+  "LONG_PATH_GUI_UPLOAD": "PASS",
+  "FINAL_FROZEN_SOURCE_SHA": "a1190ca18753fdedb3e4c155efeb3a111cfbb94f",
+  "FINAL_FROZEN_SOURCE_TREE": "aafbd810065b86f81cba400f2a60516960106501",
+  "FINAL_FROZEN_BUILD_ID": "MF-02-FROZEN-35-a1190ca1",
+  "FINAL_FROZEN_SHA256": "a31849225ba6a7becee8116b579b4d4bce35be6984673cbf2af97b320313c2de",
+  "FINAL_FROZEN_ARTIFACT": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\build\\r4\\dist\\MentorFlow\\MentorFlow.exe",
+  "EVIDENCE_BLOB_HASHES_VERIFIED": 36,
+  "COMPLETED_BIG_GATES": 1,
+  "REMAINING_BIG_GATES": 7,
+  "BIG_GATES": [
+    {
+      "number": 1,
+      "name": "Frozen GUI A/B + Full Account Rehydration",
+      "status": "PASS"
+    },
+    {
+      "number": 2,
+      "name": "Email lifecycle E2E",
+      "status": "BLOCKED_QQ_REFERENCE"
+    },
+    {
+      "number": 3,
+      "name": "Canonical old-data ownership / data target stability",
+      "status": "PENDING"
+    },
+    {
+      "number": 4,
+      "name": "Portable Pack V2 + classification/recommendation",
+      "status": "PENDING"
+    },
+    {
+      "number": 5,
+      "name": "Real old-data migration",
+      "status": "NOT_RUN"
+    },
+    {
+      "number": 6,
+      "name": "VPS exact Main3 deployment/live activation",
+      "status": "NOT_RUN"
+    },
+    {
+      "number": 7,
+      "name": "Final signed installer/updater acceptance",
+      "status": "PENDING"
+    },
+    {
+      "number": 8,
+      "name": "Final QA + acceptance bundle + Main3 promotion",
+      "status": "PENDING"
+    }
+  ],
+  "GATE2_EMAIL_LIFECYCLE": "BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE",
+  "GATE2_OWNER_ACTION": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
+  "PRODUCT_ACCEPTANCE": "PENDING",
+  "REAL_USER_DATA_MUTATED": "NO",
+  "REAL_SMTP_SEND_COUNT": 0,
+  "VPS_DEPLOYED": "NO",
+  "SECRET_EXPOSURE_COUNT": 0,
+  "SOURCE_ROOT": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow",
+  "SCRATCH_ROOT": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-A-GATE1-FINAL-INTEGRATION-20260916-36\\A",
+  "FORMAL_OUTPUT_ROOT": "E:\\Codex\\Data\\worktrees\\2735\\MentorFlow",
+  "OPTIONAL_CACHE_ROOT": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-A-GATE1-FINAL-INTEGRATION-20260916-36\\A\\cache",
+  "D_FREE_SPACE_BEFORE": 544673898496,
+  "SCRATCH_PEAK_SIZE": 63147555,
+  "SCRATCH_FILE_COUNT": 459,
+  "SIZE_MEASUREMENT": "OBSERVED_PRE_CLEANUP; not continuously sampled; excludes read-only dependency junction",
+  "HIGH_CHURN_ON_D": "YES",
+  "HIGH_CHURN_ON_E": "NO",
+  "E_TEMP_FILES_CREATED": 0,
+  "E_TEMP_FILES_LEFT": 0,
+  "GLOBAL_CODEX_STORAGE_ANOMALY_DETECTED": "NO_NEW_WRITE_OBSERVED_READ_ONLY_COMPARISON",
+  "GLOBAL_CODEX_STORAGE_MUTATED": "NO",
+  "SCRATCH_CLEANED": "YES_DISPOSABLE_TEST_CACHE_FRONTEND_REMOVED; IMMUTABLE_LOGS_AUDIT_RETAINED",
+  "CONTROL_BRANCH_MUTATED": "YES",
+  "INTEGRATION_BRANCH_MUTATED": "NO",
+  "MAIN2_MUTATED": "NO",
+  "MAIN1_MUTATED": "NO",
+  "FORMAL_MAIN3_CREATED": "NO",
+  "GITHUB_ACTIONS_EXECUTED": 0,
+  "WORKBENCH_CURRENT_UPDATED": false,
+  "GLOBAL_DISPATCH_COUNT": "16_OF_24",
+  "REMAINING_DISPATCH_BUDGET_AFTER_THIS": 8,
+  "WORKER_STATUS": "SILENT",
+  "INTEGRATION_FOCUSED_TEST_PASS": 96,
+  "KNOWLEDGE_TEST_PASS": 21,
+  "GUI_HARNESS_PARSER": "PASS_NO_UI_EXECUTION"
+}

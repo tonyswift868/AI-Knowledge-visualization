@@ -35,6 +35,18 @@ class KnowledgeBoundaryTests(unittest.TestCase):
         del self.board["workers"]["A"]["dispatch_id"]
         self.assert_rejected()
 
+    def test_extra_big_gate_fails_closed(self):
+        self.board['big_gates'].append(dict(number=9, name='Unexpected gate', status='PENDING'))
+        self.assert_rejected()
+
+    def test_gate_count_cannot_overclaim_acceptance(self):
+        self.board['big_gates'][1]['status'] = 'PASS'
+        self.assert_rejected()
+
+    def test_gate_authorities_must_agree(self):
+        self.queue['big_gates'][1]['status'] = 'PASS'
+        self.assert_rejected()
+
     def test_accepted_delivery_cannot_omit_pending_acceptance(self):
         del self.board['workers']['04']['acceptance_state']
         self.assert_rejected()
@@ -249,7 +261,8 @@ class WebHandoffBoundaryTests(unittest.TestCase):
         self.write(handoff.READ_FIRST[5], json.dumps(queue))
         self.commit()
         output = handoff.build_web(self.root).decode()
-        self.assertIn("USER_ACTION_REQUIRED = " + task["task_id"] + ": Review supplied final candidate.", output)
+        actions = next(line for line in output.splitlines() if line.startswith("USER_ACTION_REQUIRED = "))
+        self.assertIn(task["task_id"] + ": Review supplied final candidate.", actions)
 
 
 if __name__ == "__main__":
