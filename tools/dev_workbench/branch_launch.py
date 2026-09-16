@@ -204,6 +204,7 @@ class BranchLauncher:
         profile = self.profile_base / channel; env = self.environment(profile)
         run = self.safe(self.cache / 'runs' / uuid.uuid4().hex); run.mkdir(parents=True)
         log, identity = run / 'desktop.log', run / 'identity.json'
+        env['MENTORFLOW_STARTUP_LOG'] = str(run / 'startup.jsonl')
         if smoke_seconds: env['MENTORFLOW_DESKTOP_SMOKE_SECONDS'] = str(smoke_seconds)
         progress('启动所选源码版本…')
         try:

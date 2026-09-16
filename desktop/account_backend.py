@@ -11,6 +11,18 @@ import threading
 
 
 def run_account_backend(listener, data_root: str, stop_event, product_pipe=None, product_scope=None) -> None:
+    import logging
+    from .startup_diagnostics import record, BackendFailureHandler
+    logging.getLogger('uvicorn.error').addHandler(BackendFailureHandler())
+    record('account_backend_initialize')
+    try:
+        _run_account_backend(listener, data_root, stop_event, product_pipe, product_scope)
+    except Exception as exc:
+        record('account_backend_initialize', exc)
+        raise
+
+
+def _run_account_backend(listener, data_root, stop_event, product_pipe, product_scope):
     # Rebind after spawn's entry-point imports (including package launch config)
     # and before any backend import. Never consume an inherited database URL.
     root = Path(data_root).resolve(strict=True)

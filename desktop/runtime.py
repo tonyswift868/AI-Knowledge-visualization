@@ -362,6 +362,7 @@ class LocalService(QObject):
 
     def _start_account_process(self) -> None:
         import multiprocessing
+        from .startup_diagnostics import record
         from .account_backend import run_account_backend
 
         if self.thread is not None and self.thread.is_alive():
@@ -392,6 +393,7 @@ class LocalService(QObject):
         )
         try:
             self.thread.start()
+            record('account_backend_spawned')
         except BaseException:
             self._stop_event.set()
             if self._product_relay_thread is not None:
@@ -447,6 +449,8 @@ class LocalService(QObject):
         last_error = "服务尚未响应"
         while not self._stop_event.is_set() and time.monotonic() < deadline:
             if self.thread and not self.thread.is_alive():
+                from .startup_diagnostics import record
+                record('account_backend_exited', self._server_error)
                 detail = f"：{self._server_error}" if self._server_error else "。"
                 self._close_listener()
                 self.failed.emit(f"本地服务提前退出{detail}")
@@ -454,6 +458,8 @@ class LocalService(QObject):
             try:
                 response = httpx.get(f"{self.origin}/api/health", timeout=2)
                 if response.status_code == 200 and self._is_expected_health(response):
+                    from .startup_diagnostics import record
+                    record('local_service_ready')
                     self.ready.emit(self.origin)
                     return
                 if response.status_code != 200:

@@ -210,11 +210,6 @@ class LoginGateWindow(QWidget):
         self.notice_label.setWordWrap(True)
         self.notice_label.setObjectName("loginSessionNotice")
         outer.addWidget(self.notice_label)
-        privacy = QLabel("仅勾选记住密码才保存密码；密码和会话仅保存在 Windows 凭据管理器。移除本机账号不删除学习资料。")
-        privacy.setObjectName("loginSubtitle")
-        privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        privacy.setWordWrap(True)
-        outer.addWidget(privacy)
         self.about_button = QPushButton('关于与检查更新')
         self.about_button.setObjectName('loginAboutUpdates')
         self.about_button.setStyleSheet('min-height: 22px; padding: 2px; border: 0; background: transparent;')
@@ -235,7 +230,7 @@ class LoginGateWindow(QWidget):
             account_actions.addWidget(button)
         self.register_button.clicked.connect(lambda: self._account_action('register'))
         self.forgot_password_button.clicked.connect(lambda: self._account_action('forgot_password'))
-        outer.addLayout(account_actions)
+        card_layout.insertLayout(card_layout.indexOf(self.primary_button), account_actions)
         self.cancel_button.hide()
 
     @property

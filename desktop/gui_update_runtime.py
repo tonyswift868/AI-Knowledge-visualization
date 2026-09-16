@@ -35,7 +35,7 @@ def attach_update_entry(application, gate, *, defer_service=False):
     gate.bind_update_controller(updater)
     from desktop.version import account_capabilities
     gate.set_account_capabilities(None if defer_service else account_capabilities())
-    entry = UpdatePanel(gate, controller=updater, compact=True,
+    entry = UpdatePanel(gate, controller=updater, compact=True, login_summary=True,
                         auto_delay_ms=60000 if defer_service else 5000)
     gate.update_entry = entry
     gate.update_entry_layout.addWidget(entry)

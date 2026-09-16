@@ -1486,10 +1486,7 @@ class MentorFlowApplication:
             if hasattr(result, 'close'):
                 result.close()
             return
-        from .startup_flow import (
-            AccountBootstrapResult,
-            DeviceBootstrapState,
-        )
+        from .startup_flow import AccountBootstrapResult
 
         if not isinstance(result, AccountBootstrapResult):
             self._background_failed("bootstrap", "账号数据结果无法验证，请重试。")
@@ -1497,13 +1494,9 @@ class MentorFlowApplication:
         self.bootstrap_result = result
         from .runtime import bind_desktop_profile_data_root
         bind_desktop_profile_data_root(result.profile)
-        if result.rehydration_result is not None:
-            self._show_rehydration(result)
-            return
-        if result.device_state is DeviceBootstrapState.NEW_DEVICE_OR_EMPTY_LOCAL_STATE:
-            self._show_device_migration(before_main=True)
-        else:
-            self._start_enterprise_local_service()
+        # Local product stores still hydrate through the authenticated relay.
+        # Empty accounts and missing binaries do not require a recovery wizard.
+        self._start_enterprise_local_service()
 
     def _show_rehydration(self, result) -> None:
         from .rehydration_page import RehydrationPage
@@ -1511,14 +1504,13 @@ class MentorFlowApplication:
         old = getattr(self, 'rehydration_page', None)
         if old is not None:
             old.close()
-        page = self.rehydration_page = RehydrationPage()
-        page.setWindowTitle('MentorFlow · 学习空间恢复')
+        page = self.rehydration_page = RehydrationPage(management_only=True)
+        page.setWindowTitle('MentorFlow · 本机资料与模型')
         page.resize(820, 780)
         page.authenticated(result.rehydration_session.context.account_id)
         page.bind_resource_recovery(result.local_asset_lifecycle)
         generation = page.start_sync()
         present(page, generation, result.rehydration_result)
-        page.workspace_requested.connect(lambda _: self._enter_rehydrated_workspace(page, result))
         def retry(request):
             epoch = self._login_generation
             def run():
@@ -1528,6 +1520,14 @@ class MentorFlowApplication:
             threading.Thread(target=run, daemon=True, name='mentorflow-rehydration').start()
         page.sync_requested.connect(retry)
         page.show()
+
+    def _open_resource_recovery(self) -> None:
+        if self.main is None or self.bootstrap_result is None:
+            return
+        if self.bootstrap_result.rehydration_result is not None:
+            self._show_rehydration(self.bootstrap_result)
+        else:
+            self._show_device_migration(before_main=False)
 
     def _enter_rehydrated_workspace(self, page, result) -> None:
         if page is not self.rehydration_page or result is not self.bootstrap_result:
@@ -1647,10 +1647,16 @@ class MentorFlowApplication:
                                if service is self.service and generation == self._login_generation and not self._closing else None)
 
         def start_service() -> None:
+            from .startup_diagnostics import record
+            stage = 'frontend_prepare'
             try:
+                record(stage)
                 _prepare_desktop_frontend()
+                stage = 'local_service_start'
+                record(stage)
                 service.start()
-            except Exception:
+            except Exception as exc:
+                record(stage, exc)
                 service.failed.emit("本机学习服务暂时无法打开，请重新启动后重试。")
 
         threading.Thread(
@@ -1661,8 +1667,10 @@ class MentorFlowApplication:
 
     def _service_ready(self, origin: str) -> None:
         from .api import DesktopApi
-        self.api = DesktopApi(origin)
+        from .startup_diagnostics import record
         try:
+            record('main_window_initialize')
+            self.api = DesktopApi(origin)
             if self.bootstrap_result is not None:
                 self._show_main(self.bootstrap_result.main_user)
             else:
@@ -1674,7 +1682,8 @@ class MentorFlowApplication:
                     }
                 )
         except Exception as exc:
-            self._service_failed(str(exc))
+            record('main_window_initialize', exc)
+            self._service_failed('MAIN_WINDOW_INITIALIZATION_FAILED')
 
     def _show_main(self, user: dict) -> None:
         updater = getattr(self.app, '_mentorflow_updater', None)
@@ -1698,9 +1707,7 @@ class MentorFlowApplication:
                 account_vault_manager=self.bootstrap_result.vault_manager,
                 local_asset_lifecycle=self.bootstrap_result.local_asset_lifecycle,
                 bootstrap_snapshot=self.bootstrap_result.snapshot,
-                open_recovery_center=lambda: self._show_device_migration(
-                    before_main=False
-                ),
+                open_recovery_center=self._open_resource_recovery,
                 return_to_login_gate=self._return_to_login_gate,
 rehydration_session=self.bootstrap_result.rehydration_session,
                 admin_transport=self.bootstrap_result.rehydration_session,
@@ -1712,6 +1719,8 @@ rehydration_session=self.bootstrap_result.rehydration_session,
             self._update_login_blocked(True)
             return
         self.main.show()
+        from .startup_diagnostics import record
+        record('main_window_open')
         if updater is not None:
             updater.bind_window(self.main)
         if self._enterprise_login_required:
@@ -1805,6 +1814,8 @@ rehydration_session=self.bootstrap_result.rehydration_session,
             self._background_failed("logout", "当前账号的数据句柄未能完整关闭，请关闭软件后重试。")
 
     def _service_failed(self, message: str) -> None:
+        from .startup_diagnostics import record
+        record('local_service_failed')
         self.splash.close()
         if self._enterprise_login_required:
             message = "本机学习服务暂时无法打开，请重新启动后重试。"

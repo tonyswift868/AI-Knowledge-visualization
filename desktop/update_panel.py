@@ -41,11 +41,12 @@ def release_summary(text):
 
 class UpdatePanel(QFrame):
     def __init__(self, parent=None, *, service=_AUTO, port=None, controller=None,
-                 compact=False, auto_delay_ms=5000):
+                 compact=False, auto_delay_ms=5000, login_summary=False):
         super().__init__(parent)
         self.setObjectName('updateCenter')
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._compact = compact
+        self._login_summary = login_summary
         self._shared = controller is not None or service is _AUTO and port is None
         self.controller = controller or (application_updater(configured_mature_service) if self._shared
                            else UpdateController(None if service is _AUTO else service, self, port=port))
@@ -294,6 +295,12 @@ class UpdatePanel(QFrame):
         # Reserve every explicit gate/failure line before Qt redistributes space.
         self.status.setMinimumHeight(self.status.minimumSizeHint().height())
         self.status.setVisible(not self._compact or state != UpdateState.CHECKING)
+        if self._login_summary:
+            # Keep mandatory/repair authority and its actions; routine checks
+            # and retry controls belong to the update center inside the app.
+            self.check_button.hide()
+            if not required and state in (UpdateState.CHECKING, UpdateState.RECOVERABLE_ERROR):
+                self.status.hide()
         # Hiding a focused action must not transfer focus to controls farther
         # down Settings and scroll the progress out of the user's viewport.
         if owned_focus and self.isVisible():

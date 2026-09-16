@@ -40,8 +40,9 @@ class RehydrationPage(QWidget):
     workspace_requested = Signal(object)
     resource_action_requested = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, management_only=False):
         super().__init__(parent)
+        self.management_only = management_only
         self.model = RehydrationState()
         self._resource_lifecycle = None
         self._download_job = None
@@ -67,7 +68,8 @@ class RehydrationPage(QWidget):
         layout.addWidget(self.scroll, 1)
         self.portable_pack = PortablePackEntry()
         layout.addWidget(self.portable_pack)
-        self.model_cache_button = QPushButton('选择已有公共模型缓存（可选）')
+        self.portable_pack.setVisible(not management_only)
+        self.model_cache_button = QPushButton('手动指定已有模型')
         self.model_cache_button.clicked.connect(self._select_model_cache)
         layout.addWidget(self.model_cache_button)
         self.details_toggle = QToolButton()
@@ -105,15 +107,15 @@ class RehydrationPage(QWidget):
 
     def _select_model_cache(self):
         generation = self.model.generation
-        selected = QFileDialog.getExistingDirectory(self, '选择公共模型文件目录（逐文件校验，不修改来源）')
+        selected = QFileDialog.getExistingDirectory(self, '指定已有模型目录（逐文件校验，不修改来源）')
         if selected and generation == self.model.generation and self._resource_lifecycle is not None:
             try:
                 path = self._resource_lifecycle.validate_model_cache(selected)
             except (OSError, ValueError):
-                self.model_cache_button.setText('缓存目录不可用，请重新选择')
+                self.model_cache_button.setText('模型目录不可用，请重新选择')
                 return
             self._model_cache_root = path
-            self.model_cache_button.setText('已选择公共缓存（仅复用大小和 SHA-256 匹配文件）')
+            self.model_cache_button.setText('已指定模型目录（安装时校验）')
 
     def authenticated(self, account_key):
         if self._download_job: self._download_job[1].set()
@@ -152,6 +154,9 @@ class RehydrationPage(QWidget):
         return accepted
 
     def _enter(self):
+        if self.management_only:
+            self.close()
+            return
         if self.model.workspace_allowed:
             self.workspace_requested.emit(self.model.snapshot)
 
@@ -235,7 +240,7 @@ class RehydrationPage(QWidget):
         self.progress.setVisible(model.state in (SyncState.AUTH_SUCCESS, SyncState.SYNCING))
         self.retry.setVisible(model.state in (SyncState.SYNC_OFFLINE, SyncState.SYNC_FAILED) or
                               snapshot is not None and snapshot.empty_state == 'NOT_INITIALIZED')
-        self.enter.setEnabled(model.workspace_allowed)
+        self.enter.setEnabled(self.management_only or model.workspace_allowed)
         self.cache_notice.setText('')
         self.summary.setText('')
         if snapshot is not None:
@@ -247,6 +252,8 @@ class RehydrationPage(QWidget):
             self.summary.setText(f'计划 {len(snapshot.plans)} · 进度 {snapshot.progress_count} · '
                                  f'复习 {snapshot.review_count if snapshot.review_count is not None else "暂不支持"} · '
                                  f'历史 {snapshot.history_count if snapshot.history_count is not None else "暂不支持"}')
+        if self.management_only:
+            self.enter.setText('关闭')
         old = self.scroll.takeWidget()
         if old is not None:
             old.hide()
@@ -295,7 +302,7 @@ class RehydrationPage(QWidget):
         actions = QHBoxLayout()
         buttons = {}
         if resource.verified_redownload:
-            download = QPushButton('重新下载 / 取消')
+            download = QPushButton('安装 / 下载模型' if resource.kind == 'model' else '重新下载 / 取消')
             download.setEnabled(self._resource_lifecycle is not None and self._resource_lifecycle.account_key == self.model.account_key)
             download.clicked.connect(lambda: self._resource_action(resource, 'redownload'))
             actions.addWidget(download)
