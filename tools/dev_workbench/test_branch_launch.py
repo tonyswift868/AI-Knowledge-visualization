@@ -90,3 +90,83 @@ def test_normal_launch_has_canonical_identity_and_verified_tls(tmp_path, monkeyp
     assert 'MENTORFLOW_ACCOUNT_MVP_TEST' not in env
     import ssl
     ssl.create_default_context(cafile=env['SSL_CERT_FILE'])
+
+
+def test_native_process_precedes_assets_but_uses_exact_source(tmp_path, monkeypatch):
+    b = BranchLauncher(cache=tmp_path, profile_base=tmp_path/'profiles')
+    selected = dict(channel='development', branch='control/main3-current', sha='b'*40)
+    b.resolve = Mock(return_value=selected)
+    source = tmp_path/'source'; source.mkdir()
+    child = Mock(pid=123); child.poll.return_value = None
+    events = []
+    def popen(command, **kwargs):
+        events.append('spawn')
+        marker = Path(kwargs['env']['MENTORFLOW_WORKBENCH_PREPARATION'])
+        assert json.loads(marker.read_text())['state'] == 'pending'
+        assert command[3] == str(source)
+        Path(command[5]).write_text(json.dumps({**selected, 'pid':123,
+            'desktop_module':str(source/'desktop/main.py')}))
+        return child
+    monkeypatch.setattr('tools.dev_workbench.branch_launch.subprocess.Popen', popen)
+    def prepare(selection, progress, source_ready):
+        assert selection == selected
+        source_ready(source)
+        events.append('assets')
+        return source
+    b.prepare = prepare
+    result = b.launch('development')
+    assert events == ['spawn', 'assets']
+    assert result['sha'] == selected['sha']
+    assert json.loads((Path(result['identity']).parent/'preparation.json').read_text())['state']=='ready'
+
+
+def test_asset_failure_after_native_spawn_stays_failed(tmp_path, monkeypatch):
+    b = BranchLauncher(cache=tmp_path, profile_base=tmp_path/'profiles')
+    b.resolve = Mock(return_value=dict(channel='development',branch='control/main3-current',sha='a'*40))
+    source=tmp_path/'source'; source.mkdir()
+    marker=[]
+    def popen(command, **kwargs):
+        marker.append(Path(kwargs['env']['MENTORFLOW_WORKBENCH_PREPARATION']))
+        return Mock(pid=12)
+    monkeypatch.setattr('tools.dev_workbench.branch_launch.subprocess.Popen', popen)
+    def prepare(selection, progress, source_ready):
+        source_ready(source)
+        raise LaunchError('asset build failed')
+    b.prepare=prepare
+    with pytest.raises(LaunchError,match='asset build failed'):
+        b.launch('development')
+    assert json.loads(marker[0].read_text())['state']=='error'
+
+
+@pytest.mark.parametrize('has_contract', [False, True])
+def test_preparation_only_defers_assets_for_supported_exact_source(tmp_path, monkeypatch, has_contract):
+    repo = tmp_path/'repo'; repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(['git','-C',str(repo),*args]).decode().strip()
+    git('init'); git('config','user.name','test'); git('config','user.email','test@example.invalid')
+    (repo/'frontend').mkdir(); (repo/'frontend/package.json').write_text('{}')
+    if has_contract:
+        (repo/'desktop').mkdir(); (repo/'desktop/startup_preparation.py').write_text('# contract')
+    git('add','.'); git('commit','-m','exact source')
+    sha=git('rev-parse','HEAD')
+    b=BranchLauncher(root=repo,cache=tmp_path/'cache')
+    monkeypatch.setattr('tools.dev_workbench.branch_launch.shutil.which',lambda _: 'npm')
+    events=[]
+    def run(command,cwd,log,env):
+        events.append('assets')
+        dist=cwd/'dist'; dist.mkdir(exist_ok=True)
+        (dist/'index.html').write_text('verified output')
+    b.run=run
+    def source_ready(source):
+        assert b.source_matches(source,sha)
+        events.append('spawn')
+    selected=dict(sha=sha,branch='control/main3-current')
+    source=b.prepare(selected,source_ready=source_ready)
+    assert events == (['spawn','assets','assets'] if has_contract else ['assets','assets'])
+    events.clear()
+    assert b.prepare(selected,source_ready=source_ready)==source
+    assert events == (['spawn'] if has_contract else [])
+    (source/'frontend/dist/index.html').write_text('tampered')
+    events.clear()
+    assert b.prepare(selected,source_ready=source_ready)!=source
+    assert events == (['spawn','assets','assets'] if has_contract else ['assets','assets'])

@@ -1113,7 +1113,7 @@ class MentorFlowApplication:
         return self.app.exec()
 
     def _show_login_gate(self) -> None:
-        from .startup_flow import LoginGateState, LoginGateWindow
+        from .login_shell import LoginGateState, LoginGateWindow
 
         if self.login_gate is None:
             self.login_gate = LoginGateWindow()
@@ -1318,6 +1318,12 @@ class MentorFlowApplication:
             self.login_gate.update_controller.bind_window(self.main)
 
     def _begin_account_action(self, intent):
+        from .startup_preparation import preparation_state, preparation_message
+        state = preparation_state()
+        if state != 'ready':
+            if self.login_gate is not None:
+                self.login_gate.notice_label.setText(preparation_message(state))
+            return
         if self.login_gate is None or self._closing or self.login_gate.login_is_blocked or self.login_gate.account_capabilities.get(intent) is not True:
             return
         if intent not in ('register', 'forgot_password'):
@@ -1662,13 +1668,42 @@ class MentorFlowApplication:
         service.failed.connect(lambda message: self._service_failed(message)
                                if service is self.service and generation == self._login_generation and not self._closing else None)
 
+        # Timer owns presentation only; readiness still comes from LocalService.
+        import time
+        started = time.monotonic()
+        phase = ["正在准备此版本页面"]
+        progress_timer = QTimer(self.app)
+        progress_timer.setInterval(1000)
+        def show_progress():
+            if (self._closing or service is not self.service
+                    or generation != self._login_generation):
+                progress_timer.stop()
+                progress_timer.deleteLater()
+                return
+            if self.login_gate is not None:
+                self.login_gate.state_detail.setText(
+                    f"{phase[0]}（已等待 {int(time.monotonic() - started)} 秒）…")
+        service.ready.connect(progress_timer.stop)
+        service.ready.connect(progress_timer.deleteLater)
+        service.failed.connect(progress_timer.stop)
+        service.failed.connect(progress_timer.deleteLater)
+        progress_timer.timeout.connect(show_progress)
+        progress_timer.start()
+
         def start_service() -> None:
             from .startup_diagnostics import record
             stage = 'frontend_prepare'
             try:
                 record(stage)
+                from .startup_preparation import wait_for_preparation
+                if not wait_for_preparation(lambda: self._closing or service is not self.service
+                                             or generation != self._login_generation):
+                    return
                 _prepare_desktop_frontend()
+                if self._closing or service is not self.service or generation != self._login_generation:
+                    return
                 stage = 'local_service_start'
+                phase[0] = '账号已验证，正在初始化本机学习服务'
                 record(stage)
                 service.start()
             except Exception as exc:

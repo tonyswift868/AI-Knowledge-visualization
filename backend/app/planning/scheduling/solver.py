@@ -9,7 +9,6 @@ from hashlib import sha256
 from typing import Any
 
 import ortools
-from ortools.sat.python import cp_model
 
 from .contracts import (
     AllocationKind,
@@ -82,6 +81,8 @@ class ORToolsScheduleSolver:
                 wall_time_ms=0,
                 configuration_extra=("deterministic_precheck=true",),
             )
+
+        from ortools.sat.python import cp_model
 
         context = self._build_model(problem)
         solver = cp_model.CpSolver()
@@ -206,6 +207,8 @@ class ORToolsScheduleSolver:
         return new_solution, delta
 
     def _build_model(self, problem: PlanScheduleProblem) -> _ModelContext:
+        from ortools.sat.python import cp_model
+
         model = cp_model.CpModel()
         # Zero-capacity dates are calendar evidence, not decision slots. Keeping
         # them out of the model materially reduces weekly-preference problems

@@ -40,9 +40,12 @@ def _run_account_backend(listener, data_root, stop_event, product_pipe, product_
     })
     from .main import _bind_local_teacher_asset_vault
     _bind_local_teacher_asset_vault(root)
+    from .startup_diagnostics import record
+    record("account_backend_import_start")
     from .backend_imports import load_app
     import uvicorn
     app = load_app()
+    record("account_backend_import_ready")
     if product_pipe is not None:
         from app.product_sync import ProductSyncStores
         from .product_sync_bridge import ChildProductSyncPort
@@ -65,6 +68,7 @@ def _run_account_backend(listener, data_root, stop_event, product_pipe, product_
     threading.Thread(target=watch_stop, name="account-api-stop", daemon=True).start()
     try:
         if not stop_event.is_set():
+            record("account_backend_lifespan_start")
             server.run(sockets=[listener])
     finally:
         listener.close()

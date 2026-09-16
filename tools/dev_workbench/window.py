@@ -163,6 +163,7 @@ class Workbench(QMainWindow):
     def launch_branch(self, channel):
         if getattr(self, 'branch_job', None): return
         for button in self.branch_buttons.values(): button.setEnabled(False)
+        self.branch_status.setText("正在查询最新开发版…" if channel == "development" else "正在查询正式版…")
         launcher = BranchLauncher()
         job = Job(lambda: launcher.launch(channel, job.progress.emit), self)
         self.branch_job = job; self.jobs.append(job)

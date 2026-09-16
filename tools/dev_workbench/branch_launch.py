@@ -87,11 +87,14 @@ class BranchLauncher:
         except (OSError, ValueError):
             return False
 
-    def prepare(self, selected, progress=lambda text: None):
+    def prepare(self, selected, progress=lambda text: None, source_ready=None):
         sha = selected['sha']
         progress(f"获取 {selected['branch']} · {sha[:12]}")
         # Fetch objects only, never move a branch, worktree or default-branch ref.
-        self.git('fetch', '--no-tags', '--no-write-fetch-head', 'origin', sha)
+        try:
+            self.git('cat-file', '-e', sha + '^{commit}')
+        except LaunchError:
+            self.git('fetch', '--no-tags', '--no-write-fetch-head', 'origin', sha)
         base = self.safe(self.cache / 'sources' / sha); base.mkdir(parents=True, exist_ok=True)
         for receipt in sorted(base.glob('*/ready.json'), reverse=True):
             try:
@@ -103,10 +106,13 @@ class BranchLauncher:
                                       for p in data['frontend'])
                 valid = valid and all(hashlib.sha256(self.safe(source / p).read_bytes()).hexdigest() == h
                                       for p, h in data['frontend'].items())
-                if valid and data['frontend']:
-                    self.prepare_lifecycle(source, progress)
-                    progress('源码和前端缓存校验通过'); return source
-            except (OSError, ValueError, KeyError): pass
+            except (OSError, ValueError, KeyError):
+                continue
+            if valid and data['frontend']:
+                if source_ready and (source / 'desktop/startup_preparation.py').is_file():
+                    source_ready(source)
+                self.prepare_lifecycle(source, progress)
+                progress('源码和前端缓存校验通过'); return source
         work = self.safe(base / uuid.uuid4().hex); work.mkdir()
         archive, source = work / 'source.zip', work / 'source'
         self.git('-c', 'core.autocrlf=false', 'archive', '--format=zip', '--output='+str(archive), sha)
@@ -117,6 +123,9 @@ class BranchLauncher:
                     raise LaunchError('源码归档包含不安全路径')
             package.extractall(source)
         if not self.source_matches(source, sha): raise LaunchError('源码缓存与选择的 SHA 不一致')
+        # Only sources with the explicit readiness contract may paint before assets.
+        if source_ready and (source / 'desktop/startup_preparation.py').is_file():
+            source_ready(source)
         env = self.environment(work / 'build-profile')
         log = work / 'prepare.log'
         npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
@@ -201,20 +210,43 @@ class BranchLauncher:
     def launch(self, channel, progress=lambda text: None, *, smoke_seconds=0):
         selected = self.resolve(channel)
         progress(f"已选择 {selected['branch']} · {selected['sha']}（本次启动固定此版本）")
-        source = self.prepare(selected, progress)
         profile = self.profile_base / channel; env = self.environment(profile)
         run = self.safe(self.cache / 'runs' / uuid.uuid4().hex); run.mkdir(parents=True)
         log, identity = run / 'desktop.log', run / 'identity.json'
         env['MENTORFLOW_STARTUP_LOG'] = str(STARTUP_LOG_ROOT / run.name / 'startup.jsonl')
         if smoke_seconds: env['MENTORFLOW_DESKTOP_SMOKE_SECONDS'] = str(smoke_seconds)
-        progress('启动所选源码版本…')
+        process = None
+        preparation = run / 'preparation.json'
+
+        def status(state):
+            temporary = preparation.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'state': state}), encoding='utf-8')
+            temporary.replace(preparation)
+
+        def spawn(source, pending=False):
+            nonlocal process
+            if pending:
+                status('pending')
+                env['MENTORFLOW_WORKBENCH_PREPARATION'] = str(preparation)
+            progress('启动所选源码版本的原生登录窗…')
+            try:
+                with log.open('wb') as output:
+                    process = subprocess.Popen([str(self.python), '-B', str(Path(__file__).with_name('source_entry.py')),
+                        str(source), str(profile), str(identity), json.dumps(selected)], cwd=source, env=env,
+                        stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
+            except OSError:
+                raise LaunchError(f'Python 无法启动，请检查工作台运行时。诊断日志：{log}') from None
+
         try:
-            with log.open('wb') as output:
-                process = subprocess.Popen([str(self.python), '-B', str(Path(__file__).with_name('source_entry.py')),
-                    str(source), str(profile), str(identity), json.dumps(selected)], cwd=source, env=env,
-                    stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
-        except OSError:
-            raise LaunchError(f'Python 无法启动，请检查工作台运行时。诊断日志：{log}') from None
+            source = self.prepare(selected, progress, source_ready=lambda source: spawn(source, True))
+        except Exception:
+            if process is not None:
+                status('error')
+            raise
+        if process is None:
+            spawn(source)
+        else:
+            status('ready')
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if process.poll() is not None:
