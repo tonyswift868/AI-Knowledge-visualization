@@ -12,8 +12,8 @@ KNOWLEDGE_TREE = e14d85633748c4319a3ed6c7bbbfe242afc7466e
 CURRENT_INTEGRATION_REF = integration/main3
 CURRENT_INTEGRATION_COMMIT = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-CONTROL_SOURCE_SNAPSHOT = d51446918da35b104aee6b30e84cecf40411a46c
-CONTROL_SOURCE_TREE = 1ff35483b28cc50f52a706574ebaeff92452408f
+CONTROL_SOURCE_SNAPSHOT = 10e51adc3c7942ab48378a25ca714fa66d2c94fb
+CONTROL_SOURCE_TREE = f76d4100d60dfba6667554c7c416df86f7dce04a
 COMMIT_KIND = SOURCE_SNAPSHOT; publication HEAD is supplied by ref/immutable receipt.
 ACTIVE_SLOTS = A/01/02/03/04
 SLOT_STATE = A:SILENT; 01:SILENT; 02:SILENT; 03:SILENT; 04:SILENT; B:SILENT
@@ -67,7 +67,7 @@ READ_FIRST:
 - [COMPONENT_MAP.md](../project/COMPONENT_MAP.md)
 
 ```text
-GENERATED_FROM = d51446918da35b104aee6b30e84cecf40411a46c; GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md, AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
-generated_at = 2026-09-16T21:18:08Z
+GENERATED_FROM = 10e51adc3c7942ab48378a25ca714fa66d2c94fb; GPT_WEB_MENTORFLOW_MASTER_CONTEXT.md, AGENTS.md, ARCHITECTURE.md, docs/project/CURRENT_STATE.md, docs/exec-plans/active/MAIN3.md, docs/governance/ACTIVE_BOARD.json, docs/governance/DEPENDENCY_QUEUE.json, docs/handoff/README.md, docs/governance/HANDOFF_CONTRACT.md, docs/PRODUCT_FLOW.md, docs/project/COMPONENT_MAP.md, docs/decisions/index.md, docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md, scripts/context/build_compact_handoff.py
+generated_at = 2026-09-16T21:28:06Z
 ```
 Timestamp is source commit time; board is a receipt-derived snapshot, not live telemetry.
