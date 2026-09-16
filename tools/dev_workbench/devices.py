@@ -62,8 +62,12 @@ class Devices:
         self._mutex = threading.RLock()
 
     def root(self, device):
-        if device not in ('A', 'B', 'UserTest'): raise Refused('TEST_DEVICE_UNKNOWN')
+        if device not in self.device_names(): raise Refused('TEST_DEVICE_UNKNOWN')
         return self.base / device
+
+    def device_names(self):
+        from desktop.test_device_profile import device_names
+        return device_names(self.base)
 
     def _owners(self):
         path = self.base / '.owners.json'
@@ -71,7 +75,7 @@ class Devices:
         plain(path)
         if path.stat().st_size > 2048: raise Refused('TEST_DEVICE_UNOWNED_ROOT')
         value = json_bytes(path.read_bytes())
-        if not isinstance(value, dict) or not set(value) <= {'A', 'B', 'UserTest'}:
+        if not isinstance(value, dict) or not set(value) <= set(self.device_names()):
             raise Refused('TEST_DEVICE_UNOWNED_ROOT')
         return value
 

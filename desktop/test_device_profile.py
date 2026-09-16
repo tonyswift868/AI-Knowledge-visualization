@@ -13,6 +13,11 @@ MARKER = '.workbench-owner.json'
 _run_lock = None
 
 
+def device_names(base):
+    from scripts.test_storage_policy import GUI_AB_ROOT
+    return ('A', 'B', 'UserTest', 'NEGATIVE') if Path(base) == GUI_AB_ROOT / 'devices' else ('A', 'B', 'UserTest')
+
+
 def plain(path):
     path = Path(path)
     for parent in reversed((path, *path.parents)):
@@ -33,7 +38,8 @@ def read_profile(root, *, base=None):
         base = Path(base) if base is not None else root.parent
         require_test_path(base)
     root, base = root, Path(base or DEVICE_BASE)
-    if root not in (base / 'A', base / 'B', base / 'UserTest') or not root.is_absolute():
+    permitted = tuple(base / name for name in device_names(base))
+    if root not in permitted or not root.is_absolute():
         raise ValueError('TEST_DEVICE_UNOWNED_ROOT')
     plain(root); marker = plain(root / MARKER)
     if marker.stat().st_size > 2048: raise ValueError('TEST_DEVICE_INVALID_OWNER')

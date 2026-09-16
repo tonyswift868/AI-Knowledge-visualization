@@ -20,6 +20,11 @@ ASSIGNED_ROOT = Path(
     "D:/CodexScratch/MentorFlow/"
     "MF-MAIN3-A-P0-SOURCE-INTEGRATION-FROZEN-REBUILD-20260916-32/A"
 )
+GUI_AB_ROOT = Path(
+    "D:/CodexScratch/MentorFlow/"
+    "MF-MAIN3-02-FROZEN-GUI-AB-CLOSEOUT-20260916-33/02"
+)
+AUTHORIZED_ROOTS = frozenset((ASSIGNED_ROOT, GUI_AB_ROOT))
 
 
 def _plain(path: Path) -> None:
@@ -43,7 +48,7 @@ def assigned_root(environ=None) -> Path:
         raise ValueError("TEST_EPHEMERAL_EXPLICIT_MODE_REQUIRED")
     root = Path(env[SCRATCH_ENV])
     _plain(root)
-    if root != ASSIGNED_ROOT or root.resolve(strict=False) != ASSIGNED_ROOT:
+    if root not in AUTHORIZED_ROOTS or root.resolve(strict=False) != root:
         raise ValueError("TEST_EPHEMERAL_UNASSIGNED_ROOT")
     return root
 
