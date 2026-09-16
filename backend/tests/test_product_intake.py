@@ -16,6 +16,87 @@ from test_profile_settings_postgres import server
 from test_account_import_ledger_schema import native
 
 
+def test_confirmed_group_preserves_exact_records_and_dependencies():
+    source=os.environ.get('MF04_INTAKE_SNAPSHOT')
+    if not source:pytest.skip('explicit retained read-only snapshot not selected')
+    from app.product_intake import sha256_file
+    args=dict(expected_sha256='bfb6805df8913f5891a8d5b01f96683e0d432684870f1e6b79e9c5ef4a0caf43',owner_sha256='1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5')
+    before=prepare(source,**args)
+    after=prepare(source,**args,confirmed_workspace_ids=['internet-interview-20260815'])
+    old={(r['record_type'],r['row_key']):r for r in before['records']}
+    new={(r['record_type'],r['row_key']):r for r in after['records']}
+    assert all(new[k]==v for k,v in old.items())
+    added=[v for k,v in new.items() if k not in old]
+    assert len(added)==1173
+    assert len(after['records'])==29207
+    assert after['held']=={'orm_learning_runs':6}
+    assert sum(r['record_type']=='orm_plans' for r in added)==5
+    assert sum(r['record_type']=='active_plans' for r in added)==2
+    assert sum(r['record_type']=='orm_plan_execution_tasks' for r in added)==797
+    with sqlite3.connect(Path(source).resolve().as_uri()+'?mode=ro&immutable=1',uri=True) as c:
+        c.row_factory=sqlite3.Row
+        admitted={}
+        for r in after['records']:
+            t=r['record_type'];spec=RECORDS[t]
+            row=dict(c.execute('SELECT * FROM "'+t+'" WHERE '+' AND '.join('"'+k+'"=?' for k in spec['keys']),json.loads(r['row_key'])).fetchone())
+            assert project(t,row)==r['payload'] and record_id(t,row)==r['entity_id']
+            if 'workspace_id' in row and r in added:assert row['workspace_id']=='internet-interview-20260815'
+            admitted.setdefault(t,[]).append(row)
+        for t,rows in admitted.items():
+            for fk in c.execute('PRAGMA foreign_key_list("'+t+'")'):
+                parent_values={row[fk[4]] for row in admitted.get(fk[2],[])}
+                assert all(row[fk[3]] is None or row[fk[3]] in parent_values for row in rows)
+    assert sha256_file(source)==args['expected_sha256']
+
+
+def test_confirmed_workspace_cannot_override_other_owner_or_invent_root(tmp_path):
+    import hashlib
+    from app.product_intake import sha256_file
+    path=tmp_path/'ownership.sqlite'
+    with sqlite3.connect(path) as c:
+        c.executescript("CREATE TABLE orm_workspaces(id TEXT); CREATE TABLE orm_workspace_ownership(workspace_id TEXT,user_id TEXT); INSERT INTO orm_workspaces VALUES('mine'),('theirs'); INSERT INTO orm_workspace_ownership VALUES('mine','a'),('theirs','b');")
+    args=dict(expected_sha256=sha256_file(path),owner_sha256=hashlib.sha256(b'a').hexdigest())
+    with pytest.raises(ValueError,match='CONFIRMED_WORKSPACE_OTHER_OWNER'):prepare(path,**args,confirmed_workspace_ids=['theirs'])
+    with pytest.raises(ValueError,match='CONFIRMED_WORKSPACE_NOT_FOUND'):prepare(path,**args,confirmed_workspace_ids=['absent'])
+    with pytest.raises(ValueError,match='CONFIRMED_WORKSPACE_EXCLUDED'):prepare(path,**args,confirmed_workspace_ids=['mine'],excluded_workspace_ids=['mine'])
+    with pytest.raises(ValueError,match='EXCLUDED_WORKSPACE_NOT_FOUND'):prepare(path,**args,excluded_workspace_ids=['absent'])
+
+
+def test_confirmed_clean_selection_excludes_fixtures_without_losing_personal_state():
+    source=os.environ.get('MF04_INTAKE_SNAPSHOT')
+    if not source:pytest.skip('explicit retained read-only snapshot not selected')
+    manifest=json.loads((Path(__file__).resolve().parents[2]/'docs/release/MF-R1-04-DATA-REPAIR/MIGRATION_INPUTS.json').read_text(encoding='utf-8'))
+    selection=manifest['intake_selection']
+    excluded=[r['workspace_id'] for r in selection['test_demo_exclusions']+selection['pending_classification']]
+    args=dict(expected_sha256=selection['source_sha256'],owner_sha256=manifest['owner_sha256'],confirmed_workspace_ids=selection['confirmed_workspace_ids'])
+    all_owned=prepare(source,**args)
+    clean=prepare(source,**args,excluded_workspace_ids=excluded)
+    assert len(clean['records'])==2941
+    clean_index={(r['record_type'],r['row_key']):r for r in clean['records']}
+    original_index={(r['record_type'],r['row_key']):r for r in all_owned['records']}
+    assert all(r==original_index[k] for k,r in clean_index.items())
+    prior=prepare(source,expected_sha256=args['expected_sha256'],owner_sha256=args['owner_sha256'])
+    prior_keys={(r['record_type'],r['row_key']) for r in prior['records']}
+    confirmed_keys=set(original_index)-prior_keys
+    assert len(confirmed_keys)==1173 and confirmed_keys<=set(clean_index)
+    assert clean['admitted']['orm_plan_execution_tasks']==797
+    assert clean['admitted']['orm_plans']==5
+    assert clean['admitted']['active_plan_tasks']==648
+    assert clean['admitted']['active_knowledge_progress_snapshots']==150
+    assert clean['admitted']['active_knowledge_points']==150
+    assert clean['admitted']['active_learner_profiles']==0  # mixed demo provenance stays in backup
+    assert clean['admitted']['orm_sources']==0  # includes seven exact metadata-only fixtures
+    with sqlite3.connect(Path(source).resolve().as_uri()+'?mode=ro&immutable=1',uri=True) as c:
+        c.row_factory=sqlite3.Row
+        for r in all_owned['records']:
+            t=r['record_type'];spec=RECORDS[t]
+            row=dict(c.execute('SELECT * FROM "'+t+'" WHERE '+' AND '.join('"'+k+'"=?' for k in spec['keys']),json.loads(r['row_key'])).fetchone())
+            if row.get('workspace_id')=='internet-interview-20260815' or (t=='orm_workspaces' and row['id']=='internet-interview-20260815'):
+                assert clean_index[(t,r['row_key'])]==r
+            if row.get('workspace_id') in excluded:
+                assert (t,r['row_key']) not in clean_index
+
+
 def http_client(service, actor, tenant):
     api=FastAPI();api.include_router(router);api.state.structured_sync_service=service
     @api.middleware('http')

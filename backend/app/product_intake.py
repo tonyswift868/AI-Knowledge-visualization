@@ -19,7 +19,7 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def prepare(snapshot, *, expected_sha256, owner_sha256):
+def prepare(snapshot, *, expected_sha256, owner_sha256, confirmed_workspace_ids=(), excluded_workspace_ids=()):
     """Read an immutable backup; retain unidentified rows outside intake."""
     if sha256_file(snapshot)!=expected_sha256: raise ValueError('SOURCE_DIGEST_MISMATCH')
     c=sqlite3.connect(Path(snapshot).resolve().as_uri()+'?mode=ro&immutable=1',uri=True)
@@ -28,9 +28,22 @@ def prepare(snapshot, *, expected_sha256, owner_sha256):
         c.execute('PRAGMA query_only=ON')
         c.execute('PRAGMA trusted_schema=OFF')
         tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        owned={r[0] for r in c.execute('SELECT workspace_id,user_id FROM orm_workspace_ownership')
+        ownership=list(c.execute('SELECT workspace_id,user_id FROM orm_workspace_ownership'))
+        owned={r[0] for r in ownership
                if hashlib.sha256(str(r[1]).encode()).hexdigest()==owner_sha256 }
         if not owned: raise ValueError('NO_PROVEN_OWNER_WORKSPACES')
+        # Explicit operator input after Owner confirmation, not a source-provided
+        # permission. Admit only named existing roots; never override another owner.
+        confirmed=set(confirmed_workspace_ids)
+        roots={r[0] for r in c.execute('SELECT id FROM orm_workspaces')}
+        if not confirmed<=roots:raise ValueError('CONFIRMED_WORKSPACE_NOT_FOUND')
+        if any(r[0] in confirmed and hashlib.sha256(str(r[1]).encode()).hexdigest()!=owner_sha256 for r in ownership):
+            raise ValueError('CONFIRMED_WORKSPACE_OTHER_OWNER')
+        owned.update(confirmed)
+        excluded=set(excluded_workspace_ids)
+        if confirmed & excluded:raise ValueError('CONFIRMED_WORKSPACE_EXCLUDED')
+        if not excluded<=roots|{r[0] for r in ownership}:raise ValueError('EXCLUDED_WORKSPACE_NOT_FOUND')
+        owned.difference_update(excluded)
         rows={t:[dict(r) for r in c.execute('SELECT * FROM "'+t+'"')] for t,s in RECORDS.items()
               if s.get('store','orm')=='orm' and t in tables}
         fks={t:[(r[3],r[2],r[4]) for r in c.execute('PRAGMA foreign_key_list("'+t+'")')] for t in rows}
@@ -84,7 +97,7 @@ def prepare(snapshot, *, expected_sha256, owner_sha256):
                 payload=project(t,r)
                 records.append(dict(record_type=t,row_key=k,kind=RECORDS[t]['kind'],entity_id=record_id(t,r),payload=payload))
         records.sort(key=lambda r:(r['kind']!='resource',r['record_type'],r['row_key']))
-        return dict(source_sha256=expected_sha256,owner_sha256=owner_sha256,records=records,
+        return dict(source_sha256=expected_sha256,owner_sha256=owner_sha256,confirmed_workspace_ids=sorted(confirmed),excluded_workspace_ids=sorted(excluded),records=records,
                     admitted={t:len(x) for t,x in accepted.items()},
                     held={t:len(rows[t])-len(x) for t,x in accepted.items() if len(rows[t])!=len(x)})
     finally:c.close()

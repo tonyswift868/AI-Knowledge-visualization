@@ -20,12 +20,14 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--archive-index',type=Path,action='append',default=[])
     parser.add_argument('--file-root',type=Path,action='append',default=[])
+    parser.add_argument('--confirmed-workspace',action='append',default=[],help='Exact existing legacy workspace explicitly confirmed by Owner; never inferred')
+    parser.add_argument('--excluded-workspace',action='append',default=[],help='Exact reviewed test/demo or held workspace; source remains unchanged')
     args=parser.parse_args()
     output=args.output.resolve()
     if not output.is_relative_to(Path('E:/Codex/Temp').resolve()):
         parser.error('Private execution manifest must be inside E:/Codex/Temp')
     if output.exists():parser.error('Output already exists; reuse it or choose a fresh path')
-    prepared=prepare(args.snapshot,expected_sha256=args.sha256,owner_sha256=args.owner_sha256)
+    prepared=prepare(args.snapshot,expected_sha256=args.sha256,owner_sha256=args.owner_sha256,confirmed_workspace_ids=args.confirmed_workspace,excluded_workspace_ids=args.excluded_workspace)
     recovery=recover_indexed_archive_text(prepared,args.snapshot,args.archive_index,output.parent/'recovered-originals') if args.archive_index else {'originals':{}}
     value=attach_original_files(prepared,args.snapshot,recovered_originals=recovery['originals'],file_roots=args.file_root,recovery_root=output.parent/'recovered-originals')
     value['archive_recovery']=recovery
