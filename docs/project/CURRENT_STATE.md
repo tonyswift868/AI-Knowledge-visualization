@@ -8,6 +8,27 @@ MAIN2_CANONICAL_SHA = 04faf2a9fbb50c5f9403dad5abf46354c9b53d82
 MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
 SOURCE_BASELINE = CONTROL_CONVERGENCE_SOURCE
 PRODUCT_ACCEPTANCE = PENDING
+PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
+EXECUTION_AUTHORIZED = NO
+NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+BIG_GATE_2 = BLOCKED_EXTERNAL_AUTHORITY
+BIG_GATE_3 = BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING
+EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE
+OWNER_ACTION = QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED
+REAL_SMTP_SEND = NOT_RUN
+P0_PRODUCT_SYNC_WRITE_GAP = CLOSED_SOURCE
+LATEST_WORKER04_DELIVERY = bf8c35999e2c6752a928cf375b9091d9c68bd363
+DELIVERY_INTEGRATED = NO
+OLD_WORKSPACE_COUNT = 530
+OLD_PLAN_COUNT = 88
+OLD_RESOURCE_COUNT = 330
+STABLE_ID_MAPPING = AUDITED
+DANGLING_OWNERSHIP_REFERENCES = 55
+CANONICAL_IMPORT_RLS = NOT_COMPLETE
+REAL_OLD_DATA_MIGRATION = NOT_RUN
+PROJECTION_LIMIT = 256 KiB
+OVER_LIMIT_RECORD_COUNT = 56
+PRIMARY_OWNER_BINDING = UNPROVEN
 INTEGRATION_BRANCH = integration/main3
 INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
@@ -29,7 +50,7 @@ REAL_A_B_REHYDRATION = PASS_FROZEN_GUI_GATE1
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = GATE1_PASS; SEVEN_GATES_REMAIN; STOP
+CURRENT_PHASE = PAUSED_FOR_REASSESSMENT
 BIG_GATE_1 = PASS
 FULL_FROZEN_GUI_AB = PASS
 COMPLETED_BIG_GATES = 1
@@ -37,14 +58,24 @@ REMAINING_BIG_GATES = 7
 ```
 main2 为冻结 canonical source baseline；integration/main3 是施工集成线。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`GATE1_EXACT_INTEGRATED`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`PAUSED_FOR_REASSESSMENT`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
 PROFILE_SETTINGS_EVIDENCE = PASS_GATE1_BOUNDED_GUI_SCOPE
 LEARNING_RUN_HISTORY = PASS_GATE1_BOUNDED_STRUCTURED_SCOPE
 PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = PASS
-
+## 暂停封存（dispatch38；唯一当前执行状态）
+封存输入 control `9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b`；Gate1集成authority `63731b6e062ff02264d1a08441a9d7c5d79bce0d`。
+Gate3 exact worker04 tree `8f2074633ec16d199d7ae0c1d81f31be99537b17`；仅证据读取，工具/源码未集成。
+56条超限：calendar=17、replan_history=35、plan_activation=4；55条悬空归属引用全部quarantine。
+禁止truncate、silent drop或未经架构评审直接提高限制；username/display-name/email文本不是canonical ownership authority。
+4项native PostgreSQL synthetic controls PASS不等于主旧数据import/RLS；真实迁移NOT_RUN。
+A/01/02/03/04/B全部SILENT；ACTIVE_DISPATCH=NONE；NEXT_ACTION=WAIT_FOR_OWNER_REASSESSMENT。
+[暂停与十项评审问题](REASSESSMENT_PAUSE_20260916.md)规定KEEP/ADAPT/REPLACE + WHY；参考项目不授权引依赖/重构。
+既有[连续性合同](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)仍保留，评审决定未经Owner批准不得改写。
+C runtime / D scratch / E durable；普通worker禁止改CODEX_HOME、CODEX_SQLITE_HOME或global SQLite/WAL/SHM；异常只报告。
+[机器回执](../governance/receipts/20260916-main3-pause-reassessment-seal.json)。以下历史与未来路线均不授权执行。
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
 原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。
@@ -54,83 +85,57 @@ BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_P
 [Gate1集成回执](../governance/receipts/20260916-gate1-integration.json)记录完整ancestry、source/packaged/GUI证据及各自执行者。
 COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。唯一大关列表如下，普通缺陷归属现有关卡：
 1. Frozen GUI A/B + Full Account Rehydration — PASS。
-2. Email lifecycle E2E — BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE。
-3. Canonical old-data ownership / data target stability — PENDING。
-4. Portable Pack V2 + classification/recommendation — PENDING。
-5. Real old-data migration — NOT_RUN。
-6. VPS exact Main3 deployment/live activation — NOT_RUN。
-7. Final signed installer/updater acceptance — PENDING。
-8. Final QA + acceptance bundle + Main3 promotion — PENDING。
+2. Email lifecycle E2E — BLOCKED_EXTERNAL_AUTHORITY（QQ credential reference）。
+3. Canonical old-data ownership / data target stability — BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING。
+4. Portable Pack V2 + classification/recommendation — PENDING / REASSESSMENT_REQUIRED。
+5. Real old-data migration — NOT_RUN / FROZEN。
+6. VPS exact Main3 deployment/live activation — NOT_RUN / FROZEN。
+7. Final signed installer/updater acceptance — PENDING / FROZEN。
+8. Final QA + acceptance bundle + Main3 promotion — PENDING / FROZEN。
 Gate2只记录：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
 本轮不研究邮箱、不发信、不进入Gate2；integration/main3、main1/main2和CURRENT不动。dispatch32存储违规是保留历史，未改写成PASS。
-
 ## Frozen V3 — historical real A/B stop before A product write
-
-历史 V3 build base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。
-新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
+历史 V3 build base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。 新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
 FROZEN_NATIVE_LOGIN=PASS；手工与实际 Workbench A 按钮 → native login/workspace/auth-me/snapshot 均 200；同 EXE 错密码、未知账号、bad CA 拒绝。
-FIRST_DIVERGENCE：点击“进入学习空间”后，`desktop/account_backend.py:32-36` 前插 `_MEIPASS/backend`，子进程 `app.main` 导入失败。
-`NoneType.write` 是无控制台 multiprocessing 报错时的次生错误；source 同函数 import PASS，Frozen 原路径稳定失败。
+FIRST_DIVERGENCE：点击“进入学习空间”后，`desktop/account_backend.py:32-36` 前插 `_MEIPASS/backend`，子进程 `app.main` 导入失败。 `NoneType.write` 是无控制台 multiprocessing 报错时的次生错误；source 同函数 import PASS，Frozen 原路径稳定失败。
 只在诊断进程移除该路径可进入 canonical `app.main`，随后发现 required knowledge-policy 资源缺失；没有修改/合格化产品 EXE。
-LIKELY_OWNER=01（Desktop Frozen 本地服务与资源闭包）；本轮按新跨-owner blocker 停止，不跨域修复或另行派工。
-V3 target=FAIL；旧 V2=SUPERSEDED。WORKBENCH_RESULT=实际 A observation + 当前失败候选，不能启动失败候选继续验收。
+LIKELY_OWNER=01（Desktop Frozen 本地服务与资源闭包）；本轮按新跨-owner blocker 停止，不跨域修复或另行派工。 V3 target=FAIL；旧 V2=SUPERSEDED。WORKBENCH_RESULT=实际 A observation + 当前失败候选，不能启动失败候选继续验收。
 TRUE_EMPTY=PASS（真实 server-confirmed 支持范围）；disposable subject 的 server durable entities=0；未写测试 plan/progress/resource。
-A 已完全关闭；B 独立空根已准备，B 启动/登录/恢复、stable IDs、物理资源缺失与真实 sync-failure control=NOT_RUN。
-组合聚焦 481 PASS、0 FAIL、0 SKIP（479 + 原生 PG 补测 2）；独立产品门禁 1 FAIL，不能被测试绿灯覆盖。
+A 已完全关闭；B 独立空根已准备，B 启动/登录/恢复、stable IDs、物理资源缺失与真实 sync-failure control=NOT_RUN。 组合聚焦 481 PASS、0 FAIL、0 SKIP（479 + 原生 PG 补测 2）；独立产品门禁 1 FAIL，不能被测试绿灯覆盖。
 [Blocker receipt](../governance/receipts/20260914-real-ab-closeout-blocker.json) 绑定 exact artifact、UI traceback、source/frozen differential、真实 HTTP/observation 和测试证据。
-现有 Backend/Identity/PG 与 TLS/mTLS 密钥保留；租约仍健康，有效至北京时间 2026-09-14 10:30:19；AUTO_CLEANUP=FORBIDDEN。
-FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；未访问 tonyswift555 历史 88 plans。
+现有 Backend/Identity/PG 与 TLS/mTLS 密钥保留；租约仍健康，有效至北京时间 2026-09-14 10:30:19；AUTO_CLEANUP=FORBIDDEN。 FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；未访问 tonyswift555 历史 88 plans。
 PUBLIC_ISSUER_CUTOVER/REGISTER/FORGOT_PASSWORD=NO；Gate A 真实部署、最终签名安装更新及用户验收仍未通过。
 历史 [V2 login receipt](../governance/receipts/20260913-frozen-login-fixed-candidate-v2.json) 的登录范围保持有效，未证明本地学习服务/完整 A/B。
-
 ## Batch03 与跨设备长期 authority（保留）
-
-[Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json) 记录八个新 exact commits 与 04 evidence-only。
-**CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[三层／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
+[Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json) 记录八个新 exact commits 与 04 evidence-only。 **CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[三层／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
 规定 server structured state、local large resources、rebuild/redownload，以及先恢复云状态再补资源。
-V2 QUICK_EXPORT/FULL_EXPORT、可选模型／大 payload、账号绑定、完整性及保密仍 REQUIRED_NOT_IMPLEMENTED。
-现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制未被静默改写；导入不得覆盖来源，必须幂等、拒绝错误账号、无凭据。
+V2 QUICK_EXPORT/FULL_EXPORT、可选模型／大 payload、账号绑定、完整性及保密仍 REQUIRED_NOT_IMPLEMENTED。 现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制未被静默改写；导入不得覆盖来源，必须幂等、拒绝错误账号、无凭据。
 智能分类／推荐及 full supported-history 仍为后续门禁；84-workspace 私有 chooser 仅 QA，不是最终 UX。
 04 retained 数据存在，无完整事前 baseline，不声称所有旧记录完整。**MIGRATION_EXECUTED = NO**。
-
 ## Gate A schema 0036 专项解阻（历史）
-
-原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact
-`0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
+原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact `0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
 0036 是从 retained staging release / running image 恢复的逐字权威迁移；没有导入旧 release ancestry 或新增 import 产品功能。
-当时 Alembic single head 与 backend expected head 均为 `0036_account_import_ledger`。
-A 本轮重新跑本地 PostgreSQL 18/18：fresh/0035/0033→0036、already-0036 只读接受、
+当时 Alembic single head 与 backend expected head 均为 `0036_account_import_ledger`。 A 本轮重新跑本地 PostgreSQL 18/18：fresh/0035/0033→0036、already-0036 只读接受、
 unknown future/十类 schema drift 拒绝、worker/backend preflight、ledger RLS/idempotency/rollback、
-default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/更新 smoke，计数见
-[专项 receipt](../governance/receipts/20260913-gatea-schema-0036-unblock.json)。本轮 fixture 已清理。
+default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/更新 smoke，计数见 [专项 receipt](../governance/receipts/20260913-gatea-schema-0036-unblock.json)。本轮 fixture 已清理。
 **Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。**
-此前部署遇到 schema source 缺失是用户提供的背景；本轮没有重新部署或操作 staging DB，不能写 Gate A PASS。
-REAL SMTP 继续由独立 04 任务推进，本轮不轮询、执行或验收；旧 SMTP 计数只描述 Batch02。
+此前部署遇到 schema source 缺失是用户提供的背景；本轮没有重新部署或操作 staging DB，不能写 Gate A PASS。 REAL SMTP 继续由独立 04 任务推进，本轮不轮询、执行或验收；旧 SMTP 计数只描述 Batch02。
 该 schema 专项当时仅消费 0036；其它员工状态为交付快照，不代表独立任务实时状态。
-
 ## Batch02 控制面与 exact integration（历史）
-
-A 完成本任务后 SILENT；01–04 与 B 均 SILENT。未联系、轮询或等待员工任务。
-A 原办公室复用，Phase0 实测 HEAD/index/clean 起点与 integration/main3 绑定。
+A 完成本任务后 SILENT；01–04 与 B 均 SILENT。未联系、轮询或等待员工任务。 A 原办公室复用，Phase0 实测 HEAD/index/clean 起点与 integration/main3 绑定。
 01–04 当前 worktree/ref 绑定只读核对，先前 isolation 证据保留；不冒充重新执行其 Phase0。
 B06 setup DONE 和 branch-picker 历史证据不替代本轮本地检查。
-
 | 槽位 | Batch02 final exact source | 接受范围 |
 | --- | --- | --- |
 | 01 | 69e68c86e21403bb8c5a365483bda62b074a9ea2 | native login/verifier PASS；token atomicity 独立确认，A 本地原生复测 PASS |
 | 02 | 521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb | monotonic signed mandatory floor / current latest / public reason PASS |
 | 03 | 3eba9c3e0198d6b485226737e59d594cb773a12c | optional/mandatory gates / 中文 reason UX PASS |
 | 04 | f9634e24d759eb268c56d45b301046dc503ef714 | edge encoding fix PASS；native PostgreSQL RLS PASS 原执行者证据保留 |
-
-全部 11 个连续 exact commits（含 report-only 和被 supersede 的中间提交）按
-02→03→04→01 消费，没有未知 commit。3 个文本冲突文件依 authority 合并。
+全部 11 个连续 exact commits（含 report-only 和被 supersede 的中间提交）按 02→03→04→01 消费，没有未知 commit。3 个文本冲突文件依 authority 合并。
 组合中修复重复 snapshot keyword，以及强制更新完成后原生输入框未重新启用。
-更新三项旧测试前提，新增 15 项 native/core/UI 组合检查。exact source→integrated
-parent/tree/path 映射和检查结果见 [Batch02 receipt](../governance/receipts/20260913-main3-batch02-integration.json)。
+更新三项旧测试前提，新增 15 项 native/core/UI 组合检查。exact source→integrated parent/tree/path 映射和检查结果见 [Batch02 receipt](../governance/receipts/20260913-main3-batch02-integration.json)。
 历史 [Batch01 receipt](../governance/receipts/20260912-main3-batch01-integration.json) 保留其当时范围。
-
 ## 正常登录与更新 authority
-
 Launch → 原生用户名/密码 → MentorFlow backend → backend-only authenticated
 verifier → Keycloak credential provider → MentorFlow opaque session → workspace
 bootstrap → main。禁止 password grant、Keycloak direct grant 和密码持久化。
@@ -138,15 +143,12 @@ bootstrap → main。禁止 password grant、Keycloak direct grant 和密码持�
 Batch01 及 `03d979...` 的 System Browser 正常 UX 已 superseded；
 [issuer migration](../E109_AUTH_ISSUER_MIGRATION.md) 仅保留 legacy 协议/基础设施范围。
 原生 verifier 未显式配置时拒绝认证，不回退浏览器。
-
 OPTIONAL 可继续、稍后、更新并重启或退出时更新。MANDATORY 同时阻止 login/main，
 只允许更新至当前 latest 或退出；断网和取消不能清除已知签名 floor。
 current 1.0、历史 mandatory 1.2、latest optional 1.4 → MANDATORY，TARGET=1.4。
 reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 详情复用 [更新合同](../windows-update-release-contract-v1.md)。
-
 ## Batch02 验收证据分层（历史）
-
 | 层次 | 当前证据 | 限制 |
 | --- | --- | --- |
 | A combined regression | native auth/session/bootstrap/main；signed floor/latest/incremental/full fallback；optional/mandatory/UI；edge/capability | synthetic/inert/offscreen 与本地运行范围；具体计数见 receipt |
@@ -155,8 +157,6 @@ reason 只解释原因，不决定状态；未知 reason 使用通用中文。
 | 04 independent confirmation | exact 69e68 fix，独立 JAR SHA256 43657662bc85497734e99a9aeb86fd2db3a3307ec12b438c9ffe0834c170269a；23/23 原生检查 PASS | A 比较集成 JAR 全部 class/resource 相同；容器时间戳可改变 JAR hash |
 | 04 native RLS | PostgreSQL 17.6 原生 120 denial probes 与 controls；独立 retest 直接非特权 application login smoke PASS | E109 原报告整体 PARTIAL 保留；其中 token 缺陷由新独立 receipt supersede。A 未重新跑 RLS，不把 retained PASS 写成 A 执行 |
 | 当前生产/最终候选 | REAL_SMTP_SEND=0；VERIFY/RESET NOT_RUN；REAL_INSTALL_QA NOT_RUN；最终 1.5.0→1.5.1 NOT_RUN | LIVE_PRODUCTION_LOGIN NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；用户最终验收 PENDING |
-
-
 [auth-authority](../../release/auth-authority.json) 保持 PREPARED_NOT_ACTIVE / migration=null；
 [account-capabilities](../../release/account-capabilities.json) 保持 register=false / forgot_password=false。
 两文件相对 frozen main2 字节未变。本轮没有迁移日期、真实邮件或 capability 激活。

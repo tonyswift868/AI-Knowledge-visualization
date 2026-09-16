@@ -8,18 +8,19 @@
   "integration_branch": "integration/main3",
   "refs_verified": "EXACT_CONTROL_BASE_AND_NINE_PATCHES_TREE_EQUIVALENT_UNKNOWN_0",
   "snapshot_kind": "DELIVERY_SNAPSHOT_NOT_LIVE",
-  "authority": "GATE1_EXACT_INTEGRATED",
+  "authority": "PAUSED_FOR_REASSESSMENT",
   "workers": {
     "A": {
       "status": "SILENT",
       "dispatch_id": null,
-      "task_id": "INTEGRATE_FROZEN_GUI_AB_GATE1_PASS_V1",
+      "task_id": null,
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "STOP; Gate1 integrated; no Gate2 execution.",
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
       "worktree_isolation": "VERIFIED",
-      "summary_zh": "Gate1 PASS via Worker02 acceptance; A source regression 96/0/1; seven gates remain."
+      "summary_zh": "Pause state sealed; no execution or new dispatch until Owner reassessment approved.",
+      "active_dispatch": "NONE"
     },
     "01": {
       "status": "SILENT",
@@ -28,7 +29,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "8dddcd2b29097f0d8e539d5a987183c28cf5cd11",
-      "next_action": "STOP; next dispatch belongs to Owner.",
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "3bc6f02f25df73fa72f2a944e47a01c05b0bd2e8",
@@ -93,7 +94,8 @@
         "delivery_commit": "453e94000dadc4387654f3cfa2f3b6171f8d9efd",
         "integrated_commit": "385b30f9a2a7dfd81fc21f6e1de3975a756e6bbf",
         "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
-      }
+      },
+      "active_dispatch": "NONE"
     },
     "02": {
       "status": "SILENT",
@@ -102,7 +104,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "57c94162090ef0f15e00cd0c1ba37c976d8c0fc2",
-      "next_action": "STOP; no new dispatch implied.",
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "e3cfc2ac7be3900dce81f36d2c180c806fc5dca8",
@@ -181,7 +183,8 @@
           "6227abafd5d444e4c71d0e25bd9440d066b12f52"
         ],
         "acceptance_state": "SOURCE_FIX_AND_A_MACHINE_SMOKE_PASS_FULL_GUI_UAT_PENDING"
-      }
+      },
+      "active_dispatch": "NONE"
     },
     "03": {
       "status": "SILENT",
@@ -190,7 +193,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "c7943a9aaccbfdddcc045239858dd8c55b8bd401",
-      "next_action": "STOP; next dispatch belongs to Owner.",
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "fae5292ce287a50ebce38f4fca2f79399e0eaea2",
@@ -226,7 +229,8 @@
         "delivery_commit": "80b619d263d81f5e684af67528da898cbfbda178",
         "integrated_commit": "8ef402b4a48e7f45c45e6909d7dbf3a1f8e1931f",
         "acceptance_state": "NATIVE_POSTGRES_HTTP_SCOPE; NOT_FROZEN_UAT"
-      }
+      },
+      "active_dispatch": "NONE"
     },
     "04": {
       "status": "SILENT",
@@ -235,7 +239,7 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": "71efae533de930d83c16517d096f5f6701291b01",
-      "next_action": "STOP; next dispatch belongs to Owner.",
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
       "dispatch_state": "EXACT_DELIVERY_CONSUMED",
       "worktree_isolation": "BINDING_VERIFIED_PRIOR_ISOLATION_RETAINED",
       "integrated_commit": "ef24a72682e7e06aa2725076aa84f49089645cfc",
@@ -296,7 +300,9 @@
         "delivery_commit": "3feb4b680d21a2744456fc97b3c80c78198db733",
         "integrated_commit": "8e5259f92f3b77fed30c2c940f2f9d51f91b902a",
         "acceptance_state": "FROZEN_SMOKE_PASS_USER_ACCEPTANCE_PENDING"
-      }
+      },
+      "active_dispatch": "NONE",
+      "delivery_fields_scope": "HISTORICAL_INTEGRATED_DELIVERY; latest Gate3 delivery below remains unintegrated."
     },
     "B": {
       "status": "SILENT",
@@ -305,8 +311,9 @@
       "depends_on": [],
       "unlocks": [],
       "delivery_commit": null,
-      "next_action": "B06 setup DONE per current dispatch; ON-DEMAND ONLY. No promotion or default-branch operation authorized here.",
-      "worktree_isolation": "VERIFIED"
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "worktree_isolation": "VERIFIED",
+      "active_dispatch": "NONE"
     }
   },
   "repository_url": "https://github.com/tonyswift868/AI-Knowledge-visualization",
@@ -316,7 +323,7 @@
     "tree": "61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8"
   },
   "control_plane": {
-    "evidence": "docs/governance/receipts/20260916-gate1-integration.json",
+    "evidence": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
     "repository_setup": "B06_DONE",
     "branch_picker": "SIX_REFS_USER_SCREENSHOT_CONFIRMED",
     "branch_picker_evidence_scope": "User dispatch attests screenshot confirmation; image not independently inspected in this task.",
@@ -329,17 +336,17 @@
     ],
     "a_status_at_dispatch": "SILENT",
     "a_isolation": "VERIFIED",
-    "worker_dispatches": "GATE1_02_EXACT_DELIVERY_CONSUMED; NO_NEW_DISPATCH",
+    "worker_dispatches": "NONE; WAIT_FOR_OWNER_REASSESSMENT",
     "worker_isolation": "01-04_BINDINGS_VERIFIED_PRIOR_ISOLATION_RETAINED",
     "main2": "FROZEN",
-    "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
-    "snapshot_scope": "Dispatch28 exact Frozen TEST machine smoke PASS; full GUI UAT/email/deployment pending",
+    "user_action_required": "OWNER_ARCHITECTURE_REASSESSMENT",
+    "snapshot_scope": "PAUSE_SEAL; Gate1 retained; Gate2 external authority; Gate3 projection and owner blockers; gates4-8 frozen",
     "formal_main3": "NOT_CREATED",
     "bridge_status": "SUPERSEDED / BRIDGE CLOSED",
     "product_acceptance": "PENDING",
     "open_children": 0,
     "active_children": 0,
-    "pool_state": "NORMAL"
+    "pool_state": "PAUSED"
   },
   "batch02_receipt": "docs/governance/receipts/20260913-main3-batch02-integration.json",
   "acceptance_boundaries": {
@@ -348,9 +355,9 @@
     "password_grant_used": false,
     "direct_grant_used": false,
     "password_persisted": "EXPLICIT_CONSENT_WINDOWS_CREDENTIAL_MANAGER_ONLY",
-    "real_smtp_send": true,
-    "real_smtp_verify": "OFFICIAL_GENERATION_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
-    "real_smtp_reset": "OFFICIAL_UPDATE_PASSWORD_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
+    "real_smtp_send": false,
+    "real_smtp_verify": "NOT_ACCEPTED_REAL_MAILBOX",
+    "real_smtp_reset": "NOT_ACCEPTED_REAL_MAILBOX",
     "real_install_qa": "NOT_RUN",
     "final_1_5_0_to_1_5_1": "NOT_RUN",
     "live_production_login": "NOT_RUN",
@@ -365,12 +372,12 @@
       "verify": "NOT_RUN",
       "reset": "NOT_RUN"
     },
-    "real_smtp_scope": "Approved disposable test realm and approved QQ recipient; official SMTP submission PASS, user inbox interaction pending.",
-    "cross_device_data_continuity": "REQUIRED_NOT_ACCEPTED",
-    "server_sync_tier": "PARTIAL",
+    "real_smtp_scope": "CURRENT_GATE2_NOT_RUN; historical evidence retained separately",
+    "cross_device_data_continuity": "REQUIRED_GATE1_STRUCTURED_SCOPE_PASS",
+    "server_sync_tier": "PASS_GATE1_STRUCTURED_SCOPE",
     "portable_pack_v2": "NOT_IMPLEMENTED",
     "migration_executed": false,
-    "target_storage_stable": false,
+    "target_storage_stable": "READONLY_RESOLVER_ONLY; OWNER_BINDING_UNPROVEN",
     "identity_issuer_stable": false,
     "private_workspace_chooser": "QA_ONLY",
     "register_capability": "TEST_CANDIDATE_ONLY_TRUE",
@@ -383,15 +390,15 @@
     "rehydration_ux": "PASS_SOURCE",
     "producer_ux_wiring": "PASS",
     "two_device_harness": "PASS_NATIVE_POSTGRES_HTTP",
-    "two_device_e2e": "FROZEN_PRODUCT_UAT_NOT_RUN",
+    "two_device_e2e": "PASS_FROZEN_GUI_GATE1",
     "test_target_status": "HISTORICAL_NO_NEW_UAT_TARGET",
-    "frozen_candidate": "ACCOUNT_MVP_FROZEN_SMOKE_PASS",
-    "full_server_sync": "PARTIAL",
+    "frozen_candidate": "MF-02-FROZEN-35-a1190ca1",
+    "full_server_sync": "PASS_GATE1_STRUCTURED_SCOPE",
     "frozen_login_root_cause": "FIXED",
     "environment_consumers_pending": true,
     "auto_cleanup": "FORBIDDEN",
     "workbench_frozen_login": "ACCOUNT_MVP_ADMIN_AND_LEARNER_MAIN_PASS",
-    "device_ab_precheck": "SOURCE_HTTP_A_B_PASS; NOT_GUI",
+    "device_ab_precheck": "PASS_GATE1_FROZEN_GUI_AB",
     "frozen_local_service": "PASS_ACCOUNT_MVP_EXACT_FROZEN",
     "ordinary_release_register_capability": false,
     "ordinary_release_forgot_password_capability": false,
@@ -442,7 +449,7 @@
   "account_mvp_ready_receipt": "docs/governance/receipts/20260914-account-mvp-user-test-ready.json",
   "chatgpt_read_branch": "control/main3-current",
   "current_stage": {
-    "CURRENT_PHASE": "GATE1_PASS; SEVEN_GATES_REMAIN; STOP",
+    "CURRENT_PHASE": "PAUSED_FOR_REASSESSMENT",
     "REAL_A_B_REHYDRATION": "PASS_FROZEN_GUI_GATE1",
     "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current",
@@ -450,7 +457,12 @@
     "FULL_FROZEN_GUI_AB": "PASS",
     "FULL_ACCOUNT_REHYDRATION": "PASS",
     "COMPLETED_BIG_GATES": "1",
-    "REMAINING_BIG_GATES": "7"
+    "REMAINING_BIG_GATES": "7",
+    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
+    "EXECUTION_AUTHORIZED": "NO",
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "BIG_GATE_2": "BLOCKED_EXTERNAL_AUTHORITY",
+    "BIG_GATE_3": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
   },
   "dispatch32_receipt": "docs/governance/receipts/20260916-p0-integration-frozen-f1.json",
   "dispatch32_source_sha": "64eb3043194bb9e4b8c5425204fba5cf2f4244a2",
@@ -573,38 +585,137 @@
     {
       "number": 2,
       "name": "Email lifecycle E2E",
-      "status": "BLOCKED_QQ_REFERENCE"
+      "status": "BLOCKED_EXTERNAL_AUTHORITY"
     },
     {
       "number": 3,
       "name": "Canonical old-data ownership / data target stability",
-      "status": "PENDING"
+      "status": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
     },
     {
       "number": 4,
       "name": "Portable Pack V2 + classification/recommendation",
-      "status": "PENDING"
+      "status": "PENDING / REASSESSMENT_REQUIRED"
     },
     {
       "number": 5,
       "name": "Real old-data migration",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN / FROZEN"
     },
     {
       "number": 6,
       "name": "VPS exact Main3 deployment/live activation",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN / FROZEN"
     },
     {
       "number": 7,
       "name": "Final signed installer/updater acceptance",
-      "status": "PENDING"
+      "status": "PENDING / FROZEN"
     },
     {
       "number": 8,
       "name": "Final QA + acceptance bundle + Main3 promotion",
-      "status": "PENDING"
+      "status": "PENDING / FROZEN"
     }
   ],
-  "gate1_receipt": "docs/governance/receipts/20260916-gate1-integration.json"
+  "gate1_receipt": "docs/governance/receipts/20260916-gate1-integration.json",
+  "pause_authority": {
+    "dispatch_id": "MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38",
+    "source_control_head": "9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b",
+    "receipt": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
+    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
+    "EXECUTION_AUTHORIZED": "NO",
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED"
+  },
+  "latest_gate3_worker_delivery": {
+    "commit": "bf8c35999e2c6752a928cf375b9091d9c68bd363",
+    "tree": "8f2074633ec16d199d7ae0c1d81f31be99537b17",
+    "state": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING",
+    "delivery_integrated": false,
+    "classification": "UNINTEGRATED_WORKER_DELIVERY",
+    "source_tool_paths": [
+      "scripts/release/audit_canonical_data_target.py",
+      "scripts/release/rehearse_data_target_rls.py"
+    ],
+    "old_counts": {
+      "workspaces": 530,
+      "plans": 88,
+      "resources": 330
+    },
+    "stable_id_mapping": "AUDITED_NOT_ADMITTED",
+    "dangling_ownership_references": 55,
+    "dangling_disposition": "ALL_QUARANTINE",
+    "projection_limit_bytes": 262144,
+    "over_limit_records": 56,
+    "over_limit_by_domain": {
+      "calendar": 17,
+      "replan_history": 35,
+      "plan_activation": 4
+    },
+    "primary_owner_binding": "UNPROVEN",
+    "canonical_import_rls": "NOT_COMPLETE",
+    "native_pg_controls": "4_PASS_SYNTHETIC_ONLY_NOT_MIGRATED_PRIMARY_ROWS",
+    "real_migration": "NOT_RUN",
+    "evidence_paths": [
+      "docs/release/main3-20260916-37/FINAL_RECEIPT.json",
+      "docs/release/main3-20260916-37/README.md",
+      "docs/release/main3-20260916-37/STORAGE_RECEIPT.json"
+    ]
+  },
+  "historical_acceptance_boundaries_before_pause": {
+    "normal_desktop_login_ux": "NATIVE_IN_APP_USERNAME_PASSWORD",
+    "normal_login_external_browser_required": false,
+    "password_grant_used": false,
+    "direct_grant_used": false,
+    "password_persisted": "EXPLICIT_CONSENT_WINDOWS_CREDENTIAL_MANAGER_ONLY",
+    "real_smtp_send": true,
+    "real_smtp_verify": "OFFICIAL_GENERATION_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
+    "real_smtp_reset": "OFFICIAL_UPDATE_PASSWORD_AND_CONTROLLED_AFTER_COMMIT_PASS_USER_MAILBOX_PENDING",
+    "real_install_qa": "NOT_RUN",
+    "final_1_5_0_to_1_5_1": "NOT_RUN",
+    "live_production_login": "NOT_RUN",
+    "production_keycloak_mutation": 0,
+    "native_rls": "A_0038_NATIVE_PROTOCOL_AND_SCHEMA_PASS",
+    "formal_main3": "NOT_CREATED",
+    "main2": "FROZEN",
+    "gate_a_schema_blocker": "RESOLVED_IN_SOURCE",
+    "gate_a_real_deployment": "NOT_RUN_AFTER_FIX",
+    "batch02_real_smtp_evidence": {
+      "send": 0,
+      "verify": "NOT_RUN",
+      "reset": "NOT_RUN"
+    },
+    "real_smtp_scope": "Approved disposable test realm and approved QQ recipient; official SMTP submission PASS, user inbox interaction pending.",
+    "cross_device_data_continuity": "REQUIRED_NOT_ACCEPTED",
+    "server_sync_tier": "PARTIAL",
+    "portable_pack_v2": "NOT_IMPLEMENTED",
+    "migration_executed": false,
+    "target_storage_stable": false,
+    "identity_issuer_stable": false,
+    "private_workspace_chooser": "QA_ONLY",
+    "register_capability": "TEST_CANDIDATE_ONLY_TRUE",
+    "forgot_password_capability": "TEST_CANDIDATE_ONLY_TRUE",
+    "server_sync_vertical_slice": "PLAN_PROGRESS_RESOURCE_METADATA_PASS_NATIVE_PG",
+    "stable_identity_source_fixture": "PASS",
+    "durable_root_source": "PASS",
+    "live_issuer_mapping": "NOT_APPROVED",
+    "current_live_test_candidate_root": "TEMP_NOT_FINAL_MIGRATION_DESTINATION",
+    "rehydration_ux": "PASS_SOURCE",
+    "producer_ux_wiring": "PASS",
+    "two_device_harness": "PASS_NATIVE_POSTGRES_HTTP",
+    "two_device_e2e": "FROZEN_PRODUCT_UAT_NOT_RUN",
+    "test_target_status": "HISTORICAL_NO_NEW_UAT_TARGET",
+    "frozen_candidate": "ACCOUNT_MVP_FROZEN_SMOKE_PASS",
+    "full_server_sync": "PARTIAL",
+    "frozen_login_root_cause": "FIXED",
+    "environment_consumers_pending": true,
+    "auto_cleanup": "FORBIDDEN",
+    "workbench_frozen_login": "ACCOUNT_MVP_ADMIN_AND_LEARNER_MAIN_PASS",
+    "device_ab_precheck": "SOURCE_HTTP_A_B_PASS; NOT_GUI",
+    "frozen_local_service": "PASS_ACCOUNT_MVP_EXACT_FROZEN",
+    "ordinary_release_register_capability": false,
+    "ordinary_release_forgot_password_capability": false,
+    "account_mvp_user_acceptance": "PENDING",
+    "extra_mtls_negative_recheck": "NOT_RUN_AUTO_APPROVAL_REJECTED; retained prior boundary evidence only"
+  }
 }

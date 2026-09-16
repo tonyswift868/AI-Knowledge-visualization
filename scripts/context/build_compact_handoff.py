@@ -191,6 +191,8 @@ def build(root: Path, delta: str = "NONE") -> bytes:
     verify_source(root, fields, head)
     branch = git(root, "symbolic-ref", "--quiet", "--short", "HEAD", detached=True)
     rows = [f"PROJECT = {fields['PROJECT']}", f"GENERATION = {fields['GENERATION']}", f"CANONICAL_BRANCH = {fields['BASELINE_BRANCH']}", f"CANONICAL_SHA = {fields['MAIN2_CANONICAL_SHA']}", f"CANONICAL_TREE = {fields['MAIN2_CANONICAL_TREE']}", f"CURRENT_GIT_BRANCH = {branch}", f"CURRENT_GIT_HEAD = {head}", f"PRODUCT_ACCEPTANCE = {fields['PRODUCT_ACCEPTANCE']}", "BOARD = DELIVERY_SNAPSHOT_NOT_LIVE"]
+    rows += [f"{key} = {fields[key]}" for key in
+             ("PROJECT_STATUS", "EXECUTION_AUTHORIZED", "NEW_DISPATCH_ALLOWED") if key in fields]
     active = [f"{key}:{w['status']}:{w['task_id']}" for key, w in board["workers"].items() if w["status"] in {"RUNNING", "READY", "BLOCKED"}]
     rows += ["ACTIVE_WORKERS = " + ("; ".join(active) or "NONE"), "UNKNOWN_WORKERS = " + (",".join(k for k, w in board["workers"].items() if w["status"] == "UNKNOWN") or "NONE")]
     for state in ("READY", "BLOCKED", "NOT_DISPATCHED", "UNKNOWN"):
@@ -255,6 +257,16 @@ def build_web(root: Path) -> bytes:
              if key in fields]
     rows += [f"GATE_{gate['number']} = {gate['name']}; {gate['status']}"
              for gate in board.get("big_gates", [])]
+    if fields.get("PROJECT_STATUS") == "PAUSED_FOR_REASSESSMENT":
+        # Historical setup/delivery summaries remain in the board. During a pause,
+        # spend the bounded handoff on current execution authority and blockers.
+        historical = ("A_AT_DISPATCH =", "SETUP =", "ISOLATION =",
+                      "01_DELIVERY =", "02_DELIVERY =", "03_DELIVERY =", "04_DELIVERY =")
+        rows = [row for row in rows if not row.startswith(historical)]
+        rows += [f"{key} = {fields[key]}" for key in
+                 ("PROJECT_STATUS", "EXECUTION_AUTHORIZED", "NEW_DISPATCH_ALLOWED",
+                  "LATEST_WORKER04_DELIVERY", "DELIVERY_INTEGRATED",
+                  "OVER_LIMIT_RECORD_COUNT", "PRIMARY_OWNER_BINDING")]
     blockers = [key for key, task in tasks.items() if task["state"] in {"BLOCKED", "UNKNOWN"}]
     actions = [f"{key}: {task['user_action_required']}" for key, task in tasks.items()
                if task["state"] != "DONE" and task["user_action_required"]]

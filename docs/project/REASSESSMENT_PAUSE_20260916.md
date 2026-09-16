@@ -4,6 +4,19 @@ Status: `PAUSED_FOR_REASSESSMENT`
 
 Date: 2026-09-16
 
+Seal dispatch: `MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38`; exact input control `9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b`.
+
+```text
+PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
+EXECUTION_AUTHORIZED = NO
+NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+PRODUCT_ACCEPTANCE = PENDING
+COMPLETED_BIG_GATES = 1
+REMAINING_BIG_GATES = 7
+```
+
+[Seal receipt](../governance/receipts/20260916-main3-pause-reassessment-seal.json) binds retained and unintegrated evidence.
+
 Authoritative review branch: `control/main3-current`
 
 This document freezes the current execution state. It does **not** authorize any new implementation, migration, deployment, email delivery, branch promotion, account mutation, or cleanup of Codex global storage.
@@ -48,6 +61,8 @@ Current blocker:
 
 `QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED`
 
+`EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE`; `REAL_SMTP_SEND = NOT_RUN`.
+
 SMTP TLS/AUTH/NOOP readiness has been qualified. Real inbox receipt, verify/reset link consumption, replay, expiry, and same-user continuation are not accepted.
 
 ### Gate 3 — Canonical old-data ownership / data target stability
@@ -59,6 +74,7 @@ Latest Worker04 local delivery:
 - result SHA: `bf8c35999e2c6752a928cf375b9091d9c68bd363`
 - result tree: `8f2074633ec16d199d7ae0c1d81f31be99537b17`
 - worker branch: `worker/main3/04`
+- `DELIVERY_INTEGRATED = NO`; `UNINTEGRATED_WORKER_DELIVERY` includes two audit/rehearsal tools; no source/tool patch consumed.
 - delivery is recorded here as evidence; it was not remote-visible through the GitHub review connection at pause time and is not claimed as integrated product authority.
 
 Verified/latest Gate3 findings:
@@ -66,7 +82,7 @@ Verified/latest Gate3 findings:
 - legacy baseline: 530 workspaces / 88 plans / 330 resources
 - stable ID mapping for those workspace/plan/resource records has been audited
 - 55 dangling ownership references were classified and quarantined individually
-- 4 non-privileged PostgreSQL control tests PASS
+- 4 non-privileged PostgreSQL synthetic control tests PASS; not migrated primary legacy rows
 - real canonical legacy import/RLS acceptance is **not complete**
 - real old-data migration has **not run**
 
@@ -78,11 +94,11 @@ New blocking issue A — projection admission:
 - replan history: 35
 - plan activation: 4
 
-These records require an explicit architectural decision before migration: keep current projection limit and split/normalize payloads, raise/replace the projection contract with bounded evidence, or redesign the representation. No automatic truncation or silent drop is accepted.
+These records require an explicit architectural decision before migration: keep current projection limit and split/normalize payloads, raise/replace the projection contract with bounded evidence, or redesign the representation. No truncation or silent drop is accepted; raising the limit merely to pass migration without architecture review is forbidden.
 
 New blocking issue B — owner binding:
 
-The primary legacy owner group is still not proven to a canonical account identity. Username/display-name/email text is not sufficient authority. Ownerless/quarantined data must remain fail-closed until ownership is proven.
+`PRIMARY_OWNER_BINDING = UNPROVEN`. The primary legacy owner group is still not proven to a canonical account identity. Username/display-name/email text is not sufficient authority. Ownerless/quarantined data must remain fail-closed until ownership is proven.
 
 Gate3 therefore remains `NOT_PASS`.
 
@@ -90,15 +106,15 @@ Gate3 therefore remains `NOT_PASS`.
 
 Not accepted / not executed:
 
-4. Portable Pack V2 + classification/recommendation
-5. Real old-data migration
-6. VPS exact Main3 deployment/live activation
-7. Final signed installer/updater acceptance
-8. Final QA + acceptance bundle + Main3 promotion
+4. Portable Pack V2 + classification/recommendation = PENDING / REASSESSMENT_REQUIRED
+5. Real old-data migration = NOT_RUN / FROZEN
+6. VPS exact Main3 deployment/live activation = NOT_RUN / FROZEN
+7. Final signed installer/updater acceptance = PENDING / FROZEN
+8. Final QA + acceptance bundle + Main3 promotion = PENDING / FROZEN
 
 ## Execution freeze
 
-Until reassessment is explicitly completed by the Owner, all workers and integration roles are considered `SILENT / NO_DISPATCH`.
+Until reassessment is explicitly completed by the Owner, A/01/02/03/04/B are all `SILENT`; `ACTIVE_DISPATCH = NONE`; `NEXT_ACTION = WAIT_FOR_OWNER_REASSESSMENT`.
 
 Forbidden during the pause:
 
@@ -126,14 +142,18 @@ Allowed during the pause:
 
 Before resuming implementation, the review should answer these questions explicitly:
 
-1. Is the current local-first + custom structured-sync architecture still the right product architecture, or should parts be replaced/adapted using mature patterns such as PowerSync-style local mutation/upload queues?
-2. Which user-data domains truly require server canonical state, and which must remain local/portable/rebuildable?
-3. Why do 56 legacy records exceed the 256 KiB projection contract, and is the projection representation itself wrong for those domains?
-4. What is the canonical identity/account binding model for legacy ownership, and what evidence is sufficient to authorize migration?
-5. Should Portable Pack V2 remain a required release gate, be reduced, or be replaced by a simpler large-resource continuity design?
-6. Which account/email requirements are product-critical versus staging/UAT infrastructure requirements?
-7. Can Gate4-8 be simplified into a smaller release path without weakening data integrity, account isolation, rollback, or user recovery?
-8. Which existing custom mechanisms duplicate mature open-source components and should be kept, adapted, or replaced?
+1. Should local-first + custom structured sync be retained?
+2. Which domains truly belong to server canonical state?
+3. Why do 56 historical projections exceed 256 KiB?
+4. Should the projection contract be KEEP / ADAPT / REPLACE, and WHY?
+5. How can legacy owner to canonical account authority be proven?
+6. Must Portable Pack V2 retain its current complexity?
+7. Is classification/recommendation truly a release gate?
+8. Should Gate4-8 be merged, removed or reordered?
+9. Which custom mechanisms duplicate mature open-source components?
+10. Should Main3 first become a smaller releasable product scope?
+
+The earlier account/email criticality question remains part of Gate2 review. Existing accepted [continuity authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md) is retained until an explicit Owner-approved decision supersedes it.
 
 ## Reference architecture review policy
 
@@ -154,7 +174,8 @@ Reference projects are comparison baselines, not automatic dependencies. Each re
 - E = durable source/assets/accepted evidence/final artifacts
 - no D -> E fallback when D is full
 - each worker gets an independent D scratch root
-- ordinary workers must not mutate global Codex storage
+- ordinary workers must not mutate CODEX_HOME, CODEX_SQLITE_HOME or global Codex SQLite/WAL/SHM
+- GLOBAL_CODEX_STORAGE_ANOMALY: report only; do not repair
 
 ## Resume condition
 

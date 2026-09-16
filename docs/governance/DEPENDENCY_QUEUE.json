@@ -12,7 +12,8 @@
         "COMPACT_REPO_HANDOFF"
       ],
       "user_action_required": null,
-      "reason": "Exact 195fb241 commit/tree imported and fast-forwarded, source 167-link/8-negative-test/1735-byte evidence reproduced; no product code change."
+      "reason": "Exact 195fb241 commit/tree imported and fast-forwarded, source 167-link/8-negative-test/1735-byte evidence reproduced; no product code change.",
+      "execution_authorized": false
     },
     {
       "task_id": "COMPACT_REPO_HANDOFF",
@@ -25,7 +26,8 @@
         "BATCH01_EXACT_INTEGRATION"
       ],
       "user_action_required": null,
-      "reason": "Repo-native durable authorities replace the temporary bridge; receipt-derived source/acceptance states and exact source snapshot generate the web handoff."
+      "reason": "Repo-native durable authorities replace the temporary bridge; receipt-derived source/acceptance states and exact source snapshot generate the web handoff.",
+      "execution_authorized": false
     },
     {
       "task_id": "BATCH01_EXACT_INTEGRATION",
@@ -38,7 +40,8 @@
         "BATCH02_EXACT_INTEGRATION"
       ],
       "user_action_required": null,
-      "reason": "Exact 02/03/01/04 cherry-picks and combined offline regression accepted. Native/live/product acceptance is excluded; see batch01 receipt."
+      "reason": "Exact 02/03/01/04 cherry-picks and combined offline regression accepted. Native/live/product acceptance is excluded; see batch01 receipt.",
+      "execution_authorized": false
     },
     {
       "task_id": "BATCH02_EXACT_INTEGRATION",
@@ -54,7 +57,8 @@
         "GATE_A_SCHEMA_0036_UNBLOCK"
       ],
       "user_action_required": null,
-      "reason": "11 exact commits audited and integrated 02 -> 03 -> 04 -> 01. Combined native login/update/edge regression, local native token fixture, knowledge authority correction; independent 04 RLS evidence retained. No live/package acceptance."
+      "reason": "11 exact commits audited and integrated 02 -> 03 -> 04 -> 01. Combined native login/update/edge regression, local native token fixture, knowledge authority correction; independent 04 RLS evidence retained. No live/package acceptance.",
+      "execution_authorized": false
     },
     {
       "task_id": "GATE_A_SCHEMA_0036_UNBLOCK",
@@ -67,7 +71,8 @@
         "GATE_A_AUTH_LIVE_ACTIVATION"
       ],
       "user_action_required": null,
-      "reason": "Exact 0d064974 restored authoritative 0036 and strict backend/worker schema checks. A native PostgreSQL 18/18 and focused regression PASS. Schema blocker RESOLVED_IN_SOURCE; deployment after fix NOT_RUN."
+      "reason": "Exact 0d064974 restored authoritative 0036 and strict backend/worker schema checks. A native PostgreSQL 18/18 and focused regression PASS. Schema blocker RESOLVED_IN_SOURCE; deployment after fix NOT_RUN.",
+      "execution_authorized": false
     },
     {
       "task_id": "GATE_A_AUTH_LIVE_ACTIVATION",
@@ -81,7 +86,14 @@
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "AFTER FIX: NOT_RUN / NOT_DISPATCHED by this task. Prior deployment found valid staging 0036 missing in Batch02 source; source blocker now resolved. Deployment/compatible native desktop/SPI/mTLS/session topology and old identity continuity still require Gate A execution and acceptance. No Gate A PASS claim."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "NOT_DISPATCHED",
+        "reason": "AFTER FIX: NOT_RUN / NOT_DISPATCHED by this task. Prior deployment found valid staging 0036 missing in Batch02 source; source blocker now resolved. Deployment/compatible native desktop/SPI/mTLS/session topology and old identity continuity still require Gate A execution and acceptance. No Gate A PASS claim.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "GATE_B_ACCOUNT_SECURITY",
@@ -94,7 +106,14 @@
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "Production account/public-issuer/capability acceptance remains pending. Real SMTP progresses under its independent 04 task; this schema unblock does not run, poll or accept that work. Retain Batch02 native security evidence and separately record A 0036 ledger RLS validation; capabilities remain false."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "NOT_DISPATCHED",
+        "reason": "Production account/public-issuer/capability acceptance remains pending. Real SMTP progresses under its independent 04 task; this schema unblock does not run, poll or accept that work. Retain Batch02 native security evidence and separately record A 0036 ledger RLS validation; capabilities remain false.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "GATE_C_UPDATE_FINAL_CANDIDATE",
@@ -107,7 +126,14 @@
         "FINAL_QA_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "PLANNING ONLY / NOT_RUN: one explicitly authorized integrated signed installer/updater; exact 1.5.0 -> 1.5.1, incremental/latest or full/latest, UAC/apply/restart/health, canonical recovery and rollback with data/old-version launchability. Optional can continue; mandatory blocks login/main and requires current latest."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "NOT_DISPATCHED",
+        "reason": "PLANNING ONLY / NOT_RUN: one explicitly authorized integrated signed installer/updater; exact 1.5.0 -> 1.5.1, incremental/latest or full/latest, UAC/apply/restart/health, canonical recovery and rollback with data/old-version launchability. Optional can continue; mandatory blocks login/main and requires current latest.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "FINAL_QA_USER_ACCEPTANCE",
@@ -123,7 +149,14 @@
         "INTERVIEW_ACCEPTANCE_BUNDLE"
       ],
       "user_action_required": null,
-      "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "No new UAT publication; external lifecycle/role authority and renewed disposable runtime required.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "INTERVIEW_ACCEPTANCE_BUNDLE",
@@ -136,7 +169,14 @@
         "MAIN3_PROMOTION"
       ],
       "user_action_required": null,
-      "reason": "Mandatory final milestone: business-to-code/tests, ADR rationale, exact source/tree/candidate hashes; source/offline/live/package/user evidence separately; remaining gaps and explicit acceptance."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "Mandatory final milestone: business-to-code/tests, ADR rationale, exact source/tree/candidate hashes; source/offline/live/package/user evidence separately; remaining gaps and explicit acceptance.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "MAIN3_PROMOTION",
@@ -147,7 +187,14 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "B remains SILENT. Later explicit exact promotion authority is required to create formal main3 or change default. main2 stays frozen.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "BATCH03_EXACT_INTEGRATION",
@@ -161,7 +208,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Eight exact commits; native login retained, canonical reset observation, inactive lifecycle/recovery UI, read-only Workbench. Source acceptance only.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "CONTINUITY_AUTHORITY",
@@ -174,7 +222,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Three tiers, new-device flow, Portable Pack V2 QUICK/FULL and optional models, integrity/account binding/confidentiality defined.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "DATA_TARGET_STABILITY",
@@ -186,8 +235,15 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Stable account identity/signed subject mapping and durable root source/fixtures PASS; live issuer mapping NOT_APPROVED, existing live candidate still Temp. No real migration.",
-      "workbench_visible": true
+      "reason": "PAUSED; Gate3 BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING: 56 projections >256 KiB; primary owner UNPROVEN; 55 references quarantined. Worker04 exact evidence unintegrated.",
+      "workbench_visible": true,
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "Stable account identity/signed subject mapping and durable root source/fixtures PASS; live issuer mapping NOT_APPROVED, existing live candidate still Temp. No real migration.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "SERVER_SYNC_REHYDRATION",
@@ -200,7 +256,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Gate1 Worker02 exact acceptance integrated; see dispatch36 receipt; retained synthetic scope, no other gate implied.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "PORTABLE_PACK_V2",
@@ -212,8 +269,15 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Current V1 excludes model binaries and is plain ZIP/new-or-empty-vault only. V2 QUICK/FULL, optional models, encrypted/account-bound integrity, additive resource reconnection and idempotent crash recovery remain required.",
-      "workbench_visible": true
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "workbench_visible": true,
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "NOT_DISPATCHED",
+        "reason": "Current V1 excludes model binaries and is plain ZIP/new-or-empty-vault only. V2 QUICK/FULL, optional models, encrypted/account-bound integrity, additive resource reconnection and idempotent crash recovery remain required.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "DATA_CLASSIFICATION_RECOMMENDATION",
@@ -225,8 +289,15 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Provenance/content classification and recommendations before choices; only true ambiguity prompts. Private 84-workspace chooser is QA; preview shell lacks producer/product wiring.",
-      "workbench_visible": true
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "workbench_visible": true,
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "NOT_DISPATCHED",
+        "reason": "Provenance/content classification and recommendations before choices; only true ambiguity prompts. Private 84-workspace chooser is QA; preview shell lacks producer/product wiring.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "OLD_DATA_CONTINUITY",
@@ -241,8 +312,15 @@
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Read-only evidence verified: data exists, no loss confirmed without complete baseline. Source preservation, account binding, stable IDs and two-device tests required. MIGRATION_EXECUTED=NO; real migration needs separate authorization.",
-      "workbench_visible": true
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "workbench_visible": true,
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "Read-only evidence verified: data exists, no loss confirmed without complete baseline. Source preservation, account binding, stable IDs and two-device tests required. MIGRATION_EXECUTED=NO; real migration needs separate authorization.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "BATCH04_EXACT_INTEGRATION",
@@ -255,7 +333,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Five exact commits audited; 04 merge tree equals start and is not replayed. Four deltas integrated 01/04/03/02. Combined evidence is source/local fixture scope.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "POST_BATCH04_WIRING",
@@ -268,7 +347,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Authenticated native session -> current producer -> Qt presentation; server empty authority, shared stable resource refs and actual product observation verified.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "BATCH04_EXACT_CANDIDATE",
@@ -282,7 +362,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Same-source 0038 Backend and new frozen Desktop actually launched; source/publication identity contract verified. Full A/B restoration NOT_RUN.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "MAIN3_CROSS_DEVICE_AB_ACCEPTANCE",
@@ -296,7 +377,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Gate1 Worker02 exact acceptance integrated; see dispatch36 receipt; retained synthetic scope, no other gate implied.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "FROZEN_NATIVE_LOGIN_V2",
@@ -309,7 +391,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Exact 02/01 fixes integrated; actual final EXE manual and Workbench button native login PASS; same EXE negatives PASS; A/B isolated same-artifact precheck PASS; 510 combined checks PASS. V1 superseded; acceptance services and keys retained. Full A/B NOT_RUN.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "MAIN3_RECONCILE_CURRENT_INTEGRATION",
@@ -320,7 +403,8 @@
       "unlocks": [],
       "user_action_required": null,
       "reason": "Known remote docs + preserved local bcc9f25 + exact a98584a delta. 65 focused tests; real source native login and Frozen diagnostic backend spawn PASS. See reconciliation receipt.",
-      "workbench_visible": true
+      "workbench_visible": true,
+      "execution_authorized": false
     },
     {
       "task_id": "ACCOUNT_MVP_FINAL_INTEGRATION",
@@ -332,19 +416,27 @@
         "ACCOUNT_MVP_FROZEN_REBUILD_READY"
       ],
       "user_action_required": null,
-      "reason": "Exact deliveries integrated; official lifecycle wiring and Frozen admin/learner/multiaccount/WinVault/auto-login smoke PASS. Receipt: docs/governance/receipts/20260914-account-mvp-closeout.json."
+      "reason": "Exact deliveries integrated; official lifecycle wiring and Frozen admin/learner/multiaccount/WinVault/auto-login smoke PASS. Receipt: docs/governance/receipts/20260914-account-mvp-closeout.json.",
+      "execution_authorized": false
     },
     {
       "task_id": "ACCOUNT_MVP_USER_ACCEPTANCE",
       "owner": "A",
-      "state": "READY",
+      "state": "NOT_DISPATCHED",
       "dependencies": [
         "ACCOUNT_MVP_FINAL_INTEGRATION",
         "ACCOUNT_MVP_FROZEN_REBUILD_READY"
       ],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Dispatch28 new Frozen TEST artifact and UAT28 machine smoke ready; independent full Frozen GUI A/B and real email lifecycle remain pending. Tony exact-name is not a release blocker."
+      "reason": "PAUSED_FOR_REASSESSMENT; prior planning/evidence retained in pre_pause_snapshot. No execution authorized.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "READY",
+        "reason": "Dispatch28 new Frozen TEST artifact and UAT28 machine smoke ready; independent full Frozen GUI A/B and real email lifecycle remain pending. Tony exact-name is not a release blocker.",
+        "user_action_required": null
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT"
     },
     {
       "task_id": "ACCOUNT_MVP_FROZEN_REBUILD_READY",
@@ -357,7 +449,8 @@
         "ACCOUNT_MVP_USER_ACCEPTANCE"
       ],
       "user_action_required": null,
-      "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS."
+      "reason": "Current task explicit rebuild and exact delivery re-audit complete; no duplicate integration; 37 focused tests and all new Frozen gates PASS.",
+      "execution_authorized": false
     },
     {
       "task_id": "CONTROL_CONVERGENCE_20260915",
@@ -366,7 +459,8 @@
       "dependencies": [],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "03 exact sealing consumed on efb control; PRE02 retained. No integration promotion."
+      "reason": "03 exact sealing consumed on efb control; PRE02 retained. No integration promotion.",
+      "execution_authorized": false
     },
     {
       "task_id": "WORKER_CONVERGENCE_FROZEN_28",
@@ -375,7 +469,8 @@
       "dependencies": [],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Four exact deliveries, long-path tests, A/B source regression, new Frozen TEST machine smoke and UAT28 ready; see dispatch28 receipt."
+      "reason": "Four exact deliveries, long-path tests, A/B source regression, new Frozen TEST machine smoke and UAT28 ready; see dispatch28 receipt.",
+      "execution_authorized": false
     },
     {
       "task_id": "QQ_EMAIL_LIFECYCLE",
@@ -383,8 +478,16 @@
       "state": "BLOCKED",
       "dependencies": [],
       "unlocks": [],
-      "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED",
-      "reason": "Approved inbox resolver not found; TLS/AUTH/NOOP is not email lifecycle. Real send count zero."
+      "user_action_required": null,
+      "reason": "PAUSED; BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE; SMTP readiness is not lifecycle acceptance; real send NOT_RUN.",
+      "execution_authorized": false,
+      "pre_pause_snapshot": {
+        "state": "BLOCKED",
+        "reason": "Approved inbox resolver not found; TLS/AUTH/NOOP is not email lifecycle. Real send count zero.",
+        "user_action_required": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED"
+      },
+      "next_action": "WAIT_FOR_OWNER_REASSESSMENT",
+      "owner_action_after_reassessment": "QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED"
     },
     {
       "task_id": "P0_SOURCE_FROZEN_F1_32",
@@ -393,7 +496,8 @@
       "dependencies": [],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Exact deliveries, source regression, F1, D Frozen and fresh UAT technical gates completed; overall BLOCKED_STORAGE_POLICY_VIOLATION, not PASS. Full GUI A/B remains separately authorized work."
+      "reason": "Exact deliveries, source regression, F1, D Frozen and fresh UAT technical gates completed; overall BLOCKED_STORAGE_POLICY_VIOLATION, not PASS. Full GUI A/B remains separately authorized work.",
+      "execution_authorized": false
     },
     {
       "task_id": "GATE1_FINAL_INTEGRATION_36",
@@ -402,13 +506,14 @@
       "dependencies": [],
       "unlocks": [],
       "user_action_required": null,
-      "reason": "Nine exact patches; Worker02 Gate1 PASS retained; A focused regression passed; seven canonical gates remain."
+      "reason": "Nine exact patches; Worker02 Gate1 PASS retained; A focused regression passed; seven canonical gates remain.",
+      "execution_authorized": false
     }
   ],
-  "authority": "GATE1_EXACT_INTEGRATED",
-  "assignment_scope": "Gate1 integrated; exactly seven remaining gates; planning only, no Gate2 execution.",
+  "authority": "PAUSED_FOR_REASSESSMENT",
+  "assignment_scope": "ALL_EXECUTION_PAUSED; WAIT_FOR_OWNER_REASSESSMENT; historical dependencies are not dispatch authority.",
   "current_stage": {
-    "CURRENT_PHASE": "GATE1_PASS; SEVEN_GATES_REMAIN; STOP",
+    "CURRENT_PHASE": "PAUSED_FOR_REASSESSMENT",
     "REAL_A_B_REHYDRATION": "PASS_FROZEN_GUI_GATE1",
     "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current",
@@ -416,7 +521,12 @@
     "FULL_FROZEN_GUI_AB": "PASS",
     "FULL_ACCOUNT_REHYDRATION": "PASS",
     "COMPLETED_BIG_GATES": "1",
-    "REMAINING_BIG_GATES": "7"
+    "REMAINING_BIG_GATES": "7",
+    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
+    "EXECUTION_AUTHORIZED": "NO",
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED",
+    "BIG_GATE_2": "BLOCKED_EXTERNAL_AUTHORITY",
+    "BIG_GATE_3": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
   },
   "big_gates": [
     {
@@ -427,37 +537,45 @@
     {
       "number": 2,
       "name": "Email lifecycle E2E",
-      "status": "BLOCKED_QQ_REFERENCE"
+      "status": "BLOCKED_EXTERNAL_AUTHORITY"
     },
     {
       "number": 3,
       "name": "Canonical old-data ownership / data target stability",
-      "status": "PENDING"
+      "status": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
     },
     {
       "number": 4,
       "name": "Portable Pack V2 + classification/recommendation",
-      "status": "PENDING"
+      "status": "PENDING / REASSESSMENT_REQUIRED"
     },
     {
       "number": 5,
       "name": "Real old-data migration",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN / FROZEN"
     },
     {
       "number": 6,
       "name": "VPS exact Main3 deployment/live activation",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN / FROZEN"
     },
     {
       "number": 7,
       "name": "Final signed installer/updater acceptance",
-      "status": "PENDING"
+      "status": "PENDING / FROZEN"
     },
     {
       "number": 8,
       "name": "Final QA + acceptance bundle + Main3 promotion",
-      "status": "PENDING"
+      "status": "PENDING / FROZEN"
     }
-  ]
+  ],
+  "pause_authority": {
+    "dispatch_id": "MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38",
+    "source_control_head": "9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b",
+    "receipt": "docs/governance/receipts/20260916-main3-pause-reassessment-seal.json",
+    "PROJECT_STATUS": "PAUSED_FOR_REASSESSMENT",
+    "EXECUTION_AUTHORIZED": "NO",
+    "NEW_DISPATCH_ALLOWED": "NO_UNTIL_REASSESSMENT_APPROVED"
+  }
 }

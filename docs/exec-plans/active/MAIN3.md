@@ -2,12 +2,24 @@
 
 MAIN3_BASE = main2
 
-Current authority: `GATE1_EXACT_INTEGRATED`; review only `control/main3-current`。
+PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
+EXECUTION_AUTHORIZED = NO
+NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+ACTIVE_DISPATCH = NONE
+NEXT_ACTION = WAIT_FOR_OWNER_REASSESSMENT
+
+Current authority: `PAUSED_FOR_REASSESSMENT`; review only `control/main3-current`。
 Gate1 Frozen GUI A/B + Full Account Rehydration=PASS；Worker02原始范围和82/0/0保留；A集成96/0/1。
 COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。
 唯一八关及剩余路线见[当前状态](../../project/CURRENT_STATE.md)与[Gate1回执](../../governance/receipts/20260916-gate1-integration.json)。
-Gate2仍缺QQ批准读取reference；本轮不研究、不发送、不继续。不得另造Gate9/10。
-dispatch32存储违规仍是历史NONPASS；不撤销其回执。NEXT_TASK: Owner另派；当前STOP。
+Gate2=BLOCKED_EXTERNAL_AUTHORITY：QQ批准读取reference缺失；真实SMTP NOT_RUN。
+Gate3=BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING；04 exact `bf8c35999e2c6752a928cf375b9091d9c68bd363`只读记录、未集成。
+56条projection >256 KiB（17 calendar / 35 replan_history / 4 plan_activation）；55悬空引用quarantine；primary owner UNPROVEN。
+Gate4=PENDING / REASSESSMENT_REQUIRED；Gate5/6=NOT_RUN / FROZEN；Gate7/8=PENDING / FROZEN。
+[暂停评审政策与十项问题](../../project/REASSESSMENT_PAUSE_20260916.md)是唯一后续路线：KEEP/ADAPT/REPLACE + WHY，等待Owner批准。
+既有连续性合同不因暂停被静默撤销；参考Keycloak/PowerSync/RLS/Syncthing/Windows不授权引依赖或重构。
+所有槽位SILENT；历史表格的“下一步”“待派发”与旧push授权均已暂停，不构成执行指令。
+dispatch32存储违规仍是历史NONPASS；不撤销其回执。NEXT_TASK: WAIT_FOR_OWNER_REASSESSMENT；当前STOP。
 integration/main3 是施工集成线；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。

@@ -169,10 +169,17 @@ class WebHandoffBoundaryTests(unittest.TestCase):
         self.git("checkout", "-qb", "control/main3-current")
         self.assertEqual(output, handoff.build_web(self.root))
         self.assertIn(b"DERIVED / NOT SOURCE OF TRUTH", output)
-        for slot in ('01', '02', '03', '04'):
-            worker = self.board['workers'][slot]
-            expected = f"{slot}_DELIVERY = {worker['delivery_state']}; {worker['acceptance_state']}"
-            self.assertIn(expected.encode(), output)
+        if fields.get('PROJECT_STATUS') == 'PAUSED_FOR_REASSESSMENT':
+            for key in ('PROJECT_STATUS', 'EXECUTION_AUTHORIZED', 'NEW_DISPATCH_ALLOWED',
+                        'LATEST_WORKER04_DELIVERY', 'DELIVERY_INTEGRATED',
+                        'OVER_LIMIT_RECORD_COUNT', 'PRIMARY_OWNER_BINDING'):
+                self.assertIn(f"{key} = {fields[key]}".encode(), output)
+            self.assertNotIn(b'04_DELIVERY = EXACT_PATCH_CONSUMED', output)
+        else:
+            for slot in ('01', '02', '03', '04'):
+                worker = self.board['workers'][slot]
+                expected = f"{slot}_DELIVERY = {worker['delivery_state']}; {worker['acceptance_state']}"
+                self.assertIn(expected.encode(), output)
         self.assertIn(b"FORMAL_MAIN3 = NOT_CREATED", output)
         self.assertIn(b"BRIDGE = SUPERSEDED / BRIDGE CLOSED", output)
         self.assertNotIn(b"01:UNKNOWN", output)

@@ -6,7 +6,7 @@ UPDATED_AT = 2026-09-16
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-MAIN3-A-GATE1-FINAL-INTEGRATION-20260916-36; prior dispatch evidence retained with its original scope.
+Authority: MF-MAIN3-A-PAUSE-STATE-SEAL-20260916-38; Gate1 prior evidence retained with its original scope.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -14,6 +14,42 @@ Authority: MF-MAIN3-A-GATE1-FINAL-INTEGRATION-20260916-36; prior dispatch eviden
 
 旧的“本地单用户、禁止账号/登录/JWT/多租户/云账户/云同步”规则已被 Main3 明确取代。
 不得再据此否定现有 Keycloak、PostgreSQL、租户隔离和 cloud sync 实现。
+
+## 当前暂停封存（dispatch38）
+```text
+PROJECT_STATUS = PAUSED_FOR_REASSESSMENT
+EXECUTION_AUTHORIZED = NO
+NEW_DISPATCH_ALLOWED = NO_UNTIL_REASSESSMENT_APPROVED
+BIG_GATE_2 = BLOCKED_EXTERNAL_AUTHORITY
+BIG_GATE_3 = BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING
+EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE
+OWNER_ACTION = QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED
+REAL_SMTP_SEND = NOT_RUN
+P0_PRODUCT_SYNC_WRITE_GAP = CLOSED_SOURCE
+LATEST_WORKER04_DELIVERY = bf8c35999e2c6752a928cf375b9091d9c68bd363
+DELIVERY_INTEGRATED = NO
+OLD_WORKSPACE_COUNT = 530
+OLD_PLAN_COUNT = 88
+OLD_RESOURCE_COUNT = 330
+STABLE_ID_MAPPING = AUDITED
+DANGLING_OWNERSHIP_REFERENCES = 55
+CANONICAL_IMPORT_RLS = NOT_COMPLETE
+REAL_OLD_DATA_MIGRATION = NOT_RUN
+PROJECTION_LIMIT = 256 KiB
+OVER_LIMIT_RECORD_COUNT = 56
+PRIMARY_OWNER_BINDING = UNPROVEN
+PRODUCT_ACCEPTANCE = PENDING
+```
+封存输入 control `9381c18aa4de0ef0bcdb5bd34bbf93da7f173b1b`；Gate1集成authority `63731b6e062ff02264d1a08441a9d7c5d79bce0d`。
+Gate3 exact worker04 tree `8f2074633ec16d199d7ae0c1d81f31be99537b17`；仅证据读取，工具/源码未集成。
+56条超限：calendar=17、replan_history=35、plan_activation=4；55条悬空归属引用全部quarantine。
+禁止truncate、silent drop或未经架构评审直接提高限制；username/display-name/email文本不是canonical ownership authority。
+4项native PostgreSQL synthetic controls PASS不等于主旧数据import/RLS；真实迁移NOT_RUN。
+A/01/02/03/04/B全部SILENT；ACTIVE_DISPATCH=NONE；NEXT_ACTION=WAIT_FOR_OWNER_REASSESSMENT。
+[暂停与十项评审问题](docs/project/REASSESSMENT_PAUSE_20260916.md)规定KEEP/ADAPT/REPLACE + WHY；参考项目不授权引依赖/重构。
+既有[连续性合同](docs/decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)仍保留，评审决定未经Owner批准不得改写。
+C runtime / D scratch / E durable；普通worker禁止改CODEX_HOME、CODEX_SQLITE_HOME或global SQLite/WAL/SHM；异常只报告。
+[机器回执](docs/governance/receipts/20260916-main3-pause-reassessment-seal.json)。以下历史与未来路线均不授权执行。
 
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
@@ -24,13 +60,13 @@ BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_P
 [Gate1集成回执](docs/governance/receipts/20260916-gate1-integration.json)记录完整ancestry、source/packaged/GUI证据及各自执行者。
 COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。唯一大关列表如下，普通缺陷归属现有关卡：
 1. Frozen GUI A/B + Full Account Rehydration — PASS。
-2. Email lifecycle E2E — BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE。
-3. Canonical old-data ownership / data target stability — PENDING。
-4. Portable Pack V2 + classification/recommendation — PENDING。
-5. Real old-data migration — NOT_RUN。
-6. VPS exact Main3 deployment/live activation — NOT_RUN。
-7. Final signed installer/updater acceptance — PENDING。
-8. Final QA + acceptance bundle + Main3 promotion — PENDING。
+2. Email lifecycle E2E — BLOCKED_EXTERNAL_AUTHORITY（QQ credential reference）。
+3. Canonical old-data ownership / data target stability — BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING。
+4. Portable Pack V2 + classification/recommendation — PENDING / REASSESSMENT_REQUIRED。
+5. Real old-data migration — NOT_RUN / FROZEN。
+6. VPS exact Main3 deployment/live activation — NOT_RUN / FROZEN。
+7. Final signed installer/updater acceptance — PENDING / FROZEN。
+8. Final QA + acceptance bundle + Main3 promotion — PENDING / FROZEN。
 Gate2只记录：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
 本轮不研究邮箱、不发信、不进入Gate2；integration/main3、main1/main2和CURRENT不动。dispatch32存储违规是保留历史，未改写成PASS。
 
@@ -223,4 +259,4 @@ Dispatch 26 historical action list superseded by dispatch 28: only QQ_TEST_MAILB
 Do not recreate a ChatGPT review branch, reconsume old deliveries, run additional unrequested builds, modify Workbench CURRENT,
 reset credentials, send real email, migrate user data, cut over issuer, or promote integration/main3/main2.
 Do not turn old Frozen failure into the current source blocker or source transport PASS into product acceptance.
-Next work requires explicit Owner dispatch for remaining external authority and human UAT gates; this task stops after control publication.
+STOP. Any development or new dispatch requires completed architecture reassessment and explicit Owner reauthorization; previous task suggestions below historical headings are not executable.
