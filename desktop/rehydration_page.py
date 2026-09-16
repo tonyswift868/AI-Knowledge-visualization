@@ -1,6 +1,8 @@
 """Account-fenced recovery presentation with an optional local file executor."""
 from dataclasses import replace
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from PySide6.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QProgressBar, QScrollArea, QToolButton, QPlainTextEdit, QFileDialog)
 
@@ -42,6 +44,10 @@ class RehydrationPage(QWidget):
         super().__init__(parent)
         self.model = RehydrationState()
         self._resource_lifecycle = None
+        self._download_job = None
+        self._model_cache_root = None
+        self._download_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="model-recovery")
+        self.destroyed.connect(lambda: self._stop_downloads())
         self.setStyleSheet(STYLE + '\nQPushButton:disabled {color:#786572; background:#eee7eb;}')
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -83,7 +89,12 @@ class RehydrationPage(QWidget):
         layout.addLayout(actions)
         self.render()
 
+    def _stop_downloads(self):
+        if self._download_job: self._download_job[1].set()
+        self._download_pool.shutdown(wait=False, cancel_futures=True)
+
     def authenticated(self, account_key):
+        if self._download_job: self._download_job[1].set()
         if self._resource_lifecycle is not None and self._resource_lifecycle.account_key != account_key:
             self._resource_lifecycle = None
         generation = self.model.authenticated(account_key)
@@ -91,11 +102,12 @@ class RehydrationPage(QWidget):
         self.render()
         return generation
 
-    def bind_resource_recovery(self, lifecycle):
+    def bind_resource_recovery(self, lifecycle, *, model_cache_root=None):
         """Composition root supplies the current mounted account lifecycle."""
         if lifecycle.account_key != self.model.account_key or not lifecycle.account_key:
             raise ValueError('RECOVERY_ACCOUNT_MISMATCH')
         self._resource_lifecycle = lifecycle
+        self._model_cache_root = model_cache_root
         self.render()
 
     def _package_enabled(self, resource):
@@ -124,8 +136,42 @@ class RehydrationPage(QWidget):
         self.details.setVisible(expanded)
         self.details_toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
 
+    def _poll_model_download(self):
+        job = self._download_job
+        if job is None: return
+        future, cancel, generation, key = job
+        if not future.done():
+            QTimer.singleShot(100, self._poll_model_download)
+            return
+        self._download_job = None
+        if generation != self.model.generation or self.model.snapshot is None: return
+        try:
+            future.result()
+        except Exception:
+            if key in self.resource_status:
+                self.resource_status[key].setText('下载已取消，可重试。' if cancel.is_set() else '下载或校验失败，请重试。')
+            return
+        self.model.snapshot = replace(self.model.snapshot, resources=tuple(
+            replace(item, missing=False) if item.key == key else item for item in self.model.snapshot.resources))
+        self.render()
+
     def _resource_action(self, resource, action):
         if self.model.snapshot is None or resource not in self.model.snapshot.resources:
+            return
+        if action == 'redownload' and resource.kind == 'model' and resource.verified_redownload:
+            if self._download_job:
+                self._download_job[1].set()
+                self.resource_status[resource.key].setText('正在取消下载…')
+                return
+            lifecycle = self._resource_lifecycle
+            if lifecycle is None or lifecycle.account_key != self.model.account_key:
+                return
+            cancel = Event()
+            future = self._download_pool.submit(lifecycle.install_public_model, resource.key,
+                fingerprint_sha256=resource.fingerprint_sha256, cancel=cancel, cache_root=self._model_cache_root)
+            self._download_job = (future, cancel, self.model.generation, resource.key)
+            self.resource_status[resource.key].setText('正在下载并校验模型；再次点击可取消。')
+            QTimer.singleShot(100, self._poll_model_download)
             return
         if action == 'package' and self._package_enabled(resource):
             generation, account = self.model.generation, self.model.account_key
@@ -222,7 +268,8 @@ class RehydrationPage(QWidget):
         actions = QHBoxLayout()
         buttons = {}
         if resource.verified_redownload:
-            download = QPushButton('重新下载')
+            download = QPushButton('重新下载 / 取消')
+            download.setEnabled(self._resource_lifecycle is not None and self._resource_lifecycle.account_key == self.model.account_key)
             download.clicked.connect(lambda: self._resource_action(resource, 'redownload'))
             actions.addWidget(download)
             buttons['redownload'] = download

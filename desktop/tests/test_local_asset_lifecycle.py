@@ -443,3 +443,80 @@ def test_desktop_page_renders_linked_missing_without_raw_exception(
         page.close()
         page.deleteLater()
         app.processEvents()
+
+
+def test_public_model_cache_install_cancel_retry_and_private_denial(scratch_root, monkeypatch):
+    from backend.app import model_material_catalog as catalog
+    from threading import Event
+    raw=b'synthetic pinned public model';digest=hashlib.sha256(raw).hexdigest()
+    monkeypatch.setattr(catalog,'TRUSTED_MODEL_FILES',{'model.safetensors':(len(raw),digest)})
+    monkeypatch.setattr(catalog,'TRUSTED_MODEL_REVISION','synthetic-pinned-revision')
+    manager,vault,lifecycle=_service(scratch_root)
+    cache=scratch_root/'cache';cache.mkdir();(cache/'model.safetensors').write_bytes(raw)
+    def forbidden(*args,**kwargs):raise AssertionError('no network or metadata publication allowed')
+    monkeypatch.setattr(lifecycle,'_download_https',forbidden)
+    from desktop.product_asset_metadata import bind_vault_metadata
+    class NoCloudWrite:
+        request=staticmethod(forbidden)
+    bind_vault_metadata(vault,NoCloudWrite())
+    cancel=Event();cancel.set()
+    with pytest.raises(LocalAssetLifecycleError,match='DOWNLOAD_CANCELLED'):
+        lifecycle.install_public_model('model-server-id',fingerprint_sha256=digest,cache_root=cache,cancel=cancel)
+    assert not vault.list_assets()
+    cancel.clear()
+    result=lifecycle.install_public_model('model-server-id',fingerprint_sha256=digest,cache_root=cache,cancel=cancel)
+    assert result.local_path.read_bytes()==raw
+    assert (vault.root/'models'/'synthetic-pinned-revision'/'model.safetensors').read_bytes()==raw
+    lifecycle.install_public_model('model-server-id',fingerprint_sha256=digest,cache_root=cache)
+    assert len(vault.list_assets())==1
+    with pytest.raises(LocalAssetLifecycleError,match='MODEL_SOURCE_UNTRUSTED'):
+        lifecycle.install_public_model('private-model',fingerprint_sha256='0'*64)
+
+
+def test_declared_model_stream_limits_cancel_and_retry(scratch_root,monkeypatch):
+    from threading import Event
+    data=b'fixture-stream'*2048
+    reads=[]
+    class Response:
+        headers={'Content-Length':str(len(data))}
+        def __enter__(self):self.pos=0;return self
+        def __exit__(self,*a):pass
+        def geturl(self):return 'https://huggingface.co/public/pinned/file'
+        def read(self,size):
+            reads.append(size);v=data[self.pos:self.pos+size];self.pos+=len(v);return v
+    monkeypatch.setattr(lifecycle_module,'urlopen',lambda *a,**kw:Response())
+    target=scratch_root/'stream.part';cancel=Event();cancel.set()
+    with pytest.raises(LocalAssetLifecycleError):
+        LocalAssetLifecycle._download_https('https://huggingface.co/public/pinned/file',target,expected_size=len(data),cancel=cancel)
+    target.unlink();cancel.clear()
+    progress=[]
+    LocalAssetLifecycle._download_https('https://huggingface.co/public/pinned/file',target,expected_size=len(data),cancel=cancel,progress=lambda a,b:progress.append((a,b)))
+    assert target.read_bytes()==data and progress[-1]==(len(data),len(data))
+    assert set(reads)=={lifecycle_module._CHUNK_SIZE}
+    target.unlink()
+    with pytest.raises(LocalAssetLifecycleError):
+        LocalAssetLifecycle._download_https('https://huggingface.co/public/pinned/file',target,expected_size=len(data)-1)
+
+
+def test_intake_originals_export_canonical_package_for_empty_b(scratch_root):
+    from backend.app.product_intake import stage_original_files
+    source=scratch_root/'ordinary.txt';source.write_bytes(b'intake ordinary original')
+    digest=hashlib.sha256(source.read_bytes()).hexdigest()
+    prepared={'original_files':[{'source_path':str(source),'resource_id':'stable-intake-resource','sha256':digest}],'missing_originals':[]}
+    manager,vault,lifecycle=_service(scratch_root/'a')
+    with pytest.raises(ValueError,match='ACCOUNT_MISMATCH'):
+        stage_original_files(prepared,lifecycle,expected_account_id='personal-local')
+    stage_original_files(prepared,lifecycle,expected_account_id=vault.profile.account_id)
+    stage_original_files(prepared,lifecycle,expected_account_id=vault.profile.account_id)
+    assert len(vault.list_assets())==1
+    package=scratch_root/'canonical.mentorflowpack'
+    from desktop.account_portability import discover_portability_catalogs
+    for name in ('app.db','mentorflow_v2.db'):
+        (vault.root/'data'/name).unlink(missing_ok=True)
+    catalogs=discover_portability_catalogs(vault.root)
+    export_account_package(vault.root,package,account_identity=ACCOUNT,mode=PackageMode.FULL,
+        asset_manifests=catalogs['asset_manifests'])
+    manager.unmount();source.unlink()
+    _,_,b=_service(scratch_root/'b')
+    restored=b.restore_resource_from_package('stable-intake-resource',package,fingerprint_sha256=digest)
+    assert restored.local_path.read_bytes()==b'intake ordinary original'

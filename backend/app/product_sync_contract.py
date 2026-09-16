@@ -602,6 +602,9 @@ def project(table, row):
 def validate(kind, entity_id, payload):
     record = payload.get('product_record')
     if record is None:
+        # The wider sync route is not permission to send large untyped objects.
+        if len(json.dumps(payload, allow_nan=False).encode()) > 256 * 1024:
+            raise ProductSyncRejected('PRODUCT_SYNC_RECORD_TOO_LARGE')
         return
     if not isinstance(record, dict) or set(record) != {'schema', 'record_type', 'values'} or record['schema'] != SCHEMA:
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_SCHEMA')
@@ -627,7 +630,7 @@ def validate(kind, entity_id, payload):
         raise ProductSyncRejected('PRODUCT_SYNC_PRIVATE_FIELD')
     if record_id(record['record_type'], values) != entity_id:
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_ID')
-    if len(json.dumps(payload, allow_nan=False).encode()) > 262144:
+    if len(json.dumps(payload, allow_nan=False).encode()) > record_byte_limit(record['record_type']):
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_TOO_LARGE')
     table=record['record_type']
     try:
@@ -642,3 +645,13 @@ def validate(kind, entity_id, payload):
             restore_review({values['id']:json.loads(values['state'])})
     except (ValueError,TypeError,KeyError,AttributeError):
         raise ProductSyncRejected('PRODUCT_SYNC_STATE_INVALID') from None
+
+
+# Measured retained aggregates reach 6,458,439 serialized bytes. These three
+# typed domains alone receive 8 MiB; all schema/privacy/ID checks still apply.
+LARGE_AGGREGATE_TYPES = frozenset({
+    'active_plan_calendars', 'active_replan_history', 'orm_plan_activation_records',
+})
+
+def record_byte_limit(record_type):
+    return 8 * 1024 * 1024 if record_type in LARGE_AGGREGATE_TYPES else 256 * 1024

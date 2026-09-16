@@ -126,8 +126,8 @@ def test_recovery_choices_and_no_execution(page, projection, kind, verified, pac
     page.resource_action_requested.connect(intents.append)
     if verified:
         buttons['redownload'].click()
-        assert intents[0]['resource_id'] == resource['key']
-        assert '尚未下载' in page.resource_status[resource['key']].text()
+        assert not buttons['redownload'].isEnabled()
+        assert intents == []
     else:
         assert '旧设备迁移包恢复' in page.resource_status[resource['key']].text()
     assert page.model.snapshot.resources[0].missing is True
@@ -234,7 +234,7 @@ def test_invalid_success_is_failure_not_empty(page, projection, field, value):
 
 def test_presentation_modules_have_no_io_or_v1_imports():
     root = Path(__file__).parents[1]
-    allowed = {'dataclasses', 'enum', 'typing', 'PySide6.QtCore', 'PySide6.QtWidgets', 'rehydration_state', 'style'}
+    allowed = {'dataclasses', 'enum', 'typing', 'PySide6.QtCore', 'PySide6.QtWidgets', 'rehydration_state', 'style', 'concurrent.futures', 'threading'}
     for name in ('rehydration_state.py', 'rehydration_page.py'):
         tree = ast.parse((root / name).read_text(encoding='utf-8'))
         assert {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} <= allowed
@@ -247,3 +247,23 @@ def test_production_bootstrap_retains_waiting_gate_copy():
     tree = ast.parse((Path(__file__).parents[1] / 'main.py').read_text(encoding='utf-8'))
     method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_start_account_bootstrap')
     assert any(isinstance(n, ast.Constant) and n.value == '正在恢复你的学习空间…' for n in ast.walk(method))
+
+
+def test_bound_public_model_runs_background_and_publishes_current_generation(page,projection):
+    from PySide6.QtTest import QTest
+    calls=[]
+    class Lifecycle:
+        account_key=projection['account_key']
+        def install_public_model(self,resource_id,**kwargs):
+            calls.append((resource_id,kwargs['fingerprint_sha256']))
+    resource=projection['resources'][0]
+    resource.update(kind='model',verified_redownload=True,fingerprint_sha256='a'*64)
+    projection['resources']=[resource]
+    page.receive(begin(page),SyncState.SYNC_COMPLETE,projection)
+    page.bind_resource_recovery(Lifecycle())
+    page.resource_buttons[resource['key']]['redownload'].click()
+    for _ in range(20):
+        QTest.qWait(30)
+        if page._download_job is None:break
+    assert calls==[(resource['key'],'a'*64)]
+    assert not page.model.snapshot.resources[0].missing

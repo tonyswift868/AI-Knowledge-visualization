@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import uuid
+from backend.app.model_material_catalog import material_for_hash
 
 
 def project(state, context):
@@ -24,7 +25,8 @@ def project(state, context):
     resources = [dict(key=r['entity_id'], plan_key='', plan_keys=r['plan_ids'],
         name=r['payload']['filename'], kind={'USER_FILE':'file', 'MODEL':'model', 'OTHER':'other', 'UNKNOWN':'unknown'}[
             r['product_classification']], missing=r['device_availability'] == 'MISSING_ON_THIS_DEVICE',
-        fingerprint_sha256=r['payload']['sha256'], verified_redownload=False,
+        fingerprint_sha256=r['payload']['sha256'],
+        verified_redownload=r['product_classification'] == 'MODEL' and material_for_hash(r['payload']['sha256']) is not None,
         package_supported=r['product_classification'] == 'USER_FILE') for r in state['resources']]
     def supported_count(domain):
         value = observation.get('counts', {}).get(domain)

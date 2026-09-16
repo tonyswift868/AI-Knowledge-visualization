@@ -166,5 +166,43 @@
   "real_user_data_mutated": false,
   "live_schema_mutations": 0,
   "protected_evidence_root": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04",
-  "product_model_upload_default": false
+  "product_model_upload_default": false,
+  "continuation": {
+    "task": "MF-R1-04-DATA-COMPLETE",
+    "base": "89756ae14bcc096c9887a7622b9d971631dbd5d1",
+    "server_schema_authority": "Dispatcher: 01 delivery 069ab91341bcfe6555bbeeae507ef175cb8b9d34 upgraded retained server to 0040; no live writes by 04",
+    "typed_projection_rows_valid": 24975,
+    "previously_oversized_now_valid": 56,
+    "measured_max_serialized_bytes": 6458439,
+    "primary_admitted_records": 2923,
+    "primary_counts": {
+      "workspaces": 529,
+      "plans": 83,
+      "sources": 330,
+      "progress": 83
+    },
+    "original_sources": {
+      "text": 292,
+      "archive_file": 38,
+      "local_path_empty": 330,
+      "available_original_files": 0
+    },
+    "held_ownerless": {
+      "workspace_reference": "internet-interview-20260815",
+      "created_at": "2026-08-15 11:58:28.830872",
+      "plans": 5,
+      "execution_tasks": 797,
+      "repository_fixture_match": false,
+      "action": "KEEP_SEPARATE"
+    },
+    "model_cache_verification": {
+      "files": 11,
+      "bytes": 2516100892,
+      "all_pinned_hashes_match": true,
+      "network_downloads": 0
+    },
+    "real_migration": "NOT_RUN",
+    "new_scratch": "E:/Codex/Temp/MF-R1-04-COMPLETE",
+    "short_path_asset_fixture": "E:/Codex/Temp/4"
+  }
 }

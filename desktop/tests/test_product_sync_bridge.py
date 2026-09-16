@@ -100,3 +100,21 @@ def test_spawned_account_backend_uses_private_parent_transport(tmp_path,monkeypa
         service.stop()
     assert service.handles_closed
     assert service.thread.exitcode==0
+
+
+def test_measured_aggregate_crosses_private_pipe_without_truncation():
+    payload={'product_record':{'calendar':'x'*6_458_439}}
+    def handler(request):
+        body=json.loads(request.content)
+        return httpx.Response(200,json=dict(kind='calendar',entity_id='calendar-large',revision=1,
+            deleted=False,payload=body['payload']))
+    relay=ProductSyncRelay(transport(handler))
+    parent,child=multiprocessing.Pipe();stop=threading.Event()
+    thread=threading.Thread(target=relay.serve,args=(parent,stop));thread.start()
+    try:
+        result=ChildProductSyncPort(child)(dict(operation='write',kind='calendar',entity_id='calendar-large',
+            request_id='large',expected_revision=0,payload=payload))
+        assert result['payload']==payload
+    finally:
+        stop.set();child.close();thread.join(3)
+    assert not thread.is_alive()

@@ -61,7 +61,7 @@ class ProductSyncRelay:
         try:
             while not stopped.is_set():
                 if not pipe.poll(.2): continue
-                message = json.loads(pipe.recv_bytes(1048576))
+                message = json.loads(pipe.recv_bytes(9*1024*1024))
                 try:
                     value = {'result':self.call(message)}
                 except Exception as exc:
@@ -69,7 +69,7 @@ class ProductSyncRelay:
                     if code in ('UNAUTHENTICATED','SESSION_STALE'): code='PRODUCT_SYNC_DENIED'
                     if code not in ('PRODUCT_SYNC_CONFLICT','PRODUCT_SYNC_DENIED','PRODUCT_SYNC_CONTRACT_REJECTED'): code='PRODUCT_SYNC_PENDING'
                     value = {'error':code}
-                pipe.send_bytes(json.dumps(value,allow_nan=False).encode())
+                pipe.send_bytes(json.dumps(value,allow_nan=False,ensure_ascii=False).encode())
         except (EOFError,OSError):
             pass
         finally:
@@ -81,11 +81,11 @@ class ChildProductSyncPort:
         self.pipe, self.lock = pipe, threading.Lock()
     def __call__(self, message):
         with self.lock:
-            self.pipe.send_bytes(json.dumps(message,allow_nan=False).encode())
+            self.pipe.send_bytes(json.dumps(message,allow_nan=False,ensure_ascii=False).encode())
             if not self.pipe.poll(35):
                 # Close a timed-out channel; late ACKs must not bind to a later request.
                 self.pipe.close()
                 raise ProductSyncBridgeError('PRODUCT_SYNC_PENDING')
-            value = json.loads(self.pipe.recv_bytes(16*1024*1024))
+            value = json.loads(self.pipe.recv_bytes(160*1024*1024))
             if 'error' in value: raise ProductSyncBridgeError(value['error'])
             return value['result']

@@ -535,21 +535,28 @@ class LocalAssetLifecycle:
             temporary.unlink(missing_ok=True)
 
     @staticmethod
-    def _download_https(url: str, destination: Path) -> None:
+    def _download_https(url: str, destination: Path, *, expected_size=None, cancel=None, progress=None) -> None:
+        limit = expected_size if expected_size is not None else _MAX_DOWNLOAD_BYTES
         with urlopen(url, timeout=30) as response, destination.open("xb") as writer:  # noqa: S310
             _verified_https_url(response.geturl())
             declared = response.headers.get("Content-Length")
-            if declared and int(declared) > _MAX_DOWNLOAD_BYTES:
+            if declared and int(declared) > limit:
                 raise LocalAssetLifecycleError("DOWNLOAD_TOO_LARGE", "下载文件超过本机资料大小上限。")
             total = 0
             while True:
+                if cancel is not None and cancel.is_set():
+                    raise LocalAssetLifecycleError('DOWNLOAD_CANCELLED', '下载已取消，可以重试。')
                 chunk = response.read(_CHUNK_SIZE)
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > _MAX_DOWNLOAD_BYTES:
+                if total > limit:
                     raise LocalAssetLifecycleError("DOWNLOAD_TOO_LARGE", "下载文件超过本机资料大小上限。")
                 writer.write(chunk)
+                if progress is not None:
+                    progress(total, limit)
+            if expected_size is not None and total != expected_size:
+                raise LocalAssetLifecycleError('DOWNLOAD_SIZE_MISMATCH', '下载大小与可信清单不一致。')
             writer.flush()
             os.fsync(writer.fileno())
 
@@ -580,6 +587,7 @@ class LocalAssetLifecycle:
         *,
         fingerprint_sha256: str,
         verified_source_url: str,
+        verified_cache: Path | None = None,
     ) -> LocalResourceBinding:
         """Reacquire one missing server resource through the existing importer."""
 
@@ -597,7 +605,12 @@ class LocalAssetLifecycle:
             / f"{uuid.uuid4().hex}.reacquire"
         )
         try:
-            self._downloader(url, temporary)
+            if verified_cache is not None:
+                if not _regular_file(verified_cache) or not _matches_revision(verified_cache, expected):
+                    raise LocalAssetLifecycleError('RESOURCE_FINGERPRINT_MISMATCH', '本机缓存校验失败。')
+                shutil.copyfile(verified_cache, temporary)
+            else:
+                self._downloader(url, temporary)
             if not _regular_file(temporary) or not _matches_revision(
                 temporary,
                 expected,
@@ -623,6 +636,53 @@ class LocalAssetLifecycle:
             ) from exc
         finally:
             temporary.unlink(missing_ok=True)
+
+    def install_public_model(self, resource_id, *, fingerprint_sha256, cancel=None, progress=None, cache_root=None):
+        """Install the byte-pinned public model tree and bind its stable resource.
+
+        Restart reuses verified members. Private weights have no catalog entry.
+        The returned resource is local-only; models never publish USER_FILE rows.
+        """
+        from backend.app import model_material_catalog as catalog
+        material = catalog.material_for_hash(fingerprint_sha256)
+        if material is None:
+            raise LocalAssetLifecycleError('MODEL_SOURCE_UNTRUSTED', 'No trusted public model material')
+        self._vault._require_open()
+        root = self._vault.root / 'models' / catalog.TRUSTED_MODEL_REVISION
+        root.mkdir(parents=True, exist_ok=True)
+        for name, (size, digest) in catalog.TRUSTED_MODEL_FILES.items():
+            if cancel is not None and cancel.is_set():
+                raise LocalAssetLifecycleError('DOWNLOAD_CANCELLED', 'Download cancelled; retry is available')
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if _regular_file(target) and target.stat().st_size == size and _matches_revision(target, digest):
+                continue
+            temporary = target.with_name(target.name + '.' + uuid.uuid4().hex + '.part')
+            try:
+                cached = Path(cache_root) / name if cache_root is not None else None
+                if cached is not None and _regular_file(cached) and cached.stat().st_size == size and _matches_revision(cached, digest):
+                    with cached.open('rb') as reader, temporary.open('xb') as writer:
+                        while chunk := reader.read(_CHUNK_SIZE):
+                            if cancel is not None and cancel.is_set():
+                                raise LocalAssetLifecycleError('DOWNLOAD_CANCELLED', 'Download cancelled; retry is available')
+                            writer.write(chunk)
+                        writer.flush(); os.fsync(writer.fileno())
+                else:
+                    self._download_https(catalog.material_url(name), temporary, expected_size=size, cancel=cancel, progress=progress)
+                if not _regular_file(temporary) or temporary.stat().st_size != size or not _matches_revision(temporary,digest):
+                    raise LocalAssetLifecycleError('RESOURCE_FINGERPRINT_MISMATCH', 'Model material verification failed')
+                os.replace(temporary,target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        if cancel is not None and cancel.is_set():
+            raise LocalAssetLifecycleError('DOWNLOAD_CANCELLED', 'Download cancelled; retry is available')
+        prior = self._vault.get_resource_binding(resource_id)
+        if prior and prior.fingerprint_sha256 == fingerprint_sha256:
+            current = self.resolve_resource_binding(resource_id)
+            if current.availability is AssetAvailability.AVAILABLE_LOCAL:
+                return current
+        return self.reacquire_resource(resource_id, fingerprint_sha256=fingerprint_sha256,
+            verified_source_url=catalog.material_url(material[0]), verified_cache=root / material[0])
 
     def restore_resource_from_package(
         self, resource_id: str, package: Path | str, *, fingerprint_sha256: str,

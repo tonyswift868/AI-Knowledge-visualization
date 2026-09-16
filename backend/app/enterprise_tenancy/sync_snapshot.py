@@ -6,15 +6,22 @@ from .sync_registry import SYNC_DOMAINS, SYNC_ITEM_REGISTRY
 
 SUPPORTED = tuple(v.domain for v in SYNC_ITEM_REGISTRY.values() if v.domain in SUPPORTED_SCOPE)
 UNSUPPORTED = ('model_binary',)
+# Observed source has 24,975 typed rows; a complete account cannot stop at 1,000.
+MAX_SNAPSHOT_ITEMS = 32768
+MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024
 _SCOPE = 'issuer=:issuer AND subject_id=:subject_id AND organization_id=:organization_id AND workspace_id=:workspace_id'
 OBSERVE = text('''
 WITH scoped AS MATERIALIZED (
  SELECT kind, entity_id, revision, deleted, payload FROM structured_sync_entities
- WHERE ''' + _SCOPE + ''' ORDER BY kind, entity_id LIMIT 1001
+ WHERE ''' + _SCOPE + ''' ORDER BY kind, entity_id LIMIT 32769
 )
 SELECT pg_current_snapshot()::text AS revision,
        statement_timestamp() AS observed_at,
-       COALESCE((SELECT json_agg(scoped ORDER BY kind, entity_id) FROM scoped), '[]'::json) AS entities,
+       (SELECT count(*) FROM scoped) AS item_count,
+       (SELECT COALESCE(sum(octet_length(payload::text) + 512),0) FROM scoped) AS byte_count,
+       CASE WHEN (SELECT count(*) <= 32768 AND COALESCE(sum(octet_length(payload::text) + 512),0) <= 134217728 FROM scoped)
+       THEN COALESCE((SELECT json_agg(scoped ORDER BY kind, entity_id) FROM scoped), '[]'::json)
+       ELSE '[]'::json END AS entities,
        (SELECT row_to_json(m) FROM (
            SELECT scope_version,initialized,generation,created_at,updated_at
            FROM rehydration_manifests WHERE ''' + _SCOPE + ''') m) AS manifest
@@ -26,7 +33,7 @@ def observe(connection, scope, *, requested_scope=None, scope_version=None):
         raise EnterprisePersistenceRequestError('SYNC_QUERY_FAILED', 'PostgreSQL required', status=503)
     row = connection.execute(OBSERVE, scope).mappings().one()
     entities = row['entities']
-    if len(entities) > 1000:
+    if row['item_count'] > MAX_SNAPSHOT_ITEMS or row['byte_count'] > MAX_SNAPSHOT_BYTES:
         raise EnterprisePersistenceRequestError('SYNC_SNAPSHOT_LIMIT_EXCEEDED', 'Snapshot limit exceeded', status=413)
     marker = 'pg-snapshot:' + row['revision']
     confirmed = row['observed_at'].isoformat()
