@@ -76,7 +76,7 @@ def test_missing_or_fake_lightweight_exception_is_not_a_bypass():
 
 
 def test_historical_heavy_steps_preserved_and_windows_not_misrepresented():
-    baseline='21337c1eda64f7e087fcade77c3d4cd7dce4a0af'
+    baseline='89315a1f66a4af4a1522f19e3a93008f37a144ed'
     for path in (ROOT/'.github/workflows').glob('*.yml'):
         relative=path.relative_to(ROOT).as_posix()
         before=guard.parse(subprocess.check_output(['git','show',baseline+':'+relative],cwd=ROOT,text=True,encoding='utf-8'))

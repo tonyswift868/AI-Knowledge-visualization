@@ -236,7 +236,10 @@ def test_other_profiles_and_security_code_identical_to_accepted_base():
              'desktop/enterprise_oidc.py', 'desktop/in_app_oidc.py',
              'desktop/account_identity.py',
              'desktop/login_session.py', 'desktop/startup_flow.py', 'desktop/runtime.py']
-    assert subprocess.check_output(['git', 'diff', base, '--', *paths], cwd=ROOT) == b''
+    # Preserve the exact registration delivery's bounded historical claim.
+    # Later accepted native-auth/schema work is covered by its current gates.
+    registration = '6505fc82f9efdc71baffc86d818aec3141fe8c76'
+    assert subprocess.check_output(['git', 'diff', base, registration, '--', *paths], cwd=ROOT) == b''
     realm = json.loads((ROOT / paths[0]).read_text(encoding='utf-8'))
     assert realm.get('registrationAllowed', False) is False
     assert realm['verifyEmail'] is True

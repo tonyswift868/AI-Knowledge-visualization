@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QPushButton
@@ -195,7 +195,12 @@ def test_narrow_layout_hides_engineering_noise_and_preserves_details(window, app
     assert window.integration.width() >= 140
     if width == 1100:
         assert window.integration.height() <= 40
-        assert window.scroll.verticalScrollBar().maximum() == 0
+        # The accepted two-authority UI adds a qualified-candidate row. Its
+        # lower status cards may scroll; both launch entries must stay visible.
+        for control in (window.launch_button, window.qualified_button):
+            position = control.mapTo(window.scroll.viewport(), QPoint())
+            assert position.y() >= 0
+            assert position.y() + control.height() <= window.scroll.viewport().height()
     text = primary_text(window)
     for hidden in (task_id, full_path, view['integration_sha'], view['integration_tree'],
                    'UNKNOWN', 'TASK_ID', 'source_sha', '0036_account_import_ledger', 'secret://fixture/login'):

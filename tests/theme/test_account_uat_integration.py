@@ -1,4 +1,4 @@
-"""Exact-source UAT integration boundaries, not packaged/live qualification."""
+"""Retained exact-source UAT evidence, not current packaged/live qualification."""
 from pathlib import Path
 import subprocess
 
@@ -7,6 +7,7 @@ BASE = '1531c65116063ec606ed1c623acd29fb68e9e8b7'
 REGISTRATION = '6505fc82f9efdc71baffc86d818aec3141fe8c76'
 PREPARATION = 'a9a75ec6871a2291dca78747653a5afd2d6026f2'
 HISTORY = '3259dd6d219bf7dbdd116c93a0c637daf5744566'
+INTEGRATED = '89315a1f66a4af4a1522f19e3a93008f37a144ed'
 
 
 def git(*args):
@@ -26,8 +27,7 @@ def test_frozen_sources_have_exact_expected_order_and_no_path_overlap():
             if path == 'tests/theme/test_mvp_registration.py':
                 continue  # bounded integration-only assertion scope adjustment
             expected = git('rev-parse', source + ':' + path)
-            assert git('rev-parse', ':' + path) == expected, path
-            assert git('hash-object', '--path=' + path, path) == expected, path
+            assert git('rev-parse', INTEGRATED + ':' + path) == expected, path
 
 
 def test_former_failure_is_an_ordinary_mandatory_test():

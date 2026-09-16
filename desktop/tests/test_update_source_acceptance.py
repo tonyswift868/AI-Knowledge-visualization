@@ -13,10 +13,15 @@ def inputs(feed):
     raw=(feed.app/MANIFEST_PATH).read_bytes()
     rows={r['path']:r for r in json.loads(raw)['files']}
     rows[MANIFEST_PATH]=dict(path=MANIFEST_PATH,size=len(raw),sha256=digest(raw))
-    root=feed.install.stat(); app=feed.app.stat()
+    from desktop.update_tree_security import DirectoryPins, receipt_file_identity
+    app=feed.app.stat()
+    with DirectoryPins() as pins:
+        pins.check(feed.app,feed.app,directory=True,missing=False)
+        root_id=receipt_file_identity(pins.kernel,pins.handles[feed.install])
+        app_id=receipt_file_identity(pins.kernel,pins.handles[feed.app])
     receipt=dict(full_verified=True,binding=dict(schema=SCHEMA,root=str(feed.install),
-        version='1.1.0',manifest_sha256=digest(raw),root_identity=[root.st_dev,root.st_ino]),
-        inventory={'App':['dir',0,app.st_mtime_ns,app.st_ctime_ns,app.st_dev,app.st_ino,0]})
+        version='1.1.0',manifest_sha256=digest(raw),root_identity=root_id),
+        inventory={'App':['dir',0,app.st_mtime_ns,app.st_ctime_ns,*app_id,0]})
     return rows,digest(raw),receipt
 
 

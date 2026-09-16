@@ -52,4 +52,6 @@ def test_single_migration_head_is_workspace_bootstrap_without_connecting_databas
     from alembic.script import ScriptDirectory
     config = Config()
     config.set_main_option('script_location', str(ROOT / 'backend/alembic'))
-    assert ScriptDirectory.from_config(config).get_heads() == ['0035_account_workspace_bootstrap']
+    scripts = ScriptDirectory.from_config(config)
+    assert scripts.get_heads() == ['0040_admin_overview_aggregate']
+    assert '0035_account_workspace_bootstrap' in {r.revision for r in scripts.walk_revisions()}

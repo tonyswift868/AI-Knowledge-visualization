@@ -340,25 +340,25 @@ def test_mandatory_result_cancels_inflight_login_and_rejects_late_identity(app_c
 
 
 @pytest.mark.parametrize('intent', ['register', 'forgot_password'])
-def test_native_account_actions_keep_register_inert_and_reset_explicitly_gated(app_context, monkeypatch, intent):
-    from desktop.tests.test_login_smooth import Pane
+def test_native_account_actions_use_capability_gated_local_lifecycle_pane(app_context, monkeypatch, intent):
+    from PySide6.QtCore import Signal
+    from PySide6.QtWidgets import QWidget
     target, app, _ = app_context
     captured = []
-    def create(config, **options):
-        captured.append(options.copy()); options.pop('intent', None); options.pop('capabilities', None)
-        return Pane(config, **options)
-    monkeypatch.setattr('desktop.in_app_oidc.InAppOidcLoginDialog', create)
+    class Pane(QWidget):
+        finished = Signal(bool)
+        def __init__(self, action, *, parent):
+            super().__init__(parent); captured.append(action)
+        def dispose(self): self.close()
+    monkeypatch.setattr('desktop.lifecycle_pane.AccountLifecyclePane', Pane)
     target._show_login_gate(); app.processEvents()
-    gate = target.login_gate; gate.set_account_capabilities({intent: True})
+    gate = target.login_gate; gate.set_account_capabilities({intent: False})
+    target._begin_account_action(intent)
+    assert captured == [] and target._auth_pane is None
+    gate.set_account_capabilities({intent: True})
     gate._account_action(intent); app.processEvents()
-    if intent == 'forgot_password':
-        assert len(captured) == 1 and captured[0]['intent'] == intent
-        assert target._auth_pane is not None and target.main is None
-        return
-    assert captured == []
-    assert target._auth_pane is None
-    assert gate.notice_label.text() == '当前账号服务暂未开放此功能。'
-    assert gate.password_field.isVisible()
+    assert captured == [intent]
+    assert target._auth_pane is not None and target.main is None
 
 
 def test_source_login_entry_also_uses_application_singleton(app_context):

@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from backend.app import teacher_voice_pack as voice_pack
 from backend.app.windows_install_path_budget import calculate_windows_install_path_budget
 from scripts import manage_voice_release_keys as key_tool
+from scripts.test_storage_policy import assigned_root, require_test_path
 
 
 PURPOSE = "mentorflow-voice-and-engine-release"
@@ -36,20 +37,42 @@ TEST_ROOT_PRIVATE_KEY = Ed25519PrivateKey.from_private_bytes(
 ALL_MANIFEST_SCHEMAS = sorted({value["schema"] for value in key_tool.MANIFEST_CONTRACTS.values()})
 
 
+@pytest.fixture(scope="module", autouse=True)
+def isolated_key_fixture_policy():
+    """Adapt synthetic fixtures only; the shipped key tool remains E:-only.
+
+    Keep every real ACL, FileId, temp, repository and reparse check. The
+    dispatch policy must authorize a D: fixture before its drive is adapted.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(key_tool, "_utc_now", lambda: datetime(2026, 8, 8, 12, tzinfo=timezone.utc))
+        for name in ("_validate_private_location", "_validate_private_root"):
+            original = getattr(key_tool, name)
+
+            def validate(value, *, must_exist, original=original):
+                if Path(value).drive.casefold() != "d:":
+                    return original(value, must_exist=must_exist)
+                require_test_path(value)
+                with pytest.MonkeyPatch.context() as drive:
+                    drive.setattr(key_tool, "REQUIRED_PRIVATE_DRIVE", "d:")
+                    return original(value, must_exist=must_exist)
+
+            patch.setattr(key_tool, name, validate)
+        yield
+
+
 @pytest.fixture(scope="module")
 def e_key_workspace() -> Path:
-    if os.name != "nt" or not Path("E:/").is_dir():
-        pytest.skip("real Windows E: ACL/FileId tests require an E: volume")
-    parent = Path("E:/Kristina_Runtime/cache")
-    if not parent.is_dir():
-        pytest.skip("the designated E: test parent is unavailable")
-    workspace = parent / f"mentorflow-release-key-test-{uuid.uuid4().hex}"
+    if os.name != "nt":
+        pytest.skip("real Windows ACL/FileId tests require Windows")
+    parent = require_test_path(assigned_root() / "tests")
+    workspace = require_test_path(parent / f"keys-{uuid.uuid4().hex[:8]}")
     workspace.mkdir()
     try:
         yield workspace
     finally:
         assert workspace.parent == parent
-        assert workspace.name.startswith("mentorflow-release-key-test-")
+        assert workspace.name.startswith("keys-")
         if workspace.exists():
             shutil.rmtree(workspace)
         assert not workspace.exists()

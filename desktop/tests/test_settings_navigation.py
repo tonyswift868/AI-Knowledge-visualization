@@ -51,6 +51,9 @@ def navigation_host(qapp: QApplication) -> tuple[object, QListWidget, QStackedWi
         pages.addWidget(QWidget())
 
     host = _NavigationHost()
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    host.materials_page = SimpleNamespace(refresh_workspaces=Mock())
     host.navigation = navigation
     host.pages = pages
     host._navigation_page_indices = [0, 1, 3, 5, 6, 8, 9, 10]

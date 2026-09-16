@@ -57,7 +57,7 @@ def test_form_uses_upstream_post_errors_and_password_visibility():
                      'realm.registrationAllowed', 'social.providers'):
         assert expected in template
     assert sorted(path.name for path in LOGIN.rglob("*.js")) == [
-        "account-lifecycle-state.js", "account-lifecycle.js", "password-pair.js"]
+        "account-lifecycle-native.js", "account-lifecycle-state.js", "account-lifecycle.js", "password-pair.js"]
     for forbidden in ("fetch(", "window.open", "postMessage", "/api/auth/login", "<iframe"):
         assert forbidden not in template
 
@@ -80,6 +80,9 @@ def test_existing_mvp_only_adds_readonly_theme_and_scoped_gate():
         "${MENTORFLOW_PASSWORD_BLACKLIST_DIR:-../../auth-email-security/password-blacklists}:/opt/keycloak/data/password-blacklists:ro")
     assert after["services"]["keycloak-ready"]["environment"].pop(
         "MENTORFLOW_DESKTOP_LOGIN_THEME") == THEME.name
+    # Separately accepted admin authority is an explicit, empty-by-default list.
+    assert after["services"]["backend"]["environment"].pop(
+        "MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS") == "${MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS:-[]}"
     assert after == before
     assert ((ROOT / COMPOSE).parent / mount.split(":")[0]).resolve() == THEME.resolve()
     assert (THEME / "login/theme.properties").is_file()

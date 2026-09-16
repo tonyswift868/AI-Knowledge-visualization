@@ -12,7 +12,7 @@ from desktop.windows_process_peer import ProcessPeer
 def test_real_pipe_peer_pid_and_lossless_messages():
     attempt=uuid.uuid4().hex
     with Listener(attempt,'control') as server:
-        runtime=getattr(sys,'_base_executable',sys.executable)
+        runtime=str(Path(getattr(sys,'_base_executable',sys.executable)).resolve())
         child=subprocess.Popen([runtime,'-B','-m','desktop.tests.test_windows_update_pipe',attempt],
             cwd=Path(__file__).resolve().parents[2],creationflags=subprocess.CREATE_NO_WINDOW,
             env={**os.environ,'PYTHONPATH':os.pathsep.join(p for p in sys.path if p)},

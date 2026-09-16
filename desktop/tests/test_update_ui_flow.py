@@ -238,7 +238,10 @@ def test_actual_settings_card_port_and_progress_visibility(tmp_path, monkeypatch
     view = page.update_panel; scroller = page.findChild(QScrollArea)
     try:
         scroller.verticalScrollBar().setValue(view.mapTo(scroller.widget(), QPoint()).y() + 70)
-        view.download_button.click(); until(port.entered.is_set); view.refresh(); app.processEvents()
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        QTest.mouseClick(view.download_button, Qt.MouseButton.LeftButton)
+        until(port.entered.is_set); view.refresh(); app.processEvents()
         point = view.mapTo(scroller.viewport(), QPoint())
         assert point.y() >= 0 and point.y() + view.height() <= scroller.viewport().height()
         port.release.set(); until(lambda: 'apply' in port.calls and not controller.busy)

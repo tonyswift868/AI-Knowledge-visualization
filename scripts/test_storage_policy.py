@@ -74,3 +74,11 @@ def configured_test_temp_root() -> Path:
     """Fixture I/O and cleanup use the same validated long-path representation."""
     root = Path(tempfile.gettempdir())
     return test_io_path(root) if root.drive.upper() == 'D:' else root
+
+
+def test_sqlite_uri(path, *, mode: str) -> str:
+    """Preserve TEST extended filenames and SQLite's no-create read mode."""
+    from urllib.parse import quote
+    if mode not in ('ro', 'rw'):
+        raise ValueError('TEST_EPHEMERAL_SQLITE_MODE_REJECTED')
+    return 'file:' + quote(str(test_io_path(path)), safe='') + '?mode=' + mode

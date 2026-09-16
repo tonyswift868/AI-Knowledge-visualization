@@ -36,7 +36,7 @@ def _deployment_mode(source: Mapping[str, str] | None = None) -> TenantMode:
         ) from exc
 
 
-def _parsed_database_url(value: str, *, variable: str) -> URL:
+def _parsed_database_url(value: str | URL, *, variable: str) -> URL:
     try:
         return make_url(value)
     except Exception as exc:
@@ -51,6 +51,16 @@ def _require_sqlite_url(url: URL, *, variable: str) -> URL:
             f"{variable} must use SQLite in PERSONAL_LOCAL mode"
         )
     return url
+
+
+def _personal_sqlite_url(path: Path) -> URL:
+    # The question mark in Windows extended TEST paths is a filename prefix,
+    # never a SQLAlchemy URL query. Keep production path behavior unchanged.
+    if str(path).upper().startswith('\\\\?\\D:\\'):
+        from scripts.test_storage_policy import require_test_path
+        require_test_path(path)
+        return URL.create("sqlite", database=str(path))
+    return make_url(f"sqlite:///{path.as_posix()}")
 
 
 def _require_postgresql_psycopg_url(url: URL, *, variable: str) -> URL:
@@ -82,7 +92,7 @@ def resolve_runtime_database_url(
                 variable=RUNTIME_DATABASE_URL_ENV,
             )
         path = Path(personal_database_path or ORM_DB).expanduser().resolve()
-        return make_url(f"sqlite:///{path.as_posix()}")
+        return _personal_sqlite_url(path)
     if not raw:
         raise DatabaseRuntimeConfigurationError(
             f"{RUNTIME_DATABASE_URL_ENV} is required in ENTERPRISE_SERVER mode"
@@ -100,14 +110,16 @@ def resolve_runtime_database_url(
 
 
 def resolve_migration_database_url(
-    configured_url: str,
+    configured_url: str | URL,
     source: Mapping[str, str] | None = None,
 ) -> URL:
     """Resolve Alembic's dedicated owner URL and prove role separation."""
 
     env = os.environ if source is None else source
     if _deployment_mode(env) is TenantMode.PERSONAL_LOCAL:
-        raw = str(env.get(MIGRATION_DATABASE_URL_ENV) or configured_url).strip()
+        raw = env.get(MIGRATION_DATABASE_URL_ENV) or configured_url
+        if not isinstance(raw, URL):
+            raw = str(raw).strip()
         return _require_sqlite_url(
             _parsed_database_url(raw, variable=MIGRATION_DATABASE_URL_ENV),
             variable=MIGRATION_DATABASE_URL_ENV,
@@ -145,7 +157,7 @@ def _create_engine_from_url(database_url: URL) -> Engine:
 
 def _create_engine(database_path: Path) -> Engine:
     path = Path(database_path).expanduser().resolve()
-    return _create_engine_from_url(make_url(f"sqlite:///{path.as_posix()}"))
+    return _create_engine_from_url(_personal_sqlite_url(path))
 
 engine=_create_engine(ORM_DB)
 _session_factory=sessionmaker(engine,expire_on_commit=False)
@@ -260,6 +272,8 @@ def upgrade_orm_schema(revision: str = "head") -> None:
     config.set_main_option("script_location", str(backend_root / "alembic"))
     config.set_main_option("prepend_sys_path", "")
     config.set_main_option("sqlalchemy.url", f"sqlite:///{ORM_DB.as_posix()}")
+    if str(ORM_DB).upper().startswith('\\\\?\\D:\\'):
+        config.attributes["test_ephemeral_sqlite_url"] = _personal_sqlite_url(ORM_DB)
     # Startup migrations run inside the application process.  Alembic's CLI
     # logging configuration must not replace handlers already installed by the
     # host, otherwise later runtime and shutdown failures become invisible.

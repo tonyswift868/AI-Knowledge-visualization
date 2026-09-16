@@ -403,9 +403,13 @@ def _db_path() -> Path:
 
 def _connect() -> sqlite3.Connection:
     path = _db_path()
+    uri = f"{path.resolve().as_uri()}?mode=rw"
+    if str(path).upper().startswith('\\\\?\\D:\\'):
+        from scripts.test_storage_policy import test_sqlite_uri
+        uri = test_sqlite_uri(path, mode='rw')
     try:
         connection = sqlite3.connect(
-            f"{path.resolve().as_uri()}?mode=rw",
+            uri,
             uri=True,
         )
     except sqlite3.OperationalError as exc:

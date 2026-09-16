@@ -40,7 +40,11 @@ def test_actual_native_transport_chain(tmp_path):
                    check=True,capture_output=True,timeout=30)
     actual = wire.read_directory(tmp_path)
     st = tmp_path.stat()
-    assert actual == wire.from_legacy([st.st_dev,st.st_ino])
+    # CPython 3.11 stat exposes only the low DWORD of the volume serial;
+    # the native contract deliberately retains all 64 bits.
+    volume, file_id = wire.decode(actual)
+    assert volume & 0xffffffff == st.st_dev & 0xffffffff
+    assert int.from_bytes(file_id, 'little') == st.st_ino
     docs = [wire.encode(n,bytes(range(16))) for n in VOLUMES]+[actual]
     payload = json.dumps(docs)
     # Exercise JavaScriptSerializer and a real PowerShell ConvertFrom/To-Json

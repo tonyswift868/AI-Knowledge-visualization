@@ -103,6 +103,39 @@ def test_extended_io_syntax_cannot_authorize_outside_or_sibling():
         with pytest.raises(ValueError): policy.require_test_path('\\\\?\\' + str(path))
 
 
+def test_disposable_sqlite_url_keeps_extended_prefix_out_of_query(tmp_path):
+    from backend.app import orm
+    from sqlalchemy import text
+    path = policy.test_io_path(tmp_path / 'extended.db')
+    url = orm._personal_sqlite_url(path)
+    assert url.database == str(path) and not url.query
+    assert orm.resolve_migration_database_url(url, source={}) == url
+    engine = orm._create_engine_from_url(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text('CREATE TABLE fixture (value INTEGER)'))
+            connection.execute(text('INSERT INTO fixture VALUES (1)'))
+            assert connection.execute(text('SELECT value FROM fixture')).scalar_one() == 1
+    finally:
+        engine.dispose()
+    import sqlite3
+    with sqlite3.connect(policy.test_sqlite_uri(path, mode='rw'), uri=True) as connection:
+        assert connection.execute('SELECT value FROM fixture').fetchone() == (1,)
+    with sqlite3.connect(policy.test_sqlite_uri(path, mode='ro'), uri=True) as connection:
+        with pytest.raises(sqlite3.OperationalError):
+            connection.execute('DELETE FROM fixture')
+    missing = path.parent / 'missing.db'
+    with pytest.raises(sqlite3.OperationalError):
+        sqlite3.connect(policy.test_sqlite_uri(missing, mode='rw'), uri=True)
+    assert not missing.exists()
+    with pytest.raises(ValueError): policy.test_sqlite_uri(path, mode='rwc')
+    for outside in ('D:/arbitrary/out.db', str(policy.ASSIGNED_ROOT.parent / 'B/out.db')):
+        with pytest.raises(ValueError):
+            orm._personal_sqlite_url(Path('\\\\?\\' + outside.replace('/', '\\')))
+    production = Path('E:/MentorFlowData/fixture.db')
+    assert orm._personal_sqlite_url(production).database == production.as_posix()
+
+
 def test_build_refuses_unassigned_scratch_before_cleanup(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[2]
     marker = tmp_path / 'keep'; marker.write_text('unchanged')

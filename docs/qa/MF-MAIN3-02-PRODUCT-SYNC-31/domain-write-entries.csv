@@ -32,21 +32,21 @@ backend/app/main.py,create_session,1865,POST /api/workspaces/{workspace_id}/sess
 backend/app/main.py,message_session,1885,POST /api/sessions/{session_id}/messages,WIRED,legacy compatibility + existing ORM producer
 backend/app/main.py,evaluate_lesson_v2,1925,POST /api/lessons/{lesson_id}/evaluate,WIRED,legacy compatibility + existing ORM producer
 backend/app/main.py,evaluate_lesson,1973,POST /api/lessons/{lesson_id}/evaluate-legacy,WIRED,legacy compatibility + existing ORM producer
-backend/app/active_teaching.py,_capture_knowledge_progress,496,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,upload_material,2313,POST /workspaces/{workspace_id}/materials,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_set_material_disposition,2504,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,delete_material,2591,DELETE /workspaces/{workspace_id}/materials/{material_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_sync_receipt_learner_preference_profile,3336,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,save_receipt,3387,PUT /workspaces/{workspace_id}/receipt,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,generate_plan,4150,POST /workspaces/{workspace_id}/plans/generate,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_complete_execution_task,4561,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_refresh_plan_calendar,4671,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_materialize_review_occurrence,4935,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_record_message,5625,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,_v1_self_attested_completion,6892,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,start_review,10614,POST /sessions/{session_id}/reviews/{review_id}/start,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,submit_review,10768,POST /sessions/{session_id}/reviews/{review_id}/submit,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
-backend/app/active_teaching.py,update_learning_workspace,12161,PATCH /workspaces/{workspace_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_capture_knowledge_progress,500,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,upload_material,2317,POST /workspaces/{workspace_id}/materials,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_set_material_disposition,2508,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,delete_material,2595,DELETE /workspaces/{workspace_id}/materials/{material_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_sync_receipt_learner_preference_profile,3340,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,save_receipt,3391,PUT /workspaces/{workspace_id}/receipt,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,generate_plan,4154,POST /workspaces/{workspace_id}/plans/generate,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_complete_execution_task,4565,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_refresh_plan_calendar,4675,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_materialize_review_occurrence,4939,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_record_message,5629,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,_v1_self_attested_completion,6896,,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,start_review,10618,POST /sessions/{session_id}/reviews/{review_id}/start,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,submit_review,10772,POST /sessions/{session_id}/reviews/{review_id}/submit,WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
+backend/app/active_teaching.py,update_learning_workspace,12165,PATCH /workspaces/{workspace_id},WIRED,checkpoint 30 WIRED domain entry; existing table producer preserved
 backend/app/plan_product_api.py,create_preview,582,POST /previews,WIRED,typed durable state + command receipt + existing producer/ACK
 backend/app/plan_product_api.py,publish_preview,593,POST /previews/{preview_id}/publish,WIRED,typed durable state + command receipt + existing producer/ACK
 backend/app/plan_product_api.py,complete_task,628,POST /published/{publication_id}/tasks/{task_id}/complete,WIRED,typed durable state + command receipt + existing producer/ACK

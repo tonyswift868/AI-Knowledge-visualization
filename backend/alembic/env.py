@@ -27,6 +27,13 @@ target_metadata = Base.metadata
 
 
 def _database_url():
+    ephemeral = config.attributes.get("test_ephemeral_sqlite_url")
+    if ephemeral is not None:
+        from scripts.test_storage_policy import require_test_path
+        if ephemeral.drivername != "sqlite":
+            raise ValueError("TEST_EPHEMERAL_SQLITE_REQUIRED")
+        require_test_path(ephemeral.database)
+        return resolve_migration_database_url(ephemeral)
     return resolve_migration_database_url(
         config.get_main_option("sqlalchemy.url")
     )

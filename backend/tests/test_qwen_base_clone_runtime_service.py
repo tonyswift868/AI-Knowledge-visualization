@@ -14,6 +14,7 @@ import zipfile
 from contextlib import asynccontextmanager, contextmanager
 from copy import deepcopy
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,6 +36,20 @@ from app.local_voice_runtime_supervisor import (
 )
 from app.windows_install_path_budget import calculate_windows_install_path_budget
 from runtime import qwen_base_clone_server as child
+
+
+def _cache_root(path):
+    from scripts.test_storage_policy import test_io_path
+    return test_io_path(path) if path.drive.upper() == 'D:' else path
+
+
+@pytest.fixture(autouse=True)
+def signed_fixture_clock(monkeypatch):
+    class FixtureDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 8, 12, tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr(release_trust_policy, "datetime", FixtureDateTime)
 
 
 def _wav(*, frames: int, sample: int) -> bytes:
@@ -231,7 +246,7 @@ def _synthesis_payload(
 def test_typed_bridge_and_child_fake_model_close_prepare_synthesis_and_cache(tmp_path: Path):
     binding = _binding(tmp_path)
     backend = FakeBackend()
-    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=tmp_path / "cache")
+    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=_cache_root(tmp_path / "cache"))
     transport = InMemoryTransport(state)
     supervisor = FakeSupervisor()
     runtime = bridge.QwenBaseCloneLoopbackRuntime(supervisor=supervisor, transport=transport)
@@ -273,7 +288,7 @@ def test_bridge_rechecks_reference_bytes_before_launch_or_transport(tmp_path: Pa
     binding = _binding(tmp_path)
     binding.references[0].audio_path.write_bytes(_wav(frames=800, sample=222))
     backend = FakeBackend()
-    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=tmp_path / "cache")
+    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=_cache_root(tmp_path / "cache"))
     transport = InMemoryTransport(state)
     supervisor = FakeSupervisor()
     runtime = bridge.QwenBaseCloneLoopbackRuntime(supervisor=supervisor, transport=transport)
@@ -288,7 +303,7 @@ def test_bridge_rechecks_reference_bytes_before_launch_or_transport(tmp_path: Pa
 def test_child_rejects_request_fingerprint_mismatch(tmp_path: Path):
     binding = _binding(tmp_path)
     backend = FakeBackend()
-    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=tmp_path / "cache")
+    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=_cache_root(tmp_path / "cache"))
     state.prepare(
         {
             "schema": voice_pack.QWEN_BASE_CLONE_PREPARE_SCHEMA,
@@ -443,9 +458,12 @@ def test_child_never_evicts_authenticated_request_nonces_within_one_generation()
 def test_child_audio_cache_is_bounded_by_entries_and_total_bytes_and_base64_peak(
     tmp_path: Path, monkeypatch
 ):
+    from scripts.test_storage_policy import test_io_path
+    if tmp_path.drive.upper() == 'D:':
+        tmp_path = test_io_path(tmp_path)
     binding = _binding(tmp_path)
     backend = FakeBackend()
-    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=tmp_path / "cache")
+    state = child.QwenBaseCloneRuntimeState(backend=backend, cache_root=_cache_root(tmp_path / "cache"))
     state.prepare(
         {
             "schema": voice_pack.QWEN_BASE_CLONE_PREPARE_SCHEMA,
@@ -551,7 +569,7 @@ def _running_child_server(tmp_path: Path, **limits):
         pack_root=tmp_path,
         host="127.0.0.1",
         port=0,
-        cache_root=tmp_path / "server-cache",
+        cache_root=_cache_root(tmp_path / "server-cache"),
         instance_key=instance_key,
         backend=FakeBackend(),
         **limits,
@@ -1177,7 +1195,7 @@ def test_production_factory_uses_only_fixed_app_launch_plan_and_does_not_start(t
     monkeypatch.setattr(bridge, "_PRODUCTION_RUNTIMES", [])
     runtime = bridge.create_and_register_production_qwen_base_clone_runtime(
         capability=capability,
-        cache_root=tmp_path / "runtime-cache",
+        cache_root=_cache_root(tmp_path / "runtime-cache"),
         supervisor_factory=supervisor_factory,
         _allow_test_trust=True,
     )
@@ -1222,7 +1240,7 @@ def test_generation_rehash_prepare_synthesize_chain(
     binding = replace(_binding(tmp_path / "voice"), engine=capability.dependency)
     backend = FakeBackend()
     transport = InMemoryTransport(
-        child.QwenBaseCloneRuntimeState(backend=backend, cache_root=tmp_path / "c")
+        child.QwenBaseCloneRuntimeState(backend=backend, cache_root=_cache_root(tmp_path / "c"))
     )
     attestation_calls: list[voice_pack.VerifiedQwenEngineRegistrationCapability] = []
     actual_acquire = bridge.acquire_qwen_engine_launch_attestation
@@ -1316,7 +1334,7 @@ def test_generation_rehash_prepare_synthesize_chain(
 
     runtime = bridge.create_and_register_production_qwen_base_clone_runtime(
         capability=capability,
-        cache_root=tmp_path / "x",
+        cache_root=_cache_root(tmp_path / "x"),
         supervisor_factory=supervisor_factory,
         _allow_test_trust=True,
     )
@@ -1340,7 +1358,7 @@ def test_generation_rehash_prepare_synthesize_chain(
     launcher.processes[-1].return_code = 0
     transport.state = child.QwenBaseCloneRuntimeState(
         backend=FakeBackend(),
-        cache_root=tmp_path / "c",
+        cache_root=_cache_root(tmp_path / "c"),
     )
     asyncio.run(runtime.prepare(prepare_request))
     after_natural_restart = asyncio.run(runtime.synthesize(synthesis_request))
@@ -1352,7 +1370,7 @@ def test_generation_rehash_prepare_synthesize_chain(
     assert runtime.supervisor.status()["owned"] is False
     transport.state = child.QwenBaseCloneRuntimeState(
         backend=FakeBackend(),
-        cache_root=tmp_path / "c",
+        cache_root=_cache_root(tmp_path / "c"),
     )
     calls_before_tamper = list(transport.calls)
     (root / "runtime" / "models" / "qwen3-tts-12hz-0.6b-base" / "config.json").write_text(
@@ -1377,7 +1395,7 @@ def test_production_factory_fails_closed_when_signed_runner_material_is_missing(
     with pytest.raises(LocalVoiceRuntimeError) as caught:
         bridge.create_and_register_production_qwen_base_clone_runtime(
             capability=capability,
-            cache_root=tmp_path / "runtime-cache",
+            cache_root=_cache_root(tmp_path / "runtime-cache"),
             supervisor_factory=lambda *_args, **_kwargs: pytest.fail("supervisor must not be constructed"),
             _allow_test_trust=True,
         )
@@ -1444,7 +1462,7 @@ def test_production_factory_rejects_a_real_test_chain_without_internal_test_gate
     with pytest.raises(LocalVoiceRuntimeError) as blocked:
         bridge.create_and_register_production_qwen_base_clone_runtime(
             capability=release["capability"],
-            cache_root=tmp_path / "cache",
+            cache_root=_cache_root(tmp_path / "cache"),
             supervisor_factory=lambda *_args, **_kwargs: pytest.fail(
                 "test trust must be rejected before supervisor construction"
             ),
@@ -1629,7 +1647,7 @@ def test_new_generation_reverifies_policy_and_registry_bytes(
     monkeypatch.setattr(bridge, "_PRODUCTION_RUNTIMES", [])
     bridge.create_and_register_production_qwen_base_clone_runtime(
         capability=release["capability"],
-        cache_root=tmp_path / "cache",
+        cache_root=_cache_root(tmp_path / "cache"),
         supervisor_factory=supervisor_factory,
         _allow_test_trust=True,
     )

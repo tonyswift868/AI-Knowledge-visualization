@@ -5,7 +5,7 @@ from desktop.windows_process_peer import ProcessPeer
 
 
 def test_actual_identity_captured_before_immediate_failure(tmp_path):
-    runtime=getattr(sys,'_base_executable',sys.executable)
+    runtime=str(Path(getattr(sys,'_base_executable',sys.executable)).resolve())
     child=SuspendedChild([runtime,'-c','raise SystemExit(23)'],cwd=tmp_path)
     try:
         assert child.poll() is None
