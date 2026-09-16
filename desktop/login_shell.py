@@ -20,6 +20,7 @@ class LoginGateState(str, Enum):
 
 
 class LoginGateWindow(QWidget):
+    capabilities_received = Signal(object)
     first_paint_completed = Signal()
     login_requested = Signal()
     retry_requested = Signal()
@@ -64,6 +65,7 @@ class LoginGateWindow(QWidget):
         self._login_enabled = True
         self.account_capabilities = {}
         self._build()
+        self.capabilities_received.connect(self.set_account_capabilities)
         self.set_state(LoginGateState.LOGIN_READY)
 
     def _build(self) -> None:
@@ -189,6 +191,7 @@ class LoginGateWindow(QWidget):
         self.remember_box.hide()
         self.remember_password_box = QCheckBox('记住密码')
         self.remember_password_box.setObjectName('rememberPasswordCheckBox')
+        self.remember_password_box.setToolTip('密码仅保存在此设备的 Windows 凭据管理器；30天未登录后失效，成功登录续期。')
         outer.addWidget(self.remember_password_box)
         outer.addWidget(self.auto_box)
         def synchronize_consent():

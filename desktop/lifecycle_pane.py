@@ -66,12 +66,16 @@ class Bridge(QObject):
     def forgot(self,name,request_id):
         if self.busy or self.cancelled.is_set(): return
         self.busy=True
+        self.account_name=name
         def work():
+            accepted=False
             async def request():
+                nonlocal accepted
                 config=DesktopOidcConfig.from_env(); client=LifecycleClient(config)
                 try: value=await client.action('forgot',{'account':name})
                 finally: await client.aclose()
                 if self.cancelled.is_set(): return
+                accepted=True
                 self.result.emit(json.dumps({'kind':'forgot','requestId':request_id,'accepted':True}))
                 observer=ResetCompletionClient(config)
                 try:
@@ -79,8 +83,8 @@ class Bridge(QObject):
                     if not self.cancelled.is_set(): self.back.emit(True)
                 finally: await observer.aclose()
             try: asyncio.run(request())
-            except Exception:
-                if not self.cancelled.is_set(): self.result.emit(json.dumps({'kind':'forgot','requestId':request_id,'accepted':False}))
+            except Exception as exc:
+                if not self.cancelled.is_set(): self.result.emit(json.dumps({'kind':'forgot','requestId':request_id,'accepted':False,'stage':'observation' if accepted else 'request','expired':getattr(exc,'code','')=='RESET_OBSERVATION_EXPIRED'}))
             finally:self.busy=False
         threading.Thread(target=work,daemon=True).start()
 

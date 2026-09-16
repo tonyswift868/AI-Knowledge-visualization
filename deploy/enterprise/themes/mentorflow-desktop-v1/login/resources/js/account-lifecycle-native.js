@@ -21,8 +21,16 @@ new QWebChannel(qt.webChannelTransport, channel => {
         const value=JSON.parse(raw);
         if(value.kind==='register')instance.model.registrationResult(value.outcome,{requestId:value.requestId,email:value.email||''});
         if(value.kind==='forgot') {
-            instance.model.forgotResult(value.requestId);
-            if(!value.accepted)root.querySelector('#mf-forgot-receipt').textContent='暂时无法确认邮件操作。请查看邮箱，或稍后返回重试。';
+            if(value.accepted) instance.model.forgotResult(value.requestId);
+            else if(value.stage==='request') {
+                if(!instance.model.forgotResult(value.requestId)) return;
+                instance.model.navigate('FORGOT_REQUEST');
+                root.querySelector('#mf-forgot-status').textContent='暂时无法请求重置邮件，请检查网络或稍后重试。';
+            } else {
+                root.querySelector('#mf-forgot-receipt').textContent=value.expired
+                    ? '重置状态已失效，请返回并重新发起密码找回。'
+                    : '请求已受理，但暂时无法确认重置结果。请查看邮箱，完成后返回登录使用新密码。';
+            }
         }
     });
 });

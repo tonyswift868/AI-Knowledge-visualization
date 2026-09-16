@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import asyncio
 import os
+import time
 from contextlib import contextmanager
 
 from .account_identity import AccountCredentialVault, AccountPreferenceStore, ProfileMode
@@ -108,7 +109,7 @@ class LoginSession:
         if password_written: self.passwords.store(profile,username,password)
         try:
             # Capture a legacy selected account before replacing that selection.
-            self.registry.add(profile,remember_session=remember,remember_password=saved,automatic=automatic)
+            self.registry.add(profile,remember_session=remember,remember_password=saved,automatic=automatic,username=username)
             self.preferences.save_target(profile, sync_cursor=result.sync_cursor,
                                          remember_me=remember, auto_login=remember and automatic)
         except Exception:
@@ -123,7 +124,21 @@ class LoginSession:
                 identity, access_token=access, refresh_token=refresh)) if remember else None
             result.rehydration_session.activate(rotation_writer=writer)
 
+    def forget_password(self, profile):
+        with account_session_lock(profile):
+            self.passwords.delete(profile)
+            self.credentials.logout(profile)
+            self.registry.set_options(profile.account_id,remember_password=False,remember_session=False,auto_login=False)
+            if self.registry.snapshot()['current_account_id']==profile.account_id:
+                self.preferences.disable_restore()
+
     def restore(self, profile, cancelled: threading.Event):
+        row=self.registry.get(profile.account_id)
+        if row and row['remember_password']:
+            age=time.time()-row.get('last_authenticated',0)
+            if age < 0 or age >= 30*24*60*60:
+                self.forget_password(profile)
+                raise EnterpriseOidcError('SAVED_PASSWORD_EXPIRED','已超过30天未登录，请重新输入密码。')
         try:
             return self._restore_session(profile,cancelled)
         except Exception as exc:
@@ -145,6 +160,11 @@ class LoginSession:
                 raise EnterpriseOidcError('ENTERPRISE_ACCOUNT_ISSUER_CHANGED','登录服务已变更，请重新登录。')
             username,password=self.passwords.load(profile)
             try: result=login_native_account_from_env(username,password)
+            except EnterpriseOidcError as exc:
+                if exc.code == 'NATIVE_CREDENTIALS_INVALID':
+                    self.forget_password(profile)
+                    raise EnterpriseOidcError('SAVED_PASSWORD_REJECTED','保存的密码已失效，请重新输入密码；如已重置，请使用新密码。') from None
+                raise
             finally: password=None
             if cancelled.is_set(): raise EnterpriseOidcError('ENTERPRISE_LOGIN_CANCELLED','登录已取消。')
             if result.identity.profile().account_id!=profile.account_id:

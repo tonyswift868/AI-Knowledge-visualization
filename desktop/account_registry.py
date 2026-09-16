@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import json
 import threading
 import os
+import time
 from types import SimpleNamespace
 
 from .account_identity import AccountProfile, ProfileMode, identity_hash
@@ -10,7 +11,7 @@ from .account_identity import AccountProfile, ProfileMode, identity_hash
 KEY = 'account/registry_v1'
 _mutex = threading.RLock()
 FIELDS = {'account_id','issuer_hash','subject_hash','display_name',
-          'remember_session','remember_password','auto_login'}
+          'remember_session','remember_password','auto_login','username','last_authenticated'}
 
 
 class AccountRegistry:
@@ -59,7 +60,11 @@ class AccountRegistry:
             if not isinstance(rows,list) or len(rows)>64: raise ValueError()
             ids=set()
             for row in rows:
-                if set(row)!=FIELDS: raise ValueError()
+                if set(row) - FIELDS or FIELDS - {'username','last_authenticated'} - set(row): raise ValueError()
+                row.setdefault('username', '')
+                row.setdefault('last_authenticated', 0)
+                if not isinstance(row['username'],str) or len(row['username'])>320: raise ValueError()
+                if type(row['last_authenticated']) not in (int,float) or not 0 <= row['last_authenticated'] < float('inf'): raise ValueError()
                 if any(type(row[k]) is not bool for k in ('remember_session','remember_password','auto_login')): raise ValueError()
                 if not isinstance(row['display_name'],str) or len(row['display_name'])>320: raise ValueError()
                 profile=self.profile(row)
@@ -71,10 +76,10 @@ class AccountRegistry:
             raise ValueError('ACCOUNT_REGISTRY_INVALID') from None
 
     @staticmethod
-    def record(profile, remember, password, automatic):
+    def record(profile, remember, password, automatic, username="", last_authenticated=0):
         if profile.account_id is None: raise ValueError('ACCOUNT_REQUIRED')
         return dict(account_id=profile.account_id,issuer_hash=profile.issuer_hash,subject_hash=profile.subject_hash,
-            display_name=profile.display_name[:320],remember_session=bool(remember),
+            display_name=profile.display_name[:320],username=username,last_authenticated=last_authenticated,remember_session=bool(remember),
             remember_password=bool(password),auto_login=bool(automatic))
 
     def _write(self,value):
@@ -89,12 +94,15 @@ class AccountRegistry:
     def get(self,account_id):
         return next((r for r in self.snapshot()['accounts'] if r['account_id']==account_id),None)
 
-    def add(self,profile,*,remember_session,remember_password,automatic):
+    def add(self,profile,*,remember_session,remember_password,automatic,username=None):
         with self.transaction():
             value=self._read();rows=value['accounts']
+            previous=next((r for r in rows if r['account_id']==profile.account_id), {})
+            username=username if username is not None else previous.get('username','')
+            if not isinstance(username,str) or len(username)>320: raise ValueError('INVALID_USERNAME')
             rows[:]=[r for r in rows if r['account_id']!=profile.account_id]
             if len(rows)>=64: raise ValueError('ACCOUNT_REGISTRY_FULL')
-            rows.append(self.record(profile,remember_session,remember_password,automatic))
+            rows.append(self.record(profile,remember_session,remember_password,automatic,username,time.time()))
             value['current_account_id']=profile.account_id;self._write(value)
 
     def select(self,account_id):
