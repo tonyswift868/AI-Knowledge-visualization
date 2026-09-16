@@ -1130,6 +1130,8 @@ class MentorFlowApplication:
         self.login_gate.closed.connect(self._invalidate_login_jobs)
         self.login_gate.account_selected.connect(self._select_local_account)
         self.login_gate.remember_password_box.clicked.connect(self._remember_password_clicked)
+        self.login_gate.username_field.textChanged.connect(self._refresh_remembered_password_hint)
+        self.login_gate.remember_password_box.toggled.connect(self._refresh_remembered_password_hint)
         self.login_gate.account_remove_requested.connect(self._remove_local_account)
         self._refresh_local_accounts()
         self.login_gate.notice_label.setText(os.environ.pop("MENTORFLOW_LOGIN_NOTICE", ""))
@@ -1156,6 +1158,18 @@ class MentorFlowApplication:
         else:
             self.login_gate.set_state(LoginGateState.LOGIN_READY)
             self.login_gate.username_field.setFocus()
+        self._refresh_remembered_password_hint()
+
+    def _refresh_remembered_password_hint(self, *_):
+        gate = self.login_gate
+        if gate is None: return
+        row = self._login_session.registry.get(self._remembered_profile.account_id) if self._remembered_profile else None
+        available = bool(row and row['remember_password'] and gate.remember_password_box.isChecked()
+                         and (not gate.username_field.text().strip()
+                              or gate.username_field.text().strip() == row.get('username')))
+        # Never load a secret just to render the form. Blank means use the
+        # selected account's existing secure restore path when Login is clicked.
+        gate.password_field.setPlaceholderText('已保存密码，直接点击登录' if available else '密码')
 
     def _invalidate_login_jobs(self, *, preserve_session: bool = False) -> None:
         if not preserve_session:
@@ -1237,6 +1251,7 @@ class MentorFlowApplication:
         self.login_gate.set_state(LoginGateState.LOGIN_READY)
         self.login_gate.state_title.setText(row['display_name'])
         self.login_gate.state_detail.setText('输入密码后登录；已记住密码时可直接点击登录。' if row.get('username') else '此历史账号未保存登录名，请填写账号与密码；不会删除历史数据。')
+        self._refresh_remembered_password_hint()
 
     def _remember_password_clicked(self, checked):
         if checked or self._remembered_profile is None: return
@@ -1360,6 +1375,7 @@ class MentorFlowApplication:
         if intent != 'login':
             return
         self._remembered_profile = None
+        self._refresh_remembered_password_hint()
         username, password = self.login_gate.take_credentials()
         if not username or not password:
             self.login_gate.set_state(LoginGateState.AUTH_FAILED, detail='请输入账号和密码。')
