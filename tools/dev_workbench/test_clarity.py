@@ -33,6 +33,7 @@ def window(app, source, candidate):
 
 
 def render(window, app, view, width=1100, height=900):
+    window.pages.setCurrentWidget(window.scroll)  # Retained historical diagnostics.
     window.show_view(view); window.resize(width, height); window.show()
     for _ in range(4): app.processEvents()
 
@@ -40,6 +41,33 @@ def render(window, app, view, width=1100, height=900):
 def primary_text(window):
     return '\n'.join(widget.text() for cls in (QLabel, QPushButton)
                      for widget in window.content.findChildren(cls) if widget.isVisible())
+
+
+def test_home_launches_are_available_without_historical_candidate(window, app, source):
+    window.show_view(a.load_view(source))
+    window.pages.setCurrentIndex(0); window.show(); app.processEvents()
+    assert window.pages.tabText(0) == '启动 MentorFlow'
+    assert all(b.isEnabled() and b.isVisible() for b in window.branch_buttons.values())
+    assert window.branch_buttons['release'].text() == '启动正式版'
+    assert not window.workers_card.isVisible()
+
+
+@pytest.mark.parametrize('channel', ['development', 'release'])
+def test_home_click_keeps_selected_channel_and_shows_process(window, app, monkeypatch, channel):
+    calls = []
+    class Launcher:
+        def launch(self, selected, progress):
+            calls.append(selected); progress('准备所选版本')
+            return dict(branch=selected, sha='a'*40, pid=123, mode='SOURCE_DESKTOP_MAIN',
+                        profile='isolated-profile', log='launch.log')
+    monkeypatch.setattr(ui, 'BranchLauncher', Launcher)
+    window.show(); app.processEvents()
+    QTest.mouseClick(window.branch_buttons[channel], Qt.MouseButton.LeftButton)
+    deadline = time.monotonic() + 5
+    while window.jobs and time.monotonic() < deadline: QTest.qWait(10)
+    assert calls == [channel]
+    assert '进程 123' in window.branch_status.text()
+    assert all(b.isEnabled() for b in window.branch_buttons.values())
 
 
 @pytest.mark.parametrize('status,expected', [

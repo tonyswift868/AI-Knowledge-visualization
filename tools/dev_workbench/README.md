@@ -1,5 +1,56 @@
 # MentorFlow Dev Workbench V1.1
 
+## Normal launch home (MF-R1-02)
+
+The default home now has two independent launch buttons:
+
+- **启动最新开发版** queries remote `origin`'s `control/main3-current`.
+- **启动正式版** queries remote `origin HEAD`'s symbolic default branch, rather
+  than assuming main2 or treating an integration checkout as the official version.
+
+Each click pins branch/SHA before preparation and displays that same identity
+through preparation and process startup. A remote change during preparation does
+not silently change the selected build. An unavailable remote or failed startup
+never falls back to another branch. Historical approvals, employee statuses and
+expired synthetic runtime leases do not gate these two normal buttons.
+
+The existing source-mode `desktop.main` entry is reused. Git archives are made
+with CRLF conversion disabled and checked against exact Git blob IDs. Prepared
+frontend outputs are hashed before reuse. Missing/changed caches cause a fresh
+isolated preparation, using that source's own `npm ci` / `npm run build`; no
+installer, release publication, frozen repacking or cloud CI is performed.
+
+For versions containing `scripts/render_account_lifecycle_ui.py`, preparation
+also runs that existing renderer and validates source-input/output hashes. It
+uses the existing E-drive Keycloak 26.7.3/JDK installation, or explicit
+`MENTORFLOW_WORKBENCH_KEYCLOAK` / `MENTORFLOW_WORKBENCH_JDK` paths. Missing build
+dependencies produce a repairable error rather than an empty page or copied UI
+from another version. Older branches without that script retain their own UI.
+
+Normal data roots are stable `E:/MentorFlowWorkbenchData/development` and
+`E:/MentorFlowWorkbenchData/release`. They survive restarts/source updates and
+never share a database. The Workbench source wrapper scopes QSettings to INI
+files and Windows Locker to each profile (including old main2 without a device
+adapter). Existing issuer/client/API/TLS environment configuration is retained;
+no synthetic account, UAT server or demo data is injected. The selected version
+continues its ordinary configured product flow.
+
+**Existing installed data/accounts remain in their original location.** These
+new stable profiles do not automatically import their settings, credentials or
+databases. The home says so explicitly. Restoring prior data remains the existing
+product migration/sync owner's responsibility; this repair adds no migration.
+
+Source/build caches and diagnostic logs live under
+`E:/Codex/Temp/mentorflow-workbench-launch`. Actual startup is acknowledged only
+after the selected process reports a visible product window and its exact
+`desktop.main` path. A Windows venv redirector's child PID is distinguished from
+its parent launcher PID. Failure messages retain a log path. UI startup is not
+an assertion that login, cloud sync or every product feature passed.
+
+The **历史诊断** and two-device pages retain the earlier QA features described
+below. Their CURRENT/candidate contracts apply only to those explicit QA actions,
+not to the two ordinary branch launch buttons.
+
 ## Account MVP user test
 
 The version area keeps separate **启动最新开发版** and **启动最新已验收候选**

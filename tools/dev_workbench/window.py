@@ -12,6 +12,7 @@ from .authority import RepoSource, load_view, public_text
 from .presentation import details_payload, summarize
 from .resources import Resources, COLORS
 from .targets import Refused, TrustedPaths, launch_exact, navigation_path
+from .branch_launch import BranchLauncher, LaunchError
 
 
 def label(text='', size=14, bold=False):
@@ -27,6 +28,7 @@ def label(text='', size=14, bold=False):
 class Job(QThread):
     done = Signal(object)
     failed = Signal(str)
+    progress = Signal(str)
 
     def __init__(self, operation, parent):
         super().__init__(parent)
@@ -34,7 +36,7 @@ class Job(QThread):
 
     def run(self):
         try: self.done.emit(self.operation())
-        except Refused as exc: self.failed.emit(str(exc))
+        except (Refused, LaunchError) as exc: self.failed.emit(str(exc))
         except Exception: self.failed.emit('OPERATION_FAILED')
 
 
@@ -132,9 +134,47 @@ class Workbench(QMainWindow):
         from .device_panel import DevicePanel
         self.device_panel = DevicePanel(self, label)
         self.pages.addTab(self.device_panel, self.tr_text('labels', 'devices'))
+        self.build_launch_home()
         self.launch_button.setEnabled(False)
         self.reflow()
         if auto_load: self.refresh()
+
+    def build_launch_home(self):
+        home = QWidget(); body = QVBoxLayout(home)
+        body.addWidget(label('选择要启动的 MentorFlow', 24, True))
+        body.addWidget(label('点击时查询远端并固定分支与 SHA；不会回退到另一版本。'))
+        self.branch_buttons = {}
+        for channel, title, explanation in (
+            ('development', '启动最新开发版', '远端 control/main3-current'),
+            ('release', '启动正式版', '远端仓库当前默认分支（自动读取）')):
+            body.addWidget(label(explanation, 16, True))
+            button = QPushButton(title); button.setObjectName('primary')
+            button.clicked.connect(lambda checked=False, c=channel: self.launch_branch(c))
+            body.addWidget(button); self.branch_buttons[channel] = button
+        body.addWidget(label('两个版本使用各自固定的本机数据目录，保留各自账号与设置。'
+                             '与原安装数据独立；不会自动移动或迁移原安装数据。'))
+        self.branch_status = label('准备就绪。首次使用可能需要构建前端。')
+        self.branch_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body.addWidget(self.branch_status)
+        body.addStretch()
+        self.pages.setTabText(0, '历史诊断')
+        self.pages.insertTab(0, home, '启动 MentorFlow'); self.pages.setCurrentIndex(0)
+
+    def launch_branch(self, channel):
+        if getattr(self, 'branch_job', None): return
+        for button in self.branch_buttons.values(): button.setEnabled(False)
+        launcher = BranchLauncher()
+        job = Job(lambda: launcher.launch(channel, job.progress.emit), self)
+        self.branch_job = job; self.jobs.append(job)
+        job.progress.connect(self.branch_status.setText)
+        job.failed.connect(self.branch_status.setText)
+        job.done.connect(lambda result: self.branch_status.setText(
+            f"已启动 {result['branch']} · {result['sha']}\n进程 {result['pid']} · {result['mode']}"
+            f"\n数据目录：{result['profile']}\n诊断日志：{result['log']}"))
+        def finish():
+            self.jobs.remove(job); self.branch_job = None; job.deleteLater()
+            for button in self.branch_buttons.values(): button.setEnabled(True)
+        job.finished.connect(finish); job.start()
 
     def tr_text(self, group, key, **values):
         return self.resources.text(group, key, **values)
