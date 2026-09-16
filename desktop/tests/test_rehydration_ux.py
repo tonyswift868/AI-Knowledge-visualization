@@ -133,6 +133,48 @@ def test_recovery_choices_and_no_execution(page, projection, kind, verified, pac
     assert page.model.snapshot.resources[0].missing is True
 
 
+def test_bound_original_package_button_uses_server_id_hash_and_account_fence(page, projection, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    calls = []
+    class Lifecycle:
+        account_key = 'account-a'
+        def restore_resource_from_package(self, resource, package, *, fingerprint_sha256):
+            calls.append((resource, package, fingerprint_sha256))
+    resource = projection['resources'][0]
+    resource.update(fingerprint_sha256='a' * 64, verified_redownload=False)
+    page.receive(begin(page), SyncState.SYNC_COMPLETE, projection)
+    page.bind_resource_recovery(Lifecycle())
+    assert page.resource_buttons[resource['key']]['package'].isEnabled()
+    monkeypatch.setattr(QFileDialog, 'getOpenFileName', lambda *a, **k: ('fixture.mentorflowpack', ''))
+    page.resource_buttons[resource['key']]['package'].click()
+    assert calls == [(resource['key'], 'fixture.mentorflowpack', 'a' * 64)]
+    assert not next(r for r in page.model.snapshot.resources if r.key == resource['key']).missing
+    assert page.model.snapshot.plans[0].key == 'plan-a'
+    page.authenticated('account-b')
+    assert page._resource_lifecycle is None
+    with pytest.raises(ValueError, match='RECOVERY_ACCOUNT_MISMATCH'):
+        page.bind_resource_recovery(Lifecycle())
+
+
+def test_account_switch_while_package_picker_open_discards_selection(page, projection, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    calls = []
+    class Lifecycle:
+        account_key = 'account-a'
+        def restore_resource_from_package(self, *args, **kwargs):
+            calls.append(True)
+    resource = projection['resources'][0]
+    resource['fingerprint_sha256'] = 'a' * 64
+    page.receive(begin(page), SyncState.SYNC_COMPLETE, projection)
+    page.bind_resource_recovery(Lifecycle())
+    def select_after_logout(*args, **kwargs):
+        page.authenticated('account-b')
+        return 'fixture.mentorflowpack', ''
+    monkeypatch.setattr(QFileDialog, 'getOpenFileName', select_after_logout)
+    page._resource_action(page.model.snapshot.resources[0], 'package')
+    assert calls == []
+
+
 def test_details_default_hidden_and_plain_text(page, projection):
     page.receive(begin(page), SyncState.SYNC_COMPLETE, projection)
     assert not page.details.isVisible() and not page.details_toggle.isChecked()

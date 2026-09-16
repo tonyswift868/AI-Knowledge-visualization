@@ -24,7 +24,8 @@ def project(state, context):
     resources = [dict(key=r['entity_id'], plan_key='', plan_keys=r['plan_ids'],
         name=r['payload']['filename'], kind={'USER_FILE':'file', 'MODEL':'model', 'OTHER':'other', 'UNKNOWN':'unknown'}[
             r['product_classification']], missing=r['device_availability'] == 'MISSING_ON_THIS_DEVICE',
-        verified_redownload=False, package_supported=False) for r in state['resources']]
+        fingerprint_sha256=r['payload']['sha256'], verified_redownload=False,
+        package_supported=r['product_classification'] == 'USER_FILE') for r in state['resources']]
     def supported_count(domain):
         value = observation.get('counts', {}).get(domain)
         return value if domain in learning['supported_scope'] and type(value) is int and value >= 0 else None

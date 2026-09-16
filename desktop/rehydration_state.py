@@ -42,6 +42,7 @@ class Resource:
     verified_redownload: bool
     package_supported: bool
     plan_keys: tuple[str, ...] = ()
+    fingerprint_sha256: str = ''
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,10 @@ class CloudView:
                 raise ValueError('Invalid resource state')
             item = Resource(text(r['key']), text(r['plan_key']), text(r['name']), r['kind'], r['missing'],
                             r.get('verified_redownload') is True, r.get('package_supported') is True,
-                            tuple(text(k) for k in r.get('plan_keys', [])))
+                            tuple(text(k) for k in r.get('plan_keys', [])), text(r.get('fingerprint_sha256', '')))
+            if item.fingerprint_sha256 and (len(item.fingerprint_sha256) != 64 or
+                    any(c not in '0123456789abcdef' for c in item.fingerprint_sha256)):
+                raise ValueError('Invalid resource fingerprint')
             if len(set(item.plan_keys)) != len(item.plan_keys) or any(k not in keys for k in item.plan_keys):
                 raise ValueError('Unknown shared plan binding')
             if item.plan_key and item.plan_key not in keys:

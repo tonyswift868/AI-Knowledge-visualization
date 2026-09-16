@@ -1,0 +1,170 @@
+{
+  "task": "MF-R1-04-DATA-REPAIR",
+  "base": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+  "target_authority": "Owner authorization relayed by main dispatcher; 01 verified stable identity. No username matching or fresh account allocation.",
+  "canonical": {
+    "issuer": "https://localhost:18080/realms/mentorflow",
+    "subject": "d7e34c30-8245-4fcd-82f5-e401ad42f02b",
+    "account_id": "mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932",
+    "organization_id": "personal_org_70e67aec5c2745d29b4af58ff63d325e06563c7013300a1145fc8d4fae593f27",
+    "workspace_id": "personal_ws_70e67aec5c2745d29b4af58ff63d325e06563c7013300a1145fc8d4fae593f27",
+    "rename": "01 owns tonyswift555 -> tonyswift; preserve subject/account/memberships"
+  },
+  "sources": [
+    {
+      "label": "PRIMARY",
+      "source": "E:\\MentorFlowData\\data\\mentorflow_v2.db",
+      "clone": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04\\PRIMARY-current.sqlite3",
+      "clone_sha256": "bfb6805df8913f5891a8d5b01f96683e0d432684870f1e6b79e9c5ef4a0caf43",
+      "counts": {
+        "orm_workspaces": 530,
+        "orm_plans": 88,
+        "orm_sources": 330,
+        "orm_progress": 83,
+        "orm_plan_execution_tasks": 797,
+        "active_plans": 57,
+        "active_plan_tasks": 11363,
+        "active_plan_calendars": 48,
+        "active_replan_history": 38,
+        "orm_plan_activation_records": 5,
+        "dangling_ownership": 55,
+        "ownerless_workspaces": 1
+      },
+      "owner_groups": [
+        {
+          "owner_reference": "sha256:1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5",
+          "ownership_rows": 584,
+          "workspaces": 529
+        }
+      ],
+      "schema": [
+        "0039_generic_sync_kinds"
+      ]
+    },
+    {
+      "label": "SECONDARY",
+      "source": "E:\\aiPlay\\AI-Knowledge visualization\\data\\mentorflow_v2.db",
+      "clone": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04\\SECONDARY-current.sqlite3",
+      "clone_sha256": "f4299a915910151fcd1da5dfc8a641551071ea158d4c56010d41201f31775a80",
+      "counts": {
+        "orm_workspaces": 533,
+        "orm_plans": 83,
+        "orm_sources": 333,
+        "orm_progress": 83,
+        "orm_plan_execution_tasks": 0,
+        "active_plans": 55,
+        "active_plan_tasks": 11363,
+        "active_plan_calendars": 48,
+        "active_replan_history": 38,
+        "orm_plan_activation_records": 0,
+        "dangling_ownership": 0,
+        "ownerless_workspaces": 533
+      },
+      "owner_groups": [],
+      "schema": [
+        "0028_video_collection_v1"
+      ]
+    },
+    {
+      "label": "LEGACY",
+      "source": "C:\\Users\\21533\\AppData\\Local\\MentorFlow\\data\\mentorflow_v2.db",
+      "clone": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04\\LEGACY-current.sqlite3",
+      "clone_sha256": "ac27fb585e2fbeabfea39c6fe0bc31026554d3e90c60cb7891376ba849cfecdd",
+      "counts": {
+        "orm_workspaces": 529,
+        "orm_plans": 83,
+        "orm_sources": 330,
+        "orm_progress": 83,
+        "orm_plan_execution_tasks": 0,
+        "active_plans": 55,
+        "active_plan_tasks": 11363,
+        "active_plan_calendars": 48,
+        "active_replan_history": 38,
+        "orm_plan_activation_records": 0,
+        "dangling_ownership": 55,
+        "ownerless_workspaces": 0
+      },
+      "owner_groups": [
+        {
+          "owner_reference": "sha256:1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5",
+          "ownership_rows": 584,
+          "workspaces": 529
+        }
+      ],
+      "schema": [
+        "0021_local_login_throttle"
+      ]
+    }
+  ],
+  "observed_utc": "2026-09-16T18:57:43.901723+00:00",
+  "scope_rule": "Existing personal tenant/workspace remains the transport scope. Legacy ORM workspace/plan/task IDs remain product record keys; do not create 529 new accounts or infer that ORM workspace IDs are enterprise memberships.",
+  "primary": {
+    "workspaces": 529,
+    "plans": 83,
+    "resources": 330,
+    "progress": 83,
+    "disposition": "Owner-authorized primary local ownership group; prepare existing product-record import to the same canonical account; no extra candidate confirmation required"
+  },
+  "held": {
+    "ownerless": {
+      "workspaces": 1,
+      "plans": 5,
+      "execution_tasks": 797,
+      "reason": "No local ownership linkage; do not infer from sole product account"
+    },
+    "dangling_ownership_references": 55,
+    "disposition": "Retain original rows and references; exact hash/reference counts in protected D projection-audit. Do not silently delete/reassign."
+  },
+  "alternate_sources": "SECONDARY and LEGACY are comparison/backup sources, not another batch to append. Deduplicate stable IDs against PRIMARY before any intake.",
+  "projection_validation": {
+    "rows": 24975,
+    "valid": 24919,
+    "rejected": 56
+  },
+  "oversized": {
+    "active_plan_calendars": {
+      "kind": "calendar",
+      "rows": 48,
+      "ascii_over": 17,
+      "utf8_over": 17,
+      "max_ascii": 1505985,
+      "max_utf8": 1157658
+    },
+    "active_replan_history": {
+      "kind": "history",
+      "rows": 38,
+      "ascii_over": 35,
+      "utf8_over": 35,
+      "max_ascii": 896263,
+      "max_utf8": 896174
+    },
+    "orm_plan_activation_records": {
+      "kind": "task",
+      "rows": 5,
+      "ascii_over": 4,
+      "utf8_over": 4,
+      "max_ascii": 6458439,
+      "max_utf8": 4921367
+    }
+  },
+  "schema": {
+    "head": "0036_account_import_ledger",
+    "read_only": true,
+    "observed_utc": "2026-09-16T19:02:38.964567+00:00",
+    "required_source_head": "0040_admin_overview_aggregate",
+    "schema_writer": "01_ONLY",
+    "schema_mutations": 0
+  },
+  "backups": [
+    "E:/Codex/Data/backups/MentorFlow/20260814-001213-native-manual",
+    "E:/Codex/Data/backups/MentorFlow/20260813-233442-before-native-desktop-auth-20260813",
+    "E:/Codex/Temp/MF04-RELEASE27/application.dump",
+    "E:/Codex/Temp/MF04-RELEASE27/identity.dump"
+  ],
+  "backup_claim": "Located only this run. Prior backup checks/restore evidence retained; no repeat restore or new integrity claim. Fresh pre-write backups remain the executing coordinator responsibility.",
+  "execution": "READ_ONLY_SOURCE_SNAPSHOTS_AND_DISPOSABLE_TESTS_ONLY",
+  "real_user_data_mutated": false,
+  "live_schema_mutations": 0,
+  "protected_evidence_root": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04",
+  "product_model_upload_default": false
+}

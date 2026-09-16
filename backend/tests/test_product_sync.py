@@ -92,6 +92,30 @@ def test_lost_ack_retry_reuses_frozen_request(product):
         assert c.execute("SELECT COUNT(*) FROM product_sync_intents WHERE status!='ACKED'").fetchone()[0]==0
 
 
+def test_conflicting_real_queue_does_not_block_existing_material_read(product):
+    client, producer, service, actor, tenant = product
+    response = client.post('/api/active-teaching/workspaces/read-fixture/materials',
+        files={'file': ('existing.txt', b'Already committed original material.', 'text/plain')})
+    assert response.status_code == 200
+    material_id = response.json()['id']
+    send = producer.send
+    def conflict(message):
+        if message['operation'] == 'write':
+            raise ProductSyncFailure('PRODUCT_SYNC_CONFLICT')
+        return send(message)
+    producer.send = conflict
+    with producer.connect() as c:
+        c.execute('UPDATE active_materials SET original_filename=? WHERE id=?', ('local-change.txt', material_id))
+    with pytest.raises(ProductSyncFailure, match='PRODUCT_SYNC_CONFLICT'):
+        producer.flush()
+    pending = producer.status()['pending']
+    result = client.get('/api/active-teaching/workspaces/read-fixture/materials')
+    assert result.status_code == 200
+    assert material_id in result.text
+    assert result.headers['X-MentorFlow-Product-Sync'] == 'PRODUCT_SYNC_CONFLICT'
+    assert producer.status()['pending'] == pending > 0
+
+
 def test_independent_b_reads_resource_and_returns_setting_change(product, tmp_path):
     client,a,service,actor,tenant=product
     material=client.post('/api/active-teaching/workspaces/ab/materials',

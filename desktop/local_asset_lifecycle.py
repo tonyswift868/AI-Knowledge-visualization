@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import shutil
+import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ from urllib.request import urlopen
 from .account_portability import (
     RECOVERY_INDEX_MEMBER,
     _read_verified_archive,
+    _safe_filename,
     account_identity_fingerprint,
 )
 from .account_vault import (
@@ -162,6 +164,10 @@ class LocalAssetLifecycle:
         self._downloader = downloader or self._download_https
         self._overlay_path = vault.root / "metadata" / _OVERLAY_NAME
         self._overlay = self._load_overlay()
+
+    @property
+    def account_key(self) -> str | None:
+        return None if self._vault.closed else self._vault.profile.account_id
 
     @property
     def vault_root(self) -> Path:
@@ -600,10 +606,13 @@ class LocalAssetLifecycle:
                     "RESOURCE_FINGERPRINT_MISMATCH",
                     "重新获取的资料与原 revision 不一致，本机关联未更改。",
                 )
-            asset = self.import_managed(
-                temporary,
-                verified_source_url=url,
-            )
+            # Reacquiring an existing resource (including a local model) must
+            # not register the device-local ID as another USER_FILE on server.
+            asset = self._vault.import_managed(temporary, publish_metadata=False)
+            self._save_metadata(asset.local_asset_id, {
+                'revision_sha256': expected, 'verified_source_url': url,
+                'restorable_from_package': False,
+            })
             return self.bind_resource_to_asset(resource_id, asset.local_asset_id)
         except LocalAssetLifecycleError:
             raise
@@ -614,6 +623,56 @@ class LocalAssetLifecycle:
             ) from exc
         finally:
             temporary.unlink(missing_ok=True)
+
+    def restore_resource_from_package(
+        self, resource_id: str, package: Path | str, *, fingerprint_sha256: str,
+    ) -> LocalResourceBinding:
+        """Restore a server-known resource into an already rehydrated device.
+
+        The authenticated snapshot supplies ID/hash. The V1 package supplies
+        only matching bytes; no packaged database, owner or settings are applied.
+        Device A's local asset ID need not exist on device B.
+        """
+        self._vault._require_open()
+        expected = _valid_sha(fingerprint_sha256)
+        package_path = Path(package)
+        if package_path.suffix.casefold() != '.mentorflowpack' or not _regular_file(package_path):
+            raise LocalAssetLifecycleError('PACKAGE_UNAVAILABLE', '请选择可用的 .mentorflowpack 恢复包。')
+        try:
+            manifest, payloads, _ = _read_verified_archive(package_path)
+            if manifest.get('account_identity_fingerprint') != self._account_fingerprint:
+                raise LocalAssetLifecycleError('PACKAGE_ACCOUNT_MISMATCH', '恢复包不属于当前账号。')
+            recovery = json.loads(payloads[RECOVERY_INDEX_MEMBER].decode('utf-8'))
+            rows = recovery.get('assets', [])
+            matches = [row for row in rows if isinstance(row, dict) and row.get('asset_id') == resource_id]
+            if len(matches) != 1 or matches[0].get('storage_kind') != 'MANAGED':
+                raise LocalAssetLifecycleError('PACKAGE_ASSET_MISSING', '恢复包中没有这份资料的原文件。')
+            row = matches[0]
+            filename = _safe_filename(row.get('filename'), field='filename')
+            member = str(row.get('package_member') or '')
+            raw = payloads.get(member)
+            if (member != f"raw-assets/{row.get('original_local_asset_id')}/{filename}"
+                    or not isinstance(raw, bytes) or row.get('sha256') != expected
+                    or hashlib.sha256(raw).hexdigest() != expected or len(raw) != row.get('size_bytes')):
+                raise LocalAssetLifecycleError('PACKAGE_REVISION_MISMATCH', '恢复包与当前资料版本不一致。')
+            prior = self._vault.get_resource_binding(resource_id)
+            if prior:
+                if prior.fingerprint_sha256 != expected:
+                    raise LocalAssetLifecycleError('RESOURCE_REVISION_CONFLICT', '本机已关联另一版本，未覆盖。')
+                current = self.resolve_resource_binding(resource_id)
+                if current.availability is AssetAvailability.AVAILABLE_LOCAL:
+                    return current
+            with tempfile.TemporaryDirectory(dir=self._vault.root / 'managed-assets' / 'staging') as folder:
+                source = Path(folder) / filename
+                source.write_bytes(raw)
+                # This restores bytes for an existing server resource. Publishing
+                # the new device-local asset ID would duplicate cloud metadata.
+                asset = self._vault.import_managed(source, publish_metadata=False)
+            return self.bind_resource_to_asset(resource_id, asset.local_asset_id)
+        except LocalAssetLifecycleError:
+            raise
+        except Exception as exc:
+            raise LocalAssetLifecycleError('PACKAGE_INVALID', '恢复包未通过校验，未恢复资料。') from exc
 
     def restore_from_package(self, local_asset_id: str, package: Path | str) -> LocalAssetView:
         asset = self._record(local_asset_id)

@@ -294,7 +294,7 @@ class AccountVault:
         self._require_open()
         self._handles.append(handle)
 
-    def _insert_asset(self, record: AssetRecord) -> None:
+    def _insert_asset(self, record: AssetRecord, *, publish_metadata: bool = True) -> None:
         self._require_open()
         self._database.execute(
             """
@@ -322,19 +322,21 @@ class AccountVault:
         )
         from .product_asset_metadata import enqueue_vault_metadata
         try:
-            enqueue_vault_metadata(self,record)
+            if publish_metadata:
+                enqueue_vault_metadata(self,record)
         except Exception:
             self._database.rollback()
             raise
         self._database.commit()
         from .product_asset_metadata import flush_vault_metadata
-        flush_vault_metadata(self)
+        if publish_metadata:
+            flush_vault_metadata(self)
 
-    def import_managed(self, source: Path | str) -> AssetRecord:
+    def import_managed(self, source: Path | str, *, publish_metadata: bool = True) -> AssetRecord:
         self._require_open()
         source_path = _regular_source(Path(source))
         from .product_asset_metadata import resume_pending_import
-        pending=resume_pending_import(self,source_path,'MANAGED')
+        pending=resume_pending_import(self,source_path,'MANAGED') if publish_metadata else None
         if pending is not None:return pending
         staging = _safe_child(
             self.root,
@@ -386,7 +388,7 @@ class AccountVault:
                 portable=True,
                 backed_up=False,
             )
-            self._insert_asset(record)
+            self._insert_asset(record, publish_metadata=publish_metadata)
             return record
         finally:
             staging.unlink(missing_ok=True)

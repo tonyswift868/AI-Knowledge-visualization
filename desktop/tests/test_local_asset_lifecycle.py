@@ -257,6 +257,66 @@ def test_account_b_cannot_enumerate_account_a_local_metadata(scratch_root: Path)
     assert manager.layout.shared_models_root not in (vault_a.root, vault_b.root)
 
 
+def test_empty_device_restores_package_resource_by_server_id(scratch_root: Path) -> None:
+    manager_a, vault_a, lifecycle_a = _service(scratch_root / 'a')
+    source = scratch_root / 'original.txt'
+    source.write_bytes(b'User original document, not redownloadable.')
+    asset = lifecycle_a.import_managed(source)
+    record = vault_a.list_assets()[0]
+    package = scratch_root / 'originals.mentorflowpack'
+    for name in ('app.db', 'mentorflow_v2.db'):
+        (vault_a.root / 'data' / name).unlink(missing_ok=True)
+    export_account_package(vault_a.root, package, account_identity=ACCOUNT, mode=PackageMode.FULL,
+        asset_manifests=[dict(asset_id='server-resource-1', asset_revision_id='revision-1',
+            local_asset_id=record.local_asset_id, storage_kind='MANAGED', filename=record.display_name,
+            mime_type=record.mime_type, size_bytes=record.size_bytes, sha256=record.sha256,
+            vault_relative_path=record.object_relative_path)])
+    manager_a.unmount()
+    source.unlink()
+    manager_b, vault_b, lifecycle_b = _service(scratch_root / 'b')
+    assert vault_b.list_assets() == []
+    from desktop.product_asset_metadata import bind_vault_metadata
+    class NoCloudWrite:
+        def request(self, *args, **kwargs):
+            raise AssertionError('Recovery must not create another cloud resource')
+    bind_vault_metadata(vault_b, NoCloudWrite())
+    result = lifecycle_b.restore_resource_from_package('server-resource-1', package, fingerprint_sha256=asset.sha256)
+    assert result.resource_id == 'server-resource-1'
+    assert result.local_path.read_bytes() == b'User original document, not redownloadable.'
+    assert result.fingerprint_sha256 == asset.sha256
+    repeated = lifecycle_b.restore_resource_from_package('server-resource-1', package, fingerprint_sha256=asset.sha256)
+    assert (repeated.resource_id, repeated.local_path, repeated.fingerprint_sha256) == (
+        result.resource_id, result.local_path, result.fingerprint_sha256)
+    assert len(vault_b.list_assets()) == 1
+    # A package cannot override the authenticated server revision.
+    with pytest.raises(LocalAssetLifecycleError, match='PACKAGE_REVISION_MISMATCH'):
+        lifecycle_b.restore_resource_from_package('server-resource-1', package, fingerprint_sha256='0' * 64)
+    vault_c = manager_b.mount(_profile('other-user'))
+    lifecycle_c = LocalAssetLifecycle(vault_c, account_identity=dict(ACCOUNT, subject='other-user'))
+    with pytest.raises(LocalAssetLifecycleError, match='PACKAGE_ACCOUNT_MISMATCH'):
+        lifecycle_c.restore_resource_from_package('server-resource-1', package, fingerprint_sha256=asset.sha256)
+    assert vault_c.list_assets() == []
+
+
+def test_reacquire_known_model_stays_local_and_preserves_server_resource(scratch_root: Path) -> None:
+    content = b'synthetic model bytes'
+    def download(url, target):
+        assert url == 'https://models.example.test/model.bin'
+        target.write_bytes(content)
+    _, vault, lifecycle = _service(scratch_root, downloader=download)
+    from desktop.product_asset_metadata import bind_vault_metadata
+    class NoCloudWrite:
+        def request(self, *args, **kwargs):
+            raise AssertionError('Model recovery must not publish USER_FILE metadata')
+    bind_vault_metadata(vault, NoCloudWrite())
+    binding = lifecycle.reacquire_resource('model-stable-1',
+        fingerprint_sha256=hashlib.sha256(content).hexdigest(),
+        verified_source_url='https://models.example.test/model.bin')
+    assert binding.resource_id == 'model-stable-1'
+    assert binding.local_path.read_bytes() == content
+    assert vault._database.execute('SELECT count(*) FROM asset_metadata_pending').fetchone()[0] == 0
+
+
 def test_remote_resource_binding_detects_missing_relinks_and_never_syncs_path(
     scratch_root: Path,
 ) -> None:

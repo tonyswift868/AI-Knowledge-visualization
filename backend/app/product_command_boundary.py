@@ -31,7 +31,16 @@ async def invoke(request, call_next, producer):
             raise ProductSyncFailure('PRODUCT_SYNC_CONTRACT_REJECTED')
         await asyncio.to_thread(producer.retry_conflict,path.rsplit('/',1)[-1],body['expected_server_revision'])
         return JSONResponse(content=producer.status())
-    await asyncio.to_thread(producer.flush)
+    # Reading already-restored state must not depend on delivery of an unrelated
+    # invalid/conflicting intent. Authorization above remains mandatory; writes
+    # and explicit refresh still require the existing commit/restore boundary.
+    read_only = request.method in {'GET', 'HEAD', 'OPTIONS'}
+    if read_only:
+        # status() also verifies the local database's account/workspace binding.
+        # Check it before a handler can observe rows from a stale mounted cache.
+        await asyncio.to_thread(producer.status)
+    else:
+        await asyncio.to_thread(producer.flush)
     if path == '/api/product-sync/refresh' and request.method == 'POST':
         snapshot = await asyncio.to_thread(producer.send, {'operation':'snapshot'})
         await asyncio.to_thread(producer.restore, snapshot)
@@ -64,17 +73,19 @@ async def invoke(request, call_next, producer):
         request.app.state.review_product_service.account_sync_enabled = True
     response = await call_next(request)
     states = []
-    if path.startswith('/api/plan-product/'):
+    if path.startswith('/api/plan-product/') and not read_only:
         states = [('product_plan_state', key, value) for key,value in export_plan_records(request.app.state.plan_product_service).items()]
-    if path.startswith('/api/review/') and request.method != 'GET':
+    if path.startswith('/api/review/') and not read_only:
         states = [('product_review_state', key, value) for key,value in export_review(request.app.state.review_product_service).items()]
     if command_id or states:
         content = b''.join([part async for part in response.body_iterator])
         await asyncio.to_thread(producer.complete_command, command_id, content.decode('utf-8'), response.status_code, states)
         response = Response(content, status_code=response.status_code, headers=dict(response.headers), background=response.background)
-    await asyncio.to_thread(producer.flush)
+    if not read_only:
+        await asyncio.to_thread(producer.flush)
     response.headers['X-MentorFlow-Product-Sync-Scope'] = 'SUPPORTED_PRODUCT_RECORDS'
-    response.headers['X-MentorFlow-Product-Sync'] = 'SERVER_ACKNOWLEDGED' if tracked else 'OUTSIDE_PRODUCT_SYNC_CONTRACT'
+    status = (await asyncio.to_thread(producer.status))['status'] if read_only and tracked else 'SERVER_ACKNOWLEDGED'
+    response.headers['X-MentorFlow-Product-Sync'] = status if tracked else 'OUTSIDE_PRODUCT_SYNC_CONTRACT'
     if command_id:
         response.headers['X-MentorFlow-Command-ID'] = command_id
     return response

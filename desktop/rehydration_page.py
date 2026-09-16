@@ -1,7 +1,8 @@
-"""Native UI shell for future canonical sync projections, without executors."""
+"""Account-fenced recovery presentation with an optional local file executor."""
+from dataclasses import replace
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QProgressBar, QScrollArea, QToolButton, QPlainTextEdit)
+    QProgressBar, QScrollArea, QToolButton, QPlainTextEdit, QFileDialog)
 
 from .rehydration_state import RehydrationState, SyncState
 from .style import STYLE
@@ -40,6 +41,7 @@ class RehydrationPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.model = RehydrationState()
+        self._resource_lifecycle = None
         self.setStyleSheet(STYLE + '\nQPushButton:disabled {color:#786572; background:#eee7eb;}')
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -82,10 +84,24 @@ class RehydrationPage(QWidget):
         self.render()
 
     def authenticated(self, account_key):
+        if self._resource_lifecycle is not None and self._resource_lifecycle.account_key != account_key:
+            self._resource_lifecycle = None
         generation = self.model.authenticated(account_key)
         self.details_toggle.setChecked(False)
         self.render()
         return generation
+
+    def bind_resource_recovery(self, lifecycle):
+        """Composition root supplies the current mounted account lifecycle."""
+        if lifecycle.account_key != self.model.account_key or not lifecycle.account_key:
+            raise ValueError('RECOVERY_ACCOUNT_MISMATCH')
+        self._resource_lifecycle = lifecycle
+        self.render()
+
+    def _package_enabled(self, resource):
+        return bool(resource.kind == 'file' and resource.package_supported and resource.fingerprint_sha256
+                    and self._resource_lifecycle is not None
+                    and self._resource_lifecycle.account_key == self.model.account_key)
 
     def start_sync(self):
         generation = self.model.syncing()
@@ -110,6 +126,26 @@ class RehydrationPage(QWidget):
 
     def _resource_action(self, resource, action):
         if self.model.snapshot is None or resource not in self.model.snapshot.resources:
+            return
+        if action == 'package' and self._package_enabled(resource):
+            generation, account = self.model.generation, self.model.account_key
+            lifecycle = self._resource_lifecycle
+            selected, _ = QFileDialog.getOpenFileName(self, '选择当前账号的原资料包', '', 'MentorFlow 资料包 (*.mentorflowpack)')
+            # The modal picker runs a nested event loop: logout/account switch
+            # can occur while it is open. Never apply its result to a new mount.
+            if (not selected or generation != self.model.generation or account != self.model.account_key
+                    or lifecycle is not self._resource_lifecycle or not self._package_enabled(resource)):
+                return
+            try:
+                lifecycle.restore_resource_from_package(resource.key, selected,
+                    fingerprint_sha256=resource.fingerprint_sha256)
+            except Exception as exc:
+                self.resource_status[resource.key].setText(getattr(exc, 'user_message', '资料恢复未完成，请检查恢复包。'))
+                return
+            snapshot = self.model.snapshot
+            self.model.snapshot = replace(snapshot, resources=tuple(
+                replace(item, missing=False) if item.key == resource.key else item for item in snapshot.resources))
+            self.render()
             return
         if action == 'later':
             self.model.deferred.add(resource.key)
@@ -194,8 +230,9 @@ class RehydrationPage(QWidget):
         # their metadata explicitly supports package restoration.
         if resource.kind == 'file' or resource.package_supported:
             package = QPushButton('从迁移包恢复')
-            package.setEnabled(False)
-            package.setToolTip('迁移包恢复尚未准备完成，当前不能执行。')
+            package.setEnabled(self._package_enabled(resource))
+            package.setToolTip('只恢复与当前账号及云端 SHA-256 一致的原文件，不覆盖学习状态。')
+            package.clicked.connect(lambda: self._resource_action(resource, 'package'))
             actions.addWidget(package)
             buttons['package'] = package
         later = QPushButton('稍后处理')
