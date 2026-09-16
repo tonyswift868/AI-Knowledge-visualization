@@ -18,19 +18,19 @@ def finish(view):
 
 
 def test_email_state_and_in_page_code_callbacks(monkeypatch):
-    state = dict(email='fixture@example.invalid', email_verified=False)
+    state = dict(email='fixture@example.invalid', email_verified=False, can_bind=False, can_verify=True)
     requests, codes = [], []
     view = page(monkeypatch, read_account_security=lambda: state,
-        request_email_code=lambda address: requests.append(address),
-        verify_email_code=lambda code: (codes.append(code), state.update(email_verified=True)))
+        request_email_code=lambda address: requests.append(address) or dict(expires_in=600, resend_after=60),
+        verify_email_code=lambda code: (codes.append(code), state.update(email_verified=True, can_verify=False)))
     try:
         view.refresh_security(); finish(view)
         assert '未验证' in view.email_status.text() and view.email_address.isReadOnly()
         view._request_email_code(); finish(view)
         assert requests == ['fixture@example.invalid']
-        view.email_code.setText('fixture-code'); view._verify_email_code(); finish(view)
+        view.email_code.setText('001234'); view._verify_email_code(); finish(view)
         finish(view)  # successful verification re-reads canonical state
-        assert codes == ['fixture-code'] and '已验证' in view.email_status.text()
+        assert codes == ['001234'] and '已验证' in view.email_status.text()
         assert view.email_code.text() == '' and not view.send_email_code_button.isEnabled()
     finally: view.close()
 
@@ -84,7 +84,7 @@ def test_password_failure_does_not_clear_saved_credentials(monkeypatch):
         try: view._security_future.result(timeout=2)
         except RuntimeError: pass
         view._finish_security()
-        assert not cleared and '未能确认完成' in view.security_status.text()
+        assert not cleared and '未能确认完成' in view.password_status.text()
     finally: view.close()
 
 

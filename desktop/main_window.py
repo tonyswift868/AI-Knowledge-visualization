@@ -631,6 +631,8 @@ rehydration_session=None,
         )
         self.system_page.analogy_history_settings = analogy_settings(self)
         self.pages.addWidget(self.system_page)
+        from .lifecycle_client import AccountSecurityClient
+        self._account_security = AccountSecurityClient(self._rehydration_session) if self._rehydration_session is not None else None
         self.account_settings_page = AccountSettingsPage(
             profile=self.account_profile,
             vault_manager=self.account_vault_manager,
@@ -645,6 +647,10 @@ rehydration_session=None,
             open_recovery_center=self._open_recovery_center_callback,
             change_password=self._change_enterprise_password if self._rehydration_session is not None else None,
             password_changed=password_changed,
+            read_account_security=self._account_security.read if self._account_security else None,
+            request_email_code=self._account_security.request_code if self._account_security else None,
+            verify_email_code=self._account_security.verify_code if self._account_security else None,
+            cancel_email_code=self._account_security.cancel if self._account_security else None,
         )
         self.pages.addWidget(self.account_settings_page)
         self.pages.addWidget(self._more_tools())
@@ -695,17 +701,9 @@ rehydration_session=None,
             self.device_recovery_button.setVisible(False)
 
     def _change_enterprise_password(self, current_password: str, new_password: str) -> None:
-        transport = self._rehydration_session
-        if transport is None:
-            # AccountBootstrapResult owns the live session; snapshots do not.
+        if self._account_security is None:
             raise RuntimeError("AUTHENTICATED_SESSION_REQUIRED")
-        response = transport.post(
-            "/api/enterprise/auth/lifecycle/change-password",
-            json={"current_password": current_password, "new_password": new_password},
-        )
-        response.raise_for_status()
-        if response.json().get('state') != 'PASSWORD_CHANGED':
-            raise RuntimeError('PASSWORD_CHANGE_NOT_CONFIRMED')
+        self._account_security.change_password(current_password, new_password)
 
     def _begin_account_switch_at_login_gate(self) -> None:
         callback = self._return_to_login_gate_callback
