@@ -158,7 +158,10 @@ def _sha256_bytes(value: bytes) -> str:
 
 def _safe_id(value: object, *, field: str) -> str:
     text = str(value or "").strip()
-    if not _SAFE_ID_RE.fullmatch(text):
+    # Server resource IDs contain colons; they are metadata, never ZIP paths.
+    # Local asset/package/artifact identifiers retain the filesystem-safe rule.
+    pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$") if field == "asset_id" else _SAFE_ID_RE
+    if not pattern.fullmatch(text):
         raise _error("PORTABILITY_ID_INVALID", f"便携数据中的 {field} 不是有效标识。")
     return text
 

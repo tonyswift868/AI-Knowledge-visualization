@@ -115,3 +115,95 @@ def test_snapshot_item_budget_fails_closed(server):
           FROM generate_series(1,32769) n"""),scoped)
     with pytest.raises(EnterprisePersistenceRequestError,match='Snapshot limit'):
         service.snapshot(actor,tenant)
+
+
+def test_retained_admission_covers_active_namespace_and_text():
+    source=os.environ.get('MF04_INTAKE_SNAPSHOT')
+    if not source:pytest.skip('explicit read-only snapshot required')
+    prepared=prepare(Path(source),expected_sha256='bfb6805df8913f5891a8d5b01f96683e0d432684870f1e6b79e9c5ef4a0caf43',owner_sha256='1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5')
+    assert prepared['admitted']['active_plans']==55
+    assert prepared['admitted']['active_plan_tasks']==11363
+    assert prepared['admitted']['active_knowledge_progress_snapshots']==3654
+    assert prepared['admitted']['active_knowledge_points']==3654
+    assert prepared['admitted']['orm_chunks']==500
+    assert prepared['admitted']['active_learner_profiles']==1
+    assert prepared['held']['orm_plan_execution_tasks']==797
+    assert prepared['held']['active_plans']==2
+
+
+def test_retained_active_product_plan_and_text_on_empty_b(server,tmp_path):
+    from app.product_intake import sha256_file
+    from app import active_teaching
+    source=os.environ.get('MF04_INTAKE_SNAPSHOT')
+    if not source:pytest.skip('explicit read-only snapshot required')
+    workspace='ws_eb4425c22355-active'
+    # Scope this expensive HTTP/PG proof to one actual active learning world and
+    # an existing text source. Full admission is checked separately above.
+    clone=tmp_path/'source-slice.sqlite'
+    with sqlite3.connect(Path(source).as_uri()+'?mode=ro',uri=True) as src, sqlite3.connect(clone) as dst:src.backup(dst)
+    with sqlite3.connect(clone) as c:
+        text_workspace=c.execute("select workspace_id from orm_sources where source_type='text' and id in (select source_id from orm_chunks) limit 1").fetchone()[0]
+        c.execute('delete from orm_workspace_ownership where workspace_id not in (?,?)',(workspace,text_workspace))
+    prepared=prepare(clone,expected_sha256=sha256_file(clone),owner_sha256='1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5')
+    assert prepared['admitted']['active_plan_tasks']==648
+    assert prepared['admitted']['orm_chunks']>0
+    _,service,contexts=server;actor,tenant=contexts[0]
+    relay=Relay(http_client(service,actor,tenant),actor,tenant)
+    a=tmp_path/'a.sqlite';empty(a)
+    assert execute(prepared,a,relay,expected_scope=scope(actor,tenant))['status']=='VERIFIED_COMPLETE'
+    b=tmp_path/'empty-b.sqlite';empty(b)
+    producer=ProductSyncProducer(b,relay.scope,relay.call);producer.start()
+    # Query the real product read service, not just the transport table.
+    plan=active_teaching.current_plan(workspace)
+    expected=next(r for r in prepared['records'] if r['record_type']=='active_plans')
+    assert plan['id']==expected['payload']['product_record']['values']['id']
+    with producer.connect() as c:
+        for record in prepared['records']:
+            spec=RECORDS[record['record_type']]
+            row=c.execute('select * from "'+record['record_type']+'" where '+' AND '.join('"'+k+'"=?' for k in spec['keys']),json.loads(record['row_key'])).fetchone()
+            assert project(record['record_type'],dict(row))==record['payload']
+        assert c.execute('select count(*) from active_plan_tasks').fetchone()[0]==648
+        assert c.execute('select count(*) from active_knowledge_progress_snapshots').fetchone()[0]>0
+        assert c.execute('select count(*) from active_knowledge_points').fetchone()[0]>0
+        assert c.execute('select count(*) from active_chunks').fetchone()[0]>0
+        assert not c.execute('PRAGMA foreign_key_check').fetchall()
+    assert http_client(service,*contexts[1]).get('/api/enterprise/sync/v1/snapshot').json()['entities']==[]
+
+
+def test_cross_task_profile_requires_owned_provenance(tmp_path):
+    from app.product_intake import sha256_file
+    source=os.environ.get('MF04_INTAKE_SNAPSHOT')
+    if not source:pytest.skip('explicit read-only snapshot required')
+    clone=tmp_path/'foreign-profile.sqlite'
+    with sqlite3.connect(Path(source).as_uri()+'?mode=ro',uri=True) as src,sqlite3.connect(clone) as dst:src.backup(dst)
+    with sqlite3.connect(clone) as c:
+        profile=json.loads(c.execute('select compact_profile from active_learner_profiles').fetchone()[0])
+        profile['learned_points'].append({'workspace_id':'foreign-unproven','name':'foreign'})
+        c.execute('update active_learner_profiles set compact_profile=?',(json.dumps(profile),))
+    prepared=prepare(clone,expected_sha256=sha256_file(clone),owner_sha256='1fafc6b6212ca2ba594bcf72aea9764092688ab44b1aa8f75813265dd2c1aee5')
+    assert prepared['admitted']['active_learner_profiles']==0
+    assert prepared['held']['active_learner_profiles']==1
+    assert prepared['admitted']['active_plan_tasks']==11363
+
+
+@pytest.mark.parametrize('media_type',['text/plain','application/json'])
+def test_original_text_recovery_requires_exact_recorded_hash(tmp_path,media_type):
+    import hashlib
+    from app.product_intake import attach_original_files,sha256_file
+    original=tmp_path/'lesson.txt';original.write_bytes(b'hello\r\nworld\r\n')
+    source=tmp_path/'source.sqlite'
+    with sqlite3.connect(source) as c:
+        c.execute('create table orm_sources(id text,local_path text,source_type text)')
+        c.execute('create table active_materials(id text,stored_path text)')
+        c.execute('insert into active_materials values(?,?)',('material-real',str(original)))
+    raw=b'hello\nworld\n'
+    payload={'sha256':hashlib.sha256(raw).hexdigest(),'size_bytes':len(raw),'media_type':media_type}
+    prepared={'source_sha256':sha256_file(source),'admitted':{},'records':[{'record_type':'active_materials','entity_id':'material-real','payload':payload}]}
+    result=attach_original_files(prepared,source,recovery_root=tmp_path/'recovered')
+    assert len(result['original_files'])==1 and result['missing_originals']==[]
+    assert Path(result['original_files'][0]['source_path']).read_bytes()==raw
+    assert original.read_bytes()==b'hello\r\nworld\r\n'
+    payload['sha256']='0'*64
+    rejected=attach_original_files(prepared,source,recovery_root=tmp_path/'recovered')
+    assert rejected['original_files']==[] and rejected['missing_originals']==['material-real']
+    assert sha256_file(source)==prepared['source_sha256']

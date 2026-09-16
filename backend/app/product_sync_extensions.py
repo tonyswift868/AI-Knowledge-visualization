@@ -57,3 +57,16 @@ def install_aggregate_tables(connection):
         id TEXT PRIMARY KEY, original_filename TEXT NOT NULL, media_type TEXT NOT NULL,
         sha256 TEXT NOT NULL, size_bytes INTEGER NOT NULL, source_kind TEXT NOT NULL,
         classification TEXT NOT NULL)''')
+
+
+# Existing canonical parsed-text stores: text sources have no original file.
+# Keep their real rows/IDs so rehydrated source and teaching readers work.
+AGGREGATE_RECORDS['orm_chunks'] = dict(kind='task',
+    columns=tuple('id source_id ordinal page_start page_end heading text normalized_text content_hash'.split()),
+    keys=('id',),local_defaults={},auxiliary=True)
+AGGREGATE_RECORDS['active_chunks'] = dict(kind='task',
+    columns=tuple('id workspace_id material_id ordinal page_start page_end paragraph_start paragraph_end char_start char_end heading content_hash text'.split()),
+    keys=('id',),local_defaults={},auxiliary=True)
+AGGREGATE_RECORDS['active_knowledge_memories'] = dict(kind='review',
+    columns=('workspace_id','knowledge_point_id','detail_memory','updated_at'),
+    keys=('workspace_id','knowledge_point_id'),local_defaults={},auxiliary=True)

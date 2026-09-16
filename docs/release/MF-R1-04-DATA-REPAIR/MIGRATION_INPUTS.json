@@ -1,6 +1,6 @@
 {
-  "task": "MF-R1-04-DATA-REPAIR",
-  "base": "0536acb33a3a6694f71aa0dcd7074060b28e7f98",
+  "task": "MF-R1-04-DATA-COVERAGE",
+  "base": "9e430b7373907fa7be2f8ebb02493dbb18ff1314",
   "target_authority": "Owner authorization relayed by main dispatcher; 01 verified stable identity. No username matching or fresh account allocation.",
   "canonical": {
     "issuer": "https://localhost:18080/realms/mentorflow",
@@ -103,7 +103,16 @@
     "plans": 83,
     "resources": 330,
     "progress": 83,
-    "disposition": "Owner-authorized primary local ownership group; prepare existing product-record import to the same canonical account; no extra candidate confirmation required"
+    "disposition": "Owner-authorized primary local ownership group; prepare existing product-record import to the same canonical account; no extra candidate confirmation required",
+    "active_workspace_references": 55,
+    "active_plans": 55,
+    "active_plan_tasks": 11363,
+    "active_progress": 3654,
+    "active_knowledge_points": 3654,
+    "source_text_chunks": 500,
+    "active_text_chunks": 3669,
+    "active_knowledge_memories": 34,
+    "active_learner_profiles": 1
   },
   "held": {
     "ownerless": {
@@ -112,14 +121,39 @@
       "execution_tasks": 797,
       "reason": "No local ownership linkage; do not infer from sole product account"
     },
-    "dangling_ownership_references": 55,
-    "disposition": "Retain original rows and references; exact hash/reference counts in protected D projection-audit. Do not silently delete/reassign."
+    "dangling_ownership_references": 0,
+    "disposition": "The 55 references are valid owned active workspaces, not orphan ORM references. Hold 1173 internet-interview group rows and 6 unparented sidecar runs; retain every source row.",
+    "reclassified_active_namespace_ownership_references": 55,
+    "row_counts": {
+      "active_materials": 3,
+      "active_plans": 2,
+      "orm_plans": 5,
+      "orm_plan_execution_tasks": 797,
+      "active_receipts": 1,
+      "active_workspace_settings": 1,
+      "orm_material_dispositions": 5,
+      "orm_workspaces": 1,
+      "orm_learning_runs": 6,
+      "active_teaching_sessions": 1,
+      "active_teaching_messages": 1,
+      "orm_plan_activation_records": 5,
+      "orm_source_revisions": 3,
+      "orm_knowledge_map_revisions": 3,
+      "orm_knowledge_nodes": 157,
+      "orm_knowledge_edges": 153,
+      "active_chunks": 35
+    }
   },
   "alternate_sources": "SECONDARY and LEGACY are comparison/backup sources, not another batch to append. Deduplicate stable IDs against PRIMARY before any intake.",
   "projection_validation": {
-    "rows": 24975,
-    "valid": 24919,
-    "rejected": 56
+    "original_registered_rows": 24975,
+    "original_registry_admitted_before": 2923,
+    "original_registry_admitted_now": 23831,
+    "new_parsed_text_memory_rows_admitted": 4203,
+    "total_source_rows_admitted": 28034,
+    "held_rows": 1179,
+    "new_verified_file_metadata_rows": 3,
+    "prepared_records": 28037
   },
   "oversized": {
     "active_plan_calendars": {
@@ -153,7 +187,8 @@
     "observed_utc": "2026-09-16T19:02:38.964567+00:00",
     "required_source_head": "0040_admin_overview_aggregate",
     "schema_writer": "01_ONLY",
-    "schema_mutations": 0
+    "schema_mutations": 0,
+    "observation_status": "HISTORICAL_READ_ONLY_OBSERVATION; 01 later upgrade reported by coordinator in prior_delivery"
   },
   "backups": [
     "E:/Codex/Data/backups/MentorFlow/20260814-001213-native-manual",
@@ -167,7 +202,102 @@
   "live_schema_mutations": 0,
   "protected_evidence_root": "D:\\CodexScratch\\MentorFlow\\MF-R1-04-DATA-REPAIR\\04",
   "product_model_upload_default": false,
-  "continuation": {
+  "coverage": {
+    "active_ownership_authority": "Explicit original orm_workspace_ownership rows, across both ORM and active workspace namespaces",
+    "profile_authority": "compact-cross-task-v1 has eight owned workspace references; all detail-memory workspaces owned",
+    "text_sources": {
+      "total": 292,
+      "with_text_chunks": 285,
+      "metadata_only_fixture_signature": 7,
+      "fixture_reference": "backend/tests/test_v2_features.py SourceORM title=t content_hash=hash",
+      "metadata_only_chunk_rows_in_18_backups": 0
+    },
+    "admitted_counts": {
+      "active_materials": 70,
+      "active_plans": 55,
+      "orm_plans": 83,
+      "active_plan_tasks": 11363,
+      "orm_plan_execution_tasks": 0,
+      "orm_tasks": 517,
+      "orm_days": 517,
+      "active_knowledge_progress_snapshots": 3654,
+      "active_mastery_evidence": 64,
+      "orm_plan_mastery_events": 0,
+      "orm_progress": 83,
+      "orm_mastery_events": 7,
+      "active_task_time_events": 14,
+      "active_review_items": 33,
+      "active_review_attempts": 0,
+      "orm_reviews": 7,
+      "orm_review_attempts": 0,
+      "active_learner_profiles": 1,
+      "orm_learner_preferences": 0,
+      "active_receipts": 55,
+      "active_workspace_settings": 54,
+      "orm_material_dispositions": 1,
+      "orm_workspaces": 529,
+      "orm_learning_runs": 21,
+      "active_teaching_sessions": 50,
+      "orm_learning_run_messages": 90,
+      "active_teaching_messages": 281,
+      "active_replan_history": 38,
+      "orm_plan_activation_records": 0,
+      "active_knowledge_points": 3654,
+      "active_dependencies": 1098,
+      "orm_sources": 330,
+      "orm_source_revisions": 4,
+      "orm_knowledge_map_revisions": 5,
+      "orm_knowledge_nodes": 185,
+      "orm_knowledge_edges": 193,
+      "orm_milestones": 83,
+      "orm_modules": 83,
+      "orm_lessons": 83,
+      "active_plan_calendars": 48,
+      "orm_sessions": 36,
+      "orm_messages": 100,
+      "orm_citations": 2,
+      "orm_goals": 222,
+      "orm_feasibility": 104,
+      "orm_mistakes": 14,
+      "orm_chunks": 500,
+      "active_chunks": 3669,
+      "active_knowledge_memories": 34,
+      "product_asset_metadata": 3
+    },
+    "originals": {
+      "archive_references": 38,
+      "archive_exact_bytes_recovered": 3,
+      "archive_missing": 35,
+      "archive_missing_names": {
+        "study_bundle.zip / notes/java/jvm.md": 7,
+        "study_bundle.zip / src/main.ts": 7,
+        "study_bundle.zip / one.md": 7,
+        "study_bundle.zip / good.md": 7,
+        "study_bundle.zip / lesson.ipynb": 7
+      },
+      "active_originals_recovered": 55,
+      "active_originals_missing": 15,
+      "hash_verified_crlf_recoveries": 41,
+      "total_packaged": 58,
+      "package_path": "E:/Codex/Temp/MF-R1-04-COVERAGE/canonical-originals-final.mentorflowpack",
+      "package_sha256": "5e38b4776042b69ace07e110f532eb2b4614090288c010736166e7e4168018cb",
+      "package_bytes": 195503
+    },
+    "actual_empty_b": {
+      "active_plan_tasks": 648,
+      "active_progress": 150,
+      "active_knowledge_points": 150,
+      "active_chunks": 150,
+      "orm_text_chunks": 1,
+      "product_current_plan_read": "PASS",
+      "every_admitted_slice_projection_and_id_equal": "PASS",
+      "actual_pack_resources_recovered": 58
+    },
+    "owner_question": "2026年8月15–18日的“三周建立互联网软件工程师面试基础与表达能力”（五个规划版本）是否也并入 tonyswift？",
+    "real_migration": "NOT_RUN",
+    "scratch": "E:\\Codex\\Temp\\MF-R1-04-COVERAGE"
+  },
+  "prior_delivery": {
     "task": "MF-R1-04-DATA-COMPLETE",
     "base": "89756ae14bcc096c9887a7622b9d971631dbd5d1",
     "server_schema_authority": "Dispatcher: 01 delivery 069ab91341bcfe6555bbeeae507ef175cb8b9d34 upgraded retained server to 0040; no live writes by 04",

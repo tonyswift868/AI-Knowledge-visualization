@@ -20,7 +20,7 @@ from .account_storage import DEFAULT_ROOT
 
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-_RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+_RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 VAULT_SUBDIRECTORIES = (
     "managed-assets/objects",
     "managed-assets/staging",

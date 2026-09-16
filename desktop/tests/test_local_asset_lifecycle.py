@@ -502,13 +502,14 @@ def test_intake_originals_export_canonical_package_for_empty_b(scratch_root):
     from backend.app.product_intake import stage_original_files
     source=scratch_root/'ordinary.txt';source.write_bytes(b'intake ordinary original')
     digest=hashlib.sha256(source.read_bytes()).hexdigest()
-    prepared={'original_files':[{'source_path':str(source),'resource_id':'stable-intake-resource','sha256':digest}],'missing_originals':[]}
+    prepared={'original_files':[{'source_path':str(source),'resource_id':'product_asset_metadata:canonical-intake-resource','sha256':digest}],'missing_originals':[]}
     manager,vault,lifecycle=_service(scratch_root/'a')
     with pytest.raises(ValueError,match='ACCOUNT_MISMATCH'):
         stage_original_files(prepared,lifecycle,expected_account_id='personal-local')
+    prepared['original_files'].append({**prepared['original_files'][0],'resource_id':'product_asset_metadata:second-reference'})
     stage_original_files(prepared,lifecycle,expected_account_id=vault.profile.account_id)
     stage_original_files(prepared,lifecycle,expected_account_id=vault.profile.account_id)
-    assert len(vault.list_assets())==1
+    assert len(vault.list_assets())==2
     package=scratch_root/'canonical.mentorflowpack'
     from desktop.account_portability import discover_portability_catalogs
     for name in ('app.db','mentorflow_v2.db'):
@@ -518,5 +519,12 @@ def test_intake_originals_export_canonical_package_for_empty_b(scratch_root):
         asset_manifests=catalogs['asset_manifests'])
     manager.unmount();source.unlink()
     _,_,b=_service(scratch_root/'b')
-    restored=b.restore_resource_from_package('stable-intake-resource',package,fingerprint_sha256=digest)
+    restored=b.restore_resource_from_package('product_asset_metadata:canonical-intake-resource',package,fingerprint_sha256=digest)
     assert restored.local_path.read_bytes()==b'intake ordinary original'
+
+
+def test_resource_colon_identity_does_not_relax_package_member_ids():
+    from desktop.account_portability import _safe_id,AccountPortabilityError
+    assert _safe_id('product_asset_metadata:abc',field='asset_id')=='product_asset_metadata:abc'
+    for field in ('local_asset_id','package_id','artifact_id'):
+        with pytest.raises(AccountPortabilityError):_safe_id('unsafe:stream',field=field)
