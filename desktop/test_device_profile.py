@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import stat
 import hashlib
+from backend.app.plain_file_copy import _native_path
 
 PROFILE_CONTRACT = 'MENTORFLOW_TEST_DEVICE_V1'
 DEVICE_BASE = Path('E:/Codex/TestDevices/MentorFlow')
@@ -21,7 +22,7 @@ def device_names(base):
 def plain(path):
     path = Path(path)
     for parent in reversed((path, *path.parents)):
-        info = parent.lstat()
+        info = _native_path(parent).lstat()
         if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
             raise ValueError('TEST_DEVICE_UNSAFE_PATH')
     return path
@@ -83,12 +84,14 @@ def validate_storage(root):
     pending, count = [Path(root)], 0
     while pending:
         folder = pending.pop(); plain(folder)
-        for child in folder.iterdir():
+        for entry in _native_path(folder).iterdir():
+            child = folder / entry.name
             count += 1
             if count > 20000: raise ValueError('TEST_DEVICE_STORAGE_LIMIT')
             plain(child)
-            if child.is_dir(): pending.append(child)
-            elif child.stat().st_nlink != 1: raise ValueError('TEST_DEVICE_UNSAFE_PATH')
+            info = _native_path(child).lstat()
+            if stat.S_ISDIR(info.st_mode): pending.append(child)
+            elif info.st_nlink != 1: raise ValueError('TEST_DEVICE_UNSAFE_PATH')
 
 
 def credential_service(service):

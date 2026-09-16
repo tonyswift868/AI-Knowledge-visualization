@@ -106,6 +106,23 @@ def test_junction_and_hardlink_are_not_launchable(devices, tmp_path):
     assert sentinel.read_bytes() == b'untouched'
 
 
+def test_restart_validates_long_nested_payload_without_weakening_links(devices):
+    from backend.app.plain_file_copy import _native_path
+    root = devices.root('A')
+    nested = root / 'vault'
+    while len(str(nested / 'lesson.txt')) < 352:
+        nested /= 'account-data-' + 'a' * 40
+    native = _native_path(nested)
+    native.mkdir(parents=True)
+    payload = native / 'lesson.txt'
+    payload.write_bytes(b'Synthetic local resource')
+    profile.validate_storage(root)
+    assert profile.plain(nested) == nested
+    os.link(payload, native / 'linked.txt')
+    with pytest.raises(ValueError, match='TEST_DEVICE_UNSAFE_PATH'):
+        profile.validate_storage(root)
+
+
 def test_same_account_locker_namespaces_are_disjoint_and_reset_rotates(devices, monkeypatch):
     from backend.app import credential_store as store
     locker = {}
