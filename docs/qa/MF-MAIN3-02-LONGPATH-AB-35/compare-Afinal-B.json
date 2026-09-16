@@ -1,0 +1,259 @@
+{
+  "device": "B",
+  "stage": "Afinal",
+  "comparison": "SERVER_PRODUCT_ALLOWLIST_TO_ACCOUNT_SQLITE_READ_ONLY",
+  "all_values_match": true,
+  "all_revisions_match": true,
+  "records": [
+    {
+      "entity_id": "active_teaching_messages:8db59f0ba6fdefa4eb6cf8ecf5bec585f890b80d13b9fd8ef118303d0c02fc39",
+      "kind": "history",
+      "record_type": "active_teaching_messages",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_teaching_messages:a7bf20d0c8f33f104e34391e14f44724295fae5ecb57772eb29407e83c52f842",
+      "kind": "history",
+      "record_type": "active_teaching_messages",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_learner_profiles:23032bf0c783051a65da53458750f187deab1666b1cc5a28e5e1d70358febf4e",
+      "kind": "learner_profile",
+      "record_type": "active_learner_profiles",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_learner_preferences:0351d01fb7719946ff370686cdb5d0a6c8094219e5bdcd9cba4ad4eb1879d1ef",
+      "kind": "learner_profile",
+      "record_type": "orm_learner_preferences",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_teaching_sessions:1ebed898c34716ab50cfa7006e91edb90e4eaa0b919997346a0dc5949168bfe8",
+      "kind": "learning_run",
+      "record_type": "active_teaching_sessions",
+      "server_revision": 3,
+      "local_revision": 3,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_plans:3a87bdb64e9847fb6022a1ad9a2865fb9b369251edbc56f282a2684881d11085",
+      "kind": "plan",
+      "record_type": "active_plans",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_knowledge_progress_snapshots:8dcb4ad113466af257a6b051bba85cc75a968c03c948d419d7481351c4ba7b9a",
+      "kind": "progress",
+      "record_type": "active_knowledge_progress_snapshots",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_knowledge_progress_snapshots:f804d81ba9685ee309278c3a91a11c02bb49ebf5faadfe0c3fd2adc9bf95c134",
+      "kind": "progress",
+      "record_type": "active_knowledge_progress_snapshots",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_mastery_evidence:f39d45f943e499f606d28d7dcf202758c0699388fe5bf0227dc66ed12a8fe75d",
+      "kind": "progress",
+      "record_type": "active_mastery_evidence",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_task_time_events:96ca69cfa1d0405564e2d48dd2e96fc2183fd531be948da3a600333ba5c481e3",
+      "kind": "progress",
+      "record_type": "active_task_time_events",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "material_5ba6b8d36d9a499bbaf6",
+      "kind": "resource",
+      "record_type": "active_materials",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "material_6bb5710b887b45c2a7d5",
+      "kind": "resource",
+      "record_type": "active_materials",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "material_7b93b5763ce64676aa4b",
+      "kind": "resource",
+      "record_type": "active_materials",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "material_7f22ec18d80c4aeabb53",
+      "kind": "resource",
+      "record_type": "active_materials",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_receipts:5a2f695816a53bf03119454e8aa995fbc5332315bd7528e774f45f48f6b7a03a",
+      "kind": "setting",
+      "record_type": "active_receipts",
+      "server_revision": 2,
+      "local_revision": 2,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_workspaces:5a2f695816a53bf03119454e8aa995fbc5332315bd7528e774f45f48f6b7a03a",
+      "kind": "setting",
+      "record_type": "orm_workspaces",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "product_account_settings:009e1f68f070b8bfc63e3dc2b4195105c64c5c20937df3278068c013160b971c",
+      "kind": "setting",
+      "record_type": "product_account_settings",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_knowledge_points:1ce52982b5575802a83e2207d5146f441005c71e3883858bd5f69449cec8779c",
+      "kind": "task",
+      "record_type": "active_knowledge_points",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_knowledge_points:52cc0ad5df01e71e90d2e2ce126992a96dfe887637c3cbe86b2455cd9001841e",
+      "kind": "task",
+      "record_type": "active_knowledge_points",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_plan_tasks:8307a3fcca15dd8ce5913ab8fd78bb87d640e8bc31b62dde5aead7f9c590a4c1",
+      "kind": "task",
+      "record_type": "active_plan_tasks",
+      "server_revision": 2,
+      "local_revision": 2,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "active_plan_tasks:c6fad17e025cb7093d741f1dcefc23ba2ef28323a1ebe753b3887bedafe4fcf4",
+      "kind": "task",
+      "record_type": "active_plan_tasks",
+      "server_revision": 4,
+      "local_revision": 4,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_source_revisions:1010df2c60e2cf4ede95d7f3e35bde9f6de982fae31df973a3470759a954ac17",
+      "kind": "task",
+      "record_type": "orm_source_revisions",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_source_revisions:66d7683f6fb7e2eab1e9ec28a6e9f71fef8964fa7e5438a9a1e7b59e6c9e28e7",
+      "kind": "task",
+      "record_type": "orm_source_revisions",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_source_revisions:6e256fa2f134105e03e2568865c26ee0ec1373f8427765ba65ab3ca5df2a3e0e",
+      "kind": "task",
+      "record_type": "orm_source_revisions",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    },
+    {
+      "entity_id": "orm_source_revisions:f7b9fa5385998625930ddd7ebf125654071e74642ad3a15968332fb428ee8b81",
+      "kind": "task",
+      "record_type": "orm_source_revisions",
+      "server_revision": 1,
+      "local_revision": 1,
+      "deleted": false,
+      "values_match": true,
+      "revision_match": true
+    }
+  ]
+}

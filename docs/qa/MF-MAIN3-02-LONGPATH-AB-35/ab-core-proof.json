@@ -1,0 +1,18 @@
+{
+  "a_task_1_completed": true,
+  "b_task_2_completed": true,
+  "task_2_revision": [
+    2,
+    4
+  ],
+  "account_setting_revision": [
+    1,
+    2
+  ],
+  "short_resource_tombstone_revision": 2,
+  "b_deleted_resource_absent": true,
+  "b_long_payload_absent": true,
+  "b_chunks": 0,
+  "sibling_resources_unchanged": true,
+  "scope": "FROZEN_GUI_ACTIONS_AND_READ_ONLY_DURABLE_ASSERTIONS"
+}

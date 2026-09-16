@@ -1,0 +1,25 @@
+{
+  "artifact": {
+    "source_sha": "258ba9f7f993ad9b96675faa801c2de98151bf08",
+    "source_tree": "30f898e1252d49ed485c016a388e329d89d017cf",
+    "build_id": "MF-02-FROZEN-35-258ba9f7",
+    "artifact": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\build\\dist\\MentorFlow\\MentorFlow.exe",
+    "artifact_sha256": "241988c5a57f034f4a81d8d658c14464a7cda2ea0ee978e2060500246a5a350b",
+    "selfcheck_sha256": "7428ff20fde422b271d7c0c7835304757d90ceb41f2f66e9b374069fc6c9da5b",
+    "package_manifest_sha256": "64d73fd871dc2dc349d36d11004419017d59fb53348a76f703934183976fc0f6",
+    "spec_sha256": "95964fdad1a02278231ee47922c7ae0cb410cde0b68f7cbcfb44028042ba947e",
+    "generated_icon_sha256": "963bf6cff5ab6d7778a56021b6a1b6c27338ff8bffe47d17752a2336a4cacb55",
+    "package_verifier": "PASS",
+    "forbidden_icu_dest_count": 0,
+    "scope": "TEST_ONLY_NOT_WORKBENCH_CURRENT",
+    "reproducibility": "EXACT_SOURCE_AND_COMMANDS_RECORDED; BITWISE_REBUILD_NOT_TESTED"
+  },
+  "specimen_chars": 352,
+  "gui_evidence": "A-long-upload-result.json",
+  "server_entity_id": "material_6bb5710b887b45c2a7d5",
+  "server_revision": 1,
+  "server_sha256": "224bc98b41d5c693ba10b1d2ac6f4c851860ec422dc4d5bc157bee9eb3332a7c",
+  "local_locator_uploaded": false,
+  "physical_payload_uploaded": false,
+  "scope": "GUI_SOURCE_UPLOAD_AND_POSTGRESQL_RESOURCE_METADATA_COMMIT"
+}

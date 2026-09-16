@@ -1,0 +1,17 @@
+{
+  "A": {
+    "root": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\devices\\A",
+    "generation": "c93e548bdd2e4642b06a17951e75bf77",
+    "credential_namespace": "MentorFlow.Account.Workbench.A.c93e548bdd2e4642b06a17951e75bf77"
+  },
+  "B": {
+    "root": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\devices\\B",
+    "generation": "7b885c480683451185509f99e480dfaa",
+    "credential_namespace": "MentorFlow.Account.Workbench.B.7b885c480683451185509f99e480dfaa"
+  },
+  "NEGATIVE": {
+    "root": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\devices\\NEGATIVE",
+    "generation": "54af30e46c704c5a98d3aca380b0ce05",
+    "credential_namespace": "MentorFlow.Account.Workbench.NEGATIVE.54af30e46c704c5a98d3aca380b0ce05"
+  }
+}

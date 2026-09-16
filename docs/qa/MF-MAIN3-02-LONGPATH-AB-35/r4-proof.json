@@ -1,0 +1,18 @@
+{
+  "review_revisions": [
+    3,
+    4,
+    5,
+    5
+  ],
+  "interrupted_no_server_change": true,
+  "interrupted_new_command_count": 1,
+  "interruption_trigger_removed": true,
+  "delete_tombstone_revision": 2,
+  "unrelated_server_records_unchanged": true,
+  "associated_source_revision_tombstoned": true,
+  "sibling_workspace_unchanged": true,
+  "sibling_file_hash_unchanged": true,
+  "b_deleted_chinese_absent": true,
+  "b_long_physical_absent": true
+}

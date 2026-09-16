@@ -1,0 +1,21 @@
+{
+  "source_root": "E:\\Codex\\Data\\worktrees\\08ac\\MentorFlow",
+  "scratch_root": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02",
+  "formal_output_root": "E:\\Codex\\Data\\worktrees\\08ac\\MentorFlow\\docs\\qa\\MF-MAIN3-02-LONGPATH-AB-35",
+  "optional_cache_root": "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02\\cache",
+  "D_free_space_before": 558318178304,
+  "D_free_space_after": 544753631232,
+  "scratch_size_at_closeout": 12851797681,
+  "scratch_peak_size": "NOT_CONTINUOUSLY_SAMPLED; closeout size is retained working-set measurement",
+  "scratch_file_count": 160022,
+  "high_churn_on_D": true,
+  "high_churn_on_E": false,
+  "E_temp_files_created": 0,
+  "E_temp_files_left": 0,
+  "global_codex_storage_anomaly_detected": "UNKNOWN_NOT_INSPECTED_OR_MODIFIED",
+  "scratch_cleaned": false,
+  "scratch_retained_paths": [
+    "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-LONGPATH-AB-FINAL-20260916-35\\02",
+    "D:\\CodexScratch\\MentorFlow\\MF-MAIN3-02-FROZEN-GUI-AB-CLOSEOUT-20260916-33\\02\\uat\\MF-02-UAT-33-1494a290"
+  ]
+}

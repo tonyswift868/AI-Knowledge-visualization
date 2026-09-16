@@ -1,0 +1,2872 @@
+{
+  "count": 141,
+  "os_sendinput_count": 0,
+  "events": [
+    {
+      "pid": 19096,
+      "foreground_after": {
+        "hwnd": 34806980,
+        "target": true,
+        "pid": 19096
+      },
+      "action": "SetValue",
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "hwnd": 66193320,
+        "target": false,
+        "pid": 37952
+      },
+      "os_sendinput_count": 0,
+      "hwnd": 34806980,
+      "value_recorded": false,
+      "success": true,
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativeUsername"
+    },
+    {
+      "foreground_after": {
+        "pid": 19096,
+        "target": true,
+        "hwnd": 34806980
+      },
+      "action": "SetValue",
+      "os_sendinput_count": 0,
+      "pid": 19096,
+      "pattern": "ValuePattern",
+      "hwnd": 34806980,
+      "value_recorded": false,
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativePassword",
+      "success": true,
+      "foreground_before": {
+        "pid": 19096,
+        "target": true,
+        "hwnd": 34806980
+      }
+    },
+    {
+      "value_recorded": false,
+      "foreground_before": {
+        "pid": 19096,
+        "hwnd": 34806980,
+        "target": true
+      },
+      "pid": 19096,
+      "foreground_after": {
+        "pid": 19096,
+        "hwnd": 34806980,
+        "target": true
+      },
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.loginPrimaryButton",
+      "hwnd": 34806980,
+      "pattern": "InvokePattern",
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "success": true
+    },
+    {
+      "value_recorded": false,
+      "hwnd": 9765712,
+      "pid": 19096,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "foreground_after": {
+        "hwnd": 9765712,
+        "pid": 19096,
+        "target": true
+      },
+      "success": true,
+      "pattern": "InvokePattern",
+      "foreground_before": {
+        "hwnd": 9765712,
+        "pid": 19096,
+        "target": true
+      }
+    },
+    {
+      "pattern": "InvokePattern",
+      "pid": 19096,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 23530684,
+        "pid": 19096
+      },
+      "hwnd": 23530684,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 23530684,
+        "pid": 19096
+      },
+      "action": "Invoke",
+      "automation_id": "",
+      "value_recorded": false,
+      "os_sendinput_count": 0
+    },
+    {
+      "foreground_after": {
+        "hwnd": 23530684,
+        "target": true,
+        "pid": 19096
+      },
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON",
+      "pid": 19096,
+      "action": "ClickTarget",
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 23530684,
+        "target": true,
+        "pid": 19096
+      },
+      "hwnd": 23530684
+    },
+    {
+      "foreground_before": {
+        "pid": 19096,
+        "hwnd": 23530684,
+        "target": true
+      },
+      "pid": 19096,
+      "hwnd": 23530684,
+      "automation_id": "",
+      "foreground_after": {
+        "pid": 19096,
+        "hwnd": 23530684,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "value_recorded": false,
+      "action": "Invoke",
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "hwnd": 8391968,
+        "target": true,
+        "pid": 19096
+      },
+      "pid": 19096,
+      "foreground_after": {
+        "hwnd": 8391968,
+        "target": true,
+        "pid": 19096
+      },
+      "action": "SetValue",
+      "hwnd": 8391968,
+      "pattern": "ValuePattern",
+      "success": true,
+      "os_sendinput_count": 0,
+      "automation_id": "1148",
+      "value_recorded": false
+    },
+    {
+      "pattern": "InvokePattern",
+      "value_recorded": false,
+      "action": "Invoke",
+      "foreground_after": {
+        "pid": 19096,
+        "target": true,
+        "hwnd": 8391968
+      },
+      "automation_id": "1",
+      "success": true,
+      "pid": 19096,
+      "hwnd": 8391968,
+      "foreground_before": {
+        "pid": 19096,
+        "target": true,
+        "hwnd": 8391968
+      },
+      "os_sendinput_count": 0
+    },
+    {
+      "value_recorded": false,
+      "success": true,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "hwnd": 8391968,
+        "target": true,
+        "pid": 19096
+      },
+      "hwnd": 8391968,
+      "foreground_after": {
+        "hwnd": 8391968,
+        "target": true,
+        "pid": 19096
+      },
+      "automation_id": "1148",
+      "action": "SetValue",
+      "pid": 19096,
+      "os_sendinput_count": 0
+    },
+    {
+      "success": true,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "target": true,
+        "pid": 19096,
+        "hwnd": 8391968
+      },
+      "pid": 19096,
+      "value_recorded": false,
+      "automation_id": "1",
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "pid": 19096,
+        "hwnd": 8391968
+      },
+      "hwnd": 8391968
+    },
+    {
+      "action": "SetValue",
+      "automation_id": "1148",
+      "foreground_after": {
+        "pid": 19096,
+        "hwnd": 8391968,
+        "target": true
+      },
+      "hwnd": 8391968,
+      "value_recorded": false,
+      "success": true,
+      "os_sendinput_count": 0,
+      "pid": 19096,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "pid": 19096,
+        "hwnd": 8391968,
+        "target": true
+      }
+    },
+    {
+      "success": true,
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 8391968,
+        "target": true,
+        "pid": 19096
+      },
+      "action": "Invoke",
+      "hwnd": 8391968,
+      "foreground_after": {
+        "hwnd": 8847496,
+        "target": true,
+        "pid": 19096
+      },
+      "automation_id": "1",
+      "value_recorded": false,
+      "pid": 19096,
+      "pattern": "InvokePattern"
+    },
+    {
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "hwnd": 23530684,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 23530684,
+        "pid": 19096
+      },
+      "foreground_before": {
+        "target": true,
+        "hwnd": 23530684,
+        "pid": 19096
+      },
+      "pid": 19096,
+      "action": "ClickTarget",
+      "success": true
+    },
+    {
+      "pid": 19096,
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "hwnd": 23530684,
+      "automation_id": "",
+      "action": "Close",
+      "foreground_after": {
+        "target": false,
+        "hwnd": 66193320,
+        "pid": 37952
+      },
+      "success": true,
+      "foreground_before": {
+        "target": false,
+        "hwnd": 66193320,
+        "pid": 37952
+      },
+      "pattern": "WindowPattern"
+    },
+    {
+      "foreground_before": {
+        "target": false,
+        "pid": 37952,
+        "hwnd": 66193320
+      },
+      "hwnd": 101848530,
+      "automation_id": "",
+      "action": "Close",
+      "pid": 81976,
+      "foreground_after": {
+        "target": false,
+        "pid": 37952,
+        "hwnd": 66193320
+      },
+      "pattern": "WindowPattern",
+      "os_sendinput_count": 0,
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativeUsername",
+      "pid": 70980,
+      "pattern": "ValuePattern",
+      "hwnd": 30940870,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "value_recorded": false
+    },
+    {
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.nativePassword",
+      "pid": 70980,
+      "pattern": "ValuePattern",
+      "hwnd": 30940870,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "value_recorded": false
+    },
+    {
+      "automation_id": "QApplication.mentorflowLoginGateWindow.loginCard.loginPrimaryButton",
+      "pid": 70980,
+      "pattern": "InvokePattern",
+      "hwnd": 30940870,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 30940870,
+        "pid": 70980
+      },
+      "value_recorded": false
+    },
+    {
+      "action": "Invoke",
+      "foreground_after": {
+        "hwnd": 9307848,
+        "target": true,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "hwnd": 9307848,
+      "foreground_before": {
+        "hwnd": 9307848,
+        "target": true,
+        "pid": 70980
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "success": true,
+      "pid": 70980
+    },
+    {
+      "automation_id": "",
+      "pattern": "HWND_WM_LBUTTON",
+      "foreground_before": {
+        "pid": 70980,
+        "hwnd": 29304032,
+        "target": true
+      },
+      "hwnd": 29304032,
+      "success": true,
+      "value_recorded": false,
+      "pid": 70980,
+      "foreground_after": {
+        "pid": 70980,
+        "hwnd": 29304032,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "action": "ClickTarget"
+    },
+    {
+      "foreground_before": {
+        "hwnd": 29304032,
+        "target": true,
+        "pid": 70980
+      },
+      "foreground_after": {
+        "hwnd": 29304032,
+        "target": true,
+        "pid": 70980
+      },
+      "pid": 70980,
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "action": "ClickTarget",
+      "success": true,
+      "automation_id": "",
+      "pattern": "HWND_WM_LBUTTON",
+      "hwnd": 29304032
+    },
+    {
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 29304032,
+        "pid": 70980
+      },
+      "hwnd": 29304032,
+      "pid": 70980,
+      "pattern": "InvokePattern",
+      "success": true,
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 29304032,
+        "pid": 70980
+      }
+    },
+    {
+      "hwnd": 29304032,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "success": true,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "action": "SetValue",
+      "pid": 70980,
+      "value_recorded": false,
+      "automation_id": ""
+    },
+    {
+      "hwnd": 29304032,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "success": true,
+      "pattern": "InvokePattern",
+      "foreground_before": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "action": "Invoke",
+      "pid": 70980,
+      "value_recorded": false,
+      "automation_id": ""
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "pid": 70980,
+        "hwnd": 29304032
+      },
+      "action": "ClickTarget",
+      "automation_id": "",
+      "value_recorded": false,
+      "hwnd": 29304032,
+      "pattern": "HWND_WM_LBUTTON",
+      "os_sendinput_count": 0,
+      "pid": 70980,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "pid": 70980,
+        "hwnd": 29304032
+      }
+    },
+    {
+      "success": true,
+      "pid": 70980,
+      "automation_id": "",
+      "action": "Invoke",
+      "foreground_before": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "value_recorded": false,
+      "foreground_after": {
+        "hwnd": 29304032,
+        "pid": 70980,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "os_sendinput_count": 0,
+      "hwnd": 29304032
+    },
+    {
+      "pattern": "InvokePattern",
+      "foreground_before": {
+        "pid": 70980,
+        "target": true,
+        "hwnd": 29304032
+      },
+      "pid": 70980,
+      "hwnd": 29304032,
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "pid": 70980,
+        "target": true,
+        "hwnd": 29304032
+      },
+      "value_recorded": false,
+      "automation_id": "",
+      "success": true
+    },
+    {
+      "pid": 70980,
+      "automation_id": "",
+      "hwnd": 29304032,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 29304032,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "pattern": "InvokePattern",
+      "success": true,
+      "value_recorded": false,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 29304032,
+        "pid": 70980
+      }
+    },
+    {
+      "action": "Close",
+      "pid": 70980,
+      "hwnd": 29304032,
+      "foreground_after": {
+        "target": false,
+        "hwnd": 4195270,
+        "pid": 32280
+      },
+      "foreground_before": {
+        "target": true,
+        "hwnd": 29304032,
+        "pid": 70980
+      },
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "pattern": "WindowPattern",
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "pattern": "ValuePattern",
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "hwnd": 104666504,
+      "automation_id": "",
+      "success": true,
+      "value_recorded": false,
+      "foreground_after": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "pid": 89620
+    },
+    {
+      "pattern": "ValuePattern",
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "hwnd": 104666504,
+      "automation_id": "",
+      "success": true,
+      "value_recorded": false,
+      "foreground_after": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "pid": 89620
+    },
+    {
+      "pattern": "InvokePattern",
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "hwnd": 104666504,
+      "automation_id": "",
+      "success": true,
+      "value_recorded": false,
+      "foreground_after": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 104666504,
+        "pid": 89620,
+        "target": true
+      },
+      "pid": 89620
+    },
+    {
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "automation_id": "",
+      "pattern": "InvokePattern",
+      "pid": 89620,
+      "hwnd": 19464936,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 19464936,
+        "pid": 89620
+      },
+      "success": true,
+      "value_recorded": false,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 19464936,
+        "pid": 89620
+      }
+    },
+    {
+      "action": "ClickTarget",
+      "os_sendinput_count": 0,
+      "pid": 89620,
+      "foreground_after": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "success": true,
+      "hwnd": 11740496,
+      "value_recorded": false,
+      "automation_id": "",
+      "foreground_before": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "pattern": "HWND_WM_LBUTTON"
+    },
+    {
+      "foreground_before": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "automation_id": "",
+      "pid": 89620,
+      "hwnd": 11740496,
+      "success": true,
+      "action": "Invoke",
+      "pattern": "InvokePattern",
+      "value_recorded": false,
+      "os_sendinput_count": 0
+    },
+    {
+      "automation_id": "",
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "pid": 89620,
+      "foreground_before": {
+        "pid": 89620,
+        "target": true,
+        "hwnd": 11740496
+      },
+      "hwnd": 11740496,
+      "value_recorded": false,
+      "foreground_after": {
+        "pid": 89620,
+        "target": true,
+        "hwnd": 11740496
+      },
+      "success": true
+    },
+    {
+      "value_recorded": false,
+      "hwnd": 11740496,
+      "pid": 89620,
+      "foreground_before": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "action": "ClickTarget",
+      "foreground_after": {
+        "pid": 89620,
+        "hwnd": 11740496,
+        "target": true
+      },
+      "success": true
+    },
+    {
+      "action": "Invoke",
+      "pattern": "InvokePattern",
+      "value_recorded": false,
+      "hwnd": 11740496,
+      "foreground_before": {
+        "pid": 89620,
+        "target": true,
+        "hwnd": 11740496
+      },
+      "pid": 89620,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "pid": 89620,
+        "target": true,
+        "hwnd": 11740496
+      },
+      "automation_id": "",
+      "success": true
+    },
+    {
+      "os_sendinput_count": 0,
+      "automation_id": "QApplication.QDialog.QLineEdit",
+      "foreground_after": {
+        "hwnd": 3019532,
+        "pid": 89620,
+        "target": true
+      },
+      "action": "SetValue",
+      "pattern": "ValuePattern",
+      "hwnd": 3019532,
+      "value_recorded": false,
+      "pid": 89620,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 3019532,
+        "pid": 89620,
+        "target": true
+      }
+    },
+    {
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "foreground_after": {
+        "hwnd": 3019532,
+        "pid": 89620,
+        "target": true
+      },
+      "action": "Invoke",
+      "pattern": "InvokePattern",
+      "hwnd": 3019532,
+      "value_recorded": false,
+      "pid": 89620,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 3019532,
+        "pid": 89620,
+        "target": true
+      }
+    },
+    {
+      "value_recorded": false,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 3085068,
+        "pid": 89620
+      },
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 3085068,
+        "pid": 89620
+      },
+      "action": "Invoke",
+      "success": true,
+      "pid": 89620,
+      "hwnd": 3085068
+    },
+    {
+      "value_recorded": false,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 11740496,
+        "pid": 89620
+      },
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "pattern": "WindowPattern",
+      "foreground_after": {
+        "target": false,
+        "hwnd": 4195270,
+        "pid": 32280
+      },
+      "action": "Close",
+      "success": true,
+      "pid": 89620,
+      "hwnd": 11740496
+    },
+    {
+      "os_sendinput_count": 0,
+      "hwnd": 85728468,
+      "pattern": "ValuePattern",
+      "foreground_after": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      },
+      "pid": 77308,
+      "action": "SetValue",
+      "value_recorded": false,
+      "automation_id": "",
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      }
+    },
+    {
+      "os_sendinput_count": 0,
+      "hwnd": 85728468,
+      "pattern": "ValuePattern",
+      "foreground_after": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      },
+      "pid": 77308,
+      "action": "SetValue",
+      "value_recorded": false,
+      "automation_id": "",
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      }
+    },
+    {
+      "os_sendinput_count": 0,
+      "hwnd": 85728468,
+      "pattern": "InvokePattern",
+      "foreground_after": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      },
+      "pid": 77308,
+      "action": "Invoke",
+      "value_recorded": false,
+      "automation_id": "",
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 85728468
+      }
+    },
+    {
+      "value_recorded": false,
+      "hwnd": 6556614,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "pid": 77308,
+        "target": true,
+        "hwnd": 6556614
+      },
+      "foreground_before": {
+        "pid": 77308,
+        "target": true,
+        "hwnd": 6556614
+      },
+      "automation_id": "",
+      "action": "Invoke",
+      "pid": 77308,
+      "success": true,
+      "pattern": "InvokePattern"
+    },
+    {
+      "success": true,
+      "pid": 77308,
+      "foreground_before": {
+        "hwnd": 44569620,
+        "target": true,
+        "pid": 77308
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "foreground_after": {
+        "hwnd": 44569620,
+        "target": true,
+        "pid": 77308
+      },
+      "hwnd": 44569620,
+      "os_sendinput_count": 0,
+      "action": "Invoke"
+    },
+    {
+      "success": true,
+      "os_sendinput_count": 0,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "action": "ClickTarget",
+      "hwnd": 44569620,
+      "pid": 77308,
+      "foreground_before": {
+        "hwnd": 44569620,
+        "pid": 77308,
+        "target": true
+      },
+      "foreground_after": {
+        "hwnd": 44569620,
+        "pid": 77308,
+        "target": true
+      },
+      "value_recorded": false
+    },
+    {
+      "hwnd": 44569620,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "pid": 77308,
+      "success": true,
+      "pattern": "InvokePattern",
+      "value_recorded": false,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 44569620,
+        "pid": 77308
+      },
+      "foreground_before": {
+        "target": true,
+        "hwnd": 44569620,
+        "pid": 77308
+      },
+      "action": "Invoke"
+    },
+    {
+      "automation_id": "",
+      "pid": 77308,
+      "hwnd": 44569620,
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 44569620,
+        "pid": 77308,
+        "target": true
+      },
+      "foreground_after": {
+        "hwnd": 44569620,
+        "pid": 77308,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "success": true
+    },
+    {
+      "foreground_after": {
+        "pid": 77308,
+        "target": true,
+        "hwnd": 44569620
+      },
+      "value_recorded": false,
+      "pid": 77308,
+      "foreground_before": {
+        "pid": 77308,
+        "target": true,
+        "hwnd": 44569620
+      },
+      "hwnd": 44569620,
+      "success": true,
+      "automation_id": "",
+      "pattern": "HWND_WM_LBUTTON",
+      "os_sendinput_count": 0,
+      "action": "ClickTarget"
+    },
+    {
+      "pid": 77308,
+      "value_recorded": false,
+      "foreground_after": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 44569620
+      },
+      "automation_id": "",
+      "hwnd": 44569620,
+      "os_sendinput_count": 0,
+      "success": true,
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "pid": 77308,
+        "hwnd": 44569620
+      }
+    },
+    {
+      "success": true,
+      "automation_id": "QApplication.QDialog.QLineEdit",
+      "hwnd": 3476458,
+      "foreground_before": {
+        "hwnd": 3476458,
+        "pid": 77308,
+        "target": true
+      },
+      "pattern": "ValuePattern",
+      "action": "SetValue",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 3476458,
+        "pid": 77308,
+        "target": true
+      },
+      "value_recorded": false,
+      "pid": 77308
+    },
+    {
+      "success": true,
+      "automation_id": "",
+      "hwnd": 3476458,
+      "foreground_before": {
+        "hwnd": 3476458,
+        "pid": 77308,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 3476458,
+        "pid": 77308,
+        "target": true
+      },
+      "value_recorded": false,
+      "pid": 77308
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 3541994,
+        "pid": 77308
+      },
+      "pattern": "InvokePattern",
+      "pid": 77308,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 3541994,
+        "pid": 77308
+      },
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 3541994,
+      "automation_id": "",
+      "action": "Invoke"
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 44569620,
+        "pid": 77308
+      },
+      "pattern": "WindowPattern",
+      "pid": 77308,
+      "foreground_after": {
+        "target": false,
+        "hwnd": 19737458,
+        "pid": 29908
+      },
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 44569620,
+      "automation_id": "",
+      "action": "Close"
+    },
+    {
+      "pattern": "ValuePattern",
+      "action": "SetValue",
+      "foreground_before": {
+        "pid": 39372,
+        "hwnd": 1704070,
+        "target": false
+      },
+      "pid": 23712,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 25630612,
+      "automation_id": "",
+      "value_recorded": false,
+      "foreground_after": {
+        "pid": 23712,
+        "hwnd": 25630612,
+        "target": true
+      }
+    },
+    {
+      "pattern": "ValuePattern",
+      "action": "SetValue",
+      "foreground_before": {
+        "pid": 23712,
+        "hwnd": 25630612,
+        "target": true
+      },
+      "pid": 23712,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 25630612,
+      "automation_id": "",
+      "value_recorded": false,
+      "foreground_after": {
+        "pid": 23712,
+        "hwnd": 25630612,
+        "target": true
+      }
+    },
+    {
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "foreground_before": {
+        "pid": 23712,
+        "hwnd": 25630612,
+        "target": true
+      },
+      "pid": 23712,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 25630612,
+      "automation_id": "",
+      "value_recorded": false,
+      "foreground_after": {
+        "pid": 23712,
+        "hwnd": 25630612,
+        "target": true
+      }
+    },
+    {
+      "foreground_before": {
+        "hwnd": 1508276,
+        "pid": 23712,
+        "target": true
+      },
+      "foreground_after": {
+        "hwnd": 1508276,
+        "pid": 23712,
+        "target": true
+      },
+      "pid": 23712,
+      "action": "Invoke",
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "hwnd": 1508276,
+      "os_sendinput_count": 0,
+      "success": true
+    },
+    {
+      "pattern": "HWND_WM_LBUTTON",
+      "value_recorded": false,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 25631810,
+        "pid": 23712
+      },
+      "pid": 23712,
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 25631810,
+      "automation_id": "",
+      "action": "ClickTarget",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 25631810,
+        "pid": 23712
+      }
+    },
+    {
+      "automation_id": "",
+      "success": true,
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "pid": 23712,
+        "hwnd": 25631810,
+        "target": true
+      },
+      "pattern": "HWND_WM_LBUTTON",
+      "value_recorded": false,
+      "action": "ClickTarget",
+      "pid": 23712,
+      "hwnd": 25631810,
+      "foreground_after": {
+        "pid": 23712,
+        "hwnd": 25631810,
+        "target": true
+      }
+    },
+    {
+      "foreground_after": {
+        "pid": 23712,
+        "hwnd": 25631810,
+        "target": true
+      },
+      "success": true,
+      "action": "ClickWindowPoint",
+      "pid": 23712,
+      "pattern": "FRAME_BOUND_HWND_WM_LBUTTON",
+      "foreground_before": {
+        "pid": 23712,
+        "hwnd": 25631810,
+        "target": true
+      },
+      "observed_name": "short.txt 行的永久删除",
+      "hwnd": 25631810,
+      "frame_sha256": "08768f5af98fb96109a56cc29dcf6e802cb92a3fccf6dd9beff852bf30b2f646",
+      "value_recorded": false,
+      "os_sendinput_count": 0
+    },
+    {
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "foreground_after": {
+        "hwnd": 4329788,
+        "pid": 23712,
+        "target": true
+      },
+      "automation_id": "",
+      "pid": 23712,
+      "foreground_before": {
+        "hwnd": 4329788,
+        "pid": 23712,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "action": "Invoke",
+      "success": true,
+      "hwnd": 4329788
+    },
+    {
+      "foreground_after": {
+        "target": false,
+        "hwnd": 19737458,
+        "pid": 29908
+      },
+      "success": true,
+      "automation_id": "",
+      "action": "Close",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 25631810,
+        "pid": 23712
+      },
+      "pattern": "WindowPattern",
+      "pid": 23712,
+      "os_sendinput_count": 0,
+      "hwnd": 25631810,
+      "value_recorded": false
+    },
+    {
+      "pattern": "ValuePattern",
+      "hwnd": 12126606,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "action": "SetValue",
+      "pid": 96972,
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "pattern": "ValuePattern",
+      "hwnd": 12126606,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "action": "SetValue",
+      "pid": 96972,
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "pattern": "InvokePattern",
+      "hwnd": 12126606,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "foreground_before": {
+        "hwnd": 12126606,
+        "pid": 96972,
+        "target": true
+      },
+      "action": "Invoke",
+      "pid": 96972,
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "hwnd": 10356424,
+      "foreground_before": {
+        "target": true,
+        "pid": 96972,
+        "hwnd": 10356424
+      },
+      "action": "Invoke",
+      "value_recorded": false,
+      "automation_id": "",
+      "pid": 96972,
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "pid": 96972,
+        "hwnd": 10356424
+      }
+    },
+    {
+      "value_recorded": false,
+      "foreground_after": {
+        "target": false,
+        "pid": 71628,
+        "hwnd": 7865028
+      },
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "target": false,
+        "pid": 71628,
+        "hwnd": 7865028
+      },
+      "success": true,
+      "pid": 96972,
+      "pattern": "HWND_WM_LBUTTON",
+      "action": "ClickTarget",
+      "hwnd": 5967370
+    },
+    {
+      "pid": 96972,
+      "automation_id": "",
+      "action": "Close",
+      "foreground_after": {
+        "target": false,
+        "pid": 71628,
+        "hwnd": 7865028
+      },
+      "hwnd": 5967370,
+      "value_recorded": false,
+      "pattern": "WindowPattern",
+      "success": true,
+      "foreground_before": {
+        "target": false,
+        "pid": 71628,
+        "hwnd": 7865028
+      },
+      "os_sendinput_count": 0
+    },
+    {
+      "foreground_before": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "pid": 73216,
+      "value_recorded": false,
+      "action": "SetValue",
+      "hwnd": 2884686,
+      "foreground_after": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "pattern": "ValuePattern",
+      "automation_id": "",
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "pid": 73216,
+      "value_recorded": false,
+      "action": "SetValue",
+      "hwnd": 2884686,
+      "foreground_after": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "pattern": "ValuePattern",
+      "automation_id": "",
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "pid": 73216,
+      "value_recorded": false,
+      "action": "Invoke",
+      "hwnd": 2884686,
+      "foreground_after": {
+        "hwnd": 2884686,
+        "pid": 73216,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "success": true
+    },
+    {
+      "action": "Invoke",
+      "success": true,
+      "os_sendinput_count": 0,
+      "hwnd": 106963122,
+      "pattern": "InvokePattern",
+      "pid": 73216,
+      "foreground_before": {
+        "target": true,
+        "pid": 73216,
+        "hwnd": 106963122
+      },
+      "value_recorded": false,
+      "foreground_after": {
+        "target": true,
+        "pid": 73216,
+        "hwnd": 106963122
+      },
+      "automation_id": ""
+    },
+    {
+      "foreground_before": {
+        "hwnd": 10554348,
+        "target": true,
+        "pid": 73216
+      },
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "pid": 73216,
+      "hwnd": 10554348,
+      "action": "Invoke",
+      "foreground_after": {
+        "hwnd": 10554348,
+        "target": true,
+        "pid": 73216
+      },
+      "value_recorded": false,
+      "success": true,
+      "pattern": "InvokePattern"
+    },
+    {
+      "success": true,
+      "action": "ClickTarget",
+      "pattern": "HWND_WM_LBUTTON",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 10554348,
+        "pid": 73216
+      },
+      "pid": 73216,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 10554348,
+        "pid": 73216
+      },
+      "value_recorded": false,
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "hwnd": 10554348
+    },
+    {
+      "success": true,
+      "action": "Close",
+      "pattern": "WindowPattern",
+      "foreground_after": {
+        "target": false,
+        "hwnd": 7865028,
+        "pid": 71628
+      },
+      "pid": 73216,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 10554348,
+        "pid": 73216
+      },
+      "value_recorded": false,
+      "runtime_id": "42.10554348",
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "hwnd": 10554348
+    },
+    {
+      "runtime_id": "42.13698476.4.-2147483644",
+      "value_recorded": false,
+      "pid": 68208,
+      "pattern": "ValuePattern",
+      "hwnd": 13698476,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "action": "SetValue",
+      "os_sendinput_count": 0,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "automation_id": ""
+    },
+    {
+      "runtime_id": "42.13698476.4.-2147483633",
+      "value_recorded": false,
+      "pid": 68208,
+      "pattern": "ValuePattern",
+      "hwnd": 13698476,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "action": "SetValue",
+      "os_sendinput_count": 0,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "automation_id": ""
+    },
+    {
+      "runtime_id": "42.13698476.4.-2147483646",
+      "value_recorded": false,
+      "pid": 68208,
+      "pattern": "InvokePattern",
+      "hwnd": 13698476,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 13698476,
+        "pid": 68208
+      },
+      "automation_id": ""
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 35593412,
+        "pid": 68208
+      },
+      "pid": 68208,
+      "success": true,
+      "runtime_id": "42.35593412.4.-2147483579",
+      "action": "Invoke",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 35593412,
+        "pid": 68208
+      },
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "value_recorded": false,
+      "hwnd": 35593412
+    },
+    {
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 6491658,
+        "target": true,
+        "pid": 68208
+      },
+      "pid": 68208,
+      "foreground_after": {
+        "hwnd": 6491658,
+        "target": true,
+        "pid": 68208
+      },
+      "hwnd": 6491658,
+      "pattern": "HWND_WM_LBUTTON",
+      "success": true,
+      "automation_id": "",
+      "value_recorded": false,
+      "action": "ClickTarget"
+    },
+    {
+      "hwnd": 6491658,
+      "runtime_id": "42.6491658.4.-2147482911",
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "pid": 68208,
+      "success": true,
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "foreground_after": {
+        "hwnd": 6491658,
+        "pid": 68208,
+        "target": true
+      },
+      "value_recorded": false,
+      "foreground_before": {
+        "hwnd": 6491658,
+        "pid": 68208,
+        "target": true
+      }
+    },
+    {
+      "success": true,
+      "pid": 68208,
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 20259412,
+        "pid": 68208
+      },
+      "foreground_after": {
+        "target": true,
+        "hwnd": 20259412,
+        "pid": 68208
+      },
+      "runtime_id": "42.20259412.4.-2147482769",
+      "os_sendinput_count": 0,
+      "hwnd": 20259412
+    },
+    {
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "pid": 68208,
+        "hwnd": 20259412
+      },
+      "pid": 68208,
+      "action": "ClickTarget",
+      "hwnd": 20259412,
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON",
+      "foreground_before": {
+        "target": true,
+        "pid": 68208,
+        "hwnd": 20259412
+      },
+      "automation_id": "",
+      "os_sendinput_count": 0
+    },
+    {
+      "pid": 68208,
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "action": "ClickTarget",
+      "foreground_after": {
+        "pid": 68208,
+        "hwnd": 20259412,
+        "target": true
+      },
+      "success": true,
+      "pattern": "HWND_WM_LBUTTON",
+      "hwnd": 20259412,
+      "value_recorded": false,
+      "foreground_before": {
+        "pid": 68208,
+        "hwnd": 20259412,
+        "target": true
+      }
+    },
+    {
+      "pid": 68208,
+      "automation_id": "",
+      "runtime_id": "42.20259412.4.-2147482606",
+      "value_recorded": false,
+      "action": "SetValue",
+      "hwnd": 20259412,
+      "success": true,
+      "foreground_after": {
+        "pid": 68208,
+        "hwnd": 20259412,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "pid": 68208,
+        "hwnd": 20259412,
+        "target": true
+      }
+    },
+    {
+      "pid": 68208,
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "pid": 96284,
+        "target": false,
+        "hwnd": 7015366
+      },
+      "foreground_before": {
+        "pid": 96284,
+        "target": false,
+        "hwnd": 7015366
+      },
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "success": true,
+      "hwnd": 20259412,
+      "action": "ClickTarget"
+    },
+    {
+      "value_recorded": false,
+      "success": true,
+      "action": "Close",
+      "hwnd": 20259412,
+      "pattern": "WindowPattern",
+      "runtime_id": "42.20259412",
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 7015366,
+        "target": false,
+        "pid": 96284
+      },
+      "automation_id": "",
+      "foreground_after": {
+        "hwnd": 7015366,
+        "target": false,
+        "pid": 96284
+      },
+      "pid": 68208
+    },
+    {
+      "value_recorded": false,
+      "success": true,
+      "action": "ClickTarget",
+      "hwnd": 6491658,
+      "pattern": "HWND_WM_LBUTTON",
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 7015366,
+        "target": false,
+        "pid": 96284
+      },
+      "automation_id": "",
+      "foreground_after": {
+        "hwnd": 7015366,
+        "target": false,
+        "pid": 96284
+      },
+      "pid": 68208
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 6491658,
+        "pid": 68208
+      },
+      "hwnd": 6491658,
+      "observed_name": "中文学习资料.txt 永久删除",
+      "frame_sha256": "e08cdf56598009c7b9318e7b529dc0e800a4ad8216a1bd2ed0debbd65b39efdc",
+      "pattern": "FRAME_BOUND_HWND_WM_LBUTTON",
+      "value_recorded": false,
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 6491658,
+        "pid": 68208
+      },
+      "pid": 68208,
+      "os_sendinput_count": 0,
+      "action": "ClickWindowPoint"
+    },
+    {
+      "foreground_before": {
+        "pid": 68208,
+        "hwnd": 37160512,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 68208,
+        "hwnd": 37160512,
+        "target": true
+      },
+      "pid": 68208,
+      "action": "Invoke",
+      "os_sendinput_count": 0,
+      "runtime_id": "42.37160512.4.-2147482510",
+      "automation_id": "",
+      "hwnd": 37160512,
+      "pattern": "InvokePattern",
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "pattern": "WindowPattern",
+      "foreground_before": {
+        "pid": 68208,
+        "hwnd": 6491658,
+        "target": true
+      },
+      "hwnd": 6491658,
+      "foreground_after": {
+        "pid": 29908,
+        "hwnd": 19737458,
+        "target": false
+      },
+      "success": true,
+      "action": "Close",
+      "pid": 68208,
+      "runtime_id": "42.6491658",
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "automation_id": ""
+    },
+    {
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "pattern": "ValuePattern",
+      "pid": 78060,
+      "hwnd": 5120024,
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "success": true,
+      "runtime_id": "42.5120024.4.-2147483644",
+      "value_recorded": false
+    },
+    {
+      "os_sendinput_count": 0,
+      "action": "SetValue",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "pattern": "ValuePattern",
+      "pid": 78060,
+      "hwnd": 5120024,
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "success": true,
+      "runtime_id": "42.5120024.4.-2147483633",
+      "value_recorded": false
+    },
+    {
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "pattern": "InvokePattern",
+      "pid": 78060,
+      "hwnd": 5120024,
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5120024,
+        "pid": 78060
+      },
+      "success": true,
+      "runtime_id": "42.5120024.4.-2147483646",
+      "value_recorded": false
+    },
+    {
+      "success": true,
+      "pid": 78060,
+      "action": "Invoke",
+      "pattern": "InvokePattern",
+      "foreground_after": {
+        "hwnd": 52371426,
+        "pid": 78060,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 52371426,
+        "pid": 78060,
+        "target": true
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "runtime_id": "42.52371426.4.-2147483579",
+      "hwnd": 52371426
+    },
+    {
+      "foreground_after": {
+        "target": false,
+        "pid": 69616,
+        "hwnd": 13180220
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "success": true,
+      "os_sendinput_count": 0,
+      "hwnd": 6817244,
+      "foreground_before": {
+        "target": false,
+        "pid": 69616,
+        "hwnd": 13180220
+      },
+      "pid": 78060,
+      "pattern": "HWND_WM_LBUTTON",
+      "action": "ClickTarget"
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "pid": 78060,
+        "hwnd": 6817244
+      },
+      "automation_id": "",
+      "os_sendinput_count": 0,
+      "pid": 78060,
+      "runtime_id": "42.6817244.4.-2147482911",
+      "success": true,
+      "hwnd": 6817244,
+      "value_recorded": false,
+      "foreground_before": {
+        "target": false,
+        "pid": 69616,
+        "hwnd": 13180220
+      },
+      "pattern": "InvokePattern",
+      "action": "Invoke"
+    },
+    {
+      "value_recorded": false,
+      "action": "ClickTarget",
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 7809098,
+        "pid": 78060
+      },
+      "pid": 78060,
+      "hwnd": 7809098,
+      "success": true,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 7809098,
+        "pid": 78060
+      },
+      "pattern": "HWND_WM_LBUTTON",
+      "os_sendinput_count": 0
+    },
+    {
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "success": true,
+      "hwnd": 7809098,
+      "pid": 78060,
+      "foreground_after": {
+        "target": true,
+        "pid": 78060,
+        "hwnd": 7809098
+      },
+      "action": "ClickTarget",
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "target": true,
+        "pid": 78060,
+        "hwnd": 7809098
+      }
+    },
+    {
+      "pid": 78060,
+      "automation_id": "",
+      "foreground_before": {
+        "hwnd": 7809098,
+        "pid": 78060,
+        "target": true
+      },
+      "runtime_id": "42.7809098",
+      "hwnd": 7809098,
+      "value_recorded": false,
+      "success": true,
+      "pattern": "WindowPattern",
+      "action": "Close",
+      "foreground_after": {
+        "hwnd": 6817244,
+        "pid": 78060,
+        "target": true
+      },
+      "os_sendinput_count": 0
+    },
+    {
+      "pid": 78060,
+      "automation_id": "",
+      "foreground_before": {
+        "hwnd": 6817244,
+        "pid": 78060,
+        "target": true
+      },
+      "runtime_id": "42.6817244",
+      "hwnd": 6817244,
+      "value_recorded": false,
+      "success": true,
+      "pattern": "WindowPattern",
+      "action": "Close",
+      "foreground_after": {
+        "hwnd": 13180220,
+        "pid": 69616,
+        "target": false
+      },
+      "os_sendinput_count": 0
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "pattern": "ValuePattern",
+      "hwnd": 66519810,
+      "automation_id": "",
+      "action": "SetValue",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "pid": 72740,
+      "success": true,
+      "runtime_id": "42.66519810.4.-2147483644"
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "pattern": "ValuePattern",
+      "hwnd": 66519810,
+      "automation_id": "",
+      "action": "SetValue",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "pid": 72740,
+      "success": true,
+      "runtime_id": "42.66519810.4.-2147483633"
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "hwnd": 66519810,
+      "automation_id": "",
+      "action": "Invoke",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 66519810,
+        "pid": 72740
+      },
+      "pid": 72740,
+      "success": true,
+      "runtime_id": "42.66519810.4.-2147483646"
+    },
+    {
+      "action": "Invoke",
+      "value_recorded": false,
+      "automation_id": "",
+      "success": true,
+      "pid": 72740,
+      "pattern": "InvokePattern",
+      "os_sendinput_count": 0,
+      "runtime_id": "42.12519822.4.-2147483579",
+      "foreground_before": {
+        "hwnd": 12519822,
+        "pid": 72740,
+        "target": true
+      },
+      "foreground_after": {
+        "hwnd": 12519822,
+        "pid": 72740,
+        "target": true
+      },
+      "hwnd": 12519822
+    },
+    {
+      "action": "ClickTarget",
+      "hwnd": 9242794,
+      "foreground_before": {
+        "hwnd": 9242794,
+        "target": true,
+        "pid": 72740
+      },
+      "success": true,
+      "pid": 72740,
+      "foreground_after": {
+        "hwnd": 9242794,
+        "target": true,
+        "pid": 72740
+      },
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "pattern": "HWND_WM_LBUTTON",
+      "value_recorded": false
+    },
+    {
+      "success": true,
+      "os_sendinput_count": 0,
+      "pattern": "InvokePattern",
+      "hwnd": 9242794,
+      "action": "Invoke",
+      "pid": 72740,
+      "runtime_id": "42.9242794.4.-2147482911",
+      "foreground_before": {
+        "target": true,
+        "pid": 72740,
+        "hwnd": 9242794
+      },
+      "value_recorded": false,
+      "automation_id": "",
+      "foreground_after": {
+        "target": true,
+        "pid": 72740,
+        "hwnd": 9242794
+      }
+    },
+    {
+      "os_sendinput_count": 0,
+      "pattern": "HWND_WM_LBUTTON",
+      "value_recorded": false,
+      "pid": 72740,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 26287730,
+        "pid": 72740,
+        "target": true
+      },
+      "hwnd": 26287730,
+      "automation_id": "",
+      "action": "ClickTarget",
+      "foreground_after": {
+        "hwnd": 26287730,
+        "pid": 72740,
+        "target": true
+      }
+    },
+    {
+      "foreground_after": {
+        "pid": 72740,
+        "target": true,
+        "hwnd": 26287730
+      },
+      "automation_id": "",
+      "foreground_before": {
+        "pid": 72740,
+        "target": true,
+        "hwnd": 26287730
+      },
+      "os_sendinput_count": 0,
+      "hwnd": 26287730,
+      "action": "ClickTarget",
+      "success": true,
+      "pid": 72740,
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON"
+    },
+    {
+      "success": true,
+      "automation_id": "",
+      "foreground_after": {
+        "hwnd": 26287730,
+        "pid": 72740,
+        "target": true
+      },
+      "pattern": "HWND_WM_LBUTTON",
+      "hwnd": 26287730,
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "action": "ClickTarget",
+      "foreground_before": {
+        "hwnd": 26287730,
+        "pid": 72740,
+        "target": true
+      },
+      "pid": 72740
+    },
+    {
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "action": "ClickTarget",
+      "foreground_after": {
+        "pid": 72740,
+        "target": true,
+        "hwnd": 26287730
+      },
+      "os_sendinput_count": 0,
+      "success": true,
+      "pid": 72740,
+      "value_recorded": false,
+      "foreground_before": {
+        "pid": 72740,
+        "target": true,
+        "hwnd": 26287730
+      },
+      "hwnd": 26287730
+    },
+    {
+      "foreground_after": {
+        "pid": 72740,
+        "hwnd": 9242794,
+        "target": true
+      },
+      "runtime_id": "42.26287730",
+      "pattern": "WindowPattern",
+      "action": "Close",
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "automation_id": "",
+      "hwnd": 26287730,
+      "pid": 72740,
+      "success": true,
+      "foreground_before": {
+        "pid": 72740,
+        "hwnd": 26287730,
+        "target": true
+      }
+    },
+    {
+      "foreground_after": {
+        "pid": 69616,
+        "hwnd": 13180220,
+        "target": false
+      },
+      "runtime_id": "42.9242794",
+      "pattern": "WindowPattern",
+      "action": "Close",
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "automation_id": "",
+      "hwnd": 9242794,
+      "pid": 72740,
+      "success": true,
+      "foreground_before": {
+        "pid": 72740,
+        "hwnd": 9242794,
+        "target": true
+      }
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "os_sendinput_count": 0,
+      "runtime_id": "42.8847750.4.-2147483644",
+      "automation_id": "",
+      "value_recorded": false,
+      "hwnd": 8847750,
+      "pattern": "ValuePattern",
+      "pid": 41788,
+      "action": "SetValue"
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "os_sendinput_count": 0,
+      "runtime_id": "42.8847750.4.-2147483633",
+      "automation_id": "",
+      "value_recorded": false,
+      "hwnd": 8847750,
+      "pattern": "ValuePattern",
+      "pid": 41788,
+      "action": "SetValue"
+    },
+    {
+      "foreground_before": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "success": true,
+      "foreground_after": {
+        "target": true,
+        "hwnd": 8847750,
+        "pid": 41788
+      },
+      "os_sendinput_count": 0,
+      "runtime_id": "42.8847750.4.-2147483646",
+      "automation_id": "",
+      "value_recorded": false,
+      "hwnd": 8847750,
+      "pattern": "InvokePattern",
+      "pid": 41788,
+      "action": "Invoke"
+    },
+    {
+      "runtime_id": "42.35986628.4.-2147483579",
+      "hwnd": 35986628,
+      "pattern": "InvokePattern",
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "foreground_before": {
+        "hwnd": 35986628,
+        "target": true,
+        "pid": 41788
+      },
+      "value_recorded": false,
+      "action": "Invoke",
+      "foreground_after": {
+        "hwnd": 35986628,
+        "target": true,
+        "pid": 41788
+      },
+      "pid": 41788,
+      "success": true
+    },
+    {
+      "pid": 41788,
+      "hwnd": 10362364,
+      "success": true,
+      "os_sendinput_count": 0,
+      "action": "ClickTarget",
+      "foreground_after": {
+        "pid": 41788,
+        "hwnd": 10362364,
+        "target": true
+      },
+      "foreground_before": {
+        "pid": 41788,
+        "hwnd": 10362364,
+        "target": true
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON"
+    },
+    {
+      "automation_id": "",
+      "pid": 41788,
+      "runtime_id": "42.10362364.4.-2147482911",
+      "foreground_before": {
+        "pid": 41788,
+        "hwnd": 10362364,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "success": true,
+      "value_recorded": false,
+      "pattern": "InvokePattern",
+      "hwnd": 10362364,
+      "foreground_after": {
+        "pid": 41788,
+        "hwnd": 10362364,
+        "target": true
+      },
+      "action": "Invoke"
+    },
+    {
+      "os_sendinput_count": 0,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "hwnd": 20710120,
+      "foreground_after": {
+        "pid": 41788,
+        "hwnd": 20710120,
+        "target": true
+      },
+      "foreground_before": {
+        "pid": 41788,
+        "hwnd": 20710120,
+        "target": true
+      },
+      "pid": 41788,
+      "action": "ClickTarget",
+      "success": true,
+      "value_recorded": false
+    },
+    {
+      "hwnd": 20710120,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 20710120,
+        "pid": 41788
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "success": true,
+      "runtime_id": "42.20710120",
+      "action": "Close",
+      "foreground_after": {
+        "target": true,
+        "hwnd": 10362364,
+        "pid": 41788
+      },
+      "os_sendinput_count": 0,
+      "pattern": "WindowPattern",
+      "pid": 41788
+    },
+    {
+      "hwnd": 10362364,
+      "foreground_before": {
+        "target": true,
+        "hwnd": 10362364,
+        "pid": 41788
+      },
+      "automation_id": "",
+      "value_recorded": false,
+      "success": true,
+      "runtime_id": "42.10362364",
+      "action": "Close",
+      "foreground_after": {
+        "target": false,
+        "hwnd": 19737458,
+        "pid": 29908
+      },
+      "os_sendinput_count": 0,
+      "pattern": "WindowPattern",
+      "pid": 41788
+    },
+    {
+      "foreground_before": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "pattern": "ValuePattern",
+      "runtime_id": "42.7013852.4.-2147483644",
+      "action": "SetValue",
+      "pid": 76256,
+      "value_recorded": false,
+      "automation_id": "",
+      "hwnd": 7013852,
+      "os_sendinput_count": 0,
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "pattern": "ValuePattern",
+      "runtime_id": "42.7013852.4.-2147483633",
+      "action": "SetValue",
+      "pid": 76256,
+      "value_recorded": false,
+      "automation_id": "",
+      "hwnd": 7013852,
+      "os_sendinput_count": 0,
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 76256,
+        "hwnd": 7013852,
+        "target": true
+      },
+      "pattern": "InvokePattern",
+      "runtime_id": "42.7013852.4.-2147483646",
+      "action": "Invoke",
+      "pid": 76256,
+      "value_recorded": false,
+      "automation_id": "",
+      "hwnd": 7013852,
+      "os_sendinput_count": 0,
+      "success": true
+    },
+    {
+      "success": true,
+      "pid": 76256,
+      "pattern": "InvokePattern",
+      "automation_id": "",
+      "hwnd": 2818218,
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "runtime_id": "42.2818218.4.-2147483579",
+      "foreground_after": {
+        "hwnd": 2818218,
+        "pid": 76256,
+        "target": true
+      },
+      "value_recorded": false,
+      "foreground_before": {
+        "hwnd": 2818218,
+        "pid": 76256,
+        "target": true
+      }
+    },
+    {
+      "pid": 76256,
+      "foreground_after": {
+        "hwnd": 11013100,
+        "pid": 76256,
+        "target": true
+      },
+      "value_recorded": false,
+      "pattern": "HWND_WM_LBUTTON",
+      "automation_id": "",
+      "action": "ClickTarget",
+      "os_sendinput_count": 0,
+      "foreground_before": {
+        "hwnd": 11013100,
+        "pid": 76256,
+        "target": true
+      },
+      "success": true,
+      "hwnd": 11013100
+    },
+    {
+      "foreground_before": {
+        "pid": 76256,
+        "target": true,
+        "hwnd": 11013100
+      },
+      "action": "Close",
+      "os_sendinput_count": 0,
+      "success": true,
+      "hwnd": 11013100,
+      "runtime_id": "42.11013100",
+      "pid": 76256,
+      "foreground_after": {
+        "pid": 29908,
+        "target": false,
+        "hwnd": 19737458
+      },
+      "value_recorded": false,
+      "automation_id": "",
+      "pattern": "WindowPattern"
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "success": true,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "action": "SetValue",
+      "runtime_id": "42.5382168.4.-2147483644",
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "hwnd": 5382168,
+      "pid": 72828,
+      "automation_id": ""
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "success": true,
+      "pattern": "ValuePattern",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "action": "SetValue",
+      "runtime_id": "42.5382168.4.-2147483633",
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "hwnd": 5382168,
+      "pid": 72828,
+      "automation_id": ""
+    },
+    {
+      "foreground_after": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "success": true,
+      "pattern": "InvokePattern",
+      "foreground_before": {
+        "target": true,
+        "hwnd": 5382168,
+        "pid": 72828
+      },
+      "action": "Invoke",
+      "runtime_id": "42.5382168.4.-2147483646",
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "hwnd": 5382168,
+      "pid": 72828,
+      "automation_id": ""
+    },
+    {
+      "automation_id": "",
+      "hwnd": 7210460,
+      "foreground_after": {
+        "hwnd": 7210460,
+        "pid": 72828,
+        "target": true
+      },
+      "value_recorded": false,
+      "foreground_before": {
+        "hwnd": 7210460,
+        "pid": 72828,
+        "target": true
+      },
+      "os_sendinput_count": 0,
+      "action": "Invoke",
+      "runtime_id": "42.7210460.4.-2147483579",
+      "pid": 72828,
+      "pattern": "InvokePattern",
+      "success": true
+    },
+    {
+      "foreground_before": {
+        "hwnd": 36379844,
+        "pid": 72828,
+        "target": true
+      },
+      "success": true,
+      "pattern": "HWND_WM_LBUTTON",
+      "action": "ClickTarget",
+      "hwnd": 36379844,
+      "value_recorded": false,
+      "os_sendinput_count": 0,
+      "pid": 72828,
+      "foreground_after": {
+        "hwnd": 36379844,
+        "pid": 72828,
+        "target": true
+      },
+      "automation_id": ""
+    },
+    {
+      "action": "Invoke",
+      "pid": 72828,
+      "success": true,
+      "foreground_before": {
+        "pid": 72828,
+        "hwnd": 36379844,
+        "target": true
+      },
+      "foreground_after": {
+        "pid": 72828,
+        "hwnd": 36379844,
+        "target": true
+      },
+      "hwnd": 36379844,
+      "runtime_id": "42.36379844.4.-2147482945",
+      "os_sendinput_count": 0,
+      "automation_id": "",
+      "value_recorded": false,
+      "pattern": "InvokePattern"
+    },
+    {
+      "foreground_after": {
+        "pid": 72828,
+        "target": true,
+        "hwnd": 4138292
+      },
+      "automation_id": "",
+      "pattern": "HWND_WM_LBUTTON",
+      "success": true,
+      "action": "ClickTarget",
+      "hwnd": 4138292,
+      "os_sendinput_count": 0,
+      "value_recorded": false,
+      "pid": 72828,
+      "foreground_before": {
+        "pid": 72828,
+        "target": true,
+        "hwnd": 4138292
+      }
+    },
+    {
+      "pid": 72828,
+      "value_recorded": false,
+      "hwnd": 4138292,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 4138292,
+        "target": true,
+        "pid": 72828
+      },
+      "runtime_id": "42.4138292",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 36379844,
+        "target": true,
+        "pid": 72828
+      },
+      "action": "Close",
+      "automation_id": "",
+      "pattern": "WindowPattern"
+    },
+    {
+      "pid": 72828,
+      "value_recorded": false,
+      "hwnd": 36379844,
+      "success": true,
+      "foreground_before": {
+        "hwnd": 36379844,
+        "target": true,
+        "pid": 72828
+      },
+      "runtime_id": "42.36379844",
+      "os_sendinput_count": 0,
+      "foreground_after": {
+        "hwnd": 19737458,
+        "target": false,
+        "pid": 29908
+      },
+      "action": "Close",
+      "automation_id": "",
+      "pattern": "WindowPattern"
+    }
+  ]
+}
