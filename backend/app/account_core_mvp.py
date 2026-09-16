@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
         app.state.enterprise_workspace_service = EnterpriseWorkspaceService(engine)
         app.state.structured_sync_service = StructuredSyncService(PostgresTenantTransactionManager(engine))
         app.state.account_workspace_bootstrap = AccountWorkspaceBootstrap(
-            engine, issuer=config.keycloak.issuer
+            engine, issuer=config.keycloak.canonical_identity_issuer
         )
         app.state.enterprise_document_import_service = EnterpriseDocumentImportService(
             engine

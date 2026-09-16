@@ -19,6 +19,41 @@ from test_enterprise_identity_oidc import NOW, _claims, _token, _StaticSigningKe
 from test_e109_issuer_migration import config
 
 
+def test_resident_bootstrap_uses_canonical_identity_after_public_hostname_change(monkeypatch):
+    from types import SimpleNamespace
+    from app import account_core_mvp as module
+    from app.enterprise.contracts_v1 import TenantMode, ActorKind
+    from app.enterprise_tenancy.models import EnterprisePersistenceRequestError
+
+    async def close():
+        pass
+
+    engine = SimpleNamespace(dispose=lambda: None)
+    runtime = SimpleNamespace(aclose=close)
+    monkeypatch.setattr(module.EnterpriseIdentityConfig, 'from_env', lambda: SimpleNamespace(
+        mode=TenantMode.ENTERPRISE_SERVER,
+        keycloak=config(issuer_migration=None, transport_issuer=None)))
+    monkeypatch.setattr(module.orm_runtime, 'configure_enterprise_orm', lambda: engine)
+    monkeypatch.setattr(module.orm_runtime, 'verify_enterprise_runtime_schema', lambda: None)
+    monkeypatch.setattr(module, 'build_enterprise_identity_runtime', lambda **kw: runtime)
+    monkeypatch.setattr(module, 'overview_from_env', lambda *args: None)
+    for name in ('EnterpriseWorkspaceService', 'StructuredSyncService',
+                 'PostgresTenantTransactionManager', 'EnterpriseDocumentImportService'):
+        monkeypatch.setattr(module, name, lambda *args: None)
+    app = SimpleNamespace(state=SimpleNamespace())
+
+    async def run():
+        async with module.lifespan(app):
+            bootstrap = app.state.account_workspace_bootstrap
+            bootstrap._validate(SimpleNamespace(issuer=OLD_ISSUER,
+                subject='existing-subject', actor_kind=ActorKind.HUMAN))
+            with pytest.raises(EnterprisePersistenceRequestError):
+                bootstrap._validate(SimpleNamespace(issuer=NEW_ISSUER,
+                    subject='existing-subject', actor_kind=ActorKind.HUMAN))
+
+    asyncio.run(run())
+
+
 def test_public_hostname_without_canonical_anchor_fails_at_configuration():
     from app.enterprise.identity.config import IdentityConfigurationError
     from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcError

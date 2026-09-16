@@ -23,15 +23,17 @@ LOG = logging.getLogger(__name__)
 
 class LifecycleRuntime:
     def __init__(self, config):
-        self.expires = datetime.fromisoformat(config['expires_at'])
-        if self.expires.tzinfo is None: raise ValueError('Expiry timezone required')
+        self.expires = datetime.fromisoformat(config['expires_at']) if 'expires_at' in config else None
+        if self.expires is not None and self.expires.tzinfo is None: raise ValueError('Expiry timezone required')
         context = ssl.create_default_context(cafile=config['ca_file'])
+        if config.get('client_cert_file') and config.get('client_key_file'):
+            context.load_cert_chain(config['client_cert_file'], config['client_key_file'])
         self.resolver = ServiceAccountTokenResolver(config['origin'], config['realm'], config['client_id'], config['secret_file'], verify=context)
         self.admin = KeycloakAccountAdmin(config['origin'], config['realm'], self.resolver, verify=context)
         self.jobs = set()
 
     @property
-    def active(self): return datetime.now(timezone.utc) < self.expires
+    def active(self): return self.expires is None or datetime.now(timezone.utc) < self.expires
 
     async def aclose(self):
         if self.jobs: await asyncio.gather(*self.jobs, return_exceptions=True)
@@ -40,22 +42,32 @@ class LifecycleRuntime:
 
 
 def from_env(env):
-    if env.get('MENTORFLOW_ACCOUNT_MVP_TEST') != '1': return None
+    deployed = env.get('MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED') == '1'
+    test = env.get('MENTORFLOW_ACCOUNT_MVP_TEST') == '1'
+    if not deployed and not test: return None
     path = Path(env['MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG'])
     if path.is_symlink() or path.stat().st_size > 8192: raise ValueError('Invalid lifecycle configuration')
     config = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=_object)
-    required = {'origin', 'realm', 'client_id', 'secret_file', 'ca_file', 'expires_at'}
-    if not required.issubset(config) or set(config) - required - {'candidate_sha'}:
+    required = {'origin', 'realm', 'client_id', 'secret_file', 'ca_file'}
+    if not required.issubset(config) or set(config) - required - {'candidate_sha', 'expires_at', 'client_cert_file', 'client_key_file'}:
         raise ValueError('Invalid lifecycle configuration')
+    if ('client_cert_file' in config or 'client_key_file' in config) and (
+            not config.get('client_cert_file') or not config.get('client_key_file')):
+        raise ValueError('Lifecycle client certificate and key must be paired')
+    # Resident Backend opt-in uses its existing service credential and TLS
+    # binding. Disposable candidate mode retains the bounded lease contract.
+    if test and 'expires_at' not in config:
+        raise ValueError('Test lifecycle expiry required')
     candidate = env.get('MENTORFLOW_ACCOUNT_LIFECYCLE_CANDIDATE', '').strip()
     if candidate:
         if not re.fullmatch(r'[0-9a-f]{40,64}', candidate) or config.get('candidate_sha') != candidate:
             raise ValueError('Lifecycle candidate binding mismatch')
-    expiry = datetime.fromisoformat(config['expires_at'])
-    if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
-        raise ValueError('Lifecycle candidate expired')
-    if expiry - datetime.now(timezone.utc) > timedelta(days=7):
-        raise ValueError('Lifecycle candidate expiry too long')
+    if 'expires_at' in config:
+        expiry = datetime.fromisoformat(config['expires_at'])
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            raise ValueError('Lifecycle candidate expired')
+        if expiry - datetime.now(timezone.utc) > timedelta(days=7):
+            raise ValueError('Lifecycle candidate expiry too long')
     return LifecycleRuntime(config)
 
 

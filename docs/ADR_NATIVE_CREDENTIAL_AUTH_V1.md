@@ -232,3 +232,24 @@ Reference guidance: [OWASP authentication controls](https://cheatsheetseries.owa
 for generic failures and throttling; [OWASP session controls](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 for session lifecycle and rotation. These references do not certify this
 identity adapter or replace its deployment security review.
+
+### Resident account lifecycle configuration
+
+An authorized resident Backend can explicitly enable the existing registration,
+forgot-password and password-change service with
+`MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED=1`. The default remains disabled.
+`MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG` points to the Backend-only configuration
+containing `origin`, `realm`, `client_id`, `secret_file` and `ca_file`.
+The service still requires verified HTTPS and its own Keycloak service credential;
+this switch does not grant permissions or provision SMTP.
+For an identity listener requiring mTLS, also supply the paired
+`client_cert_file` and `client_key_file` Backend-only references. Both the token
+resolver and administration client use that same verified TLS context; a partial
+pair fails configuration. Do not weaken the identity listener's client-auth policy.
+
+Resident configuration may omit `expires_at`. Disposable
+`MENTORFLOW_ACCOUNT_MVP_TEST=1` configuration must retain its explicit lease.
+Whenever an expiry is supplied, it must be timezone-aware, future and within
+seven days. Existing optional `candidate_sha` binding remains enforced.
+Deployments must separately verify mail submission, receipt and action completion;
+enabled capabilities alone are not evidence of an email lifecycle pass.

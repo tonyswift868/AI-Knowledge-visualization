@@ -47,6 +47,44 @@ def test_release_capabilities_stay_off():
     with pytest.raises(ValueError):ServiceAccountTokenResolver('https://id.invalid','realm','service','none',verify=False)
 
 
+def test_resident_lifecycle_opt_in_does_not_require_disposable_lease(tmp_path, monkeypatch):
+    config = {'origin':'https://id.invalid', 'realm':'realm', 'client_id':'service',
+              'secret_file':'private-reference', 'ca_file':'trusted-ca'}
+    path = tmp_path/'lifecycle.json'; path.write_text(json.dumps(config))
+    monkeypatch.setattr(api, 'LifecycleRuntime', lambda value:value)
+    env = {'MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG':str(path)}
+    assert api.from_env(env) is None
+    assert api.from_env({**env,'MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED':'1'}) == config
+    with pytest.raises(ValueError, match='expiry required'):
+        api.from_env({**env,'MENTORFLOW_ACCOUNT_MVP_TEST':'1'})
+    config['expires_at'] = '2000-01-01T00:00:00+00:00'
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match='expired'):
+        api.from_env({**env,'MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED':'1'})
+
+
+def test_lifecycle_mtls_uses_explicit_paired_backend_references(tmp_path, monkeypatch):
+    calls = []
+    context = SimpleNamespace(load_cert_chain=lambda *args: calls.append(args))
+    monkeypatch.setattr(api.ssl, 'create_default_context', lambda **kw: context)
+    monkeypatch.setattr(api, 'ServiceAccountTokenResolver', lambda *args, **kw: kw['verify'])
+    monkeypatch.setattr(api, 'KeycloakAccountAdmin', lambda *args, **kw: kw['verify'])
+    config = {'origin':'https://id.invalid', 'realm':'realm', 'client_id':'service',
+              'secret_file':'private-reference', 'ca_file':'trusted-ca',
+              'client_cert_file':'backend-cert', 'client_key_file':'backend-key'}
+    path = tmp_path/'lifecycle.json'
+    env = {'MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED':'1',
+           'MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG':str(path)}
+    path.write_text(json.dumps(config))
+    runtime = api.from_env(env)
+    assert runtime.active and runtime.resolver is context and runtime.admin is context
+    assert calls == [('backend-cert', 'backend-key')]
+    del config['client_key_file']
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match='must be paired'):
+        api.from_env(env)
+
+
 def test_registration_and_uniform_forgot_use_existing_observer(monkeypatch):
     calls=[]
     class Admin:
