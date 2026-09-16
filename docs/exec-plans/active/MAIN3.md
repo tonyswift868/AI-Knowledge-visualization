@@ -8,18 +8,12 @@ NEW_DISPATCH_ALLOWED = R1_ONLY_BY_COORDINATOR
 ACTIVE_DISPATCH = NONE
 NEXT_ACTION = WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK
 
-Current authority: `MF-R1-A-BASELINE`; review only `control/main3-current`。
-Gate1 Frozen GUI A/B + Full Account Rehydration=PASS；Worker02原始范围和82/0/0保留；A集成96/0/1。
-COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。
-唯一八关及剩余路线见[当前状态](../../project/CURRENT_STATE.md)与[Gate1回执](../../governance/receipts/20260916-gate1-integration.json)。
-Gate2=BLOCKED_EXTERNAL_AUTHORITY：QQ批准读取reference缺失；真实SMTP NOT_RUN。
-Gate3=BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING；04 exact `bf8c35999e2c6752a928cf375b9091d9c68bd363`只读记录、未集成。
-56条projection >256 KiB（17 calendar / 35 replan_history / 4 plan_activation）；55悬空引用quarantine；primary owner UNPROVEN。
-Gate4=PENDING / REASSESSMENT_REQUIRED；Gate5/6=NOT_RUN / FROZEN；Gate7/8=PENDING / FROZEN。
-用户恢复本批已有实现修复，复用代码/配置/证据，不增加流程/门禁；唯一任务表为[board r1_batch](../../governance/ACTIVE_BOARD.json)。
-既有连续性合同不因暂停被静默撤销；参考Keycloak/PowerSync/RLS/Syncthing/Windows不授权引依赖或重构。
-旧暂停及表格保留历史，不复用旧dispatch；当前职责/共享边界遵守[workflow](../../governance/DEVELOPMENT_WORKFLOW.md)。
-dispatch32存储违规仍是历史NONPASS；不撤销其回执。NEXT_TASK: WAIT_FOR_EXPLICIT_R1_COORDINATOR_TASK；当前STOP。
+Current authority: `MF-R1-A-FUNCTIONAL-INTEGRATION`；九份exact R1 patch和最小接线已集成到control。
+开发/正式入口复用各自exact source；公开API配置与canonical OLD issuer分离；后台恢复保留账户隔离/取消。
+后端source `7719096bfa52a73d8dade04e4b45acd22a41d074`已部署，schema0040，备份隔离恢复PASS；native登录/角色/租户验证PASS。
+04后续执行confirmed-clean 2941条及4个原件迁入；不得使用旧prepared/58文件包，不由A代迁。
+当前具体证据见[功能集成回执](../../governance/receipts/20260917-r1-functional-integration.json)。PRODUCT_ACCEPTANCE=PENDING；用户邮件验证码、迁后资料和账户切换验收保留。
+不重新派旧暂停任务。以下Gate/Batch内容保留执行者与历史范围。
 control/main3-current 是日常开发集成线；阶段评估/用户决定后才推进 integration/main3；formal main3 = NOT_CREATED；main2 = FROZEN。
 Batch02 完整 11-commit exact 历史按 02→03→04→01 已集成；其员工状态保留历史交付范围。
 本轮 A 原办公室 Phase0 实测 VERIFIED，收口后 SILENT；不推断其它独立任务实时状态，无新 worktree 或员工派发。

@@ -508,12 +508,22 @@
       "user_action_required": null,
       "reason": "Nine exact patches; Worker02 Gate1 PASS retained; A focused regression passed; seven canonical gates remain.",
       "execution_authorized": false
+    },
+    {
+      "task_id": "MF-R1-A-FUNCTIONAL-INTEGRATION",
+      "owner": "A",
+      "state": "DONE",
+      "dependencies": [],
+      "unlocks": [],
+      "user_action_required": null,
+      "reason": "Exact patches integrated, runtime deployed with verified backup, old canonical identity retained; 04 migration and final user UAT remain separate.",
+      "execution_authorized": false
     }
   ],
-  "authority": "MF-R1-A-BASELINE",
+  "authority": "MF-R1-A-FUNCTIONAL-INTEGRATION",
   "assignment_scope": "R1 scoped repairs only via coordinator; historical queue entries do not independently authorize work.",
   "current_stage": {
-    "CURRENT_PHASE": "R1_BASELINE_READY",
+    "CURRENT_PHASE": "R1_INTEGRATED_RUNTIME_READY",
     "REAL_A_B_REHYDRATION": "PASS_FROZEN_GUI_GATE1",
     "PRODUCT_ACCEPTANCE": "PENDING",
     "CHATGPT_READ_BRANCH": "control/main3-current",
@@ -525,8 +535,8 @@
     "PROJECT_STATUS": "R1_SCOPED_REPAIR_AUTHORIZED",
     "EXECUTION_AUTHORIZED": "R1_SCOPE_ONLY",
     "NEW_DISPATCH_ALLOWED": "R1_ONLY_BY_COORDINATOR",
-    "BIG_GATE_2": "BLOCKED_EXTERNAL_AUTHORITY",
-    "BIG_GATE_3": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
+    "BIG_GATE_2": "R1_EMAIL_CODE_USER_UAT_PENDING",
+    "BIG_GATE_3": "R1_CONFIRMED_INTAKE_READY_MIGRATION_PENDING"
   },
   "big_gates": [
     {
@@ -537,12 +547,12 @@
     {
       "number": 2,
       "name": "Email lifecycle E2E",
-      "status": "BLOCKED_EXTERNAL_AUTHORITY"
+      "status": "R1_EMAIL_CODE_USER_UAT_PENDING"
     },
     {
       "number": 3,
       "name": "Canonical old-data ownership / data target stability",
-      "status": "BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING"
+      "status": "R1_CONFIRMED_INTAKE_READY_MIGRATION_PENDING"
     },
     {
       "number": 4,

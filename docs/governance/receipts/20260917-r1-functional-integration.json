@@ -1,0 +1,111 @@
+{
+  "task": "MF-R1-A-FUNCTIONAL-INTEGRATION",
+  "status": "SOURCE_AND_BACKEND_RUNTIME_QUALIFIED",
+  "source_sha": "7719096bfa52a73d8dade04e4b45acd22a41d074",
+  "source_tree": "e14d85633748c4319a3ed6c7bbbfe242afc7466e",
+  "deliveries": [
+    "069ab91341bcfe6555bbeeae507ef175cb8b9d34",
+    "85bb4386b680a3f58916d759bebb540e8a069f25",
+    "6c5732878318a1b247fb2d87f418b99622a74429",
+    "c10137169d52d36b084d133a7a534812d631c3ac",
+    "8a91ac70c3969530839ab30690d2a5fe1720a569",
+    "89756ae14bcc096c9887a7622b9d971631dbd5d1",
+    "9e430b7373907fa7be2f8ebb02493dbb18ff1314",
+    "afed403e974f6823d138217311f81bc831c67754",
+    "0da5f80d62d669195f3765b07f5ff2309f4fa7a2"
+  ],
+  "unknown_commits": 0,
+  "conflicts": [],
+  "deployment": {
+    "backend": {
+      "running": true,
+      "env_preserved": true,
+      "security_preserved": true,
+      "data_mounts_preserved": true,
+      "container_id": "df225ff370fd4bdabae4de394fed3b282a1b732e83bbd272ef7823ced0f2d4f8"
+    },
+    "edge": {
+      "running": true,
+      "env_preserved": true,
+      "security_preserved": true,
+      "data_mounts_preserved": true,
+      "container_id": "d0ffd81f963a87c6f38d4edcf04f0bf45bc6319ec5235b67dd8773ad80c0a7cb"
+    },
+    "oidc-loopback-proxy": {
+      "running": true,
+      "env_preserved": true,
+      "security_preserved": true,
+      "data_mounts_preserved": true,
+      "container_id": "2170bb7196239ad3e9d7410834ac3923b9abc302d6f338a6844b353c4d5a7303"
+    },
+    "source_sha": "7719096bfa52a73d8dade04e4b45acd22a41d074",
+    "source_tree": "e14d85633748c4319a3ed6c7bbbfe242afc7466e",
+    "exact_backend_file_count": 923,
+    "schema": "0040_admin_overview_aggregate",
+    "backend_source_bytes": "MATCH_EXACT_GIT_ARCHIVE"
+  },
+  "live": {
+    "TLS": "PASS",
+    "health": "PASS",
+    "native_login": "PASS",
+    "account_id": "mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932",
+    "organization_id": "personal_org_70e67aec5c2745d29b4af58ff63d325e06563c7013300a1145fc8d4fae593f27",
+    "workspace_id": "personal_ws_70e67aec5c2745d29b4af58ff63d325e06563c7013300a1145fc8d4fae593f27",
+    "application_role": "SUPER_ADMIN",
+    "canonical_issuer": "https://localhost:18080/realms/mentorflow",
+    "snapshot": "PASS",
+    "wrong_workspace_rejected": "PASS",
+    "nginx_scoped_limits": [
+      401,
+      413,
+      413
+    ],
+    "business_write": false,
+    "password_persisted": false,
+    "email_sent": false
+  },
+  "checks": {
+    "focused": {
+      "passed": 126,
+      "failed": 0,
+      "skipped": 6,
+      "skip_scope": "Native PG/retained snapshot cases; targeted new PG and confirmed selection runs below"
+    },
+    "followup_native_login_assets_confirmed_selection": {
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "native_postgres_sync": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "native_email_code_bridge": "PASS",
+    "lifecycle_source_renderer": "PASS",
+    "spec_lifecycle_layout": "PASS"
+  },
+  "development_profile": "E:/MentorFlowWorkbenchData/development",
+  "release_profile": "E:/MentorFlowWorkbenchData/release",
+  "workbench_entry": "Start-MentorFlow-Dev-Workbench.cmd",
+  "source_not_frozen": true,
+  "gui_development": "PENDING_POST_PUSH_BUTTON_CHECK",
+  "gui_formal": "PASS_REMOTE_MAIN2_NATIVE_WINDOW",
+  "product_acceptance": "PENDING",
+  "real_user_migration": false,
+  "real_user_cleanup": false,
+  "password_persisted": false,
+  "real_email_sent": false,
+  "integration_main3_mutated": false,
+  "main2_mutated": false,
+  "github_actions_executed": 0,
+  "original_package": "canonical-originals-confirmed-clean.mentorflowpack",
+  "prepared_manifest": "prepared-confirmed-clean.json",
+  "intake_executor": "04_ONLY_AFTER_COORDINATOR_DISPATCH",
+  "remaining_uat": [
+    "Native account switching/remembered login with user-selected options",
+    "In-window email code recovery with user email, single-use and repeated send",
+    "After 04 migration: confirmed plans/progress/history visible",
+    "Restore four originals and verify content; optional public model cancel/retry"
+  ]
+}

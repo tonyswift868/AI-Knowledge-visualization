@@ -1,12 +1,12 @@
 AUTHORITATIVE_FOR = MAIN3_CURRENT
 CHATGPT_READ_BRANCH = control/main3-current
-LAST_VERIFIED_SHA = e3cfc2ac7be3900dce81f36d2c180c806fc5dca8
-LAST_VERIFIED_TREE = 61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8
-UPDATED_AT = 2026-09-16
+LAST_VERIFIED_SHA = 7719096bfa52a73d8dade04e4b45acd22a41d074
+LAST_VERIFIED_TREE = e14d85633748c4319a3ed6c7bbbfe242afc7466e
+UPDATED_AT = 2026-09-17
 
 # MentorFlow Main3 — current review authority
 
-Authority: MF-R1-A-BASELINE. Explicit user decision resumes scoped repairs only; reuse existing code/config/evidence, no new workflow/gate. Current scope/owners: [board r1_batch](docs/governance/ACTIVE_BOARD.json); [workflow](docs/governance/DEVELOPMENT_WORKFLOW.md). Daily integration is control/main3-current; integration/main3 only after stage review/user decision; default main2 unchanged.
+Authority: MF-R1-A-FUNCTIONAL-INTEGRATION. Explicit user decision resumes scoped repairs only; reuse existing code/config/evidence, no new workflow/gate. Current scope/owners: [board r1_batch](docs/governance/ACTIVE_BOARD.json); [workflow](docs/governance/DEVELOPMENT_WORKFLOW.md). Daily integration is control/main3-current; integration/main3 only after stage review/user decision; default main2 unchanged.
 上述 SHA/tree 是最终经过产品源码验证的 convergence source；随后的文档 publication commit
 不能把自身 SHA 写进自身内容。最终远端 publication HEAD 由 Git ref 与交付回执给出，
 [生成 handoff](docs/handoff/WEB_SESSION_LATEST.md) 记录其确切 source snapshot。
@@ -15,7 +15,13 @@ Authority: MF-R1-A-BASELINE. Explicit user decision resumes scoped repairs only;
 旧的“本地单用户、禁止账号/登录/JWT/多租户/云账户/云同步”规则已被 Main3 明确取代。
 不得再据此否定现有 Keycloak、PostgreSQL、租户隔离和 cloud sync 实现。
 
-## 当前 R1 范围与保留的暂停证据
+## 当前功能集成
+九个exact交付及最小跨域接线已集成；source/deployed backend为 `7719096bfa52a73d8dade04e4b45acd22a41d074`，schema0040。真实native登录/角色/租户拒绝与TLS已验证；邮件用户流程和学习用户验收仍PENDING。
+正常Workbench入口：桌面MentorFlow Dev Workbench.lnk → 启动最新开发版；稳定开发profile `E:/MentorFlowWorkbenchData/development`。正式按钮读取origin默认分支；不重建Frozen、不把source smoke写成packaged验收。
+04的新confirmed-clean准备为2941条及4个原件，禁止使用旧prepared.json或58文件包。04后续迁入，A未迁入或清理用户数据。详见[集成回执](docs/governance/receipts/20260917-r1-functional-integration.json)。
+以下暂停字段为2026-09-16历史快照；当前状态与执行权限以[CURRENT_STATE](docs/project/CURRENT_STATE.md)和board.r1_batch为准。
+
+## 历史暂停证据（不派工）
 ```text
 PROJECT_STATUS = R1_SCOPED_REPAIR_AUTHORIZED
 EXECUTION_AUTHORIZED = R1_SCOPE_ONLY

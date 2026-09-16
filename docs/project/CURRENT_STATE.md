@@ -11,29 +11,29 @@ PRODUCT_ACCEPTANCE = PENDING
 PROJECT_STATUS = R1_SCOPED_REPAIR_AUTHORIZED
 EXECUTION_AUTHORIZED = R1_SCOPE_ONLY
 NEW_DISPATCH_ALLOWED = R1_ONLY_BY_COORDINATOR
-BIG_GATE_2 = BLOCKED_EXTERNAL_AUTHORITY
-BIG_GATE_3 = BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING
-EMAIL_LIFECYCLE = BLOCKED_ONLY_BY_QQ_CREDENTIAL_REFERENCE
-OWNER_ACTION = QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED
+BIG_GATE_2 = R1_EMAIL_CODE_USER_UAT_PENDING
+BIG_GATE_3 = R1_CONFIRMED_INTAKE_READY_MIGRATION_PENDING
+EMAIL_LIFECYCLE = SOURCE_LIVE_CAPABILITY_READY_USER_FLOW_PENDING
+OWNER_ACTION = USER_UAT_AFTER_04_SCOPED_MIGRATION
 REAL_SMTP_SEND = NOT_RUN
 P0_PRODUCT_SYNC_WRITE_GAP = CLOSED_SOURCE
-LATEST_WORKER04_DELIVERY = bf8c35999e2c6752a928cf375b9091d9c68bd363
-DELIVERY_INTEGRATED = NO
+LATEST_WORKER04_DELIVERY = 0da5f80d62d669195f3765b07f5ff2309f4fa7a2
+DELIVERY_INTEGRATED = YES
 OLD_WORKSPACE_COUNT = 530
 OLD_PLAN_COUNT = 88
 OLD_RESOURCE_COUNT = 330
 STABLE_ID_MAPPING = AUDITED
-DANGLING_OWNERSHIP_REFERENCES = 55
+DANGLING_OWNERSHIP_REFERENCES = 6_DIAGNOSTIC_ROWS_HELD
 CANONICAL_IMPORT_RLS = NOT_COMPLETE
 REAL_OLD_DATA_MIGRATION = NOT_RUN
-PROJECTION_LIMIT = 256 KiB
-OVER_LIMIT_RECORD_COUNT = 56
-PRIMARY_OWNER_BINDING = UNPROVEN
+PROJECTION_LIMIT = 256_KiB_DEFAULT_8_MiB_THREE_TYPED_AGGREGATES
+OVER_LIMIT_RECORD_COUNT = 56_HISTORICAL_RESOLVED_IN_TYPED_SOURCE
+PRIMARY_OWNER_BINDING = CANONICAL_ISSUER_SUBJECT_ACCOUNT_CONFIRMED
 INTEGRATION_BRANCH = integration/main3
 INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
 CHATGPT_READ_BRANCH = control/main3-current
-KNOWLEDGE_COMMIT = e3cfc2ac7be3900dce81f36d2c180c806fc5dca8
-KNOWLEDGE_TREE = 61a77d2200cb13ed0fe8fd7ab55875fbab04a7d8
+KNOWLEDGE_COMMIT = 7719096bfa52a73d8dade04e4b45acd22a41d074
+KNOWLEDGE_TREE = e14d85633748c4319a3ed6c7bbbfe242afc7466e
 NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
 NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
 ALEMBIC_HEAD = 0040_admin_overview_aggregate
@@ -50,7 +50,7 @@ REAL_A_B_REHYDRATION = PASS_FROZEN_GUI_GATE1
 CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
 PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
 MIGRATION_EXECUTED = NO
-CURRENT_PHASE = R1_BASELINE_READY
+CURRENT_PHASE = R1_INTEGRATED_RUNTIME_READY
 BIG_GATE_1 = PASS
 FULL_FROZEN_GUI_AB = PASS
 COMPLETED_BIG_GATES = 1
@@ -58,24 +58,22 @@ REMAINING_BIG_GATES = 7
 ```
 main2 保持正式默认版本；control/main3-current 为日常开发集成；阶段完成经协调者评估/用户决定后才推进 integration/main3。
 正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-R1-A-BASELINE`；Account MVP 仅保留历史/Frozen smoke 证据。
+当前 authority：`MF-R1-A-FUNCTIONAL-INTEGRATION`；Account MVP 仅保留历史/Frozen smoke 证据。
 GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
 PROFILE_SETTINGS_EVIDENCE = PASS_GATE1_BOUNDED_GUI_SCOPE
 LEARNING_RUN_HISTORY = PASS_GATE1_BOUNDED_STRUCTURED_SCOPE
 PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
 POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
 FULL_ACCOUNT_REHYDRATION = PASS
-## 当前 R1 有界恢复（MF-R1-A-BASELINE）
-用户经协调者明确恢复本批：只修已有实现的问题，复用可用代码、配置和验收证据；不重做账号/同步/工作台，不新加流程或门禁。
-协调者 task `01a0ab4c-8a4a-7610-ac35-7b106b1420d8`；exact start `0536acb33a3a6694f71aa0dcd7074060b28e7f98`。
-[现有board的r1_batch](../governance/ACTIVE_BOARD.json)是唯一当前任务表；职责/依赖/新办公室/旧分支保留均记于其中。
-01服务端身份与账号生命周期；02 Workbench/启动器；03 Desktop登录/本机凭据；04数据同步/原件迁移；A跨域集成。
-`desktop/main.py`仅03接线，01提供接口不得直接改；03/04不得取得初始账号密码，秘密不进文档/dispatch/代码/日志。
-用户已授权tonyswift超管及本人数据迁移，邮箱2153346834@qq.com已确认；A本轮仅基线，不部署/建账号/发信/迁移。
-[暂停封存](REASSESSMENT_PAUSE_20260916.md)保留历史，仅本批范围解除；不重启旧dispatch或全仓架构重评。
-Gate1原证据不重跑；04旧Gate3 exact `bf8c35999e2c6752a928cf375b9091d9c68bd363`仍未集成，56条超限/55条quarantine/owner UNPROVEN不改写为PASS。
-禁止truncate、silent drop及未经评审提高projection限制；username/display-name/email文本不是canonical ownership authority。
-C runtime / D scratch / E durable；不得改全局Codex存储；本轮暂不push，protected refs/default不动。
+## 当前 R1 功能集成（MF-R1-A-FUNCTIONAL-INTEGRATION）
+本轮新授权取代 A 的 baseline-only 限制：仅 control/main3-current 消费九个 exact patches，完成必要接线、聚焦验证和后端限定路由部署；不推进 integration/main3/default/main2。
+产品 source `7719096bfa52a73d8dade04e4b45acd22a41d074`；部署后923个backend文件逐字节匹配 Git archive，schema0040不变；应用/身份库部署前备份及隔离恢复验证PASS。
+真实 native client 登录tonyswift、SUPER_ADMIN、workspace发现、snapshot、错误workspace拒绝PASS；公开TLS与OLD canonical issuer保持，未保存密码/未发信/未播种账号数据。
+正常 Workbench 以远端control/default两个按钮固定各自SHA；开发稳定profile为 `E:/MentorFlowWorkbenchData/development`，正式为 `E:/MentorFlowWorkbenchData/release`，源码/cache在D；不重建Frozen。
+账号内验证码页面来自现有renderer；bootstrap将当前vault资源服务绑定恢复页，原件恢复后台执行、可取消，账号切换丢弃旧完成回调；公共模型缓存仅复用固定catalog大小/hash匹配文件。
+04追加 `0da5f80d62d669195f3765b07f5ff2309f4fa7a2`：已确认面试整组+当前学习内容共2941条准备，4个真实原件；旧prepared.json/58文件包仅历史。混合画像及未确认组保留备份，6条诊断孤儿行保留，不删除源数据。
+真实迁入/业务清理由04获后续授权执行；A未迁移。当前环境见[功能集成回执](../governance/receipts/20260917-r1-functional-integration.json)，具体筛选见[04证据](../release/MF-R1-04-DATA-REPAIR/README.md)。
+本轮不是Gate1–8重验收；PRODUCT_ACCEPTANCE=PENDING。下面2026-09-16的56条超限/55条quarantine/owner UNPROVEN是历史判断，不覆盖本轮合同及canonical绑定。
 ## 当前 Gate1 authority（2026-09-16 dispatch36）
 BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
 原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。
