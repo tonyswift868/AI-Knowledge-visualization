@@ -24,6 +24,30 @@ export function ReviewDemoApp() {
   const [recovered, setRecovered] = useState(false)
   const [hint, setHint] = useState('')
   const [explanation, setExplanation] = useState('')
+  const [available, setAvailable] = useState<Pick<ReviewCampaignView, 'campaign_id' | 'state' | 'round'>[]>([])
+
+  async function openExisting(id: string) {
+    const value = await perform(() => reviewApi.get(id))
+    if (value) {
+      localStorage.setItem(REVIEW_CAMPAIGN_STORAGE_KEY, value.campaign_id)
+      setRecovered(true)
+    }
+  }
+
+  async function discoverExisting() {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await reviewApi.list()
+      setAvailable(result.items)
+      if (result.items.length === 1) await openExisting(result.items[0].campaign_id)
+      else if (!result.items.length) setError('当前学习空间尚无已保存的复习活动。')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '读取复习活动失败')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     const campaignId = localStorage.getItem(REVIEW_CAMPAIGN_STORAGE_KEY)
@@ -105,7 +129,7 @@ export function ReviewDemoApp() {
     return (
       <main className="review-shell review-welcome">
         <section className="welcome-card">
-          <span className="demo-pill">DEMO · 完全离线</span>
+          <span className="demo-pill">DEMO · 本地题库</span>
           <p className="eyebrow">MentorFlow Review</p>
           <h1>不是“看过”，是能从记忆里取出来。</h1>
           <p className="welcome-copy">10 个学习科学概念，20 道可信题，固定 3 轮。弱项会滚回确认，全程不需要 API Key。</p>
@@ -114,7 +138,13 @@ export function ReviewDemoApp() {
             <span><strong>20</strong> questions</span>
             <span><strong>3</strong> fixed rounds</span>
           </div>
-          <button className="primary wide" onClick={createCampaign} disabled={busy}>创建离线复习活动</button>
+          <button className="primary wide" onClick={createCampaign} disabled={busy}>创建复习活动</button>
+          <button className="ghost wide" onClick={discoverExisting} disabled={busy}>恢复已有复习活动</button>
+          {available.length > 1 && available.map((item, index) => (
+            <button key={item.campaign_id} className="ghost wide" disabled={busy} onClick={() => openExisting(item.campaign_id)}>
+              继续复习活动 {index + 1} · {item.round.display}
+            </button>
+          ))}
           {error && <p role="alert" className="review-error">{error}</p>}
         </section>
       </main>

@@ -57,6 +57,11 @@ def create_campaign(body: CreateCampaignIn, request: Request) -> dict:
     return _service(request).create_demo_campaign()
 
 
+@router.get("/campaigns")
+def list_campaigns(request: Request) -> dict:
+    return {"items": _service(request).list_campaigns()}
+
+
 @router.get("/campaigns/{campaign_id}")
 def get_campaign(campaign_id: str, request: Request) -> dict:
     return _service(request).get_campaign(campaign_id)

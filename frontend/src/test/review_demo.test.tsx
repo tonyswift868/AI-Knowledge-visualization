@@ -27,7 +27,27 @@ describe('ReviewDemoApp', () => {
     render(<ReviewDemoApp />)
     expect(screen.getByText('10', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText('20', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '创建离线复习活动' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '创建复习活动' })).toBeEnabled()
+  })
+
+  it('discovers the bound account campaign on a fresh device without localStorage', async () => {
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => response({ items: [{ campaign_id: activeCampaign.campaign_id, state: activeCampaign.state, round: activeCampaign.round }] }))
+      .mockImplementationOnce(() => response(activeCampaign))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ReviewDemoApp />)
+    fireEvent.click(screen.getByRole('button', { name: '恢复已有复习活动' }))
+    expect(await screen.findByLabelText('用自己的话回答')).toBeInTheDocument()
+    expect(localStorage.getItem(REVIEW_CAMPAIGN_STORAGE_KEY)).toBe(activeCampaign.campaign_id)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/review/campaigns')
+  })
+
+  it('keeps discovery failure visible instead of claiming an empty account', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { message: '同步尚未确认' } }), { status: 503 }))))
+    render(<ReviewDemoApp />)
+    fireEvent.click(screen.getByRole('button', { name: '恢复已有复习活动' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('同步尚未确认')
+    expect(localStorage.getItem(REVIEW_CAMPAIGN_STORAGE_KEY)).toBeNull()
   })
 
   it('never renders the accepted answer before submission', async () => {

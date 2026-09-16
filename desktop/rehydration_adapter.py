@@ -25,9 +25,13 @@ def project(state, context):
         name=r['payload']['filename'], kind={'USER_FILE':'file', 'MODEL':'model', 'OTHER':'other', 'UNKNOWN':'unknown'}[
             r['product_classification']], missing=r['device_availability'] == 'MISSING_ON_THIS_DEVICE',
         verified_redownload=False, package_supported=False) for r in state['resources']]
+    def supported_count(domain):
+        value = observation.get('counts', {}).get(domain)
+        return value if domain in learning['supported_scope'] and type(value) is int and value >= 0 else None
     return dict(schema='mentorflow.rehydration-ui.v1', account_key=context.account_id,
         revision=state['snapshot_revision'], plans=plans, resources=resources,
-        progress_count=len(state['progress']), review_count=None, history_count=None,
+        progress_count=len(state['progress']), review_count=supported_count('review_fsrs'),
+        history_count=supported_count('teaching_chat_history'),
         empty_account=False, empty_state=empty, supported_scope=learning['supported_scope'],
         server_confirmed=True, trusted_cache=False, last_sync=observation['server_confirmed_at'])
 

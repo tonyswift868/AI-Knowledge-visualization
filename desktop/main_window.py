@@ -2226,6 +2226,12 @@ rehydration_session=None,
         cards.setVerticalSpacing(16)
         tools = (
             (
+                "复习",
+                "使用本地题库练习回忆；账号模式下可继续已同步的复习活动。",
+                "review",
+                "打开复习",
+            ),
+            (
                 "教师闲聊",
                 "保留自由交流，不会写入学习计划；需要正式学习时回到创建计划。",
                 "casual",

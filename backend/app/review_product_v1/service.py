@@ -153,6 +153,13 @@ class ReviewProductService:
     def get_campaign(self, campaign_id: str) -> dict:
         return self._projection(self._record(campaign_id))
 
+    def list_campaigns(self) -> list[dict]:
+        """Discover only this bound service's already restored campaigns."""
+        return [
+            {key: view[key] for key in ('campaign_id', 'state', 'round')}
+            for view in (self.get_campaign(key) for key in sorted(self._campaigns))
+        ]
+
     async def next_question(self, campaign_id: str) -> dict:
         record = self._record(campaign_id)
         async with record.lock:

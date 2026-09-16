@@ -55,6 +55,17 @@ def test_current_transport_producer_shared_resource_and_progress(page):
     assert '50%' in value.plans[0].progress and '暂不支持' in page.summary.text()
 
 
+def test_supported_review_and_history_counts_are_server_observations(page):
+    raw = server_snapshot()
+    raw['learning_state']['supported_scope'] += ['review_fsrs', 'teaching_chat_history']
+    raw['observation']['counts'].update(review_fsrs=2, teaching_chat_history=4)
+    t = session(raw); page.authenticated(t.context.account_id)
+    assert present(page, page.start_sync(), t.bootstrap())
+    assert page.model.snapshot.review_count == 2
+    assert page.model.snapshot.history_count == 4
+    assert '暂不支持' not in page.summary.text()
+
+
 @pytest.mark.parametrize('empty,caption,allowed',[
     ('TRUE_EMPTY_SUPPORTED_SCOPE','范围内暂无',True),
     ('PARTIAL_UNSUPPORTED','部分学习数据',True),('NOT_INITIALIZED','尚未完成初始化',False)])

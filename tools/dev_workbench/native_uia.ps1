@@ -7,8 +7,11 @@ param(
     [Parameter(Mandatory)][string]$ExePath,
     [Parameter(Mandatory)][string]$Sha256,
     [long]$Hwnd = 0,
-    [ValidateSet('Windows','Inspect','Invoke','SetValue','Select','Toggle','Close','ClickTarget')][string]$Action = 'Inspect',
+    [ValidateSet('Windows','Inspect','Invoke','SetValue','Select','Toggle','Close','ClickTarget','ClickWindowPoint')][string]$Action = 'Inspect',
     [string]$AutomationId = '', [string]$Name = '', [string]$ControlType = '',
+    [string]$RuntimeId = '',
+    [int]$PointX = -1, [int]$PointY = -1,
+    [string]$FrameEvidence = '',
     [string]$Value = '', [string]$ValueFile = '', [string]$ValueKey = '',
     [Parameter(Mandatory)][string]$EvidenceRoot
 )
@@ -66,23 +69,62 @@ if (-not $Hwnd) { throw 'EXACT_HWND_REQUIRED' }
 $window=[Windows.Automation.AutomationElement]::FromHandle([IntPtr]$Hwnd)
 if ($window.Current.ProcessId -ne $TargetPid) { throw 'HWND_PROCESS_MISMATCH' }
 $all=@($window)+@($window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition))
+if ($Action -eq 'ClickWindowPoint') {
+    $framePath=Require-OwnedPath $FrameEvidence
+    $frame=Get-Content -LiteralPath $framePath -Raw | ConvertFrom-Json
+    $png=Require-OwnedPath $frame.path
+    $age=([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($frame.captured_at)).TotalSeconds
+    if($frame.pid -ne $TargetPid -or $frame.hwnd -ne $Hwnd -or $frame.artifact_sha256 -ne $Sha256 -or
+       (Get-FileHash -LiteralPath $png -Algorithm SHA256).Hash -ne $frame.image_sha256 -or
+       $age -lt 0 -or $age -gt 120){throw 'STALE_OR_WRONG_FRAME'}
+    if(-not $Name -or $PointX -lt 0 -or $PointY -lt 0 -or $PointX -ge $frame.width -or $PointY -ge $frame.height){throw 'OBSERVED_WINDOW_POINT_REQUIRED'}
+    # Explicit visual fallback for Qt item widgets omitted from its UIA tree.
+    # No OS input: the observed point is sent only to this hash-bound HWND.
+    $r=$window.Current.BoundingRectangle
+    if([Math]::Abs($r.X-$frame.uia_rect[0]) -gt 1 -or [Math]::Abs($r.Y-$frame.uia_rect[1]) -gt 1 -or
+       [Math]::Abs($r.Width-$frame.uia_rect[2]) -gt 1 -or [Math]::Abs($r.Height-$frame.uia_rect[3]) -gt 1){throw 'WINDOW_MOVED_SINCE_FRAME'}
+    $point=[MFGuiIdentity+POINT]::new();$point.X=$frame.window_rect[0]+$PointX;$point.Y=$frame.window_rect[1]+$PointY
+    if(-not [MFGuiIdentity]::ScreenToClient([IntPtr]$Hwnd,[ref]$point)){throw 'COORDINATE_CONVERSION_FAILED'}
+    $position=[IntPtr](($point.Y -shl 16) -bor ($point.X -band 65535));[IntPtr]$result=0
+    foreach($message in @(0x201,0x202)) {
+        Assert-Process
+        if($window.Current.ProcessId -ne $TargetPid){throw 'STALE_PROCESS_IDENTITY'}
+        $buttons=if($message -eq 0x201){1}else{0}
+        if([MFGuiIdentity]::SendMessageTimeout([IntPtr]$Hwnd,$message,[IntPtr]$buttons,$position,2,2000,[ref]$result) -eq [IntPtr]::Zero){throw 'TARGET_MESSAGE_FAILED'}
+    }
+    $event=@{action=$Action;pattern='FRAME_BOUND_HWND_WM_LBUTTON';pid=$TargetPid;hwnd=$Hwnd;observed_name=$Name;frame_sha256=$frame.image_sha256;foreground_before=$before;foreground_after=(Foreground);os_sendinput_count=0;value_recorded=$false;success=$true}
+    $line=$event|ConvertTo-Json -Depth 6 -Compress
+    [IO.File]::AppendAllText((Join-Path $EvidenceRoot 'uia-events.jsonl'),$line+[Environment]::NewLine)
+    $line;exit
+}
+if ($PointX -ge 0 -or $PointY -ge 0) {
+    throw 'POINT_REQUIRES_FRAME_BOUND_ACTION'
+}
 if ($Action -eq 'Inspect') {
     $items=@($all | ForEach-Object {
         $c=$_.Current
         if ($c.ProcessId -eq $TargetPid) {
-            @{name=$(if($c.IsPassword){'[PASSWORD_CONTROL]'}else{$c.Name});automation_id=$c.AutomationId;type=$c.ControlType.ProgrammaticName;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;focused=$c.HasKeyboardFocus;hwnd=$c.NativeWindowHandle;patterns=@($_.GetSupportedPatterns() | ForEach-Object {$_.ProgrammaticName})}
+            $displayValue=$null
+            # Only this test-owned plan editor's goal/interests are observable.
+            # Never inspect login, provider or credential field values.
+            if (-not $c.IsPassword -and $c.ControlType -eq [Windows.Automation.ControlType]::Edit -and $c.AutomationId -like 'QApplication.MainWindow.*.PlansPage.*.QLineEdit') {
+                $displayValue=$_.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            }
+            @{name=$(if($c.IsPassword){'[PASSWORD_CONTROL]'}else{$c.Name});runtime_id=($_.GetRuntimeId() -join '.');plan_display_value=$displayValue;automation_id=$c.AutomationId;type=$c.ControlType.ProgrammaticName;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;focused=$c.HasKeyboardFocus;hwnd=$c.NativeWindowHandle;patterns=@($_.GetSupportedPatterns() | ForEach-Object {$_.ProgrammaticName})}
         }
     })
-    $result=@{pid=$TargetPid;hwnd=$Hwnd;title=$window.Current.Name;foreground=$before;elements=$items}
+    $r=$window.Current.BoundingRectangle
+    $result=@{pid=$TargetPid;hwnd=$Hwnd;title=$window.Current.Name;window_rect=@($r.X,$r.Y,$r.Width,$r.Height);foreground=$before;elements=$items}
     $result | ConvertTo-Json -Depth 8
     exit
 }
 if ($Action -eq 'Close') {$selected=@($window)} else {
-    if (-not $AutomationId -and -not $Name) { throw 'ELEMENT_IDENTITY_REQUIRED' }
+    if (-not $AutomationId -and -not $Name -and -not $RuntimeId) { throw 'ELEMENT_IDENTITY_REQUIRED' }
     $selected=@($all | Where-Object {
         $_.Current.ProcessId -eq $TargetPid -and
         (-not $AutomationId -or $_.Current.AutomationId -eq $AutomationId) -and
         (-not $Name -or $_.Current.Name -eq $Name) -and
+        (-not $RuntimeId -or ($_.GetRuntimeId() -join '.') -eq $RuntimeId) -and
         (-not $ControlType -or $_.Current.ControlType.ProgrammaticName -eq ('ControlType.'+$ControlType))
     })
 }
@@ -127,7 +169,7 @@ switch ($Action) {
     Toggle { $pattern.Toggle() }
     Close { $pattern.Close() }
 }
-$event=@{action=$Action;pattern=$patternName;pid=$TargetPid;hwnd=$Hwnd;automation_id=$AutomationId;foreground_before=$before;foreground_after=(Foreground);os_sendinput_count=0;value_recorded=$false;success=$true}
+$event=@{action=$Action;pattern=$patternName;pid=$TargetPid;hwnd=$Hwnd;automation_id=$AutomationId;runtime_id=($element.GetRuntimeId() -join '.');foreground_before=$before;foreground_after=(Foreground);os_sendinput_count=0;value_recorded=$false;success=$true}
 $line=$event | ConvertTo-Json -Depth 6 -Compress
 [IO.File]::AppendAllText((Join-Path $EvidenceRoot 'uia-events.jsonl'),$line+[Environment]::NewLine)
 $line

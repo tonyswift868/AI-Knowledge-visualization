@@ -89,6 +89,7 @@ async function reviewRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const reviewApi = {
+  list: () => reviewRequest<{ items: Pick<ReviewCampaignView, 'campaign_id' | 'state' | 'round'>[] }>('/campaigns'),
   create: () => reviewRequest<ReviewCampaignView>('/campaigns', { method: 'POST', body: JSON.stringify({ mode: 'demo' }) }),
   get: (campaignId: string) => reviewRequest<ReviewCampaignView>(`/campaigns/${campaignId}`),
   startRound: (campaignId: string) => reviewRequest<ReviewCampaignView>(`/campaigns/${campaignId}/rounds/start`, { method: 'POST' }),
