@@ -25,7 +25,7 @@ def test_registration_fields_share_the_native_reset_password_pair():
 def test_future_shell_cannot_submit_network_forms_or_override_native_pages():
     source = (LOGIN / 'mentorflow-account-lifecycle.ftl').read_text(encoding='utf-8')
     forms = re.findall(r'<form\b[^>]+>', source)
-    assert len(forms) == 3
+    assert len(forms) == 4
     assert all('method="dialog"' in form and 'action=' not in form for form in forms)
     assert not (LOGIN / 'register.ftl').exists()
     assert not (LOGIN / 'login-reset-password.ftl').exists()

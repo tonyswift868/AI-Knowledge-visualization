@@ -90,13 +90,23 @@ export function mountAccountLifecycle(root, options = {}) {
         find('#mf-register-status').textContent = model.screen === 'REGISTER_SUBMITTING' ? '正在提交注册申请…'
             : model.registrationError === 'REQUEST_FAILED' ? '暂时无法提交，请稍后重试。' : '';
         register.querySelectorAll('input, [data-mf-password-reveal]').forEach(input => input.disabled = model.screen === 'REGISTER_SUBMITTING');
-        find('#mf-forgot-submit').disabled = !model.capabilities.forgot_password || model.screen !== 'FORGOT_REQUEST' || !identity.value.trim();
+        find('#mf-forgot-submit').disabled = !model.capabilities.forgot_password || model.screen !== 'FORGOT_REQUEST' || !identity.value.trim() || !identity.validity.valid || model.resendSeconds > 0;
         identity.disabled = model.screen === 'FORGOT_SUBMITTING';
-        find('#mf-forgot-status').textContent = model.screen === 'FORGOT_SUBMITTING' ? '正在提交请求…' : '';
-        find('#mf-forgot-receipt').textContent = FORGOT_RECEIPT;
-        find('#mf-reset-status').textContent = model.screen === 'RESET_WAITING' ? '正在等待账号服务确认重置结果。'
-            : ({valid: '请设置新密码。', invalid: '链接无效，请返回登录重新开始。',
-                expired: '链接已过期，请返回登录重新开始。', used: '链接已使用，请返回登录重新开始。'})[model.resetState];
+        find('#mf-forgot-status').textContent = model.screen === 'FORGOT_SUBMITTING' ? '正在发送验证码…' : model.resetError;
+        find('#mf-forgot-submit').textContent = model.resendSeconds ? `发送验证码（${model.resendSeconds} 秒）` : '发送验证码';
+        find('#mf-forgot-receipt').textContent = '如果绑定邮箱符合条件，我们会发送 6 位验证码。请在当前窗口输入，10 分钟内有效。';
+        const code = find('#mf-reset-code');
+        code.disabled = model.screen !== 'FORGOT_SENT' || !!model.pendingRequest;
+        find('#mf-code-submit').disabled = code.disabled || !/^[0-9]{6}$/.test(code.value);
+        find('#mf-code-status').textContent = model.screen === 'CODE_VERIFYING' ? '正在验证…' : model.resetError;
+        find('#mf-code-resend').disabled = !!model.pendingRequest || model.resendSeconds > 0;
+        find('#mf-code-resend').textContent = model.resendSeconds ? `重新发送验证码（${model.resendSeconds} 秒）` : '重新发送验证码';
+        find('#mf-reset-restart').hidden = model.resetState === 'valid';
+        find('#mf-reset-restart').disabled = !!model.pendingRequest;
+        find('#mf-reset-status').textContent = model.resetError || (model.screen === 'RESET_WAITING' ? '正在等待账号服务确认重置结果。'
+            : ({valid: '请设置新密码。', invalid: '验证无效，请返回登录重新开始。',
+                expired: '验证已过期，请返回登录重新开始。', used: '验证已使用，请返回登录重新开始。'})[model.resetState]);
+        if (model.resetState !== 'valid') reset.reset();
         reset.querySelectorAll('input, [data-mf-password-reveal]').forEach(input => input.disabled = model.resetState !== 'valid' || model.screen === 'RESET_WAITING');
         validateRegister(); registerPair.refresh(); resetPair.refresh();
     };
@@ -116,16 +126,23 @@ export function mountAccountLifecycle(root, options = {}) {
     });
     on(forgot, 'submit', event => {
         event.preventDefault();
-        if (identity.value.trim() && model.requestForgot()) emit('forgot_password');
+        if (identity.value.trim() && identity.validity.valid && model.requestForgot()) emit('forgot_password');
     });
     on(reset, 'submit', event => {
         const blocked = event.defaultPrevented;
         event.preventDefault();
-        if (!blocked && model.requestReset()) { reset.reset(); resetPair.reset(); emit('reset_password'); }
+        if (!blocked && model.requestReset()) { emit('reset_password'); reset.reset(); resetPair.reset(); }
     });
+    on(find('#mf-reset-code'), 'input', render);
+    on(find('#mf-code-form'), 'submit', event => {
+        event.preventDefault();
+        if (/^[0-9]{6}$/.test(find('#mf-reset-code').value) && model.requestCodeVerify()) emit('verify_code');
+    });
+    on(find('#mf-code-resend'), 'click', () => { if (model.requestCodeResend()) emit('resend_code'); });
+    on(find('#mf-reset-restart'), 'click', () => emit('restart_reset'));
     on(find('#mf-resend'), 'click', () => { if (model.requestResend()) emit('resend_verification'); });
     const unsubscribe = model.subscribe(render);
-    const timer = setInterval(() => { if (model.screen === 'VERIFY_PENDING') render(); }, 1000);
+    const timer = setInterval(() => { if (['VERIFY_PENDING','FORGOT_REQUEST','FORGOT_SENT','CODE_INVALID'].includes(model.screen)) render(); }, 1000);
     const instance = {model, render, dispose() {
         clearInterval(timer); unsubscribe(); listeners.abort(); registerPair.destroy(); resetPair.destroy();
         root.querySelectorAll('form').forEach(form => form.reset()); choices.replaceChildren(); mounted.delete(root);

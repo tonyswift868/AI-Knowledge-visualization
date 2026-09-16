@@ -1330,15 +1330,13 @@ class MentorFlowApplication:
         if generation != self._login_generation or self._closing or self.login_gate is None:
             return
         if completed and not registration:
-            from .account_identity import issuer_hash
-            from .enterprise_oidc import DesktopOidcConfig
-            active_issuer=issuer_hash(DesktopOidcConfig.from_env().canonical_identity_issuer)
-            name=getattr(getattr(self._auth_pane,'bridge',None),'account_name',None)
-            for row in self._login_session.registry.snapshot()['accounts']:
-                if name and row['issuer_hash']==active_issuer and row.get('username')==name and row['remember_password']:
-                    try: self._login_session.forget_password(self._login_session.registry.profile(row))
-                    except Exception:
-                        self.login_gate.notice_label.setText('密码已重置，本机旧密码未能删除，请移除本机账号后重新登录。')
+            account_id=getattr(getattr(self._auth_pane,'bridge',None),'completed_account_id',None)
+            row=self._login_session.registry.get(account_id) if account_id else None
+            if row is not None:
+                try:
+                    self._login_session.logout(self._login_session.registry.profile(row), remote=False, forget_password=True)
+                except Exception:
+                    self.login_gate.notice_label.setText('密码已重置，本机旧凭据未能删除，请移除本机账号后重新登录。')
         self._invalidate_login_jobs()
         self._remembered_profile = None
         self._last_login_result = None

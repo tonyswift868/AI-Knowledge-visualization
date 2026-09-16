@@ -3,7 +3,7 @@ export const FORGOT_RECEIPT = '如果该账号存在，我们会向绑定邮箱�
 export const FUTURE_PASSWORD_PRESENTATION = Object.freeze({minimum: 8, maximum: 128});
 const SCREENS = new Set(['LOGIN', 'ACCOUNT_SELECT', 'REGISTER', 'REGISTER_SUBMITTING',
     'VERIFY_PENDING', 'FORGOT_REQUEST', 'FORGOT_SUBMITTING', 'FORGOT_SENT',
-    'RESET_PASSWORD', 'RESET_WAITING']);
+    'RESET_PASSWORD', 'RESET_WAITING', 'CODE_VERIFYING', 'CODE_INVALID']);
 
 export function maskEmail(value) {
     if (typeof value !== 'string' || /\s/.test(value)) return '已绑定邮箱';
@@ -30,6 +30,7 @@ export class AccountLifecycleState {
         }
         this.screen = SCREENS.has(initialScreen) ? initialScreen : 'LOGIN';
         this.selectedAccount = null;
+        this.resetError = '';
         this.registrationError = '';
         this.maskedEmail = '';
         this.resendState = 'READY';
@@ -129,11 +130,37 @@ export class AccountLifecycleState {
     }
     requestReset() {
         if (!this.capabilities.forgot_password || this.screen !== 'RESET_PASSWORD' || this.resetState !== 'valid') return false;
+        this.resetError = '';
         this.beginRequest('reset_password');
         this.screen = 'RESET_WAITING'; this.changed(); return true;
     }
-    // Intentionally no reset-success transition until owner 01 defines the
-    // canonical completion signal. Neither clicks nor callbacks imply success.
+    requestCodeVerify() {
+        if (this.screen !== 'FORGOT_SENT' || this.pendingRequest) return false;
+        this.beginRequest('verify_code'); this.resetError = '';
+        this.screen = 'CODE_VERIFYING'; this.changed(); return true;
+    }
+    requestCodeResend() {
+        if (!['FORGOT_SENT', 'CODE_INVALID'].includes(this.screen) || this.pendingRequest || this.resendSeconds) return false;
+        this.beginRequest('resend_code'); this.resetError = ''; this.changed(); return true;
+    }
+    codeResult(value) {
+        if (['expired', 'restart', 'completed'].includes(value.kind)) {
+            this.pendingRequest = null;
+        } else {
+            const kind = {request: ['forgot_password', 'resend_code'], verify: ['verify_code'], complete: ['reset_password']}[value.kind];
+            if (!kind?.some(k => this.acceptsResult(k, value.requestId))) return false;
+            this.pendingRequest = null;
+        }
+        this.resetError = value.message || '';
+        this.setCooldown(value.resendAfter || 0);
+        if (value.kind === 'completed') { this.resetState='used'; this.screen='LOGIN'; }
+        else if (value.stage === 'password') { this.resetState='valid'; this.screen='RESET_PASSWORD'; }
+        else if (value.stage === 'code') { this.resetState='invalid'; this.screen='FORGOT_SENT'; }
+        else if (value.stage === 'email') { this.resetState='invalid'; this.screen='FORGOT_REQUEST'; }
+        else if (['RESET_PASSWORD','RESET_WAITING'].includes(this.screen)) { this.resetState='expired'; this.screen='RESET_PASSWORD'; }
+        else { this.resetState='invalid'; this.screen='CODE_INVALID'; }
+        this.changed(); return true;
+    }
     setRememberPassword(checked) {
         this.rememberPassword = checked === true;
         if (!this.rememberPassword) this.autoLogin = false;

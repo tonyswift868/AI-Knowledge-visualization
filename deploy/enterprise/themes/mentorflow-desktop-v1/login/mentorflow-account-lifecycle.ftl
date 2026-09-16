@@ -62,21 +62,29 @@
             <section data-screen="FORGOT_REQUEST FORGOT_SUBMITTING" hidden>
                 <h2 tabindex="-1">找回密码</h2>
                 <form id="mf-forgot-form" method="dialog" novalidate>
-                    <label for="mf-forgot-identity">账号或邮箱</label>
-                    <input class="pf-c-form-control" id="mf-forgot-identity" name="username" autocomplete="username" required>
+                    <label for="mf-forgot-identity">绑定邮箱</label>
+                    <input class="pf-c-form-control" id="mf-forgot-identity" name="email" type="email" autocomplete="email" required>
                     <p id="mf-forgot-status" role="status"></p>
-                    <button type="submit" id="mf-forgot-submit" class="mf-primary" disabled>发送重置邮件</button>
+                    <button type="submit" id="mf-forgot-submit" class="mf-primary" disabled>发送验证码</button>
                 </form>
                 <button type="button" data-navigate="LOGIN">返回登录</button>
             </section>
-            <section data-screen="FORGOT_SENT" hidden>
-                <h2 tabindex="-1">请检查邮箱</h2>
+            <section data-screen="FORGOT_SENT CODE_VERIFYING CODE_INVALID" hidden>
+                <h2 tabindex="-1">输入邮箱验证码</h2>
                 <p id="mf-forgot-receipt" role="status"></p>
+                <form id="mf-code-form" method="dialog" novalidate>
+                    <label for="mf-reset-code">6 位验证码</label>
+                    <input class="pf-c-form-control" id="mf-reset-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+                    <p id="mf-code-status" role="status" aria-live="polite"></p>
+                    <button id="mf-code-submit" type="submit" class="mf-primary" disabled>验证验证码</button>
+                </form>
+                <button id="mf-code-resend" type="button" disabled>重新发送验证码</button>
                 <button type="button" data-navigate="LOGIN">返回登录</button>
             </section>
             <section data-screen="RESET_PASSWORD RESET_WAITING" hidden>
                 <h2 tabindex="-1">设置新密码</h2>
                 <p id="mf-reset-status" role="status"></p>
+                <button id="mf-reset-restart" type="button" hidden>重新获取验证码</button>
                 <form id="mf-reset-form" method="dialog" novalidate>
                     <@passwordPair.fields prefix="reset-password" serverErrors=false autofocus=false/>
                     <button type="submit" data-mf-pair-submit class="mf-primary" disabled>设置新密码</button>

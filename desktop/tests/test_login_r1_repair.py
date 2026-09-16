@@ -105,44 +105,21 @@ def test_old_registry_without_username_preserved(session):
     assert session.registry.get(a.account_id) is not None
 
 
-def test_backend_capabilities_and_existing_forgot_bridge(app_context,monkeypatch):
+def test_backend_capabilities_gate(app_context,monkeypatch):
     from desktop.lifecycle_client import LifecycleClient
-    from desktop.lifecycle_pane import Bridge
-    from desktop.reset_completion import ResetCompletionClient
-    app,qt,_=app_context
-    import httpx
     from desktop.enterprise_oidc import DesktopOidcConfig
+    import httpx
+    app,qt,_=app_context
     monkeypatch.setattr(DesktopOidcConfig,'from_env',staticmethod(lambda:DesktopOidcConfig(ISSUER,'mentorflow-desktop','mentorflow-api',API)))
     original_init=LifecycleClient.__init__
-    monkeypatch.setattr(LifecycleClient,'__init__',lambda self,config:original_init(self,config,http_client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={})))) )
-    actions=[]
-    async def action(self,name,payload=None):
-        actions.append(name)
-        if name=='capabilities':return {'register':False,'forgot_password':True}
-        assert name=='forgot' and payload=={'account':'synthetic-a'}
-        return {'observation':{'transaction_id':'a'*43}}
-    monkeypatch.setattr(LifecycleClient,'action',action)
+    monkeypatch.setattr(LifecycleClient,'__init__',lambda self,config:original_init(self,config,http_client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={'register':False,'forgot_password':True})))) )
     app._show_login_gate()
     wait_until(lambda:app.login_gate.forgot_password_button.isEnabled())
     assert not app.login_gate.register_button.isEnabled()
-    bridge=Bridge(app.login_gate);results=[];completed=[]
-    bridge.result.connect(lambda raw:results.append(json.loads(raw)))
-    bridge.back.connect(completed.append)
-    async def done(self,transaction,cancelled):assert transaction=='a'*43
-    monkeypatch.setattr(ResetCompletionClient,'wait_completed',done)
-    bridge.forgot('synthetic-a',7)
-    wait_until(lambda:bool(completed))
-    assert completed==[True] and results[0]['accepted'] is True
-    assert app._last_login_result is None
-    async def unavailable(self,*args,**kwargs):raise RuntimeError('private-network-body')
-    monkeypatch.setattr(LifecycleClient,'action',unavailable)
-    failed=Bridge(app.login_gate);failures=[]
-    failed.result.connect(lambda raw:failures.append(json.loads(raw)))
-    failed.forgot('synthetic-a',8);wait_until(lambda:bool(failures))
-    assert failures[0]['stage']=='request' and failures[0]['accepted'] is False
-    assert 'private-network-body' not in json.dumps(failures)
 
-def test_reset_completion_clears_only_matching_issuer_credentials(app_context,monkeypatch):
+
+@pytest.mark.parametrize('known_account', [True, False])
+def test_reset_completion_clears_only_canonical_account_credentials(app_context,monkeypatch,known_account):
     from dataclasses import replace
     from desktop.account_identity import AccountIdentity
     app,qt,_=app_context
@@ -153,9 +130,9 @@ def test_reset_completion_clears_only_matching_issuer_credentials(app_context,mo
     app._login_session.accept(other,remember=True,automatic=False,remember_password=True,
                              username='same-display-username',password='other-only')
     app._show_login_gate()
-    app._auth_pane=SimpleNamespace(bridge=SimpleNamespace(account_name='same-display-username'),dispose=lambda:None)
+    app._auth_pane=SimpleNamespace(bridge=SimpleNamespace(completed_account_id=a.account_id if known_account else login('unknown').identity.account_id),dispose=lambda:None)
     app._return_from_password_reset(app._login_generation,completed=True)
-    assert a.account_id not in app._login_session.passwords.values
+    assert (a.account_id not in app._login_session.passwords.values) == known_account
     assert other.identity.account_id in app._login_session.passwords.values
     assert app._last_login_result is None and app._remembered_profile is None
     assert '密码已重置' in app.login_gate.state_detail.text()

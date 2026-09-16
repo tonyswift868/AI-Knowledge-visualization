@@ -1,21 +1,21 @@
 """Thin native bridge for the existing 03 FreeMarker lifecycle presentation.
 
-Only generated, bundled local UI can access this channel. Public email pages
-remain in the user's browser and never receive a native bridge or login session.
+Only generated, bundled local UI can access this channel. Email-code recovery
+stays in this window; opaque reset state never crosses the JavaScript channel.
 """
 import asyncio
 import json
 from pathlib import Path
 import sys
 import threading
-from PySide6.QtCore import QObject, Signal, Slot, QUrl
+import time
+from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlRequestInterceptor, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 from .enterprise_oidc import DesktopOidcConfig
-from .lifecycle_client import LifecycleClient
-from .reset_completion import ResetCompletionClient
+from .lifecycle_client import LifecycleClient, RESET_MESSAGES
 
 
 def assets():
@@ -39,12 +39,41 @@ class LocalPage(QWebEnginePage):
     def javaScriptConsoleMessage(self,*args): pass
 
 
+class _ResetResults(QObject):
+    """UI-thread delivery, deliberately NOT registered with QWebChannel."""
+    ready=Signal(object)
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.ready.connect(self.deliver)
+
+    @Slot(object)
+    def deliver(self, result):
+        self.parent()._finish(result)
+
+
 class Bridge(QObject):
     result=Signal(str)
     back=Signal(bool)
-    def __init__(self,parent): super().__init__(parent); self.cancelled=threading.Event(); self.busy=False
+    def __init__(self,parent):
+        super().__init__(parent)
+        self.cancelled=threading.Event(); self.busy=False
+        self.transaction_id=None; self.reset_proof=None; self.email=''
+        self.deadline=0; self.resend_deadline=0; self.stage='email'
+        self.completed_account_id=None; self.generation=0
+        self._worker_results=_ResetResults(self)
+        self.timer=QTimer(self); self.timer.setInterval(500)
+        self.timer.timeout.connect(self._expire); self.timer.start()
+
+    def clear_reset(self):
+        self.transaction_id=None; self.reset_proof=None; self.deadline=0
+
+    def cancel(self):
+        self.cancelled.set(); self.generation+=1
+        self.clear_reset(); self.email=''; self.timer.stop()
+
     @Slot()
-    def returnLogin(self): self.cancelled.set(); self.back.emit(False)
+    def returnLogin(self): self.cancel(); self.back.emit(False)
     @Slot(str,str,str,int)
     def register(self,username,password,email,request_id):
         if self.busy or self.cancelled.is_set(): return
@@ -62,31 +91,99 @@ class Bridge(QObject):
             finally: password=None; self.busy=False
             if not self.cancelled.is_set(): self.result.emit(json.dumps(result))
         threading.Thread(target=work,daemon=True).start()
-    @Slot(str,int)
-    def forgot(self,name,request_id):
+    def _publish(self, kind, request_id=0, code='', **extra):
+        self.result.emit(json.dumps(dict(kind=kind, requestId=request_id, code=code,
+            message=RESET_MESSAGES.get(code, ''), stage=self.stage,
+            resendAfter=max(0, int(self.resend_deadline-time.monotonic()+0.999)), **extra)))
+
+    def _expire(self):
         if self.busy or self.cancelled.is_set(): return
+        if self.deadline and time.monotonic() >= self.deadline:
+            code='RESET_CODE_INVALID_OR_EXPIRED' if self.stage=='code' else 'RESET_PROOF_INVALID_OR_EXPIRED'
+            self.clear_reset(); self.stage='expired'
+            self._publish('expired', code=code)
+
+    @Slot()
+    def restartReset(self):
+        if self.busy or self.cancelled.is_set(): return
+        self.clear_reset(); self.stage='email'
+        self._publish('restart')
+
+    @Slot(str,int)
+    def requestCode(self, email, request_id):
+        if self.busy or self.cancelled.is_set(): return
+        if time.monotonic() < self.resend_deadline:
+            self._publish('request', request_id, 'RESET_RATE_LIMITED'); return
+        self.clear_reset(); self.stage='email'; self.email=email.strip()
+        # Retain cooldown even when the send response is lost; never auto-resend.
+        self.resend_deadline=time.monotonic()+60
+        self._start('request', {'email':self.email}, request_id)
+
+    @Slot(int)
+    def resendCode(self, request_id):
+        self.requestCode(self.email, request_id)
+
+    @Slot(str,int)
+    def verifyCode(self, code, request_id):
+        self._expire()
+        if self.busy or self.cancelled.is_set(): return
+        if self.stage!='code' or not self.transaction_id:
+            self._publish('verify', request_id, 'RESET_CODE_INVALID_OR_EXPIRED'); return
+        self._start('verify', {'transaction_id':self.transaction_id, 'code':code}, request_id)
+
+    @Slot(str,str,int)
+    def completeReset(self, password, confirmation, request_id):
+        self._expire()
+        if self.busy or self.cancelled.is_set(): return
+        if self.stage!='password' or not self.reset_proof:
+            self._publish('complete', request_id, 'RESET_PROOF_INVALID_OR_EXPIRED'); return
+        self._start('complete', {'reset_proof':self.reset_proof,
+            'new_password':password, 'confirm_password':confirmation}, request_id)
+
+    def _start(self, operation, payload, request_id):
         self.busy=True
-        self.account_name=name
+        generation=self.generation; started=time.monotonic()
         def work():
-            accepted=False
             async def request():
-                nonlocal accepted
-                config=DesktopOidcConfig.from_env(); client=LifecycleClient(config)
-                try: value=await client.action('forgot',{'account':name})
+                client=LifecycleClient(DesktopOidcConfig.from_env())
+                try: return await client.reset_code(operation, payload)
                 finally: await client.aclose()
-                if self.cancelled.is_set(): return
-                accepted=True
-                self.result.emit(json.dumps({'kind':'forgot','requestId':request_id,'accepted':True}))
-                observer=ResetCompletionClient(config)
-                try:
-                    await observer.wait_completed(value['observation']['transaction_id'],self.cancelled)
-                    if not self.cancelled.is_set(): self.back.emit(True)
-                finally: await observer.aclose()
-            try: asyncio.run(request())
+            try: value=asyncio.run(request()); error=''
             except Exception as exc:
-                if not self.cancelled.is_set(): self.result.emit(json.dumps({'kind':'forgot','requestId':request_id,'accepted':False,'stage':'observation' if accepted else 'request','expired':getattr(exc,'code','')=='RESET_OBSERVATION_EXPIRED'}))
-            finally:self.busy=False
+                value=None; error=getattr(exc, 'code', 'RESET_RESULT_UNCERTAIN')
+                if error not in RESET_MESSAGES: error='RESET_RESULT_UNCERTAIN'
+            finally: payload.clear()
+            if not self.cancelled.is_set():
+                try: self._worker_results.ready.emit((generation, operation, request_id, started, value, error))
+                except RuntimeError: pass  # Window was disposed while the request completed.
         threading.Thread(target=work,daemon=True).start()
+
+    def _finish(self, result):
+        generation, operation, request_id, started, value, error=result
+        if self.cancelled.is_set() or generation!=self.generation: return
+        self.busy=False
+        if error:
+            if error=='RESET_EMAIL_INVALID': self.resend_deadline=0
+            if error in ('RESET_CODE_INVALID_OR_EXPIRED', 'RESET_PROOF_INVALID_OR_EXPIRED', 'RESET_RESULT_UNCERTAIN'):
+                self.clear_reset(); self.stage='expired'
+            self._expire()
+            self._publish(operation, request_id, error)
+            return
+        if operation=='request':
+            self.transaction_id=value['transaction_id']; self.stage='code'
+            self.deadline=started+value['expires_in']
+            self.resend_deadline=max(self.resend_deadline, started+value['resend_after'])
+        elif operation=='verify':
+            self.clear_reset(); self.reset_proof=value['reset_proof']; self.stage='password'
+            self.deadline=started+value['expires_in']
+        else:
+            self.clear_reset(); self.email=''; self.stage='completed'
+            self.completed_account_id=value['account_id']
+            self._publish('completed', request_id)
+            self.back.emit(True)
+            return
+        self._expire()
+        self._publish(operation, request_id)
 
 
 class AccountLifecyclePane(QWidget):
@@ -108,6 +205,6 @@ class AccountLifecyclePane(QWidget):
         self.view.setUrl(QUrl.fromLocalFile(str(root/'lifecycle.html')))
         self.view.loadFinished.connect(lambda ok:self.page.runJavaScript('window.mfNativeIntent='+json.dumps(intent)+';window.mfStartNative?.();') if ok else None)
         back=QPushButton('返回登录');back.clicked.connect(self.bridge.returnLogin);layout.addWidget(back)
-    def cancel(self):self.bridge.cancelled.set();self.view.stop()
+    def cancel(self):self.bridge.cancel();self.view.stop()
     def dispose(self):self.cancel();self.hide();self.deleteLater()
     def closeEvent(self,event):self.cancel();super().closeEvent(event)
