@@ -43,7 +43,9 @@ public final class ResetEventFixtureObserver implements EventListenerProviderFac
                 row.put("transaction_active_at_event", session.getTransactionManager().isActive());
                 row.put("phase", "EVENT_BEFORE_COMMIT");
                 observations.add(row);
-                if ("UPDATE_CREDENTIAL".equals(event.getType().name()) && event.getError() == null) {
+                if (("UPDATE_CREDENTIAL".equals(event.getType().name()) ||
+                        (event.getType()==EventType.UPDATE_PASSWORD && event.getDetails()!=null &&
+                         "email-code".equals(event.getDetails().get("mentorflow_reset")))) && event.getError() == null) {
                     if ("true".equals(user.getFirstAttribute("mf-fixture-rollback"))) session.getTransactionManager().setRollbackOnly();
                     if ("true".equals(user.getFirstAttribute("mf-fixture-fail-commit"))) {
                         session.getTransactionManager().enlistPrepare(new AbstractKeycloakTransaction() {

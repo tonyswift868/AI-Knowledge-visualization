@@ -143,6 +143,7 @@ class NativeSessions:
         self.access = {}
         self.refreshes = {}
         self.attempts = {}
+        self.revocation_epoch = 0
 
     @staticmethod
     def digest(value):
@@ -204,9 +205,13 @@ class NativeSessions:
 
     async def login(self, username, password, peer):
         self.throttle(username, peer)
+        with self.lock:
+            epoch = self.revocation_epoch
         principal = await self.verifier.authenticate(username, password)
         self._principal(principal)
         with self.lock:
+            if epoch != self.revocation_epoch:
+                raise expired()
             self._prune()
             if len(self.families) >= self.capacity:
                 raise IdentityError('NATIVE_SESSION_CAPACITY', '账号服务暂不可用。', status=503)
@@ -263,6 +268,14 @@ class NativeSessions:
             fid = self.refreshes.get(self.digest(token))
             if fid:
                 self._drop(fid)
+
+    def revoke_subject(self, subject):
+        """A committed credential reset also fences in-flight pre-reset logins."""
+        with self.lock:
+            self.revocation_epoch += 1
+            for fid, row in list(self.families.items()):
+                if row.principal.subject == subject:
+                    self._drop(fid)
 
     async def aclose(self):
         with self.lock:

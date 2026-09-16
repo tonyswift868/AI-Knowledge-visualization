@@ -180,11 +180,7 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
             finally { session.authenticationSessions().removeRootAuthenticationSession(realm, root); }
         }
         private String binding(UserModel user) throws Exception {
-            // Remains inside Keycloak; only an unrelated random handle leaves the authority.
-            var passwords = user.credentialManager().getStoredCredentialsByTypeStream("password").toList();
-            if (passwords.size() != 1) throw new IllegalStateException();
-            var c = passwords.get(0);
-            return digest(c.getId() + "\n" + c.getCreatedDate() + "\n" + c.getCredentialData() + "\n" + c.getSecretData());
+            return EmailCodeReset.credentialBinding(user);
         }
         @POST @Path("v1") @Consumes("application/json") @Produces("application/json")
         public Response verify(InputStream input) {
@@ -204,6 +200,18 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     body.put(field.getKey(), field.getValue().textValue());
                 }
                 RealmModel realm = session.getContext().getRealm();
+                if (body.getOrDefault("operation", "").startsWith("email-code-")) {
+                    if (!permitted("email-code", false)) return result(429, Map.of("status", "UNAVAILABLE"));
+                    if(body.keySet().equals(Set.of("operation","transaction_id","email")) && "email-code-request".equals(body.get("operation")))
+                        return result(200,EmailCodeReset.request(session,body.get("transaction_id"),body.get("email")));
+                    if(body.keySet().equals(Set.of("operation","transaction_id","code")) && "email-code-verify".equals(body.get("operation")))
+                        return result(200,EmailCodeReset.verify(session,body.get("transaction_id"),body.get("code")));
+                    if(body.keySet().equals(Set.of("operation","reset_proof","new_password")) && "email-code-complete".equals(body.get("operation")))
+                        return result(200,EmailCodeReset.complete(session,body.get("reset_proof"),body.get("new_password")));
+                    if(body.keySet().equals(Set.of("operation","reset_proof")) && "email-code-status".equals(body.get("operation")))
+                        return result(200,EmailCodeReset.status(session,body.get("reset_proof")));
+                    return result(400,Map.of("status","INVALID"));
+                }
                 if (body.keySet().equals(Set.of("operation", "transaction_id", "subject")) && "reset-execute-bind".equals(body.get("operation"))) {
                     if (!permitted("reset-watch", false)) return result(429, Map.of("outcome", "unavailable"));
                     return result(200, ResetCompletions.bindExecuteWatch(session, body.get("transaction_id"), body.get("subject")));

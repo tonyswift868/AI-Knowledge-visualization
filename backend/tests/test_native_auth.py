@@ -48,6 +48,32 @@ def test_principal_fixture_uses_native_verifier_integer_second_issuance(monkeypa
         sessions._principal(issued.model_copy(update={'issued_at': rounded_future}))
 
 
+def test_committed_reset_revokes_subject_and_fences_inflight_login():
+    async def run():
+        started, release = asyncio.Event(), asyncio.Event()
+        class Verifier:
+            slow = False
+            async def authenticate(self, username, password):
+                if self.slow:
+                    started.set(); await release.wait()
+                return principal(username)
+        verifier = Verifier(); sessions = NativeSessions(verifier, ISSUER)
+        a = await sessions.login('user-a','synthetic','peer')
+        b = await sessions.login('user-b','synthetic','peer')
+        verifier.slow = True
+        pending = asyncio.create_task(sessions.login('user-a','synthetic','peer'))
+        await started.wait()
+        sessions.revoke_subject('user-a'); release.set()
+        with pytest.raises(IdentityError): await pending
+        with pytest.raises(IdentityError): sessions.authenticate(a['access_token'])
+        with pytest.raises(IdentityError): await sessions.refresh(a['refresh_token'])
+        assert sessions.authenticate(b['access_token']).subject == 'user-b'
+        verifier.slow = False
+        fresh = await sessions.login('user-a','synthetic-new','peer')
+        assert sessions.authenticate(fresh['access_token']).subject == 'user-a'
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize('malformed', [None, {}, {'issuer': ISSUER, 'subject': 'user-a'}, SimpleNamespace()])
 def test_unvalidated_principal_objects_remain_rejected(malformed):
     with pytest.raises(IdentityError):

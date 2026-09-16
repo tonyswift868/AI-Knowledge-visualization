@@ -253,3 +253,52 @@ Whenever an expiry is supplied, it must be timezone-aware, future and within
 seven days. Existing optional `candidate_sha` binding remains enforced.
 Deployments must separately verify mail submission, receipt and action completion;
 enabled capabilities alone are not evidence of an email lifecycle pass.
+
+### Native email code recovery
+
+The resident lifecycle service exposes three anonymous HTTPS JSON POSTs under
+`/api/enterprise/auth/lifecycle/reset-code`. Cookies, Origin and Authorization
+headers are rejected. An email must already belong to an enabled, email-verified
+human account. The request response does not reveal whether that account exists.
+
+| Suffix | Exact request fields | Success response |
+| --- | --- | --- |
+| `/request` | `email` | 202: `state=CODE_SENT`, opaque `transaction_id`, `expires_in=600`, `resend_after=60`, generic `message` |
+| `/verify` | `transaction_id`, six-digit string `code` | 200: `state=VERIFIED`, opaque `reset_proof`, `expires_in=300` |
+| `/complete` | `reset_proof`, `new_password`, `confirm_password` | 200: `state=COMPLETED`, canonical `account_id`, `message` |
+
+Only after `/verify` succeeds should the same native login window show the new
+password and confirmation fields. No browser, link navigation or automatic login
+is involved. Keep both opaque values in memory only and discard them on cancel,
+expiry or completion. Existing link endpoints remain compatible.
+
+The six-digit code expires after ten minutes, permits at most five wrong attempts,
+and is consumed by successful verification. Sending is limited to once per mailbox
+per minute and ten times per hour. The Backend also retains its existing anonymous
+IP/global rate limits (20 requests per minute per IP across reset operations).
+Verification issues a five-minute, single-use password-reset proof bound to the
+same subject, email and credential generation. Only its hash is stored in Keycloak's
+existing single-use store. No application schema or identity database is added.
+Concurrent mutations use the existing persistent atomic-claim mechanism; only an
+after-commit identity fact can produce a successful Backend completion response.
+Lost cache state, changed mailbox/credential, rollback and stale proofs fail closed.
+
+Errors use `{code,message}`: 400 `RESET_EMAIL_INVALID`,
+`RESET_CODE_INVALID_OR_EXPIRED`, `RESET_PROOF_INVALID_OR_EXPIRED`,
+`PASSWORD_CONFIRMATION_MISMATCH`, `PASSWORD_POLICY_REJECTED`, or
+`NEW_PASSWORD_SAME_AS_CURRENT` ("新密码不能与当前密码相同");
+429 `RESET_RATE_LIMITED`; 503 `RESET_SERVICE_UNAVAILABLE`.
+Same-password, mismatch and policy errors preserve the proof until its original
+expiry, allowing correction in the password step. Invalid/expired code or proof
+requires a new email request. A transport failure is not proof of mutation failure;
+do not silently repeat a password mutation or auto-login.
+
+The current-password check uses Keycloak credential validation, retaining all
+realm policies. No historical-password prohibition is added. Successful reset
+revokes Keycloak online/offline sessions and invalidates native handles through
+their credential-generation binding; subject/account ID and learning data persist.
+On completion Desktop resolves the returned account ID in its local registry and
+uses `LoginSession.logout(profile, remote=False, forget_password=True)` to clear
+that account's saved password/tokens and automatic restore. Preserve its registry
+entry and learning data; clear the password form and return to login without
+saving the newly entered password. Unknown local account IDs need no vault edit.

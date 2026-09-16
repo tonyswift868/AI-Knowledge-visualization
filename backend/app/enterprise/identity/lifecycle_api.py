@@ -15,7 +15,8 @@ from .reset_completion import _throttle, _object
 from .oidc import IdentityError
 
 PREFIX = '/api/enterprise/auth/lifecycle'
-PUBLIC_PATHS = frozenset(PREFIX + '/' + p for p in ('capabilities', 'register', 'forgot'))
+PUBLIC_PATHS = frozenset(PREFIX + '/' + p for p in ('capabilities', 'register', 'forgot',
+    'reset-code/request', 'reset-code/verify', 'reset-code/complete'))
 router = APIRouter()
 MESSAGE = '如果该账号或邮箱可用于找回，我们会发送密码重置邮件，请查看邮箱。'
 LOG = logging.getLogger(__name__)
@@ -151,6 +152,115 @@ async def forgot(request: Request):
     task = asyncio.create_task(send())
     svc.jobs.add(task); task.add_done_callback(svc.jobs.discard)
     return JSONResponse({'state':'RESET_WAITING','message':MESSAGE,'observation':observation}, status_code=202, headers={'Cache-Control':'no-store'})
+
+
+async def _email_code_authority(verifier, payload):
+    try:
+        async with asyncio.timeout(10):
+            async with verifier.http.stream('POST', verifier.endpoint, json=payload) as response:
+                raw = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(raw)+len(chunk)>2048:raise ValueError()
+                    raw.extend(chunk)
+                if response.status_code != 200:raise ValueError()
+                result = json.loads(raw, object_pairs_hook=_object)
+        if not isinstance(result, dict) or not isinstance(result.get('status'), str):
+            raise ValueError()
+        return result
+    except Exception:
+        raise IdentityError('RESET_SERVICE_UNAVAILABLE', '重置服务暂不可用，请稍后重试。', status=503) from None
+
+
+def _reset_error(code, message, status=400):
+    return JSONResponse({'code':code, 'message':message}, status_code=status,
+                        headers={'Cache-Control':'no-store'})
+
+
+@router.post(PREFIX + '/reset-code/request')
+async def request_email_code(request: Request):
+    svc, verifier = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'watch')
+    try:
+        value = await body(request, {'email'})
+        email = value['email'].strip()
+        if len(email)>254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email): raise ValueError()
+    except ValueError:
+        return _reset_error('RESET_EMAIL_INVALID', '请输入有效的绑定邮箱。')
+    if len(svc.jobs)>=32:
+        raise IdentityError('RESET_RATE_LIMITED', '请稍后重试。', status=429)
+    ticket = secrets.token_urlsafe(32)
+    async def send():
+        try:
+            result = await _email_code_authority(verifier, {'operation':'email-code-request',
+                'transaction_id':ticket, 'email':email})
+            if result == {'status':'ACCEPTED','delivery':'SUBMITTED'}:
+                LOG.info('Password reset code email submitted')
+        except IdentityError:
+            pass  # Same anonymous response for lookup/send failure and absent users.
+    task = asyncio.create_task(send()); svc.jobs.add(task); task.add_done_callback(svc.jobs.discard)
+    return JSONResponse({'state':'CODE_SENT', 'transaction_id':ticket, 'expires_in':600,
+        'resend_after':60, 'message':'如果该邮箱绑定了可找回账号，我们会发送验证码，请查看邮箱。'},
+        status_code=202, headers={'Cache-Control':'no-store'})
+
+
+@router.post(PREFIX + '/reset-code/verify')
+async def verify_email_code(request: Request):
+    _, verifier = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'watch')
+    value = {}
+    try:
+        value = await body(request, {'transaction_id', 'code'})
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['transaction_id']) or not re.fullmatch(r'[0-9]{6}', value['code']):
+            raise ValueError()
+        result = await _email_code_authority(verifier, {'operation':'email-code-verify', **value})
+        if result.get('status') != 'VERIFIED':
+            raise ValueError()
+        if set(result) != {'status','reset_proof','expires_in'} or not re.fullmatch(r'[A-Za-z0-9_-]{43}',result['reset_proof']) or result['expires_in']!='300':
+            raise IdentityError('RESET_SERVICE_UNAVAILABLE', '重置服务暂不可用，请稍后重试。',status=503)
+        return JSONResponse({'state':'VERIFIED', 'reset_proof':result['reset_proof'], 'expires_in':300},
+            headers={'Cache-Control':'no-store'})
+    except ValueError:
+        return _reset_error('RESET_CODE_INVALID_OR_EXPIRED', '验证码错误、已失效或尝试次数过多，请重新获取。')
+    finally: value.clear()
+
+
+@router.post(PREFIX + '/reset-code/complete')
+async def complete_email_code(request: Request):
+    _, verifier = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'watch')
+    value = {}
+    try:
+        value = await body(request, {'reset_proof','new_password','confirm_password'})
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}',value['reset_proof']):raise ValueError()
+        if value['new_password'] != value['confirm_password']:
+            return _reset_error('PASSWORD_CONFIRMATION_MISMATCH', '两次输入的密码不一致。')
+        try: validate_new_password(value['new_password'])
+        except LifecycleError:
+            return _reset_error('PASSWORD_POLICY_REJECTED', '密码须为 8–128 位，并符合账号密码规则。')
+        result = await _email_code_authority(verifier, {'operation':'email-code-complete',
+            'reset_proof':value['reset_proof'], 'new_password':value['new_password']})
+        status = result.get('status')
+        if status == 'PENDING_COMMIT':
+            result = await _email_code_authority(verifier, {'operation':'email-code-status',
+                'reset_proof':value['reset_proof']})
+            status = result.get('status')
+            if status != 'COMPLETED':
+                raise IdentityError('RESET_SERVICE_UNAVAILABLE','重置尚未确认，请重新获取验证码。',status=503)
+        if status == 'SAME_CURRENT_PASSWORD':
+            return _reset_error('NEW_PASSWORD_SAME_AS_CURRENT', '新密码不能与当前密码相同')
+        if status == 'PASSWORD_POLICY_REJECTED':
+            return _reset_error('PASSWORD_POLICY_REJECTED', '密码不符合账号密码规则，请修改后重试。')
+        if status == 'INVALID':raise ValueError()
+        if status != 'COMPLETED' or set(result)!={'status','subject'} or not isinstance(result['subject'],str) or not 1<=len(result['subject'])<=128:
+            raise IdentityError('RESET_SERVICE_UNAVAILABLE','重置服务暂不可用，请稍后重试。',status=503)
+        from app.account_identity_contract import account_id
+        runtime = request.app.state.enterprise_identity_runtime
+        runtime.native_sessions.revoke_subject(result['subject'])
+        return JSONResponse({'state':'COMPLETED', 'account_id':account_id(runtime.native_sessions.issuer,result['subject']),
+            'message':'密码已重置，请使用新密码登录 MentorFlow。'}, headers={'Cache-Control':'no-store'})
+    except ValueError:
+        return _reset_error('RESET_PROOF_INVALID_OR_EXPIRED', '重置验证已失效，请重新获取验证码。')
+    finally: value.clear()
 
 
 @router.post(PREFIX + '/change-password')
