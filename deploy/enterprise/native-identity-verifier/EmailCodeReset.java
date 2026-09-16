@@ -18,7 +18,8 @@ final class EmailCodeReset {
     private static final int CODE_TTL = 600, PROOF_TTL = 300, ATTEMPTS = 5;
     private static String hash(String s) { return ResetCompletions.hash(s); }
     private static String prefix(KeycloakSession s) { return "mf-email-reset-v1:" + s.getContext().getRealm().getId() + ":"; }
-    private static boolean token(String s) { return s != null && s.matches("[A-Za-z0-9_-]{43}"); }
+    static boolean token(String s) { return s != null && s.matches("[A-Za-z0-9_-]{43}"); }
+    static String randomCode() { return String.format(Locale.ROOT,"%06d",RANDOM.nextInt(1000000)); }
     private static String randomToken() {
         byte[] b = new byte[32]; RANDOM.nextBytes(b);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
@@ -46,7 +47,7 @@ final class EmailCodeReset {
         var user=s.users().getUserByEmail(realm,email);
         if(user==null || !user.isEnabled() || !user.isEmailVerified() || user.getServiceAccountClientLink()!=null
                 || user.getEmail()==null || !normalized.equals(user.getEmail().toLowerCase(Locale.ROOT))) return outcome("ACCEPTED");
-        String code=String.format(Locale.ROOT,"%06d",RANDOM.nextInt(1000000));
+        String code=randomCode();
         int expires=Time.currentTime()+CODE_TTL;
         store.put(key,CODE_TTL+60,Map.of("subject",user.getId(),"email",hash(normalized),
             "binding",credentialBinding(user),"code",hash(ticket+"\0"+code),"expires",Integer.toString(expires)));

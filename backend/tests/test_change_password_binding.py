@@ -15,7 +15,7 @@ from test_native_auth import principal
 
 
 @pytest.mark.parametrize('case', ['sessionless', 'session', 'wrong', 'invalid',
-    'expired', 'revoked', 'missing_actor', 'subject', 'issuer', 'body_subject'])
+    'expired', 'revoked', 'missing_actor', 'subject', 'issuer', 'body_subject', 'same_password'])
 def test_change_password_binding(case):
     async def run():
         writes = []
@@ -61,6 +61,7 @@ def test_change_password_binding(case):
             headers = {'Authorization': 'Bearer ' + (token['access_token'] if case != 'invalid' else 'mfn1_a_unknown')}
             payload = {'current_password': 'wrong' if case == 'wrong' else password, 'new_password': 'synthetic-new-password'}
             if case == 'body_subject': payload['subject'] = 'other'
+            if case == 'same_password': payload['new_password'] = password
             response = await client.post(api.PREFIX+'/change-password', headers=headers, json=payload)
             if case in ('session', 'sessionless'):
                 assert response.status_code == 200
@@ -69,7 +70,8 @@ def test_change_password_binding(case):
                     result = await client.post(PREFIX+'/login', json={'username': 'fixture-user', 'password': supplied})
                     assert result.status_code == expected
             else:
-                assert response.status_code == (400 if case in ('wrong', 'body_subject') else 401)
+                assert response.status_code == (400 if case in ('wrong', 'body_subject', 'same_password') else 401)
+                if case == 'same_password': assert response.json()['code'] == 'NEW_PASSWORD_SAME_AS_CURRENT'
                 if case == 'wrong': assert response.json()['code'] == 'CURRENT_PASSWORD_INVALID'
                 assert not writes
         await sessions.aclose()

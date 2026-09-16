@@ -200,6 +200,18 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     body.put(field.getKey(), field.getValue().textValue());
                 }
                 RealmModel realm = session.getContext().getRealm();
+                if (body.getOrDefault("operation", "").startsWith("email-binding-")) {
+                    if (!permitted("email-binding", false)) return result(429, Map.of("status", "UNAVAILABLE"));
+                    if(body.keySet().equals(Set.of("operation","subject")) && "email-binding-profile".equals(body.get("operation")))
+                        return result(200,EmailCodeBinding.profile(session,body.get("subject")));
+                    if(body.keySet().equals(Set.of("operation","subject","transaction_id","email")) && "email-binding-request".equals(body.get("operation")))
+                        return result(200,EmailCodeBinding.request(session,body.get("subject"),body.get("transaction_id"),body.get("email")));
+                    if(body.keySet().equals(Set.of("operation","subject","transaction_id","code")) && "email-binding-verify".equals(body.get("operation")))
+                        return result(200,EmailCodeBinding.verify(session,body.get("subject"),body.get("transaction_id"),body.get("code")));
+                    if(body.keySet().equals(Set.of("operation","subject","transaction_id")) && "email-binding-status".equals(body.get("operation")))
+                        return result(200,EmailCodeBinding.status(session,body.get("subject"),body.get("transaction_id")));
+                    return result(400,Map.of("status","INVALID"));
+                }
                 if (body.getOrDefault("operation", "").startsWith("email-code-")) {
                     if (!permitted("email-code", false)) return result(429, Map.of("status", "UNAVAILABLE"));
                     if(body.keySet().equals(Set.of("operation","transaction_id","email")) && "email-code-request".equals(body.get("operation")))

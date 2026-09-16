@@ -85,6 +85,9 @@ def run(args):
             clients=[dict(clientId='mentorflow-desktop',enabled=True,publicClient=True,standardFlowEnabled=True,
                 directAccessGrantsEnabled=False,redirectUris=['http://127.0.0.1/*'])])
         imp=kc/'data/import';imp.mkdir(parents=True);(imp/'realm.json').write_text(json.dumps(payload))
+        if getattr(args, 'configure', None):
+            args.configure(payload)
+            (imp/'realm.json').write_text(json.dumps(payload))
         env={k:v for k,v in os.environ.items() if not k.startswith(('KC_','KEYCLOAK_','MF_NATIVE_VERIFIER_'))}
         env.update(MF_NATIVE_VERIFIER_ENABLED='1',MF_NATIVE_VERIFIER_REALM=realm,MF_NATIVE_VERIFIER_ISSUER=issuer,
             MF_NATIVE_VERIFIER_BACKEND_CERT_SHA256=pin,MF_NATIVE_FIXTURE_CONTROL='1')
@@ -115,6 +118,11 @@ def run(args):
         runtime.lifecycle=SimpleNamespace(active=True,jobs=set())
         peer=ssl.create_default_context(cafile=str(home/'ca.pem'));peer.load_cert_chain(home/'backend.pem',home/'backend.key')
         with httpx.Client(base_url=api,verify=tls,trust_env=False,timeout=20) as c, httpx.Client(verify=peer,trust_env=False,timeout=20) as identity:
+            if getattr(args, 'scenario', None):
+                checks=args.scenario(c,identity,issuer,users,password,smtp,runtime)
+                assert all(checks.values()), 'Focused account security checks failed'
+                print(json.dumps({'status':'PASS','checks':checks,'smtp':'LOOPBACK_IN_MEMORY_ONLY','real_user_mutation':False}))
+                return
             prefix='/api/enterprise/auth/lifecycle/reset-code'
             def control(operation,user=users[0],**extra):
                 r=identity.post(issuer+'/mf-native-fixture-control/action',json={'operation':operation,'username':user['username'],'purpose':'reset',**extra})

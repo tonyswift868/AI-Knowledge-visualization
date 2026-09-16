@@ -24,7 +24,7 @@ public final class ResetEventFixtureObserver implements EventListenerProviderFac
                 // Phase-1 discovery observed both native password event families.
                 // Do not load users on unrelated loser/error events: that changes
                 // the connection demand of the concurrency fixture itself.
-                if (!Set.of("UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR", "UPDATE_CREDENTIAL", "UPDATE_CREDENTIAL_ERROR").contains(event.getType().name())) return;
+                if (!Set.of("UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR", "UPDATE_CREDENTIAL", "UPDATE_CREDENTIAL_ERROR", "VERIFY_EMAIL").contains(event.getType().name())) return;
                 var realm = session.getContext().getRealm();
                 if (realm == null || !realm.getName().startsWith("mf-native-") || event.getUserId() == null) return;
                 var user = session.users().getUserById(realm, event.getUserId());
@@ -45,7 +45,9 @@ public final class ResetEventFixtureObserver implements EventListenerProviderFac
                 observations.add(row);
                 if (("UPDATE_CREDENTIAL".equals(event.getType().name()) ||
                         (event.getType()==EventType.UPDATE_PASSWORD && event.getDetails()!=null &&
-                         "email-code".equals(event.getDetails().get("mentorflow_reset")))) && event.getError() == null) {
+                         "email-code".equals(event.getDetails().get("mentorflow_reset"))) ||
+                        (event.getType()==EventType.VERIFY_EMAIL && event.getDetails()!=null &&
+                         "binding-code".equals(event.getDetails().get("mentorflow_email")))) && event.getError() == null) {
                     if ("true".equals(user.getFirstAttribute("mf-fixture-rollback"))) session.getTransactionManager().setRollbackOnly();
                     if ("true".equals(user.getFirstAttribute("mf-fixture-fail-commit"))) {
                         session.getTransactionManager().enlistPrepare(new AbstractKeycloakTransaction() {

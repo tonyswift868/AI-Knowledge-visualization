@@ -263,9 +263,8 @@ async def complete_email_code(request: Request):
     finally: value.clear()
 
 
-@router.post(PREFIX + '/change-password')
-async def change_password(request: Request):
-    """Authenticated self-service change; identity comes from the validated actor."""
+async def authenticated_service(request):
+    """All self-service operations derive subject solely from a revalidated actor."""
     runtime = getattr(request.app.state, 'enterprise_identity_runtime', None)
     svc = getattr(runtime, 'lifecycle', None)
     if runtime is None or svc is None or not svc.active:
@@ -280,6 +279,93 @@ async def change_password(request: Request):
     # still match this exact actor before any credential update.
     if actor is None:
         raise IdentityError('ENTERPRISE_SESSION_REQUIRED', '请先登录。', status=401)
+    return runtime, svc, actor
+
+
+async def email_authority(runtime, actor, operation, **fields):
+    try:
+        result = await _email_code_authority(runtime.native_sessions.verifier,
+            {'operation': 'email-binding-' + operation, 'subject': actor.subject_id, **fields})
+    except IdentityError:
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '账号邮箱服务暂不可用，请稍后重试。', status=503) from None
+    status = result['status']
+    if operation == 'status' and status != 'PROFILE':
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '邮箱验证尚未确认，请刷新账号资料或重新获取验证码。', status=503)
+    errors = {
+        'INVALID': ('EMAIL_CODE_INVALID_OR_EXPIRED', '验证码错误、已失效或尝试次数过多，请重新获取。', 400),
+        'EMAIL_ALREADY_BOUND': ('EMAIL_ALREADY_BOUND', '账号已有绑定邮箱，本页仅支持验证该邮箱。', 409),
+        'EMAIL_ALREADY_VERIFIED': ('EMAIL_ALREADY_VERIFIED', '当前邮箱已验证。', 409),
+        'RATE_LIMITED': ('EMAIL_CODE_RATE_LIMITED', '发送过于频繁，请稍后重试。', 429),
+    }
+    if status in errors:
+        code, message, http_status = errors[status]
+        raise IdentityError(code, message, status=http_status)
+    return result
+
+
+def email_profile(result):
+    if (set(result) != {'status', 'email', 'email_verified'} or result['status'] != 'PROFILE'
+            or not isinstance(result['email'], str) or len(result['email']) > 254
+            or result['email_verified'] not in ('true', 'false')
+            or (not result['email'] and result['email_verified'] == 'true')):
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '账号资料暂不可用。', status=503)
+    email = result['email'] or None
+    verified = result['email_verified'] == 'true'
+    return {'email': email, 'email_verified': verified, 'can_bind': email is None,
+            'can_verify': bool(email) and not verified}
+
+
+@router.get(PREFIX + '/email')
+async def get_email(request: Request):
+    runtime, _, actor = await authenticated_service(request)
+    result = await email_authority(runtime, actor, 'profile')
+    return JSONResponse(email_profile(result), headers={'Cache-Control': 'no-store'})
+
+
+@router.post(PREFIX + '/email-code/request')
+async def request_bound_email_code(request: Request):
+    runtime, _, actor = await authenticated_service(request)
+    _throttle(actor.subject_id, 'watch')
+    try:
+        value = await body(request, {'email'})
+        email = value['email'].strip()
+        if len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email): raise ValueError()
+    except ValueError:
+        return _reset_error('EMAIL_INPUT_INVALID', '请输入有效邮箱。')
+    ticket = secrets.token_urlsafe(32)
+    result = await email_authority(runtime, actor, 'request', transaction_id=ticket, email=email)
+    if result != {'status': 'SENT'}:
+        raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '验证码暂未发送，请稍后重试。', status=503)
+    return JSONResponse({'state': 'CODE_SENT', 'transaction_id': ticket, 'expires_in': 600,
+        'resend_after': 60}, status_code=202, headers={'Cache-Control': 'no-store'})
+
+
+@router.post(PREFIX + '/email-code/verify')
+async def verify_bound_email_code(request: Request):
+    runtime, _, actor = await authenticated_service(request)
+    _throttle(actor.subject_id, 'watch')
+    value = {}
+    try:
+        value = await body(request, {'transaction_id', 'code'})
+        if (not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['transaction_id'])
+                or not re.fullmatch(r'[0-9]{6}', value['code'])): raise ValueError()
+        result = await email_authority(runtime, actor, 'verify', **value)
+        if result != {'status': 'PENDING_COMMIT'}:
+            raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '邮箱验证尚未确认，请稍后重试。', status=503)
+        result = await email_authority(runtime, actor, 'status', transaction_id=value['transaction_id'])
+        profile = email_profile(result)
+        if not profile['email_verified']:
+            raise IdentityError('ACCOUNT_ACTION_UNAVAILABLE', '邮箱验证尚未确认。', status=503)
+        return JSONResponse({'state': 'EMAIL_VERIFIED', **profile}, headers={'Cache-Control': 'no-store'})
+    except ValueError:
+        return _reset_error('EMAIL_CODE_INVALID_OR_EXPIRED', '验证码错误或已失效，请重新获取。')
+    finally: value.clear()
+
+
+@router.post(PREFIX + '/change-password')
+async def change_password(request: Request):
+    """Authenticated self-service change; identity comes from the validated actor."""
+    runtime, svc, actor = await authenticated_service(request)
     try:
         value = await body(request, {'current_password', 'new_password'})
         if not value['current_password'] or len(value['current_password']) > 1024:
@@ -295,6 +381,8 @@ async def change_password(request: Request):
                                 status_code=400, headers={'Cache-Control': 'no-store'})
         if (principal.issuer, principal.subject) != (actor.issuer, actor.subject_id):
             raise IdentityError('NATIVE_CREDENTIALS_INVALID', '账号或密码不正确', status=401)
+        if value['current_password'] == value['new_password']:
+            return _reset_error('NEW_PASSWORD_SAME_AS_CURRENT', '新密码不能与当前密码相同')
         await svc.admin.change_password(actor.subject_id, value['new_password'])
         return JSONResponse({'state': 'PASSWORD_CHANGED'}, headers={'Cache-Control': 'no-store'})
     except ValueError:
