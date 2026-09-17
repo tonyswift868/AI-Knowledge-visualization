@@ -200,6 +200,10 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     body.put(field.getKey(), field.getValue().textValue());
                 }
                 RealmModel realm = session.getContext().getRealm();
+                if (body.keySet().equals(Set.of("operation")) && "email-transport-health".equals(body.get("operation"))) {
+                    if (!permitted("email-health", false)) return result(429, Map.of("status", "UNAVAILABLE"));
+                    return result(200,MailTransportHealth.observe(session));
+                }
                 if (body.getOrDefault("operation", "").startsWith("email-binding-")) {
                     if (!permitted("email-binding", false)) return result(429, Map.of("status", "UNAVAILABLE"));
                     if(body.keySet().equals(Set.of("operation","subject")) && "email-binding-profile".equals(body.get("operation")))

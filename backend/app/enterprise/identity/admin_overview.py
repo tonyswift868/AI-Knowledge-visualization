@@ -198,12 +198,18 @@ class AdminOverviewService:
             await self.reader.aclose()
 
 
-def from_env(engine, identity_config, registry, env, *, lifecycle=None):
+def from_env(engine, identity_config, registry, env, *, lifecycle=None, native_sessions=None):
     """Prefer a dedicated reader; reuse an already approved admin connection.
 
     The borrowed connection only issues GET /users and remains owned by identity
     runtime. Dedicated reader configuration works without public lifecycle.
     """
+    if registry is not None:
+        # The identity authority sends email. Never substitute Backend SMTP
+        # connectivity or its separately mounted configuration for that fact.
+        verifier = getattr(native_sessions, 'verifier', None)
+        probe = getattr(verifier, 'email_transport_health', None)
+        registry.register('email', probe or (lambda: (False, 'EMAIL_AUTHORITY_NOT_CONFIGURED')), required=False)
     reader = None
     path = env.get('MENTORFLOW_ADMIN_OVERVIEW_CONFIG')
     if path:

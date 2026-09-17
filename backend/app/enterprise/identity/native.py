@@ -61,7 +61,47 @@ class MtlsIdentityVerifier:
         self.endpoint, self.issuer = endpoint, issuer
         self.external_issuer = external_issuer or issuer
         self.continuity = continuity
+        self._email_context = context
+        self._email_lock = threading.Lock()
+        self._email_sample = (False, 'EMAIL_AUTHORITY_UNAVAILABLE')
+        self._email_deadline = 0.0
         self.http = http_client or httpx.AsyncClient(verify=context, timeout=10, follow_redirects=False, trust_env=False)
+
+    def email_transport_health(self):
+        """Synchronous HealthRegistry adapter, coalesced/cached for 60 seconds.
+
+        Observe Keycloak's SMTP egress over the same fixed mTLS endpoint; Backend
+        never receives SMTP credentials or connects to the relay for this probe.
+        """
+        with self._email_lock:
+            if time.monotonic() < self._email_deadline:
+                return self._email_sample
+            sample = (False, 'EMAIL_TRANSPORT_UNAVAILABLE')
+            try:
+                if (self._email_context is None or not self._email_context.check_hostname
+                        or self._email_context.verify_mode != ssl.CERT_REQUIRED):
+                    raise ValueError()
+                with httpx.Client(verify=self._email_context, timeout=5, follow_redirects=False, trust_env=False) as client:
+                    with client.stream('POST', self.endpoint, json={'operation':'email-transport-health'}) as response:
+                        raw = bytearray()
+                        for chunk in response.iter_bytes():
+                            if len(raw)+len(chunk)>512: raise ValueError()
+                            raw.extend(chunk)
+                        from .reset_completion import _object
+                        value = json.loads(raw, object_pairs_hook=_object)
+                        codes = {'EMAIL_AUTHORITY_NOT_CONFIGURED', 'EMAIL_CONFIGURATION_UNAVAILABLE',
+                                 'EMAIL_TRANSPORT_UNAVAILABLE'}
+                        if response.status_code != 200 or set(value) != {'status','code'}: raise ValueError()
+                        if value == {'status':'READY','code':'EMAIL_TLS_AUTH_READY'}:
+                            sample = (True, 'EMAIL_TLS_AUTH_READY')
+                        elif value['status']=='UNAVAILABLE' and value['code'] in codes:
+                            sample = (False, value['code'])
+                        else: raise ValueError()
+            except Exception:
+                pass  # No provider payloads, exceptions or credentials in diagnostics.
+            self._email_sample = sample
+            self._email_deadline = time.monotonic()+60
+            return sample
 
     async def _verify(self, payload):
         try:

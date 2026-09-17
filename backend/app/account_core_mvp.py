@@ -85,7 +85,8 @@ async def lifespan(app: FastAPI):
         identity_runtime = build_enterprise_identity_runtime(engine=engine)
         app.state.enterprise_identity_runtime = identity_runtime
         app.state.admin_overview_service = overview_from_env(
-            engine, config, account_core_health_registry, os.environ)
+            engine, config, account_core_health_registry, os.environ,
+            native_sessions=identity_runtime.native_sessions)
         account_core_health_registry.started = True
         yield
     finally:

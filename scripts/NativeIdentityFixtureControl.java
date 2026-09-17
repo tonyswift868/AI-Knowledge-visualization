@@ -50,6 +50,20 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
                 return value;
             }).toList();
         }
+        @POST @Path("mail-health") @Consumes("application/json") @Produces("application/json")
+        public Map<String,Boolean> mailHealth(Map<String,String> body) throws Exception {
+            var realm=guard();var config=new HashMap<>(realm.getSmtpConfig());
+            if(!Set.of("127.0.0.1","localhost").contains(config.get("host"))
+                    || !body.keySet().equals(Set.of("mode")))throw new BadRequestException();
+            switch(body.get("mode")) {
+                case "normal" -> {config.put("host","127.0.0.1");config.put("starttls","true");}
+                case "wrong-hostname" -> config.put("host","localhost");
+                case "insecure" -> config.put("starttls","false");
+                default -> throw new BadRequestException();
+            }
+            realm.setSmtpConfig(config);
+            return Map.of("configured",true);
+        }
         @GET @Path("policy") @Produces("application/json")
         public Map<String, Object> policy() throws Exception {
             var realm = guard();

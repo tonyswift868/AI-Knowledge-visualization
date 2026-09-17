@@ -58,7 +58,8 @@ class Mailbox(socketserver.ThreadingTCPServer):
 def run(args):
     import httpx
     home=args.output.resolve();home.mkdir(parents=True,exist_ok=False)
-    smtp=Mailbox();threading.Thread(target=smtp.serve_forever,daemon=True).start()
+    smtp=args.mailbox_factory(home) if getattr(args,'mailbox_factory',None) else Mailbox()
+    threading.Thread(target=smtp.serve_forever,daemon=True).start()
     checks={};process=server=worker=engine=None;log=None
     try:
         with zipfile.ZipFile(args.keycloak_zip) as z:z.extractall(home)
