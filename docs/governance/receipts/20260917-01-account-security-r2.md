@@ -6,7 +6,7 @@ Scope: Backend/identity source and isolated fixtures only; no Desktop, admin ove
 
 ## Authenticated account settings contract (04/A)
 
-All routes below use prefix `/api/enterprise/auth/lifecycle`, HTTPS, native `Authorization: Bearer mfn1_a_…`, and existing organization/workspace headers when selecting a membership. They reject browser Origin/cookies and revalidate the current product actor/membership. No public request accepts subject, account ID, verified flag or roles. Responses have `Cache-Control: no-store`.
+All routes below use prefix `/api/enterprise/auth/lifecycle`, HTTPS, native bearer authorization (the `mfn1_a_` token family), and existing organization/workspace headers when selecting a membership. They reject browser Origin/cookies and revalidate the current product actor/membership. No public request accepts subject, account ID, verified flag or roles. Responses have `Cache-Control: no-store`.
 
 | Route | Exact request | Success response |
 | --- | --- | --- |
