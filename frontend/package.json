@@ -12,7 +12,7 @@
     "@dagrejs/dagre": "3.1.1",
     "@esotericsoftware/spine-player": "4.1.54",
     "@mediapipe/tasks-vision": "^0.10.35",
-    "@pixiv/three-vrm": "^3.4.0",
+    "@pixiv/three-vrm": "^3.5.5",
     "@vitejs/plugin-react": "6.0.3",
     "@xyflow/react": "12.11.3",
     "lucide-react": "1.24.0",
