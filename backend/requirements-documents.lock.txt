@@ -27,7 +27,7 @@ dill==0.4.1
 distro==1.9.0
 doclang==0.7.3
 docling==2.119.0
-docling-core==2.91.0
+docling-core==2.96.1
 docling-ibm-models==3.14.0
 docling-parse==7.12.1
 docling-slim==2.119.0
