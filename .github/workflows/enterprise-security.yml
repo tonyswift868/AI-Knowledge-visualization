@@ -112,7 +112,7 @@ jobs:
           --npm-audit artifacts/enterprise/security/npm-audit.json
           --semgrep artifacts/enterprise/security/semgrep.json
           --output artifacts/enterprise/security/security-gate.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: enterprise-security-evidence

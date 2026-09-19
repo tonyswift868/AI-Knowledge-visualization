@@ -97,7 +97,7 @@ jobs:
           --qa-evidence "staging-release-receipt"
           --qa-evidence "github-run:${GITHUB_RUN_ID}"
           --output artifacts/enterprise/release/release-manifest.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: staging-release-receipt
