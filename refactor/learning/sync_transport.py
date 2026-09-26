@@ -8,7 +8,7 @@ import re
 import httpx
 
 from .plan_models import PlanError
-from .plan_source import AuthenticatedPlanSource
+from .plan_source import AuthenticatedPlanSource, sync_auth_error
 from .sync_records.contract import envelope_for
 
 
@@ -98,12 +98,30 @@ class SyncTransport(AuthenticatedPlanSource):
         return self.download_original(sha256, max_bytes=max_bytes)
 
     def write(self, kind, entity_id, *, request_id, expected_revision, payload):
+        return self._mutate(kind, entity_id, request_id=request_id,
+                            expected_revision=expected_revision, payload=payload, deleting=False)
+
+    def delete(self, kind, entity_id, *, request_id, expected_revision):
+        """Use the existing CAS tombstone endpoint; no entity is recreated."""
+        return self._mutate(kind, entity_id, request_id=request_id,
+                            expected_revision=expected_revision, payload={}, deleting=True)
+
+    def _mutate(self, kind, entity_id, *, request_id, expected_revision, payload, deleting):
         if (kind not in {"task", "history", "learning_run", "setting", "resource"}
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}", entity_id)
                 or type(expected_revision) is not int or expected_revision < 0):
             raise PlanError("SYNC_RECORD_INVALID", "学习记录的同步标识或修订无效。")
-        body = dict(request_id=request_id, expected_revision=expected_revision, payload=payload)
-        if len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()) > 256 * 1024:
+        body = dict(request_id=request_id, expected_revision=expected_revision)
+        if not deleting:
+            body["payload"] = payload
+        # T07 caps the inner course payload, inclusive, using canonical UTF-8.
+        # All previously supported types retain their existing byte accounting.
+        course = (isinstance(payload, dict) and payload.get("schema") == "mentorflow.refactor-sync.v1"
+                  and payload.get("record_type") == "course_record")
+        encoded = (json.dumps(payload.get("values", {}).get("payload"), ensure_ascii=False,
+                              allow_nan=False, sort_keys=True, separators=(",", ":")) if course
+                   else json.dumps(payload, ensure_ascii=False, allow_nan=False))
+        if len(encoded.encode()) > 256 * 1024:
             raise PlanError("SYNC_RECORD_TOO_LARGE", "单条学习记录超过同步容量，记录仍保留在本机。")
         scope, token = self._session()
         self._scope = scope
@@ -112,11 +130,12 @@ class SyncTransport(AuthenticatedPlanSource):
                    "X-MentorFlow-Workspace-ID": scope.workspace_id}
         try:
             with httpx.Client(verify=self._ssl, timeout=20, follow_redirects=False, transport=self._transport) as client:
-                response = client.put(self._base_url + f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}",
-                                      headers=headers, json=body)
+                path = f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}" + ("/delete" if deleting else "")
+                response = client.request("POST" if deleting else "PUT", self._base_url + path,
+                                          headers=headers, json=body)
             self.require_current()
             if response.status_code in (401, 403):
-                raise PlanError("REAUTH_REQUIRED", "学习记录尚未同步，请重新验证账号；本机内容仍保留。")
+                raise sync_auth_error(response, "学习记录尚未同步，请重新验证账号；本机内容仍保留。")
             if response.status_code == 409:
                 raise PlanError("SYNC_CONFLICT", "另一个设备已更新这条记录，将重新读取并保留两侧修改。")
             if response.status_code == 410:
@@ -129,7 +148,7 @@ class SyncTransport(AuthenticatedPlanSource):
                                 else result.get("payload") if isinstance(result, dict) else None)
             if (not isinstance(result, dict) or result.get("kind") != kind or result.get("entity_id") != entity_id
                     or type(result.get("revision")) is not int or result["revision"] != expected_revision + 1
-                    or result.get("deleted") is not False or response_payload != payload):
+                    or result.get("deleted") is not deleting or response_payload != payload):
                 raise PlanError("SYNC_RESPONSE_INVALID", "同步回执与本次记录不一致，未报告同步成功。")
             result = dict(result, payload=response_payload)
             return result

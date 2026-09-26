@@ -28,6 +28,24 @@ PLANNING_ASSISTANT_PATH = "/api/active-teaching/workspaces/{workspace_id}/planni
 MAX_PLANNING_ASSISTANT_BYTES = 4 * 1024 * 1024
 
 
+def sync_auth_error(response, message):
+    """Keep the native eviction reason available to SessionGuard.note_error."""
+    if response.status_code == 401:
+        try:
+            raw = bytearray()
+            for chunk in response.iter_bytes(chunk_size=8192):
+                raw.extend(chunk)
+                if len(raw) > 8192:
+                    return PlanError("REAUTH_REQUIRED", message)
+            value = json.loads(raw)
+            error = value.get("error", value)
+            if isinstance(error, dict) and error.get("code") == "NATIVE_SESSION_SUPERSEDED":
+                return PlanError("NATIVE_SESSION_SUPERSEDED", "账号已在另一台设备登录")
+        except (ValueError, AttributeError, httpx.HTTPError, RecursionError):
+            pass
+    return PlanError("REAUTH_REQUIRED", message)
+
+
 def validate_planning_assistant_response(payload, workspace_id):
     """Project only the non-mutating, user-reviewable assistant response."""
     try:
@@ -246,7 +264,7 @@ class AuthenticatedPlanSource:
             with httpx.Client(verify=self._ssl, timeout=20, follow_redirects=False, transport=self._transport) as client:
                 with client.stream("GET", self._base_url + SNAPSHOT_PATH, headers=headers) as response:
                     if response.status_code in (401, 403):
-                        raise PlanError("REAUTH_REQUIRED", "计划读取的登录状态已失效，请使用账号入口重新验证。")
+                        raise sync_auth_error(response, "计划读取的登录状态已失效，请使用账号入口重新验证。")
                     if response.status_code != 200:
                         raise PlanError("SOURCE_UNAVAILABLE", "服务器计划接口暂不可用，当前计划尚未确认，请稍后重试。")
                     raw = bytearray()

@@ -1,0 +1,9 @@
+{
+  "baseline": "399e9c4",
+  "sha256": {
+    "backend/app/enterprise/identity/native.py": "9439349a2a1f04cc02b596a789233e82b2df39752ed514f437fac88267821f1a",
+    "backend/app/enterprise_tenancy/structured_sync.py": "cb22161cfe3aa6330cdf2128621b0a139b7839f103fa5f907850b3504672dbd9",
+    "backend/app/enterprise/catalog_api.py": "496caf05dbeb051dfa6f55dec3cddc541139862ab2e7eaabc9f901352c32e19d",
+    "backend/app/account_core_mvp.py": "4d12f64a8dd10bbef3e90450a295a7f0c8aefd9df739debab1f1049f349f1ef8"
+  }
+}
