@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--microphone", action="store_true")
     parser.add_argument("--seconds", type=float, default=12)
+    parser.add_argument("--glossary", nargs="*", default=[], help="Offline course terms, e.g. 牛顿")
     args = parser.parse_args()
     app = QCoreApplication.instance() or QCoreApplication([])
     manager = ModelManager(args.data_root)
@@ -38,7 +39,7 @@ def main():
         metrics["model_load_seconds"] = engine.load_seconds
         metrics["five_second_decode_seconds"] = sum(engine.decode_seconds)
     state = {"engine": None, "recorder": None, "pcm_start": None, "samples": 0, "peak": 0.0}
-    partials, finals, errors = [], [], []
+    partials, finals, errors, correction_events = [], [], [], []
     started = time.monotonic()
 
     def observe(pcm):
@@ -59,6 +60,12 @@ def main():
         return state["engine"]
 
     service = AsrService(args.data_root, model_manager=manager, recorder_factory=recorder_factory, engine_factory=engine_factory)
+    service.set_glossary(args.glossary)
+    def corrected(raw, edits):
+        correction_events.append({"raw": raw, "edits": edits})
+        if args.microphone and edits:
+            print("CORRECTIONS: " + json.dumps({"raw": raw, "edits": edits}, ensure_ascii=False), flush=True)
+    service.corrections_changed.connect(corrected)
     def partial(text):
         if text:
             partials.append((time.monotonic(), text))
@@ -82,6 +89,8 @@ def main():
         metrics.update({"captured_seconds": state["samples"] / 16000, "peak": state["peak"],
                         "partial_updates": len(partials), "partials": [text for _, text in partials],
                         "final": finals, "errors": errors,
+                        "glossary": args.glossary, "raw_final": engine.snapshot().text if engine else "",
+                        "corrections": correction_events,
                         "model_load_seconds": engine.load_seconds if engine else None})
         if partials:
             metrics["first_text_from_start_seconds"] = partials[0][0] - started

@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from .engine import AsrEngine
 from .errors import AsrError
+from .glossary import correct
 from .model_manager import ModelManager
 from .recorder import AudioRecorder
 
@@ -15,6 +16,10 @@ class AsrService(QObject):
     state_changed = Signal(str)
     partial_text = Signal(str)
     final_text = Signal(str)
+    # Emitted immediately before its text signal: raw whole transcript and
+    # [(start, end, original, replacement), ...], including [] to clear UI undo.
+    # Positions refer to raw Python characters, not to the corrected output.
+    corrections_changed = Signal(str, object)
     error = Signal(str, str)
 
     def __init__(self, data_root: Path, parent=None, *, model_manager=None, engine_factory=None, recorder_factory=None):
@@ -25,6 +30,9 @@ class AsrService(QObject):
         self._engine = self._recorder = self._future = None
         self._state = "idle"
         self._last_text = ""
+        self._last_raw_text = ""
+        self._last_replacements = []
+        self._glossary = ()
         self._disposed = False
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -41,6 +49,34 @@ class AsrService(QObject):
             self._state = state
             self.state_changed.emit(state)
 
+    def set_glossary(self, terms) -> None:
+        """Replace the caller's course glossary; an empty iterable disables it.
+
+        Update an active transcript immediately. Finished/edited input is not
+        rewritten when the caller switches courses. Call on the QObject thread.
+        """
+        if isinstance(terms, (str, bytes)):
+            raise TypeError("terms must be an iterable of strings")
+        terms = tuple(terms)
+        correct("", terms)  # Validate/prepare before changing the active glossary.
+        self._glossary = terms
+        if not self._disposed and self._engine is not None:
+            self._publish_partial(self._engine.snapshot().text)
+
+    def _publish_partial(self, raw: str) -> None:
+        text, replacements = correct(raw, self._glossary)
+        if (raw, text, replacements) != (self._last_raw_text, self._last_text, self._last_replacements):
+            self._last_raw_text, self._last_text = raw, text
+            self._last_replacements = replacements
+            self.corrections_changed.emit(raw, list(replacements))
+            self.partial_text.emit(text)
+
+    def _reset_text(self) -> None:
+        self._last_raw_text = self._last_text = ""
+        self._last_replacements = []
+        self.corrections_changed.emit("", [])
+        self.partial_text.emit("")
+
     def start(self) -> None:
         if self._disposed or self._state in {"recording", "finishing"}:
             return
@@ -48,8 +84,7 @@ class AsrService(QObject):
         if not status["installed"]:
             self._fail("ASR_MODEL_REQUIRED", "使用语音前需要下载本机识别模型，请确认模型大小后下载。")
             return
-        self._last_text = ""
-        self.partial_text.emit("")
+        self._reset_text()
         try:
             self._engine = self._engine_factory(Path(status["path"]))
             self._lifetime["engine"] = self._engine
@@ -102,13 +137,10 @@ class AsrService(QObject):
         if failure is not None:
             self._fail(failure.code, failure.message)
             return
-        text = self._engine.snapshot().text
-        if text != self._last_text:
-            self._last_text = text
-            self.partial_text.emit(text)
+        self._publish_partial(self._engine.snapshot().text)
         if self._future is not None and self._future.done():
             try:
-                text = self._future.result()
+                raw = self._future.result()
             except Exception:
                 self._fail("ASR_ENGINE_FAILED", "最后一句语音识别未完成，请重试。")
                 return
@@ -116,6 +148,10 @@ class AsrService(QObject):
             self._engine = self._future = None
             self._lifetime["engine"] = None
             self._set_state("idle")
+            text, replacements = correct(raw, self._glossary)
+            self._last_raw_text, self._last_text = raw, text
+            self._last_replacements = replacements
+            self.corrections_changed.emit(raw, list(replacements))
             self.final_text.emit(text)
 
     def _fail(self, code: str, message: str) -> None:
@@ -136,8 +172,7 @@ class AsrService(QObject):
 
     def cancel(self) -> None:
         self._clear()
-        self._last_text = ""
-        self.partial_text.emit("")
+        self._reset_text()
         self._set_state("idle")
 
     def dispose(self) -> None:

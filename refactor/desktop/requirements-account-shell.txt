@@ -56,3 +56,6 @@ PyYAML==6.0.3
 Shapely==2.1.2
 tqdm==4.70.1
 XlsxWriter==3.2.9
+
+# ASR glossary (VOICE-01)
+pypinyin==0.55.0

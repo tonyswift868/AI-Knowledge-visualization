@@ -245,3 +245,61 @@ def test_silence_and_repeated_stop_are_safe(qt_app, tmp_path):
         assert finals[1]
     finally:
         asr.dispose()
+
+
+def test_course_glossary_corrects_partials_final_and_preserves_raw(qt_app, tmp_path):
+    class CourseBackend(FakeBackend):
+        def decode(self, samples):
+            self.threads.append(get_ident())
+            return "今天学习物理，扭断第一定律。"
+    asr = service(tmp_path, backend=CourseBackend)
+    partials, finals, corrections, ordering = [], [], [], []
+    asr.partial_text.connect(lambda text: (partials.append(text), ordering.append("partial")))
+    asr.final_text.connect(lambda text: (finals.append(text), ordering.append("final")))
+    asr.corrections_changed.connect(lambda raw, edits: (corrections.append((raw, edits)), ordering.append("edits")))
+    try:
+        asr.set_glossary(["牛顿"])
+        asr.start()
+        engine = asr._engine
+        asr._recorder.audio_ready.emit(SPEECH)
+        until(qt_app, lambda: any("牛顿" in text for text in partials))
+        assert "扭断" in engine.snapshot().text  # recognizer remains untouched
+        assert corrections[-1] == ("今天学习物理，扭断第一定律。", [(7, 9, "扭断", "牛顿")])
+        assert ordering[-2:] == ["edits", "partial"]
+        asr.set_glossary([])
+        assert "扭断" in partials[-1] and corrections[-1][1] == []
+        asr.set_glossary(["牛顿"])
+        assert "牛顿" in partials[-1]
+        asr.stop()
+        until(qt_app, lambda: bool(finals))
+        assert finals == ["今天学习物理，牛顿第一定律。"]
+        assert ordering[-2:] == ["edits", "final"]
+        assert corrections[-1][1] == [(7, 9, "扭断", "牛顿")]
+        assert engine.worker_thread_id != get_ident()
+        count = len(partials)
+        asr.set_glossary([])  # don't rewrite an input the user may be editing
+        assert len(partials) == count
+        asr.cancel()
+        assert corrections[-1] == ("", []) and partials[-1] == ""
+    finally:
+        asr.dispose()
+
+
+def test_glossary_corrects_a_final_without_any_prior_partial(qt_app, tmp_path):
+    class CourseBackend(FakeBackend):
+        def decode(self, samples):
+            return "扭断和 deep seek"
+    asr = service(tmp_path, backend=CourseBackend)
+    finals, corrections = [], []
+    asr.final_text.connect(finals.append)
+    asr.corrections_changed.connect(lambda raw, edits: corrections.append((raw, edits)))
+    try:
+        asr.set_glossary(["牛顿", "DeepSeek"])
+        asr.start()
+        asr._recorder.tail = SPEECH
+        asr.stop()
+        until(qt_app, lambda: bool(finals))
+        assert finals == ["牛顿和 DeepSeek"]
+        assert corrections[-1] == ("扭断和 deep seek", [(0, 2, "扭断", "牛顿"), (4, 13, "deep seek", "DeepSeek")])
+    finally:
+        asr.dispose()
