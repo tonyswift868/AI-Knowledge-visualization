@@ -472,7 +472,7 @@
 ### [VOICE-01] 语音输入与朗读
 - 状态：未开始（旧仓库有成果）
 - 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。朗读同样依赖一批通用底模（中文 BERT、CNHubert、G2PW、SV）和声音包，体积可能达数 GB：首次使用朗读时也要先说明大小、征得同意再下载；开发机上这批底模已不存在（2026-09-27 核实引擎目录为空），开发时从官方来源下载到 `E:\MentorFlowModels\gpt-sovits-base\`。
-- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。 【2026-09-27】`voice/asr/`（T05，已合入）：SenseVoice int8 + Silero VAD，首次使用同意后下载（约 156 MiB，官方链接与 SHA256 已写入），模型加载约 1.6 秒，5 秒中文解码 0.08 秒，模型就绪后说话约 0.35 秒出字；实测把“牛顿”识别为“扭断”。`voice/tts/`（T06，已合入）：自写轻量推理服务常驻本机、带鉴权只听 127.0.0.1，冷启动含预热约 29 秒，预热后首音约 0.43–0.46 秒，实时率 0.31，句间停顿 < 5 毫秒，显存约 1.3–1.85 GB；默认声音包 phrolova-b 1.0.2；8 个声音变体试听样本在 `D:\MentorFlow-office\classroom\temp\tts-samples`，待用户试听选定。两者尚未接入界面。 【2026-09-27】第二批已合入：MF-05 课程术语纠正（拼音比较，保守替换，带撤销信息；“扭断→牛顿”通过）；MF-06 通用下载器（续传、镜像、校验、原子安装）用于语音识别与朗读底模，朗读嘴型数据（约 50 毫秒一帧，按实际播放进度），预热后首音 0.33–0.40 秒。正式分发调查：完整朗读引擎约 12.2 GiB（其中 Python/CUDA 运行时约 7.8 GiB），默认声音包约 278 MiB，均可离线随包分发。
+- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。 【2026-09-27】`voice/asr/`（T05，已合入）：SenseVoice int8 + Silero VAD，首次使用同意后下载（约 156 MiB，官方链接与 SHA256 已写入），模型加载约 1.6 秒，5 秒中文解码 0.08 秒，模型就绪后说话约 0.35 秒出字；实测把“牛顿”识别为“扭断”。`voice/tts/`（T06，已合入）：自写轻量推理服务常驻本机、带鉴权只听 127.0.0.1，冷启动含预热约 29 秒，预热后首音约 0.43–0.46 秒，实时率 0.31，句间停顿 < 5 毫秒，显存约 1.3–1.85 GB；8 个声音变体试听后，用户选定 phrolova-b-gpt-sovits 1.0.4 为老师声音（2026-09-27，其余均不采用；该版本 2026-08-17 也由用户选定），已设为默认；这份声音另复制保存到 `E:\_KEEP\voices\phrolova-b-gpt-sovits-1.0.4\`（SHA256 核对一致，附使用说明），供其他项目复用。两者尚未接入界面。 【2026-09-27】第二批已合入：MF-05 课程术语纠正（拼音比较，保守替换，带撤销信息；“扭断→牛顿”通过）；MF-06 通用下载器（续传、镜像、校验、原子安装）用于语音识别与朗读底模，朗读嘴型数据（约 50 毫秒一帧，按实际播放进度），预热后首音 0.33–0.40 秒。正式分发调查：完整朗读引擎约 12.2 GiB（其中 Python/CUDA 运行时约 7.8 GiB），默认声音包约 278 MiB，均可离线随包分发。
 - 验证：未验证
 - 关联：[TEACH-05] [TEACH-06]
 - 更新：2026-09-27
@@ -488,6 +488,7 @@
 - E:\MentorFlowModels：本项目模型目录（gpt-sovits-base 为朗读用通用底模）。
 - E:\Codex\Temp\MentorFlowTests：基准测试（实验场）脚本与结果，如 search-benchmark。
 - E:\Node：Node.js 与 npm。
+- E:\_KEEP\voices：用户长期保留、跨项目复用的声音包（当前：弗洛洛 phrolova-b-gpt-sovits 1.0.4）。
 - E:\MentorFlow：2026-09-07 建的空目录，当前账号无写入权限，不使用、不改权限。
 - 关联：[ARCH-01] [VOICE-01]
 - 更新：2026-09-27
