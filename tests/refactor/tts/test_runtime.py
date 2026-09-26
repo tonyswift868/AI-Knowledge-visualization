@@ -167,7 +167,7 @@ def test_bad_audio_is_not_playable_and_does_not_restart(rig):
 def test_catalog_default_and_no_writes_to_source(config):
     before = {path: path.read_bytes() for path in config.pack_roots[0].rglob("*") if path.is_file()}
     voice = config.validate()
-    assert voice.version == "1.0.2" and voice.reference_text == "这是参考声音。"
+    assert voice.version == "1.0.4" and voice.reference_text == "这是参考声音。"
     assert before == {path: path.read_bytes() for path in before}
     with pytest.raises(TtsError):
         replace(config, data_root=config.engine_root / "cache").validate()

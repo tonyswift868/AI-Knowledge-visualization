@@ -85,3 +85,6 @@ artifacts/account-lifecycle-ui/
 
 # Stray test output created by a mis-escaped path; not project content.
 MentorFlow.localvalidationinterface-integrationpreferences/
+
+# Per-suite pytest temp dirs created inside test folders.
+tests/**/.tmp/

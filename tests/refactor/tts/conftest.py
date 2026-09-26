@@ -31,11 +31,11 @@ def config(tmp_path):
     sv.parent.mkdir()
     sv.write_bytes(b"explicit fake speaker embedding model")
     root = tmp_path / "packs"
-    pack = root / "phrolova-b-gpt-sovits/1.0.2"
+    pack = root / "phrolova-b-gpt-sovits/1.0.4"
     pack.mkdir(parents=True)
     for name in ("gpt.ckpt", "sovits.pth", "reference.wav"):
         (pack / name).write_bytes(b"test only")
-    manifest = {"schema": "mentorflow.voice-pack.v1", "pack_id": "phrolova-b-gpt-sovits", "version": "1.0.2",
+    manifest = {"schema": "mentorflow.voice-pack.v1", "pack_id": "phrolova-b-gpt-sovits", "version": "1.0.4",
         "runtime": {"adapter": "mentorflow.gpt-sovits.v1"},
         "files": [{"role": role, "path": name} for role, name in (("gpt_weight", "gpt.ckpt"), ("sovits_weight", "sovits.pth"), ("reference_audio", "reference.wav"))],
         "styles": {"daily": {"language": "zh", "reference_audio": "reference.wav", "transcript": "这是参考声音。"}}}
@@ -43,7 +43,7 @@ def config(tmp_path):
     catalog = tmp_path / "catalog/catalog.json"
     catalog.parent.mkdir()
     catalog.write_text(json.dumps({"schema": "mentorflow.voice-pack-catalog.v1", "packs": [
-        {"pack_id": "phrolova-b-gpt-sovits", "version": "1.0.2", "default": True}]}))
+        {"pack_id": "phrolova-b-gpt-sovits", "version": "1.0.4", "default": True}]}))
     return TtsConfig(engine_root=engine, engine_python=engine / "python.exe", pack_roots=(root,),
                      base_model_root=model_root,
                      catalog=catalog, data_root=tmp_path / "writable", startup_timeout=.25, shutdown_timeout=.01)

@@ -22,6 +22,8 @@ CATALOG = Path(r"E:\AI_Tools\GPTSoVITS\voice_catalog\teacher_voice_pack_catalog.
 PACK_ROOTS = (Path(r"E:\AI_Tools\GPTSoVITS\voice_packs"), Path(r"E:\AI_Tools\GPTSoVITS\VoicePacks"))
 DEFAULT_DATA_ROOT = Path(r"D:\MentorFlow-office\classroom\temp\tts-runtime")
 DEFAULT_VOICE = "phrolova-b-gpt-sovits"
+# User-selected teacher voice (2026-09-27 audition; also chosen on 2026-08-17).
+DEFAULT_VOICE_VERSION = "1.0.4"
 
 # Metadata only: model_manager.download requires prior user consent.
 # The runtime never downloads. URLs are pinned; hashes were checked against the
@@ -140,7 +142,7 @@ class TtsConfig:
     catalog: Path = CATALOG
     pack_roots: tuple[Path, ...] = PACK_ROOTS
     voice_id: str = DEFAULT_VOICE
-    voice_version: str = ""
+    voice_version: str = DEFAULT_VOICE_VERSION
     style: str = ""
     data_root: Path = DEFAULT_DATA_ROOT
     device: str = "cuda"
@@ -162,7 +164,7 @@ class TtsConfig:
             catalog=Path(os.environ.get("MF_TTS_CATALOG", str(CATALOG))),
             pack_roots=tuple(Path(p) for p in os.environ.get("MF_TTS_PACK_ROOTS", os.pathsep.join(map(str, PACK_ROOTS))).split(os.pathsep) if p),
             voice_id=os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE),
-            voice_version=os.environ.get("MF_TTS_VOICE_VERSION", ""), style=os.environ.get("MF_TTS_STYLE", ""),
+            voice_version=os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION), style=os.environ.get("MF_TTS_STYLE", ""),
             data_root=Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT))),
             device=os.environ.get("MF_TTS_DEVICE", "cuda"), cpu_threads=int(os.environ.get("MF_TTS_CPU_THREADS", "4")),
             base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else None,
