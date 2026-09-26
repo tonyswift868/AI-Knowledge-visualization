@@ -32,6 +32,70 @@ def _resource_response_envelope(payload):
 
 
 class SyncTransport(AuthenticatedPlanSource):
+    def read_changes(self, *, since="0", kind="learning_run", limit=100):
+        """Authenticated, bounded page; only an explicit 404 permits fallback."""
+        if (not isinstance(since, str) or not re.fullmatch(r"0|[1-9][0-9]{0,18}", since)
+                or int(since) > 2**63 - 1 or kind != "learning_run"
+                or type(limit) is not int or not 1 <= limit <= 500):
+            raise ValueError("invalid changes cursor, kind or limit")
+        scope, token = self._session()
+        self._scope = scope
+        headers = self._object_headers(scope, token)
+        try:
+            with httpx.Client(verify=self._ssl, timeout=20, follow_redirects=False,
+                              transport=self._transport) as client:
+                with client.stream("GET", self._base_url + "/api/enterprise/sync/v1/changes",
+                                   headers=headers, params=dict(since=since, kind=kind, limit=limit)) as response:
+                    self.require_current()
+                    if response.status_code in (401, 403):
+                        raise sync_auth_error(response, "登录已失效，本机内容仍保留，请重新登录。")
+                    if response.status_code == 404:
+                        raise PlanError("SYNC_CHANGES_UNSUPPORTED", "服务器暂未提供增量同步。")
+                    if response.status_code != 200:
+                        raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，稍后会重试。")
+                    raw = bytearray()
+                    for chunk in response.iter_bytes(chunk_size=65536):
+                        raw.extend(chunk)
+                        if len(raw) > 160 * 1024 * 1024:
+                            raise ValueError("changes page too large")
+            self.require_current()
+            def unique(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate JSON key")
+                    result[key] = value
+                return result
+            page = json.loads(raw, object_pairs_hook=unique)
+            if (page.get("schema") != "mentorflow.structured-sync-changes.v1"
+                    or type(page.get("contract_version")) is not int or page["contract_version"] != 1
+                    or page.get("scope") != scope.snapshot_scope() or page.get("kind") != kind
+                    or page.get("since") != since or type(page.get("has_more")) is not bool
+                    or not isinstance(page.get("entities"), list) or len(page["entities"]) > limit):
+                raise ValueError("changes page contract mismatch")
+            last = int(since)
+            for row in page["entities"]:
+                if (not isinstance(row, dict) or row.get("kind") != kind
+                        or not isinstance(row.get("entity_id"), str)
+                        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}", row["entity_id"])
+                        or type(row.get("revision")) is not int or row["revision"] < 1
+                        or type(row.get("deleted")) is not bool or not isinstance(row.get("payload"), dict)
+                        or type(row.get("change_seq")) is not int or not last < row["change_seq"] <= 2**63 - 1):
+                    raise ValueError("invalid or unordered change")
+                last = row["change_seq"]
+            if page.get("next_cursor") != str(last) or page["has_more"] and not page["entities"]:
+                raise ValueError("invalid next cursor")
+            return page
+        except PlanError:
+            raise
+        except (httpx.HTTPError, OSError):
+            raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，稍后会重试。") from None
+        except (ValueError, TypeError, AttributeError):
+            raise PlanError("SYNC_RESPONSE_INVALID", "增量同步回执无法验证，未推进游标。") from None
+        finally:
+            token = ""
+            headers.clear()
+
     def _object_headers(self, scope, token):
         return {"Authorization": "Bearer " + token, "Accept": "application/json",
                 "X-MentorFlow-Organization-ID": scope.organization_id,

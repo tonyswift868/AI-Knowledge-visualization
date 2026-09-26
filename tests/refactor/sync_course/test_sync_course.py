@@ -110,11 +110,21 @@ class Server:
         self.scope, self.rows, self.requests = scope, {}, {}
         self.calls = []
         self.before = self.after = None
+        self.incremental = False
+        self.sequence = 0
+        self.sequences = {}
+        self.pages = []
+        self.page_limit = 100
+
+    def stamp(self, eid):
+        self.sequence += 1
+        self.sequences[eid] = self.sequence
 
     def put_remote(self, record, revision=1):
         eid, payload = wire(record)
         self.rows[eid] = dict(kind='learning_run', entity_id=eid, revision=revision,
                               deleted=record.deleted, payload={} if record.deleted else payload)
+        self.stamp(eid)
 
     def handle(self, request):
         body = json.loads(request.content) if request.content else None
@@ -126,6 +136,19 @@ class Server:
             if response is not None:
                 return response
         if request.method == 'GET':
+            if request.url.path == '/api/enterprise/sync/v1/changes':
+                if not self.incremental:
+                    return httpx.Response(404)
+                since = int(request.url.params['since'])
+                limit = min(int(request.url.params['limit']), self.page_limit)
+                rows = [dict(self.rows[eid], change_seq=seq) for eid, seq in sorted(self.sequences.items(), key=lambda x: x[1])
+                        if seq > since and self.rows[eid]['kind'] == request.url.params['kind']]
+                page = dict(schema='mentorflow.structured-sync-changes.v1', contract_version=1,
+                            scope=self.scope.snapshot_scope(), kind=request.url.params['kind'], since=str(since),
+                            next_cursor=str(rows[:limit][-1]['change_seq'] if rows else since),
+                            has_more=len(rows) > limit, entities=rows[:limit])
+                self.pages.append(deepcopy(page))
+                return httpx.Response(200, json=page)
             assert request.url.path == '/api/enterprise/sync/v1/snapshot'
             return httpx.Response(200, json=dict(schema='mentorflow.structured-sync.v1', contract_version=3,
                 complete=True, snapshot_authority='POSTGRESQL_SINGLE_STATEMENT_MVCC',
@@ -154,6 +177,7 @@ class Server:
         response = dict(kind='learning_run', entity_id=eid, revision=revision + 1,
                         deleted=deleting, payload={} if deleting else body['payload'])
         self.rows[eid] = deepcopy(response)
+        self.stamp(eid)
         self.requests[key] = (deepcopy((request.method, body)), deepcopy(response))
         if self.after:
             self.after(request)
@@ -316,7 +340,7 @@ def test_cursor_never_advances_past_failed_persistence(connection, stage):
     setattr(store, 'fail_' + stage, True)
     with pytest.raises(OSError):
         CourseSync(store, transport).sync()
-    assert store.cursor == ''
+    assert store.cursor == '' or json.loads(store.cursor)['since'] == '0'
     setattr(store, 'fail_' + stage, False)
     CourseSync(store, transport).sync()
     assert store.cursor and len(store.rows) == 1

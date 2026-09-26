@@ -28,9 +28,11 @@ WINDOW = PlanWindow(TODAY, TODAY + timedelta(days=6), 120)
 SCRATCH = Path('E:/Codex/Temp/MentorFlowTests/course-integration')
 
 
-@pytest.fixture
-def devices(connection):
+@pytest.fixture(params=[False, True], ids=['snapshot-fallback', 'incremental'])
+def devices(connection, request):
     server, transport, login = connection
+    server.incremental = request.param
+    server.page_limit = 3
     account = login.identity.account_id
     SCRATCH.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=SCRATCH) as a, tempfile.TemporaryDirectory(dir=SCRATCH) as b:
@@ -93,3 +95,75 @@ def test_plan_and_progress_round_trip_between_two_devices(devices):
     CourseSync(a, transport).sync()
     CourseSync(b, transport).sync()
     assert len(server.requests) == writes
+
+
+def test_delete_and_reopen_with_real_store_and_old_cursor(devices):
+    import json
+    server, transport, a, b = devices
+    a.create_chat_session('同步后删除', session_id='chat1')
+    a.append_chat_message('chat1', 'user', '消息', message_id='msg1')
+    CourseSync(a, transport).sync()
+    CourseSync(b, transport).sync()
+    # A real pre-upgrade cursor has no sequence or cached payload business ID.
+    cursor = json.loads(b.sync_cursor())
+    cursor.pop('since', None)
+    for meta in cursor['records'].values():
+        meta.pop('payload_id', None)
+    b.set_sync_cursor(json.dumps(cursor))
+    a.delete_chat_session('chat1')
+    CourseSync(a, transport).sync()
+    CourseSync(b, transport).sync()
+    assert b.records('chat_sessions') == []
+    assert b.records('chat_messages') == []
+    # Open a second SQLite connection after persistence, without sharing objects.
+    with CourseStore(b.account_id, b.root.parents[2]) as reopened:
+        assert reopened.sync_cursor() == b.sync_cursor()
+        assert reopened.records('chat_sessions') == []
+        assert CourseSync(reopened, transport).sync()['pulled'] == 0
+    assert CourseSync(b, transport).sync()['pulled'] == 0
+
+
+def test_deletion_after_cursor_save_failure_cannot_orphan_remote_row(devices, monkeypatch):
+    server, transport, a, b = devices
+    a.create_chat_session('稍后删除', session_id='chat1')
+    CourseSync(a, transport).sync()
+    original = b.set_sync_cursor
+    calls = 0
+    def save(cursor):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError('synthetic cursor save failure after remote apply')
+        original(cursor)
+    monkeypatch.setattr(b, 'set_sync_cursor', save)
+    with pytest.raises(OSError):
+        CourseSync(b, transport).sync()
+    assert len(b.records('chat_sessions')) == 1
+    monkeypatch.setattr(b, 'set_sync_cursor', original)
+    a.delete_chat_session('chat1')
+    CourseSync(a, transport).sync()
+    CourseSync(b, transport).sync()
+    assert b.records('chat_sessions') == []
+
+
+def test_upload_cursor_failure_keeps_pending_until_identity_is_durable(devices, monkeypatch):
+    server, transport, a, b = devices
+    a.create_chat_session('上传回执保存失败', session_id='chat1')
+    original = a.set_sync_cursor
+    calls = 0
+    def save(cursor):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError('synthetic upload cursor persistence failure')
+        original(cursor)
+    monkeypatch.setattr(a, 'set_sync_cursor', save)
+    with pytest.raises(OSError):
+        CourseSync(a, transport).sync()
+    assert a.pending_records(100)
+    CourseSync(b, transport).sync()
+    b.delete_chat_session('chat1')
+    CourseSync(b, transport).sync()
+    monkeypatch.setattr(a, 'set_sync_cursor', original)
+    CourseSync(a, transport).sync()
+    assert a.records('chat_sessions') == [] and not a.pending_records(100)

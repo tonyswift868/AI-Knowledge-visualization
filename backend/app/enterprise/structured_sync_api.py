@@ -43,6 +43,14 @@ def snapshot(request: Request, required_scope: str | None = Query(default=None, 
     return call(request, 'snapshot', requested_scope=requested, scope_version=scope_version)
 
 
+@router.get('/changes')
+def changes(request: Request,
+            since: int = Query(default=0, ge=0, le=9_223_372_036_854_775_807),
+            kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'] = 'learning_run',
+            limit: int = Query(default=100, ge=1, le=500)):
+    return call(request, 'changes', since=since, kind=kind, limit=limit)
+
+
 def _object_store(request: Request):
     store = getattr(request.app.state, 'account_object_storage', None)
     if store is None:

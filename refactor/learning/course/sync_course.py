@@ -4,10 +4,10 @@ Run sync() on a worker thread. Only one round per instance runs at a time.
 Cancellation fences local completion; an in-flight HTTP request may finish on
 the server, and its deterministic request ID makes the next round safe.
 
-The current API has a complete, authenticated MVCC snapshot, not a delta feed.
-The opaque RecordStore cursor retains per-entity revisions and tombstone
-identities, so apply_remote receives only changes. Wire reads are still full
-snapshots. No separate database, queue, or domain merge policy lives here.
+Use the incremental feed when available; a 404 falls back to the existing
+authenticated MVCC snapshot. The opaque cursor retains the server sequence,
+per-entity revisions and tombstone identities. No separate database, queue,
+or domain merge policy lives here.
 RecordStore must preserve edits newer than mark_synced's local_revision and
 make repeated apply_remote calls safe (including after a cursor-save failure).
 """
@@ -89,7 +89,22 @@ def _envelope(values):
 
 def _metadata(values, revision, deleted):
     return {**{k: values[k] for k in ("schema", "plan_key", "entity", "entity_id")},
-            "revision": revision, "deleted": deleted}
+            "revision": revision, "deleted": deleted,
+            **({"payload_id": values["payload"]["id"]} if "id" in values["payload"] else {})}
+
+
+def _deleted_payload(identity):
+    # CourseStore needs the business ID as well as the scoped wire ID. Cursors
+    # from before this release can recover it from MF-03's stable ID encoding.
+    identifier = identity.get("payload_id", identity.get("payload", {}).get("id"))
+    if identifier is None:
+        eid, plan = identity["entity_id"], identity["plan_key"]
+        prefix = f"{len(plan)}:{plan}"
+        if identity["entity"] == "plans":
+            identifier = eid
+        elif eid.startswith(prefix):
+            identifier = eid[len(prefix):]
+    return {"id": identifier} if identifier is not None else {}
 
 
 def _record(values, deleted):
@@ -124,16 +139,21 @@ class CourseSync:
     def _cursor(self):
         raw = self.store.sync_cursor()
         if raw == "":
-            return {"schema": CURSOR_SCHEMA, "scope": self._scope.snapshot_scope(), "records": {}}
+            return {"schema": CURSOR_SCHEMA, "scope": self._scope.snapshot_scope(), "records": {}, "since": "0"}
         try:
             cursor = json.loads(raw)
-            if (set(cursor) != {"schema", "scope", "records"} or cursor["schema"] != CURSOR_SCHEMA
+            if (set(cursor) not in ({"schema", "scope", "records"}, {"schema", "scope", "records", "since"})
+                    or cursor["schema"] != CURSOR_SCHEMA
                     or cursor["scope"] != self._scope.snapshot_scope() or not isinstance(cursor["records"], dict)):
+                raise ValueError()
+            since = cursor.setdefault("since", "0")
+            if not isinstance(since, str) or not re.fullmatch(r"0|[1-9][0-9]{0,18}", since) or int(since) > 2**63 - 1:
                 raise ValueError()
             for wire_id, meta in cursor["records"].items():
                 if (not re.fullmatch(re.escape(PREFIX) + r"[0-9a-f]{64}", wire_id)
                         or type(meta["revision"]) is not int or meta["revision"] < 1
-                        or type(meta["deleted"]) is not bool):
+                        or type(meta["deleted"]) is not bool
+                        or "unapplied" in meta and type(meta["unapplied"]) is not bool):
                     raise ValueError()
                 if "entity" in meta:
                     values = {k: meta[k] for k in ("schema", "plan_key", "entity", "entity_id")}
@@ -152,13 +172,33 @@ class CourseSync:
 
     def _pull(self, cursor, pending, cancel):
         self._fence(cancel)
-        snapshot = self.transport.read_snapshot()
-        self._fence(cancel)
-        validate_snapshot(snapshot, self._scope)
+        total = 0
+        while True:
+            try:
+                page = self.transport.read_changes(since=cursor["since"], limit=100)
+            except PlanError as exc:
+                if exc.code != "SYNC_CHANGES_UNSUPPORTED":
+                    raise
+                snapshot = self.transport.read_snapshot()
+                self._fence(cancel)
+                validate_snapshot(snapshot, self._scope)
+                # A rollback may serve writes without a sequence. On the next
+                # upgrade, re-read all sequenced rows before resuming deltas.
+                cursor, count = self._apply_page(cursor, pending, snapshot["entities"], "0", cancel)
+                return cursor, total + count
+            self._fence(cancel)
+            cursor, count = self._apply_page(cursor, pending, page["entities"], page["next_cursor"], cancel)
+            total += count
+            if not page["has_more"]:
+                return cursor, total
+
+    def _apply_page(self, cursor, pending, rows, since, cancel):
         local = {_wire_id(_values(r)): deepcopy(r) for r in pending}
         next_cursor = deepcopy(cursor)
+        identities = deepcopy(cursor)
+        new_identity = False
         changes, acknowledgements = [], []
-        for row in snapshot["entities"]:
+        for row in rows:
             self._fence(cancel)
             wire_id = row["entity_id"]
             payload = row["payload"]
@@ -181,7 +221,7 @@ class CourseSync:
                     identity = _values(local[wire_id])
                 if identity is not None:
                     values = {k: identity[k] for k in ("schema", "plan_key", "entity", "entity_id")}
-                    values["payload"] = {}
+                    values["payload"] = _deleted_payload(identity)
             else:
                 if (set(payload) != {"schema", "version", "record_type", "record_id", "values"}
                         or payload["schema"] != "mentorflow.refactor-sync.v1"
@@ -194,16 +234,27 @@ class CourseSync:
                     raise _invalid()
             next_cursor["records"][wire_id] = (_metadata(values, revision, deleted) if values is not None
                                                 else {"revision": revision, "deleted": True})
-            if values is not None and (revision != previous.get("revision") or "entity" not in previous):
+            if values is not None and "entity" not in previous:
+                identities["records"][wire_id] = dict(next_cursor["records"][wire_id], unapplied=True)
+                new_identity = True
+            if values is not None and (revision != previous.get("revision") or "entity" not in previous
+                                       or previous.get("unapplied")):
                 changes.append((_record(values, deleted), revision))
             candidate = local.get(wire_id)
             if candidate is not None and candidate.deleted == deleted and (deleted or _values(candidate) == values):
                 acknowledgements.append((candidate, revision))
         self._fence(cancel)
+        if new_identity:
+            # Persist reversible tombstone identity BEFORE applying a new row,
+            # without advancing since or claiming it applied. Otherwise a
+            # cursor-save crash followed by remote deletion can orphan a row
+            # locally: the server tombstone carries only an irreversible hash.
+            self._save(identities, cancel)
         for record, revision in acknowledgements:
             self.store.mark_synced(record.entity, record.entity_id, record.local_revision, revision)
         if changes:
             self.store.apply_remote(changes)
+        next_cursor["since"] = since
         self._save(next_cursor, cancel)
         return next_cursor, len(changes)
 
@@ -224,10 +275,14 @@ class CourseSync:
                 or type(result.get("revision")) is not int or result["revision"] != expected + 1
                 or result.get("deleted") is not deleting or result.get("payload") != ({} if deleting else payload)):
             raise PlanError("SYNC_RESPONSE_INVALID", "课程同步回执不匹配，未清除待同步记录。")
-        if deleting == record.deleted:
-            self.store.mark_synced(record.entity, record.entity_id, record.local_revision, result["revision"])
         cursor["records"][wire_id] = _metadata(values, result["revision"], deleting)
         self._save(cursor, cancel)
+        # Save identity/CAS knowledge before clearing the local queue. If the
+        # cursor write fails and a second device immediately deletes this row,
+        # the still-pending record can identify the otherwise hashed tombstone.
+        self._fence(cancel)
+        if deleting == record.deleted:
+            self.store.mark_synced(record.entity, record.entity_id, record.local_revision, result["revision"])
 
     def sync(self, *, limit=100, cancel=None):
         """One bounded pull/upload round; errors leave the store retryable."""

@@ -466,3 +466,38 @@ class StructuredSyncService:
             self._bind(tx, scope)
             result = observe(tx.connection, scope, requested_scope=requested_scope, scope_version=scope_version)
         return result
+
+    def changes(self, actor, tenant, *, since=0, kind='learning_run', limit=100):
+        """Latest state of changed entities; soft deletions remain in this feed.
+
+        Allocation is serialized through commit within the scope by migration
+        0042's trigger. Sequence gaps/other tenants never advance this cursor.
+        A row edited between pages may move forward and be returned again;
+        clients apply its per-record revision idempotently.
+        """
+        if (type(since) is not int or not 0 <= since <= 9_223_372_036_854_775_807
+                or kind not in SYNC_KINDS or type(limit) is not int or not 1 <= limit <= 500):
+            raise error('SYNC_CHANGES_QUERY_INVALID', 422)
+        context = TenantTransactionContext(tenant=tenant, actor=actor)
+        scope = scope_of(context)
+        with self.transactions.transaction(context) as tx:
+            self._bind(tx, scope)
+            rows = tx.connection.execute(text('''
+                SELECT kind,entity_id,revision,deleted,payload,change_seq
+                FROM structured_sync_entities
+                WHERE issuer=:issuer AND subject_id=:subject_id
+                  AND organization_id=:organization_id AND workspace_id=:workspace_id
+                  AND kind=:kind AND change_seq>:since
+                ORDER BY change_seq LIMIT :page_size
+            '''), dict(scope, kind=kind, since=since, page_size=limit + 1)).mappings().all()
+        items = []
+        for row in rows[:limit]:
+            value = dict(row)
+            if isinstance(value['payload'], str):
+                value['payload'] = json.loads(value['payload'])
+            value['deleted'] = bool(value['deleted'])
+            items.append(value)
+        return dict(schema='mentorflow.structured-sync-changes.v1', contract_version=1,
+                    scope=scope, kind=kind, since=str(since),
+                    next_cursor=str(items[-1]['change_seq'] if items else since),
+                    has_more=len(rows) > limit, entities=items)

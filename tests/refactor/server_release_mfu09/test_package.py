@@ -33,7 +33,7 @@ def baseline(config):
         'edge': {'image': 'existing-edge'}}, 'networks': {'internal': {'internal': True}}}
 
 
-def test_bundle_is_exact_copy_of_four_current_sources(scripts):
+def test_bundle_is_exact_copy_of_six_current_sources(scripts):
     config, _, _ = scripts
     config.check_bundle(PACKAGE)
     manifest = json.loads((PACKAGE / 'manifest.json').read_text(encoding='utf-8'))
@@ -44,7 +44,7 @@ def test_bundle_is_exact_copy_of_four_current_sources(scripts):
         assert manifest['sha256'][source] == hashlib.sha256(canonical).hexdigest()
     lines = (PACKAGE / 'Dockerfile').read_text().splitlines()
     assert lines[0] == 'FROM ' + config.BASE_IMAGE
-    assert len(lines) == 5 and all(line.startswith('COPY --chown=10001:10001 ') for line in lines[1:])
+    assert len(lines) == 7 and all(line.startswith('COPY --chown=10001:10001 ') for line in lines[1:])
 
 
 def test_override_only_changes_backend_image_and_catalog_mount(scripts):
@@ -103,6 +103,12 @@ def test_release_commands_have_exact_compose_order_only_recreate_backend(scripts
         assert all(flag in up[0] for flag in ('--no-deps', '--no-build', '--force-recreate'))
         assert 'never' in up[0]
         assert not any('down' in c or 'alembic' in c or 'ssh' in c for c in commands)
+        stop = next(i for i, c in enumerate(commands) if 'stop' in c)
+        migration = next(i for i, c in enumerate(commands) if any(str(p).endswith('migration.py') for p in c))
+        switch = next(i for i, c in enumerate(commands) if ('patch' if action == 'deploy' else 'rollback') in c)
+        assert stop < migration < switch < commands.index(up[0])
+        if action == 'deploy': assert 'upgrade' in commands[migration]
+        else: assert 'downgrade' in commands[migration]
 
 
 @pytest.mark.parametrize('action', ['prepare', 'build', 'deploy', 'rollback'])
@@ -121,3 +127,26 @@ def test_helper_defaults_cannot_write_or_connect(scripts, monkeypatch, capsys):
     verify.main(['--mode', 'catalogs', '--url', 'https://api.invalid', '--ca-file', '/absent.pem',
                  '--auth-file', '/absent-secret.json'])
     assert 'DRY RUN' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('script', ['migration', 'migration_db'])
+@pytest.mark.parametrize('action', ['upgrade', 'check', 'downgrade'])
+def test_migration_default_does_not_connect_write_or_execute(scripts, monkeypatch, capsys, script, action):
+    spec = importlib.util.spec_from_file_location('mf_u09_' + script, PACKAGE / (script + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'operate', lambda *a: pytest.fail('default performed migration'))
+    module.main([action] + (['--env-file', '/operator/existing.env'] if script == 'migration' else []))
+    assert 'DRY RUN' in capsys.readouterr().out
+
+
+def test_migration_override_only_changes_one_off_service(scripts):
+    spec = importlib.util.spec_from_file_location('mf_u09_migration', PACKAGE / 'migration.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.override(PACKAGE)
+    assert set(result['services']) == {'migrate'}
+    assert set(result['services']['migrate']) == {'image', 'volumes'}
+    assert result['services']['migrate']['volumes'][0]['read_only'] is True
+    command = module.command('upgrade', '/operator/existing.env', '/temp/override.json')
+    assert '--no-deps' in command and '--rm' in command and '--pull' in command and 'never' in command

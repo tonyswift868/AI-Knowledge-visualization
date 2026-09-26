@@ -1,24 +1,27 @@
 # MF-U09：服务器源码覆盖包（未执行）
 
-基线 `399e9c4`，包含已合入的 T07。仅以本机已有
+基线 `2014a74`，包含第二批集成成果。仅以本机已有
 `mentorflow-mf-u04-backend:MF-U04` 构建 `mentorflow-mf-u09-backend:MF-U09`。
-`overlay/` 与 `manifest.json` 固定四个源码文件：
+`overlay/` 与 `manifest.json` 固定六个文件：
 
 - `backend/app/enterprise/identity/native.py`
 - `backend/app/enterprise_tenancy/structured_sync.py`
 - `backend/app/enterprise/catalog_api.py`
 - `backend/app/account_core_mvp.py`
+- `backend/app/enterprise/structured_sync_api.py`
+- `backend/alembic/versions/0042_structured_sync_changes.py`
 
-Dockerfile 只有 FROM 和四条 COPY，不安装依赖、不复制整个仓库。
+Dockerfile 只有 FROM 和六条 COPY，不安装依赖、不复制整个仓库。
 包内文本固定 LF 换行，manifest 校验的是 Linux 构建使用的原始字节。
-数据库仍为 0041；不运行迁移、不重建数据库/Keycloak/代理等服务。
+数据库由 `0041_account_closure` 升到 `0042_structured_sync_changes`。
+先停止 backend、迁移并检查，再切镜像；不重建数据库/Keycloak/代理等服务。
 本包没有包含本批客户端代码；客户端随客户端集成交付。
 
 ## 执行边界与配置
 
 由架构师获得用户上线许可后，在现有主机本地执行。开发工位未连接服务器，
 未运行 Docker、Compose 或任何脚本的 `--execute` 模式。
-`release.py`、`configure.py`、`verify.py` **默认只打印**；只有显式
+`release.py`、`configure.py`、`migration.py`、`migration_db.py`、`verify.py` **默认只打印**；只有显式
 `--execute` 才运行命令、写配置或发送验证请求。脚本不执行 SSH、上传或推送。
 
 活跃项目固定 `mentorflow-e1-preview`。四份 Compose 按以下顺序叠加：
@@ -39,6 +42,13 @@ Dockerfile 只有 FROM 和四条 COPY，不安装依赖、不复制整个仓库�
 脚本停止，由架构师检查，不擅自改环境。备份目录为
 `/opt/mentorflow/state/mentorflow-e1-preview/mf-b03-rollback/mf-u09`，配置快照权限 0600。
 备份已存在时不会覆盖，应先核对上次执行情况。
+
+迁移沿用已有 `migrate` 服务的网络、10001 身份和 `migrate_secrets`，
+需要其中的 `postgres_app_password`、`postgres_migrator_password`。不新增 DSN 环境变量。
+原有 `mentorflow_migrator`、`mentorflow_closure` 及 0041 注销配置必须已完成。
+`migration.py` 临时追加第 5 份 override，仅给一次性 `compose run --rm --no-deps migrate`
+选用 MF-U09 镜像和只读挂载本包；执行后删除该临时配置，不用于后台常驻服务。
+不要单独运行旧 `migrate` 镜像，它不包含新迁移。
 
 ## 步骤和检查命令
 
@@ -73,14 +83,48 @@ python3 "$PKG/release.py" build --env-file "$ENV_FILE" --execute
 python3 "$PKG/release.py" deploy --env-file "$ENV_FILE" --execute
 ```
 
-- prepare：检查四文件 SHA256/语法、MF-U04 本地镜像存在、Compose 配置有效；
+- prepare：检查六文件 SHA256/语法、MF-U04 本地镜像存在、Compose 配置有效；
   捕获原 override 与完整合并配置；建立空的 catalog 目录。
-- build：`docker build --network=none --pull=false`；新镜像内核对四文件 SHA256。
+- build：`docker build --network=none --pull=false`；新镜像内核对六文件 SHA256。
   打印基础和新镜像 ID，运维保存到部署记录，不改动旧镜像 tag。
-- deploy：检查基线仍一致，原子替换最后一份 override，检查 `config --quiet`
+- deploy：检查基线仍一致，`stop backend`；运行迁移到 0042，检查版本、回填、
+  数据计数/修订总数/删除数/正文大小、序列、索引、触发器与 FORCE RLS；
+  再原子替换最后一份 override，检查 `config --quiet`
   及完整配置差异；只运行 `up -d --no-deps --no-build --pull never --force-recreate backend`；
   最后显示 backend 状态。会话在进程重启后需重新登录，按既有内存会话机制处理。
-- 若修改 override 后任一步失败，不继续其他操作，按下方回滚恢复 MF-U04。
+- 任一步失败不继续切镜像；backend 保持停止，按下方回滚恢复 MF-U04。
+
+## 增量数据与迁移检查
+
+0042 只为同步表增加 `change_seq`、唯一索引、作用域分页索引和写入触发器。
+原 revision、payload、删除标记、CAS 和幂等回执保持。已有行通过 volatile
+`ADD COLUMN DEFAULT nextval(...)` 在表锁内回填，再去掉默认值；无需关闭 RLS，
+也不执行旧业务 UPDATE/注销触发器。大表会重写并短暂占用额外磁盘，安排维护窗口，
+先按既有运维流程完成数据库备份，确认磁盘和备份可恢复，再执行 deploy。
+脚本锁等待上限 15 秒、单条语句上限 120 秒；超时先调查容量/锁持有者，不跳过检查。
+
+序列使用 CACHE 1；写入触发器先获得当前账号/空间的事务锁，再分配序号。
+游标只推进到该作用域实际返回的行，不使用全局序列高水位，避免并发提交造成漏读。
+接口返回每条记录最新状态；同一记录的多次更新可能合并，追加事件仍各有独立记录。
+软删除保留在变化流中。注销账号的硬删除继续由原 0041 流程处理。
+
+可重复的只读数据库检查（默认只打印）：
+
+```sh
+python3 "$PKG/migration.py" check --env-file "$ENV_FILE"
+python3 "$PKG/migration.py" check --env-file "$ENV_FILE" --execute
+```
+
+接口为 `GET /api/enterprise/sync/v1/changes?since=0&kind=learning_run&limit=100`，
+认证与空间请求头沿用同步接口；limit 为 1–500。返回 `next_cursor`（十进制字符串）、
+`has_more`、`entities`（含 `change_seq` 和删除）。匿名 401；不同账号/空间不可互读。
+快照接口保持原协议。客户端每页先保存再推进游标，旧服务器 404 时回退快照。
+上线后用受控测试账号运行下方验证，再手测两设备上传、拉取、删除和重开续传：
+
+```sh
+python3 "$PKG/verify.py" --mode changes --url "$API_ORIGIN" --ca-file "$CA_FILE" --auth-file "$AUTH_FILE"
+python3 "$PKG/verify.py" --mode changes --url "$API_ORIGIN" --ca-file "$CA_FILE" --auth-file "$AUTH_FILE" --execute
+```
 
 上线健康检查使用实际存在的 `/health/live`、`/health/startup`、`/health/ready`，
 不把不存在的裸 `/health` 当作验收端点：
@@ -149,7 +193,10 @@ python3 "$PKG/verify.py" --mode session --url "$API_ORIGIN" --ca-file "$CA_FILE"
 
 ## 回滚到 MF-U04
 
-保留 catalog 文件和数据库，不做降级迁移。查看计划后，由运维显式执行：
+保留 catalog 文件、所有业务记录和幂等回执。停止 backend 后，使用 MF-U09 的一次性
+迁移容器降回 `0041_account_closure`，检查数据计数保持，再恢复配置和 MF-U04 镜像。
+不触及 0041 注销迁移。保留全局序列及其高水位，重新升级重新回填的序号一定更大，
+已有客户端游标仍能追上全部数据。查看计划后，由运维显式执行：
 
 ```sh
 python3 "$PKG/release.py" rollback --env-file "$ENV_FILE"
@@ -159,4 +206,6 @@ python3 "$PKG/verify.py" --mode health --url "$API_ORIGIN" --ca-file "$CA_FILE" 
 
 脚本要求当前 override 正是本包生成的内容，恢复原始字节，检查完整配置与捕获的
 MF-U04 一致，只重建 backend。若有其他人的改动则拒绝覆盖，交架构师核对。
+若升级停在切镜像前，原 override 仍为备份原文，回滚同样接受这一状态。
+若降级检查失败，不启动旧镜像掩盖问题，保留停止状态与数据库，交架构师处理。
 回滚后新目录/session API 不再作为通过条件；原有账号与健康接口按 MF-U04 验证。

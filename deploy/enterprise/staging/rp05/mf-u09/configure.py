@@ -28,7 +28,8 @@ ROLLBACK = Path('/opt/mentorflow/state/mentorflow-e1-preview/mf-b03-rollback/mf-
 CATALOG = '/opt/mentorflow/state/mentorflow-e1-preview/catalog'
 TARGET = '/run/mentorflow/catalog'
 SOURCES = ('backend/app/enterprise/identity/native.py', 'backend/app/enterprise_tenancy/structured_sync.py',
-           'backend/app/enterprise/catalog_api.py', 'backend/app/account_core_mvp.py')
+           'backend/app/enterprise/catalog_api.py', 'backend/app/account_core_mvp.py',
+           'backend/app/enterprise/structured_sync_api.py', 'backend/alembic/versions/0042_structured_sync_changes.py')
 
 
 def compose(env_file):
@@ -89,11 +90,11 @@ def validate_config(before, after, *, upgraded):
 
 def check_bundle(package):
     manifest = json.loads((package / 'manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('baseline') != '399e9c4' or set(manifest['sha256']) != set(SOURCES):
+    if manifest.get('baseline') != '2014a74' or set(manifest['sha256']) != set(SOURCES):
         raise ValueError('bundle manifest is invalid')
     files = {p.relative_to(package / 'overlay').as_posix() for p in (package / 'overlay').rglob('*') if p.is_file()}
     if files != set(SOURCES):
-        raise ValueError('bundle must overlay exactly four source files')
+        raise ValueError('bundle must overlay exactly the six declared files')
     for source in SOURCES:
         raw = (package / 'overlay' / source).read_bytes()
         if hashlib.sha256(raw).hexdigest() != manifest['sha256'][source]:
@@ -146,16 +147,25 @@ def operate(action, env_file):
         validate_config(baseline, _config(env_file), upgraded=False)
         _atomic(LAST_OVERRIDE, (json.dumps(patch, indent=2) + '\n').encode())
     elif action == 'rollback':
-        if json.loads(LAST_OVERRIDE.read_bytes()) != patch:
+        current = LAST_OVERRIDE.read_bytes()
+        if current == original:
+            return  # Migration failed before the image/config switch.
+        if json.loads(current) != patch:
             raise ValueError('final override differs from MF-U09; refuse to overwrite unrelated edits')
         _atomic(LAST_OVERRIDE, original)
+    elif action == 'check-rollback':
+        current = LAST_OVERRIDE.read_bytes()
+        upgraded = current != original
+        if upgraded and json.loads(current) != patch:
+            raise ValueError('final override differs from both captured and MF-U09 config')
+        validate_config(baseline, _config(env_file), upgraded=upgraded)
     elif action in {'check-base', 'check-new'}:
         validate_config(baseline, _config(env_file), upgraded=action == 'check-new')
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['bundle', 'capture', 'patch', 'rollback', 'check-base', 'check-new'])
+    parser.add_argument('action', choices=['bundle', 'capture', 'patch', 'rollback', 'check-base', 'check-new', 'check-rollback'])
     parser.add_argument('--env-file', required=True, type=Path)
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)

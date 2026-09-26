@@ -54,6 +54,27 @@ def verify(args):
     if args.mode == 'health':
         return
     headers = auth_headers(args.auth_file)
+    if args.mode == 'changes':
+        path = '/api/enterprise/sync/v1/changes'
+        assert get(path)[0] == 401
+        cursor = '0'
+        for _ in range(2):
+            status, response_headers, raw = get(path + '?kind=learning_run&limit=1&since=' + cursor, headers)
+            assert status == 200 and response_headers['Cache-Control'] == 'no-store'
+            page = json.loads(raw)
+            assert page['schema'] == 'mentorflow.structured-sync-changes.v1' and page['contract_version'] == 1
+            assert page['since'] == cursor and page['kind'] == 'learning_run'
+            assert page['scope']['organization_id'] == headers['X-MentorFlow-Organization-ID']
+            assert page['scope']['workspace_id'] == headers['X-MentorFlow-Workspace-ID']
+            assert type(page['has_more']) is bool and len(page['entities']) <= 1
+            if page['entities']:
+                row = page['entities'][0]
+                assert row['change_seq'] > int(cursor) and row['revision'] > 0 and type(row['deleted']) is bool
+                assert page['next_cursor'] == str(row['change_seq'])
+            else:
+                assert page['next_cursor'] == cursor and not page['has_more']
+            cursor = page['next_cursor']
+        print('changes 200 / anonymous 401 / bounded pages and advancing cursor')
     if args.mode in {'empty', 'catalogs'}:
         assert 'X-MentorFlow-Organization-ID' in headers and 'X-MentorFlow-Workspace-ID' in headers
         for path in CATALOGS:
@@ -89,7 +110,7 @@ def verify(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=['health', 'empty', 'catalogs', 'session'], required=True)
+    parser.add_argument('--mode', choices=['health', 'empty', 'catalogs', 'session', 'changes'], required=True)
     parser.add_argument('--url', required=True)
     parser.add_argument('--ca-file', type=Path, required=True)
     parser.add_argument('--auth-file', type=Path)
@@ -113,6 +134,8 @@ def main(argv=None):
             print('GET ' + args.url.rstrip('/') + SESSION + ' [current Bearer] -> active 200; anonymous -> 401')
             if args.superseded_auth_file:
                 print('GET ' + args.url.rstrip('/') + SESSION + ' [old Bearer] -> 401 NATIVE_SESSION_SUPERSEDED')
+        if args.mode == 'changes':
+            print('GET /api/enterprise/sync/v1/changes?since=0&kind=learning_run&limit=1 -> 200; next page advances; anonymous 401')
         print('DRY RUN: no files read, no requests sent; add --execute to run checks')
         return
     try:

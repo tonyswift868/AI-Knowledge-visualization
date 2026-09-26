@@ -22,18 +22,28 @@ def commands(action, env_file, package):
         # Inspect sources inside the new image without running app startup.
         program = ('import hashlib,pathlib; expected=' + repr(manifest['sha256']) + '; '
                    'assert all(hashlib.sha256((pathlib.Path("/app")/p).read_bytes()).hexdigest()==h '
-                   'for p,h in expected.items()); print("four overlay hashes: OK")')
+                   'for p,h in expected.items()); print("six overlay hashes: OK")')
         return [configure('bundle'), ['docker', 'image', 'inspect', BASE_IMAGE, '--format', '{{.Id}}'],
                 ['docker', 'build', '--network=none', '--pull=false', '-t', IMAGE, '-f', str(package / 'Dockerfile'), str(package)],
                 ['docker', 'run', '--rm', '--network=none', '--read-only', '--entrypoint', 'python', IMAGE, '-c', program],
                 ['docker', 'image', 'inspect', IMAGE, '--format', '{{.Id}}']]
     if action == 'deploy':
         return [['docker', 'image', 'inspect', IMAGE, '--format', '{{.Id}}'],
-                configure('check-base'), configure('patch'), docker + ['config', '--quiet'], configure('check-new'),
+                configure('check-base'),
+                # Stop only backend to bound the DDL rewrite and allow before/
+                # after data checks. The image/config is still MF-U04 here.
+                docker + ['stop', 'backend'],
+                ['python3', str(package / 'migration.py'), 'upgrade', '--env-file', str(env_file), '--execute'],
+                ['python3', str(package / 'migration.py'), 'check', '--env-file', str(env_file), '--execute'],
+                configure('patch'), docker + ['config', '--quiet'], configure('check-new'),
                 docker + ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', '--force-recreate', 'backend'],
                 docker + ['ps', 'backend']]
     if action == 'rollback':
-        return [['docker', 'image', 'inspect', BASE_IMAGE, '--format', '{{.Id}}'], configure('rollback'),
+        return [['docker', 'image', 'inspect', BASE_IMAGE, '--format', '{{.Id}}'],
+                configure('check-rollback'),
+                docker + ['stop', 'backend'],
+                ['python3', str(package / 'migration.py'), 'downgrade', '--env-file', str(env_file), '--execute'],
+                configure('rollback'),
                 docker + ['config', '--quiet'], configure('check-base'),
                 docker + ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', '--force-recreate', 'backend'],
                 docker + ['ps', 'backend']]
