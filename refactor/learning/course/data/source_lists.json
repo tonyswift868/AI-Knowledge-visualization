@@ -1,0 +1,1056 @@
+{
+  "version": 1,
+  "updated": "2026-09-27",
+  "whitelist": [
+    {
+      "match": "wikipedia.org",
+      "brand": "Wikipedia / 维基百科",
+      "category": "encyclopedia",
+      "reason": "广泛使用的协作百科，有引用与公开修订记录；具体条目仍需核验。"
+    },
+    {
+      "match": "britannica.com",
+      "brand": "Encyclopaedia Britannica / 大英百科",
+      "category": "encyclopedia",
+      "reason": "长期出版的编辑型百科，适合作为基础概念参考。"
+    },
+    {
+      "match": "plato.stanford.edu",
+      "brand": "Stanford Encyclopedia of Philosophy",
+      "category": "encyclopedia",
+      "reason": "斯坦福主办的专家撰写哲学百科，有作者与参考文献。"
+    },
+    {
+      "match": "mathworld.wolfram.com",
+      "brand": "Wolfram MathWorld",
+      "category": "encyclopedia",
+      "reason": "Wolfram 维护的数学参考百科，条目提供公式与文献线索。"
+    },
+    {
+      "match": "docs.python.org",
+      "brand": "Python",
+      "category": "official_docs",
+      "reason": "Python 官方语言与标准库文档，可追溯版本。"
+    },
+    {
+      "match": "developer.mozilla.org",
+      "brand": "MDN Web Docs",
+      "category": "official_docs",
+      "reason": "广泛使用的 Web 平台文档，提供兼容性信息和规范引用。"
+    },
+    {
+      "match": "docs.oracle.com",
+      "brand": "Oracle",
+      "category": "official_docs",
+      "reason": "Oracle 官方产品与 Java 文档，适合核对接口和版本行为。"
+    },
+    {
+      "match": "learn.microsoft.com",
+      "brand": "Microsoft Learn",
+      "category": "official_docs",
+      "reason": "微软官方技术文档与学习资料，有产品和版本归属。"
+    },
+    {
+      "match": "docs.aws.amazon.com",
+      "brand": "AWS Documentation",
+      "category": "official_docs",
+      "reason": "AWS 官方服务文档，适合核对服务接口与配置。"
+    },
+    {
+      "match": "cloud.google.com",
+      "brand": "Google Cloud",
+      "category": "official_docs",
+      "reason": "Google Cloud 官方产品文档与技术教程。"
+    },
+    {
+      "match": "developer.apple.com",
+      "brand": "Apple Developer",
+      "category": "official_docs",
+      "reason": "Apple 官方开发文档和平台接口说明。"
+    },
+    {
+      "match": "developer.android.com",
+      "brand": "Android Developers",
+      "category": "official_docs",
+      "reason": "Android 官方开发指南与 API 参考。"
+    },
+    {
+      "match": "developers.google.com",
+      "brand": "Google for Developers",
+      "category": "official_docs",
+      "reason": "Google 官方开发者文档与技术指南。"
+    },
+    {
+      "match": "developers.openai.com",
+      "brand": "OpenAI Developers",
+      "category": "official_docs",
+      "reason": "OpenAI 官方 API 与开发者文档；具体接口仍按页面版本核验。"
+    },
+    {
+      "match": "platform.openai.com",
+      "brand": "OpenAI Platform",
+      "category": "official_docs",
+      "reason": "OpenAI 官方平台文档与 API 参考入口。"
+    },
+    {
+      "match": "docs.anthropic.com",
+      "brand": "Anthropic Documentation",
+      "category": "official_docs",
+      "reason": "Anthropic 官方文档域名；旧链接是否重定向需后续实读确认。"
+    },
+    {
+      "match": "api-docs.deepseek.com",
+      "brand": "DeepSeek API Docs",
+      "category": "official_docs",
+      "reason": "DeepSeek 官方 API 文档，提供接口与参数定义。"
+    },
+    {
+      "match": "docs.github.com",
+      "brand": "GitHub Docs",
+      "category": "official_docs",
+      "reason": "GitHub 官方产品文档，不泛指用户仓库内容。"
+    },
+    {
+      "match": "git-scm.com",
+      "brand": "Git",
+      "category": "official_docs",
+      "reason": "Git 项目官方文档与 Pro Git 图书入口。"
+    },
+    {
+      "match": "docs.docker.com",
+      "brand": "Docker Docs",
+      "category": "official_docs",
+      "reason": "Docker 官方文档，说明容器工具的使用与行为。"
+    },
+    {
+      "match": "kubernetes.io",
+      "brand": "Kubernetes",
+      "category": "official_docs",
+      "reason": "Kubernetes 项目官方文档和概念说明。"
+    },
+    {
+      "match": "doc.rust-lang.org",
+      "brand": "Rust Documentation",
+      "category": "official_docs",
+      "reason": "Rust 官方语言书、标准库与参考文档。"
+    },
+    {
+      "match": "nodejs.org",
+      "brand": "Node.js",
+      "category": "official_docs",
+      "reason": "Node.js 项目官方运行时与 API 文档。"
+    },
+    {
+      "match": "typescriptlang.org",
+      "brand": "TypeScript",
+      "category": "official_docs",
+      "reason": "TypeScript 官方语言手册和配置参考。"
+    },
+    {
+      "match": "react.dev",
+      "brand": "React",
+      "category": "official_docs",
+      "reason": "React 项目官方文档与学习指南。"
+    },
+    {
+      "match": "vuejs.org",
+      "brand": "Vue.js",
+      "category": "official_docs",
+      "reason": "Vue 项目官方文档，含中文学习资源入口。"
+    },
+    {
+      "match": "angular.dev",
+      "brand": "Angular",
+      "category": "official_docs",
+      "reason": "Angular 项目官方框架文档。"
+    },
+    {
+      "match": "docs.djangoproject.com",
+      "brand": "Django",
+      "category": "official_docs",
+      "reason": "Django 官方框架文档，可核对版本与 API。"
+    },
+    {
+      "match": "flask.palletsprojects.com",
+      "brand": "Flask / Pallets",
+      "category": "official_docs",
+      "reason": "Flask 维护团队的官方文档。"
+    },
+    {
+      "match": "fastapi.tiangolo.com",
+      "brand": "FastAPI",
+      "category": "official_docs",
+      "reason": "FastAPI 项目官方教程与接口说明。"
+    },
+    {
+      "match": "numpy.org",
+      "brand": "NumPy",
+      "category": "official_docs",
+      "reason": "NumPy 官方科学计算文档与教程。"
+    },
+    {
+      "match": "scipy.org",
+      "brand": "SciPy",
+      "category": "official_docs",
+      "reason": "SciPy 官方科学计算文档与社区项目入口。"
+    },
+    {
+      "match": "pandas.pydata.org",
+      "brand": "pandas",
+      "category": "official_docs",
+      "reason": "pandas 项目官方数据分析文档。"
+    },
+    {
+      "match": "matplotlib.org",
+      "brand": "Matplotlib",
+      "category": "official_docs",
+      "reason": "Matplotlib 官方绘图文档和示例。"
+    },
+    {
+      "match": "scikit-learn.org",
+      "brand": "scikit-learn",
+      "category": "official_docs",
+      "reason": "scikit-learn 官方机器学习教程与算法说明。"
+    },
+    {
+      "match": "pytorch.org",
+      "brand": "PyTorch",
+      "category": "official_docs",
+      "reason": "PyTorch 官方框架文档与教程。"
+    },
+    {
+      "match": "tensorflow.org",
+      "brand": "TensorFlow",
+      "category": "official_docs",
+      "reason": "TensorFlow 官方框架文档与教程。"
+    },
+    {
+      "match": "docs.nvidia.com",
+      "brand": "NVIDIA Documentation",
+      "category": "official_docs",
+      "reason": "NVIDIA 官方计算与软件文档。"
+    },
+    {
+      "match": "postgresql.org",
+      "brand": "PostgreSQL",
+      "category": "official_docs",
+      "reason": "PostgreSQL 官方数据库手册与项目资料。"
+    },
+    {
+      "match": "dev.mysql.com",
+      "brand": "MySQL Developer Zone",
+      "category": "official_docs",
+      "reason": "MySQL 官方数据库参考手册。"
+    },
+    {
+      "match": "sqlite.org",
+      "brand": "SQLite",
+      "category": "official_docs",
+      "reason": "SQLite 作者维护的数据库规范与实现文档。"
+    },
+    {
+      "match": "r-project.org",
+      "brand": "The R Project",
+      "category": "official_docs",
+      "reason": "R 项目官方语言、手册与发布资料。"
+    },
+    {
+      "match": "cran.r-project.org",
+      "brand": "CRAN",
+      "category": "official_docs",
+      "reason": "R 官方生态的包手册与文档索引；包内容仍须核验。"
+    },
+    {
+      "match": "docs.kernel.org",
+      "brand": "Linux Kernel Documentation",
+      "category": "official_docs",
+      "reason": "Linux 内核项目官方技术文档。"
+    },
+    {
+      "match": "openai.github.io",
+      "brand": "OpenAI 官方项目文档",
+      "category": "official_docs",
+      "reason": "OpenAI 组织的 GitHub Pages 文档，不泛信整个 github.io。"
+    },
+    {
+      "match": "docs.langchain.com",
+      "brand": "LangChain Documentation",
+      "category": "official_docs",
+      "reason": "LangChain 官方框架与 LangGraph 文档。"
+    },
+    {
+      "match": "modelcontextprotocol.io",
+      "brand": "Model Context Protocol",
+      "category": "official_docs",
+      "reason": "MCP 项目官方协议文档与规范。"
+    },
+    {
+      "match": "arxiv.org",
+      "brand": "arXiv",
+      "category": "academic",
+      "reason": "长期使用的学术预印本档案；收录不等于经过同行评审。"
+    },
+    {
+      "match": "aclanthology.org",
+      "brand": "ACL Anthology",
+      "category": "academic",
+      "reason": "ACL 官方自然语言处理论文档案，提供出版信息。"
+    },
+    {
+      "match": "proceedings.neurips.cc",
+      "brand": "NeurIPS Proceedings",
+      "category": "academic",
+      "reason": "NeurIPS 官方论文集，可核对会议和作者信息。"
+    },
+    {
+      "match": "proceedings.mlr.press",
+      "brand": "Proceedings of Machine Learning Research",
+      "category": "academic",
+      "reason": "机器学习会议论文的正式出版档案。"
+    },
+    {
+      "match": "openreview.net",
+      "brand": "OpenReview",
+      "category": "academic",
+      "reason": "广泛使用的学术评审与论文平台；必须区分投稿、评审与录用状态。"
+    },
+    {
+      "match": "jmlr.org",
+      "brand": "Journal of Machine Learning Research",
+      "category": "academic",
+      "reason": "知名机器学习期刊的官方论文网站。"
+    },
+    {
+      "match": "dl.acm.org",
+      "brand": "ACM Digital Library",
+      "category": "academic",
+      "reason": "ACM 官方数字图书馆，提供正式论文出版记录。"
+    },
+    {
+      "match": "ieee.org",
+      "brand": "IEEE",
+      "category": "academic",
+      "reason": "IEEE 专业学会及官方出版来源，具体论文仍需核验。"
+    },
+    {
+      "match": "nature.com",
+      "brand": "Nature Portfolio",
+      "category": "academic",
+      "reason": "知名学术出版平台，提供论文作者、刊物与引用资料。"
+    },
+    {
+      "match": "science.org",
+      "brand": "Science / AAAS",
+      "category": "academic",
+      "reason": "AAAS 的学术期刊与科学出版来源。"
+    },
+    {
+      "match": "pnas.org",
+      "brand": "PNAS",
+      "category": "academic",
+      "reason": "美国国家科学院院刊官方出版来源。"
+    },
+    {
+      "match": "link.springer.com",
+      "brand": "SpringerLink",
+      "category": "academic",
+      "reason": "Springer 学术图书与期刊的出版平台。"
+    },
+    {
+      "match": "sciencedirect.com",
+      "brand": "ScienceDirect",
+      "category": "academic",
+      "reason": "Elsevier 学术期刊与图书平台，具有出版元数据。"
+    },
+    {
+      "match": "pubmed.ncbi.nlm.nih.gov",
+      "brand": "PubMed",
+      "category": "academic",
+      "reason": "美国国家医学图书馆的生物医学文献索引。"
+    },
+    {
+      "match": "pmc.ncbi.nlm.nih.gov",
+      "brand": "PubMed Central",
+      "category": "academic",
+      "reason": "美国国家医学图书馆的开放全文文献档案。"
+    },
+    {
+      "match": "pubs.acs.org",
+      "brand": "American Chemical Society Publications",
+      "category": "academic",
+      "reason": "美国化学会官方学术出版平台。"
+    },
+    {
+      "match": "aps.org",
+      "brand": "American Physical Society",
+      "category": "academic",
+      "reason": "美国物理学会及其官方期刊来源。"
+    },
+    {
+      "match": "siam.org",
+      "brand": "SIAM",
+      "category": "academic",
+      "reason": "工业与应用数学学会的出版与专业资料来源。"
+    },
+    {
+      "match": "zenodo.org",
+      "brand": "Zenodo",
+      "category": "academic",
+      "reason": "CERN 支持的研究成果存储平台；上传内容不自动等同同行评审。"
+    },
+    {
+      "match": "semanticscholar.org",
+      "brand": "Semantic Scholar",
+      "category": "academic",
+      "reason": "广泛使用的学术检索与论文元数据平台；优先追溯论文原文。"
+    },
+    {
+      "match": "openaire.eu",
+      "brand": "OpenAIRE",
+      "category": "academic",
+      "reason": "欧洲开放科研基础设施，提供研究成果与来源链接。"
+    },
+    {
+      "match": "ocw.mit.edu",
+      "brand": "MIT OpenCourseWare",
+      "category": "education",
+      "reason": "麻省理工学院官方开放课程，提供教学大纲和课程资料。"
+    },
+    {
+      "match": "openlearning.mit.edu",
+      "brand": "MIT Open Learning",
+      "category": "education",
+      "reason": "麻省理工学院官方开放学习入口。"
+    },
+    {
+      "match": "cs.stanford.edu",
+      "brand": "Stanford Computer Science",
+      "category": "education",
+      "reason": "斯坦福计算机科学系的官方课程与研究资料来源。"
+    },
+    {
+      "match": "cs.cmu.edu",
+      "brand": "Carnegie Mellon School of Computer Science",
+      "category": "education",
+      "reason": "卡内基梅隆计算机科学学院的课程与研究资料来源。"
+    },
+    {
+      "match": "berkeley.edu",
+      "brand": "University of California, Berkeley",
+      "category": "education",
+      "reason": "加州大学伯克利分校官方教学与学术来源；具体作者仍需核实。"
+    },
+    {
+      "match": "cs50.harvard.edu",
+      "brand": "Harvard CS50",
+      "category": "education",
+      "reason": "哈佛 CS50 官方课程材料与公开教学资源。"
+    },
+    {
+      "match": "oyc.yale.edu",
+      "brand": "Open Yale Courses",
+      "category": "education",
+      "reason": "耶鲁大学官方开放课程。"
+    },
+    {
+      "match": "open.edu",
+      "brand": "The Open University",
+      "category": "education",
+      "reason": "英国开放大学的开放学习与大学教育资源。"
+    },
+    {
+      "match": "khanacademy.org",
+      "brand": "Khan Academy",
+      "category": "education",
+      "reason": "广泛使用的非营利教育平台，提供系统化基础课程。"
+    },
+    {
+      "match": "openstax.org",
+      "brand": "OpenStax",
+      "category": "education",
+      "reason": "莱斯大学支持的开放教材项目，教材有编写和审订信息。"
+    },
+    {
+      "match": "nptel.ac.in",
+      "brand": "NPTEL",
+      "category": "education",
+      "reason": "印度高校联合的官方工程与科学公开课项目。"
+    },
+    {
+      "match": "tsinghua.edu.cn",
+      "brand": "清华大学",
+      "category": "education",
+      "reason": "清华大学官方教学与学术来源，支持中文高等教育资料。"
+    },
+    {
+      "match": "pku.edu.cn",
+      "brand": "北京大学",
+      "category": "education",
+      "reason": "北京大学官方课程与学术资料来源。"
+    },
+    {
+      "match": "ustc.edu.cn",
+      "brand": "中国科学技术大学",
+      "category": "education",
+      "reason": "中国科学技术大学官方教育与研究资料来源。"
+    },
+    {
+      "match": "zju.edu.cn",
+      "brand": "浙江大学",
+      "category": "education",
+      "reason": "浙江大学官方教学与研究资料来源。"
+    },
+    {
+      "match": "sjtu.edu.cn",
+      "brand": "上海交通大学",
+      "category": "education",
+      "reason": "上海交通大学官方教学与学术资料来源。"
+    },
+    {
+      "match": "fudan.edu.cn",
+      "brand": "复旦大学",
+      "category": "education",
+      "reason": "复旦大学官方教育与学术资料来源。"
+    },
+    {
+      "match": "nju.edu.cn",
+      "brand": "南京大学",
+      "category": "education",
+      "reason": "南京大学官方教育与研究资料来源。"
+    },
+    {
+      "match": "w3.org",
+      "brand": "World Wide Web Consortium",
+      "category": "standards",
+      "reason": "W3C 官方 Web 标准与技术报告。"
+    },
+    {
+      "match": "whatwg.org",
+      "brand": "WHATWG",
+      "category": "standards",
+      "reason": "HTML 等 Web 平台现行标准的官方发布来源。"
+    },
+    {
+      "match": "ietf.org",
+      "brand": "Internet Engineering Task Force",
+      "category": "standards",
+      "reason": "IETF 官方互联网标准、工作组与技术文档来源。"
+    },
+    {
+      "match": "rfc-editor.org",
+      "brand": "RFC Editor",
+      "category": "standards",
+      "reason": "RFC 系列正式发布与勘误来源。"
+    },
+    {
+      "match": "iso.org",
+      "brand": "International Organization for Standardization",
+      "category": "standards",
+      "reason": "国际标准化组织官方标准目录与说明。"
+    },
+    {
+      "match": "iec.ch",
+      "brand": "International Electrotechnical Commission",
+      "category": "standards",
+      "reason": "国际电工委员会官方标准与技术资料来源。"
+    },
+    {
+      "match": "ecma-international.org",
+      "brand": "Ecma International",
+      "category": "standards",
+      "reason": "ECMAScript 等标准的官方发布组织。"
+    },
+    {
+      "match": "unicode.org",
+      "brand": "Unicode Consortium",
+      "category": "standards",
+      "reason": "Unicode 字符编码与文本处理标准的官方来源。"
+    },
+    {
+      "match": "nist.gov",
+      "brand": "NIST",
+      "category": "standards",
+      "reason": "美国国家标准与技术研究院的标准和计量技术资料。"
+    },
+    {
+      "match": "open-std.org",
+      "brand": "Open Standards",
+      "category": "standards",
+      "reason": "标准工作组公开草案与技术材料档案；草案状态须核验。"
+    },
+    {
+      "match": "stats.gov.cn",
+      "brand": "中国国家统计局",
+      "category": "government",
+      "reason": "中国国家统计局官方统计数据与方法说明。"
+    },
+    {
+      "match": "gov.cn",
+      "brand": "中国政府网",
+      "category": "government",
+      "reason": "中国政府机构公开政策和政务资料来源。"
+    },
+    {
+      "match": "moe.gov.cn",
+      "brand": "中国教育部",
+      "category": "government",
+      "reason": "中国教育部官方教育政策与统计信息。"
+    },
+    {
+      "match": "cas.cn",
+      "brand": "中国科学院",
+      "category": "government",
+      "reason": "中国科学院官方科研与科学传播资料。"
+    },
+    {
+      "match": "data.gov",
+      "brand": "Data.gov",
+      "category": "government",
+      "reason": "美国政府开放数据目录，标明数据发布机构。"
+    },
+    {
+      "match": "census.gov",
+      "brand": "U.S. Census Bureau",
+      "category": "government",
+      "reason": "美国人口普查局官方数据和统计方法。"
+    },
+    {
+      "match": "bls.gov",
+      "brand": "U.S. Bureau of Labor Statistics",
+      "category": "government",
+      "reason": "美国劳工统计局官方统计与方法资料。"
+    },
+    {
+      "match": "nasa.gov",
+      "brand": "NASA",
+      "category": "government",
+      "reason": "美国国家航空航天局官方科学与教育资料。"
+    },
+    {
+      "match": "noaa.gov",
+      "brand": "NOAA",
+      "category": "government",
+      "reason": "美国国家海洋和大气管理局官方科学与观测资料。"
+    },
+    {
+      "match": "data.worldbank.org",
+      "brand": "World Bank Open Data",
+      "category": "government",
+      "reason": "世界银行官方开放发展指标与方法资料。"
+    },
+    {
+      "match": "unstats.un.org",
+      "brand": "UN Statistics Division",
+      "category": "government",
+      "reason": "联合国统计司官方统计标准与数据来源。"
+    },
+    {
+      "match": "ec.europa.eu",
+      "brand": "European Commission",
+      "category": "government",
+      "reason": "欧盟委员会官方政策、统计与研究信息来源。"
+    },
+    {
+      "match": "oecd.org",
+      "brand": "OECD",
+      "category": "government",
+      "reason": "经合组织官方统计、方法与研究出版物。"
+    },
+    {
+      "match": "doi.org",
+      "brand": "DOI Foundation",
+      "category": "reference",
+      "reason": "DOI 标识解析基础设施，可追溯出版记录；跳转目标仍须核验。"
+    },
+    {
+      "match": "crossref.org",
+      "brand": "Crossref",
+      "category": "reference",
+      "reason": "学术出版物 DOI 与引用元数据的权威登记基础设施。"
+    },
+    {
+      "match": "dlmf.nist.gov",
+      "brand": "NIST Digital Library of Mathematical Functions",
+      "category": "reference",
+      "reason": "NIST 数学函数参考库，提供定义、公式与文献。"
+    },
+    {
+      "match": "cppreference.com",
+      "brand": "cppreference",
+      "category": "reference",
+      "reason": "C/C++ 社区广泛使用的语言和标准库参考；并非 ISO 标准原文。"
+    }
+  ],
+  "github_orgs": [
+    {
+      "owner": "datawhalechina",
+      "brand": "Datawhale",
+      "reason": "本任务指定 hello-agents 原始教程的维护组织；不把同名个人 fork 当原仓库。"
+    },
+    {
+      "owner": "openai",
+      "brand": "OpenAI",
+      "reason": "OpenAI 官方组织，提供 SDK 与原始示例仓库。"
+    },
+    {
+      "owner": "anthropics",
+      "brand": "Anthropic",
+      "reason": "Anthropic 官方组织，提供其 SDK 与公开项目。"
+    },
+    {
+      "owner": "deepseek-ai",
+      "brand": "DeepSeek",
+      "reason": "DeepSeek 官方开源项目组织。"
+    },
+    {
+      "owner": "python",
+      "brand": "Python",
+      "reason": "Python 官方语言与工具组织。"
+    },
+    {
+      "owner": "rust-lang",
+      "brand": "Rust",
+      "reason": "Rust 官方语言与编译器组织。"
+    },
+    {
+      "owner": "golang",
+      "brand": "Go",
+      "reason": "Go 官方语言项目组织。"
+    },
+    {
+      "owner": "nodejs",
+      "brand": "Node.js",
+      "reason": "Node.js 官方运行时项目组织。"
+    },
+    {
+      "owner": "pytorch",
+      "brand": "PyTorch",
+      "reason": "PyTorch 官方框架组织。"
+    },
+    {
+      "owner": "tensorflow",
+      "brand": "TensorFlow",
+      "reason": "TensorFlow 官方框架组织。"
+    },
+    {
+      "owner": "numpy",
+      "brand": "NumPy",
+      "reason": "NumPy 官方科学计算项目组织。"
+    },
+    {
+      "owner": "scipy",
+      "brand": "SciPy",
+      "reason": "SciPy 官方科学计算项目组织。"
+    },
+    {
+      "owner": "pandas-dev",
+      "brand": "pandas",
+      "reason": "pandas 官方维护组织。"
+    },
+    {
+      "owner": "scikit-learn",
+      "brand": "scikit-learn",
+      "reason": "scikit-learn 官方维护组织。"
+    },
+    {
+      "owner": "matplotlib",
+      "brand": "Matplotlib",
+      "reason": "Matplotlib 官方维护组织。"
+    },
+    {
+      "owner": "microsoft",
+      "brand": "Microsoft",
+      "reason": "微软官方开源组织；具体项目适用性仍需核验。"
+    },
+    {
+      "owner": "google",
+      "brand": "Google",
+      "reason": "Google 官方开源组织；具体项目适用性仍需核验。"
+    },
+    {
+      "owner": "apache",
+      "brand": "Apache Software Foundation",
+      "reason": "Apache 软件基金会官方项目组织。"
+    },
+    {
+      "owner": "kubernetes",
+      "brand": "Kubernetes",
+      "reason": "Kubernetes 官方项目组织。"
+    },
+    {
+      "owner": "langchain-ai",
+      "brand": "LangChain",
+      "reason": "LangChain 与 LangGraph 官方维护组织。"
+    },
+    {
+      "owner": "modelcontextprotocol",
+      "brand": "Model Context Protocol",
+      "reason": "MCP 官方协议与参考实现组织。"
+    },
+    {
+      "owner": "huggingface",
+      "brand": "Hugging Face",
+      "reason": "Hugging Face 官方 GitHub 组织，不泛信其用户上传内容。"
+    },
+    {
+      "owner": "facebookresearch",
+      "brand": "Meta Research",
+      "reason": "Meta 官方科研开源组织；研究代码不等于教学适用性。"
+    },
+    {
+      "owner": "google-deepmind",
+      "brand": "Google DeepMind",
+      "reason": "Google DeepMind 官方科研开源组织。"
+    }
+  ],
+  "low": [
+    {
+      "match": "csdn.net",
+      "reason": "混有转载、聚合与 SEO 导流内容；优先追溯原作者，不能作为权威性背书。"
+    },
+    {
+      "match": "csdn.com",
+      "reason": "CSDN 相关内容入口，同样优先追溯一手来源。"
+    },
+    {
+      "match": "iteye.com",
+      "reason": "历史技术社区及转载内容入口，优先寻找原始文档。"
+    },
+    {
+      "match": "cnpython.com",
+      "reason": "Python 内容聚合与转述站，优先寻找官方文档和原始问答。"
+    },
+    {
+      "match": "codeleading.com",
+      "reason": "技术内容聚合转载站，优先追溯原文。"
+    },
+    {
+      "match": "programmerall.com",
+      "reason": "程序员技术内容镜像和聚合站，优先追溯原文。"
+    },
+    {
+      "match": "programmersought.com",
+      "reason": "技术内容转述与聚合站，优先追溯原文。"
+    },
+    {
+      "match": "codeantenna.com",
+      "reason": "技术文章聚合站，原始出处需要另行核实。"
+    }
+  ],
+  "blocked": [
+    {
+      "match": "*.webvpn*.edu.cn",
+      "reason": "校园 WebVPN 代理，非公开可直接使用的原始来源。"
+    },
+    {
+      "match": "*.webvpn*.edu",
+      "reason": "校园 WebVPN 代理，非公开原始来源。"
+    },
+    {
+      "match": "pornhub.com",
+      "reason": "明确的成人色情站点，不进入学习资料来源。"
+    },
+    {
+      "match": "xvideos.com",
+      "reason": "明确的成人色情站点，不进入学习资料来源。"
+    },
+    {
+      "match": "xnxx.com",
+      "reason": "明确的成人色情站点，不进入学习资料来源。"
+    },
+    {
+      "match": "xhamster.com",
+      "reason": "明确的成人色情站点，不进入学习资料来源。"
+    },
+    {
+      "match": "bet365.com",
+      "reason": "博彩投注平台，不进入学习资料来源。"
+    },
+    {
+      "match": "888casino.com",
+      "reason": "在线赌场，不进入学习资料来源。"
+    },
+    {
+      "match": "stake.com",
+      "reason": "博彩投注平台，不进入学习资料来源。"
+    },
+    {
+      "match": "thepiratebay.org",
+      "reason": "以未授权内容分发为显著风险的站点，不进入资料推荐。"
+    },
+    {
+      "match": "1337x.to",
+      "reason": "以未授权内容分发为显著风险的站点，不进入资料推荐。"
+    }
+  ],
+  "blocked_keywords": {
+    "adult": [
+      "porn",
+      "pornography",
+      "pornographic",
+      "porn videos",
+      "hardcore porn",
+      "hentai",
+      "色情",
+      "色情视频",
+      "成人视频",
+      "成人直播",
+      "黄色网站",
+      "黄片",
+      "无码成人视频",
+      "色情直播"
+    ],
+    "gambling": [
+      "gambling",
+      "casino",
+      "online casino",
+      "sports betting",
+      "slot machine",
+      "博彩",
+      "赌博",
+      "赌场",
+      "网赌",
+      "百家乐",
+      "六合彩",
+      "老虎机",
+      "体育投注"
+    ],
+    "piracy": [
+      "warez",
+      "keygen",
+      "pirated software",
+      "pirated textbooks",
+      "cracked software",
+      "software crack",
+      "crack download",
+      "盗版",
+      "破解版",
+      "破解软件下载",
+      "破解下载",
+      "注册码生成器",
+      "免激活版"
+    ]
+  },
+  "candidates": [
+    {
+      "match": "datawhalechina.github.io",
+      "brand": "Datawhale 课程站",
+      "category": "education",
+      "reason": "原始课程组织的网站，但是否达到全站白名单标准请用户确认。"
+    },
+    {
+      "match": "huggingface.co",
+      "brand": "Hugging Face Hub",
+      "category": "reference",
+      "reason": "平台包含任意用户上传内容，不对白名单开放整个域名；请决定是否仅收官方文档子范围。"
+    },
+    {
+      "match": "docs.rs",
+      "brand": "Docs.rs",
+      "category": "reference",
+      "reason": "广泛使用但托管任意第三方 Rust 包文档，请决定是否接受平台级优先。"
+    },
+    {
+      "match": "pkg.go.dev",
+      "brand": "Go Packages",
+      "category": "reference",
+      "reason": "Go 官方生态文档托管，但包含任意第三方模块，待用户审定范围。"
+    },
+    {
+      "match": "mlanthology.org",
+      "brand": "ML Anthology",
+      "category": "academic",
+      "reason": "当前样本出现的论文聚合来源，尚未核实其出版归属。"
+    },
+    {
+      "match": "mintlify.wiki",
+      "brand": "Mintlify Wiki",
+      "category": "reference",
+      "reason": "样本中为第三方文档镜像，尚未核实与项目原站的授权和更新关系。"
+    },
+    {
+      "match": "cnblogs.com",
+      "brand": "博客园",
+      "category": "reference",
+      "reason": "有原创技术文章也有转载，不能把全站视为官方文档。"
+    },
+    {
+      "match": "developer.cloud.tencent.cn",
+      "brand": "腾讯云开发者社区",
+      "category": "reference",
+      "reason": "官方运营社区仍有用户投稿和转载，是否按作者分层需用户审定。"
+    },
+    {
+      "match": "cloud.tencent.com",
+      "brand": "腾讯云",
+      "category": "official_docs",
+      "reason": "产品文档与开发者社区内容同域，域名级白名单难区分，请先审定范围。"
+    },
+    {
+      "match": "zhihu.com",
+      "brand": "知乎",
+      "category": "reference",
+      "reason": "问答平台，作者与可信度差异大，不进入默认权威来源。"
+    },
+    {
+      "match": "stackoverflow.com",
+      "brand": "Stack Overflow",
+      "category": "reference",
+      "reason": "高质量问答与过期或错误答案并存，是否纳入参考类别请用户决定。"
+    },
+    {
+      "match": "researchgate.net",
+      "brand": "ResearchGate",
+      "category": "academic",
+      "reason": "用户上传资料和论文元数据混合，优先追溯正式出版来源。"
+    },
+    {
+      "match": "coursera.org",
+      "brand": "Coursera",
+      "category": "education",
+      "reason": "知名课程平台，课程主办方与材料开放性各异，待用户审定。"
+    },
+    {
+      "match": "edx.org",
+      "brand": "edX",
+      "category": "education",
+      "reason": "知名公开课平台，课程来源和访问条件需要逐项核实。"
+    },
+    {
+      "match": "icourse163.org",
+      "brand": "中国大学 MOOC",
+      "category": "education",
+      "reason": "知名课程平台，课程主办方与可访问资料范围请用户审定。"
+    },
+    {
+      "match": "xuetangx.com",
+      "brand": "学堂在线",
+      "category": "education",
+      "reason": "公开课平台，具体课程来源及开放材料需要审定。"
+    },
+    {
+      "match": "runoob.com",
+      "brand": "菜鸟教程",
+      "category": "education",
+      "reason": "中文教程聚合来源，尚不按官方文档或原始教材处理。"
+    },
+    {
+      "match": "cdu.edu.au",
+      "brand": "Charles Darwin University",
+      "category": "education",
+      "reason": "样本中的高校论文副本来源；是否纳入高校名单请用户确认。"
+    },
+    {
+      "match": "ciscolive.com",
+      "brand": "Cisco Live",
+      "category": "education",
+      "reason": "技术会议资料来源，样本相关性较弱，是否列入官方教育资源请用户审定。"
+    },
+    {
+      "match": "go.dev",
+      "brand": "Go",
+      "category": "official_docs",
+      "reason": "主站是官方文档，但域名后缀规则也会包含第三方包托管子域 pkg.go.dev；请用户先审定范围。"
+    }
+  ]
+}
