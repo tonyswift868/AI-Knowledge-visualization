@@ -10,13 +10,16 @@ Cancellation is cooperative, including between third-party page/paragraph calls.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import ExitStack
 import csv
 import hashlib
 import io
 import json
 from pathlib import Path
 import re
+import posixpath
 from urllib.parse import unquote, urlsplit
+import zipfile
 
 
 MAX_BYTES = 50 * 1024 * 1024
@@ -25,12 +28,15 @@ _MEDIA = {
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.md': 'text/markdown', '.markdown': 'text/markdown', '.txt': 'text/plain',
     '.csv': 'text/csv', '.json': 'application/json', '.html': 'text/html', '.htm': 'text/html',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.epub': 'application/epub+zip',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 _MESSAGES = {
-    'UNSUPPORTED_TYPE': '暂不支持此文件格式，请使用 PDF、DOCX、Markdown、TXT、CSV、JSON 或 HTML。',
+    'UNSUPPORTED_TYPE': '暂不支持此文件格式，请使用 PDF、DOCX、PPTX、EPUB、XLSX、Markdown、TXT、CSV、JSON 或 HTML。',
     'TOO_LARGE': '文件超过允许的大小，请拆分资料后再导入。',
     'ENCRYPTED': 'PDF 已加密，无法用空密码打开，请先解除密码保护。',
-    'SCANNED_NO_TEXT': 'PDF 可提取的文字过少，可能是扫描件；本期不支持 OCR，请提供带文字的版本。',
+    'SCANNED_NO_TEXT': 'PDF 可提取的文字过少，可能是扫描件；请启用离线 OCR 或提供带文字的版本。',
     'CORRUPT': '文件无法读取或内容损坏，请检查格式、编码或重新导出文件。',
     'EMPTY': '资料中没有可提取的正文。',
     'CANCELLED': '正文提取已取消。',
@@ -126,7 +132,7 @@ def _paragraphs(text, *, page=None, section=(), cancel=None):
             yield TextBlock(paragraph, 'paragraph', page, section)
 
 
-def _pdf(data, cancel):
+def _pdf(data, cancel, ocr=None, progress=None):
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
@@ -137,19 +143,38 @@ def _pdf(data, cancel):
             opened = False
         if not opened:
             raise ExtractError('ENCRYPTED')
-    blocks, warnings, effective = [], [], 0
+    blocks, warnings, effective, recognized_text = [], [], 0, False
     count = len(reader.pages)
     if not count:
         raise ExtractError('EMPTY')
-    for index, page in enumerate(reader.pages, 1):
-        _check(cancel)
-        text = page.extract_text() or ''
-        _check(cancel)
-        effective += sum(char.isalnum() for char in text)
-        if not text.strip():
-            warnings.append(f'第 {index} 页未提取到文字，可能是扫描页或空白页。')
-        blocks.extend(_paragraphs(text, page=index, cancel=cancel))
-    if effective < 20 * count:
+    if ocr is not None:
+        ocr.check_page_count(count)
+    with ExitStack() as stack:
+        recognizer = None
+        for index, page in enumerate(reader.pages, 1):
+            _check(cancel)
+            text = page.extract_text() or ''
+            _check(cancel)
+            # Scanner watermarks are not a body text layer. Do not use a general
+            # short-text threshold: even a brief real heading must stay native.
+            watermark_only = (ocr is not None and
+                re.sub(r'\s+', '', text).casefold() in {'扫描全能王创建', 'camscanner', 'scannedwithcamscanner'}
+                and bool(page.images))
+            if ocr is not None and (not text.strip() or watermark_only):
+                if recognizer is None:
+                    recognizer = stack.enter_context(ocr.open_pdf(data, cancel=cancel))
+                text = recognizer.recognize_page(index - 1, cancel=cancel)
+                recognized_text |= any(char.isalnum() for char in text)
+                _check(cancel)
+                warnings.append(f'第 {index} 页已使用离线 OCR 识别，识别文字可能有误，请核对原页。')
+            effective += sum(char.isalnum() for char in text)
+            if not text.strip():
+                warnings.append(f'第 {index} 页未提取到文字，可能是扫描页或空白页。')
+            blocks.extend(_paragraphs(text, page=index, cancel=cancel))
+            if progress is not None:
+                progress(index, count)
+            _check(cancel)
+    if effective < 20 * count and not recognized_text:
         raise ExtractError('SCANNED_NO_TEXT')
     title = reader.metadata.title if reader.metadata else ''
     return blocks, title if isinstance(title, str) else '', warnings
@@ -264,6 +289,8 @@ _HTML_CONTAINER = frozenset('html body main article section div p h1 h2 h3 h4 h5
 def _html(html, cancel):
     from lxml import html as parser
 
+    # XHTML inside EPUB commonly declares an encoding; decoding is already done.
+    html = re.sub(r'^\s*<\?xml\b[^>]*\?>', '', html, count=1, flags=re.I)
     root = parser.document_fromstring(html, parser=parser.HTMLParser(no_network=True, remove_comments=True))
     title_nodes = root.xpath('//title')
     title = ' '.join(title_nodes[0].text_content().split()) if title_nodes else ''
@@ -334,6 +361,200 @@ def _html(html, cancel):
     return blocks, title, []
 
 
+def _archive_guard(data, cancel):
+    # These formats are ZIP containers. Bound expansion before library parsing.
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        size = 0
+        for item in archive.infolist():
+            _check(cancel)
+            size += item.file_size
+            if size > 4 * MAX_BYTES:
+                raise ExtractError('TOO_LARGE', '资料解压后的内容超过 200 MiB，请拆分后导入。')
+            if item.flag_bits & 1:
+                raise ExtractError('CORRUPT', '无法读取受密码保护的资料压缩内容，请解除保护后重试。')
+
+
+def _slides(data, cancel):
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    _archive_guard(data, cancel)
+    presentation = Presentation(io.BytesIO(data))
+    blocks, title, warnings = [], '', []
+
+    def shapes(items, section, title_id=None):
+        for shape in items:
+            _check(cancel)
+            if shape.shape_id == title_id:
+                continue
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                shapes(shape.shapes, section)
+            elif shape.has_table:
+                rows = []
+                for row in shape.table.rows:
+                    _check(cancel)
+                    cells = [' '.join(cell.text.split()) if not cell.is_spanned else '' for cell in row.cells]
+                    if any(cells):
+                        rows.append(' | '.join(cells))
+                if rows:
+                    blocks.append(TextBlock('\n'.join(rows), 'table', None, section))
+            elif shape.has_text_frame:
+                for paragraph in shape.text_frame.paragraphs:
+                    _check(cancel)
+                    text = _newlines(paragraph.text).strip()
+                    if text:
+                        blocks.append(TextBlock(text, 'list' if paragraph.level else 'paragraph', None, section))
+
+    for number, slide in enumerate(presentation.slides, 1):
+        _check(cancel)
+        heading = slide.shapes.title
+        name = ' '.join(heading.text.split()) if heading is not None else ''
+        title = title or name
+        label = f'第 {number} 页' + (f' {name}' if name else '')
+        section = (label,)
+        start = len(blocks)
+        if name:
+            blocks.append(TextBlock(name, 'heading', None, section))
+        shapes(slide.shapes, section, heading.shape_id if heading is not None else None)
+        # Accessing notes_slide unconditionally would create a new notes part.
+        if slide.has_notes_slide:
+            frame = slide.notes_slide.notes_text_frame
+            if frame is not None and frame.text.strip():
+                notes_section = section + ('备注',)
+                blocks.append(TextBlock('备注', 'heading', None, notes_section))
+                blocks.extend(_paragraphs(frame.text, section=notes_section, cancel=cancel))
+        if len(blocks) == start:
+            warnings.append(f'第 {number} 页幻灯片没有可提取的文字；图片文字不在 PPTX 提取范围内。')
+    return blocks, title, warnings
+
+
+def _workbook(data, cancel, max_rows):
+    from openpyxl import load_workbook
+
+    _archive_guard(data, cancel)
+    workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)
+    blocks, warnings = [], []
+    try:
+        for sheet in workbook.worksheets:
+            _check(cancel)
+            # Ignore stale/forged dimensions. Stream actual rows, including gaps.
+            sheet.reset_dimensions()
+            has_formula = False
+            for number, row in enumerate(sheet.iter_rows(), 1):
+                _check(cancel)
+                if number > max_rows:
+                    raise ExtractError('TOO_LARGE',
+                        f'工作表“{sheet.title}”超过 {max_rows} 行上限，请拆分或调整 max_sheet_rows。')
+                cells = []
+                for cell in row:
+                    _check(cancel)
+                    value = cell.value
+                    has_formula |= cell.data_type == 'f'
+                    if value is None:
+                        text = ''
+                    elif hasattr(value, 'isoformat'):
+                        text = value.isoformat()
+                    else:
+                        text = str(value).strip()
+                    cells.append(text)
+                while cells and not cells[-1]:
+                    cells.pop()
+                if any(cells):
+                    blocks.append(TextBlock(' | '.join(cells), 'table', None, (sheet.title,)))
+            if has_formula:
+                warnings.append(f'工作表“{sheet.title}”保留公式原文，未执行公式或读取外部链接。')
+        return blocks, workbook.properties.title or '', warnings
+    finally:
+        workbook.close()
+
+
+def _epub(data, cancel):
+    from lxml import etree
+
+    _archive_guard(data, cancel)
+    blocks, warnings = [], []
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        def xml(path):
+            _check(cancel)
+            return etree.fromstring(archive.read(path), etree.XMLParser(
+                resolve_entities=False, no_network=True, load_dtd=False))
+
+        def location(base, href):
+            target = urlsplit(href)
+            path = unquote(target.path)
+            if target.scheme or target.netloc or not path or '\\' in path or path.startswith('/'):
+                raise ExtractError('CORRUPT', 'EPUB 正文章节必须指向包内文件。')
+            path = posixpath.normpath(posixpath.join(posixpath.dirname(base), path))
+            if path == '..' or path.startswith('../'):
+                raise ExtractError('CORRUPT', 'EPUB 章节路径无效。')
+            return path
+
+        container = xml('META-INF/container.xml')
+        roots = container.findall('.//{*}rootfile')
+        if not roots:
+            raise ExtractError('CORRUPT')
+        package_path = location('', roots[0].get('full-path', ''))
+        package = xml(package_path)
+        names = package.findall('./{*}metadata/{*}title')
+        title = ''.join(names[0].itertext()).strip() if names else ''
+        manifest = {item.get('id'): item for item in package.findall('./{*}manifest/{*}item')}
+        spine = package.find('./{*}spine')
+        if spine is None:
+            raise ExtractError('CORRUPT')
+        chapters = []
+        for ref in spine.findall('./{*}itemref'):
+            _check(cancel)
+            item = manifest[ref.get('idref')]
+            if ref.get('linear', 'yes') == 'no' or 'nav' in item.get('properties', '').split():
+                continue
+            if item.get('media-type') in {'application/xhtml+xml', 'text/html'}:
+                path = location(package_path, item.get('href', ''))
+                if path not in chapters:
+                    chapters.append(path)
+        # TOC order and labels; unlisted reading-order chapters follow the TOC.
+        toc = {}
+        nav_item = next((v for v in manifest.values() if 'nav' in v.get('properties', '').split()), None)
+        if nav_item is not None:
+            nav_path = location(package_path, nav_item.get('href', ''))
+            nav_root = xml(nav_path)
+            navs = nav_root.xpath('//*[local-name()="nav"]')
+            for nav in navs:
+                kind = nav.get('{http://www.idpf.org/2007/ops}type', '').split()
+                if 'toc' not in kind and nav.get('role') != 'doc-toc':
+                    continue
+                for link in nav.xpath('.//*[local-name()="a"][@href]'):
+                    _check(cancel)
+                    path = location(nav_path, link.get('href'))
+                    label = ' '.join(''.join(link.itertext()).split())
+                    if label and path in chapters:
+                        toc.setdefault(path, label)
+        elif spine.get('toc'):
+            ncx_item = manifest[spine.get('toc')]
+            ncx_path = location(package_path, ncx_item.get('href', ''))
+            for point in xml(ncx_path).findall('.//{*}navPoint'):
+                _check(cancel)
+                content = point.find('./{*}content')
+                label_node = point.find('./{*}navLabel/{*}text')
+                if content is not None and label_node is not None:
+                    path = location(ncx_path, content.get('src', ''))
+                    label = ' '.join(''.join(label_node.itertext()).split())
+                    if label and path in chapters:
+                        toc.setdefault(path, label)
+        ordered = list(toc) + [path for path in chapters if path not in toc]
+        for number, path in enumerate(ordered, 1):
+            _check(cancel)
+            content, chapter_title, _ = _html(_decode(archive.read(path), cancel), cancel)
+            if not content:
+                warnings.append(f'第 {number} 章没有可提取的正文。')
+                continue
+            name = toc.get(path) or chapter_title or f'第 {number} 章'
+            for block in content:
+                _check(cancel)
+                section = block.section if block.section[:1] == (name,) else (name,) + block.section
+                blocks.append(TextBlock(block.text, block.kind, None, section))
+        return blocks, title, warnings
+
+
 def _common_section(sections):
     result = sections[0]
     for section in sections[1:]:
@@ -386,10 +607,14 @@ def _chunks(blocks, *, source_sha256, target_chars, max_chars, cancel=None):
         # Group a heading chain and its first prose block before normal packing.
         if block.kind == 'heading':
             while index + 1 < len(spans) and spans[index + 1][2].kind == 'heading':
+                next_section = spans[index + 1][2].section
+                if next_section[:len(members[-1].section)] != members[-1].section:
+                    break  # A new slide/chapter is not a child heading.
                 index += 1
                 body_start, end, following = spans[index]; members.append(following)
                 first_min = body_start + 1
-            if index + 1 < len(spans) and spans[index + 1][2].kind in {'paragraph', 'list'}:
+            if (index + 1 < len(spans) and spans[index + 1][2].kind in {'paragraph', 'list'}
+                    and spans[index + 1][2].section[:len(members[-1].section)] == members[-1].section):
                 index += 1
                 body_start, end, following = spans[index]; members.append(following)
                 first_min = body_start + 1
@@ -450,7 +675,13 @@ def _size(size, max_bytes):
         raise ExtractError('TOO_LARGE')
 
 
-def extract_bytes(data: bytes, filename: str, *, max_bytes=MAX_BYTES, cancel=None) -> ExtractedDocument:
+def extract_bytes(data: bytes, filename: str, *, max_bytes=MAX_BYTES, cancel=None,
+                  ocr=None, progress=None, max_sheet_rows=10_000) -> ExtractedDocument:
+    """OCR is opt-in with course.ocr.PdfOCR(); PDF progress is (page, total).
+
+    max_sheet_rows limits physical rows per sheet (including empty rows), raising
+    TOO_LARGE rather than silently returning truncated workbook content.
+    """
     _check(cancel)
     _size(len(data), max_bytes)
     suffix = Path(filename).suffix.lower()
@@ -458,11 +689,19 @@ def extract_bytes(data: bytes, filename: str, *, max_bytes=MAX_BYTES, cancel=Non
         raise ExtractError('UNSUPPORTED_TYPE')
     if not data:
         raise ExtractError('EMPTY')
+    if type(max_sheet_rows) is not int or max_sheet_rows < 1:
+        raise ValueError('max_sheet_rows 必须是正整数')
     try:
         if suffix == '.pdf':
-            blocks, title, warnings = _pdf(data, cancel)
+            blocks, title, warnings = _pdf(data, cancel, ocr, progress)
         elif suffix == '.docx':
             blocks, title, warnings = _word(data, cancel)
+        elif suffix == '.pptx':
+            blocks, title, warnings = _slides(data, cancel)
+        elif suffix == '.epub':
+            blocks, title, warnings = _epub(data, cancel)
+        elif suffix == '.xlsx':
+            blocks, title, warnings = _workbook(data, cancel, max_sheet_rows)
         else:
             text = _decode(data, cancel)
             if not text.strip():
@@ -491,7 +730,8 @@ def extract_bytes(data: bytes, filename: str, *, max_bytes=MAX_BYTES, cancel=Non
         raise ExtractError('CORRUPT') from exc
 
 
-def extract_file(path, *, max_bytes=MAX_BYTES, cancel=None) -> ExtractedDocument:
+def extract_file(path, *, max_bytes=MAX_BYTES, cancel=None, ocr=None, progress=None,
+                 max_sheet_rows=10_000) -> ExtractedDocument:
     _check(cancel)
     path = Path(path)
     if path.suffix.lower() not in _MEDIA:
@@ -507,7 +747,8 @@ def extract_file(path, *, max_bytes=MAX_BYTES, cancel=None) -> ExtractedDocument
                     break
                 data.extend(part)
                 _size(len(data), max_bytes)
-        return extract_bytes(bytes(data), path.name, max_bytes=max_bytes, cancel=cancel)
+        return extract_bytes(bytes(data), path.name, max_bytes=max_bytes, cancel=cancel,
+                             ocr=ocr, progress=progress, max_sheet_rows=max_sheet_rows)
     except OSError as exc:
         raise ExtractError('CORRUPT', '无法读取此资料文件，请确认文件存在且可以访问。') from exc
 

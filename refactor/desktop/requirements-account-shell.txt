@@ -39,3 +39,20 @@ python-docx==1.2.0
 # Voice input (VOICE-01)
 sherpa-onnx==1.12.31
 sherpa-onnx-core==1.12.31
+
+# Scanned PDF OCR and more formats (PLAN-09)
+pypdfium2==5.13.0
+rapidocr-onnxruntime==1.4.4
+onnxruntime==1.30.0
+python-pptx==1.0.2
+openpyxl==3.1.5
+# Required dependencies installed with the packages above (existing packages retained).
+et-xmlfile==2.0.0
+flatbuffers==25.12.19
+opencv-python==5.0.0.93
+Pillow==12.3.0
+pyclipper==1.4.0
+PyYAML==6.0.3
+Shapely==2.1.2
+tqdm==4.70.1
+XlsxWriter==3.2.9
