@@ -14,23 +14,23 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | `7db05b0`（2026-09-27，main，含第一批全部成果）；第一批用的是 `6cca892` |
-| 说明 | 第二批 T08–T14 从 `7db05b0` 开工 |
+| 基线提交 | `399e9c4`（2026-09-27，main，含第一批全部成果与 services 包骨架）；第一批用的是 `6cca892` |
+| 说明 | 第二批（MF-01～MF-07 各两项）从 `399e9c4` 开工；原拟的 T08–T14 未发出，已由第二批取代 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| client | D:\MentorFlow-office\client | 空闲 |
-| server | D:\MentorFlow-office\server | 空闲 |
-| runtime | D:\MentorFlow-office\runtime | 空闲 |
-| platform | D:\MentorFlow-office\platform | 空闲 |
-| library | D:\MentorFlow-office\library | 空闲 |
-| classroom | D:\MentorFlow-office\classroom | 空闲 |
-| tools | D:\MentorFlow-office\tools | 空闲 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
-工位名只是称呼，不限制能接的任务类型。
+工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
 
 ## 任务索引
 
@@ -43,13 +43,13 @@
 | T05 | tools | 语音识别（SenseVoice，边说边出字，首次使用下载） | VOICE-01 | 6cca892 | 已合入 36e777d |
 | T06 | classroom | 老师朗读（GPT-SoVITS + 弗洛洛，常驻提速） | VOICE-01 | 6cca892 | 已合入 6935b93 |
 | T07 | server | 服务器：通用同步记录、白名单/价格表接口、单设备登录（不部署） | ARCH-05、ACC-01、PLAN-06、SYS-03 | 6cca892 | 已合入 97630fe |
-| T08 | classroom | 通用下载器 + 朗读底模下载 | VOICE-01、DATA-02 | 7db05b0 | 已派发 |
-| T09 | server | 既有失败测试排查 + 第一批服务器改动部署包（不执行） | ARCH-05、ACC-01、ACC-02 | 7db05b0 | 已派发 |
-| T10 | platform | 资料验证流水线（抓取、提取、验证、分批展示） | PLAN-06、ARCH-06 | 7db05b0 | 已派发 |
-| T11 | runtime | 用量记录、价格表与花费估算 | SYS-03、SYS-05 | 7db05b0 | 已派发 |
-| T12 | client | 掌握度引擎（检测/重测/直接考/检验等级与出题顺序） | TEACH-02、TEACH-07、CHK-01 | 7db05b0 | 已派发 |
-| T13 | library | 扫描版 PDF 文字识别 | PLAN-09 | 7db05b0 | 已派发 |
-| T14 | tools | 语音识别课程术语纠正 | VOICE-01 | 7db05b0 | 已派发 |
+| 2-MF01 | MF-01 library | 扫描 PDF 识别 + PPT/EPUB/Excel | PLAN-09 | 399e9c4 | 已派发 |
+| 2-MF02 | MF-02 runtime | 用量与价格 + 新模型调用入口（预设迁移） | SYS-02、SYS-03、SYS-05 | 399e9c4 | 已派发 |
+| 2-MF03 | MF-03 client | 掌握度引擎 + 新数据库与读写层（实现约定 1） | ARCH-03、TEACH-02、CHK-01 | 399e9c4 | 已派发 |
+| 2-MF04 | MF-04 platform | 资料验证流水线 + 名单/价格表客户端（约定 2） | PLAN-06、ARCH-06 | 399e9c4 | 已派发 |
+| 2-MF05 | MF-05 tools | 语音术语纠正 + 每日刷新时钟与提醒 | VOICE-01、SYS-04、TEACH-05 | 399e9c4 | 已派发 |
+| 2-MF06 | MF-06 classroom | 通用下载器与朗读底模下载 + 嘴型数据 | VOICE-01、DATA-02 | 399e9c4 | 已派发 |
+| 2-MF07 | MF-07 server | 既有失败测试与部署包 + 同步客户端（调用约定 1）与挤下线检测 | ARCH-05、ACC-01 | 399e9c4 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -656,288 +656,312 @@ C. 单设备登录（新登录挤掉旧设备）
 未完成：没做完或拿不准的地方
 ~~~
 
+## 第二批任务详情
 
-### [T08] classroom｜通用下载器 + 朗读底模下载
+### 第二批共用约定（写进了相关任务正文）
+
+约定 1｜待同步记录接口（MF-03 实现，MF-07 调用），放在 refactor/learning/course/sync_contract.py，由 MF-03 创建，MF-07 只读引用：
+  @dataclass(frozen=True) class SyncRecord:
+      entity: str              # 小写下划线，如 plan / module / point / judgement / credit / source_chunk
+      entity_id: str
+      plan_key: str            # 账号级数据为 ''
+      schema: str              # f"mentorflow.course.{entity}.v{N}"
+      payload: dict            # JSON 对象，规范化序列化后 ≤ 256 KiB
+      deleted: bool
+      local_revision: int      # 本机每次修改递增
+  class RecordStore(Protocol):
+      def pending_records(self, limit: int) -> list[SyncRecord]
+      def mark_synced(self, entity: str, entity_id: str, local_revision: int, server_revision: int) -> None
+          # 只有本机修订号仍等于 local_revision 时才清除“待上传”，期间又被改过则保持待上传
+      def apply_remote(self, records: list[tuple[SyncRecord, int]]) -> None
+          # (记录, 服务器修订号)；结构类按修订号后写覆盖；进度类（judgement、credit 等只追加事件）按 entity_id 去重合并，永不删除本机未上传的事件
+      def sync_cursor(self) -> str
+      def set_sync_cursor(self, cursor: str) -> None
+
+约定 2｜服务器下发的白名单格式（MF-07 写转换脚本，MF-04 写客户端）：与 refactor/learning/course/data/source_lists.json 相同，但只保留 version、updated、whitelist、github_orgs、low、blocked、blocked_keywords 七个字段，不含 candidates（用户决定拿不准的不放）。
+
+### [2-MF01] library｜扫描版 PDF 识别 + 更多文件格式
 
 ~~~text
-【MentorFlow 任务 T08｜员工 classroom｜通用模型下载器与朗读底模下载】
+【MentorFlow 第二批｜MF-01（工位 library）｜扫描版 PDF 识别 + 更多文件格式】
 
-一、开工同步（第一步）
-  cd D:\MentorFlow-office\classroom\repo
-  git status                         # 应干净；不干净先停下说明
-  git checkout office/classroom
-  git reset --hard 7db05b0           # 最新集成基线，含第一批全部成果
-Python：D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
-禁止 push；禁止改主目录 D:\MentorFlow；不改 Kristina、E:\AI_Tools 下任何文件。
-先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]、[DATA-02]、[ENV-01]。
-范围说明：下面“主要文件”是预期范围；确有必要可以改相邻文件，但要在回执里逐个说明原因。
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；上次遗留的 tests/refactor/extract/.tmp 未跟踪文件可以删掉；其他不干净先停下说明
+  git checkout office/library
+  git reset --hard 399e9c4          # 最新集成基线，含第一批全部成果
+Python：D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（A、B 可分两次提交）
+禁止 push；禁止改主目录 D:\MentorFlow；不改 E:\AI_Tools 与 Kristina 的文件。
+先读：AGENTS.md；docs/project/CURRENT_STATE.md 的 [PLAN-09]、[ENV-01]。
+范围：下面的文件是预期范围；确有必要可改相邻文件，回执逐个说明原因。
+注意：主线上 tests/refactor/extract/test_extract.py 的 test_no_qt_or_database_imports 已被架构师改成在独立子进程里检查（原写法在多套测试一起跑时误报），以主线为准。
 
-二、目标
-语音识别和老师朗读都要“首次使用时说明大小、征得同意再下载”。现在 voice/asr/model_manager.py 自己实现了一套下载；朗读的底模（你上次下载到 E:\MentorFlowModels\gpt-sovits-base 的 8 个文件 + G2PW 解压）还没有下载流程。把下载能力抽成共用模块，两边都用它。
+A. 扫描版 PDF 文字识别
+  - 新建 refactor/learning/course/ocr.py：PDF 页渲染成图片（建议 pypdfium2），本机离线 OCR（建议 RapidOCR + onnxruntime；优先“模型随安装包自带、不另行下载”的方案；若必须下载模型，按“先说明大小、征得同意再下载”设计并在回执说明）。
+  - 改 course/extract.py：extract_file / extract_bytes 增加可选参数（如 ocr=None）；默认行为完全不变（扫描件仍返回 SCANNED_NO_TEXT）；启用时只识别无文字的页，结果进入同样的 blocks/chunks（带页码），warnings 注明哪些页是识别出的。
+  - 进度回调（第几页/共几页）、取消、页数上限（默认 300，超出报清楚的错）。
+B. 更多文件格式（用户原话：AI 能读的格式都应该支持）
+  - .pptx：每页幻灯片作为一个 section（“第 N 页 + 标题”），标题/正文/备注/表格都提取。
+  - .epub：按章节（目录顺序）用已有的 HTML 提取逻辑处理，章节名进 section。
+  - .xlsx：每个工作表一个 section，按行转成“单元格 | 单元格”文本（kind='table'），跳过全空行，单表行数上限可配。
+  - 选成熟的库（如 python-pptx、openpyxl；EPUB 可直接用 zipfile + 已有 HTML 提取，不一定要新库）。
+依赖：只装所需包及必需依赖、不升级已有包；在 refactor/desktop/requirements-account-shell.txt 末尾追加“# Scanned PDF OCR and more formats (PLAN-09)”和精确版本；先确认 Python 3.12 / Windows 有可用安装包。
 
-三、要做什么
-1) 新建 refactor/learning/voice/download.py：通用下载器
-   - 资产描述：名称、下载地址列表（主地址 + 备用镜像，按顺序尝试；HuggingFace 资产默认加 hf-mirror.com 备用，GitHub 资产不加）、大小、SHA256、安装相对路径、是否为需要解压的压缩包（zip / tar.bz2）及解压后的校验清单。
-   - status()：已安装与否、需下载总大小、已部分下载大小。
-   - download(progress, cancel)：断点续传、逐个校验、全部通过后原子安装；取消或失败不留半成品；镜像失败自动换下一个地址；错误码中文提示（网络失败、校验失败、磁盘空间不足、已取消）。
-   - 只有调用 download 才联网；status 不联网。
-2) 改 voice/asr/model_manager.py 用新下载器实现（对外接口和行为不变，原有 ASR 测试全部照常通过）。
-3) 新建 voice/tts/model_manager.py：朗读底模下载（8 个文件 + G2PW 包解压，清单用你上次核对过的链接、大小、SHA256），安装到 data_root/models/tts/gpt-sovits-base/。
-4) 改 voice/tts/config.py：优先使用 data_root 下已安装的底模；开发机没有时回退到 E:\MentorFlowModels\gpt-sovits-base（保留环境变量覆盖）。
-5) 回执里另写一段“正式分发要准备什么”：引擎运行时（含 Python/CUDA 依赖）和弗洛洛声音包各多大、放哪里、是否必须联网下载；只写调查结论，不实现。
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/extract tests/refactor/ocr -q -p no:cacheprovider
+  A：默认不启用时行为不变；启用时代码生成的中文扫描 PDF 能识别出关键字、页码正确；混合文档只识别无文字页；进度、取消、页数上限。
+  B：每种新格式至少一个样本（测试里用代码生成）；section、表格、确定性分块 ID；损坏文件 → CORRUPT；未知后缀仍 UNSUPPORTED_TYPE。
+  实测：一份真实扫描件、一份真实 PPT（不提交），回执写页数、耗时、识别样例与大致准确度。
 
-四、主要文件
-  refactor/learning/voice/download.py（新）、voice/asr/model_manager.py、voice/tts/model_manager.py（新）、voice/tts/config.py
-  tests/refactor/voice_download/（新）以及 asr、tts 现有测试的必要调整
-
-五、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/voice_download tests/refactor/asr tests/refactor/tts -q -p no:cacheprovider
-  覆盖：进度、断点续传、主地址失败换镜像、校验失败、取消、磁盘不足（可模拟）、zip 与 tar.bz2 解压和解压后校验、原子安装；ASR、TTS 原有测试不回归。
-  实测一次：把 TTS 底模真实下载到一个临时 data_root（不要删 E:\MentorFlowModels 那份），回执写耗时和走的是哪个地址。
-
-六、回执
-【classroom｜T08｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/classroom 上的编号 ／ 改动：文件及原因 ／ 验证：命令与结果、实测 ／ 正式分发调查 ／ 未完成
+回执
+【MF-01｜library｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/library 上的编号 ／ 改动：文件及原因 ／ 依赖：包与精确版本、是否要下载模型 ／ 验证：命令与结果、实测 ／ 未完成
 ~~~
 
-### [T09] server｜既有失败测试排查 + 第一批服务器改动的部署包（不执行）
+### [2-MF02] runtime｜用量与价格 + 新模型调用入口
 
 ~~~text
-【MentorFlow 任务 T09｜员工 server｜既有失败测试排查与部署包】
+【MentorFlow 第二批｜MF-02（工位 runtime）｜用量记录与价格 + 新模型调用入口】
 
-一、开工同步（第一步）
-  cd D:\MentorFlow-office\server\repo
-  git status                         # 应干净；不干净先停下说明
-  git checkout office/server
-  git reset --hard 7db05b0           # 最新集成基线，含你上次的 T07
-测试环境继续用 D:\MentorFlow-office\server\.venv-backend。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
-禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。
-先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-05]、[ACC-01]、[ACC-02]。
-范围说明：确有必要可改相邻文件，回执逐个说明原因。
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 399e9c4          # 最新集成基线，含你的 T02
+Python：D:\MentorFlow\.venv\Scripts\python.exe（不装新包）。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；不发真实模型请求（没有 Key）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [SYS-02]、[SYS-03]、[SYS-05]、[SYS-01]、[ARCH-08]；deploy/enterprise/staging/rp05/catalog/model-prices.example.json。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
 
-二、A. 排查 backend/tests/test_change_password_binding.py 的 3 个既有失败
-  - 找到根因：是测试过时（代码行为是有意变更），还是代码有缺陷。
-  - 测试过时：更新测试，并在回执写清楚当前的真实行为。
-  - 代码缺陷：先写清楚缺陷、影响和最小修复；只有确定是改密绑定本身的缺陷时才修，并补测试。不改其他账号流程的行为（ACC-02：账号逻辑本轮不改，修 bug 除外）。
+A. 用量记录、价格表与花费估算（用户用自己的钱；统计不全宁可不做）
+  - refactor/learning/connections/usage.py：UsageLog(path)（每个账号一个 SQLite 文件，标准库 sqlite3）；record(provider_id, model, purpose, usage: providers.Usage, plan_id='', request_id='', at=None)，同 request_id 幂等；summary(start, end, group_by='purpose'|'model'|'day')：次数、输入/缓存命中/未命中/输出 token、搜索次数、缓存命中率（命中 ÷ 输入）、金额。
+  - refactor/learning/connections/pricing.py：PriceCatalog 读价格 JSON（沿用 example 格式，可补字段如每次搜索费用、上下文档位，补了要同步改 example）；cost(provider, model, usage) 返回金额和币种，价格缺失返回 None，不猜；estimate_tokens(text)（中英文分别估，写依据）；estimate_cost(...) 返回低/高区间。
+  - 更新 model-prices.example.json：七家默认模型（见 providers.REGISTRY）及各家常用型号，按官方价格页填，写 source_url 与查阅日期；只有真读到官方价格页才 verified:true；搜索另计费的写上。
+B. 新模型调用入口（给新界面用；旧页面仍用旧的 connections/client.py，不要改它）
+  - refactor/learning/connections/gateway.py：ModelGateway(account_id, data_root)：
+    · 预设：按厂商保存（厂商 id、显示名、地址、模型名、温度、超时；Key 继续用现有 credentials.py 存 Windows 凭据）；新建预设时按 REGISTRY 填好默认地址和模型，用户只需粘贴 Key。
+    · 迁移：读取现有 connections.json（例如管理员现有的 “DeepSeek V4 Flash / https://api.deepseek.com / deepseek-v4-flash”），自动识别为 deepseek 厂商，Key 沿用原凭据，不要求重填；迁移不破坏旧文件（旧页面还在用）。
+    · complete(purpose, messages, *, system=None, enable_search=False, on_text=None, cancel=None, plan_id='') → providers.complete；每次调用（成功或失败）按 A 的 UsageLog 记账（失败无 usage 时记次数与错误码）；错误沿用 ModelError。
+    · test_connection()：发一条极短请求验证 Key 与模型可用（只在用户点击时调用）。
+    · search_supported()：当前预设的厂商是否支持自带搜索（给界面提示“资料搜索需要支持搜索的厂商”）。
+    · 同一时刻可有多个请求；close() 取消全部进行中的请求。
 
-三、B. 部署包（只准备，不执行）
-  上一次线上部署的做法（供你参考，来自此前记录）：
-  - 活跃项目 mentorflow-e1-preview；当前后端镜像 mentorflow-mf-u04-backend:MF-U04，它是在上一版镜像基础上只覆盖了改动的源码文件构建的。
-  - backend 的 Compose 叠加顺序：/opt/mentorflow/releases/21337c1eda64f7e087fcade77c3d4cd7dce4a0af-exact-source/deploy/enterprise/staging/rp05/compose.account-core-mvp.yml → /opt/mentorflow/artifacts/gatea-native-20260913-08/backend.override.json → /opt/mentorflow/artifacts/r2-04-final-20260917/runtime.override.json → /opt/mentorflow/artifacts/mf-d04-20260922/runtime.override.json；上次只改了最后一份里的 backend image。
-  - 回滚配置存放在 /opt/mentorflow/state/mentorflow-e1-preview/mf-b03-rollback；数据库迁移版本 0041，本次不动数据库。
-  - 原生认证为单进程配置（MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS=1、WEB_CONCURRENCY=1）。
-  在 deploy/enterprise/staging/rp05/mf-u09/ 下准备：
-  - README.md：逐步操作（构建新镜像：以 MF-U04 为底只覆盖 native.py、structured_sync.py、catalog_api.py、account_core_mvp.py 四个文件；新建目录文件挂载 /run/mentorflow/catalog 只读；更新最后一份 override 的 backend 镜像与挂载；只重建 backend 容器）、每一步的检查命令、回滚步骤（保存切换前配置、如何切回 MF-U04）、上线后验证（/health、目录接口在未放文件时返回 404、放文件后 200 与 ETag、session 接口、旧设备被挤下线的手测步骤）。
-  - 可以附脚本，但脚本必须默认“只打印将要执行的命令”，要显式加参数才执行；你本人不许执行。
-  - 目录文件：model-prices.json 用现有 example；source-whitelist.json 的格式由你根据 refactor/learning/course/data/source_lists.json 设计一个服务器下发格式（只含 version、updated、whitelist、github_orgs、low、blocked、blocked_keywords；不含 candidates），并写一个转换脚本（放 tools/ 下）。名单内容需用户审过后才会上线，本次只做格式和转换。
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/usage tests/refactor/gateway tests/refactor/providers -q -p no:cacheprovider
+  A：记录幂等、多维汇总、命中率、分项计价、价格缺失、估算区间、价格文件错误；用 T02 的 DeepSeek 真实样本 usage 算一次金额写进回执。
+  B：用假的 providers.complete 和临时凭据后端测试预设增删改、默认值、旧文件迁移（含 Key 沿用）、每次调用都记账（含失败）、取消与 close、不支持搜索的提示；不读真实 Windows 凭据。
 
-四、验收
-  用 .venv-backend 跑：test_change_password_binding.py、上次 T07 的三个测试文件、以及 test_native_auth.py、test_sync_registry.py、test_product_sync_contract.py、tests/server_sync/test_contract.py，全部结果写进回执。
-  转换脚本要有测试（放 tests/refactor/catalog/ 或 backend/tests/，自选并说明）。
-
-五、回执
-【server｜T09｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/server 上的编号 ／ A：根因与处理 ／ B：部署包文件清单 ／ 验证：命令与结果 ／ 未完成
+回执
+【MF-02｜runtime｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/runtime 上的编号 ／ 改动：文件及原因 ／ 价格表：各型号、来源、日期、是否核实 ／ 验证：命令与结果 ／ 未完成
 ~~~
 
-### [T10] platform｜资料验证流水线
+### [2-MF03] client｜掌握度引擎 + 新数据库与读写层
 
 ~~~text
-【MentorFlow 任务 T10｜员工 platform｜资料验证流水线（搜索结果 → 打开验证 → 可展示的资料）】
+【MentorFlow 第二批｜MF-03（工位 client）｜掌握度引擎 + 新数据库与读写层】
 
-一、开工同步（第一步）
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 399e9c4          # 最新集成基线，含你的 T03 账本
+Python：D:\MentorFlow\.venv\Scripts\python.exe；只用标准库。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（A、B 分开提交）
+禁止 push；禁止改主目录。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-03]（最重要）、[ARCH-05]、[TEACH-02]、[TEACH-04]、[TEACH-06]、[TEACH-07]、[CHK-01]、[PLAN-02]、[PLAN-04]、[PLAN-05]、[PLAN-08]、[PLAN-10]、[DATA-02]、[DATA-01]、[RPT-01]。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
+
+A. 掌握度引擎：新建 refactor/learning/course/mastery.py（纯计算，确定性，可序列化，事件按 ID 幂等）
+规则（必须照做；有歧义在回执写出理解，不要改规则）：
+ 1 数据：PointRef(point_id, module_id)，MasteryBook(points) 给出全部点（顺序即计划顺序）。
+   Judgement 事件：event_id、seq、at（带时区）、context ∈ {'casual','quick_confirm','module_test','retest','skip_test','check'}、module_id、attempt_id（module_test/skip_test 同一次检测共享，其他可空）、results=((point_id, correct), ...)（一题多点各自对错）、angle（检验时的角度，其他可空）。
+   AttemptClosed 事件：event_id、seq、module_id、attempt_id、kind ∈ {'module_test','skip_test'}，表示一次检测结束，据此判定。
+   apply(event)：同 ID 同内容忽略，不同内容报错；按 seq 决定先后（乱序到达也按 seq 重算）。
+ 2 错误计数：casual、quick_confirm 答错 → 该点 casual_errors+1；module_test、retest、skip_test 答错 → module_errors+1。
+ 3 模块检测：本次检测里，一个点“掌握” = 至少一个结果且全对；没考到算没掌握。掌握点数 ÷ 模块总点数 ≥ 90% 为通过。
+   通过：掌握 → green，没掌握 → weak，模块 passed。不通过：掌握 → green，没掌握 → red，模块 failed。
+ 4 重测（retest，只针对 red）：答对一次 → green；答错仍 red。模块没有 red 了 → passed。
+ 5 直接考（skip_test）：按同样比例判定；通过 → 模块 skipped（算完成），掌握 green、没掌握 weak；不通过 → 模块回到 untested，所有点回到 untested（错误计数保留）。
+ 6 可以进入检验：所有模块都是 passed 或 skipped。
+ 7 检验等级：初始 = casual_errors>0 且 module_errors>0 → 1，否则 2；满 3 级即通过（之后不再变）。check 事件答对 +1（最高 3）、答错 −1（最低 0）。
+ 8 出题顺序 next_check_items(n=1, min_gap=3) -> [(point_id, angle)]：候选为未通过检验的点。先覆盖：检验里没问过的点排前，其中“重点”（任一错误计数>0 或 weak）优先，再按等级低、错误总数多、计划顺序；全部问过后：按等级低、错误多、距上次被问久。间隔：一个点问过后至少隔 min_gap 道其他检验题才再问，没有别的候选时可不遵守。角度 ANGLES=('recall','apply','contrast','fix_error','transfer')，取该点没用过的第一个，全用过取最久没用的。
+ 9 查询：point()、module()、check_ready()、check_complete()、stats()（给学习报告：每点两类错误数、检验答题次数与答对率、模块检测次数）；to_dict()/from_dict() 往返一致。
+
+B. 新数据库与读写层（ARCH-03 为准）
+  - refactor/learning/course/store.py：CourseStore(account_id, data_root)，数据库 learning/accounts/<account_id>/course.sqlite3（WAL、外键开启、schema_version 表、可升级）；用户上传的原件存同目录 files/<sha256>（本层只负责按 sha 存取原件，不同步）。
+  - 表（字段按需细化，写清注释）：plans（目标、最终目标、水平与补充说明、起止日期、每日上限、星期权重、特殊日权重、刷新前的计划状态：creating/ready/active/checking/completed，archived 标记，修订号）；sources（url 或本机文件、sha256、标题、站点、tier、可信度、是否采用）；source_chunks（ID 用 extract 的 chunk_id、序号、正文、页码范围、章节）；stages / modules（顺序、前置、估算学习与检测分钟）/ points（简述、估算分钟、出处块 ID 列表，至少 1 个）；judgements 与 attempt_closed（A 的事件，原样存）；credits（T03 账本的记录；账本的窗口配置存在 plans 上）；teacher_profile（按计划，一个 JSON 文档）；messages（按计划和模块的对话，含角色、内容、类型、时间；支持把一段旧对话标记为“已压缩”并存一条摘要）；reports；chat_sessions / chat_messages（自由闲聊）。
+  - 读写 API：按用途提供事务方法（例如 create_plan、save_intake、add_sources、set_source_adopted、save_outline、save_generated_module、reorder_modules、delete_module、start_plan、archive_plan、restore_plan、delete_plan（真删，含其报告）、append_judgement、append_attempt_closed、add_credit / confirm_credits / revoke_credits、save_teacher_profile、append_message、compress_messages、save_report、闲聊会话读写），以及 load_ledger(plan_id) -> Ledger、load_mastery(plan_id) -> MasteryBook（用 A 与 T03 从事件重算，不另存权威状态）。
+  - 同步：新建 refactor/learning/course/sync_contract.py，按下面“约定 1”原样定义 SyncRecord 与 RecordStore；CourseStore 实现 RecordStore：每次改动写入本机修订号并进入待上传；实体到 SyncRecord 的映射一张表一个 entity（原件不同步，source_chunks 同步正文）；结构类后写覆盖，进度类（judgement、attempt_closed、credit）只追加、按 ID 去重、永不删除未上传事件。
+    约定 1（与 MF-07 共用，不得改名改义）：
+      @dataclass(frozen=True) class SyncRecord: entity: str; entity_id: str; plan_key: str; schema: str; payload: dict; deleted: bool; local_revision: int
+      class RecordStore(Protocol):
+          pending_records(limit) -> list[SyncRecord]
+          mark_synced(entity, entity_id, local_revision, server_revision) -> None   # 本机修订号仍等于 local_revision 才清待上传
+          apply_remote(records: list[tuple[SyncRecord, int]]) -> None             # (记录, 服务器修订号)
+          sync_cursor() -> str ; set_sync_cursor(cursor: str) -> None
+      schema 统一为 f"mentorflow.course.{entity}.v{N}"；payload 规范化 JSON 后 ≤ 256 KiB（超出的实体要拆分设计，例如长对话按条存）。
+  - 不接界面、不接模型、不接网络；不删旧的 plans.sqlite3 等旧文件（DATA-01 不兼容旧数据，但旧页面还在用，删除由架构师在换界面时做）。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/mastery tests/refactor/store -q -p no:cacheprovider
+  A：规则 1–9 每条至少一个测试，含一题多点、90% 边界（10 对 9 通过、12 对 10 不通过）、没考到算没掌握、重测清红、直接考两种结果、等级上下限、对错穿插不过关、覆盖优先与间隔、角度轮换、乱序按 seq、幂等与冲突、序列化。
+  B：建库与升级、每个写方法的事务与回滚、删除/归档/恢复、重排与删除模块后账本重排（调用 T03 的 replan）、load_ledger/load_mastery 与直接用事件算的结果一致、RecordStore 全部方法（含“上传途中又被改”的修订号竞争、远端结构类覆盖、进度类去重合并、未上传事件不被远端删除）、并发读写（两个连接）不损坏。
+
+回执
+【MF-03｜client｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/client 上的编号（A、B） ／ 改动 ／ 表结构摘要 ／ 验证：命令与结果 ／ 未完成（含对规则的理解）
+~~~
+
+### [2-MF04] platform｜资料验证流水线 + 名单与价格表客户端
+
+~~~text
+【MentorFlow 第二批｜MF-04（工位 platform）｜资料验证流水线 + 名单与价格表客户端】
+
+开工同步（第一步）
   cd D:\MentorFlow-office\platform\repo
-  git status                         # 应干净；不干净先停下说明
+  git status                        # 应干净；不干净先停下说明
   git checkout office/platform
-  git reset --hard 7db05b0           # 最新集成基线，含你的 T04 和其他人的第一批成果
+  git reset --hard 399e9c4          # 最新集成基线，含你的 T04 与其他人的第一批成果
 Python：D:\MentorFlow\.venv\Scripts\python.exe（不装新包）。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
 禁止 push；禁止改主目录。
-先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-06]（尤其“过滤流程”和“重搜”两段）、[ARCH-06] 第 3 步、[PLAN-04]。
-已有可用模块：course/source_filter.py（你写的筛选）、course/extract.py（正文提取，支持 HTML/PDF/文本）、connections/providers（ModelResult.search_hits）、planning/research.py 的 ResearchService（带防内网访问、重定向和大小限制的安全抓取）。
-范围说明：确有必要可改相邻文件（例如给 research.py 加一个返回原始字节的安全抓取方法），回执逐个说明原因。
+先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-06]（“过滤流程”“重搜”“用户决定”）、[ARCH-06] 第 3 步、[PLAN-04]、[ARCH-05]。
+可用模块：course/source_filter.py、course/extract.py、connections/providers（WebHit）、planning/research.py 的 ResearchService（防内网、限重定向和大小的安全抓取）、planning/plan_source.py 的 AuthenticatedPlanSource 与 learning/sync_transport.py（带登录的服务器请求写法）。
+范围：预期范围见下；确有必要可改相邻文件（例如给 research.py 加一个返回原始字节的安全抓取方法），回执逐个说明原因。
 
-二、目标
-把模型自带搜索的原始结果，变成“确实存在、内容和标题对得上、正文已提取”的资料，供聊天里展示和用户挑选；不调用模型（相关性打分由架构师接）。
+A. 资料验证流水线：新建 refactor/learning/course/research_pipeline.py（不调用模型，相关性打分由架构师接）
+  - 输入：搜索结果（url、title、snippet）、已采用/已拒绝 URL、名单。
+  - 流程：source_filter.screen → 去掉 blocked、duplicate、已采用/已拒绝；low 默认不展示（可选包含）→ 并发抓取（默认 4 路，同站点 ≤ 2，单个 15 秒，总数上限可配）→ 按内容类型用 extract 提取（HTML、PDF、纯文本；其他拒绝）→ 验证：抓取失败、正文过短、页面标题/主标题与搜索标题明显不符、正文命中色情/赌博/盗版关键词 → 拒绝，给原因码和中文说明。
+  - 输出：VerifiedSource（规范化 URL、最终 URL、标题、站点、tier、类别、原因标签、ExtractedDocument、展示摘要、抓取时间、内容 SHA256）、RejectedSource（URL、标题、原因码、说明）。
+  - ResearchPool：保存验证通过但未展示的资料；take(n) 按 whitelist → neutral →（可选）low 取下一批；标记采用/拒绝；“再找找”时先给上一轮没展示的。
+  - 抓取器可注入；默认基于 ResearchService；取消随时生效。
+B. 名单与价格表客户端：新建 refactor/learning/course/catalog_client.py
+  - 从服务器 GET /api/enterprise/catalog/source-whitelist 和 /model-prices 拉取（需登录，沿用 AuthenticatedPlanSource / SyncTransport 的认证写法：会话提供器 + CA 证书，每次请求现取令牌，不缓存令牌）。
+  - 本机缓存（账号数据目录下）+ If-None-Match/ETag，304 用缓存；服务器 404（还没配置）或网络失败 → 用本机缓存，没有缓存则用内置文件（名单用 course/data/source_lists.json 去掉 candidates；价格用仓库里的 example 的一份内置拷贝，放 course/data/model-prices.json）。
+  - 服务器名单格式（与 MF-07 约定，不得自改）：与 source_lists.json 相同，只含 version、updated、whitelist、github_orgs、low、blocked、blocked_keywords，不含 candidates。拿到后校验格式，不合格就不用、继续用旧的。
+  - 提供 load_lists() 给 A 使用（这样白名单来自服务器）、load_prices() 给价格计算使用；刷新在后台线程，最多每 6 小时一次。
 
-三、要做什么：新建 refactor/learning/course/research_pipeline.py
-  - 输入：搜索结果列表（url、title、snippet，可来自 providers 的 WebHit 或 source_filter 的 RawHit）、已采用/已拒绝的 URL、名单。
-  - 流程：source_filter.screen → 去掉 blocked、duplicate，已采用/已拒绝的不再处理；low 默认不展示（可选包含）→ 并发抓取（默认 4 路、单个超时 15 秒、总数上限可配）→ 按内容类型用 extract 提取（HTML、PDF、纯文本；其他类型拒绝）→ 验证：正文过短、页面标题/主标题与搜索标题明显对不上、页面正文命中色情/赌博/盗版关键词、抓取失败，都判为拒绝并给出原因码和中文说明。
-  - 输出：VerifiedSource（规范化 URL、最终 URL、标题、站点、tier、类别、原因标签、提取结果 ExtractedDocument、一段展示用摘要、抓取时间、内容 SHA256）和 RejectedSource（URL、标题、原因码、说明）。
-  - ResearchPool：保存验证通过但还没展示的资料；take(n) 按 whitelist → neutral →（可选）low 的顺序取下一批；支持标记采用/拒绝，供“再找找”时先展示上一轮没展示的。
-  - 抓取器可注入（测试用假抓取器）；默认抓取器基于 ResearchService 的安全抓取。
-  - 取消（threading.Event）随时生效；同一站点并发不超过 2。
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/research_pipeline tests/refactor/catalog_client -q -p no:cacheprovider
+  A：假抓取器下通过与各拒绝原因、PDF/HTML 两条路径、并发与同站点限制、取消、ResearchPool 分批与采用/拒绝、with_tool.json 回放（配假页面）。联网实测一次：对 with_tool.json 筛选后保留的真实 URL 真实抓取验证，回执写尝试数、通过数、各拒绝原因计数、耗时、通过列表（标题、站点、tier）。
+  B：用 httpx.MockTransport 测 200/304/404/401/网络失败/格式不合格各路径，缓存写入与读取，内置回退，名单格式校验，刷新频率限制；不连真实服务器。
 
-四、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/research_pipeline -q -p no:cacheprovider
-  覆盖：假抓取器下的通过/各类拒绝原因、PDF 与 HTML 两条路径、并发与同站点限制、取消、ResearchPool 的分批展示与采用/拒绝、用你已有的 with_tool.json 样本做回放（配假页面）。
-  联网实测一次：对 with_tool.json 里筛选后保留的真实 URL 做真实抓取验证，回执给出：尝试数、通过数、各拒绝原因计数、总耗时，以及通过列表（标题、站点、tier）。
-
-五、回执
-【platform｜T10｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/platform 上的编号 ／ 改动：文件及原因 ／ 验证：命令与结果、联网实测统计 ／ 未完成
+回执
+【MF-04｜platform｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/platform 上的编号 ／ 改动：文件及原因 ／ 验证：命令与结果、联网实测统计 ／ 未完成
 ~~~
 
-### [T11] runtime｜用量记录、价格表与花费估算
+### [2-MF05] tools｜语音术语纠正 + 每日刷新时钟与学习提醒
 
 ~~~text
-【MentorFlow 任务 T11｜员工 runtime｜用量记录、价格表与花费估算】
+【MentorFlow 第二批｜MF-05（工位 tools）｜语音术语纠正 + 每日刷新时钟与学习提醒】
 
-一、开工同步（第一步）
-  cd D:\MentorFlow-office\runtime\repo
-  git status                         # 应干净；不干净先停下说明
-  git checkout office/runtime
-  git reset --hard 7db05b0           # 最新集成基线，含你的 T02 和服务器价格示例
-Python：D:\MentorFlow\.venv\Scripts\python.exe（不装新包，sqlite3 用标准库）。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
-禁止 push；禁止改主目录。
-先读：AGENTS.md；CURRENT_STATE.md 的 [SYS-03]、[SYS-05]、[SYS-02]、[ARCH-08]；deploy/enterprise/staging/rp05/catalog/model-prices.example.json（服务器员工写的价格示例格式）。
-范围说明：确有必要可改相邻文件，回执逐个说明原因。
-
-二、目标
-用户用自己的钱，所以要：每次模型调用都记账（包括缓存命中和搜索），能按用途/模型/日期汇总并算出缓存命中率；有价格时算出金额；正式生成计划前能估一个大概花费。统计不全宁可不做。
-
-三、要做什么
-1) refactor/learning/connections/usage.py
-   - UsageLog(path)：每个账号一个 SQLite 文件；record(provider_id, model, purpose, usage: providers.Usage, plan_id='', request_id='', at=None)；幂等（同 request_id 不重复记）。
-   - summary(start, end, group_by=('purpose'|'model'|'day'))：调用次数、输入/缓存命中/未命中/输出 token、搜索次数、缓存命中率（缓存命中 ÷ 输入）、金额（有价格时）。
-2) refactor/learning/connections/pricing.py
-   - PriceCatalog：读价格 JSON（格式沿用 example，可补字段，例如每次搜索费用、不同上下文长度档位；补的字段要同步改 example）；cost(provider, model, usage) 返回金额与币种，价格缺失返回 None，不猜。
-   - 估算：estimate_tokens(text)（中英文分别估，写明依据）；estimate_cost(provider, model, input_text_or_tokens, expected_output_tokens, cached_ratio=0.0, searches=0) 返回区间（低/高）。
-3) 更新 deploy/enterprise/staging/rp05/catalog/model-prices.example.json：七家厂商的默认模型（见 providers 的 REGISTRY）以及各家常用型号，按官方价格页填写，写 source_url 和查阅日期；只有真正读到官方价格页的标 verified:true；含搜索计费的写上搜索费用。
-
-四、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/usage -q -p no:cacheprovider
-  覆盖：记录与幂等、多维汇总、命中率、金额计算（缓存命中/未命中/输出/搜索分别计价）、价格缺失返回 None、估算区间、价格文件格式错误的报错；用 T02 的 DeepSeek 真实样本 usage 算一次金额并在回执写出结果。
-
-五、回执
-【runtime｜T11｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/runtime 上的编号 ／ 改动：文件及原因 ／ 价格表：各厂商型号、来源、日期、是否核实 ／ 验证：命令与结果 ／ 未完成
-~~~
-
-### [T12] client｜掌握度引擎（模块检测、重测、直接考、检验等级与出题顺序）
-
-~~~text
-【MentorFlow 任务 T12｜员工 client｜掌握度引擎（纯计算逻辑）】
-
-一、开工同步（第一步）
-  cd D:\MentorFlow-office\client\repo
-  git status                         # 应干净；不干净先停下说明
-  git checkout office/client
-  git reset --hard 7db05b0           # 最新集成基线，含你的 T03
-Python：D:\MentorFlow\.venv\Scripts\python.exe；只用标准库。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
-禁止 push；禁止改主目录。
-先读：AGENTS.md；CURRENT_STATE.md 的 [TEACH-02]、[TEACH-06]、[TEACH-07]、[TEACH-04]、[CHK-01]、[ARCH-03]（进度是只追加的事件，状态由事件重算）。
-
-二、目标
-新建 refactor/learning/course/mastery.py：输入“判定事件”，算出每个知识点和模块的状态、是否可以进入检验、检验时下一题问哪个点用哪个角度。不做界面、存储、模型调用。和 T03 的账本一样：确定性、可序列化、事件按 ID 幂等。
-
-三、规则（必须照做；有歧义在回执写出你的理解，不要自己改规则）
-1) 数据
-  PointRef(point_id, module_id)；构造 MasteryBook(points) 时给出全部知识点（顺序即计划顺序）。
-  Judgement 事件：event_id、seq、at（带时区）、context ∈ {'casual','quick_confirm','module_test','retest','skip_test','check'}、module_id、attempt_id（module_test/skip_test 同一次检测共享；其他可为空）、results：((point_id, correct), ...)（一题可含多个点，每个点单独给对错）、angle（检验时的出题角度，其他可为空）。
-  AttemptClosed 事件：event_id、seq、module_id、attempt_id、kind ∈ {'module_test','skip_test'}，表示这次检测结束，引擎据此判定。
-  apply(event)：同 event_id 同内容忽略，不同内容报错；seq 决定先后。
-2) 错误计数
-  casual、quick_confirm 里答错：该点 casual_errors +1。
-  module_test、retest、skip_test 里答错：该点 module_errors +1。
-3) 模块检测（module_test）
-  一次检测里，一个点“掌握” = 本次至少有一个结果且全部正确；没被考到的点算没掌握。
-  掌握比例 = 掌握点数 ÷ 该模块全部点数；≥ 90% 为通过。
-  通过：掌握的点 green，没掌握的点 weak（弱项，供检验侧重），模块 passed。
-  不通过：掌握的点 green，没掌握的点 red，模块 failed。
-4) 重测（retest）：只针对 red 的点；答对一次该点变 green；答错仍 red。模块里没有 red 了 → 模块 passed。
-5) 直接考（skip_test）：规则同模块检测的比例判定；通过 → 模块 skipped（算完成），掌握 green、没掌握 weak；不通过 → 模块回到 untested，所有点回到 untested（错误计数保留），用户照常学。
-6) 可以进入检验：所有模块都是 passed 或 skipped。
-7) 检验等级（CHK-01 已由用户确认）
-  每个点在检验里的初始等级：casual_errors > 0 且 module_errors > 0 → 1 级；否则 → 2 级。满级 3 级即通过检验（通过后不再变化）。
-  check 事件：答对 +1（最高 3），答错 −1（最低 0）。所以最多连续答对 3 次，对错穿插时原地打转。
-8) 出题顺序 next_check_items(n=1, min_gap=3) -> [(point_id, angle)]
-  候选：未通过检验的点。
-  覆盖优先：检验里还没问过的点排前面；其中“重点”（casual_errors>0 或 module_errors>0 或 weak）优先，再按等级低、错误总数多、计划顺序。
-  全部问过一遍后：按等级低、错误总数多、距上次被问越久越优先。
-  间隔：一个点被问过后，至少隔 min_gap 道其他检验题才能再问；如果没有别的候选则可以不遵守。
-  角度：ANGLES = ('recall','apply','contrast','fix_error','transfer')；取该点还没用过的第一个；都用过则取最久没用的。
-  检验完成：所有点都通过。
-9) 查询：point(point_id)（状态、两类错误数、检验等级、已用角度、是否通过检验）、module(module_id)（状态、掌握比例、red/weak 点）、check_ready()、check_complete()、stats()（给学习报告用：每点错误数、检验答题次数、答对率）；to_dict()/from_dict() 往返一致。
-
-四、主要文件
-  refactor/learning/course/mastery.py（新）、tests/refactor/mastery/（新）
-
-五、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/mastery -q -p no:cacheprovider
-  覆盖规则 1–9 的每一条，至少包括：一题多点只给错的点记错；90% 边界（如 10 点对 9 点通过、12 点对 10 点不通过）；未考到的点算没掌握；重测清红后模块通过；直接考通过/不通过两种；等级升降与上下限；对错穿插不过关；覆盖优先与间隔；角度轮换；事件乱序到达按 seq 重算结果一致；幂等与冲突；序列化往返。
-
-六、回执
-【client｜T12｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/client 上的编号 ／ 改动 ／ 验证：命令与结果 ／ 未完成（含对规则的理解）
-~~~
-
-### [T13] library｜扫描版 PDF 文字识别（OCR）
-
-~~~text
-【MentorFlow 任务 T13｜员工 library｜扫描版 PDF 文字识别】
-
-一、开工同步（第一步）
-  cd D:\MentorFlow-office\library\repo
-  git status                         # 应干净；不干净先停下说明（上次遗留的 tests/refactor/extract/.tmp 未跟踪文件可以删掉）
-  git checkout office/library
-  git reset --hard 7db05b0           # 最新集成基线，含你的 T01
-Python：D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
-禁止 push；禁止改主目录。
-先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-09]、[ENV-01]。
-范围说明：确有必要可改相邻文件，回执逐个说明原因。
-注意：主线上 tests/refactor/extract/test_extract.py 的 test_no_qt_or_database_imports 已被架构师改为在独立子进程里检查（原写法在多套测试一起跑时会误报），以主线版本为准。
-
-二、目标
-用户说扫描件以后可以加工具支持。现在做：扫描版 PDF 本机离线识别出文字，和普通 PDF 一样得到带页码的正文和分块。
-
-三、要做什么
-  - 新建 refactor/learning/course/ocr.py：把 PDF 页渲染成图片（建议 pypdfium2），用本机离线 OCR（建议 RapidOCR + onnxruntime；优先选“模型随安装包自带、不需要另行下载”的方案；如需下载模型，按“先说明大小、征得同意再下载”设计，并在回执说明）。
-  - 改 course/extract.py：extract_file / extract_bytes 增加可选参数（例如 ocr=None 或 allow_ocr=False）；默认行为完全不变（扫描件仍返回 SCANNED_NO_TEXT）；启用时对无文字的页做识别，结果进入同样的 blocks/chunks（带页码），warnings 里注明哪些页是识别出来的。混合文档（部分页有文字、部分页是扫描）只识别无文字的页。
-  - 进度回调（第几页/共几页）、取消、页数上限（默认 300 页，超出报清楚的错）。
-  - 依赖装进共用环境（只装所需的包及其必需依赖，不升级已有包），在 requirements-account-shell.txt 末尾追加“# Scanned PDF OCR (PLAN-09)”和精确版本。先确认这些包在 Python 3.12 / Windows 上有可用的安装包。
-
-四、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/extract tests/refactor/ocr -q -p no:cacheprovider
-  覆盖：默认不启用时行为不变；启用时扫描 PDF（测试里用代码生成：把中文文字画成图片再存成 PDF）能识别出关键字且页码正确；混合文档只识别无文字页；进度、取消、页数上限。
-  实测一次真实扫描件（任意公开扫描资料，不提交），回执写页数、耗时、识别样例和大致准确度。
-
-五、回执
-【library｜T13｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/library 上的编号 ／ 改动：文件及原因 ／ 依赖：包与精确版本、是否需下载模型 ／ 验证：命令与结果、实测 ／ 未完成
-~~~
-
-### [T14] tools｜语音识别的课程术语纠正
-
-~~~text
-【MentorFlow 任务 T14｜员工 tools｜语音识别的课程术语纠正】
-
-一、开工同步（第一步）
+开工同步（第一步）
   cd D:\MentorFlow-office\tools\repo
-  git status                         # 应干净；不干净先停下说明
+  git status                        # 应干净；不干净先停下说明
   git checkout office/tools
-  git reset --hard 7db05b0           # 最新集成基线，含你的 T05
+  git reset --hard 399e9c4          # 最新集成基线，含你的 T05
 Python：D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...
 禁止 push；禁止改主目录；不改 E:\ 下任何文件。
-先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]（里面记着你实测的“牛顿”被识别成“扭断”）。
-范围说明：确有必要可改相邻文件，回执逐个说明原因。
+先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]（记着你实测“牛顿”→“扭断”）、[TEACH-05]、[SYS-04]、[PLAN-05]。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。注意 MF-06 本批会改 voice/asr/model_manager.py（换成通用下载器），你不要改那个文件。
 
-二、目标
-上课时学的是具体课程，专业术语容易被识别成同音/近音的普通词。用“本计划的术语表”对识别结果做保守纠正，并告诉界面改了哪里，方便用户一键撤销。
+A. 语音识别的课程术语纠正
+  - 新建 refactor/learning/voice/asr/glossary.py：correct(text, terms) -> (新文本, [(起, 止, 原文, 替换为), ...])。术语由调用方给（计划里的知识点标题、关键术语，中英文都有）。中文按不带声调的拼音比较：完全同音替换；只差一个音节且声母相同才替换；单字术语不纠正；英文不区分大小写、容忍空格/连写。宁可少改；原文已含该术语不动；写清阈值和理由。
+  - 改 voice/asr/service.py：set_glossary(terms)；partial 与 final 都纠正；新增一个信号带出替换列表（名字自定），方便界面显示“已按课程术语修正，点击撤销”。
+  - 如需拼音库（如 pypinyin），装进共用环境，在 requirements-account-shell.txt 末尾追加“# ASR glossary (VOICE-01)”和精确版本。
+B. 每日刷新时钟与学习提醒（Qt 服务，不做界面）
+  - 新建 refactor/learning/services/daily_clock.py：DailyClock(QObject)
+    · 配置：刷新时间（本地钟表时间，如 04:00）、时区、提醒时间（可关闭）；随时可改。
+    · 信号 study_day_changed(date)：到刷新时间时发出（计算规则与 course/ledger.py 的 study_day 一致，直接调用它）。
+    · 提醒：到提醒时间时，调用注入的回调 today_unfinished() -> bool，为 True 才发 reminder_due()；同一天只提醒一次。
+    · 用户正在上课时（注入 in_class() -> bool）不打断：刷新时间到了也照常发 study_day_changed，由上层决定记到哪天（TEACH-05：没退出课堂就记前一天），但在 in_class 为 True 时额外发 late_night_notice()（“太晚了，注意休息”）。
+    · 可靠性：电脑睡眠唤醒、系统改时间、跨时区时，最多 30 秒内纠正；只在软件运行时工作（SYS-04：不做开机自启和后台常驻）。
+    · 时间源可注入（测试用假时钟）。
 
-三、要做什么
-  - 新建 refactor/learning/voice/asr/glossary.py：correct(text, terms) -> (新文本, 替换列表[(起止位置, 原文, 替换为)])。
-    · 术语来自调用方（计划里的知识点标题、关键术语，中英文都可能有）。
-    · 中文按拼音（不带声调）比较：完全同音直接替换；只差一个音节且声母相同才替换；单字术语不做纠正；英文术语按不区分大小写和常见误识别（空格、连写）匹配。
-    · 宁可少改，不可乱改：给出明确的阈值和理由；原文已经包含该术语时不动。
-  - 改 voice/asr/service.py：增加 set_glossary(terms)；partial 和 final 都应用纠正；final_text 信号之外，新增一个信号携带替换列表（名字自定，回执说明）。
-  - 如需拼音库（例如 pypinyin），装进共用环境并在 requirements-account-shell.txt 末尾追加“# ASR glossary (VOICE-01)”和精确版本。
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/asr tests/refactor/daily_clock -q -p no:cacheprovider
+  A：扭断→牛顿（术语表有“牛顿”时）、表里没有不改、原文已含不动、单字不改、声母不同不改、英文大小写/空格、替换位置正确、服务层 partial/final 生效、原 ASR 测试不回归；用上次真实麦克风流程再测一次，回执写前后对比。
+  B：假时钟下刷新时间前后、同日只提醒一次、未完成才提醒、上课中深夜提示、睡眠唤醒跳变、改刷新时间立即生效、改时区。
 
-四、验收
-  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/asr -q -p no:cacheprovider
-  覆盖：“扭断”在术语表含“牛顿”时纠正为“牛顿”；术语表不含时不改；原文已含术语不动；单字不改；只差一个音节但声母不同不改；英文术语大小写/空格；替换位置正确；服务层 partial/final 都生效且原有 ASR 测试不回归。
-  用你上次的真实麦克风流程再测一次（术语表给几条物理术语），回执写前后对比。
+回执
+【MF-05｜tools｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/tools 上的编号 ／ 改动：文件及原因 ／ 依赖 ／ 验证：命令与结果、实测对比 ／ 未完成
+~~~
 
-五、回执
-【tools｜T14｜完成/部分完成/受阻】
-基线：7db05b0 ／ 提交：office/tools 上的编号 ／ 改动：文件及原因 ／ 依赖 ／ 验证：命令与结果、实测对比 ／ 未完成
+### [2-MF06] classroom｜通用下载器与朗读底模下载 + 朗读嘴型数据
+
+~~~text
+【MentorFlow 第二批｜MF-06（工位 classroom）｜通用下载器与朗读底模下载 + 朗读嘴型数据】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 399e9c4          # 最新集成基线，含第一批全部成果
+Python：D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；不改 Kristina、E:\AI_Tools 下任何文件。
+先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]、[DATA-02]、[ENV-01]、[TEACH-05]。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。注意 MF-05 本批会改 voice/asr/service.py 并新增 glossary.py，你不要改这两个文件。
+
+A. 通用下载器 + 朗读底模下载
+  - 新建 refactor/learning/voice/download.py：资产描述（名称、地址列表=主地址+备用镜像按序尝试，HuggingFace 资产默认加 hf-mirror.com，GitHub 资产不加；大小；SHA256；安装相对路径；是否压缩包 zip/tar.bz2 及解压后校验清单）；status() 不联网；download(progress, cancel) 断点续传、逐个校验、全部通过后原子安装、失败/取消不留半成品、镜像失败换下一个；中文错误码（网络失败、校验失败、磁盘不足、已取消）。
+  - 改 voice/asr/model_manager.py 用它实现（对外接口与行为不变，ASR 原测试照过）。
+  - 新建 voice/tts/model_manager.py：朗读底模（你上次核对过的 8 个文件 + G2PW 包解压）安装到 data_root/models/tts/gpt-sovits-base/；改 voice/tts/config.py：优先用 data_root 下已安装的，开发机没有则回退 E:\MentorFlowModels\gpt-sovits-base（保留环境变量覆盖）。
+  - 回执另写“正式分发要准备什么”：引擎运行时（含 Python/CUDA 依赖）和弗洛洛声音包各多大、放哪、是否必须联网下载；只写结论。
+B. 朗读嘴型数据（给 Live2D 对口型，Live2D 接入由架构师做）
+  - 在 TtsService 播放时，按约 50 毫秒一帧计算正在播放的音频响度（0–1，平滑，静音接近 0），通过信号 mouth_level(float) 发出；与实际出声同步（按音频设备实际消耗的进度，不按合成完成时间）；停止或句间静音时回到 0。
+  - 另提供 sentence_timing 信息（每句的开始/结束时刻），供界面高亮正在读的句子。
+  - 性能：不增加首音延迟，CPU 占用可忽略。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/voice_download tests/refactor/asr tests/refactor/tts -q -p no:cacheprovider
+  A：进度、续传、换镜像、校验失败、取消、磁盘不足（可模拟）、zip/tar.bz2 解压与校验、原子安装；ASR/TTS 不回归。实测：把 TTS 底模真实下载到临时 data_root（不要删 E:\MentorFlowModels 那份），回执写耗时和实际走的地址。
+  B：用合成音频验证响度曲线与静音归零、与播放进度同步、stop 立即归零、首音延迟与上次相比不变差（回执写实测）。
+
+回执
+【MF-06｜classroom｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/classroom 上的编号 ／ 改动：文件及原因 ／ 验证：命令与结果、实测 ／ 正式分发调查 ／ 未完成
+~~~
+
+### [2-MF07] server｜既有失败测试与部署包 + 新数据同步客户端与挤下线检测
+
+~~~text
+【MentorFlow 第二批｜MF-07（工位 server）｜既有失败测试与部署包 + 新数据同步客户端与挤下线检测】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 399e9c4          # 最新集成基线，含你的 T07
+后端测试继续用 D:\MentorFlow-office\server\.venv-backend；客户端代码测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-05]、[ACC-01]、[ACC-02]、[DATA-02]、[ARCH-03]；客户端现有同步写法：refactor/learning/sync_transport.py、sync_controller.py、sync_records/、planning/plan_source.py。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
+
+A. 既有失败测试 + 部署包（不执行）
+  - backend/tests/test_change_password_binding.py 的 3 个既有失败：查根因。测试过时 → 更新测试并写清真实行为；代码缺陷 → 写清缺陷、影响、最小修复，只有确定是改密绑定本身缺陷才修并补测试；不改其他账号流程行为（ACC-02）。
+  - 部署包 deploy/enterprise/staging/rp05/mf-u09/：README（以 MF-U04 镜像为底只覆盖 native.py、structured_sync.py、catalog_api.py、account_core_mvp.py；目录文件只读挂载到 /run/mentorflow/catalog；只改最后一份 override 的 backend 镜像与挂载；只重建 backend；每步检查命令；回滚到 MF-U04；上线后验证 /health、目录接口未放文件 404、放文件后 200 与 ETag、session 接口、挤下线手测）。脚本默认只打印命令，显式参数才执行，你本人不执行。
+    上次部署做法供参考：活跃项目 mentorflow-e1-preview；当前镜像 mentorflow-mf-u04-backend:MF-U04（以上一版为底只覆盖改动源码构建）；backend Compose 叠加顺序 /opt/mentorflow/releases/21337c1eda64f7e087fcade77c3d4cd7dce4a0af-exact-source/deploy/enterprise/staging/rp05/compose.account-core-mvp.yml → /opt/mentorflow/artifacts/gatea-native-20260913-08/backend.override.json → /opt/mentorflow/artifacts/r2-04-final-20260917/runtime.override.json → /opt/mentorflow/artifacts/mf-d04-20260922/runtime.override.json（上次只改了最后一份的 backend image）；回滚配置目录 /opt/mentorflow/state/mentorflow-e1-preview/mf-b03-rollback；数据库 0041 不动；原生认证单进程（MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS=1、WEB_CONCURRENCY=1）。
+  - 名单转换：tools/ 下写脚本，把 refactor/learning/course/data/source_lists.json 转成服务器下发格式（约定 2：只含 version、updated、whitelist、github_orgs、low、blocked、blocked_keywords，不含 candidates），配测试。
+B. 新数据同步客户端 + 挤下线检测
+  - 新建 refactor/learning/course/sync_course.py：CourseSync(record_store, transport)：用“约定 1”的 RecordStore（由 MF-03 在 refactor/learning/course/sync_contract.py 定义并实现；你在测试里自己写一个内存版 RecordStore，按约定 1 的签名，不要自己创建 sync_contract.py，届时以 MF-03 的为准）：
+    · 上传：pending_records → 按服务器 course_record 格式（你在 T07 定义的）经现有同步协议写入（沿用 sync_transport / 现有 CAS、幂等请求 ID 的做法）→ mark_synced；冲突时拉取远端后再决定（结构类后写覆盖由 RecordStore 处理）。
+    · 拉取：按游标增量拉取 course_record → apply_remote → 更新游标。
+    · 失败可重试、不丢数据；进行中可取消；同一时刻只跑一轮。
+    约定 1（与 MF-03 共用）：
+      @dataclass(frozen=True) class SyncRecord: entity: str; entity_id: str; plan_key: str; schema: str; payload: dict; deleted: bool; local_revision: int
+      class RecordStore(Protocol):
+          pending_records(limit) -> list[SyncRecord]
+          mark_synced(entity, entity_id, local_revision, server_revision) -> None
+          apply_remote(records: list[tuple[SyncRecord, int]]) -> None
+          sync_cursor() -> str ; set_sync_cursor(cursor: str) -> None
+  - 新建 refactor/learning/services/session_guard.py：SessionGuard(QObject)：上课期间（start()/stop() 控制）每 60 秒调用 GET /api/enterprise/auth/native/session（沿用现有认证写法，每次现取令牌）；收到 401 NATIVE_SESSION_SUPERSEDED → 发 superseded()（“账号已在另一台设备登录”）；其他 401 → 发 reauth_required()；网络失败不报错、按退避重试；也提供一个可在任意请求失败时调用的 note_error(code) 入口，统一识别 NATIVE_SESSION_SUPERSEDED。
+
+验收
+  后端：.venv-backend 跑 test_change_password_binding.py、T07 三个测试文件、test_native_auth.py、test_sync_registry.py、test_product_sync_contract.py、tests/server_sync/test_contract.py，结果写进回执；转换脚本测试。
+  客户端：D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/sync_course tests/refactor/session_guard -q -p no:cacheprovider（用 httpx.MockTransport 模拟服务器的 course_record 读写，覆盖上传、增量拉取、冲突、失败重试、取消、上传途中本机又改动；SessionGuard 的三类结果与退避）。
+
+回执
+【MF-07｜server｜第二批｜完成/部分完成/受阻】
+基线：399e9c4 ／ 提交：office/server 上的编号 ／ A：根因与处理、部署包清单 ／ B：改动 ／ 验证：命令与结果 ／ 未完成
 ~~~
