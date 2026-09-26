@@ -520,5 +520,62 @@ class StoreTests(unittest.TestCase):
         target.apply_remote([(last,1)]); target.start_plan('p')
         self.assertEqual(target.get_plan('p')['state'],'active')
 
+    def test_report_dates_replan_reasons_and_operation_days_are_atomic_and_synced(self):
+        s = self.prepare(modules=1)
+        s.start_plan('p', today=TODAY)
+        s.replan_plan('p', TODAY, reason='调整节奏')
+        s.add_credit('p', 'credit', 'u', 5, TODAY)
+        s.confirm_credits('p', 'u', event_id='dated-confirm', today=TODAY)
+        before = self.snapshot()
+        self.assertEqual(s.confirm_credits('p', 'u', event_id='dated-confirm', today=TODAY), 0)
+        self.assertEqual(self.snapshot(), before)
+        with self.assertRaises(StoreError):
+            s.confirm_credits('p', 'u', event_id='dated-confirm', today=TODAY + timedelta(days=1))
+        with self.assertRaises(StoreError): s.replan_plan('p', TODAY, reason={'invalid': True})
+        self.assertEqual(self.snapshot(), before)
+        with self.assertRaises(RuntimeError):
+            with s.transaction():
+                s.revoke_credits('p', 'other', event_id='rolled-back', today=TODAY)
+                raise RuntimeError('rollback')
+        self.assertEqual(self.snapshot(), before)
+        target = self.open(root=self.root/'metadata-target')
+        self.copy_remote(s, target)
+        self.assertEqual(target.get_plan('p')['started_on'], TODAY.isoformat())
+        commands = target.records('ledger_events', 'p')
+        self.assertTrue(any(c.get('reason') == '调整节奏' for c in commands))
+        self.assertEqual(next(c for c in commands if c['id'] == 'dated-confirm')['today'], TODAY.isoformat())
+
+    def test_chunked_reports_rollback_integrity_and_independent_report_ids(self):
+        s = self.prepare(); self.complete(s)
+        document = {'large': 'x' * (300 * 1024)}
+        before = self.snapshot()
+        original = s._put
+
+        def fail_second_part(entity, plan, payload):
+            result = original(entity, plan, payload)
+            if entity == 'reports' and payload['document'].get('index') == 1:
+                raise RuntimeError('second part failed')
+            return result
+
+        with patch.object(s, '_put', side_effect=fail_second_part):
+            with self.assertRaises(RuntimeError): s.save_report('p', document)
+        self.assertEqual(self.snapshot(), before)
+        s.save_report('p', document)
+        s.save_report('p', document, report_id='another')
+        self.assertEqual(s.load_report('p'), document)
+        self.assertEqual(s.load_report('p', report_id='another'), document)
+        s.save_report('p', {'small': True})
+        self.assertEqual(s.load_report('p'), {'small': True})
+        self.assertEqual(s.load_report('p', report_id='another'), document)
+        part = next(r for r in s.pending_records(999) if r.entity == 'reports' and not r.deleted
+                    and r.payload['document'].get('_course_report_storage') == 'part.v1')
+        corrupted = copy.deepcopy(part.payload)
+        corrupted['document']['data'] = 'YQ=='  # Valid base64, incorrect full-document digest.
+        s.apply_remote([(replace(part, payload=corrupted), 100)])
+        with self.assertRaises(StoreError) as raised: s.load_report('p', report_id='another')
+        self.assertEqual(raised.exception.code, 'REPORT_INCOMPLETE')
+        s.delete_plan('p')
+        self.assertEqual(s.records('reports', 'p'), [])
+
 
 if __name__ == '__main__': unittest.main()

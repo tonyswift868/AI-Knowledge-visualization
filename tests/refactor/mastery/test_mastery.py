@@ -178,5 +178,28 @@ class MasteryTests(unittest.TestCase):
         with self.assertRaises(MasteryError):
             b.apply(AttemptClosed('other-close',200,'m','a','module_test'))
 
+    def test_report_evidence_replays_out_of_order_and_queries_are_detached(self):
+        b = book(1)
+        events = [judgement(1, [('0', False)], 'check', angle='recall'),
+                  judgement(2, [('0', False)], 'module_test', 'a'),
+                  AttemptClosed('closed', 3, 'm', 'a', 'module_test'),
+                  judgement(4, [('0', True)], 'retest'),
+                  judgement(5, [('0', False)], 'check', angle='apply'),
+                  judgement(6, [('0', True)], 'check', angle='contrast'),
+                  judgement(7, [('0', True)], 'check', angle='transfer'),
+                  judgement(8, [('0', False)], 'check', angle='fix_error')]
+        for event in reversed(events):
+            b.apply(event)
+        evidence = b.report_stats()
+        self.assertTrue(evidence['points']['0']['ever_red'])
+        self.assertEqual(evidence['points']['0']['check_errors_before_pass'], 1)
+        self.assertEqual(evidence['points']['0']['check_questions'], 4)
+        self.assertEqual(evidence['modules']['m']['retest_count'], 1)
+        self.assertEqual(evidence['modules']['m']['first_test']['mastery_ratio'], 0.0)
+        expected = MasteryBook.from_dict(b.to_dict()).report_stats()
+        self.assertEqual(expected, evidence)
+        evidence['modules']['m']['first_test']['mastery_ratio'] = 1.0
+        self.assertEqual(b.report_stats(), expected)
+
 
 if __name__ == '__main__': unittest.main()

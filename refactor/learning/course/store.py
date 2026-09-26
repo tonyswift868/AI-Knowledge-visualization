@@ -2,7 +2,8 @@
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
-plans: intake, window/initial_window, total/initial_total, state, archived;
+plans: intake, window/initial_window, total/initial_total, state, archived,
+optional started_on/completed_on (explicit caller-supplied study dates);
 sources: kind, url, sha256, title, site, tier, credibility, adopted;
 source_chunks: extract chunk_id as id, source_id, position, text, pages, section;
 stages/modules/points: title/summary, position, prerequisites, minute estimates,
@@ -16,6 +17,8 @@ credits stores immutable original credit submissions. The additional
 ledger_events table stores immutable confirm/revoke/replan commands in the same
 operation sequence: neither a cached Ledger nor mutable credit states are an
 authority. Plans retain the initial window/total as well as the current ones.
+New replans also retain their cause and optional caller reason; confirm/revoke
+may carry an explicit study date. Legacy records without these remain readable.
 
 Sync entity names are table names. For plan-owned records, wire entity_id is
 length-prefixed '<len(plan_key)>:<plan_key><id>'; payload.id is the original ID
@@ -33,6 +36,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timezone
 from functools import wraps
+import base64
 import hashlib
 import json
 import os
@@ -50,6 +54,8 @@ from .sync_contract import SyncRecord
 
 SCHEMA_VERSION = 2
 MAX_PAYLOAD = 256 * 1024
+_REPORT_STORAGE = '_course_report_storage'
+_REPORT_PART_PREFIX = 'report-part:'
 PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage'))
 # One entity maps to exactly one table. Tuple entries are FK field -> parent.
 PARENTS = {
@@ -68,10 +74,10 @@ class StoreError(ValueError):
         super().__init__(message)
 
 
-def _json(value):
+def _json(value, *, bounded=True):
     try:
         raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
-        if len(raw.encode('utf-8')) > MAX_PAYLOAD:
+        if bounded and len(raw.encode('utf-8')) > MAX_PAYLOAD:
             raise StoreError('PAYLOAD_TOO_LARGE', '单条同步记录超过 256 KiB，请按正文块或消息拆分。')
         return raw
     except (TypeError, ValueError, UnicodeError) as exc:
@@ -253,6 +259,8 @@ class CourseStore:
                 if payload[key] is not None: _window(payload[key])
             _number(payload['total_minutes']); _number(payload['initial_total_minutes'])
             _number(payload['module_count'])
+            for key in ('started_on', 'completed_on'):
+                if payload.get(key) is not None: _day(payload[key])
         elif entity == 'sources':
             if payload['kind'] not in ('url', 'file') or type(payload['adopted']) is not bool: raise StoreError('INVALID_SOURCE')
             if payload['kind'] == 'file' and not re.fullmatch('[0-9a-f]{64}', payload['sha256'] or ''): raise StoreError('INVALID_SHA')
@@ -284,6 +292,9 @@ class CourseStore:
             _number(payload['operation_seq'], True)
         elif entity == 'ledger_events':
             _number(payload['operation_seq'], True)
+            if payload.get('today') is not None: _day(payload['today'])
+            for key in ('reason', 'cause'):
+                if payload.get(key) is not None and not isinstance(payload[key], str): raise StoreError('INVALID_EVENT')
             if payload['op'] == 'replan':
                 _day(payload['today']); _window(payload['window']); _number(payload['total_minutes'])
             elif payload['op'] in ('confirm', 'revoke'): _id(payload['unit_id'])
@@ -353,7 +364,7 @@ class CourseStore:
         return plan_id
 
     @_atomic
-    def save_intake(self, plan_id, *, goal=None, final_goal=None, level=None, notes=None, window=None, today=None):
+    def save_intake(self, plan_id, *, goal=None, final_goal=None, level=None, notes=None, window=None, today=None, reason=None):
         plan = self._get('plans', plan_id, plan_id)
         if plan['state'] not in ('creating', 'ready') and any(v is not None for v in (goal, final_goal, level, notes)):
             raise StoreError('PLAN_STARTED', '开始后的计划只能改日期或添加资料。')
@@ -365,7 +376,7 @@ class CourseStore:
                 plan['initial_window'] = plan['window'] = configuration
             elif plan['window'] != configuration:
                 if today is None: raise StoreError('TODAY_REQUIRED', '修改日期须提供当前学习日。')
-                self._replan(plan, _day(today), _window(configuration), plan['total_minutes'])
+                self._replan(plan, _day(today), _window(configuration), plan['total_minutes'], cause='window_changed', reason=reason)
                 plan['window'] = configuration
         return self._put('plans', plan_id, plan)
 
@@ -459,7 +470,13 @@ class CourseStore:
             generated = {p['module_id'] for p in self._rows('points', plan_id)}
             if any(m['id'] not in generated for m in self._rows('modules', plan_id)):
                 plan['state'] = 'creating'
-        plan['module_count'] = len(self._rows('modules', plan_id))
+        count = len(self._rows('modules', plan_id))
+        if plan['state'] == 'completed' and count > plan['module_count']:
+            # New learning content starts a new completion cycle. Retain the
+            # existing saved report, but do not reuse its finish date next time.
+            plan['state'] = 'active'
+            plan.pop('completed_on', None)
+        plan['module_count'] = count
         self._put('plans', plan_id, plan)
 
     def _total(self, plan_id):
@@ -468,19 +485,20 @@ class CourseStore:
     def _op_seq(self, plan_id):
         return max([p['operation_seq'] for table in ('credits', 'ledger_events') for p in self._rows(table, plan_id)], default=0) + 1
 
-    def _replan(self, plan, today, new_window, total_minutes):
+    def _replan(self, plan, today, new_window, total_minutes, *, cause, reason=None):
         ledger = self._load_ledger(plan)
         ledger.replan(today, new_window, total_minutes)  # Validate before changing any rows.
         event = dict(id=uuid.uuid4().hex, op='replan', operation_seq=self._op_seq(plan['id']),
-                     today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes)
+                     today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes,
+                     cause=cause, reason=reason)
         self._put('ledger_events', plan['id'], event)
         plan['window'], plan['total_minutes'] = event['window'], total_minutes
 
     @_atomic
-    def replan_plan(self, plan_id, today, new_window=None, new_total_minutes=None):
+    def replan_plan(self, plan_id, today, new_window=None, new_total_minutes=None, *, reason=None):
         plan = self._get('plans', plan_id, plan_id)
         self._replan(plan, _day(today), _window(new_window or plan['window']),
-                     plan['total_minutes'] if new_total_minutes is None else new_total_minutes)
+                     plan['total_minutes'] if new_total_minutes is None else new_total_minutes, cause='explicit_replan', reason=reason)
         self._put('plans', plan_id, plan)
 
     @_atomic
@@ -506,7 +524,7 @@ class CourseStore:
         module['check_minutes'] = check_minutes
         module['point_count'] = len(points)
         self._put('modules', plan_id, module)
-        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id))
+        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id), cause='module_generated')
         generated = {p['module_id'] for p in self._rows('points', plan_id)}
         if plan['state'] in ('creating', 'ready'):
             plan['state'] = 'ready' if all(m['id'] in generated for m in self._rows('modules', plan_id)) else 'creating'
@@ -521,7 +539,7 @@ class CourseStore:
             modules[key]['position'] = index
             self._put('modules', plan_id, modules[key])
         self._check_graph(plan_id)
-        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id))
+        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id), cause='modules_reordered')
         self._put('plans', plan_id, plan)
 
     @_atomic
@@ -537,15 +555,17 @@ class CourseStore:
             if module_id in module['prerequisites']:
                 module['prerequisites'].remove(module_id); self._put('modules', plan_id, module)
         plan['module_count'] = len(self._rows('modules', plan_id))
-        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id))
+        self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id), cause='module_deleted')
         self._put('plans', plan_id, plan)
 
     @_atomic
-    def start_plan(self, plan_id):
+    def start_plan(self, plan_id, *, today=None):
+        """Pass the current study day to record an exact start; no clock is read."""
         plan = self._get('plans', plan_id, plan_id)
         if plan['state'] != 'ready' or plan['archived']: raise StoreError('PLAN_NOT_READY')
         self._load_ledger(plan)
         if not self._fully_generated(plan_id): raise StoreError('PLAN_NOT_READY')
+        if today is not None: plan['started_on'] = _day(today).isoformat()
         plan['state'] = 'active'; self._put('plans', plan_id, plan)
 
     @_atomic
@@ -566,6 +586,9 @@ class CourseStore:
         plan = self._get('plans', plan_id, plan_id)
         if not self._fully_generated(plan_id) or not self.load_mastery(plan_id).check_complete() or not self._load_ledger(plan).status(_day(today)).completed:
             raise StoreError('PLAN_NOT_COMPLETE')
+        # Repeating completion must not move a previously recorded finish date.
+        if plan['state'] != 'completed' or not plan.get('completed_on'):
+            plan['completed_on'] = _day(today).isoformat()
         plan['state'] = 'completed'; self._put('plans', plan_id, plan)
 
     @_atomic
@@ -649,24 +672,27 @@ class CourseStore:
         sequence = existing['operation_seq'] if existing else self._op_seq(plan_id)
         self._put('credits', plan_id, dict(id=credit_id, credit=original, operation_seq=sequence))
 
-    def _credit_change(self, plan_id, unit_id, event_id, op):
+    def _credit_change(self, plan_id, unit_id, event_id, op, today):
         identifier = _id(event_id or uuid.uuid4().hex)
         existing = next((p for p in self._rows('ledger_events', plan_id) if p['id'] == identifier), None)
         if existing:
             if existing['op'] != op or existing.get('unit_id') != unit_id: raise StoreError('EVENT_CONFLICT')
+            if today is not None and existing.get('today') != _day(today).isoformat(): raise StoreError('EVENT_CONFLICT')
             return 0
         ledger = self._load_ledger(self._get('plans', plan_id, plan_id))
         minutes = getattr(ledger, op)(unit_id)
-        self._put('ledger_events', plan_id, dict(id=identifier, op=op, unit_id=unit_id, operation_seq=self._op_seq(plan_id)))
+        payload = dict(id=identifier, op=op, unit_id=unit_id, operation_seq=self._op_seq(plan_id))
+        if today is not None: payload['today'] = _day(today).isoformat()
+        self._put('ledger_events', plan_id, payload)
         return minutes
 
     @_atomic
-    def confirm_credits(self, plan_id, unit_id, *, event_id=None):
-        return self._credit_change(plan_id, unit_id, event_id, 'confirm')
+    def confirm_credits(self, plan_id, unit_id, *, event_id=None, today=None):
+        return self._credit_change(plan_id, unit_id, event_id, 'confirm', today)
 
     @_atomic
-    def revoke_credits(self, plan_id, unit_id, *, event_id=None):
-        return self._credit_change(plan_id, unit_id, event_id, 'revoke')
+    def revoke_credits(self, plan_id, unit_id, *, event_id=None, today=None):
+        return self._credit_change(plan_id, unit_id, event_id, 'revoke', today)
 
     @_atomic
     def save_teacher_profile(self, plan_id, document):
@@ -703,11 +729,75 @@ class CourseStore:
 
     @_atomic
     def save_report(self, plan_id, document, *, report_id=None):
+        """Save a report atomically, splitting large JSON across reports rows.
+
+        Small reports retain the original document envelope. Large reports use
+        a manifest and content-addressed base64 parts (128 KiB raw each), still
+        one reports entity per row and <=256 KiB per sync record. Use load_report
+        to read either form; records('reports') remains the raw row-level API.
+        """
         plan = self._get('plans', plan_id, plan_id)
         if plan['state'] != 'completed': raise StoreError('PLAN_NOT_COMPLETE')
         identifier = _id(report_id or plan_id)
-        self._put('reports', plan_id, dict(id=identifier, document=document))
+        if identifier.startswith(_REPORT_PART_PREFIX): raise StoreError('INVALID_REPORT_ID')
+        if not isinstance(document, dict) or _REPORT_STORAGE in document: raise StoreError('INVALID_DOCUMENT')
+        raw = _json(document, bounded=False).encode('utf-8')
+        try:
+            previous = self._get('reports', plan_id, identifier)['document']
+        except StoreError as exc:
+            if exc.code != 'NOT_FOUND': raise
+            previous = {}
+        old_parts = previous.get('parts', []) if previous.get(_REPORT_STORAGE) == 'chunks.v1' else []
+        parts = []
+        envelope = dict(id=identifier, document=document)
+        # Include the row envelope in the single-record limit, not just document.
+        if len(_json(envelope, bounded=False).encode('utf-8')) > MAX_PAYLOAD:
+            digest = hashlib.sha256(raw).hexdigest()
+            owner_digest = hashlib.sha256(identifier.encode('utf-8') + b'\0' + raw).hexdigest()
+            for index, offset in enumerate(range(0, len(raw), 128 * 1024)):
+                part_id = f'{_REPORT_PART_PREFIX}{owner_digest}:{index}'
+                parts.append(part_id)
+                self._put('reports', plan_id, dict(id=part_id, document={
+                    _REPORT_STORAGE: 'part.v1', 'report_id': identifier, 'index': index,
+                    'data': base64.b64encode(raw[offset:offset + 128 * 1024]).decode('ascii')}))
+            envelope['document'] = {_REPORT_STORAGE: 'chunks.v1', 'sha256': digest, 'parts': parts}
+        self._put('reports', plan_id, envelope)
+        for old_id in old_parts:
+            if old_id in parts: continue
+            try: old = self._get('reports', plan_id, old_id)['document']
+            except StoreError as exc:
+                if exc.code != 'NOT_FOUND': raise
+                continue
+            if old.get(_REPORT_STORAGE) == 'part.v1' and old.get('report_id') == identifier:
+                self._delete('reports', plan_id, old_id)
         return identifier
+
+    def load_report(self, plan_id, *, report_id=None):
+        """Read a complete detached report; fail explicitly during partial sync."""
+        with self.transaction():
+            identifier = _id(report_id or plan_id)
+            document = self._get('reports', plan_id, identifier)['document']
+            if _REPORT_STORAGE not in document: return document
+            if document[_REPORT_STORAGE] != 'chunks.v1': raise StoreError('INVALID_REPORT')
+            try:
+                parts = []
+                ids = document['parts']
+                if (not isinstance(ids, list) or not ids
+                        or any(not isinstance(key, str) or not key.startswith(_REPORT_PART_PREFIX) for key in ids)
+                        or len(ids) != len(set(ids))): raise ValueError()
+                for index, part_id in enumerate(ids):
+                    part = self._get('reports', plan_id, part_id)['document']
+                    if (part.get(_REPORT_STORAGE) != 'part.v1' or part.get('report_id') != identifier
+                            or type(part.get('index')) is not int or part['index'] != index): raise ValueError()
+                    parts.append(base64.b64decode(part['data'], validate=True))
+                raw = b''.join(parts)
+                if hashlib.sha256(raw).hexdigest() != document['sha256']: raise ValueError()
+                result = json.loads(raw.decode('utf-8'))
+                if not isinstance(result, dict) or _REPORT_STORAGE in result: raise ValueError()
+                if _json(result, bounded=False).encode('utf-8') != raw: raise ValueError()
+                return result
+            except (StoreError, ValueError, TypeError, KeyError, UnicodeError):
+                raise StoreError('REPORT_INCOMPLETE', '报告分块尚未全部同步或校验失败。') from None
 
     @_atomic
     def append_usage(self, plan_id, usage_id, *, provider, model, purpose, input_tokens=0, cache_hit_tokens=0,

@@ -186,10 +186,12 @@ class MasteryBook:
             return self._cache
         points = {p.point_id: dict(state='untested', casual_errors=0, module_errors=0,
                                   level=None, check_questions=0, check_correct=0,
-                                  last_question=None, angles={}) for p in self._points}
+                                  last_question=None, angles={}, ever_weak=False, ever_red=False,
+                                  check_errors_before_pass=0, check_passed_at=None) for p in self._points}
         modules = {}
         for ref in self._points:
-            modules.setdefault(ref.module_id, dict(state='untested', point_ids=[], module_test_count=0, skip_test_count=0))['point_ids'].append(ref.point_id)
+            modules.setdefault(ref.module_id, dict(state='untested', point_ids=[], module_test_count=0, skip_test_count=0,
+                                                   first_test=None, retest_count=0, skip_test_passed=False))['point_ids'].append(ref.point_id)
         attempts, closed = {}, set()
         question = 0
         for event in sorted(self._events.values(), key=lambda e: (e.seq, e.event_id)):
@@ -200,6 +202,12 @@ class MasteryBook:
                 mastered = {pid for pid, values in answers.items() if values and all(values)}
                 passed = len(mastered) * 10 >= len(module['point_ids']) * 9
                 module[event.kind + '_count'] += 1
+                if module['first_test'] is None:
+                    module['first_test'] = dict(event_id=event.event_id, attempt_id=event.attempt_id, kind=event.kind,
+                                                mastered_points=len(mastered), total_points=len(module['point_ids']),
+                                                mastery_ratio=len(mastered) / len(module['point_ids']))
+                if event.kind == 'skip_test' and passed:
+                    module['skip_test_passed'] = True
                 if event.kind == 'skip_test' and not passed:
                     module['state'] = 'untested'
                     for pid in module['point_ids']:
@@ -208,6 +216,8 @@ class MasteryBook:
                     module['state'] = ('skipped' if event.kind == 'skip_test' else 'passed') if passed else 'failed'
                     for pid in module['point_ids']:
                         points[pid]['state'] = 'green' if pid in mastered else ('weak' if passed else 'red')
+                        if points[pid]['state'] in ('weak', 'red'):
+                            points[pid]['ever_' + points[pid]['state']] = True
                 closed.add(key)
                 continue
             if event.context in ('casual', 'quick_confirm', 'module_test', 'retest', 'skip_test'):
@@ -222,6 +232,7 @@ class MasteryBook:
                     for pid, correct in event.results:
                         answers.setdefault(pid, []).append(correct)
             elif event.context == 'retest':
+                module['retest_count'] += 1  # One judgement is one question, including multi-point questions.
                 for pid, correct in event.results:
                     if points[pid]['state'] == 'red' and correct:
                         points[pid]['state'] = 'green'
@@ -232,7 +243,11 @@ class MasteryBook:
                 for pid, correct in event.results:
                     point = points[pid]
                     level = self._level(point)
+                    if level < 3 and not correct:
+                        point['check_errors_before_pass'] += 1
                     point['level'] = 3 if level == 3 else max(0, min(3, level + (1 if correct else -1)))
+                    if level < 3 and point['level'] == 3:
+                        point['check_passed_at'] = event.at.isoformat()
                     point['check_questions'] += 1
                     point['check_correct'] += int(correct)
                     point['last_question'] = question
@@ -306,6 +321,24 @@ class MasteryBook:
         ) for pid, p in points.items()}, modules={mid: dict(
             module_test_count=m['module_test_count'], skip_test_count=m['skip_test_count'],
             test_count=m['module_test_count'] + m['skip_test_count']) for mid, m in modules.items()})
+
+    def report_stats(self):
+        """Historical evidence, computed in the same replay as mastery.
+
+        The first *closed* module/skip test counts unasked points as unmastered.
+        Retests count judgement events, not point results or optional attempt IDs.
+        Pre-pass errors ignore ineligible checks and checks after terminal level 3.
+        Keeping this separate preserves the existing stats() response contract.
+        """
+        points, modules, _ = self._project()
+        result = self.stats()
+        for pid, point in points.items():
+            result['points'][pid].update({key: point[key] for key in
+                ('ever_weak', 'ever_red', 'check_errors_before_pass', 'check_passed_at')})
+        for mid, module in modules.items():
+            result['modules'][mid].update({key: copy.deepcopy(module[key]) for key in
+                ('first_test', 'retest_count', 'skip_test_passed')})
+        return result
 
     def to_dict(self):
         return dict(version=1, points=[asdict(p) for p in self._points],
