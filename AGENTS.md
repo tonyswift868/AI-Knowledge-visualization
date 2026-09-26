@@ -1,7 +1,7 @@
 # MentorFlow — 入口
 
 - 主目录 D:\MentorFlow；所有新代码都放在重构区 [refactor](refactor/)，重构区保持干净。旧仓库（desktop/backend/frontend 等）不是废弃品，里面已有的成果先参考复用，不重复造轮子；但不把旧运行链整体搬进来。
-- 测试代码放在 `tests/refactor/<模块>/`，不放进 refactor；refactor 里只有产品运行需要的文件。
+- 测试代码放在 `tests/refactor/<模块>/`，不放进 refactor；refactor 里只有产品运行需要的文件；测试文件名在整个 tests/ 下不能重名（例如用 test_plan_export.py，不用通用的 test_export.py），否则多套测试一起运行时会互相冲突。
 - 唯一需求与状态文档：[docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)。需求由用户直接给出，不从其他文档领取。
 - 员工调度（员工、任务、基线、交付状态）只记在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)，由架构师维护；需求不写在那里。
 - [过时文件隔离](过时文件隔离/) 下全是旧资料，日常检索跳过，不作为当前指令。
