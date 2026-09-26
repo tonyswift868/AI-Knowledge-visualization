@@ -106,6 +106,7 @@
 - 结构类数据（可编辑，单设备写，按修订号后写覆盖）：计划 plans（目标、最终目标、水平、起止日、每日上限、星期/特殊日权重、状态：创建中/已生成未开始/进行中/检验中/已完成、归档标记）；资料 sources 与正文块 source_chunks（页码、章节、可信度、是否采用）；阶段 stages → 模块 modules（前置、估算学习与检测分钟）→ 知识点 points（简述、估算分钟、出处块 ID，至少一个）。
 - 进度类数据（只追加的事件，天然可合并）：判定记录 judgements（场景：随口问/模块检测/重测/直接考/检验，题目、角度、出处、作答、每个点对错）；时长记录 credits（即 T03 账本的记录，按 credit_id 去重）。掌握状态（随口问错次、模块检测错次、红/绿、检验等级 0–3、已用角度、上次提问时间）和账本状态都由事件重算，不单独保存为权威数据。
 - 其他：教师档案 teacher_profile（按计划，TEACH-01 第二层）；对话 messages（按计划和模块，第三层原文；模块结束后压缩为摘要）；报告 reports；闲聊会话；用量 usage（每次模型调用的厂商、模型、用途、输入/缓存命中/未命中/输出 token、搜索次数）。
+- 当前实现：【2026-09-27】`course/store.py`（第二批 MF-03，已合入）：每账号 course.sqlite3（WAL、外键、schema 版本 2），每个实体一张表存 JSON 载荷，进度事件（judgements、attempt_closed、credits、ledger_events）不可改写；`course/mastery.py` 掌握度引擎按 TEACH-02/CHK-01 规则由事件重算；load_ledger/load_mastery 从事件重算。库内另有 usage 实体，但用量实际记在 MF-02 的 model-usage.sqlite3（接入时只用后者）。
 - 关联：[ARCH-02] [ARCH-05] [PLAN-05] [TEACH-02] [CHK-01]
 - 更新：2026-09-27
 
@@ -120,7 +121,7 @@
 - 状态：设计待用户确认（服务器部分已派 T07）
 - 服务器一次性改动（T07）：通用记录类型 `course_record`（载荷为带版本号的 JSON，服务器只校验归属、ID、大小）、白名单/价格表只读接口、新登录挤掉旧设备。部署前须征得用户同意。
 - 客户端：每张表的变化写入本地待同步队列，按 `course_record` 上传/拉取；结构类数据按修订号后写覆盖；进度类是只追加事件，按 ID 去重合并，所以不会“打架”。上课时定期调用会话状态接口，收到“已在另一台设备登录”即停止上课并保留未同步事件（ACC-01）。原件不同步（DATA-02）。
-- 当前实现：【2026-09-27】T07 已合入未部署：course_record 通用记录（映射 learning_run）、目录接口 /api/enterprise/catalog/source-whitelist 与 /model-prices（需登录、ETag、目录由 MENTORFLOW_CATALOG_DIR 指定）、单设备登录；合并后在隔离环境跑 115 项服务器测试通过。基线已有 test_change_password_binding.py 3 项失败（非本次引入）。
+- 当前实现：【2026-09-27】T07 已合入未部署：course_record 通用记录（映射 learning_run）、目录接口 /api/enterprise/catalog/source-whitelist 与 /model-prices（需登录、ETag、目录由 MENTORFLOW_CATALOG_DIR 指定）、单设备登录；合并后在隔离环境跑 115 项服务器测试通过。基线已有 test_change_password_binding.py 3 项失败（非本次引入）。 【2026-09-27】客户端同步 `course/sync_course.py` 与挤下线检测 `services/session_guard.py`（第二批 MF-07，已合入）；架构师用两个真实 CourseStore 经 CourseSync 与协议一致的模拟服务器联调通过（计划与进度双向一致、各自事件不被覆盖、无多余上传）。已知缺口：服务器没有增量拉取接口，每轮拉取完整快照，资料正文和对话增多后会越来越慢。部署包 `deploy/enterprise/staging/rp05/mf-u09/` 已备好（默认只打印命令），尚未部署。既有 test_change_password_binding.py 3 项失败已查明为测试替身过时并修正（账号运行逻辑未改）。
 - 关联：[DATA-02] [ACC-01] [ARCH-03]
 - 更新：2026-09-27
 
@@ -219,7 +220,7 @@
 - 过滤流程：DeepSeek 搜索后 → 去重、剔除 fork/转载 → 白名单优先、已知垃圾站剔除 → 逐个实际打开链接，确认存在且内容与标题一致 → AI 给相关性/可信度打分 → 在聊天里列给用户（带可信度）由用户挑选。模型凭记忆给出的链接，打开验证通过的也可使用。标准是满足用户的学习目标。
 - 重搜：用户不满意可以让 AI 再找，不设轮数上限（用的是用户自己的 API）。用户选中的保留，其余重找：可以先展示上一轮搜到但没展示的结果；若是搜索路线本身有问题，就换思路重搜。不管几轮都不能偏题，更不能出现无关网站。
 - 搜索来源：用模型厂商自带的搜索，DeepSeek 已验证；其他厂商见 SYS-02。用户只带一个 DeepSeek API 来用我们的程序，不会为此另开别的 API，所以不让用户配置第二个 key；博查基本不用。已查到 DeepSeek 的 Anthropic 兼容接口（`https://api.deepseek.com/anthropic`）官方文档写明在 Claude Code 中原生支持服务端 Web Search（会额外产生模型 token 费用）；2026-09-26 已用管理员账号的真实 key 验证：在我们自己的请求里可直接使用（见“验证”）。无论用哪种搜索，都叠加白名单优先 + AI 相关性/可信度过滤。
-- 当前实现：`planning/research.py` 用 ddgs 搜索并读取网页，没有“权威性”筛选；默认模型预设为 `deepseek-flash`（`connections/page.py:17`）。 【2026-09-27】`course/source_filter.py` 与名单初稿 `course/data/source_lists.json`（T04，已合入）：规范化、去重、fork/转载/raw/WebVPN/色情赌博盗版识别；白名单 113、低质 8、屏蔽 11、候选 20、官方 GitHub 组织 24，名单待用户审阅；实验场 44 条结果筛选符合预期。实际打开验证与评分尚未接入。
+- 当前实现：`planning/research.py` 用 ddgs 搜索并读取网页，没有“权威性”筛选；默认模型预设为 `deepseek-flash`（`connections/page.py:17`）。 【2026-09-27】`course/source_filter.py` 与名单初稿 `course/data/source_lists.json`（T04，已合入）：规范化、去重、fork/转载/raw/WebVPN/色情赌博盗版识别；白名单 113、低质 8、屏蔽 11、候选 20、官方 GitHub 组织 24，名单待用户审阅；实验场 44 条结果筛选符合预期。实际打开验证与评分尚未接入。 【2026-09-27】`course/research_pipeline.py`（第二批 MF-04，已合入）：筛选 → 并发安全抓取（同站点 ≤ 2）→ 提取 → 验证（正文过短、标题不符、违规关键词）→ ResearchPool 分批展示与采用/拒绝；实验场 44 条联网实测：37 条抓取、19 条通过，尚未做相关性/可信度打分。`course/catalog_client.py`：从服务器拉白名单与价格表（ETag、本机缓存、内置回退、6 小时限频），价格格式以 connections/pricing 为唯一标准。
 - 验证：2026-09-26 基准测试（实验场）`E:\Codex\Temp\MentorFlowTests\search-benchmark\deepseek_search_probe.py`，结果 `results\with_tool.json`。场景：学习者以 Datawhale hello-agents 为主线学 AI 智能体，要求搜相关知识而非只搜项目本身。模型 deepseek-v4-flash，接口 `https://api.deepseek.com/anthropic/v1/messages`，工具 `web_search_20250305`。
   - 结果：HTTP 200，约 25 秒；自主发起 8 次搜索（hello-agents、Agent 综述、ReAct、OpenAI Function Calling、RAG、LangGraph、MCP、Generative Agents），均切题；返回 44 条原始结果。输入约 4.6 万 token（其中 3.9 万命中缓存），输出约 4.6 千 token。
   - 问题 1：原始结果混有噪声——CSDN 转载、他人 fork 仓库、无关仓库的 raw 文件、高校 VPN 代理链接、空条目。必须经过白名单优先 + 相关性/可信度过滤。
@@ -343,7 +344,7 @@
 ### [PLAN-09] 资料格式：支持常见带文字文档
 - 状态：已实现未验证（部分）
 - 需求：不限制在少数格式，PDF、Word 等带文字的文档都要支持。扫描件先不做；以后可考虑加工具支持。
-- 当前实现：只支持 TXT/Markdown/CSV/JSON，每份上限 8 MiB（`refactor/learning/text_import.py`、`store.py`）。 【2026-09-27】`course/extract.py`（T01，已合入）支持 PDF（pypdf 6.19.0）/Word（python-docx 1.2.0）/Markdown/TXT/HTML，带页码与章节、确定性分块，扫描件返回 SCANNED_NO_TEXT；63 项单测通过，真实中文 PDF 6 页 0.05 秒。尚未接入导入流程。
+- 当前实现：只支持 TXT/Markdown/CSV/JSON，每份上限 8 MiB（`refactor/learning/text_import.py`、`store.py`）。 【2026-09-27】`course/extract.py`（T01，已合入）支持 PDF（pypdf 6.19.0）/Word（python-docx 1.2.0）/Markdown/TXT/HTML，带页码与章节、确定性分块，扫描件返回 SCANNED_NO_TEXT；63 项单测通过，真实中文 PDF 6 页 0.05 秒。尚未接入导入流程。 【2026-09-27】第二批 MF-01（已合入）：扫描件离线 OCR（RapidOCR，模型随包约 15 MB，默认关闭、按页识别），新增 PPTX/EPUB/XLSX；真实扫描件印刷体准确、手写与横向票据较差。
 - 验证：未验证
 - 关联：[PLAN-07]
 - 更新：2026-09-27
@@ -405,7 +406,7 @@
 ### [SYS-02] 多家模型厂商，各配本家搜索
 - 状态：已实现未验证（仅 DeepSeek 搜索已验证）
 - 需求：不只支持 DeepSeek。用户填别家模型的 API 时，也要预先配好该厂商自带的搜索，让资料检索照样可用，覆盖更多用户。国内（通义千问、Kimi、智谱 GLM）和国外（OpenAI、Claude、Gemini）全部先接上；除 DeepSeek 外先按官方文档接好、标为未验证，等有用户实际使用该家 API 时再测，测出问题再改。
-- 当前实现：模型连接只有 OpenAI 兼容 chat/completions（`connections/transport.py`）；DeepSeek 的 Anthropic 兼容接口搜索已验证（见 PLAN-06）；其他厂商的搜索均未接入、未验证。 【2026-09-27】`connections/providers/`（T02，已合入）按官方文档接入 DeepSeek、通义、Kimi、智谱、OpenAI、Claude、Gemini 七家的普通回答、自带搜索、流式与用量统计（含缓存命中）；117 项模拟测试通过；除 DeepSeek 非流式外均未真实联调。尚未替换产品里的旧模型通道。国外厂商走系统代理（不读环境变量代理，与现有通道一致）。
+- 当前实现：模型连接只有 OpenAI 兼容 chat/completions（`connections/transport.py`）；DeepSeek 的 Anthropic 兼容接口搜索已验证（见 PLAN-06）；其他厂商的搜索均未接入、未验证。 【2026-09-27】`connections/providers/`（T02，已合入）按官方文档接入 DeepSeek、通义、Kimi、智谱、OpenAI、Claude、Gemini 七家的普通回答、自带搜索、流式与用量统计（含缓存命中）；117 项模拟测试通过；除 DeepSeek 非流式外均未真实联调。尚未替换产品里的旧模型通道。国外厂商走系统代理（不读环境变量代理，与现有通道一致）。 【2026-09-27】`connections/gateway.py`（第二批 MF-02，已合入）：按厂商预设、自动迁移现有 DeepSeek 预设并沿用原 Key、每次调用自动记账、显式连接测试、是否支持搜索；旧页面仍用旧 client.py。
 - 验证：未验证
 - 关联：[PLAN-06] [SYS-03]
 - 更新：2026-09-27
@@ -413,18 +414,18 @@
 ### [SYS-03] 花费预估与累计用量
 - 状态：未开始
 - 需求：点“正式生成”前显示大概花费预估；设置里可查看累计用量。客户端统计 token（含缓存命中/未命中、搜索等所有调用），必须统计完整，统计不全宁可不做。金额按服务器维护、客户端联网拉取的价格表计算；能从厂商拿到计费数据（如 DeepSeek）时，完整展示金额和缓存命中率等明细。
-- 当前实现：模型调用有观测记录（`refactor/learning/observability.py`），没有费用预估和累计用量界面；搜索产生的额外 token 未统计。
+- 当前实现：模型调用有观测记录（`refactor/learning/observability.py`），没有费用预估和累计用量界面；搜索产生的额外 token 未统计。 【2026-09-27】`connections/usage.py`、`pricing.py`（第二批 MF-02，已合入）：每账号 model-usage.sqlite3 记账（幂等、失败也计次）、按用途/模型/日汇总与缓存命中率、分项计价（缓存命中/未命中/输出/搜索/缓存写入）、估算区间；价格表 18 个型号，Kimi、智谱价格未核实（不计价）。实验场 DeepSeek 样本命中率 84.7%，按目录价约 ¥0.026。
 - 验证：未验证
 - 关联：[PLAN-02] [SYS-02]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [SYS-04] 学习提醒（仅软件开着时）
 - 状态：未开始
 - 需求：像不背单词一样可设提醒时间，到点还没开始当天任务就提醒。只在软件开着时提醒，不做开机自启和后台常驻；用户不打开软件就让他自己错过。
-- 当前实现：没有。
+- 当前实现：没有。 【2026-09-27】`services/daily_clock.py`（第二批 MF-05，已合入）：刷新时间归属（复用账本 study_day）、提醒同日只一次且仅在未完成时、上课中深夜提示、睡眠/改时间/时区变化 15 秒内校正。尚未接入界面。
 - 验证：未验证
 - 关联：[TEACH-05]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [SYS-05] 提高缓存命中率
 - 状态：未开始
@@ -471,7 +472,7 @@
 ### [VOICE-01] 语音输入与朗读
 - 状态：未开始（旧仓库有成果）
 - 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。朗读同样依赖一批通用底模（中文 BERT、CNHubert、G2PW、SV）和声音包，体积可能达数 GB：首次使用朗读时也要先说明大小、征得同意再下载；开发机上这批底模已不存在（2026-09-27 核实引擎目录为空），开发时从官方来源下载到 `E:\MentorFlowModels\gpt-sovits-base\`。
-- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。 【2026-09-27】`voice/asr/`（T05，已合入）：SenseVoice int8 + Silero VAD，首次使用同意后下载（约 156 MiB，官方链接与 SHA256 已写入），模型加载约 1.6 秒，5 秒中文解码 0.08 秒，模型就绪后说话约 0.35 秒出字；实测把“牛顿”识别为“扭断”。`voice/tts/`（T06，已合入）：自写轻量推理服务常驻本机、带鉴权只听 127.0.0.1，冷启动含预热约 29 秒，预热后首音约 0.43–0.46 秒，实时率 0.31，句间停顿 < 5 毫秒，显存约 1.3–1.85 GB；默认声音包 phrolova-b 1.0.2；8 个声音变体试听样本在 `D:\MentorFlow-office\classroom\temp\tts-samples`，待用户试听选定。两者尚未接入界面。
+- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。 【2026-09-27】`voice/asr/`（T05，已合入）：SenseVoice int8 + Silero VAD，首次使用同意后下载（约 156 MiB，官方链接与 SHA256 已写入），模型加载约 1.6 秒，5 秒中文解码 0.08 秒，模型就绪后说话约 0.35 秒出字；实测把“牛顿”识别为“扭断”。`voice/tts/`（T06，已合入）：自写轻量推理服务常驻本机、带鉴权只听 127.0.0.1，冷启动含预热约 29 秒，预热后首音约 0.43–0.46 秒，实时率 0.31，句间停顿 < 5 毫秒，显存约 1.3–1.85 GB；默认声音包 phrolova-b 1.0.2；8 个声音变体试听样本在 `D:\MentorFlow-office\classroom\temp\tts-samples`，待用户试听选定。两者尚未接入界面。 【2026-09-27】第二批已合入：MF-05 课程术语纠正（拼音比较，保守替换，带撤销信息；“扭断→牛顿”通过）；MF-06 通用下载器（续传、镜像、校验、原子安装）用于语音识别与朗读底模，朗读嘴型数据（约 50 毫秒一帧，按实际播放进度），预热后首音 0.33–0.40 秒。正式分发调查：完整朗读引擎约 12.2 GiB（其中 Python/CUDA 运行时约 7.8 GiB），默认声音包约 278 MiB，均可离线随包分发。
 - 验证：未验证
 - 关联：[TEACH-05] [TEACH-06]
 - 更新：2026-09-27
