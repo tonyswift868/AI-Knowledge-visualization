@@ -54,7 +54,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: critical
           comment-summary-in-pr: never
