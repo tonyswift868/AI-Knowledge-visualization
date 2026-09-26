@@ -14,8 +14,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | `2014a74`（2026-09-27，main，含第二批全部成果）；第二批用 `399e9c4`，第一批用 `6cca892` |
-| 说明 | 第三批只派真正需要且不依赖前端的 3 项（MF-07、MF-01、MF-03）；MF-02/04/05 剩余工作是接入界面与编排（架构师做），MF-06 等用户选定声音 |
+| 基线提交 | `0d8ad81`（2026-09-27，main，含第三批与 MF-U09 部署失败记录）；更早批次见任务行 |
+| 说明 | 第四批只派 MF-07 修部署包；其余员工暂无必要任务，架构师开始前端 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -53,6 +53,7 @@
 | 3-MF07 | MF-07 server | 服务器增量同步（含迁移）+ 客户端同步调度服务 | ARCH-05、DATA-02 | 2014a74 | 已合入 |
 | 3-MF01 | MF-01 library | 资料入库与重新关联 + 计划导出（注销前保存） | DATA-02、ACC-02、PLAN-09 | 2014a74 | 已合入 |
 | 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已合入 |
+| 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1075,4 +1076,57 @@ Python：D:\MentorFlow\.venv\Scripts\python.exe；只用标准库。提交：git
 回执
 【MF-03｜client｜第三批｜完成/部分完成/受阻】
 基线：2014a74 ／ 提交：office/client 上的编号 ／ 改动 ／ 报告字段摘要 ／ 验证：命令与结果 ／ 未完成
+~~~
+
+## 第四批任务详情
+
+### [4-MF07] server｜部署失败修复：按线上实际版本重做部署包
+
+~~~text
+【MentorFlow 第四批｜MF-07（工位 server）｜部署失败修复：按线上实际版本重做部署包】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净（只有 .tmp 测试临时文件可忽略）；否则先停下说明
+  git checkout office/server
+  git reset --hard 0d8ad81          # 最新集成基线，含第三批与本次事故记录
+后端测试用 D:\MentorFlow-office\server\.venv-backend；客户端测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-05]（最新一条是这次部署失败的记录）、[DATA-02]、[ACC-01]、[ACC-02]。
+
+一、发生了什么
+  架构师按 MF-U09 部署包上线：数据库备份、迁移 0042 与检查都通过，但新后端启动即崩溃循环：
+    File "/app/backend/app/enterprise/structured_sync_api.py", line 8
+    from refactor.server.account_object_storage import MAX_OBJECT_BYTES
+    ModuleNotFoundError: No module named 'refactor.server.account_object_storage'
+  已按部署包回滚：数据库回到 0041、MF-U04 恢复，服务正常。中断约 5 分钟。
+  根因：部署包的六个覆盖文件取自仓库，但仓库的服务器代码与线上 MF-U04 差距很大——早期写好的“新同步信封格式（refactor-sync）”“资料原件对象存储”等从未上线；覆盖的文件把这些依赖一起带了进去。部署包只校验字节，没有在镜像里做启动检查，所以没在切换前发现。
+
+二、线上实际版本（只读参考，不要修改）
+  - D:\MentorFlow\.local\deploy-audit\mfu04\ 下是从线上 MF-U04 镜像取出的文件：backend/app/account_core_mvp.py、backend/app/enterprise/identity/native.py、backend/app/enterprise/structured_sync_api.py、backend/app/enterprise_tenancy/structured_sync.py，以及整个 refactor/server/。
+  - 架构师已核对：account_core_mvp.py、structured_sync_api.py、structured_sync.py 与提交 37f9507 的版本逐字节相同；native.py 与 37f9507 不同（线上是后来单独覆盖的版本）；refactor/server 里 closure.py、closure_api.py 与当前 HEAD 不同，其余相同。
+  - 其余线上文件没有取出。推断线上大体等于 37f9507 的提交内容加上历次单独覆盖（MF-U03/U04：account_lifecycle.py、lifecycle_api.py；MF-D04：注销模块与 import_ledger_schema.py、sync_schema.py 的 0041 兼容）。凡是你需要改动、又不能从上述来源确定线上内容的文件，在回执里列出，由架构师去线上取，不要猜。
+
+三、要做什么
+  1. 审计：把本次要上线的每个服务器运行文件（backend/app 与 refactor/server 下被加载的模块）与线上版本逐个对比，给一张表：文件、线上版本来源、差异属于哪项功能、这次是否需要上线、依赖了哪些线上不存在的模块。
+  2. 让仓库等于准备上线的版本（仓库和线上不能再“各走各的”）：
+     - 这次要上线：新同步信封格式（course_record 依赖它）、course_record、增量接口 /changes 与迁移 0042、目录接口、单设备登录。
+     - 资料原件对象存储：按 DATA-02（原件不同步到服务器）本次不上线。把它从服务器的运行路径里拿掉（structured_sync_api.py 的对象接口与 account_core_mvp.py 的装配等），让仓库服务器代码就是将要上线的样子；客户端 sync_transport 里对应的上传/下载方法若仍被旧页面调用，保持代码但在回执说明它们会得到 404（旧页面即将被新界面替换）。
+     - 相关测试同步调整，已有服务器测试不回归。
+  3. 新部署包 deploy/enterprise/staging/rp05/mf-u10/（MF-U09 保留作记录，不要删）：
+     - 覆盖文件由第 1 步的审计结果决定，不再限定六个；manifest 记录每个文件及其线上原版本的来源。
+     - build 必须增加镜像内启动检查：在新镜像里执行 import app.account_core_mvp（及所有新装配模块），任何导入错误都在切换前失败。
+     - deploy 切换后必须等待 backend 变为 healthy（上限约 90 秒），否则自动回滚到 MF-U04（配置与镜像；数据库保留 0042，前提是你用测试证明 MF-U04 代码在 0042 结构上能正常读写——新增列有触发器赋值、MF-U04 的写入不写该列）。
+     - 仍然默认只打印命令，--execute 才执行；你本人不执行。
+  4. 本地演练（不连服务器）：用线上版本源码 + 你的覆盖文件组出一份“将要上线的后端”，在隔离 PostgreSQL（迁移到 0042）上真实启动应用，至少通过 /health/live、/health/startup，并用测试请求走一遍 course_record 写入、/changes 读取、目录接口、session 接口。演练方式与结果写进回执。
+
+四、验收
+  - 审计表完整；新部署包的测试（含“镜像内启动检查”和“不健康自动回滚”的逻辑测试）通过。
+  - 后端：第三批跑过的全部后端测试 + 你新增/调整的测试通过；MF-U04 代码在 0042 结构上读写的测试通过。
+  - 客户端：D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过（注意测试文件名在 tests/ 下不能重名）。
+  - 本地演练成功的证据。
+
+回执
+【MF-07｜server｜第四批｜完成/部分完成/受阻】
+基线 ／ 提交 ／ 审计表 ／ 仓库调整（含对象存储的处理）／ MF-U10 部署包 ／ 本地演练 ／ 验证：命令与结果 ／ 需要架构师去线上取的文件清单 ／ 未完成
 ~~~
