@@ -1,0 +1,429 @@
+{
+  "started_at": "2026-09-26T20:07:50.942618+00:00",
+  "input_count": 44,
+  "attempted": 37,
+  "passed": 19,
+  "elapsed_seconds": 39.891,
+  "rejected_counts": {
+    "possible_fork": 1,
+    "duplicate": 2,
+    "title_mismatch": 9,
+    "low_quality": 1,
+    "body_too_short": 4,
+    "unsupported_type": 1,
+    "fetch_failed": 3,
+    "blocked": 1,
+    "invalid_url": 3
+  },
+  "cancelled": false,
+  "validation": "existence/extraction/policy/title only; relevance is not scored",
+  "verified": [
+    {
+      "url": "https://github.com/datawhalechina/hello-agents/blob/main/README_EN.md",
+      "final_url": "https://github.com/datawhalechina/hello-agents/blob/main/README_EN.md",
+      "title": "hello-agents/README_EN.md at main · datawhalechina/hello-agents · GitHub",
+      "site": "github.com",
+      "tier": "whitelist",
+      "category": "github_repository",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:07:54.276468+00:00",
+      "content_sha256": "488a3820144d5f5587b93e5d4685f678ef9424efd248b823433e5921ab239110",
+      "media_type": "text/html",
+      "chars": 13121
+    },
+    {
+      "url": "https://github.com/datawhalechina/hello-agents",
+      "final_url": "https://github.com/datawhalechina/hello-agents",
+      "title": "GitHub - datawhalechina/hello-agents: 📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程 · GitHub",
+      "site": "github.com",
+      "tier": "whitelist",
+      "category": "github_repository",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:07:54.375949+00:00",
+      "content_sha256": "ad551ff31694198c831c66c0313d77ae4bbce04a31d1b89c602b6c42259fa576",
+      "media_type": "text/html",
+      "chars": 6024
+    },
+    {
+      "url": "https://developer.cloud.tencent.cn/article/2663221",
+      "final_url": "https://developer.cloud.tencent.cn/article/2663221",
+      "title": "从零到一搭建AI智能体：hello-agents项目实战部署全记录-腾讯云开发者社区-腾讯云",
+      "site": "developer.cloud.tencent.cn",
+      "tier": "neutral",
+      "category": "unknown",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:07:54.441559+00:00",
+      "content_sha256": "ebc7ca5f8b5cb019bcc7188e5f31390b1f741a7e5a4094b0ec9e9b232a1d7dfd",
+      "media_type": "text/html",
+      "chars": 8649
+    },
+    {
+      "url": "https://www.cnblogs.com/gccbuaa/p/19312041",
+      "final_url": "https://www.cnblogs.com/gccbuaa/p/19312041",
+      "title": "DataWhale-HelloAgents（第一部分：智能体与语言模型基础） - 教程 - gccbuaa - 博客园",
+      "site": "www.cnblogs.com",
+      "tier": "neutral",
+      "category": "unknown",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:07:56.420079+00:00",
+      "content_sha256": "9163ee9cfd164909f6578f8ebf05b70ec59e153cc5c389d8121c78b9d406d902",
+      "media_type": "text/html",
+      "chars": 9626
+    },
+    {
+      "url": "https://zenodo.org/records/20068498?_x_output_type_b6db407c4_=embedded_pdf",
+      "final_url": "https://zenodo.org/records/20068498?_x_output_type_b6db407c4_=embedded_pdf",
+      "title": "A Comprehensive Survey on Agentic Artificial Intelligence Architectures: Reasoning, Planning and Real-World Applications | Zenodo",
+      "site": "zenodo.org",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:00.314627+00:00",
+      "content_sha256": "968fb8364f6058d9b8e9f7c38a69a73931b184dc2ff11562f271295bf72d81b6",
+      "media_type": "text/html",
+      "chars": 8461
+    },
+    {
+      "url": "https://explore.openaire.eu/search/result?pid=10.5281%2Fzenodo.21237699",
+      "final_url": "https://explore.openaire.eu/search/result?pid=10.5281%2Fzenodo.21237699",
+      "title": "Agentic AI: A Survey of Architectures, Memory, Planning, and Real-World Application",
+      "site": "explore.openaire.eu",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:02.580776+00:00",
+      "content_sha256": "7f1635848ed8fcedc46ac915ff07f84ee607b0e619208f5ff820f160b353a0a0",
+      "media_type": "text/html",
+      "chars": 4157
+    },
+    {
+      "url": "https://www.semanticscholar.org/reader/980cc964c8bfdcd9670265e1dcbb08f9c41749a7",
+      "final_url": "https://www.semanticscholar.org/reader/980cc964c8bfdcd9670265e1dcbb08f9c41749a7",
+      "title": "[PDF] A Survey of Foundation Model-Powered Recommender Systems: From Feature-Based, Generative to Agentic Paradigms | Semantic Scholar",
+      "site": "www.semanticscholar.org",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:03.335679+00:00",
+      "content_sha256": "4b3c6b850f4bc6bd09ea7cf675073c7c16730b49f8ba30afd192a4590f470950",
+      "media_type": "text/html",
+      "chars": 463
+    },
+    {
+      "url": "https://github.com/akihikowatanabe/paper_notes/issues/4835",
+      "final_url": "https://github.com/akihikowatanabe/paper_notes/issues/4835",
+      "title": "[Paper Note] The Landscape of Agentic Reinforcement Learning for LLMs: A Survey, Guibin Zhang+, arXiv'25, 2025.09 · Issue #4835 · AkihikoWatanabe/paper_notes · GitHub",
+      "site": "github.com",
+      "tier": "neutral",
+      "category": "github_repository",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:02.850331+00:00",
+      "content_sha256": "da848281fb9280ad01b9c87241fede4d2386595623555c30d0e5cfdaade2526f",
+      "media_type": "text/html",
+      "chars": 3383
+    },
+    {
+      "url": "https://arxiv.org/abs/2504.01963",
+      "final_url": "https://arxiv.org/abs/2504.01963",
+      "title": "[2504.01963] LLMs Working in Harmony: A Survey on the Technological Aspects of Building Effective LLM-Based Multi Agent Systems",
+      "site": "arxiv.org",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:04.098281+00:00",
+      "content_sha256": "4ad1ae5c17e4f98aaa452cbf345fd34dbb5e803b393b0db560fe4d359dea11d7",
+      "media_type": "text/html",
+      "chars": 3731
+    },
+    {
+      "url": "https://huggingface.co/datasets/zmccormick7/KITE/resolve/main/ai-papers/tool-use/ReAct.pdf?download=true",
+      "final_url": "https://huggingface.co/api/resolve-cache/datasets/zmccormick7/KITE/f96ed4762ae73af5480a1891ded2671e9f0b103a/ai-papers%2Ftool-use%2FReAct.pdf?download=true&etag=%22ec0d1289e56fb9065ea87e49b2e4d02d76c933c0%22",
+      "title": "REAC T: S YNERGIZING REASONING AND ACTING IN",
+      "site": "huggingface.co",
+      "tier": "neutral",
+      "category": "unknown",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:07.070834+00:00",
+      "content_sha256": "4430bc2c4450bd25047dc6e5c189296d59663e2a378c12557c7773752c8a369b",
+      "media_type": "application/pdf",
+      "chars": 102614
+    },
+    {
+      "url": "https://github.com/endogenai/dogma/blob/refs/heads/main/docs/research/sources/arxiv-react.md",
+      "final_url": "https://github.com/endogenai/dogma/blob/refs/heads/main/docs/research/sources/arxiv-react.md",
+      "title": "dogma/docs/research/sources/arxiv-react.md at refs/heads/main · EndogenAI/dogma · GitHub",
+      "site": "github.com",
+      "tier": "neutral",
+      "category": "github_repository",
+      "reasons": [
+        "raw_file"
+      ],
+      "retrieved_at": "2026-09-26T20:08:06.535637+00:00",
+      "content_sha256": "74ef33373aea8964163d54642715a0ff4587589f8398c628eb9a32213a450b4e",
+      "media_type": "text/html",
+      "chars": 14149
+    },
+    {
+      "url": "https://mlanthology.org/iclr/2023/yao2023iclr-react",
+      "final_url": "https://mlanthology.org/iclr/2023/yao2023iclr-react/",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models | ML Anthology",
+      "site": "mlanthology.org",
+      "tier": "neutral",
+      "category": "unknown",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:09.011670+00:00",
+      "content_sha256": "aa4cc91c3698cdfe8df1fb137c50ebaafcc93434904529ed0b4fddee8feb534f",
+      "media_type": "text/html",
+      "chars": 2580
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/function-calling.md",
+      "final_url": "https://developers.openai.com/api/docs/guides/function-calling.md",
+      "title": "Function calling",
+      "site": "developers.openai.com",
+      "tier": "whitelist",
+      "category": "official_docs",
+      "reasons": [
+        "title_unverified"
+      ],
+      "retrieved_at": "2026-09-26T20:08:11.332244+00:00",
+      "content_sha256": "078619f5bb7196abc4b162e23be8427b1243a8431aa4d14d3d869a8cd93ccc0b",
+      "media_type": "text/markdown",
+      "chars": 74022
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/agents-api/tools/functions",
+      "final_url": "https://developers.openai.com/api/docs/guides/agents-api/tools/functions",
+      "title": "Functions | OpenAI API",
+      "site": "developers.openai.com",
+      "tier": "whitelist",
+      "category": "official_docs",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:12.657779+00:00",
+      "content_sha256": "80d26e244c1a4154ddbce0f2c64e36808a1c1405ddf4dd7c3cace11ba363c532",
+      "media_type": "text/html",
+      "chars": 5402
+    },
+    {
+      "url": "https://mintlify.wiki/openai/openai-python/guides/helpers",
+      "final_url": "https://mintlify.wiki/openai/openai-python/guides/helpers",
+      "title": "Helper Functions - OpenAI Python SDK",
+      "site": "mintlify.wiki",
+      "tier": "neutral",
+      "category": "unknown",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:12.002312+00:00",
+      "content_sha256": "8acb43475ca0512d650d42ff9eb1fc3e3985259170a3c5fd94f0afe6e1384aeb",
+      "media_type": "text/html",
+      "chars": 8989
+    },
+    {
+      "url": "https://github.com/1850298154/memory_agent_hub/blob/main/04_openAI/03.tools_call_strict.md",
+      "final_url": "https://github.com/1850298154/memory_agent_hub/blob/main/04_openAI/03.tools_call_strict.md",
+      "title": "memory_agent_hub/04_openAI/03.tools_call_strict.md at main · 1850298154/memory_agent_hub · GitHub",
+      "site": "github.com",
+      "tier": "neutral",
+      "category": "github_repository",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:13.355503+00:00",
+      "content_sha256": "260f94b68c622bdae3ec4ade1b117d5e3bc40e949212dbe9f752c40b240b6834",
+      "media_type": "text/html",
+      "chars": 29677
+    },
+    {
+      "url": "https://openai.github.io/openai-agents-python/tools",
+      "final_url": "https://openai.github.io/openai-agents-python/tools/",
+      "title": "Tools - OpenAI Agents SDK",
+      "site": "openai.github.io",
+      "tier": "whitelist",
+      "category": "official_docs",
+      "reasons": [],
+      "retrieved_at": "2026-09-26T20:08:15.776502+00:00",
+      "content_sha256": "177d8e3b291ea7b0b059122b8d8de2367edd27a1a3527afe6960dce1d432987f",
+      "media_type": "text/html",
+      "chars": 44837
+    },
+    {
+      "url": "https://arxiv.org/abs/2609.13577",
+      "final_url": "https://arxiv.org/abs/2609.13577",
+      "title": "[2609.13577] Comparative Framework Analysis for Enterprise Generative AI Applications: Chatbot, Automation, and Oracle-to-PostgreSQL Migration",
+      "site": "arxiv.org",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [
+        "title_unverified"
+      ],
+      "retrieved_at": "2026-09-26T20:08:17.600195+00:00",
+      "content_sha256": "668c92094615a1a6d2404de5c849722acb93e53108b031ad39cc673ff92c5feb",
+      "media_type": "text/html",
+      "chars": 3994
+    },
+    {
+      "url": "http://xplorestaging.ieee.org/ielx8/6287639/10820123/10944806.pdf?arnumber=10944806",
+      "final_url": "https://xplorestaging.ieee.org/ielx8/6287639/10820123/10944806.pdf?arnumber=10944806",
+      "title": "DialFill: Utilizing Dialogue Filling to Integrate Retrieved Knowledge in Responses",
+      "site": "xplorestaging.ieee.org",
+      "tier": "whitelist",
+      "category": "academic",
+      "reasons": [
+        "title_unverified"
+      ],
+      "retrieved_at": "2026-09-26T20:08:28.303731+00:00",
+      "content_sha256": "014420cde2616f42a83ebeb21e9dad1691dc5087475bc16d2a1eccd3ab477edf",
+      "media_type": "application/pdf",
+      "chars": 57816
+    }
+  ],
+  "rejected": [
+    {
+      "url": "https://github.com/wshao12/hello-agents",
+      "title": "GitHub - wshao12/hello-agents: 📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程 · GitHub - GitHub - wshao12/hello-agents: 📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程 · GitHub",
+      "code": "possible_fork",
+      "message": "该仓库疑似同名 fork，保留原始来源。"
+    },
+    {
+      "url": "https://github.com/datawhalechina/hello-agents/blob/master/README_EN.md",
+      "title": "hello-agents/README_EN.md at main · datawhalechina/hello-agents · GitHub",
+      "code": "duplicate",
+      "message": "重定向后的资料地址与前面的结果重复。"
+    },
+    {
+      "url": "https://github.com/datawhalechina/hello-agents/blob/main/README_EN.md",
+      "title": "<div align=\"right\">",
+      "code": "duplicate",
+      "message": "该地址与前面的资料重复。"
+    },
+    {
+      "url": "https://datawhalechina.github.io/hello-agents/README_EN.md",
+      "title": "<div align='center'>",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://adg.csdn.net/694d044c5b9f5f31781ace86.html",
+      "title": "《Hello-Agents》完整PDF首发，智能体教程免费下载！",
+      "code": "low_quality",
+      "message": "该来源属于低质或转载来源，默认不展示。"
+    },
+    {
+      "url": "https://datawhalechina.github.io/hello-agents",
+      "title": "Hello-Agents - 3915 字 | 10 分钟",
+      "code": "body_too_short",
+      "message": "资料中没有可提取的正文。"
+    },
+    {
+      "url": "https://zenodo.org/records/21237699/files/Agentic_AI_Survey_Paper.pdf?download=1",
+      "title": "Agentic AI: A Survey of Architectures, Memory, Planning, and Real-World Applications",
+      "code": "unsupported_type",
+      "message": "服务器未返回支持的正文类型。"
+    },
+    {
+      "url": "https://arxiv.org/abs/2508.17281",
+      "title": "In contrast, multi- agent frameworks like AGENTVERSE [35] implement collaborative reasoning using structured symbolic modules, a...",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://www.semanticscholar.org/paper/The-Landscape-of-Agentic-Reinforcement-Learning-for-Zhang-Geng/316c019856409c2088f7d45fbe2ed477fc024859?sort=is-influential",
+      "title": "[PDF] The Landscape of Agentic Reinforcement Learning for LLMs: A Survey | Semantic Scholar - The Landscape of Agentic Reinforcement Learning for LLMs: A Survey",
+      "code": "body_too_short",
+      "message": "资料中没有可提取的正文。"
+    },
+    {
+      "url": "https://github.com/asaf-yehudai/llm-agent-evaluation-survey/blob/main/README.md",
+      "title": "<div align=\"center\">",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://researchers.cdu.edu.au/files/141217678/s10462-025-11471-9.pdf",
+      "title": "Liu et al",
+      "code": "fetch_failed",
+      "message": "资料抓取失败，未把搜索摘要当作已验证正文。"
+    },
+    {
+      "url": "https://www.semanticscholar.org/paper/ReAct%3A-Synergizing-Reasoning-and-Acting-in-Language-Yao-Zhao/99832586d55f540f603637e458a292406a0ed75d",
+      "title": "[PDF] ReAct: Synergizing Reasoning and Acting in Language Models | Semantic Scholar - ReAct: Synergizing Reasoning and Acting in Language Models",
+      "code": "body_too_short",
+      "message": "资料中没有可提取的正文。"
+    },
+    {
+      "url": "https://yumeng5.github.io/teaching/2024-spring-cs6501/agent.pdf",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://github.com/makr-code/themisdb/blob/6fc5456f53f08969fc791a80095bf18a9c4df38b/docs/research/papers/yao_react_2022.md",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://developers.openai.com/ja-JP/api/docs/guides/function-calling?api-mode=responses",
+      "title": "Function Calling | OpenAI API",
+      "code": "fetch_failed",
+      "message": "资料抓取失败，未把搜索摘要当作已验证正文。"
+    },
+    {
+      "url": "https://www.ciscolive.com/c/dam/r/ciscolive/global-event/docs/2025/pdf/DEVNET-3419.pdf",
+      "title": "- Create new workflows and AI assistants",
+      "code": "fetch_failed",
+      "message": "资料抓取失败，未把搜索摘要当作已验证正文。"
+    },
+    {
+      "url": "https://docs.oracle.com/en/cloud/paas/application-integration/openai-adapter/using-openai-adapter-oracle-integration-3.pdf",
+      "title": "12. In the Body field of the Request section, enter the following text, then click Run",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://pkg.go.dev/github.com/openai/openai-go/responses",
+      "title": "responses - Warning: the fields of the param type will not be present",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://github.com/openai/openai-ruby/blob/refs/heads/main/lib/openai/models/function_definition.rb",
+      "title": "frozen_string_literal: true",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://arxiv.org/abs/2110.07581",
+      "title": "* Lee et al",
+      "code": "title_mismatch",
+      "message": "网页标题或主标题与搜索标题明显不符，未作为该资料展示。"
+    },
+    {
+      "url": "https://www.semanticscholar.org/paper/Retrieval-Augmented-Generation-for-NLP-Tasks-Lewis-Perez/659bf9ce7175e1ec266ff54359e2bd76e0b7ff31/figure/3",
+      "title": "Figure 2 from Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks | Semantic Scholar - Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "code": "body_too_short",
+      "message": "资料中没有可提取的正文。"
+    },
+    {
+      "url": "https://pubs-acs-org-443.webvpna.lzu.edu.cn/doi/10.1021/acs.est.5c14258?mi=6rhj79w&af=R&field1=Contrib&target=default&targetTab=std&text1=Cheng+Cao",
+      "title": "Leveraging Retrieval-Augmented Generation to Accelerate Discoveries on Mealworm Larvae and Plastic Degradation - - 29Lewis, P",
+      "code": "blocked",
+      "message": "资料地址或搜索标题命中屏蔽规则。"
+    },
+    {
+      "url": "",
+      "title": "",
+      "code": "invalid_url",
+      "message": "搜索结果没有有效的 HTTP(S) 地址。"
+    },
+    {
+      "url": "",
+      "title": "",
+      "code": "invalid_url",
+      "message": "搜索结果没有有效的 HTTP(S) 地址。"
+    },
+    {
+      "url": "",
+      "title": "",
+      "code": "invalid_url",
+      "message": "搜索结果没有有效的 HTTP(S) 地址。"
+    }
+  ]
+}

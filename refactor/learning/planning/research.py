@@ -9,6 +9,7 @@ executed or interpreted as an instruction.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import nullcontext
 import hashlib
 import ipaddress
 import os
@@ -16,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 import re
 import socket
+import time
 from collections.abc import Callable, Mapping
 from html.parser import HTMLParser
 from typing import Any
@@ -62,6 +64,21 @@ class ResearchFetchError(ResearchError):
 
 class ResearchUnsupportedContent(ResearchFetchError):
     code = "RESEARCH_CONTENT_UNSUPPORTED"
+
+
+class ResearchTimeout(ResearchFetchError):
+    code = "RESEARCH_TIMEOUT"
+
+
+@dataclass(frozen=True, slots=True)
+class FetchedContent:
+    """Bounded response bytes, before any document extraction (including PDF)."""
+
+    url: str
+    final_url: str
+    content_type: str
+    body: bytes
+    retrieved_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,8 +594,14 @@ class ResearchService:
             raise ResearchFetchError("资料地址解析到私有或保留网络，已拒绝读取。")
         return parsed
 
-    def fetch(self, candidate: Candidate | Mapping[str, Any], *, cancel: Cancel = None) -> Source:
-        """Fetch one candidate, following bounded redirects and extracting text."""
+    def fetch_bytes(self, candidate: Candidate | Mapping[str, Any], *, cancel: Cancel = None,
+                    allowed_types=None, request_guard=None) -> FetchedContent:
+        """Use the existing SSRF/redirect/size checks for raw document bytes.
+
+        request_guard(url, cancel=...) is an optional context manager covering
+        EACH HTTP request, including redirects, for pipeline per-site limits.
+        No credentials are attached to a public research request.
+        """
 
         item = _as_candidate(candidate)
         current = _safe_candidate_url(item.url)
@@ -586,56 +609,61 @@ class ResearchService:
             raise ResearchInputError("资料候选 URL 无效。")
         original_url = current
         redirect_count = 0
+        deadline = time.monotonic() + self.timeout
+        allowed_types = allowed_types if allowed_types is not None else {
+            "text/html", "application/xhtml+xml", "application/pdf", "text/plain", "text/markdown"}
         try:
             with self._client() as client:
                 while True:
                     _check_cancel(cancel)
                     self._validate_fetch_url(current, cancel=cancel)
-                    with client.stream("GET", current) as response:
+                    guard = request_guard(current, cancel=cancel) if request_guard else nullcontext()
+                    with guard:
                         _check_cancel(cancel)
-                        status = response.status_code
-                        if status in {301, 302, 303, 307, 308}:
-                            location = response.headers.get("location")
-                            if not location:
-                                raise ResearchFetchError("网页重定向缺少目标地址。")
-                            if redirect_count >= self.max_redirects:
-                                raise ResearchFetchError("网页重定向次数超过限制。")
-                            target = _safe_candidate_url(urljoin(current, location))
-                            if not target:
-                                raise ResearchFetchError("网页重定向目标不是 HTTP(S) 地址。")
-                            current = target
-                            redirect_count += 1
-                            continue
-                        if status >= 400:
-                            raise ResearchFetchError(f"网页返回 HTTP {status}，未读取正文。")
-                        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().casefold()
-                        if not content_type:
-                            raise ResearchUnsupportedContent("网页没有声明可读取的内容类型。")
-                        if content_type not in {
-                            "text/html", "application/xhtml+xml", "text/plain",
-                            "text/markdown", "text/csv", "text/tab-separated-values",
-                            "application/json", "application/xml", "text/xml",
-                        }:
-                            raise ResearchUnsupportedContent(
-                                f"网页内容类型 {content_type!r} 不支持正文读取。"
-                            )
-                        declared = response.headers.get("content-length")
-                        try:
-                            if declared and int(declared) > self.max_bytes:
-                                raise ResearchFetchError("网页正文超过大小限制。")
-                        except ValueError:
-                            pass
-                        data = bytearray()
-                        for part in response.iter_bytes():
-                            _check_cancel(cancel)
-                            data.extend(part)
-                            if len(data) > self.max_bytes:
-                                raise ResearchFetchError("网页正文超过大小限制。")
-                        body = bytes(data)
-                        final_url = current
-                        break
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise ResearchTimeout("资料抓取超过时间限制。")
+                        response_context = client.stream("GET", current, timeout=remaining)
+                        # Keep the guard held until the streamed response closes.
+                        with response_context as response:
+                            status = response.status_code
+                            if status in {301, 302, 303, 307, 308}:
+                                location = response.headers.get("location")
+                                if not location:
+                                    raise ResearchFetchError("网页重定向缺少目标地址。")
+                                if redirect_count >= self.max_redirects:
+                                    raise ResearchFetchError("网页重定向次数超过限制。")
+                                target = _safe_candidate_url(urljoin(current, location))
+                                if not target:
+                                    raise ResearchFetchError("网页重定向目标不是 HTTP(S) 地址。")
+                                current = target
+                                redirect_count += 1
+                                continue
+                            if not 200 <= status < 300:
+                                raise ResearchFetchError(f"网页返回 HTTP {status}，未读取正文。")
+                            content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().casefold()
+                            if content_type not in allowed_types:
+                                raise ResearchUnsupportedContent(f"网页内容类型 {content_type!r} 不支持正文读取。")
+                            declared = response.headers.get("content-length")
+                            if declared and (not declared.isdigit() or int(declared) > self.max_bytes):
+                                raise ResearchFetchError("网页正文超过大小限制或长度声明无效。")
+                            data = bytearray()
+                            for part in response.iter_bytes(chunk_size=64 * 1024):
+                                _check_cancel(cancel)
+                                if time.monotonic() >= deadline:
+                                    raise ResearchTimeout("资料抓取超过时间限制。")
+                                data.extend(part)
+                                if len(data) > self.max_bytes:
+                                    raise ResearchFetchError("网页正文超过大小限制。")
+                        _check_cancel(cancel)
+                        if time.monotonic() >= deadline:
+                            raise ResearchTimeout("资料抓取超过时间限制。")
+                        return FetchedContent(original_url, current, content_type, bytes(data),
+                            datetime.now(timezone.utc).isoformat())
         except ResearchError:
             raise
+        except httpx.TimeoutException as exc:
+            raise ResearchTimeout("资料抓取超过时间限制。") from exc
         except httpx.HTTPError as exc:
             raise ResearchFetchError(f"读取网页失败：{exc}") from exc
         except UnicodeError as exc:
@@ -643,6 +671,14 @@ class ResearchService:
         except Exception as exc:
             raise ResearchFetchError(f"读取网页失败：{type(exc).__name__}: {exc}") from exc
 
+    def fetch(self, candidate: Candidate | Mapping[str, Any], *, cancel: Cancel = None) -> Source:
+        """Original text API, retaining its supported types and text hash contract."""
+        item = _as_candidate(candidate)
+        fetched = self.fetch_bytes(item, cancel=cancel, allowed_types={
+            "text/html", "application/xhtml+xml", "text/plain", "text/markdown",
+            "text/csv", "text/tab-separated-values", "application/json", "application/xml", "text/xml"})
+        original_url, final_url = fetched.url, fetched.final_url
+        content_type, body = fetched.content_type, fetched.body
         is_html = content_type in {"text/html", "application/xhtml+xml"}
         if is_html:
             text, title, canonical = _extract_html(body, final_url)
@@ -686,6 +722,8 @@ __all__ = [
     "ResearchSearchError",
     "ResearchService",
     "ResearchUnsupportedContent",
+    "ResearchTimeout",
+    "FetchedContent",
     "SearchDependencyError",
     "Source",
 ]

@@ -220,6 +220,13 @@ def _has_keyword(text: str, keyword: str) -> bool:
     return keyword in text
 
 
+def blocked_keyword_reasons(text: str, *, lists: SourceLists) -> tuple[str, ...]:
+    """Apply the same reviewed keyword policy to a title, URL or extracted body."""
+    text = _keyword_text(text)
+    return tuple(kind for kind in _KEYWORD_CATEGORIES
+        if any(_has_keyword(text, keyword) for keyword in lists.blocked_keywords[kind]))
+
+
 def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[ScreenedHit]:
     """Drop invalid URLs and annotate all other hits, including blocked ones.
 
@@ -267,9 +274,7 @@ def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[
         if "webvpn" in original_host:
             tier, category = "blocked", "proxy"
             reasons.append("webvpn_proxy")
-        text = _keyword_text(hit.url + " " + hit.title)
-        keyword_categories = [kind for kind in _KEYWORD_CATEGORIES
-            if any(_has_keyword(text, keyword) for keyword in lists.blocked_keywords[kind])]
+        keyword_categories = blocked_keyword_reasons(hit.url + " " + hit.title, lists=lists)
         if keyword_categories:
             tier, category = "blocked", keyword_categories[0]
             reasons.extend(keyword_categories)
@@ -308,17 +313,30 @@ def load_lists(path: str | Path | None = None) -> SourceLists:
     More specific whitelist domains take precedence for category selection.
     """
     path = Path(path) if path is not None else Path(__file__).with_name("data") / "source_lists.json"
-    def fail(field, message):
-        raise SourceListsError(f"{path}: {field}: {message}")
     try:
         data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
     except (OSError, UnicodeError, ValueError) as exc:
         raise SourceListsError(f"{path}: cannot read source lists: {exc}") from exc
+    return parse_lists(data, source=str(path))
+
+
+def parse_lists(data, *, source="source lists", allow_candidates=True) -> SourceLists:
+    """Validate an in-memory catalog without writing an untrusted file first.
+
+    Server catalogs MUST omit candidates (allow_candidates=False). The local
+    draft keeps its original schema; candidates never grant source trust.
+    """
+    def fail(field, message):
+        raise SourceListsError(f"{source}: {field}: {message}")
     if not isinstance(data, dict):
         fail("root", "expected an object")
-    required = {"version", "updated", "whitelist", "github_orgs", "low", "blocked", "blocked_keywords", "candidates"}
+    required = {"version", "updated", "whitelist", "github_orgs", "low", "blocked", "blocked_keywords"}
+    if allow_candidates:
+        required.add("candidates")
     if set(data) != required:
         fail("root", f"missing keys {sorted(required - set(data))}; unknown keys {sorted(set(data) - required)}")
+    data = dict(data)
+    data.setdefault("candidates", [])
     if type(data["version"]) is not int or data["version"] != 1:
         fail("version", "expected supported integer version 1")
     try:
