@@ -139,6 +139,8 @@ Python 用 D:\MentorFlow\.venv\Scripts\python.exe（共用环境，不要卸载�
 未完成：没做完或拿不准的地方
 ~~~
 
+补充澄清（2026-09-27，回复 MF-01）：允许用 pip 从官方源安装 pypdf、python-docx 及其必需依赖，不升级/卸载已有包；“不联网”指 extract.py 运行和测试时不访问网络。T05 安装 sherpa-onnx 同理，且模型下载功能本身按任务要求联网。
+
 ### [T02] runtime｜多厂商模型接入 + 自带搜索 + 用量统计
 
 ~~~text
@@ -348,6 +350,9 @@ Python 用 D:\MentorFlow\.venv\Scripts\python.exe；本任务只用标准库。
 验证：命令与结果
 未完成：没做完或拿不准的地方（规则有歧义就写出你的理解，不要自己改规则）
 ~~~
+
+补充澄清（2026-09-27，回复 MF-03）：重排后历史段每日“已填”和 history_debt_minutes 在重排时定格，之后 confirm/revoke 不回算它们；但记录本身照常更新，remaining_minutes、remaining_confirmed_minutes、completed 按最新记录算。历史段中被 revoke 的暂记分钟累加为当前段第一天之前的“补学目标”，当前段仍纯 FIFO 从头重算（先被超前吸收，再减今天已完成，最后才成欠账），不计入 history_debt；测试：当前段无记录时撤销 → debt 恰好增加撤销分钟；有超前时撤销 → ahead 减少、debt 不变。（此条为补充澄清三修正后的最终说法）
+补充澄清二（2026-09-27）：needs_negotiation = debt_minutes > 0 且 debt_minutes >= 2 × full_day_minutes（无欠账一律 False）；ahead_days 只统计目标 > 0 的日子，目标为 0 的日子跳过、不打断连续，全为 0 时为 0；各补测试。
 
 ### [T04] platform｜搜索结果过滤 + 白名单/屏蔽名单初稿
 
@@ -560,6 +565,9 @@ repo 是主仓库的 git worktree，你的分支是 office/classroom。禁止 pu
 验证：命令与结果；实测性能；样本文件名
 未完成：没做完或拿不准的地方
 ~~~
+
+补充澄清（2026-09-27，回复 MF-06）：通用底模本机已不存在，不用 Kristina 目录的任何副本；允许从 GPT-SoVITS 官方来源（HuggingFace lj1995/GPT-SoVITS 及官方文档指定的 G2PWModel，可用 hf-mirror.com）下载到 E:\MentorFlowModels\gpt-sovits-base\（本项目目录，可写）；不写进引擎目录；路径写入 tts/config.py 可被环境变量覆盖；回执列来源、大小、SHA256；config.py 预留首次下载信息，本次不实现下载流程。
+补充澄清（2026-09-27，全体）：提交身份只在命令中临时指定，格式 git -c user.name="MentorFlow Worker <工位>" -c user.email="worker-<工位>@mentorflow.local" commit ...；员工提交由架构师压缩合并进 main，不进入公开历史。
 
 ### [T07] server｜服务器：通用同步记录、白名单/价格表接口、单设备登录（不部署）
 

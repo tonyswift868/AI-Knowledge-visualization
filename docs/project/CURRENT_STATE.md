@@ -7,6 +7,11 @@
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
 | PROD-01 | 产品定位：AI 教师平台 | 已实现未验证（部分） | 2026-09-26 |
+| ARCH-01 | 前端技术：学习主界面改为单个 React 应用 | 方案待用户拍板 | 2026-09-26 |
+| ARCH-02 | 后端分层与复用 | 方案待用户拍板 | 2026-09-26 |
+| ARCH-03 | 数据模型 | 方案待用户拍板 | 2026-09-26 |
+| ARCH-04 | Agent 分工与权限 | 方案待用户拍板 | 2026-09-26 |
+| ARCH-05 | 同步与服务器改动 | 方案待用户拍板 | 2026-09-26 |
 | PLAN-01 | 对话中收集需求，缺信息时 AI 反问 | 已实现未验证（部分） | 2026-09-26 |
 | PLAN-02 | 先出计划大致样子，用户满意后正式生成 | 未开始 | 2026-09-26 |
 | PLAN-03 | 生成用的 worker agent 分工（数量不固定） | 已实现未验证（与需求有出入） | 2026-09-26 |
@@ -46,6 +51,7 @@
 | 前缀 | 范围 |
 | --- | --- |
 | PROD | 产品整体定位 |
+| ARCH | 架构方案（实现层面，服务于其他条目） |
 | PLAN | 创建计划、知识地图生成 |
 | TEACH | AI 教师与课堂 |
 | CHK | 首轮学完后的检验 |
@@ -65,6 +71,54 @@
 - 当前实现：链路“创建计划 → 课堂 → 进度”已接通（`refactor/learning/planning/`、`refactor/learning/classroom/`）；各环节与需求的差距见 PLAN-01～04、TEACH-01～02、CHK-01。
 - 验证：未验证
 - 关联：[PLAN-01] [TEACH-01] [CHK-01]
+- 更新：2026-09-26
+
+### [ARCH-01] 前端技术：学习主界面改为单个 React 应用
+- 状态：方案待用户拍板
+- 方案：登录后的学习主窗口改为一个 React 单页应用（首页、我的计划、新建计划、课堂、更多工具、设置），嵌在 Qt WebEngine 中，通过 QWebChannel 调用 Python 服务。Live2D 舞台（已是 React/WebGL）并入同一应用：窗口模式点“展开”时主窗口向右加宽并显示老师面板，全屏时老师面板直接在课堂右侧，同一套代码，解决 UI-00 的全屏问题。账号外壳（登录/注册等，ACC-02）保持现状只换样式。地图/树用 React Flow + dagre，消息用 react-markdown，状态用 zustand（均已在本机旧前端依赖中）。
+- 理由：现在是 Qt 控件与网页混搭，动效、环形进度、地图、全屏布局都难做好；单一 React 应用便于统一视觉和主题（UI-00）。
+- 当前实现：`refactor/learning/main_window.py`（Qt 控件导航）+ `planning/web`、`classroom/stage`（两个独立 React bundle）。
+- 关联：[UI-00] [UI-01] [TEACH-05] [MAP-01]
+- 更新：2026-09-26
+
+### [ARCH-02] 后端分层与复用
+- 状态：方案待用户拍板
+- 方案：新业务集中在新包 `refactor/learning/course/`（数据模型、存储、时长账本、熟练度、各 agent 编排、宿主状态写入）。复用：`connections/`（模型客户端，扩展多厂商与用量统计，SYS-02/03）、`planning/research.py` 的安全网页读取与分块（资料验证）、`store.py` 与 `text_import.py`（资料存储，扩展 PDF/Word，PLAN-09）、同步基础设施 `sync_*`。不再使用：旧七步向导、CP-SAT 排程（新排程是按顺序分配时长，不需要求解器）、旧课堂 domain/evaluator 的契约体系、更多工具里的复习。
+- 关联：[ARCH-03] [ARCH-04] [DATA-01]
+- 更新：2026-09-26
+
+### [ARCH-03] 数据模型
+- 状态：方案待用户拍板
+- 方案（按账号本机 SQLite，新表结构，不兼容旧表，DATA-01）：
+  - 计划 Plan：目标、起止日期、每日上限、特殊日权重、当前水平、状态（草稿/已生成未开始/进行中/检验中/已完成/已归档）。
+  - 阶段 Stage → 模块 Module → 知识点 Point：点带资料出处（资料块 ID）和估算时长；模块带前置关系和估算检测时长。
+  - 资料 Source：链接或本机文件、提取正文（带页码/章节位置）、分块、可信度、用户是否采用。
+  - 时长账本 Ledger：每日目标分钟、暂记/正式完成、欠账、逾期（PLAN-05）。
+  - 掌握记录 Mastery：每个点的随口问错次数、模块检测错次数、模块内状态（红/绿）、检验等级 0–3、已用出题角度、上次提问时间（TEACH-02、CHK-01）。
+  - 判定记录 Judgement：每次作答的题目、出处、判定结果、错在哪个点（TEACH-04）。
+  - 学习者档案 Profile：按计划，教师上下文第二层（TEACH-01）。账号级偏好 Preferences 另存。
+  - 报告 Report（RPT-01）、闲聊会话（UI-02）、用量 Usage（SYS-03）。
+- 关联：[ARCH-02] [ARCH-05]
+- 更新：2026-09-26
+
+### [ARCH-04] Agent 分工与权限
+- 状态：方案待用户拍板
+- 方案：所有状态只由 Python 宿主写入；agent 只返回文本或结构化结果，宿主校验后才落库。
+  - 需求核对 agent：检查信息是否足够、给出反问（PLAN-01）。
+  - 资料 agent：用厂商自带搜索找资料，宿主做去重/白名单/实际打开验证/打分（PLAN-06）。
+  - 轮廓 agent：按资料给出阶段和模块、总时长区间（PLAN-02）。
+  - 生成 agent：按模块并行，从资料中提炼知识点、出处和时长（PLAN-02、PLAN-04）。
+  - 教师 agent：讲课、随口问、答疑；没有任何改状态的能力，只能提出建议由用户在界面确认（TEACH-01、TEACH-06）。
+  - 判定 agent：判断作答对错、错在哪个点，结果交给宿主更新掌握记录（TEACH-04）。
+  - 出题 agent：按资料原文和指定角度出题并标出处（TEACH-02、CHK-01）。
+  - 档案 agent：后台更新学习者档案，检验阶段做归因（TEACH-01、CHK-01）。
+- 关联：[ARCH-03] [SYS-05]
+- 更新：2026-09-26
+
+### [ARCH-05] 同步与服务器改动
+- 状态：方案待用户拍板
+- 方案：服务器同步对记录类型和字段是严格白名单（`backend/app/enterprise_tenancy/structured_sync.py` 的 `_REFACTOR_KIND_BY_RECORD`/`_REFACTOR_FIELDS`），新数据要同步必须改服务器。为避免以后每加一种数据都改服务器，一次性新增一个通用记录类型：载荷是带 schema 版本号的 JSON，服务器只校验归属、ID、大小上限。同一次服务器更新里还包括：白名单与价格表的只读接口（PLAN-06、SYS-03）、新登录挤掉旧设备（ACC-01）。部署前须征得用户同意。
+- 关联：[DATA-02] [ACC-01] [ARCH-03]
 - 更新：2026-09-26
 
 ### [PLAN-01] 对话中收集需求，缺信息时 AI 反问
@@ -383,7 +437,7 @@
 
 ### [VOICE-01] 语音输入与朗读
 - 状态：未开始（旧仓库有成果）
-- 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。
+- 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。朗读同样依赖一批通用底模（中文 BERT、CNHubert、G2PW、SV）和声音包，体积可能达数 GB：首次使用朗读时也要先说明大小、征得同意再下载；开发机上这批底模已不存在（2026-09-27 核实引擎目录为空），开发时从官方来源下载到 `E:\MentorFlowModels\gpt-sovits-base\`。
 - 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。
 - 验证：未验证
 - 关联：[TEACH-05] [TEACH-06]
