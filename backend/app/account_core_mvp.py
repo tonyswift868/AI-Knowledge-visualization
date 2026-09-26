@@ -37,6 +37,7 @@ from app.enterprise.identity.runtime import (
 from app.enterprise_tenancy.document_import import EnterpriseDocumentImportService
 from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from app.enterprise.structured_sync_api import router as structured_sync_router
+from app.enterprise.catalog_api import router as catalog_router
 from app.enterprise_tenancy.structured_sync import StructuredSyncService
 from app.enterprise_tenancy.account_object_storage import AccountObjectStorage
 from app.enterprise_tenancy.context import PostgresTenantTransactionManager
@@ -114,6 +115,7 @@ app = FastAPI(
 install_enterprise_identity(app, account_core_only=True)
 app.include_router(account_workspace_router)
 app.include_router(structured_sync_router)
+app.include_router(catalog_router)
 
 
 @app.get("/health/live")

@@ -13,6 +13,7 @@ import secrets
 import ssl
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
@@ -27,7 +28,9 @@ from .oidc import IdentityError
 from .continuity import canonical_principal_issuer, from_env as continuity_from_env
 
 PREFIX = '/api/enterprise/auth/native'
-PUBLIC_PATHS = frozenset(PREFIX + '/' + name for name in ('login', 'refresh', 'logout'))
+# Session probes authenticate their bearer directly, without requiring a
+# selected workspace, just as login/refresh own their authentication boundary.
+PUBLIC_PATHS = frozenset(PREFIX + '/' + name for name in ('login', 'refresh', 'logout', 'session'))
 ACCESS_PREFIX, REFRESH_PREFIX = 'mfn1_a_', 'mfn1_r_'
 
 
@@ -43,6 +46,10 @@ def denied():
 
 def expired():
     return IdentityError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '登录已失效，请重新登录。', status=401)
+
+
+def superseded():
+    return IdentityError('NATIVE_SESSION_SUPERSEDED', '账号已在另一台设备登录', status=401)
 
 
 class MtlsIdentityVerifier:
@@ -176,7 +183,10 @@ class NativeSessions:
     Only token hashes are retained server-side. Rotation is atomic; replay
     revokes the family. Multi-replica persistence is a separate deployment gate.
     """
-    def __init__(self, verifier, issuer, *, clock=time.time, capacity=4096):
+    def __init__(self, verifier, issuer, *, clock=time.time, capacity=4096,
+                 superseded_capacity=16384, superseded_ttl=8 * 3600):
+        if superseded_capacity < 1 or not 0 < superseded_ttl <= 8 * 3600:
+            raise ValueError('superseded reasons require a positive capacity and at most eight hours TTL')
         self.verifier, self.issuer, self.clock, self.capacity = verifier, issuer, clock, capacity
         self.lock = threading.RLock()
         self.families = {}
@@ -185,26 +195,46 @@ class NativeSessions:
         self.attempts = {}
         self.revocation_epoch = 0
         self.pending_logins = {}
+        self.superseded = OrderedDict()
+        self.superseded_capacity, self.superseded_ttl = superseded_capacity, superseded_ttl
 
     @staticmethod
     def digest(value):
         return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
-    def _drop(self, fid):
+    def _drop(self, fid, *, superseding=False):
         row = self.families.pop(fid, None)
         if row:
+            if superseding:
+                deadline = min(row.deadline, self.clock() + self.superseded_ttl)
+                # Retain current tokens last so small reason caches evict old
+                # rotated refresh digests first. Never retain bearer plaintext.
+                hashes = [*sorted(row.used_refreshes), row.refresh_hash, row.access_hash]
+                for digest in hashes:
+                    if digest:
+                        self.superseded.pop(digest, None)
+                        self.superseded[digest] = ('NATIVE_SESSION_SUPERSEDED', deadline)
+                        while len(self.superseded) > self.superseded_capacity:
+                            self.superseded.popitem(last=False)
             self.access.pop(row.access_hash, None)
             for token in row.used_refreshes | {row.refresh_hash}:
                 self.refreshes.pop(token, None)
 
     def _prune(self):
         now = self.clock()
+        for digest, (_, deadline) in list(self.superseded.items()):
+            if deadline <= now:
+                self.superseded.pop(digest)
         for fid, row in list(self.families.items()):
             if row.deadline <= now:
                 self._drop(fid)
         for key, (_, deadline) in list(self.attempts.items()):
             if deadline <= now:
                 self.attempts.pop(key)
+
+    def _raise_if_superseded(self, digest):
+        if digest in self.superseded:
+            raise superseded()
 
     def throttle(self, username, peer):
         with self.lock:
@@ -258,12 +288,16 @@ class NativeSessions:
                 if principal.subject in revoked_subjects:
                     raise expired()
                 self._prune()
-                if len(self.families) >= self.capacity:
+                previous = [fid for fid, row in self.families.items() if row.principal.subject == principal.subject]
+                if len(self.families) - len(previous) >= self.capacity:
                     raise IdentityError('NATIVE_SESSION_CAPACITY', '账号服务暂不可用。', status=503)
                 fid = secrets.token_hex(32)
                 row = _Family(principal, self.clock() + 8 * 3600)
                 self.families[fid] = row
-                return self._rotate(fid, row)
+                result = self._rotate(fid, row)
+                for previous_fid in previous:
+                    self._drop(previous_fid, superseding=True)
+                return result
         finally:
             with self.lock:
                 self.pending_logins.pop(ticket, None)
@@ -273,7 +307,9 @@ class NativeSessions:
             raise expired()
         with self.lock:
             self._prune()
-            row = self.families.get(self.access.get(self.digest(token)))
+            digest = self.digest(token)
+            self._raise_if_superseded(digest)
+            row = self.families.get(self.access.get(digest))
             if row is None or row.access_deadline <= self.clock():
                 raise expired()
             return row.principal
@@ -284,6 +320,7 @@ class NativeSessions:
         digest = self.digest(token)
         with self.lock:
             self._prune()
+            self._raise_if_superseded(digest)
             fid = self.refreshes.get(digest)
             row = self.families.get(fid)
             if row is None:
@@ -302,8 +339,12 @@ class NativeSessions:
         except Exception:
             with self.lock:
                 self._drop(fid)
+                self._prune()
+                self._raise_if_superseded(digest)
             raise expired() from None
         with self.lock:
+            self._prune()
+            self._raise_if_superseded(digest)
             if self.families.get(fid) is not row or row.deadline <= self.clock():
                 self._drop(fid)
                 raise expired()
@@ -332,6 +373,7 @@ class NativeSessions:
             for fid in list(self.families):
                 self._drop(fid)
             self.attempts.clear()
+            self.superseded.clear()
         await self.verifier.aclose()
 
 
@@ -414,3 +456,27 @@ async def refresh(request: Request):
 @router.post(PREFIX + '/logout')
 async def logout(request: Request):
     return await _operation(request, 'logout')
+
+
+@router.get(PREFIX + '/session')
+async def session(request: Request):
+    try:
+        if request.url.scheme != 'https' or request.headers.get('Origin') or request.cookies:
+            raise IdentityError('NATIVE_TRANSPORT_REQUIRED', '需要安全的原生账号连接。', status=403)
+        authorization = request.headers.get('Authorization', '')
+        if not authorization.startswith('Bearer ') or authorization.count(' ') != 1:
+            raise expired()
+        runtime = getattr(request.app.state, 'enterprise_identity_runtime', None)
+        service = getattr(runtime, 'native_sessions', None)
+        if service is None:
+            raise IdentityError('NATIVE_AUTH_NOT_READY', '账号服务尚未准备好，请稍后重试。', status=503)
+        principal = service.authenticate(authorization[7:])
+        from refactor.server.closure_api import assert_principal_open
+        await assert_principal_open(runtime, principal)
+        return JSONResponse({'state': 'active'}, headers={'Cache-Control': 'no-store'})
+    except IdentityError as exc:
+        return JSONResponse({'code': exc.code, 'message': exc.message}, status_code=exc.status,
+                            headers={'Cache-Control': 'no-store'})
+    except Exception:
+        return JSONResponse({'code': 'NATIVE_AUTH_UNAVAILABLE', 'message': '账号服务暂不可用。'},
+                            status_code=503, headers={'Cache-Control': 'no-store'})

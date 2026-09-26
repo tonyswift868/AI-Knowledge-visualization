@@ -68,6 +68,7 @@ _REFACTOR_KIND_BY_RECORD = {
     'tutor_checkpoint': 'learning_run',
     'daily_mission': 'learning_run',
     'draft_plan': 'learning_run',
+    'course_record': 'learning_run',
     'setting': 'setting',
     # Account-owned tools, free-chat sessions and researched sources are
     # durable learning history; they are not legacy product records.
@@ -111,6 +112,7 @@ _REFACTOR_FIELDS = {
                       'started_at', 'updated_at', 'idempotency_key'},
     'draft_plan': {'plan_key', 'draft_id', 'revision', 'status', 'snapshot', 'confirmed',
                    'updated_at', 'idempotency_key'},
+    'course_record': {'schema', 'plan_key', 'entity', 'entity_id', 'payload'},
     'setting': {'key', 'values'},
     'tool_activity': {'kind', 'activity_id', 'payload'},
     'chat_session': {'session_id', 'payload'},
@@ -225,6 +227,39 @@ def _refactor_resource_payload(entity_id: str, payload: object) -> dict | None:
     return projected
 
 
+def _validate_course_record(values):
+    if not isinstance(values, dict) or set(values) != _REFACTOR_FIELDS['course_record']:
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    schema = values['schema']
+    match = re.fullmatch(r'mentorflow\.course\.([a-z_]{1,40})\.v[0-9]{1,3}', schema) if isinstance(schema, str) else None
+    if (match is None or values['entity'] != match.group(1)
+            or not isinstance(values['entity_id'], str) or not re.fullmatch(ID_PATTERN, values['entity_id'])
+            or not isinstance(values['plan_key'], str)
+            or values['plan_key'] != '' and not re.fullmatch(ID_PATTERN, values['plan_key'])
+            or not isinstance(values['payload'], dict)):
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    # Count the payload's root object as depth 1; only object/array nesting
+    # adds depth. Check iteratively before the existing recursive secret scan.
+    pending = [(values['payload'], 1)]
+    while pending:
+        value, depth = pending.pop()
+        if isinstance(value, (dict, list)):
+            if depth > 32:
+                raise error('SYNC_PAYLOAD_INVALID', 422)
+            if isinstance(value, dict) and any(not isinstance(key, str) for key in value):
+                raise error('SYNC_PAYLOAD_INVALID', 422)
+            pending.extend((child, depth + 1) for child in (value.values() if isinstance(value, dict) else value))
+        elif value is not None and type(value) not in (str, int, float, bool):
+            raise error('SYNC_PAYLOAD_INVALID', 422)
+    try:
+        encoded = json.dumps(values['payload'], ensure_ascii=False, allow_nan=False,
+                             sort_keys=True, separators=(',', ':')).encode('utf-8')
+    except (TypeError, ValueError, OverflowError, UnicodeError) as exc:
+        raise error('SYNC_PAYLOAD_INVALID', 422) from exc
+    if len(encoded) > 256 * 1024:
+        raise error('SYNC_PAYLOAD_TOO_LARGE', 422)
+
+
 def _refactor_sync_payload(kind: str, entity_id: str, payload: object) -> dict | None:
     """Validate the generic refactor envelope before storing it in the ledger.
 
@@ -254,9 +289,11 @@ def _refactor_sync_payload(kind: str, entity_id: str, payload: object) -> dict |
     values = payload.get('values')
     if not isinstance(values, dict):
         raise error('SYNC_PAYLOAD_INVALID', 422)
+    if record_type == 'course_record':
+        _validate_course_record(values)
     # Oversized account history is stored as a separately authenticated blob;
     # the CAS entity keeps only this bounded manifest.
-    if set(values) == {'blob_ref', 'record_type', 'record_id', 'summary'}:
+    if record_type != 'course_record' and set(values) == {'blob_ref', 'record_type', 'record_id', 'summary'}:
         ref = values.get('blob_ref')
         expected_manifest_entity = ('refactor.v1:' + record_type + ':'
                                     + hashlib.sha256(str(values.get('record_id', '')).encode('utf-8')).hexdigest())
@@ -308,7 +345,7 @@ def _refactor_sync_payload(kind: str, entity_id: str, payload: object) -> dict |
                              sort_keys=True, separators=(',', ':')).encode('utf-8')
     except (TypeError, ValueError, OverflowError) as exc:
         raise error('SYNC_PAYLOAD_INVALID', 422) from exc
-    if len(encoded) >= 256 * 1024:
+    if record_type != 'course_record' and len(encoded) >= 256 * 1024:
         raise error('SYNC_PAYLOAD_TOO_LARGE', 422)
     return {
         'schema': payload['schema'],
@@ -348,8 +385,13 @@ class StructuredSyncService:
         payload = {}
         if not deleting:
             try:
+                course_record = (body.payload.get('schema') == 'mentorflow.refactor-sync.v1'
+                                 and body.payload.get('record_type') == 'course_record')
+                if course_record:
+                    refactor_payload = _refactor_sync_payload(kind, entity_id, body.payload)
                 _reject_secret(body.payload)
-                refactor_payload = _refactor_sync_payload(kind, entity_id, body.payload)
+                if not course_record:
+                    refactor_payload = _refactor_sync_payload(kind, entity_id, body.payload)
                 if refactor_payload is not None:
                     payload = refactor_payload
                 else:
