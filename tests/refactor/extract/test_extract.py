@@ -385,4 +385,12 @@ def test_cancellation_during_structured_parser_loops(filename, data):
 
 
 def test_no_qt_or_database_imports():
-    assert not any(name.startswith(('PySide6', 'PyQt', 'sqlite3', 'sqlalchemy')) for name in sys.modules)
+    # Check in a fresh interpreter: other suites in the same pytest run may
+    # already have loaded Qt, which says nothing about this module.
+    import subprocess
+    probe = ("import sys, refactor.learning.course.extract; "
+             "bad = [n for n in sys.modules if n.startswith(('PySide6', 'PyQt', 'sqlite3', 'sqlalchemy'))]; "
+             "print(bad); raise SystemExit(1 if bad else 0)")
+    result = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True,
+                            cwd=Path(__file__).resolve().parents[3])
+    assert result.returncode == 0, result.stdout + result.stderr

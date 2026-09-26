@@ -38,7 +38,7 @@
 | DATA-01 | 旧计划与评估数据不兼容 | 未开始 | 2026-09-26 |
 | DATA-02 | 跨设备同步范围（大文件不上服务器） | 已实现未验证（部分） | 2026-09-26 |
 | ENV-01 | 固定位置与环境 | 已验证 | 2026-09-27 |
-| ACC-01 | 账号同一时间只在一台设备在线 | 未开始 | 2026-09-26 |
+| ACC-01 | 账号同一时间只在一台设备在线 | 服务器已实现未部署；客户端未开始 | 2026-09-27 |
 | ACC-02 | 账号功能本轮不改逻辑 | 已实现未验证（部分） | 2026-09-26 |
 | SYS-01 | 模型出错处理 | 已实现未验证（部分） | 2026-09-26 |
 | SYS-02 | 多家模型厂商，各配本家搜索 | 已实现未验证（仅 DeepSeek 搜索已验证） | 2026-09-26 |
@@ -120,6 +120,7 @@
 - 状态：设计待用户确认（服务器部分已派 T07）
 - 服务器一次性改动（T07）：通用记录类型 `course_record`（载荷为带版本号的 JSON，服务器只校验归属、ID、大小）、白名单/价格表只读接口、新登录挤掉旧设备。部署前须征得用户同意。
 - 客户端：每张表的变化写入本地待同步队列，按 `course_record` 上传/拉取；结构类数据按修订号后写覆盖；进度类是只追加事件，按 ID 去重合并，所以不会“打架”。上课时定期调用会话状态接口，收到“已在另一台设备登录”即停止上课并保留未同步事件（ACC-01）。原件不同步（DATA-02）。
+- 当前实现：【2026-09-27】T07 已合入未部署：course_record 通用记录（映射 learning_run）、目录接口 /api/enterprise/catalog/source-whitelist 与 /model-prices（需登录、ETag、目录由 MENTORFLOW_CATALOG_DIR 指定）、单设备登录；合并后在隔离环境跑 115 项服务器测试通过。基线已有 test_change_password_binding.py 3 项失败（非本次引入）。
 - 关联：[DATA-02] [ACC-01] [ARCH-03]
 - 更新：2026-09-27
 
@@ -205,10 +206,10 @@
   - 每日上限只针对当前计划：制定计划时明确问“这份计划每天最多能学多久”；用户同时有多个计划时自己调整截止日期，系统不跨计划合并。
   - 中途修改见 PLAN-08。
   例：两周计划，第一周周一开始、第二周周日结束；用户说周六没空，第二周周一只有平时一半时间 → 周六为 0，第二周周一权重 0.5，其余日均分。
-- 当前实现：`planning/composer.py:210` 用用户填写的每日分钟数和勾选的学习日生成每天容量（可学日容量都相同，不支持半天权重），CP-SAT 排程；总时长不是由资料反推，而是用户直接填每日分钟数。
+- 当前实现：`planning/composer.py:210` 用用户填写的每日分钟数和勾选的学习日生成每天容量（可学日容量都相同，不支持半天权重），CP-SAT 排程；总时长不是由资料反推，而是用户直接填每日分钟数。 【2026-09-27】新账本模块 `refactor/learning/course/ledger.py`（T03，已合入）实现按权重分配、每日上限与建议截止日、刷新时间归属、暂记/正式、欠账先还、超前、协商阈值、重排与历史冻结、检验时长估算；50 项单测通过，架构师用两周原例独立复核通过。尚未接入界面和存储。
 - 验证：未验证
 - 关联：[PLAN-04] [CHK-01]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [PLAN-06] 资料检索：必须找权威资料
 - 状态：已验证（DeepSeek 搜索可用）/ 结果过滤未开始
@@ -218,13 +219,13 @@
 - 过滤流程：DeepSeek 搜索后 → 去重、剔除 fork/转载 → 白名单优先、已知垃圾站剔除 → 逐个实际打开链接，确认存在且内容与标题一致 → AI 给相关性/可信度打分 → 在聊天里列给用户（带可信度）由用户挑选。模型凭记忆给出的链接，打开验证通过的也可使用。标准是满足用户的学习目标。
 - 重搜：用户不满意可以让 AI 再找，不设轮数上限（用的是用户自己的 API）。用户选中的保留，其余重找：可以先展示上一轮搜到但没展示的结果；若是搜索路线本身有问题，就换思路重搜。不管几轮都不能偏题，更不能出现无关网站。
 - 搜索来源：用模型厂商自带的搜索，DeepSeek 已验证；其他厂商见 SYS-02。用户只带一个 DeepSeek API 来用我们的程序，不会为此另开别的 API，所以不让用户配置第二个 key；博查基本不用。已查到 DeepSeek 的 Anthropic 兼容接口（`https://api.deepseek.com/anthropic`）官方文档写明在 Claude Code 中原生支持服务端 Web Search（会额外产生模型 token 费用）；2026-09-26 已用管理员账号的真实 key 验证：在我们自己的请求里可直接使用（见“验证”）。无论用哪种搜索，都叠加白名单优先 + AI 相关性/可信度过滤。
-- 当前实现：`planning/research.py` 用 ddgs 搜索并读取网页，没有“权威性”筛选；默认模型预设为 `deepseek-flash`（`connections/page.py:17`）。
+- 当前实现：`planning/research.py` 用 ddgs 搜索并读取网页，没有“权威性”筛选；默认模型预设为 `deepseek-flash`（`connections/page.py:17`）。 【2026-09-27】`course/source_filter.py` 与名单初稿 `course/data/source_lists.json`（T04，已合入）：规范化、去重、fork/转载/raw/WebVPN/色情赌博盗版识别；白名单 113、低质 8、屏蔽 11、候选 20、官方 GitHub 组织 24，名单待用户审阅；实验场 44 条结果筛选符合预期。实际打开验证与评分尚未接入。
 - 验证：2026-09-26 基准测试（实验场）`E:\Codex\Temp\MentorFlowTests\search-benchmark\deepseek_search_probe.py`，结果 `results\with_tool.json`。场景：学习者以 Datawhale hello-agents 为主线学 AI 智能体，要求搜相关知识而非只搜项目本身。模型 deepseek-v4-flash，接口 `https://api.deepseek.com/anthropic/v1/messages`，工具 `web_search_20250305`。
   - 结果：HTTP 200，约 25 秒；自主发起 8 次搜索（hello-agents、Agent 综述、ReAct、OpenAI Function Calling、RAG、LangGraph、MCP、Generative Agents），均切题；返回 44 条原始结果。输入约 4.6 万 token（其中 3.9 万命中缓存），输出约 4.6 千 token。
   - 问题 1：原始结果混有噪声——CSDN 转载、他人 fork 仓库、无关仓库的 raw 文件、高校 VPN 代理链接、空条目。必须经过白名单优先 + 相关性/可信度过滤。
   - 问题 2：最终推荐的 8 个 URL 中只有 3 个来自搜索结果，另 5 个 arXiv 链接是模型凭记忆写的（编号看起来正确）。产品中每个来源都必须实际打开验证，不能直接信模型给的链接。
 - 关联：[PLAN-01] [CHK-01]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [TEACH-01] 教师是贯穿始终的同一个 agent（上下文编排）
 - 状态：已实现未验证（部分）
@@ -342,10 +343,10 @@
 ### [PLAN-09] 资料格式：支持常见带文字文档
 - 状态：已实现未验证（部分）
 - 需求：不限制在少数格式，PDF、Word 等带文字的文档都要支持。扫描件先不做；以后可考虑加工具支持。
-- 当前实现：只支持 TXT/Markdown/CSV/JSON，每份上限 8 MiB（`refactor/learning/text_import.py`、`store.py`）。
+- 当前实现：只支持 TXT/Markdown/CSV/JSON，每份上限 8 MiB（`refactor/learning/text_import.py`、`store.py`）。 【2026-09-27】`course/extract.py`（T01，已合入）支持 PDF（pypdf 6.19.0）/Word（python-docx 1.2.0）/Markdown/TXT/HTML，带页码与章节、确定性分块，扫描件返回 SCANNED_NO_TEXT；63 项单测通过，真实中文 PDF 6 页 0.05 秒。尚未接入导入流程。
 - 验证：未验证
 - 关联：[PLAN-07]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [PLAN-10] 计划中途添加资料
 - 状态：未开始
@@ -396,18 +397,18 @@
 ### [SYS-01] 模型出错处理
 - 状态：已实现未验证（部分）
 - 需求：上课或生成时模型报错、超时、余额不足等，必须明确告诉用户具体原因（如“余额不足”）；在断的地方停住，恢复后从那里继续；不丢数据，不把没完成的内容记为完成。这种情况一般不会发生，但要有应对。
-- 当前实现：模型客户端有分类错误码（`connections/errors.py`、`connections/client.py`），课堂把未完成回合记为可重试失败；是否对“余额不足”给出明确中文提示未核对。
+- 当前实现：模型客户端有分类错误码（`connections/errors.py`、`connections/client.py`），课堂把未完成回合记为可重试失败；是否对“余额不足”给出明确中文提示未核对。 【2026-09-27】新增 MODEL_INSUFFICIENT_BALANCE（“模型账户余额不足”，DeepSeek/Claude 为 HTTP 402，通义/智谱/OpenAI 按文档错误码）。
 - 验证：未验证
 - 关联：[TEACH-05]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [SYS-02] 多家模型厂商，各配本家搜索
 - 状态：已实现未验证（仅 DeepSeek 搜索已验证）
 - 需求：不只支持 DeepSeek。用户填别家模型的 API 时，也要预先配好该厂商自带的搜索，让资料检索照样可用，覆盖更多用户。国内（通义千问、Kimi、智谱 GLM）和国外（OpenAI、Claude、Gemini）全部先接上；除 DeepSeek 外先按官方文档接好、标为未验证，等有用户实际使用该家 API 时再测，测出问题再改。
-- 当前实现：模型连接只有 OpenAI 兼容 chat/completions（`connections/transport.py`）；DeepSeek 的 Anthropic 兼容接口搜索已验证（见 PLAN-06）；其他厂商的搜索均未接入、未验证。
+- 当前实现：模型连接只有 OpenAI 兼容 chat/completions（`connections/transport.py`）；DeepSeek 的 Anthropic 兼容接口搜索已验证（见 PLAN-06）；其他厂商的搜索均未接入、未验证。 【2026-09-27】`connections/providers/`（T02，已合入）按官方文档接入 DeepSeek、通义、Kimi、智谱、OpenAI、Claude、Gemini 七家的普通回答、自带搜索、流式与用量统计（含缓存命中）；117 项模拟测试通过；除 DeepSeek 非流式外均未真实联调。尚未替换产品里的旧模型通道。国外厂商走系统代理（不读环境变量代理，与现有通道一致）。
 - 验证：未验证
 - 关联：[PLAN-06] [SYS-03]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [SYS-03] 花费预估与累计用量
 - 状态：未开始
@@ -470,10 +471,10 @@
 ### [VOICE-01] 语音输入与朗读
 - 状态：未开始（旧仓库有成果）
 - 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。朗读同样依赖一批通用底模（中文 BERT、CNHubert、G2PW、SV）和声音包，体积可能达数 GB：首次使用朗读时也要先说明大小、征得同意再下载；开发机上这批底模已不存在（2026-09-27 核实引擎目录为空），开发时从官方来源下载到 `E:\MentorFlowModels\gpt-sovits-base\`。
-- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。
+- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。 【2026-09-27】`voice/asr/`（T05，已合入）：SenseVoice int8 + Silero VAD，首次使用同意后下载（约 156 MiB，官方链接与 SHA256 已写入），模型加载约 1.6 秒，5 秒中文解码 0.08 秒，模型就绪后说话约 0.35 秒出字；实测把“牛顿”识别为“扭断”。`voice/tts/`（T06，已合入）：自写轻量推理服务常驻本机、带鉴权只听 127.0.0.1，冷启动含预热约 29 秒，预热后首音约 0.43–0.46 秒，实时率 0.31，句间停顿 < 5 毫秒，显存约 1.3–1.85 GB；默认声音包 phrolova-b 1.0.2；8 个声音变体试听样本在 `D:\MentorFlow-office\classroom\temp\tts-samples`，待用户试听选定。两者尚未接入界面。
 - 验证：未验证
 - 关联：[TEACH-05] [TEACH-06]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [ENV-01] 固定位置与环境
 - 状态：已验证（2026-09-27 逐项核对存在与可写）
@@ -491,13 +492,13 @@
 - 更新：2026-09-27
 
 ### [ACC-01] 账号同一时间只在一台设备在线
-- 状态：未开始
+- 状态：服务器已实现未部署；客户端未开始
 - 需求：本产品强依赖学习进度，同一账号不能在两台设备同时使用，否则进度会打架。在新设备登录时，旧设备的登录被挤下线。课堂同一时间也只可能在一台设备上进行。
 - 被挤下线的处理（已定）：旧设备立即停止上课并提示“账号已在另一台设备登录”；旧设备上还没同步的进度先保存在本机，下次该设备再登录时自动补传。进度只累加，补传不覆盖新设备上的进度。情况少见但必须处理。
-- 当前实现：原生登录/刷新/退出与会话撤销已有（`refactor/desktop/native_auth.py`、服务器 password_sessions）；没有“新登录挤掉旧设备”。需要服务器配合，部署前须征得用户同意。
+- 当前实现：原生登录/刷新/退出与会话撤销已有（`refactor/desktop/native_auth.py`、服务器 password_sessions）；没有“新登录挤掉旧设备”。需要服务器配合，部署前须征得用户同意。 【2026-09-27】服务器代码已完成未部署（T07，已合入）：同一账号新登录撤销其他会话；旧设备的 refresh/access 返回 NATIVE_SESSION_SUPERSEDED；新增 GET /api/enterprise/auth/native/session。客户端处理尚未实现。
 - 验证：未验证
 - 关联：[DATA-02] [ACC-02]
-- 更新：2026-09-26
+- 更新：2026-09-27
 
 ### [ACC-02] 账号功能本轮不改逻辑
 - 状态：已实现未验证（部分）
