@@ -37,6 +37,7 @@
 | RPT-01 | 计划完成后的学习报告 | 未开始 | 2026-09-26 |
 | DATA-01 | 旧计划与评估数据不兼容 | 未开始 | 2026-09-26 |
 | DATA-02 | 跨设备同步范围（大文件不上服务器） | 已实现未验证（部分） | 2026-09-26 |
+| ENV-01 | 固定位置与环境 | 已验证 | 2026-09-27 |
 | ACC-01 | 账号同一时间只在一台设备在线 | 未开始 | 2026-09-26 |
 | ACC-02 | 账号功能本轮不改逻辑 | 已实现未验证（部分） | 2026-09-26 |
 | SYS-01 | 模型出错处理 | 已实现未验证（部分） | 2026-09-26 |
@@ -61,6 +62,7 @@
 | MAP | 计划地图/树的展示 |
 | RPT | 学习报告 |
 | DATA | 数据与兼容 |
+| ENV | 固定位置与环境 |
 | ACC | 账号 |
 | SYS | 运行、模型与费用 |
 | UI | 首页与其他页面 |
@@ -83,8 +85,7 @@
 - 桥（QWebChannel，一个对象）：前端发 `{id, method, params}`；Python 按方法名分发到处理函数，耗时操作在后台线程执行，结果经 Qt 信号回到界面线程再发给前端：`{type:'response', id, ok, result | error{code, message}}`；流式输出发 `{type:'stream', id, delta}`；前端可发 `cancel{id}`；Python 主动推送 `{type:'event', name, data}`（如计划变化、今日进度、同步状态、会话提醒）。所有参数在 Python 侧校验类型和长度，前端传来的内容一律不当作可信输入。
 - 渲染安全：模型输出和资料正文用 react-markdown 渲染，不启用原始 HTML；外部链接一律经桥交给系统浏览器打开，只允许 https。
 - Live2D：把旧前端成熟的 Teacher2DStage 及其 Live2D 适配代码（约 3,500 行）提取进新界面源码，去掉违和的待机摇头（TEACH-05）；老师面板是 React 组件。窗口模式点“展开”→ 桥让窗口向右加宽一个面板宽度（屏幕放不下就在窗口内占右侧）；全屏/最大化时面板直接占课堂右侧。全屏由按钮或 F11 切换。
-- 构建：新界面源码在 `refactor/learning/web/`（只放源码和构建产物 dist）；构建依赖不再借用旧项目 `E:\aiPlay\...
-ode_modules`，改为本项目自己的依赖目录 `E:\MentorFlowBuild\web-deps\`（锁定版本：react、vite、@xyflow/react、dagre、react-markdown、remark-gfm、remark-math、rehype-katex、katex、zustand、lucide-react、pixi.js 及 Live2D 引擎）。
+- 构建：新界面源码在 `refactor/learning/web/`（只放源码和构建产物 dist）；构建依赖不再借用旧项目 `E:\aiPlay\...\node_modules`，改为本项目自己的依赖目录（位置见 ENV-01）（锁定版本：react、vite、@xyflow/react、dagre、react-markdown、remark-gfm、remark-math、rehype-katex、katex、zustand、lucide-react、pixi.js 及 Live2D 引擎）。
 - 主题：颜色全部用 CSS 变量；先做“精修现有粉/深紫”和“开发方自由发挥”两套（UI-00）。
 - 退役：新界面可用后，删除旧 Qt 页面（overview/plans/materials/planning/classroom/tools/preferences/connections 的页面代码）及旧七步 bundle，重构区只留在用的文件。
 - 关联：[UI-00] [UI-01] [TEACH-05] [MAP-01] [ACC-02]
@@ -311,7 +312,8 @@ ode_modules`，改为本项目自己的依赖目录 `E:\MentorFlowBuild\web-deps
   - 逾期：截止日到了还没学完或没检验完，计划标为“已逾期”，显示逾期几天，继续学到完成为止；不生成阶段报告（任务没完成）；用户可自行延长截止日期。
   - 时长预估：建计划时就按“90% 的点一次答对、10% 的点有问题且每个约答错 2 次”预估检验时长，计入总时长（PLAN-05），并明确告诉用户这是预估，实际可能花更多时间。
   - 进度：每个点的检验时长 = 需答对次数 × 每题估算时长；每答对一次记一次进度，与学习阶段同一套“今天已完成 X / Y 分钟”。
-  - 题目：可以是选择、简答，也可以是和 AI 实时对话式的模拟检验。AI 依据资料原文出题，每题标注出自哪段资料；资料就是制定这份计划时用的那些（用户给的或检索到的，可以多份）。没有资料依据的题不出。AI 可以判分。
+  - 题型：选择、简答、纠错题（给出一段说法或解法，让用户判断有没有问题，有问题要说出错在哪、为什么）；尽量不出单纯判断对错的题（无法看出是否真正掌握）。题目不能露出明显线索，让人从字面就能猜出答案。也可以是和 AI 实时对话式的模拟检验。模块检测和检验都在聊天里一题一题进行，选择题可直接点选。
+  - 题目来源：AI 依据资料原文出题，每题标注出自哪段资料；资料就是制定这份计划时用的那些（用户给的或检索到的，可以多份）。没有资料依据的题不出。AI 可以判分。
 - 当前实现：没有。“更多工具”里的复习按资料生成回忆题（`tools/service.py:198`），与课堂标记无关。
 - 验证：未验证
 - 关联：[TEACH-02]
@@ -472,6 +474,21 @@ ode_modules`，改为本项目自己的依赖目录 `E:\MentorFlowBuild\web-deps
 - 验证：未验证
 - 关联：[TEACH-05] [TEACH-06]
 - 更新：2026-09-26
+
+### [ENV-01] 固定位置与环境
+- 状态：已验证（2026-09-27 逐项核对存在与可写）
+- 规则：D 盘放代码、环境、构建和频繁读写；E 盘只放模型和大资源；不在 C 盘放项目内容；不新开零散目录，先复用下表。
+- D:\MentorFlow：唯一仓库。重构区 refactor/，测试 tests/refactor/，前端依赖清单与锁文件 tools/web-build/（package.json、package-lock.json）。
+- D:\MentorFlow\.local\（git 忽略的本地工作区）：web-deps\ 为前端构建依赖（按 tools/web-build 的锁文件安装：npm ci；Node 用 E:\Node）；npm-cache\ 为 npm 缓存；validation\ 为历史验证证据。
+- D:\MentorFlow\.venv：共用 Python 3.12 环境，依赖清单 refactor/desktop/requirements-account-shell.txt。
+- D:\MentorFlowData\account-shell：软件运行数据（按账号的数据库、原件、配置）。
+- D:\MentorFlow-office\<工位>\repo：员工工位（主仓库的 git worktree），见 WORKFLOW.md。
+- E:\MentorFlowModels：本项目模型目录（gpt-sovits-base 为朗读用通用底模）。
+- E:\Codex\Temp\MentorFlowTests：基准测试（实验场）脚本与结果，如 search-benchmark。
+- E:\Node：Node.js 与 npm。
+- E:\MentorFlow：2026-09-07 建的空目录，当前账号无写入权限，不使用、不改权限。
+- 关联：[ARCH-01] [VOICE-01]
+- 更新：2026-09-27
 
 ### [ACC-01] 账号同一时间只在一台设备在线
 - 状态：未开始
