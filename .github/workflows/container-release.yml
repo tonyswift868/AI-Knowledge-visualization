@@ -40,7 +40,7 @@ jobs:
     outputs:
       source_tree: ${{ steps.source.outputs.tree }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -93,7 +93,7 @@ jobs:
     needs: [source-contract, quality, scanner-lease]
     runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -239,7 +239,7 @@ jobs:
     needs: [source-contract, quality, scanner-lease, build, scan]
     runs-on: [self-hosted, Linux, X64, mentorflow-e1, turkey-ci]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0

@@ -55,7 +55,7 @@ jobs:
       LOAD_USERS_JSON: ${{ secrets.LOAD_USERS_JSON }}
       TENANT_CORPUS_PATH: ./tests/load/fixtures/tenant-corpus.v1.json
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Require preinstalled leased k6
         shell: bash
         run: command -v k6 && k6 version
