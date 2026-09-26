@@ -9,7 +9,7 @@ from pptx.util import Inches
 import pytest
 
 from refactor.learning.course.extract import ExtractError, extract_bytes, extract_file
-from test_extract import assert_positions
+from tests.refactor.extract.test_extract import assert_positions
 
 
 def pptx_bytes():
