@@ -7,6 +7,10 @@ import socket
 from threading import Event, get_ident
 from types import SimpleNamespace
 
+BUILTIN_PRICE_VERSION = __import__('json').loads(
+    (__import__('pathlib').Path(__file__).resolve().parents[3] / 'refactor/learning/course/data/model-prices.json')
+    .read_text(encoding='utf-8'))['version']
+
 import httpx
 import pytest
 
@@ -141,7 +145,13 @@ def test_failures_keep_valid_cache_or_builtin(tmp_path, mode, code, cached):
         if mode == 'candidates':
             kind = request.url.path.rsplit('/', 1)[-1]
             payload = catalogs()[kind]
-            payload['candidates'] = []
+            if kind == 'source-whitelist':
+                # Contract 2: server lists must never carry undecided candidates.
+                payload['candidates'] = []
+            else:
+                # The price format is owned by connections.pricing, which ignores
+                # unknown root fields; keep this case invalid with a real defect.
+                payload.pop('unit')
             return httpx.Response(200, json=payload)
         if mode == 'redirect':
             return httpx.Response(302, headers={'location': 'https://unrelated.example.test'})
@@ -211,7 +221,7 @@ def test_auto_refresh_is_background_and_load_does_not_wait(tmp_path):
         assert entered.wait(1)
         first = catalog.refresh_background()
         assert not first.done() and catalog.refresh_background() is first
-        assert catalog.load_prices()['version'] == '2026-09-27'
+        assert catalog.load_prices()['version'] == BUILTIN_PRICE_VERSION
         release.set()
         first.result(timeout=3)
     assert threads and all(thread != current for thread in threads)
@@ -268,7 +278,7 @@ def test_cache_write_failure_never_replaces_previous_payload(tmp_path, monkeypat
         states = catalog.refresh_background().result(timeout=3)
         assert all(state.code == 'CACHE_WRITE_FAILED' for state in states.values())
         assert catalog.load_lists().updated == '2026-09-27'
-        assert catalog.load_prices()['version'] == '2026-09-27'
+        assert catalog.load_prices()['version'] == BUILTIN_PRICE_VERSION
 
 
 @pytest.mark.parametrize('mutate', [

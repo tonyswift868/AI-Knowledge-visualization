@@ -67,55 +67,21 @@ def _decode(data):
 
 
 def validate_prices(data):
-    """Validate the shipped price-example contract, retaining its exact values.
+    """Validate a price catalog with the same rules the pricing engine uses.
 
-    Unknown providers/models are allowed. Never invent prices, convert currencies
-    or infer peak/off-peak calendar decisions here; the price consumer owns that.
+    ``connections.pricing.PriceCatalog`` owns the price format (tiers, periods,
+    search fees, cache writes). Keeping a second hand-written schema here made
+    valid catalogs from the pricing owner fail, so this only adapts its error.
+    Never invent prices or convert currencies; the price consumer owns that.
     """
-    def fail(field):
-        raise CatalogFormatError('价格表格式无效：' + field)
-    def string(value):
-        return isinstance(value, str) and bool(value.strip()) and value == value.strip()
-    if (not isinstance(data, dict) or not {'version', 'unit', 'models'} <= set(data)
-            or set(data) - {'version', 'unit', 'models', 'periods'}):
-        fail('根字段')
-    if not string(data['version']) or data['unit'] != 'per_million_tokens' or not isinstance(data['models'], list):
-        fail('version/unit/models')
-    if 'periods' in data and (not isinstance(data['periods'], dict)
-            or set(data['periods']) - {'timezone', 'peak', 'off_peak'}
-            or any(not string(value) for value in data['periods'].values())):
-        fail('periods')
-    seen = set()
-    costs = {'input_cache_hit_per_mtok', 'input_cache_miss_per_mtok', 'output_per_mtok'}
-    required = {'provider', 'model', 'currency', 'source_url', 'checked_on', 'verified'} | costs
-    for index, item in enumerate(data['models']):
-        field = f'models[{index}]'
-        if not isinstance(item, dict) or not required <= set(item) or set(item) - required - {'aliases', 'price_period'}:
-            fail(field)
-        if any(not string(item[key]) for key in ('provider', 'model', 'currency', 'source_url', 'checked_on')):
-            fail(field + ' 文本字段')
-        if not re.fullmatch(r'[A-Z]{3}', item['currency']) or type(item['verified']) is not bool:
-            fail(field + ' currency/verified')
-        for key in costs:
-            if type(item[key]) not in (int, float) or not math.isfinite(item[key]) or item[key] < 0:
-                fail(field + '.' + key)
-        try:
-            if date.fromisoformat(item['checked_on']).isoformat() != item['checked_on']:
-                fail(field + '.checked_on')
-        except ValueError:
-            fail(field + '.checked_on')
-        if not item['source_url'].startswith('https://'):
-            fail(field + '.source_url')
-        aliases = item.get('aliases', [])
-        if not isinstance(aliases, list) or any(not string(alias) for alias in aliases) or len(set(aliases)) != len(aliases):
-            fail(field + '.aliases')
-        period = item.get('price_period', '')
-        if 'price_period' in item and not string(period):
-            fail(field + '.price_period')
-        identity = (item['provider'], item['model'], period)
-        if identity in seen:
-            fail(field + ' 重复模型/时段')
-        seen.add(identity)
+    from ..connections.pricing import PriceCatalog
+
+    if not isinstance(data, dict):
+        raise CatalogFormatError('价格表格式无效：根字段')
+    try:
+        PriceCatalog.from_dict(data)
+    except Exception as exc:
+        raise CatalogFormatError('价格表格式无效：' + (str(exc) or type(exc).__name__)) from None
     return deepcopy(data)
 
 

@@ -87,7 +87,8 @@ def test_one_mib_is_inclusive_and_read_errors_fail_closed(catalog):
 def test_example_catalog_has_verified_period_specific_deepseek_rates():
     path = Path(__file__).resolve().parents[2] / 'deploy/enterprise/staging/rp05/catalog/model-prices.example.json'
     value = json.loads(path.read_text(encoding='utf-8'))
-    assert value['version'] == '2026-09-27'
+    # The example is revised as prices are re-checked; require a dated version.
+    assert isinstance(value['version'], str) and value['version'][:10] >= '2026-09-27'
     required = {'provider', 'model', 'currency', 'input_cache_hit_per_mtok', 'input_cache_miss_per_mtok',
                 'output_per_mtok', 'source_url', 'checked_on', 'verified'}
     assert value['models'] and all(required <= row.keys() for row in value['models'])
