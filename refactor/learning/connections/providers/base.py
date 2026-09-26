@@ -6,7 +6,7 @@ The original provider usage keys are retained; multi-request results keep each c
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable
 
 from ..errors import ModelCancelled, ModelError
@@ -115,7 +115,8 @@ def combine(results):
                       for field in result.usage.raw['_mentorflow']['unreported_fields']})
     totals = {name: sum(getattr(result.usage, name) for result in results) for name in names}
     totals['raw'] = {'calls': [result.usage.raw for result in results],
-                     '_mentorflow': {'unreported_fields': missing}}
+                     '_mentorflow': {'unreported_fields': missing,
+                                    'call_usages': [asdict(result.usage) for result in results]}}
     return ModelResult(''.join(r.text for r in results), Usage(**totals), last.provider_id,
                        last.model, tuple(q for r in results for q in r.search_queries),
                        tuple(h for r in results for h in r.search_hits),

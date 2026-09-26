@@ -38,7 +38,8 @@ def parse(data, model, search_enabled):
     return ModelResult(''.join(texts), usage(
         raw, raw['input_tokens'], details.get('cached_tokens'), raw['output_tokens'],
         (raw.get('output_tokens_details') or {}).get('reasoning_tokens'), count,
-        search_actions=actions, search_count_source='web_search_call.action.type=search'),
+        search_actions=actions, service_tier=data.get('service_tier'),
+        search_count_source='web_search_call.action.type=search'),
         'openai', data.get('model', model), tuple(queries), tuple(hits), tuple(citations), string(finish))
 
 
