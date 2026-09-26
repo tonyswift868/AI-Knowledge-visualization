@@ -23,7 +23,7 @@ PACK_ROOTS = (Path(r"E:\AI_Tools\GPTSoVITS\voice_packs"), Path(r"E:\AI_Tools\GPT
 DEFAULT_DATA_ROOT = Path(r"D:\MentorFlow-office\classroom\temp\tts-runtime")
 DEFAULT_VOICE = "phrolova-b-gpt-sovits"
 
-# Metadata only: a future installer must request user consent before downloading.
+# Metadata only: model_manager.download requires prior user consent.
 # The runtime never downloads. URLs are pinned; hashes were checked against the
 # official LFS/Git objects and the downloaded bytes on 2026-09-27.
 BASE_MODEL_DOWNLOADS = ({'path': 'chinese-hubert-base/config.json',
@@ -148,7 +148,7 @@ class TtsConfig:
     startup_timeout: float = 180.0
     synthesis_timeout: float = 90.0
     shutdown_timeout: float = 3.0
-    base_model_root: Path = BASE_MODEL_ROOT
+    base_model_root: Path | None = None
     bert_root: Path | None = None
     hubert_root: Path | None = None
     g2pw_root: Path | None = None
@@ -165,13 +165,17 @@ class TtsConfig:
             voice_version=os.environ.get("MF_TTS_VOICE_VERSION", ""), style=os.environ.get("MF_TTS_STYLE", ""),
             data_root=Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT))),
             device=os.environ.get("MF_TTS_DEVICE", "cuda"), cpu_threads=int(os.environ.get("MF_TTS_CPU_THREADS", "4")),
-            base_model_root=Path(os.environ.get("MF_TTS_BASE_ROOT", str(BASE_MODEL_ROOT))),
+            base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else None,
             **{key: Path(os.environ[env]) if env in os.environ else None for key, env in (
                 ("bert_root", "MF_TTS_BERT_ROOT"), ("hubert_root", "MF_TTS_HUBERT_ROOT"),
                 ("g2pw_root", "MF_TTS_G2PW_ROOT"), ("sv_weights", "MF_TTS_SV_WEIGHTS"))})
 
     def base_assets(self):
         root = self.base_model_root
+        if root is None:
+            from .model_manager import ModelManager
+            local = ModelManager(self.data_root)
+            root = local.path if local.status()["installed"] else BASE_MODEL_ROOT
         return {"bert_root": self.bert_root or root / "chinese-roberta-wwm-ext-large",
                 "hubert_root": self.hubert_root or root / "chinese-hubert-base",
                 "g2pw_root": self.g2pw_root or root / "G2PWModel",
@@ -212,10 +216,18 @@ class TtsConfig:
         if not self.engine_python.is_file() or not (self.engine_root / "GPT_SoVITS/TTS_infer_pack/TTS.py").is_file():
             raise TtsError("ENGINE_NOT_INSTALLED", "GPT-SoVITS 引擎或其自带 Python 不存在。")
         destination = self.data_root.resolve()
-        protected = (self.engine_root, self.catalog.parent, *self.pack_roots, *self.base_assets().values(),
+        protected = (self.engine_root, self.catalog.parent, *self.pack_roots,
                      Path(r"E:\AI_Tools\GPTSoVITS\Phrolova"), Path(r"E:\AI_Tools\Kristina-TTS-P0-Bakeoff"))
         if any(destination.is_relative_to(path.resolve()) or path.resolve().is_relative_to(destination) for path in protected):
             raise TtsError("TTS_DATA_ROOT", "日志、缓存不能写入引擎、声音包或其他项目目录。")
+        installed_root = destination / "models/tts/gpt-sovits-base"
+        for path in self.base_assets().values():
+            resolved = path.resolve()
+            # The installer owns only this model subtree. Runtime output lives
+            # separately in data_root/tts; external assets stay read-only.
+            if (destination.is_relative_to(resolved) or
+                    resolved.is_relative_to(destination) and not resolved.is_relative_to(installed_root)):
+                raise TtsError("TTS_DATA_ROOT", "底模目录不能与日志、缓存目录重叠。")
         missing = []
         for key, path in self.base_assets().items():
             if key == "sv_weights":

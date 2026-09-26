@@ -9,12 +9,14 @@ from __future__ import annotations
 from collections import deque
 from queue import Empty, Queue
 import threading
+import time
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal, Slot
 from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSink, QMediaDevices
 
 from .config import TtsCancelled, TtsError
 from .runtime import TtsRuntime
+from .playback import PlaybackMeter
 from .text_prep import split_sentences
 
 # Some PySide6 builds return QtAudio.Error while QAudio.Error is a distinct
@@ -104,8 +106,20 @@ class _Producer:
 
 
 class TtsService(QObject):
+    """Call on the Qt thread. Signals also run on that thread.
+
+    sentence_timing emits dictionaries with utterance_id, index, text, state
+    (started/finished/interrupted), start_seconds and end_seconds (None until
+    finished). Times are on this utterance's consumed PCM timeline, starting at
+    zero, excluding device stalls; no synthesis or wall-clock estimates. An
+    interrupted event closes only a sentence that actually started playing.
+    mouth_level is a smoothed 0..1 RMS level sampled about every 50 ms against
+    QAudioSink.processedUSecs(), with synchronous zero on stop.
+    """
     state_changed = Signal(str)
     sentence_started = Signal(int, str)
+    sentence_timing = Signal(dict)
+    mouth_level = Signal(float)
     error = Signal(str, str)
 
     def __init__(self, parent=None, *, data_root=None, config=None, runtime=None, sink_factory=None):
@@ -123,6 +137,9 @@ class TtsService(QObject):
         self._done = False
         self._scheduled_frames = 0
         self._rate = None
+        self._meter = None
+        self._mouth_value = 0.0
+        self._mouth_due = 0.0
         self._timer = QTimer(self)
         self._timer.setInterval(5)
         self._timer.timeout.connect(self._pump)
@@ -169,16 +186,45 @@ class TtsService(QObject):
 
     @Slot()
     def stop(self):
+        interrupted = []
+        if self._sink is not None:
+            played = round(self._sink.processedUSecs() * self._rate / 1000000)
+            interrupted = [self._timing(segment, "interrupted", min(played, segment["end"]))
+                           for segment in self._boundaries if segment["started"]]
         self._token += 1
+        token = self._token
         self._producer.cancel()
+        had_mouth = self._mouth_value != 0.0
         self._reset_audio()
         while True:
             try:
                 self._producer.events.get_nowait()
             except Empty:
                 break
+        if had_mouth:
+            self.mouth_level.emit(0.0)
+            if token != self._token:
+                return
+        for timing in interrupted:
+            self.sentence_timing.emit(timing)
+            if token != self._token:
+                return
         if not self._closed:
             self._state("stopped")
+
+    def _timing(self, segment, state, end=None):
+        return {"utterance_id": self._token, "index": segment["index"], "text": segment["text"],
+                "state": state, "start_seconds": segment["start"] / self._rate,
+                "end_seconds": end / self._rate if end is not None else None}
+
+    def _update_mouth(self, played):
+        now = time.monotonic()
+        if now >= self._mouth_due:
+            # Keep a 20 Hz schedule despite Windows timer quantization, without
+            # emitting a burst of catch-up frames after a blocked event loop.
+            self._mouth_due = self._mouth_due + .05 if now - self._mouth_due < .05 else now + .05
+            self._mouth_value = self._meter.sample(min(played, self._scheduled_frames))
+            self.mouth_level.emit(self._mouth_value)
 
     def _reset_audio(self):
         if self._sink is not None:
@@ -190,6 +236,9 @@ class TtsService(QObject):
         self._done = False
         self._rate = None
         self._scheduled_frames = 0
+        self._meter = None
+        self._mouth_value = 0.0
+        self._mouth_due = 0.0
 
     def _ensure_output(self, rate):
         if self._sink is not None:
@@ -209,6 +258,8 @@ class TtsService(QObject):
             self._sink = QAudioSink(device, audio_format, self)
         self._sink.setBufferSize(int(rate * 2 * .08))
         self._rate = rate
+        self._meter = PlaybackMeter(rate)
+        self._mouth_due = time.monotonic() + .05
         opening = self._sink
         output = opening.start()
         # Opening a Windows audio device may dispatch GUI events, including a
@@ -265,6 +316,8 @@ class TtsService(QObject):
                         self.last_metrics.append({"index": index, "text": text, "synthesis_seconds": 0,
                                                   "audio_seconds": 0})
                     boundary = self._boundaries[-1]
+                    if audio.pcm:
+                        self._meter.append(self._scheduled_frames, audio.pcm)
                     self._scheduled_frames += frames
                     boundary["end"] = self._scheduled_frames
                     boundary["finished"] = audio.final
@@ -292,19 +345,37 @@ class TtsService(QObject):
             # Qt truncates to integer microseconds. Rounding back to frames
             # avoids leaving the final fractional frame pending forever.
             played = round(self._sink.processedUSecs() * self._rate / 1000000)
-            for segment in self._boundaries:
+            while self._boundaries:
+                segment = self._boundaries[0]
                 if played > segment["start"] and segment["written"] and not segment["started"]:
-                    segment["started"] = True
                     self._state("playing")
+                    if token != self._token:
+                        return
+                    segment["started"] = True
+                    self.sentence_timing.emit(self._timing(segment, "started"))
                     if token != self._token:
                         return
                     self.sentence_started.emit(segment["index"], segment["text"])
                     if token != self._token:
                         return
-            while self._boundaries and self._boundaries[0]["finished"] and played >= self._boundaries[0]["end"]:
-                self._boundaries.popleft()["slots"].release()
+                if not segment["finished"] or played < segment["end"]:
+                    break
+                self._boundaries.popleft()
+                segment["slots"].release()
+                if segment["started"]:
+                    self.sentence_timing.emit(self._timing(segment, "finished", segment["end"]))
+                    if token != self._token:
+                        return
+            self._update_mouth(played)
+            if token != self._token:
+                return
             if self._done and not self._boundaries and not self._chunks:
+                had_mouth = self._mouth_value != 0.0
                 self._reset_audio()
+                if had_mouth:
+                    self.mouth_level.emit(0.0)
+                    if token != self._token:
+                        return
                 self._state("idle")
         except TtsError as exc:
             self._fail(exc.code, exc.message)

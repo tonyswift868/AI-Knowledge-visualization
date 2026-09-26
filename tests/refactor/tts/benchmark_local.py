@@ -56,6 +56,18 @@ def playback(config, output):
     report = {"measurement": "QAudioSink processedUSecs / no acoustic loopback", "gpu_before_mib": gpu_memory(),
               "audio_device": QMediaDevices.defaultAudioOutput().description(), "voice": config.voice_id, "trials": [], "errors": []}
     starts = []
+    mouths, timings, meter_cpu = [], [], []
+    def mouth(level):
+        mouths.append({"at": time.perf_counter(), "level": level,
+                       "processed_seconds": service._sink.processedUSecs() / 1e6 if service._sink else None})
+    service.mouth_level.connect(mouth)
+    service.sentence_timing.connect(lambda value: timings.append({**value, "at": time.perf_counter()}))
+    update_mouth = service._update_mouth
+    def measured_mouth(played):
+        before = time.thread_time_ns()
+        update_mouth(played)
+        meter_cpu.append(time.thread_time_ns() - before)
+    service._update_mouth = measured_mouth
     service.error.connect(lambda code, message: report["errors"].append({"code": code, "message": message}))
     service.sentence_started.connect(lambda index, text: starts.append({"index": index, "text": text, "at": time.perf_counter()}))
     try:
@@ -103,6 +115,11 @@ def playback(config, output):
             report["sentence_gap_seconds"] = [max(0, right["at"] - left["at"] - durations[left["index"]])
                 for left, right in zip(starts, starts[1:])]
         report["health_after_playback"] = service.runtime.health()
+        report["base_assets"] = {key: str(path) for key, path in config.base_assets().items()}
+        report["mouth_samples"] = mouths
+        report["sentence_timing"] = timings
+        report["mouth_update_client_cpu_seconds"] = sum(meter_cpu) / 1e9
+        report["mouth_zero_after_stop"] = bool(mouths) and mouths[-1]["level"] == 0
         report["engine_pid"] = service.runtime.pid
         report["runtime_directory"] = str(service.runtime.run_dir)
         report["status"] = "completed" if not report["errors"] else "failed"
@@ -161,7 +178,8 @@ if __name__ == "__main__":
     config = TtsConfig.from_env()
     report = playback(config, args.output)
     (args.output / "playback-metrics.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
+    print(json.dumps({k: v for k, v in report.items() if k not in {"mouth_samples", "sentence_timing"}},
+                     ensure_ascii=False, indent=2), flush=True)
     succeeded = report.get("status") == "completed"
     if args.samples:
         results = samples(config, args.output)
