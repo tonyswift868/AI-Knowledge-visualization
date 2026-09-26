@@ -1,178 +1,419 @@
-# Current state — source and acceptance
-固定字段由 compact handoff 读取；提交快照不是实时服务/进程状态。
-```text
-PROJECT = MentorFlow
-GENERATION = MAIN3
-BASELINE_BRANCH = main2
-MAIN2_CANONICAL_SHA = 04faf2a9fbb50c5f9403dad5abf46354c9b53d82
-MAIN2_CANONICAL_TREE = 61ddb1b2b80e4c1b0786c5b8ee65d3d801ff3031
-SOURCE_BASELINE = CONTROL_CONVERGENCE_SOURCE
-PRODUCT_ACCEPTANCE = PENDING
-PROJECT_STATUS = R1_SCOPED_REPAIR_AUTHORIZED
-EXECUTION_AUTHORIZED = R1_SCOPE_ONLY
-NEW_DISPATCH_ALLOWED = R1_ONLY_BY_COORDINATOR
-BIG_GATE_2 = R1_EMAIL_CODE_USER_UAT_PENDING
-BIG_GATE_3 = R1_CONFIRMED_INTAKE_READY_MIGRATION_PENDING
-EMAIL_LIFECYCLE = SOURCE_LIVE_CAPABILITY_READY_USER_FLOW_PENDING
-OWNER_ACTION = USER_UAT_AFTER_04_SCOPED_MIGRATION
-REAL_SMTP_SEND = NOT_RUN
-P0_PRODUCT_SYNC_WRITE_GAP = CLOSED_SOURCE
-LATEST_WORKER04_DELIVERY = 0da5f80d62d669195f3765b07f5ff2309f4fa7a2
-DELIVERY_INTEGRATED = YES
-OLD_WORKSPACE_COUNT = 530
-OLD_PLAN_COUNT = 88
-OLD_RESOURCE_COUNT = 330
-STABLE_ID_MAPPING = AUDITED
-DANGLING_OWNERSHIP_REFERENCES = 6_DIAGNOSTIC_ROWS_HELD
-CANONICAL_IMPORT_RLS = NOT_COMPLETE
-REAL_OLD_DATA_MIGRATION = NOT_RUN
-PROJECTION_LIMIT = 256_KiB_DEFAULT_8_MiB_THREE_TYPED_AGGREGATES
-OVER_LIMIT_RECORD_COUNT = 56_HISTORICAL_RESOLVED_IN_TYPED_SOURCE
-PRIMARY_OWNER_BINDING = CANONICAL_ISSUER_SUBJECT_ACCOUNT_CONFIRMED
-INTEGRATION_BRANCH = integration/main3
-INTEGRATION_REMOTE_SHA = a0b40f0c3c4972668e4c227b5287344c60c863b9
-CHATGPT_READ_BRANCH = control/main3-current
-KNOWLEDGE_COMMIT = 7719096bfa52a73d8dade04e4b45acd22a41d074
-KNOWLEDGE_TREE = e14d85633748c4319a3ed6c7bbbfe242afc7466e
-NORMAL_DESKTOP_LOGIN_UX = NATIVE_IN_APP_USERNAME_PASSWORD
-NORMAL_LOGIN_EXTERNAL_BROWSER_REQUIRED = NO
-ALEMBIC_HEAD = 0040_admin_overview_aggregate
-BACKEND_EXPECTED_HEAD = 0040_admin_overview_aggregate
-GATE_A_SCHEMA_BLOCKER = RESOLVED_IN_SOURCE
-GATE_A_REAL_DEPLOYMENT = NOT_RUN_AFTER_FIX
-BATCH03_SOURCE = INTEGRATED
-BATCH04_SOURCE = INTEGRATED
-FULL_SERVER_SYNC = PASS_GATE1_STRUCTURED_SCOPE
-PRODUCER_UX_WIRING = PASS
-TEST_TARGET_STATUS = NO_NEW_USER_TEST_PUBLICATION
-FROZEN_CANDIDATE = MF_02_FROZEN_35_GATE1_PASS
-REAL_A_B_REHYDRATION = PASS_FROZEN_GUI_GATE1
-CROSS_DEVICE_DATA_CONTINUITY = REQUIRED
-PORTABLE_PACK_V2 = REQUIRED_NOT_IMPLEMENTED
-MIGRATION_EXECUTED = NO
-CURRENT_PHASE = R1_INTEGRATED_RUNTIME_READY
-BIG_GATE_1 = PASS
-FULL_FROZEN_GUI_AB = PASS
-COMPLETED_BIG_GATES = 1
-REMAINING_BIG_GATES = 7
-```
-main2 保持正式默认版本；control/main3-current 为日常开发集成；阶段完成经协调者评估/用户决定后才推进 integration/main3。
-正式 main3 = NOT_CREATED；PRODUCT ACCEPTANCE = PENDING。
-当前 authority：`MF-R1-A-FUNCTIONAL-INTEGRATION`；Account MVP 仅保留历史/Frozen smoke 证据。
-GENERIC_SYNC_FOUNDATION_SOURCE = QUALIFIED
-PROFILE_SETTINGS_EVIDENCE = PASS_GATE1_BOUNDED_GUI_SCOPE
-LEARNING_RUN_HISTORY = PASS_GATE1_BOUNDED_STRUCTURED_SCOPE
-PLAN_TASK = P0_SOURCE_REAL_STORE_VERSIONED_WRITE_SYNC_QUALIFIED
-POWERSYNC = CLIENT_POC_ONLY; SERVER_ADOPTION_GATE_NOT_PASSED
-FULL_ACCOUNT_REHYDRATION = PASS
-## 当前 R1 功能集成（MF-R1-A-FUNCTIONAL-INTEGRATION）
-本轮新授权取代 A 的 baseline-only 限制：仅 control/main3-current 消费九个 exact patches，完成必要接线、聚焦验证和后端限定路由部署；不推进 integration/main3/default/main2。
-后端 source `7719096bfa52a73d8dade04e4b45acd22a41d074`；部署后923个backend文件逐字节匹配 Git archive，schema0040不变；应用/身份库部署前备份及隔离恢复验证PASS。
-真实 native client 登录tonyswift、SUPER_ADMIN、workspace发现、snapshot、错误workspace拒绝PASS；公开TLS与OLD canonical issuer保持，未保存密码/未发信/未播种账号数据。
-正常 Workbench 以远端control/default两个按钮固定各自SHA；开发稳定profile为 `E:/MentorFlowWorkbenchData/development`，正式为 `E:/MentorFlowWorkbenchData/release`，源码/cache在D；不重建Frozen。
-账号内验证码页面来自现有renderer；bootstrap将当前vault资源服务绑定恢复页，原件恢复后台执行、可取消，账号切换丢弃旧完成回调；公共模型缓存仅复用固定catalog大小/hash匹配文件。
-04追加 `0da5f80d62d669195f3765b07f5ff2309f4fa7a2`：已确认面试整组+当前学习内容共2941条准备，4个真实原件；旧prepared.json/58文件包仅历史。混合画像及未确认组保留备份，6条诊断孤儿行保留，不删除源数据。
-真实迁入/业务清理由04获后续授权执行；A未迁移。当前环境见[功能集成回执](../governance/receipts/20260917-r1-functional-integration.json)，具体筛选见[04证据](../release/MF-R1-04-DATA-REPAIR/README.md)。
-真实Workbench开发版 `59c7b87ed7c82173f6e909696da9557edeca25c3`：启动仅登录、主动找回同窗完整页面、返回/再次进入PASS；70项相关回归PASS，截图见功能回执。本轮不是Gate1–8重验收；PRODUCT_ACCEPTANCE=PENDING。下面2026-09-16的56条超限/55条quarantine/owner UNPROVEN是历史判断，不覆盖本轮合同及canonical绑定。
-## 当前 Gate1 authority（2026-09-16 dispatch36）
-BIG_GATE_1=PASS；FULL_FROZEN_GUI_AB=PASS；FULL_ACCOUNT_REHYDRATION=PASS；P0_PRODUCT_SYNC_WRITE_GAP=CLOSED_SOURCE。
-原执行者 Worker02：exact `57c94162090ef0f15e00cd0c1ba37c976d8c0fc2`，82/0/0；A只做九个exact patch集成及96/0/1 source回归，没有重跑完整GUI A/B。
-352字符GUI上传、A→Server→B、B→Server→A、双方完整重启恢复、账户隔离、delete/tombstone与中断显式报错均PASS。
-最终候选 `MF-02-FROZEN-35-a1190ca1`；source `a1190ca18753fdedb3e4c155efeb3a111cfbb94f`；SHA256 `a31849225ba6a7becee8116b579b4d4bce35be6984673cbf2af97b320313c2de`。
-原始范围保留：synthetic TEST；R1长路径证据经逐字相同实现沿用至R4；review未声明提交答案/评分或视觉精修验收；不包含物理资源迁移。
-[Gate1集成回执](../governance/receipts/20260916-gate1-integration.json)记录完整ancestry、source/packaged/GUI证据及各自执行者。
-COMPLETED_BIG_GATES=1；REMAINING_BIG_GATES=7；PRODUCT_ACCEPTANCE=PENDING。唯一大关列表如下，普通缺陷归属现有关卡：
-1. Frozen GUI A/B + Full Account Rehydration — PASS。
-2. Email lifecycle E2E — BLOCKED_EXTERNAL_AUTHORITY（QQ credential reference）。
-3. Canonical old-data ownership / data target stability — BLOCKED_PROJECTION_ADMISSION_AND_OWNER_BINDING。
-4. Portable Pack V2 + classification/recommendation — PENDING / REASSESSMENT_REQUIRED。
-5. Real old-data migration — NOT_RUN / FROZEN。
-6. VPS exact Main3 deployment/live activation — NOT_RUN / FROZEN。
-7. Final signed installer/updater acceptance — PENDING / FROZEN。
-8. Final QA + acceptance bundle + Main3 promotion — PENDING / FROZEN。
-Gate2保留历史：SMTP TLS/AUTH/NOOP=PASS；REAL_SMTP_SEND=NOT_RUN；QQ reference=NOT_FOUND；Owner需QQ_TEST_MAILBOX_READ_CREDENTIAL_REFERENCE_REQUIRED。
-历史Gate2–8状态不冒充当前执行授权；本批范围以r1_batch为准。dispatch32存储违规保持原回执。
-## Frozen V3 — historical real A/B stop before A product write
-历史 V3 build base `9cd6279917bbdd7b0dc9db2f860bc9d34021beb2` 已包含指定 02/01 exact fixes；UNKNOWN_COMMITS=0，无重复应用。 新 EXE 从该 exact source/tree `d493b8046fe9296729a43b42137e53cce89ef703` 重建，sha256 `27daa94ca1ab75a9d659ecaa2ce52720545ef08fc050d6139340a257aeaf6d43`。
-FROZEN_NATIVE_LOGIN=PASS；手工与实际 Workbench A 按钮 → native login/workspace/auth-me/snapshot 均 200；同 EXE 错密码、未知账号、bad CA 拒绝。
-FIRST_DIVERGENCE：点击“进入学习空间”后，`desktop/account_backend.py:32-36` 前插 `_MEIPASS/backend`，子进程 `app.main` 导入失败。 `NoneType.write` 是无控制台 multiprocessing 报错时的次生错误；source 同函数 import PASS，Frozen 原路径稳定失败。
-只在诊断进程移除该路径可进入 canonical `app.main`，随后发现 required knowledge-policy 资源缺失；没有修改/合格化产品 EXE。
-LIKELY_OWNER=01（Desktop Frozen 本地服务与资源闭包）；本轮按新跨-owner blocker 停止，不跨域修复或另行派工。 V3 target=FAIL；旧 V2=SUPERSEDED。WORKBENCH_RESULT=实际 A observation + 当前失败候选，不能启动失败候选继续验收。
-TRUE_EMPTY=PASS（真实 server-confirmed 支持范围）；disposable subject 的 server durable entities=0；未写测试 plan/progress/resource。
-A 已完全关闭；B 独立空根已准备，B 启动/登录/恢复、stable IDs、物理资源缺失与真实 sync-failure control=NOT_RUN。 组合聚焦 481 PASS、0 FAIL、0 SKIP（479 + 原生 PG 补测 2）；独立产品门禁 1 FAIL，不能被测试绿灯覆盖。
-[Blocker receipt](../governance/receipts/20260914-real-ab-closeout-blocker.json) 绑定 exact artifact、UI traceback、source/frozen differential、真实 HTTP/observation 和测试证据。
-现有 Backend/Identity/PG 与 TLS/mTLS 密钥保留；租约仍健康，有效至北京时间 2026-09-14 10:30:19；AUTO_CLEANUP=FORBIDDEN。 FULL_SERVER_SYNC=PARTIAL；Portable Pack V2=NOT_IMPLEMENTED；REAL_USER_MIGRATION=NO；未访问 tonyswift555 历史 88 plans。
-PUBLIC_ISSUER_CUTOVER/REGISTER/FORGOT_PASSWORD=NO；Gate A 真实部署、最终签名安装更新及用户验收仍未通过。
-历史 [V2 login receipt](../governance/receipts/20260913-frozen-login-fixed-candidate-v2.json) 的登录范围保持有效，未证明本地学习服务/完整 A/B。
-## Batch03 与跨设备长期 authority（保留）
-[Batch03 receipt](../governance/receipts/20260913-main3-batch03-integration.json) 记录八个新 exact commits 与 04 evidence-only。 **CROSS_DEVICE_DATA_CONTINUITY = REQUIRED**；[三层／Portable Pack V2 authority](../decisions/CROSS_DEVICE_DATA_CONTINUITY_V2.md)
-规定 server structured state、local large resources、rebuild/redownload，以及先恢复云状态再补资源。
-V2 QUICK_EXPORT/FULL_EXPORT、可选模型／大 payload、账号绑定、完整性及保密仍 REQUIRED_NOT_IMPLEMENTED。 现有 V1 排除 model_binaries、明文 ZIP、新／空 vault 限制未被静默改写；导入不得覆盖来源，必须幂等、拒绝错误账号、无凭据。
-智能分类／推荐及 full supported-history 仍为后续门禁；84-workspace 私有 chooser 仅 QA，不是最终 UX。
-04 retained 数据存在，无完整事前 baseline，不声称所有旧记录完整。**MIGRATION_EXECUTED = NO**。
-## Gate A schema 0036 专项解阻（历史）
-原办公室从 `102f734890d76bc7c079a75a14958299c2882269` 继续，只消费 04 exact `0d064974a145e758cdc8e2c8700eca7a13576157`，集成为 `34fc9c95e9e51da832ef1bc6aab587ee6a3a041a`。
-0036 是从 retained staging release / running image 恢复的逐字权威迁移；没有导入旧 release ancestry 或新增 import 产品功能。
-当时 Alembic single head 与 backend expected head 均为 `0036_account_import_ledger`。 A 本轮重新跑本地 PostgreSQL 18/18：fresh/0035/0033→0036、already-0036 只读接受、
-unknown future/十类 schema drift 拒绝、worker/backend preflight、ledger RLS/idempotency/rollback、
-default LEARNER 与 workspace bootstrap 连续性；加受影响后端与登录/更新 smoke，计数见 [专项 receipt](../governance/receipts/20260913-gatea-schema-0036-unblock.json)。本轮 fixture 已清理。
-**Gate A schema blocker = RESOLVED_IN_SOURCE；REAL DEPLOYMENT = NOT_RUN AFTER FIX。**
-此前部署遇到 schema source 缺失是用户提供的背景；本轮没有重新部署或操作 staging DB，不能写 Gate A PASS。 REAL SMTP 继续由独立 04 任务推进，本轮不轮询、执行或验收；旧 SMTP 计数只描述 Batch02。
-该 schema 专项当时仅消费 0036；其它员工状态为交付快照，不代表独立任务实时状态。
-## Batch02 控制面与 exact integration（历史）
-A 完成本任务后 SILENT；01–04 与 B 均 SILENT。未联系、轮询或等待员工任务。 A 原办公室复用，Phase0 实测 HEAD/index/clean 起点与 integration/main3 绑定。
-01–04 当前 worktree/ref 绑定只读核对，先前 isolation 证据保留；不冒充重新执行其 Phase0。
-B06 setup DONE 和 branch-picker 历史证据不替代本轮本地检查。
-| 槽位 | Batch02 final exact source | 接受范围 |
-| --- | --- | --- |
-| 01 | 69e68c86e21403bb8c5a365483bda62b074a9ea2 | native login/verifier PASS；token atomicity 独立确认，A 本地原生复测 PASS |
-| 02 | 521ba9fb0248c2dc973cbba6cc44e6d8f0f6baeb | monotonic signed mandatory floor / current latest / public reason PASS |
-| 03 | 3eba9c3e0198d6b485226737e59d594cb773a12c | optional/mandatory gates / 中文 reason UX PASS |
-| 04 | f9634e24d759eb268c56d45b301046dc503ef714 | edge encoding fix PASS；native PostgreSQL RLS PASS 原执行者证据保留 |
-全部 11 个连续 exact commits（含 report-only 和被 supersede 的中间提交）按 02→03→04→01 消费，没有未知 commit。3 个文本冲突文件依 authority 合并。
-组合中修复重复 snapshot keyword，以及强制更新完成后原生输入框未重新启用。
-更新三项旧测试前提，新增 15 项 native/core/UI 组合检查。exact source→integrated parent/tree/path 映射和检查结果见 [Batch02 receipt](../governance/receipts/20260913-main3-batch02-integration.json)。
-历史 [Batch01 receipt](../governance/receipts/20260912-main3-batch01-integration.json) 保留其当时范围。
-## 正常登录与更新 authority
-Launch → 原生用户名/密码 → MentorFlow backend → backend-only authenticated
-verifier → Keycloak credential provider → MentorFlow opaque session → workspace
-bootstrap → main。禁止 password grant、Keycloak direct grant 和密码持久化。
-[Native auth ADR](../ADR_NATIVE_CREDENTIAL_AUTH_V1.md) 是正常登录长期 authority。
-Batch01 及 `03d979...` 的 System Browser 正常 UX 已 superseded；
-[issuer migration](../E109_AUTH_ISSUER_MIGRATION.md) 仅保留 legacy 协议/基础设施范围。
-原生 verifier 未显式配置时拒绝认证，不回退浏览器。
-OPTIONAL 可继续、稍后、更新并重启或退出时更新。MANDATORY 同时阻止 login/main，
-只允许更新至当前 latest 或退出；断网和取消不能清除已知签名 floor。
-current 1.0、历史 mandatory 1.2、latest optional 1.4 → MANDATORY，TARGET=1.4。
-reason 只解释原因，不决定状态；未知 reason 使用通用中文。
-详情复用 [更新合同](../windows-update-release-contract-v1.md)。
-## Batch02 验收证据分层（历史）
-| 层次 | 当前证据 | 限制 |
-| --- | --- | --- |
-| A combined regression | native auth/session/bootstrap/main；signed floor/latest/incremental/full fallback；optional/mandatory/UI；edge/capability | synthetic/inert/offscreen 与本地运行范围；具体计数见 receipt |
-| A native fixture | 集成源码构建 JAR；Keycloak 26.7.3 + PostgreSQL 17.6；真实 mTLS verifier、原生表单→session→bootstrap→main | 一次性本机身份、数据和端口；没有生产账号/服务变更 |
-| A action tokens | verification/reset 2/5/10 并发各仅 1 次成功；失败者 HTTP400，无 HTTP500；重放、resend、cross-purpose、重启后消费状态 | 单实例本地原生 fixture，未证明实际生产集群拓扑 |
-| 04 independent confirmation | exact 69e68 fix，独立 JAR SHA256 43657662bc85497734e99a9aeb86fd2db3a3307ec12b438c9ffe0834c170269a；23/23 原生检查 PASS | A 比较集成 JAR 全部 class/resource 相同；容器时间戳可改变 JAR hash |
-| 04 native RLS | PostgreSQL 17.6 原生 120 denial probes 与 controls；独立 retest 直接非特权 application login smoke PASS | E109 原报告整体 PARTIAL 保留；其中 token 缺陷由新独立 receipt supersede。A 未重新跑 RLS，不把 retained PASS 写成 A 执行 |
-| 当前生产/最终候选 | REAL_SMTP_SEND=0；VERIFY/RESET NOT_RUN；REAL_INSTALL_QA NOT_RUN；最终 1.5.0→1.5.1 NOT_RUN | LIVE_PRODUCTION_LOGIN NOT_RUN；PRODUCTION_KEYCLOAK_MUTATION=0；用户最终验收 PENDING |
-[auth-authority](../../release/auth-authority.json) 保持 PREPARED_NOT_ACTIVE / migration=null；
-[account-capabilities](../../release/account-capabilities.json) 保持 register=false / forgot_password=false。
-两文件相对 frozen main2 字节未变。本轮没有迁移日期、真实邮件或 capability 激活。
-[历史 final QA](../../release/FINAL_E109_CANDIDATE_QA.json) 不替代最终集成候选验收。
-## 下一波 gate（只定义，不执行）
-- Gate A：批准后的 native backend/SPI/desktop 兼容部署、TLS/mTLS、实际 session 拓扑、旧 identity continuity；issuer cutover 另行授权。
-- Gate B：保留已完成 native RLS/token 证据，补实际生产拓扑、public issuer、真实 SMTP verify/reset 与 native account-action capability 验收。
-- Gate C：一个 exact 签名候选的 1.5.0→1.5.1、增量/完整 latest、UAC、重启健康、恢复/rollback 与资料保持。
-详见 [MAIN3 plan](../exec-plans/active/MAIN3.md) 和 [queue](../governance/DEPENDENCY_QUEUE.json)。
-NOT_DISPATCHED 不代表执行授权；没有新增员工派发或自动等待。
-## 长期知识与历史
-临时 `13_DURABLE_REQUIREMENTS_BRIDGE_UNTIL_REPO_KNOWLEDGE_LANDS.md` =
-SUPERSEDED / BRIDGE CLOSED；12/12 repo-native authority 见 [handoff contract](../handoff/README.md)。
-知识 COMPLETE / Batch02 source 与 native-fixture PASS 均不表示产品最终验收。
-[知识 intake receipt](../governance/receipts/20260912-repository-knowledge-intake.json) 保留原始证据。
-MAIN2 freeze：`MF-GOV-MAIN2-CANONICAL-FREEZE-20260912-01`；04faf 为唯一 canonical baseline。
-56bcc 属 MAIN1_HISTORY；a198 含排除的 21337c1 ancestry，QUARANTINED_NOT_CANONICAL。
-旧 READ_FIRST/HANDOFF 历史不覆盖本轮重写的 GPT_WEB 当前主上下文。
-最终 publication SHA/tree 由 immutable receipt 和 remote 回读绑定，避免文档自引用 SHA。
-## Generic sync foundation (2026-09-14)
-`04` delivery `dd86307c387ed8012a6edbe130b6ccd7eb510d68` integrated through its exact parent chain (`f097cd4`, `c423bc9`, `6a15de5`, `dd86307`). `SYNC_ITEM_REGISTRY` and migration `0039_generic_sync_kinds` are now the canonical integration baseline. Unsupported kinds remain fail-closed; structured sync entities/projections remain non-authoritative. Full account rehydration is NOT_YET_COMPLETE; domain adapters remain pending.
+# MentorFlow — 需求与当前状态
+
+使用规则见 [AGENTS.md](../../AGENTS.md)「需求文档规则」。修改前先查索引，按编号检索条目。
+
+## 索引
+
+| 编号 | 标题 | 状态 | 更新 |
+| --- | --- | --- | --- |
+| PROD-01 | 产品定位：AI 教师平台 | 已实现未验证（部分） | 2026-09-26 |
+| PLAN-01 | 对话中收集需求，缺信息时 AI 反问 | 已实现未验证（部分） | 2026-09-26 |
+| PLAN-02 | 先出计划大致样子，用户满意后正式生成 | 未开始 | 2026-09-26 |
+| PLAN-03 | 生成用的 worker agent 分工（数量不固定） | 已实现未验证（与需求有出入） | 2026-09-26 |
+| PLAN-04 | 知识结构：阶段 → 模块 → 知识点，模块按知识本身划分 | 未开始 | 2026-09-26 |
+| PLAN-05 | 每日任务按时长均分（含特殊日权重） | 已实现未验证（部分） | 2026-09-26 |
+| PLAN-06 | 资料检索：必须找权威资料（DeepSeek 自带搜索） | 已验证（搜索可用）/ 过滤未开始 | 2026-09-26 |
+| PLAN-07 | 创建计划界面：聊天 + 表单，替换旧七步 | 未开始 | 2026-09-26 |
+| PLAN-08 | 多计划管理与中途修改 | 已实现未验证（部分） | 2026-09-26 |
+| PLAN-10 | 计划中途添加资料 | 未开始 | 2026-09-26 |
+| PLAN-09 | 资料格式：支持常见带文字文档 | 已实现未验证（部分） | 2026-09-26 |
+| MAP-01 | 生成后的地图/树：可展开模块、看掌握状态 | 未开始 | 2026-09-26 |
+| TEACH-01 | 教师是贯穿始终的同一个 agent（上下文编排） | 已实现未验证（部分） | 2026-09-26 |
+| TEACH-02 | 模块检测（90% 通过线）+ 知识点薄弱标记 | 已实现未验证（部分） | 2026-09-26 |
+| TEACH-03 | “我已学会”按钮暂时保留 | 已实现未验证 | 2026-09-26 |
+| TEACH-04 | 独立判定 agent，贯穿整个计划 | 未开始 | 2026-09-26 |
+| TEACH-05 | 每日开课流程与沉浸式课堂 | 已实现未验证（部分） | 2026-09-26 |
+| TEACH-07 | 已会的模块可直接考、跳过 | 未开始 | 2026-09-26 |
+| TEACH-06 | 讲课形式、随时插话、防用户带偏 | 已实现未验证（部分） | 2026-09-26 |
+| CHK-01 | 首轮学完后的多轮检验与计划画像 | 未开始 | 2026-09-26 |
+| RPT-01 | 计划完成后的学习报告 | 未开始 | 2026-09-26 |
+| DATA-01 | 旧计划与评估数据不兼容 | 未开始 | 2026-09-26 |
+| DATA-02 | 跨设备同步范围（大文件不上服务器） | 已实现未验证（部分） | 2026-09-26 |
+| ACC-01 | 账号同一时间只在一台设备在线 | 未开始 | 2026-09-26 |
+| ACC-02 | 账号功能本轮不改逻辑 | 已实现未验证（部分） | 2026-09-26 |
+| SYS-01 | 模型出错处理 | 已实现未验证（部分） | 2026-09-26 |
+| SYS-02 | 多家模型厂商，各配本家搜索 | 已实现未验证（仅 DeepSeek 搜索已验证） | 2026-09-26 |
+| SYS-03 | 花费预估与累计用量 | 未开始 | 2026-09-26 |
+| SYS-04 | 学习提醒（仅软件开着时） | 未开始 | 2026-09-26 |
+| SYS-05 | 提高缓存命中率 | 未开始 | 2026-09-26 |
+| UI-00 | 前端整体重做 | 未开始 | 2026-09-26 |
+| UI-01 | 首页 | 已实现未验证（与需求有出入） | 2026-09-26 |
+| UI-02 | 更多工具：教师闲聊、学习远征 | 已实现未验证（部分） | 2026-09-26 |
+| VOICE-01 | 语音输入与朗读 | 未开始（旧仓库有成果） | 2026-09-26 |
+
+## 编号前缀
+
+| 前缀 | 范围 |
+| --- | --- |
+| PROD | 产品整体定位 |
+| PLAN | 创建计划、知识地图生成 |
+| TEACH | AI 教师与课堂 |
+| CHK | 首轮学完后的检验 |
+| MAP | 计划地图/树的展示 |
+| RPT | 学习报告 |
+| DATA | 数据与兼容 |
+| ACC | 账号 |
+| SYS | 运行、模型与费用 |
+| UI | 首页与其他页面 |
+| VOICE | 语音 |
+
+## 条目
+
+### [PROD-01] 产品定位：AI 教师平台
+- 状态：已实现未验证（部分）
+- 需求：根据用户需求生成知识地图/知识树和学习计划；用户和 AI 聊的过程中逐步明确自己的计划。生成后进入原生课堂，由 AI 教师授课、检测、复习——不是只做番茄钟式的计划工具。
+- 当前实现：链路“创建计划 → 课堂 → 进度”已接通（`refactor/learning/planning/`、`refactor/learning/classroom/`）；各环节与需求的差距见 PLAN-01～04、TEACH-01～02、CHK-01。
+- 验证：未验证
+- 关联：[PLAN-01] [TEACH-01] [CHK-01]
+- 更新：2026-09-26
+
+### [PLAN-01] 对话中收集需求，缺信息时 AI 反问
+- 状态：已实现未验证（部分）
+- 需求：用户和 AI 聊天时，AI 理解需求并主动向用户要所需信息。用户要求生成时，先核对当前信息和资料是否足以支撑一份计划（例如没说起始时间就是不够）；不够就反问用户，而不是自己编。
+- 生成前必须齐的信息：学习目标、起止日期（不问总时长，用户给不出）、当前水平/状况、最终目标。资料可给可不给，见 PLAN-06。
+- 当前实现：
+  - 对话助手从聊天中提取候选字段，需用户确认后才写入：`planning/service.py:311` `server_planning_assistant`；有待确认提案时禁止生成（`planning/service.py:1333`）。
+  - “缺什么”由本地固定规则判断（目标/成果/水平/日期/每日时长），不是模型判断：`planning/service.py:1051` `analyze_intake`。
+  - 缺口：生成阶段 Worker A 输出的 `needsInput` 没有回传给用户，流程直接进入 C（`planning/workers.py:110`）。
+- 验证：未验证
+- 关联：[PLAN-02] [PLAN-03]
+- 更新：2026-09-26
+
+### [PLAN-02] 先出计划大致样子，用户满意后正式生成
+- 状态：未开始
+- 需求：AI 不直接生成完整计划，先给大致轮廓；用户满意后再正式生成。轮廓二选一，哪个视觉效果好用哪个：(a) 模块知识地图，模块之间按前置关系连线；(b) 树，每个节点是一个模块或较大的知识块。轮廓里不允许出现细的知识点（否则等于提前全部生成）。没有单独的参考项目；仓库旧代码里若有可用的树/地图展示，看过效果再决定是否复用。
+- 轮廓阶段不生成知识点和逐项时长（成本高、改一次就要重来，浪费 token 和用户时间）。只展示：根据检索资料打算如何划分模块、大体怎么带用户学。轮廓里按模块难度和用户水平估一个区间，显示为范围（如“预计 40–55 小时，每天约 50–70 分钟”）；超出每日上限时在轮廓阶段就提醒。
+- 用户和 AI 就轮廓反复来回沟通，满意后拍板“生成计划”；此时一次性生成全部知识点和时长（按模块由多个 agent 并行生成，显示进度条）。正式生成成本高，所以轮廓阶段的反复确认是必需的闭环。
+- 生成后、正式开始执行前，用户可以手动改：删除模块、调整顺序；改完只对剩余部分重新分配时长。想加内容走 PLAN-10（添加资料），不手动新增知识点。开始执行后只能改日期（PLAN-08）或加资料（PLAN-10）。
+- 当前实现：已有草稿与确认机制（`planning/draft_contract.py:194` `draft_from_form`、`planning/service.py:918` `confirm_draft`），但草稿的“阶段”是表单栏目（需求确认/资料选择/成果/时间/偏好），由本地固定生成，不是课程内容轮廓；模型只在确认后一次生成完整任务。
+- 验证：未验证
+- 关联：[PLAN-01] [PLAN-04]
+- 更新：2026-09-26
+
+### [PLAN-03] 三个 worker agent（A/B/C）分工
+- 状态：已实现未验证（与需求有出入）
+- 需求：worker 数量不固定（三个、四个、五个都可以），不必死守 A/B/C。要达到的目的是 PLAN-01 的充分性核对（信息不够就反问）和计划生成。
+- 当前实现：`planning/workers.py` —— A = User & Evidence Analyst（分析目标、约束和资料，输出 evidencePack/needsInput），B = Curriculum Researcher（总结外部检索结果），A、B 并行，C = Planner/Synthesizer（生成计划 JSON，失败最多修复一次）。A 目前不直接向用户提问，见 PLAN-01 缺口。
+- 验证：未验证
+- 关联：[PLAN-01]
+- 更新：2026-09-26
+
+### [PLAN-04] 知识结构：阶段 → 模块 → 知识点，每天 4–5 个模块
+- 状态：未开始
+- 需求：不要把几千个知识点平铺给用户。分成几个阶段，每阶段若干模块；模块按知识本身的结构划分，不按分钟数切，一个模块包含较多知识点（量级为十几个，而不是几百个）。每天学多少不按模块数定，见 PLAN-05。
+- 知识点从资料中提炼：先有资料，再从资料里提炼模块和知识点，所以每个知识点天然带出处；不允许先凭空生成知识点再去找资料匹配，也不存在“没有资料依据的知识点”。资料覆盖不到的内容，说明资料不够，应在轮廓阶段继续找资料（PLAN-06），而不是生成无出处的点。
+- 当前实现：模型生成的是扁平任务列表（上限 100 项，带先修关系），见 `planning/service.py:1293` 的提示词；按 `knowledge_ref` 可把同一知识点的多个阶段任务归组（`plan_models.py:202`）；每日任务由 `planning/service.py:1450` `daily_mission` 按分钟数排出。没有“阶段/模块”层级。
+- 验证：未验证
+- 关联：[PLAN-02] [PLAN-05] [TEACH-02]
+- 更新：2026-09-26
+
+### [PLAN-05] 每日任务按时长均分（含特殊日权重）
+- 状态：已实现未验证（部分）
+- 需求：每天的任务是“学习时长”，不是“学几个模块”。根据资料估算整份计划总时长（第一轮学习 + CHK-01 检验），在起止日期内按可学日平均分配；用户说某天没空则该天为 0，某天只能拿出平时一半时间则该天权重为一半。算出每天应完成的分钟数，非特殊日每天对等。学到当天时长用完就停，哪怕某个模块只开了个头，第二天接着学。
+  - 每日上限：用户填写“每天最多能学多久”；算出的每日时长超过上限时提醒用户。
+  - 检验预留：按“检验时约 90% 能答出、10% 答不出”来估算并预留 CHK-01 的时间。
+  - 计划定死、不动态重排：每天的时长在生成计划时就定好，之后不每天重新生成。某天没完成，用户进来能看到“欠了多少分钟”，可以自己补；某天多学了，也不重新分配，后续每天仍按原定时长，这样用户可能提前在截止日前学完，获得成就感。
+  - 只按“通过”计：没通过的点不算完成，就是欠的；模块没过要重学的部分不另外预留时间，直接体现为欠。
+  - 补欠：用户后来学的时间算作补之前那天的进度，不重排计划。偶尔欠一点（如一小时）正常，第二天、第三天慢慢补即可。
+  - 欠两三天进度时，系统/教师主动提示已逾期，和用户协商是否每天安排太紧，此时允许用户重排。吸取背单词软件的教训：欠账不断堆积到无力偿还，最后只能清空数据。
+  - 进度按完成量算，不按挂机时间：生成时 AI 给每个知识点和每次模块检测估一个时长；讲完一个点且随口问答上，先记“暂记”进度（浅色）；模块检测通过后转为正式进度，没通过的点扣掉暂记、转为欠。界面显示“今天已完成 X / Y 分钟”，欠和超前都按这个口径。
+  - 每日上限只针对当前计划：制定计划时明确问“这份计划每天最多能学多久”；用户同时有多个计划时自己调整截止日期，系统不跨计划合并。
+  - 中途修改见 PLAN-08。
+  例：两周计划，第一周周一开始、第二周周日结束；用户说周六没空，第二周周一只有平时一半时间 → 周六为 0，第二周周一权重 0.5，其余日均分。
+- 当前实现：`planning/composer.py:210` 用用户填写的每日分钟数和勾选的学习日生成每天容量（可学日容量都相同，不支持半天权重），CP-SAT 排程；总时长不是由资料反推，而是用户直接填每日分钟数。
+- 验证：未验证
+- 关联：[PLAN-04] [CHK-01]
+- 更新：2026-09-26
+
+### [PLAN-06] 资料检索：必须找权威资料
+- 状态：已验证（DeepSeek 搜索可用）/ 结果过滤未开始
+- 需求：用户可以给资料也可以不给；无论给没给，AI 都要去找相关资料，而且必须是权威来源。模型用用户在模型连接页填写的 API（DeepSeek V4 Flash），开发时不另行处理模型名。
+- 权威性判断：优先官方文档、教材、大学课程、标准组织等来源，AI 给每个来源打可信度，太低的不用。不预设固定白名单；白名单由我们内置、放在服务器上、所有账号共享，检索时优先查白名单来源。白名单只收广受好评的来源品牌/类别（维基百科这一级别；CSDN 这类不收），不是由用户计划自动加入。白名单实在难做可以去掉，但核心要求不变：找到的资料必须精准、相关、可信，绝不能出现无关甚至色情网站（曾发生过，严重损害用户信任）。
+- 白名单初稿由开发方起草，用户审过后再放到服务器。
+- 过滤流程：DeepSeek 搜索后 → 去重、剔除 fork/转载 → 白名单优先、已知垃圾站剔除 → 逐个实际打开链接，确认存在且内容与标题一致 → AI 给相关性/可信度打分 → 在聊天里列给用户（带可信度）由用户挑选。模型凭记忆给出的链接，打开验证通过的也可使用。标准是满足用户的学习目标。
+- 重搜：用户不满意可以让 AI 再找，不设轮数上限（用的是用户自己的 API）。用户选中的保留，其余重找：可以先展示上一轮搜到但没展示的结果；若是搜索路线本身有问题，就换思路重搜。不管几轮都不能偏题，更不能出现无关网站。
+- 搜索来源：用模型厂商自带的搜索，DeepSeek 已验证；其他厂商见 SYS-02。用户只带一个 DeepSeek API 来用我们的程序，不会为此另开别的 API，所以不让用户配置第二个 key；博查基本不用。已查到 DeepSeek 的 Anthropic 兼容接口（`https://api.deepseek.com/anthropic`）官方文档写明在 Claude Code 中原生支持服务端 Web Search（会额外产生模型 token 费用）；2026-09-26 已用管理员账号的真实 key 验证：在我们自己的请求里可直接使用（见“验证”）。无论用哪种搜索，都叠加白名单优先 + AI 相关性/可信度过滤。
+- 当前实现：`planning/research.py` 用 ddgs 搜索并读取网页，没有“权威性”筛选；默认模型预设为 `deepseek-flash`（`connections/page.py:17`）。
+- 验证：2026-09-26 基准测试（实验场）`E:\Codex\Temp\MentorFlowTests\search-benchmark\deepseek_search_probe.py`，结果 `results\with_tool.json`。场景：学习者以 Datawhale hello-agents 为主线学 AI 智能体，要求搜相关知识而非只搜项目本身。模型 deepseek-v4-flash，接口 `https://api.deepseek.com/anthropic/v1/messages`，工具 `web_search_20250305`。
+  - 结果：HTTP 200，约 25 秒；自主发起 8 次搜索（hello-agents、Agent 综述、ReAct、OpenAI Function Calling、RAG、LangGraph、MCP、Generative Agents），均切题；返回 44 条原始结果。输入约 4.6 万 token（其中 3.9 万命中缓存），输出约 4.6 千 token。
+  - 问题 1：原始结果混有噪声——CSDN 转载、他人 fork 仓库、无关仓库的 raw 文件、高校 VPN 代理链接、空条目。必须经过白名单优先 + 相关性/可信度过滤。
+  - 问题 2：最终推荐的 8 个 URL 中只有 3 个来自搜索结果，另 5 个 arXiv 链接是模型凭记忆写的（编号看起来正确）。产品中每个来源都必须实际打开验证，不能直接信模型给的链接。
+- 关联：[PLAN-01] [CHK-01]
+- 更新：2026-09-26
+
+### [TEACH-01] 教师是贯穿始终的同一个 agent（上下文编排）
+- 状态：已实现未验证（部分）
+- 需求：教师从头到尾是同一个 agent，不能每个知识点换一个人；也不能靠无限长上下文，需要通过编排实现连续效果。
+- 按计划隔离：每个计划的教师上下文、错点、画像各自独立，不同计划之间不混在一起。
+- 人设：默认温和。学习偏好放在账号级别、所有计划共用（错点和画像仍按计划隔离）；偏好用预设选项让用户选，不让用户手打：教师风格（温和、严厉、幽默等，由开发方补充合适的预设；严厉可以直接指出反复出错、要求高，但绝不嘲讽、不贬低人格）、讲解详略（精简/适中/详细）、例子多少、类比偏好领域（生活、游戏、编程等）。最重要的不是语气上的照顾，而是紧扣用户当前进度；绝不能说一堆废话、有效内容很少。
+- 已定方案：三层上下文 —— ① 固定人设；② 学习者档案（进度、薄弱点、偏好、上次聊到哪）；③ 只保留当前模块的对话原文。档案更新：每讲完一个知识点后台更新一次（不让用户等）；每次离开课堂更新一次（今天停在哪、卡在哪）；第二天开课时教师先用一两句话接上昨天。
+- 当前实现：每次请求 = 系统提示 + 当前任务上下文 + 本任务最近最多 12 轮对话（≤18,000 字）+ 有界的 tutor checkpoint（`classroom/teaching.py:375`、`:435`）。对话按任务分开，没有跨任务/跨天的学习者记忆。
+- 验证：未验证
+- 关联：[TEACH-02]
+- 更新：2026-09-26
+
+### [TEACH-02] 模块检测 + 知识点薄弱标记
+- 状态：已实现未验证（部分）
+- 需求：AI 教师要判定用户学会。学习过程中教师边讲边随口问，记录掌握不好的点，但不当场反复追问；模块学完后做一次正式模块检测，覆盖模块内知识点；掌握的知识点达到 90% 才算模块通过，通过时对没掌握好的点打标记，供 CHK-01 使用。不到 90% 模块不通过，只重学没掌握的那部分知识点；没过的点记录下来，从多个角度出题重测，重测答对一次即可（例如只到 89%，就只重学那 11%），不整个模块重来。没通过时教师针对这几个点做问答，让用户知道自己哪里没记住再去复习；复习在本产品内完成，不让用户去别的 AI 学。
+- 模块没通过也允许继续学下一个模块（不卡进度），没过的点一直标红；建议用户学通一个模块再学下一个。所有点都通过（不再有红点）才能进入 CHK-01 最终检验。
+- 教师不能“事儿妈”：用户已明确学会时不能不依不饶；也要防止用户随口一句话被误解。靠多 agent 编排解决，判定交给独立判定 agent（TEACH-04）。用户说“我会了”时，教师只出一道快速确认题：答对立即往下讲；答错不纠缠，记为薄弱继续往下，交给模块检测判定。每个点随口问最多一两次，不连环追问。同一知识点检测失败次数越多，权重越高。出题规则同 CHK-01：依据资料原文出题并标注出处。
+- 当前实现：有结构化评估器，产出证据/错误记录（`classroom/evaluator.py`、`classroom/domain.py`）；没有“模块检测”“通过线”和“薄弱标记”。“我已学会”按钮见 TEACH-03。
+- 验证：未验证
+- 关联：[PLAN-04] [TEACH-03] [CHK-01]
+- 更新：2026-09-26
+
+### [TEACH-04] 独立判定 agent，贯穿整个计划
+- 状态：未开始
+- 需求：讲课的教师 agent 只管讲；“这个点懂没懂、过没过”由单独的判定 agent 依据用户实际作答来判定，不看用户自称。判定 agent 贯穿整个计划：上课随口问、模块检测、CHK-01 最终检验，只要出过错都记下来，作为后续检验的参考。
+- 当前实现：`classroom/evaluator.py` 有结构化评估边界（证据/错误记录），尚未作为独立 agent 贯穿全流程。
+- 验证：未验证
+- 关联：[TEACH-02] [CHK-01]
+- 更新：2026-09-26
+
+### [TEACH-05] 每日开课流程与沉浸式课堂
+- 状态：已实现未验证（部分）
+- 需求：设置里可设每天的刷新时间（如凌晨 0 点），整个账号一个设置，不按计划分别设；到点后当天计划变为“待完成”。用户点进计划 → 开课 → 直接进入课堂。课堂是沉浸式体验，旁边是 Live2D 教师，用户跟着老师走。老师讲的内容必须精准，不为几个知识点浪费大量时间。Live2D 保留，暂时只有“椿”一个形象，以后需要再加换形象。去掉旧版 GPT 写的违和“摇头”预设动作；之后由开发方重新制作点头、摇头等自然反应动作，让教师反应更丰富、更像真人。语音朗读/口型放到后面再做。
+- 跨刷新点：到刷新时间时用户正在上课，不打断；只要没退出课堂，学的都记到前一天，同时弹提示（如“太晚了，注意休息”）。退出课堂后再进来算新的一天。
+- 当前实现：课堂页 + 右侧独立 Live2D 教师窗（`classroom/page.py`、`classroom/teacher_stage.py`）；没有“每日刷新时间”设置和“待完成”状态。
+- 验证：未验证
+- 关联：[TEACH-01] [PLAN-05]
+- 更新：2026-09-26
+
+### [TEACH-06] 讲课形式、随时插话、防用户带偏
+- 状态：已实现未验证（部分）
+- 需求：
+  - 一个知识点一个知识点地讲；讲完不立刻正式测试，只随口问一个问题。问题可以简单，但不能糊弄（否则没有存在意义）；真正暴露问题靠模块检测（TEACH-02）。
+  - 篇幅可以设软上限，但不能卡死：某个点确实需要讲很长时必须讲完，绝不能讲到一半断掉。
+  - 讲得鲜活：所有教师都优先用生活中的例子类比，不能一直念资料原文，否则就成了“材料播放器”，无聊且记不住。可按用户偏好领域（如游戏）举例，但套不上就不要硬套（旧版硬套“小丑牌”类比，浪费时间）。
+  - 讲到的内容标注出处，用户可点开看原文；需要时显示公式、代码、表格。
+  - 语言：老师一律用中文讲；引用英文原文时附中文解释；出题用中文，关键术语保留英文。
+  - 用户可随时打断、插话提问（哪怕是题外话），老师答完回到原进度。老师是教师伙伴，有陪伴感，但不在陪伴功能上扩展，那不是重点。
+  - 防用户带偏（项目重点）：用户随口一句话不能让教师乱套。例如用户说“检验不需要存在”，教师不能当真去删检验。计划、检验规则、进度判定不受聊天内容改变。
+  - 已定做法：教师没有修改计划、检验规则、进度等状态的权限，也不能让下面的 agent 去改；只有界面按钮和系统能改。用户在聊天里要求“删检验/直接让我过”，教师只解释并指向正规入口（如“修改计划”）。合理情况（如欠账协商重排）由教师提建议，用户在界面确认后生效。判定 agent 照常记录错点，不受影响。
+  - 重点与难点：防带偏是重点；教师与各 agent 怎么编排最合理（包括多个知识点合并提问）是真正的难点。
+  - 多个知识点合在一题时，答错要由判定 agent 分析具体错在哪个点，只给那个点记错，不能把整题涉及的点全判错。必须做出来。
+  - 随口问答错：说明这个点需要深化，教师换个角度再讲一遍、给个台阶，理解对了就很快过。用户说是误触、语音识别错等，可以放他继续往下学，但随口问答错一律记一次错（不管原因）；随口问和模块检测都错过的点，是 CHK-01 的重点。
+- 当前实现：课堂提示词已有“按钮动作语义优先、自述不改状态”等约束（`classroom/teaching.py:427`）；没有系统化的防带偏设计。
+- 验证：未验证
+- 关联：[TEACH-01] [TEACH-02] [TEACH-04]
+- 更新：2026-09-26
+
+### [TEACH-07] 已会的模块可直接考、跳过
+- 状态：未开始
+- 需求：不做整份计划开头的摸底大考。每个模块开头提供可选入口“我会这部分，直接考”：出模块检测题，正确率 ≥90% 就跳过这个模块；低于 90% 就老老实实学。跳过的模块中答错的点照样记录，CHK-01 检验时会再校准，不会遗漏。跳过的模块，其估算时长在做“直接考”的那一天全部记为完成，用户可能因此超额、领先几天。
+- 当前实现：没有。
+- 验证：未验证
+- 关联：[TEACH-02] [CHK-01] [PLAN-05]
+- 更新：2026-09-26
+
+### [TEACH-03] “我已学会”按钮暂时保留
+- 状态：已实现未验证
+- 需求：理想情况下不需要这个按钮，但用户可能想快速跳过，或在聊天里强硬要求“我会了、让我过”，把模型带偏；把判定限制死又会带来别的问题。所以暂时保留，看模块检测（TEACH-02）做出来的效果再决定去留。
+- 当前实现：`planning/service.py:1708` `mark_knowledge_learned`，写入 self_attested，不算测评证据。
+- 验证：未验证
+- 关联：[TEACH-02]
+- 更新：2026-09-26
+
+### [CHK-01] 首轮学完后的多轮检验与计划画像
+- 状态：未开始
+- 需求：整个计划第一轮学完后统一进入“检验”（不叫复习）。
+  - 覆盖：所有知识点必须完整过一遍，不能只抽查；TEACH-02 标记过的、失败次数多的点多出题。
+  - 推进：不分固定轮次、不设轮数上限。先完整过一遍，之后一直针对有问题的点问，直到没有问题；全部知识点通过检验即完成。
+  - 归因与画像：对发现的问题归因，形成这份计划的用户画像（哪里有问题），后续按画像针对性检验。归因只做到能做好的程度，不为此做复杂系统。
+  - 不重讲：检验阶段教师不把内容再讲一遍，只反复针对易错点提问；用户可主动提问，教师解答。
+  - 时间：检验时间不能占大头，大致不超过学习时间的一半量级（用户说数值是随口说的，不作硬指标）。
+  - 过关规则（熟练度等级，类似不背单词；用户已确认）：每个点有 0–3 级，升到 3 级即通过检验。初始等级：随口问和模块检测都没错 → 2 级（答对 1 次）；只在其中一处错过 → 2 级但优先出题，且换一个没考过的角度（答对 1 次）；两处都错过 → 1 级（连续答对 2 次）。检验中答对升一级、答错降一级（最低 0 级），所以最多连续答对 3 次，不会无限反复；对错穿插时等级原地打转，天然要求连续答对。同一个点答对后不紧接着再问，隔几题或到下次学习再问（间隔重复），每次换没用过的角度。
+  - 角度：复述概念、用到例子、与相近概念区分、找错改错、换场景迁移；同一点不重复用同一角度。对错由 TEACH-04 判定 agent 判。
+  - 逾期：截止日到了还没学完或没检验完，计划标为“已逾期”，显示逾期几天，继续学到完成为止；不生成阶段报告（任务没完成）；用户可自行延长截止日期。
+  - 时长预估：建计划时就按“90% 的点一次答对、10% 的点有问题且每个约答错 2 次”预估检验时长，计入总时长（PLAN-05），并明确告诉用户这是预估，实际可能花更多时间。
+  - 进度：每个点的检验时长 = 需答对次数 × 每题估算时长；每答对一次记一次进度，与学习阶段同一套“今天已完成 X / Y 分钟”。
+  - 题目：可以是选择、简答，也可以是和 AI 实时对话式的模拟检验。AI 依据资料原文出题，每题标注出自哪段资料；资料就是制定这份计划时用的那些（用户给的或检索到的，可以多份）。没有资料依据的题不出。AI 可以判分。
+- 当前实现：没有。“更多工具”里的复习按资料生成回忆题（`tools/service.py:198`），与课堂标记无关。
+- 验证：未验证
+- 关联：[TEACH-02]
+- 更新：2026-09-26
+
+### [PLAN-07] 创建计划界面：聊天 + 表单，替换旧七步
+- 状态：未开始
+- 需求：旧的七步表单界面要换掉。流程：
+  1. AI 先发给用户一张表单，用户填写必要信息（起止日期、这份计划每天最多学多久、特殊日即哪天没空/只有半天、当前水平等，见 PLAN-01、PLAN-05）。
+  2. 聊天：AI 去找资料（用户没给要找；给了也要找来补充知识地图，除非用户明确说只用这一份），把找到的资料列给用户，用户说哪些可用、哪些有问题。
+  3. 信息齐了先出轮廓（PLAN-02），满意后正式生成。
+- 当前实现：`planning/web/`（React 七步：学习空间 → 资料 → 目标 → 时间 → 可行性 → 教师角色 → 确认），由 `planning/wizard.py` 桥接。
+- 验证：未验证
+- 关联：[PLAN-01] [PLAN-02] [PLAN-05]
+- 更新：2026-09-26
+
+### [PLAN-08] 多计划管理与中途修改
+- 状态：已实现未验证（部分）
+- 需求：用户可以有多个计划，能在计划之间跳转；进入某个计划可编辑起止日期等，并能跳到该计划的知识地图/树（MAP-01）看整体学习状态。修改截止日期或时间后，只对还没学的部分重新分配每日时长，已完成和欠的记录全部保留，不能乱。
+- 删除分两级：“归档”可还原（防手误），计划和报告都保留；只有用户主动“删除”并在弹窗里再次确认后，才真正删除计划及其报告。
+- 当前实现：“我的计划”有计划目录 → 详情，可改名/归档/删除（`refactor/learning/plans_page.py`、`planning/service.py:1391`、`:1407`）；不支持改日期后只重排未学部分。
+- 验证：未验证
+- 关联：[PLAN-05] [MAP-01]
+- 更新：2026-09-26
+
+### [PLAN-09] 资料格式：支持常见带文字文档
+- 状态：已实现未验证（部分）
+- 需求：不限制在少数格式，PDF、Word 等带文字的文档都要支持。扫描件先不做；以后可考虑加工具支持。
+- 当前实现：只支持 TXT/Markdown/CSV/JSON，每份上限 8 MiB（`refactor/learning/text_import.py`、`store.py`）。
+- 验证：未验证
+- 关联：[PLAN-07]
+- 更新：2026-09-26
+
+### [PLAN-10] 计划中途添加资料
+- 状态：未开始
+- 需求：用户在计划中途可能想加资料，这可能影响内容和截止日期；不能因此把整个计划全部重排、重新生成。
+- 已定方案（只处理新增部分，已学和已排的不动）：
+  1. 分析新资料：只是补充已有知识点的，直接挂到对应知识点上（未学的讲课出题会用，已学的检验时会用），不改计划不改时间；新资料和已学内容重合的部分要整合，只把真正新的内容加进去。
+  2. 有新内容时先给“变更预览”（同轮廓形式）：新模块插在哪、预计多花多少时间、截止日不变时每天多几分钟（是否超上限）或建议推迟到哪天；用户可勾掉不要的部分，确认后生效。
+  3. 确认后只生成新增部分的知识点和时长，按前置关系插入未学部分；只对剩余日子重新分配时长（规则同 PLAN-08），已完成和欠的记录保留。
+  4. 新内容若是已学模块的前置知识，不改写已学历史，作为“补充模块”排到接下来最前面。
+- 当前实现：没有。
+- 验证：未验证
+- 关联：[PLAN-05] [PLAN-08] [PLAN-02]
+- 更新：2026-09-26
+
+### [MAP-01] 生成后的地图/树：可展开模块、看掌握状态
+- 状态：未开始
+- 需求：正式生成后，用户可在地图或树上点开模块，看到里面的每个知识点；学习开始后显示掌握状态（例如掌握好的点绿、不好的点红）以及教师对各点的评价。生成前的轮廓不显示知识点（见 PLAN-02）。
+- 当前实现：计划详情有基于 knowledge_ref 的知识地图引用和“计划完成情况”页（`refactor/learning/materials_page.py` `PlanCompletionPage`），没有模块层级和按点掌握颜色。
+- 验证：未验证
+- 关联：[PLAN-02] [PLAN-04] [TEACH-02]
+- 更新：2026-09-26
+
+### [RPT-01] 计划完成后的学习报告
+- 状态：未开始
+- 需求：整份计划（含 CHK-01 检验）完成后生成学习报告，用户可以保存。报告包含 AI 对用户的画像：各种薄弱点等，方便用户知道自己的问题在哪。软件内可查看，也可导出、保存到本地；不做分享到 QQ/微信的功能，用户自己去分享。计划归档不删报告，真正删除计划时才删报告（见 PLAN-08）。
+- 当前实现：没有。
+- 验证：未验证
+- 关联：[CHK-01] [TEACH-04]
+- 更新：2026-09-26
+
+### [DATA-01] 旧计划与评估数据不兼容
+- 状态：未开始
+- 需求：以前旧壳子做出的计划、任务、评估数据不再兼容，新结构直接重新生成计划，不为旧数据写迁移或适配。
+- 当前实现：代码里仍有旧计划适配（`refactor/learning/legacy_records.py`、`plan_models.py` 的旧投影），改新结构时可以删掉。
+- 验证：未验证
+- 关联：[PLAN-04]
+- 更新：2026-09-26
+
+### [DATA-02] 跨设备同步范围（大文件不上服务器）
+- 状态：已实现未验证（部分）
+- 需求：同一账号在另一台电脑登录，计划、进度、判定记录、学习报告等全部同步（像 QQ 那样）。服务器容量小，Live2D 模型这类大文件不存服务器：提供下载链接，或让程序指向用户电脑里已有的模型；不正常时允许重新下载。
+- 资料存储：网页和论文只存链接和提取出的正文（压缩后同步）；用户自己上传的原文件不同步到服务器。换设备不需要重新导入：导入时把提取的正文连同页码/章节位置压缩同步；另一台电脑上讲课、出题、判分、“查看原文”都用同步的正文并标出处。只有想看原始排版时才需要原文件：本机有就直接打开，没有就提示“原文件在另一台电脑上”，用户可重新关联一份或忽略，不影响学习。网页资料直接打开原链接。
+- 当前实现：已有同账号同步链路（`refactor/learning/sync_local.py`、`sync_transport.py`、`sync_records/`），覆盖计划/进度/课堂记录/偏好等；新结构（模块、判定记录、报告）尚未接入；真实两台设备未验收。
+- 验证：未验证
+- 关联：[DATA-01]
+- 更新：2026-09-26
+
+### [SYS-01] 模型出错处理
+- 状态：已实现未验证（部分）
+- 需求：上课或生成时模型报错、超时、余额不足等，必须明确告诉用户具体原因（如“余额不足”）；在断的地方停住，恢复后从那里继续；不丢数据，不把没完成的内容记为完成。这种情况一般不会发生，但要有应对。
+- 当前实现：模型客户端有分类错误码（`connections/errors.py`、`connections/client.py`），课堂把未完成回合记为可重试失败；是否对“余额不足”给出明确中文提示未核对。
+- 验证：未验证
+- 关联：[TEACH-05]
+- 更新：2026-09-26
+
+### [SYS-02] 多家模型厂商，各配本家搜索
+- 状态：已实现未验证（仅 DeepSeek 搜索已验证）
+- 需求：不只支持 DeepSeek。用户填别家模型的 API 时，也要预先配好该厂商自带的搜索，让资料检索照样可用，覆盖更多用户。国内（通义千问、Kimi、智谱 GLM）和国外（OpenAI、Claude、Gemini）全部先接上；除 DeepSeek 外先按官方文档接好、标为未验证，等有用户实际使用该家 API 时再测，测出问题再改。
+- 当前实现：模型连接只有 OpenAI 兼容 chat/completions（`connections/transport.py`）；DeepSeek 的 Anthropic 兼容接口搜索已验证（见 PLAN-06）；其他厂商的搜索均未接入、未验证。
+- 验证：未验证
+- 关联：[PLAN-06] [SYS-03]
+- 更新：2026-09-26
+
+### [SYS-03] 花费预估与累计用量
+- 状态：未开始
+- 需求：点“正式生成”前显示大概花费预估；设置里可查看累计用量。客户端统计 token（含缓存命中/未命中、搜索等所有调用），必须统计完整，统计不全宁可不做。金额按服务器维护、客户端联网拉取的价格表计算；能从厂商拿到计费数据（如 DeepSeek）时，完整展示金额和缓存命中率等明细。
+- 当前实现：模型调用有观测记录（`refactor/learning/observability.py`），没有费用预估和累计用量界面；搜索产生的额外 token 未统计。
+- 验证：未验证
+- 关联：[PLAN-02] [SYS-02]
+- 更新：2026-09-26
+
+### [SYS-04] 学习提醒（仅软件开着时）
+- 状态：未开始
+- 需求：像不背单词一样可设提醒时间，到点还没开始当天任务就提醒。只在软件开着时提醒，不做开机自启和后台常驻；用户不打开软件就让他自己错过。
+- 当前实现：没有。
+- 验证：未验证
+- 关联：[TEACH-05]
+- 更新：2026-09-26
+
+### [SYS-05] 提高缓存命中率
+- 状态：未开始
+- 需求：尽量提高模型上下文缓存命中率，向厂商能做到的 99.5% 靠拢，以前只有约 60%，远远不够。降低用户花费，且不给用户添麻烦。
+- 当前实现：没有专门设计。2026-09-26 搜索基准测试中单次请求命中约 85%（38,656 / 45,629 输入 token）。旧仓库曾有缓存前缀审计记录（已移入 `过时文件隔离/根目录/CACHE_PREFIX_AUDIT.md`，仅作参考）。
+- 验证：未验证
+- 关联：[TEACH-01] [SYS-03]
+- 更新：2026-09-26
+
+### [UI-00] 前端整体重做
+- 状态：未开始
+- 需求：所有前端由开发方按本文档重新设计实现；旧界面里和新需求不符的东西直接去掉，不迁就旧布局。可加动态效果体现高级感。
+- 导航（已定）：左侧 5 项——首页（取代概览）、我的计划（计划列表 → 详情，含地图/树、编辑、归档，吸收“计划完成情况”）、新建计划（取代七步向导）、更多工具（闲聊、远征）、设置（偏好预设、每日刷新时间、学习提醒、模型连接、用量统计）。原生课堂不放导航，从首页和计划详情的“开课”进入，入口要醒目；进入后是沉浸式课堂，左侧导航收起。
+- 课堂布局（已定）：顶部一条细栏显示当前计划、模块和“今天 X / Y 分钟”；中间一大块留给老师和用户的对话，全屏时老师的话必须放得下（旧版全屏都放不下，是设计错误）；底部输入框 + 麦克风 + 发送；右侧照旧向右展开 Live2D 老师。按钮只留“我已学会”“查看原文”“退出课堂”三个，检测和检验由系统在合适时机自动发起。用户常见操作是先展开 Live2D 再全屏，全屏时 Live2D 也要适配好、不挡对话。
+- 视觉（已定）：保留现有粉/深紫配色，在此基础上做精做细，按钮交互和视觉效果要好。主题做成可切换预设（类似日间/夜间）；这次只做两套：精修后的现有配色 + 开发方自由发挥的一套供用户看效果，其他主题等用户再提。
+- 当前实现（2026-09-26 用户截图）：左侧深紫导航栏 8 项（概览、我的计划、计划完成情况、原生课堂、创建计划、模型连接、设置、更多工具），底部“账号与安全”卡片 + 切换账号/退出登录，顶部同步状态 + “立即同步”；主色粉/紫。
+  - 概览：三张统计卡、当前计划与下一步、最近计划、月历。
+  - 我的计划 / 计划完成情况：空状态几乎空白。
+  - 原生课堂：按钮堆叠（主题下拉、显示任务目录、显示 Live2D 教师、刷新计划、开始上课、这个知识点我已学会、没听懂换个讲法、再练一道、学习笔记、掌握检验区、开始检验/安排补救/提交检验）；Live2D 为主窗右侧独立窗口（选择模型目录、下载模型、收起、发色切换、头部/半身/全身）。
+  - 创建计划：旧七步向导（见 PLAN-07）。模型连接：预设表单。设置：课堂主题、字号、紧凑布局、日历开关、类比关键词、任务颜色。更多工具：教师闲聊（带默认人设提示）与学习远征两个标签。账号与安全为独立小窗（邮箱、改密、注销）。
+- 验证：未验证
+- 关联：[UI-01] [UI-02] [PLAN-07] [TEACH-05] [MAP-01]
+- 更新：2026-09-26
+
+### [UI-01] 首页
+- 状态：已实现未验证（与需求有出入）
+- 需求：首页有“今天”面板：每个计划今天的目标分钟、已完成、欠多少，用环形（转圈）进度展示；可以做动态效果，体现高级感。用户有多个计划时自己选进入哪个计划开始今天的学习，可随时退出换到另一个计划；“开课”直接进入原生课堂。下方计划列表可点进地图/树，另有“新建计划”。整体布局见 UI-00。
+- 当前实现：概览页（`refactor/learning/overview_page.py`）有日历和最近两份计划，没有按计划的今日时长进度。
+- 验证：未验证
+- 关联：[PLAN-05] [TEACH-05] [MAP-01]
+- 更新：2026-09-26
+
+### [UI-02] 更多工具：教师闲聊、学习远征
+- 状态：已实现未验证（部分）
+- 需求：
+  - 教师闲聊：没有任何限制和系统提示词，只带用户自己写的人设；系统不内置任何人设或默认提示（当前默认的“你是一位耐心、清晰的学习教师……”要去掉，默认留空），也不做任何限定；用户可以聊任何话题（只要 API 允许），不进入教学管线。它和课堂里的随时插话不同：课堂插话仍会被老师往教学上引导。闲聊时右侧照样展示 Live2D 教师，和以前一样向右展开；闲聊记录跨设备同步。
+  - 学习远征：只保留入口，能点进去即可；以后可能删掉重做，现在不优化。
+  - 按资料出题的“复习”删掉：它本来就属于检验（CHK-01），不该放在更多工具里。
+- 当前实现：`refactor/learning/tools/`（闲聊 free_chat、远征、复习 `tools/service.py:198`）；闲聊当前带提示词。
+- 验证：未验证
+- 关联：[CHK-01]
+- 更新：2026-09-26
+
+### [VOICE-01] 语音输入与朗读
+- 状态：未开始（旧仓库有成果）
+- 需求：回答老师时可以直接说话：点“开始录音”→ 边说边识别、文字实时出现在输入框 → 点“结束录音” → 用户点发送。语音识别模型第一次用时提示下载（说明大小），用户同意后才下，不用语音的人不受影响。以后再考虑和老师直接语音对话，先把“语音转文字 + 正常聊天”做好。旧仓库已做过语音识别，效果不错，优先复用，不重复造轮子。老师朗读不用 Qwen TTS，改用本机的 GPT-SoVITS，声音用弗洛洛（Phrolova）声音包（Kurisu 是日语声音，不适合念中文）。旧版每次要加载一会儿才读，需要优化，需自己做；可只读参考 Kristina 的 GPT-SoVITS 提速思路，但不改动 Kristina 的任何文件。节省时间优先于节省 token。
+- 当前实现：重构区没有。旧仓库语音识别为本机 sherpa-onnx SenseVoice int8 工作进程（`backend/app/asr_supervisor.py`，默认端口 9882）；旧朗读有 Qwen3-TTS 运行时（`backend/app/qwen_custom_private_runtime.py`，不再使用）和 GPT-SoVITS 声音包（`backend/app/teacher_voice_pack.py`、`scripts/build_local_gpt_sovits_voice_packs.py`）。弗洛洛声音包在 `E:\AI_Tools\GPTSoVITS\Phrolova`（声音目录 `E:\AI_Tools\GPTSoVITSoice_catalog`）。本机有 `E:\AI_Tools\GPTSoVITS`、`E:\AI_Tools\GPT-SoVITS-Kurisu`；`E:\AI_Tools\Kristina-TTS-P0-Bakeoff` 下另有 GPT-SoVITS-cpp 和 minimal_inference，属于 Kristina。
+- 验证：未验证
+- 关联：[TEACH-05] [TEACH-06]
+- 更新：2026-09-26
+
+### [ACC-01] 账号同一时间只在一台设备在线
+- 状态：未开始
+- 需求：本产品强依赖学习进度，同一账号不能在两台设备同时使用，否则进度会打架。在新设备登录时，旧设备的登录被挤下线。课堂同一时间也只可能在一台设备上进行。
+- 被挤下线的处理（已定）：旧设备立即停止上课并提示“账号已在另一台设备登录”；旧设备上还没同步的进度先保存在本机，下次该设备再登录时自动补传。进度只累加，补传不覆盖新设备上的进度。情况少见但必须处理。
+- 当前实现：原生登录/刷新/退出与会话撤销已有（`refactor/desktop/native_auth.py`、服务器 password_sessions）；没有“新登录挤掉旧设备”。需要服务器配合，部署前须征得用户同意。
+- 验证：未验证
+- 关联：[DATA-02] [ACC-02]
+- 更新：2026-09-26
+
+### [ACC-02] 账号功能本轮不改逻辑
+- 状态：已实现未验证（部分）
+- 需求：登录、注册、找回密码、改密、注销等账号功能本轮不改功能逻辑，只随 UI-00 换视觉。用户已确认找回密码、改密好用；注册、注销待用户用新账号实测。
+- 当前实现：`refactor/desktop/`（账号外壳）与 `refactor/server/`（注销等），服务器已部署。
+- 验证：找回密码、改密由用户实际操作确认；注册、注销未验证。
+- 关联：[ACC-01] [UI-00]
+- 更新：2026-09-26
+
+<!--
+条目格式（复制使用）：
+
+### [前缀-序号] 标题
+- 状态：未开始 / 已实现未验证 / 已验证
+- 需求：
+- 当前实现：代码位置（文件:行）
+- 验证：怎么验证的、哪天；没有就写“未验证”
+- 关联：[其他编号]
+- 更新：YYYY-MM-DD
+-->

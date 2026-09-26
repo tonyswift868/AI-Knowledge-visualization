@@ -16,7 +16,7 @@ from .oidc import IdentityError
 
 PREFIX = '/api/enterprise/auth/lifecycle'
 PUBLIC_PATHS = frozenset(PREFIX + '/' + p for p in ('capabilities', 'register', 'forgot',
-    'reset-code/request', 'reset-code/verify', 'reset-code/complete'))
+    'register/check', 'reset-code/request', 'reset-code/verify', 'reset-code/complete'))
 router = APIRouter()
 MESSAGE = '如果该账号或邮箱可用于找回，我们会发送密码重置邮件，请查看邮箱。'
 LOG = logging.getLogger(__name__)
@@ -112,13 +112,72 @@ async def register(request: Request):
         subject = await svc.admin.create_account(**value)
         await svc.admin.send_verification(subject)
         LOG.info('Official verification email submitted')
-        return JSONResponse({'state': 'VERIFY_EMAIL_PENDING', 'message': '验证邮件已发送。请点击邮件中的链接，再返回登录。'}, status_code=201, headers={'Cache-Control':'no-store'})
+        return JSONResponse({'state': 'VERIFY_EMAIL_PENDING',
+            'message': '账号服务已接受验证邮件发送请求；不保证收件，请查看垃圾邮件。'},
+            status_code=201, headers={'Cache-Control':'no-store'})
     except LifecycleError as exc:
-        message = '账号已被使用，请换一个账号。' if exc.code == 'ACCOUNT_ALREADY_IN_USE' else '注册暂未完成，请检查输入或稍后重试；如账号已创建，请先查看邮箱。'
-        return JSONResponse({'code':exc.code, 'message':message}, status_code=409 if exc.code == 'ACCOUNT_ALREADY_IN_USE' else 400, headers={'Cache-Control':'no-store'})
+        messages = {
+            'USERNAME_ALREADY_IN_USE': '账号名已被使用，请换一个账号名。',
+            'EMAIL_ALREADY_IN_USE': '邮箱已被使用，请更换邮箱或返回登录。',
+            # Older doubles may still raise the combined code; the current
+            # create path resolves it into a field-specific or unresolved code.
+            'ACCOUNT_ALREADY_IN_USE': '账号名或邮箱已被使用，请更换后重试。',
+            'REGISTRATION_CONFLICT_UNRESOLVED': '注册冲突暂未确认，请稍后重试；不要重复注册。',
+            'REGISTRATION_INPUT_INVALID': '请检查账号名、邮箱和密码。',
+            'CREATED_ACCOUNT_RECONCILIATION_REQUIRED': '账号可能已创建，但未能确认注册结果；请先返回登录尝试。',
+            'KEYCLOAK_OPERATION_REJECTED': '注册或验证邮件提交未完成；账号可能已创建，请先返回登录或稍后重试。',
+            'KEYCLOAK_OUTCOME_UNKNOWN': '注册或验证邮件结果未确认；账号可能已创建，请先返回登录尝试。',
+        }
+        message = messages.get(exc.code, '注册暂未完成，请稍后重试；如账号已创建，请先返回登录尝试。')
+        status = (409 if exc.code in {
+            'USERNAME_ALREADY_IN_USE', 'EMAIL_ALREADY_IN_USE', 'ACCOUNT_ALREADY_IN_USE'}
+            else 400 if exc.code == 'REGISTRATION_INPUT_INVALID' else 503)
+        return JSONResponse({'code': exc.code, 'message': message}, status_code=status,
+                            headers={'Cache-Control': 'no-store'})
     except ValueError:
         return JSONResponse({'code':'REGISTRATION_INPUT_INVALID','message':'请检查账号、邮箱和密码。'}, status_code=400)
     finally: value.clear()
+
+
+@router.post(PREFIX + '/register/check')
+async def register_check(request: Request):
+    """Return only exact username/email availability for registration feedback."""
+    svc, _ = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'registration-check')
+    value = {}
+    try:
+        value = await body(request, {'field', 'value'})
+        field, candidate = value['field'], value['value']
+        if field == 'username':
+            if (not candidate or len(candidate) > 255 or candidate != candidate.strip()
+                    or any(ord(char) < 32 for char in candidate)):
+                raise ValueError()
+            lookup = svc.admin.find_username
+        elif field == 'email':
+            if (len(candidate) > 254
+                    or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', candidate)):
+                raise ValueError()
+            lookup = svc.admin.find_account
+        else:
+            raise ValueError()
+        try:
+            subject = await lookup(candidate)
+        except LifecycleError as exc:
+            if exc.code == 'REGISTRATION_INPUT_INVALID':
+                raise ValueError() from None
+            return JSONResponse({'code': 'REGISTRATION_CHECK_UNAVAILABLE'}, status_code=503,
+                                headers={'Cache-Control': 'no-store'})
+        except Exception:
+            return JSONResponse({'code': 'REGISTRATION_CHECK_UNAVAILABLE'}, status_code=503,
+                                headers={'Cache-Control': 'no-store'})
+        return JSONResponse({'field': field, 'available': subject is None}, status_code=200,
+                            headers={'Cache-Control': 'no-store'})
+    except ValueError:
+        return JSONResponse({'code': 'REGISTRATION_INPUT_INVALID',
+                             'message': '请检查账号名或邮箱。'}, status_code=400,
+                            headers={'Cache-Control': 'no-store'})
+    finally:
+        value.clear()
 
 
 @router.post(PREFIX + '/forgot')
@@ -383,8 +442,10 @@ async def change_password(request: Request):
             raise IdentityError('NATIVE_CREDENTIALS_INVALID', '账号或密码不正确', status=401)
         if value['current_password'] == value['new_password']:
             return _reset_error('NEW_PASSWORD_SAME_AS_CURRENT', '新密码不能与当前密码相同')
-        await svc.admin.change_password(actor.subject_id, value['new_password'])
-        return JSONResponse({'state': 'PASSWORD_CHANGED'}, headers={'Cache-Control': 'no-store'})
+        from refactor.server.password_sessions import change_password as change_and_revoke
+        outcome = await change_and_revoke(runtime, svc.admin, actor, value['new_password'])
+        return JSONResponse(outcome.payload(), status_code=outcome.status,
+                            headers={'Cache-Control': 'no-store'})
     except ValueError:
         return JSONResponse({'code': 'PASSWORD_INPUT_INVALID', 'message': '请检查密码长度。'}, status_code=400,
                             headers={'Cache-Control': 'no-store'})
@@ -396,3 +457,18 @@ async def change_password(request: Request):
     finally:
         value = locals().get('value')
         if isinstance(value, dict): value.clear()
+
+
+@router.post(PREFIX + '/revoke-sessions')
+async def revoke_account_sessions(request: Request):
+    """Subject-scoped retry after fresh login; never retries password mutation."""
+    runtime, svc, actor = await authenticated_service(request)
+    try:
+        await body(request, set())
+    except ValueError:
+        return JSONResponse({'code': 'SESSION_REVOCATION_INPUT_INVALID'}, status_code=400,
+                            headers={'Cache-Control': 'no-store'})
+    from refactor.server.password_sessions import revoke_sessions
+    outcome = await revoke_sessions(runtime, svc.admin, actor)
+    return JSONResponse(outcome.payload(), status_code=outcome.status,
+                        headers={'Cache-Control': 'no-store'})

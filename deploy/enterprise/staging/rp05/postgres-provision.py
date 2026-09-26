@@ -109,12 +109,22 @@ def provision(
                 _upsert_role(cursor, "mentorflow_migrator", secrets["migrator"])
                 _upsert_role(cursor, "mentorflow_app", secrets["app"])
                 _upsert_role(cursor, "mentorflow_keycloak", secrets["keycloak"])
+                cursor.execute("SELECT 1 FROM pg_roles WHERE rolname='mentorflow_closure'")
+                if not cursor.fetchone():
+                    cursor.execute("CREATE ROLE mentorflow_closure NOLOGIN")
+                cursor.execute("ALTER ROLE mentorflow_closure NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS")
+                cursor.execute("GRANT mentorflow_closure TO mentorflow_migrator")
+                cursor.execute("REVOKE mentorflow_closure FROM mentorflow_app")
                 _ensure_database(cursor, "mentorflow", "mentorflow_migrator")
                 _ensure_database(cursor, "mentorflow_keycloak", "mentorflow_keycloak")
         with connector(**_connection_kwargs(secrets["admin"], database="mentorflow")) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
                 cursor.execute("GRANT CONNECT ON DATABASE mentorflow TO mentorflow_app")
+                cursor.execute("CREATE SCHEMA IF NOT EXISTS account_closure AUTHORIZATION mentorflow_closure")
+                cursor.execute("ALTER SCHEMA account_closure OWNER TO mentorflow_closure")
+                cursor.execute("REVOKE ALL ON SCHEMA account_closure FROM PUBLIC")
+                cursor.execute("GRANT USAGE ON SCHEMA account_closure TO mentorflow_app,mentorflow_migrator")
     except Exception as exc:
         raise ProvisionError("POSTGRES_PROVISION_FAILED") from exc
     return {

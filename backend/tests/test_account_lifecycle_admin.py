@@ -41,6 +41,32 @@ def test_registration_uses_official_create_and_unverified_permanent_password(pas
     assert len(calls) == 1  # No implicit email send, token grant or role elevation.
 
 
+def test_same_password_is_allowed_for_distinct_synthetic_users():
+    calls = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        calls.append(payload)
+        return httpx.Response(201, headers={
+            'location': BASE + '/users/' + payload['username'],
+        })
+
+    async def operation(admin):
+        first = await admin.create_account(username='first-user',
+                                           password='same-password',
+                                           email='first@example.invalid')
+        second = await admin.create_account(username='second-user',
+                                            password='same-password',
+                                            email='second@example.invalid')
+        return first, second
+
+    assert exercise(handler, operation) == ('first-user', 'second-user')
+    assert [payload['credentials'][0]['value'] for payload in calls] == [
+        'same-password', 'same-password',
+    ]
+    assert [payload['username'] for payload in calls] == ['first-user', 'second-user']
+
+
 @pytest.mark.parametrize('password', ['', 'a' * 7, 'a' * 129, None])
 def test_invalid_password_has_no_network_side_effect(password):
     def forbidden(request):
@@ -116,14 +142,86 @@ def test_timeout_after_commit_is_unknown_and_never_automatically_retried():
     assert len(calls) == 1
 
 
-def test_keycloak_uniqueness_conflict_is_not_retried_as_a_new_account():
+@pytest.mark.parametrize(
+    ('username_rows', 'email_rows', 'outcome', 'paths'),
+    [
+        ([{'id': 'subject-u', 'username': 'chosen'}], [], 'USERNAME_ALREADY_IN_USE',
+         ['/users', '/users']),
+        ([], [{'id': 'subject-e', 'email': 'disposable@example.invalid'}],
+         'EMAIL_ALREADY_IN_USE', ['/users', '/users', '/users']),
+        ([{'id': 'subject-u', 'username': 'chosen'}],
+         [{'id': 'subject-e', 'email': 'disposable@example.invalid'}],
+         'USERNAME_ALREADY_IN_USE', ['/users', '/users']),
+        ([], [], 'REGISTRATION_CONFLICT_UNRESOLVED', ['/users', '/users', '/users']),
+    ],
+)
+def test_registration_conflict_is_resolved_after_create_409(
+    username_rows, email_rows, outcome, paths,
+):
     calls = []
+
     def handler(request):
         calls.append(request)
-        return httpx.Response(409, text='sensitive-provider-input')
-    with pytest.raises(LifecycleError, match='ACCOUNT_ALREADY_IN_USE'):
-        exercise(handler, lambda a: a.create_account(username='chosen', password='a' * 8,
-                                                       email='disposable@example.invalid'))
+        if request.method == 'POST':
+            return httpx.Response(409, text='provider detail is never surfaced')
+        assert request.method == 'GET'
+        if request.url.params.get('username') is not None:
+            return httpx.Response(200, json=username_rows)
+        assert request.url.params.get('email') == 'disposable@example.invalid'
+        return httpx.Response(200, json=email_rows)
+
+    with pytest.raises(LifecycleError, match=outcome):
+        exercise(handler, lambda a: a.create_account(
+            username='chosen', password='a' * 8, email='disposable@example.invalid'))
+    assert [request.url.path for request in calls] == ['/admin/realms/fixture' + path for path in paths]
+
+
+@pytest.mark.parametrize('failure', ['unauthorized', 'timeout'])
+def test_registration_conflict_lookup_failure_stays_unresolved(failure):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if request.method == 'POST':
+            return httpx.Response(409)
+        if failure == 'unauthorized':
+            return httpx.Response(401)
+        raise httpx.ReadTimeout('synthetic provider timeout', request=request)
+
+    with pytest.raises(LifecycleError, match='REGISTRATION_CONFLICT_UNRESOLVED'):
+        exercise(handler, lambda a: a.create_account(
+            username='chosen', password='a' * 8, email='disposable@example.invalid'))
+    # Username is always reconciled first; no email cause is invented after a
+    # failed first lookup.
+    assert [request.url.path for request in calls] == ['/admin/realms/fixture/users'] * 2
+
+
+@pytest.mark.parametrize('failure', ['unauthorized', 'timeout'])
+def test_registration_create_failure_never_becomes_a_conflict(failure):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if failure == 'unauthorized':
+            return httpx.Response(401)
+        raise httpx.ReadTimeout('synthetic provider timeout', request=request)
+
+    expected = 'KEYCLOAK_OPERATION_REJECTED' if failure == 'unauthorized' else 'KEYCLOAK_OUTCOME_UNKNOWN'
+    with pytest.raises(LifecycleError, match=expected):
+        exercise(handler, lambda a: a.create_account(
+            username='chosen', password='a' * 8, email='disposable@example.invalid'))
+    assert len(calls) == 1
+
+
+def test_send_verification_409_is_an_operation_failure_not_account_conflict():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(409, text='synthetic provider detail')
+
+    with pytest.raises(LifecycleError, match='KEYCLOAK_OPERATION_REJECTED'):
+        exercise(handler, lambda a: a.send_verification('test-subject'))
     assert len(calls) == 1
 
 
@@ -153,6 +251,20 @@ def test_private_exact_reconciliation(rows, outcome):
         assert dict(request.url.params) == {'username': 'chosen', 'exact': 'true', 'max': '2'}
         return httpx.Response(200, json=rows)
     assert exercise(handler, lambda a: a.find_username('chosen')) == outcome
+
+
+def test_private_email_exact_reconciliation_rejects_ambiguous_result():
+    def handler(request):
+        assert dict(request.url.params) == {
+            'email': 'chosen@example.invalid', 'exact': 'true', 'max': '2',
+        }
+        return httpx.Response(200, json=[
+            {'id': 'subject-a', 'email': 'chosen@example.invalid'},
+            {'id': 'subject-b', 'email': 'chosen@example.invalid'},
+        ])
+
+    with pytest.raises(LifecycleError, match='KEYCLOAK_RESPONSE_INVALID'):
+        exercise(handler, lambda a: a.find_account('chosen@example.invalid'))
 
 
 def test_oversized_response_fails_closed():

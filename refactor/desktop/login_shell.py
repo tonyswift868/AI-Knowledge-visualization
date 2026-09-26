@@ -1,0 +1,352 @@
+"""Lightweight native LoginGate shell; no account, network, database or WebEngine imports."""
+from __future__ import annotations
+
+from enum import Enum
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QComboBox
+
+LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
+
+class LoginGateState(str, Enum):
+    LOGIN_READY = "LOGIN_READY"
+    AUTHENTICATING = "AUTHENTICATING"
+    AUTH_FAILED = "AUTH_FAILED"
+
+
+class LoginGateWindow(QWidget):
+    capabilities_received = Signal(object)
+    first_paint_completed = Signal()
+    login_requested = Signal()
+    retry_requested = Signal()
+    background_succeeded = Signal(str, object)
+    background_failed = Signal(str, str)
+    cancel_requested = Signal()
+    closed = Signal()
+    register_requested = Signal()
+    forgot_password_requested = Signal()
+    account_selected = Signal(str)
+    account_remove_requested = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName(LOGIN_GATE_OBJECT_NAME)
+        self.setWindowTitle("登录 MentorFlow")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        # Reserve the native form viewport from first paint, including the
+        # native consent controls. Loading/form/refresh never resize the shell.
+        area = self.screen().availableGeometry()
+        available_width = max(240, area.width() - 48)
+        available_height = max(320, area.height() - 80)
+        self.resize(min(480, available_width), min(740, available_height))
+        self.setMinimumSize(min(440, available_width), min(680, available_height))
+        self.state = LoginGateState.LOGIN_READY
+        self._centered = False
+        self._first_paint_scheduled = False
+        self._login_enabled = True
+        self.account_capabilities = {}
+        self._build()
+        self.capabilities_received.connect(self.set_account_capabilities)
+        self.set_state(LoginGateState.LOGIN_READY)
+
+    def _build(self) -> None:
+        self.setStyleSheet(
+            "QWidget#mentorflowLoginGateWindow { background: #fff9fc; }"
+            "QFrame#loginBrandMark { background: #3b2b3f; border-radius: 32px; }"
+            "QLabel#loginLeaf { color: white; font-size: 34px; background: transparent; }"
+            "QLabel#loginTitle { color: #3b2b3f; font-size: 30px; font-weight: 800; }"
+            "QLabel#loginSubtitle { color: #786572; font-size: 14px; }"
+            "QLabel#loginStateTitle { color: #8d3f62; font-size: 18px; font-weight: 750; }"
+            "QLabel#loginStateDetail { color: #786572; }"
+            "QFrame#loginCard { background: #fffdfd; border: 1px solid #edc2d3; border-radius: 18px; }"
+            "QPushButton#loginPrimaryButton { min-height: 52px; color: white; background: #c95f8d; border: 0; border-radius: 12px; font-weight: 750; }"
+            "QPushButton#loginPrimaryButton:hover { background: #ae4d78; }"
+            "QPushButton#loginPrimaryButton:pressed { background: #8d3f62; }"
+            "QPushButton#loginPrimaryButton:disabled { background: #d9b7c6; color: #fff7fa; }"
+            "QPushButton#loginAccountAction { min-height: 24px; padding: 2px; border: 0; background: transparent; color: #8d3f62; }"
+            "QPushButton#loginAccountAction:hover { color: #ae4d78; text-decoration: underline; }"
+            "QPushButton#loginAccountAction:pressed { color: #7a2f52; }"
+            "QPushButton#loginAccountAction:disabled { color: #a69ba2; }"
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setSpacing(8)
+        self.brand_widgets = []
+        brand = QFrame()
+        brand.setObjectName("loginBrandMark")
+        brand.setFixedSize(64, 64)
+        brand_row = QHBoxLayout(brand)
+        brand_row.setContentsMargins(0, 0, 0, 0)
+        leaf = QLabel("🌿")
+        leaf.setObjectName("loginLeaf")
+        leaf.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_row.addWidget(leaf)
+        brand_wrap = QHBoxLayout()
+        brand_wrap.addStretch(1)
+        brand_wrap.addWidget(brand)
+        brand_wrap.addStretch(1)
+        outer.addLayout(brand_wrap)
+        self.brand_widgets.append(brand)
+        title = QLabel("MentorFlow")
+        title.setObjectName("loginTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(title)
+        self.brand_widgets.append(title)
+        subtitle = QLabel("登录并管理你的账号")
+        subtitle.setObjectName("loginSubtitle")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(subtitle)
+        self.brand_widgets.append(subtitle)
+        outer.addSpacing(4)
+        card = QFrame()
+        self.login_card = card
+        card.setObjectName("loginCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(26, 24, 26, 24)
+        card_layout.setSpacing(11)
+        card.setMinimumHeight(230)
+        self.content_layout = card_layout
+        self.auth_content = None
+        self.state_title = QLabel()
+        self.state_title.setTextFormat(Qt.TextFormat.PlainText)
+        self.state_title.setObjectName("loginStateTitle")
+        self.state_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(self.state_title)
+        self.state_detail = QLabel()
+        self.state_detail.setObjectName("loginStateDetail")
+        self.state_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.state_detail.setWordWrap(True)
+        self.state_detail.setMinimumHeight(54)
+        card_layout.addWidget(self.state_detail)
+        account_row = QHBoxLayout()
+        self.account_selector = QComboBox()
+        self.account_selector.setAccessibleName('本机账号列表')
+        self.account_selector.activated.connect(lambda _: self.account_selected.emit(self.account_selector.currentData() or ''))
+        self.add_account_button = QPushButton('添加账号')
+        self.add_account_button.clicked.connect(self.cancel_requested.emit)
+        self.remove_account_button = QPushButton('移除本机账号')
+        self.remove_account_button.setToolTip('只移除本机账号与凭据；服务器账号及学习资料保留。')
+        self.remove_account_button.clicked.connect(lambda: self.account_remove_requested.emit(self.account_selector.currentData() or ''))
+        account_row.addWidget(self.account_selector,1)
+        account_row.addWidget(self.add_account_button)
+        account_row.addWidget(self.remove_account_button)
+        card_layout.addLayout(account_row)
+        self.username_field = QLineEdit()
+        self.username_field.setObjectName('nativeUsername')
+        self.username_field.setPlaceholderText('账号')
+        self.username_field.setAccessibleName('账号')
+        self.username_field.setMaxLength(320)
+        self.password_field = QLineEdit()
+        self.password_field.setObjectName('nativePassword')
+        self.password_field.setPlaceholderText('密码')
+        self.password_field.setAccessibleName('密码')
+        self.password_field.setMaxLength(1024)
+        self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_field.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.show_password = QCheckBox('显示密码')
+        self.show_password.toggled.connect(lambda visible: self.password_field.setEchoMode(
+            QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password))
+        self.password_field.returnPressed.connect(self._activate)
+        for widget in (self.username_field, self.password_field, self.show_password):
+            card_layout.addWidget(widget)
+        for field in (self.username_field, self.password_field):
+            field.setMinimumHeight(40)
+            field.setStyleSheet('QLineEdit {padding: 4px 10px; border: 1px solid #cbb4c1; border-radius: 6px;}')
+        self.primary_button = QPushButton("登录 MentorFlow")
+        self.primary_button.setObjectName("loginPrimaryButton")
+        self.primary_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.primary_button.setAccessibleName("登录 MentorFlow")
+        self.primary_button.setDefault(True)
+        self.primary_button.clicked.connect(self._activate)
+        card_layout.addWidget(self.primary_button)
+        outer.addWidget(card, 1)
+        self.remember_box = QCheckBox("保存会话")
+        self.remember_box.setObjectName("rememberLoginCheckBox")
+        self.auto_box = QCheckBox("自动登录")
+        self.auto_box.setObjectName("autoLoginCheckBox")
+        self.auto_box.setEnabled(False)
+        self.remember_box.toggled.connect(self._remember_toggled)
+        self.remember_box.hide()
+        self.remember_password_box = QCheckBox('记住密码')
+        self.remember_password_box.setObjectName('rememberPasswordCheckBox')
+        self.remember_password_box.setToolTip('密码仅保存在此设备的 Windows 凭据管理器；30天未登录后失效，成功登录续期。')
+        outer.addWidget(self.remember_password_box)
+        outer.addWidget(self.auto_box)
+        def synchronize_consent():
+            self.remember_box.setChecked(self.remember_password_box.isChecked() or self.auto_box.isChecked())
+            self.auto_box.setEnabled(True)
+        self.remember_password_box.toggled.connect(synchronize_consent)
+        self.auto_box.toggled.connect(synchronize_consent)
+        self.auto_box.setEnabled(True)
+        self.cancel_button = QPushButton("取消并选择其他账号")
+        self.cancel_button.setObjectName("loginCancelButton")
+        self.cancel_button.setStyleSheet('min-height: 24px; padding: 3px;')
+        self.cancel_button.clicked.connect(self.cancel_requested)
+        outer.addWidget(self.cancel_button)
+        self.notice_label = QLabel()
+        self.notice_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.notice_label.setWordWrap(True)
+        self.notice_label.setObjectName("loginSessionNotice")
+        outer.addWidget(self.notice_label)
+        account_actions = QHBoxLayout()
+        self.register_button = QPushButton('注册账号')
+        self.forgot_password_button = QPushButton('忘记密码')
+        for button in (self.register_button, self.forgot_password_button):
+            button.setAccessibleName(button.text())
+            button.setObjectName('loginAccountAction')
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setEnabled(False)
+            account_actions.addWidget(button)
+        self.register_button.clicked.connect(lambda: self._account_action('register'))
+        self.forgot_password_button.clicked.connect(lambda: self._account_action('forgot_password'))
+        card_layout.insertLayout(card_layout.indexOf(self.primary_button), account_actions)
+        self.cancel_button.hide()
+
+
+
+
+    def set_account_capabilities(self, capabilities):
+        # Only explicit server capabilities enable account actions. Other values do not
+        # advertise registration or reset support for the current realm.
+        self.account_capabilities = {key: isinstance(capabilities, dict) and capabilities.get(key) is True
+                                     for key in ('register', 'forgot_password')}
+        self.register_button.setEnabled(self.account_capabilities['register'])
+        self.forgot_password_button.setEnabled(self.account_capabilities['forgot_password'])
+        self._sync_account_actions()
+        self.register_button.setToolTip('' if self.account_capabilities['register'] else '当前账号服务尚未开放注册')
+        self.forgot_password_button.setToolTip('' if self.account_capabilities['forgot_password'] else '当前账号服务暂未开放密码找回')
+
+    def _sync_account_actions(self) -> None:
+        visible = self.auth_content is None and self.state is not LoginGateState.AUTHENTICATING
+        self.register_button.setVisible(visible)
+        self.forgot_password_button.setVisible(visible)
+
+    def _account_action(self, action):
+        if self.account_capabilities.get(action) is not True:
+            return
+        (self.register_requested if action == 'register' else self.forgot_password_requested).emit()
+
+    def _remember_toggled(self, enabled: bool) -> None:
+        self.auto_box.setEnabled(enabled)
+        if not enabled:
+            self.auto_box.setChecked(False)
+
+    def set_auth_content(self, content: QWidget | None) -> None:
+        if self.auth_content is not None:
+            self.content_layout.removeWidget(self.auth_content)
+            self.auth_content.hide()
+        self.auth_content = content
+        # Keep the brand title; registration needs the extra room for its form.
+        for index, widget in enumerate(self.brand_widgets):
+            widget.setVisible(content is None or index == 1)
+        self.state_title.setVisible(content is None)
+        self.state_detail.setVisible(content is None)
+        self.primary_button.setVisible(content is None)
+        self._set_native_form_visible(content is None)
+        self._sync_account_actions()
+        self.cancel_button.setVisible(
+            content is None
+            and self.state in {LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED}
+        )
+        self.notice_label.setVisible(content is None)
+        if content is not None:
+            self.content_layout.addWidget(content, 1)
+            content.setEnabled(True)
+            content.show()
+
+    def _set_native_form_visible(self, visible: bool) -> None:
+        # The lifecycle form replaces the credential form in the same card.
+        # Disabled native controls must not consume the WebEngine form's space.
+        for widget in (self.account_selector, self.add_account_button,
+                       self.remove_account_button, self.username_field,
+                       self.password_field, self.show_password,
+                       self.remember_password_box, self.auto_box):
+            widget.setVisible(visible)
+
+
+    def closeEvent(self, event) -> None:
+        self.clear_password()
+        self.closed.emit()
+        super().closeEvent(event)
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        if not self._centered:
+            screen = self.screen()
+            if screen is not None:
+                area = screen.availableGeometry()
+                self.move(area.center() - self.rect().center())
+            self._centered = True
+            # One normal activation request on initial user launch, not a
+            # topmost flag or repeated foreground-stealing loop.
+            self.raise_()
+            self.activateWindow()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self._first_paint_scheduled:
+            self._first_paint_scheduled = True
+            # This is a Qt paint/event-loop milestone, not proof of compositor
+            # presentation or that a real credential form is interactive.
+            QTimer.singleShot(0, self.first_paint_completed.emit)
+
+    def _activate(self) -> None:
+        if not self._login_enabled:
+            return
+        if self.state is LoginGateState.AUTH_FAILED:
+            self.retry_requested.emit()
+        else:
+            self.login_requested.emit()
+
+    def clear_password(self):
+        self.password_field.clear()
+        self.show_password.setChecked(False)
+
+    def take_credentials(self):
+        username, password = self.username_field.text().strip(), self.password_field.text()
+        self.clear_password()
+        return username, password
+
+    def set_state(
+        self,
+        state: LoginGateState,
+        *,
+        detail: str = "",
+    ) -> None:
+        self.state = state
+        if state is LoginGateState.LOGIN_READY:
+            title = "登录你的账号"
+            message = detail or "输入账号和密码登录 MentorFlow。"
+            button = "登录 MentorFlow"
+            enabled = True
+        elif state is LoginGateState.AUTHENTICATING:
+            title = "正在验证身份"
+            message = detail or "请在 MentorFlow 登录页面中完成验证。"
+            button = "正在登录…"
+            enabled = False
+        else:
+            title = "暂时无法继续"
+            message = detail or "登录未完成，请检查网络后重试。"
+            button = "重试"
+            enabled = True
+        self.state_title.setText(title)
+        self.state_detail.setText(message)
+        self.primary_button.setText(button)
+        self._login_enabled = enabled
+        self.primary_button.setEnabled(enabled)
+        for widget in (self.username_field, self.password_field, self.show_password):
+            widget.setEnabled(enabled)
+        for widget in (self.remember_password_box,self.account_selector,self.add_account_button,self.remove_account_button):
+            widget.setEnabled(enabled)
+        self.remember_box.setEnabled(enabled)
+        self.auto_box.setEnabled(enabled)
+        self.cancel_button.setVisible(state in {LoginGateState.AUTHENTICATING, LoginGateState.LOGIN_READY, LoginGateState.AUTH_FAILED})
+        self._sync_account_actions()
+        if enabled:
+            self.primary_button.setFocus(Qt.FocusReason.OtherFocusReason)

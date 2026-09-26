@@ -1,0 +1,46 @@
+/* Bundled account pages. Native shell owns branding and one fixed return action. */
+.mf-native-lifecycle .login-pf-page { padding: 2px 4px 12px; }
+.mf-native-lifecycle [data-navigate="LOGIN"] { display: none !important; }
+#mf-account-lifecycle [hidden] { display: none !important; }
+#mf-account-lifecycle h2 { font-size: 24px; margin: 0 0 18px; color: var(--mf-text); }
+#mf-account-lifecycle p { overflow-wrap: anywhere; margin: 8px 0 14px; }
+#mf-account-lifecycle label { display: block; margin-bottom: 7px; }
+#mf-account-lifecycle .pf-c-form-control { width: 100%; }
+#mf-account-lifecycle .form-group { margin-bottom: 14px; }
+#mf-account-lifecycle button {
+  font: inherit; min-height: 44px; padding: 10px 14px;
+  border: 1px solid var(--mf-line); border-radius: 10px;
+  background: var(--mf-panel); color: var(--mf-text);
+  cursor: pointer; white-space: normal; overflow-wrap: anywhere;
+}
+#mf-account-lifecycle button:disabled { opacity: .6; cursor: not-allowed; }
+#mf-account-lifecycle button:not(:disabled) {
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+#mf-account-lifecycle button:not(:disabled):hover { background: #fce9f1; border-color: #c95f8d; }
+#mf-account-lifecycle button:not(:disabled):active { background: #f3cddb; }
+#mf-account-lifecycle [data-mf-password-reveal] { border-left: 0; border-radius: 0 10px 10px 0; }
+#mf-account-lifecycle .mf-primary { background: var(--mf-accent); color: white; width: 100%; }
+#mf-account-lifecycle .mf-primary:not(:disabled):hover { background: #8d3f62; box-shadow: 0 3px 8px #a94f7930; }
+#mf-account-lifecycle .mf-primary:not(:disabled):active { background: #72314e; box-shadow: inset 0 2px 4px #3b2b3f30; }
+#mf-account-lifecycle .pf-c-input-group:focus-within { outline: 2px solid var(--mf-focus); outline-offset: 2px; border-radius: 10px; }
+#mf-account-lifecycle .pf-c-input-group input:focus-visible { outline: none; }
+#mf-account-lifecycle section > button { width: 100%; margin-top: 10px; }
+#mf-account-lifecycle .mf-actions { display: flex; gap: 10px; margin-top: 10px; }
+#mf-account-lifecycle .mf-actions > button { flex: 1; min-width: 0; }
+#mf-account-lifecycle .mf-preferences { display: flex; flex-wrap: wrap; gap: 18px; margin: 18px 0; }
+#mf-account-lifecycle .mf-preferences label { display: inline-flex; align-items: center; gap: 6px; }
+#mf-account-lifecycle .mf-hint { font-size: 13px; color: #705a70; }
+#mf-account-lifecycle .mf-availability { font-size: 13px; color: #705a70; }
+#mf-account-lifecycle .mf-availability[data-state="available"] { color: #26734d; }
+#mf-account-lifecycle .mf-availability[data-state="taken"] { color: #9d2e3b; }
+#mf-account-lifecycle .mf-availability[data-state="checking"] { color: #705a70; }
+#mf-account-lifecycle .mf-availability[data-state="failed"] { color: #8a5b2b; }
+#mf-account-lifecycle .mf-error,
+#mf-account-lifecycle [data-mf-password-mismatch],
+#mf-account-lifecycle [data-mf-password-error] { color: #9d2e3b; }
+#mf-account-lifecycle .mf-error:empty { display: none; }
+#mf-account-lifecycle .mf-account-label { font-weight: 600; }
+#mf-account-lifecycle #mf-saved-accounts { display: grid; gap: 10px; }
+#mf-account-lifecycle .mf-account-choice { display: grid; gap: 6px; text-align: left; width: 100%; }
+#mf-account-lifecycle .mf-account-id { font-size: 12px; color: #705a70; }

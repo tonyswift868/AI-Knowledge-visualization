@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 from backend.app.account_identity_contract import account_id_from_hashes
 from dataclasses import dataclass
 from enum import Enum
@@ -355,12 +356,10 @@ class AccountCredentialVault:
             except CredentialStoreError as exc:
                 if exc.code != "CREDENTIAL_NOT_FOUND":
                     raise
-        try:
-            from .runtime import clear_enterprise_account_session
-
-            clear_enterprise_account_session(profile)
-        except ImportError:
-            pass
+        runtime = sys.modules.get(f"{__package__}.runtime")
+        clear_session = getattr(runtime, "clear_enterprise_account_session", None)
+        if callable(clear_session):
+            clear_session(profile)
 
 __all__ = [
     "AccountCredentialVault",

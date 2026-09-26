@@ -61,7 +61,8 @@ class KeycloakAccountAdmin:
     async def aclose(self):
         await self.http.aclose()
 
-    async def _call(self, method, path, *, payload=None, params=None, expected=204):
+    async def _call(self, method, path, *, payload=None, params=None, expected=204,
+                    conflict_code=None):
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
         raw = bytearray()
         try:
@@ -74,7 +75,12 @@ class KeycloakAccountAdmin:
                 async with self.http.stream(method, self.base + path, headers=headers,
                                             json=payload, params=params) as response:
                     if response.status_code == 409:
-                        raise LifecycleError('ACCOUNT_ALREADY_IN_USE')
+                        # A Keycloak conflict is only an account-creation
+                        # conflict when the caller explicitly opts into that
+                        # interpretation.  Other operations (especially
+                        # send-verify-email) must remain operation failures;
+                        # never turn their 409 into a duplicate account claim.
+                        raise LifecycleError(conflict_code or 'KEYCLOAK_OPERATION_REJECTED')
                     if response.status_code != expected:
                         # Never parse/echo provider errors (may contain user fields).
                         raise LifecycleError('KEYCLOAK_OPERATION_REJECTED')
@@ -112,15 +118,40 @@ class KeycloakAccountAdmin:
                    'emailVerified': False, 'requiredActions': ['VERIFY_EMAIL'],
                    'credentials': [credential]}
         try:
-            _, location = await self._call('POST', '/users', payload=payload, expected=201)
+            _, location = await self._call('POST', '/users', payload=payload, expected=201,
+                                           conflict_code='ACCOUNT_ALREADY_IN_USE')
             # Do not follow a returned Location or treat it as another authority.
             prefix = self.base + '/users/'
             if not isinstance(location, str) or not location.startswith(prefix):
                 raise LifecycleError('CREATED_ACCOUNT_RECONCILIATION_REQUIRED')
             return _identifier(location[len(prefix):])
+        except LifecycleError as exc:
+            if exc.code == 'ACCOUNT_ALREADY_IN_USE':
+                code = await self._registration_conflict(username, email)
+                raise LifecycleError(code)
+            raise
         finally:
             credential.clear()
             payload.clear()
+
+    async def _registration_conflict(self, username: str, email: str):
+        """Resolve a create conflict only after Keycloak reported HTTP 409.
+
+        These exact lookups are deliberately absent from the normal
+        registration path.  If either reconciliation call is unavailable or
+        returns an unexpected result, the conflict cause stays unknown rather
+        than inventing a username/email answer.  When both values are already
+        present, username wins deterministically; a later retry after changing
+        it can then expose the email conflict.
+        """
+        try:
+            if await self.find_username(username):
+                return 'USERNAME_ALREADY_IN_USE'
+            if await self.find_account(email):
+                return 'EMAIL_ALREADY_IN_USE'
+        except Exception:
+            return 'REGISTRATION_CONFLICT_UNRESOLVED'
+        return 'REGISTRATION_CONFLICT_UNRESOLVED'
 
     async def send_verification(self, subject: str):
         await self._call('PUT', '/users/' + _identifier(subject) + '/send-verify-email',
@@ -155,7 +186,7 @@ class KeycloakAccountAdmin:
         return value['username']
 
     async def find_username(self, username: str) -> str | None:
-        """Private reconciliation only; never return this result to anonymous UI."""
+        """Exact private lookup; public callers may expose only its boolean result."""
         if not isinstance(username, str) or not username or len(username) > 255:
             raise LifecycleError('REGISTRATION_INPUT_INVALID')
         value, _ = await self._call('GET', '/users',
@@ -176,9 +207,10 @@ class KeycloakAccountAdmin:
             raise LifecycleError('REGISTRATION_INPUT_INVALID')
         value, _ = await self._call('GET', '/users', params={'email': name, 'exact': 'true', 'max': 2}, expected=200)
         if not isinstance(value, list) or len(value) > 1:
-            return None
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
         if not value:
             return None
-        if str(value[0].get('email', '')).casefold() != name.casefold():
+        if (not isinstance(value[0], dict)
+                or str(value[0].get('email', '')).casefold() != name.casefold()):
             raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
         return _identifier(value[0].get('id'))

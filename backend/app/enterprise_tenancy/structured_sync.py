@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,6 +52,91 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True, allow_inf_nan=False)
 
 ID_PATTERN = r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$'
+_REFACTOR_KIND_BY_RECORD = {
+    'plan': 'learning_run',
+    'task': 'task',
+    'progress': 'task',
+    'turn': 'history',
+    'note': 'history',
+    'receipt': 'history',
+    'resource': 'resource',
+    'plan_revision': 'learning_run',
+    'learning_contract': 'learning_run',
+    'evidence': 'history',
+    'error': 'history',
+    'verification': 'history',
+    'tutor_checkpoint': 'learning_run',
+    'daily_mission': 'learning_run',
+    'draft_plan': 'learning_run',
+    'setting': 'setting',
+    # Account-owned tools, free-chat sessions and researched sources are
+    # durable learning history; they are not legacy product records.
+    'tool_activity': 'history',
+    'chat_session': 'history',
+    'research_source': 'history',
+}
+_REFACTOR_FIELDS = {
+    'plan': {'key', 'plan_id', 'workspace_id', 'title', 'workspace_title',
+             'status', 'source', 'resources', 'issues', 'details', 'task_ids'},
+    'task': {'plan_key', 'task'},
+    'progress': {'plan_key', 'task_id', 'payload'},
+    'turn': {'id', 'plan_key', 'task_id', 'action', 'question', 'answer',
+             'state', 'created_at'},
+    'note': {'plan_key', 'task_id', 'text', 'revision'},
+    'receipt': {'id', 'plan_key', 'task_id', 'payload', 'created_at'},
+    'resource': {'material_id', 'filename', 'media_type', 'size', 'sha256',
+                 'product_classification', 'text'},
+    'plan_revision': {'plan_key', 'plan_id', 'revision', 'status', 'snapshot', 'created_at'},
+    'learning_contract': {'plan_key', 'contract_id', 'plan_revision', 'milestone_id',
+                          'competency_ids', 'title', 'purpose', 'target_depth',
+                          'visible_objectives', 'required_evidence', 'resource_refs',
+                          'estimated_minutes', 'created_at'},
+    'evidence': {'plan_key', 'evidence_id', 'contract_id', 'objective_ids',
+                 'competency_ids', 'type', 'source', 'summary', 'independence',
+                 'evaluator_result', 'confidence', 'created_at'},
+    'error': {'plan_key', 'error_id', 'contract_id', 'evidence_id', 'competency_id',
+              'error_class', 'description', 'context', 'hint_level',
+              'resolved_in_session', 'misconception_candidate', 'created_at'},
+    'verification': {'plan_key', 'verification_id', 'contract_id', 'verdict',
+                     'objective_results', 'observed_errors', 'recommended_action',
+                     'created_at'},
+    'tutor_checkpoint': {'plan_key', 'checkpoint_id', 'plan_id', 'contract_id',
+                         'achieved_objectives', 'pending_objectives',
+                         'stable_competencies', 'attention_competencies',
+                         'active_misconception_ids', 'recent_evidence_ids',
+                         'suggested_next_step', 'summary', 'created_at'},
+    'daily_mission': {'schema', 'plan_key', 'mission_id', 'plan_revision', 'day_date', 'timezone',
+                      'status', 'task_ids', 'objectives', 'available_minutes',
+                      'used_minutes', 'remaining_minutes', 'reflowed_task_ids', 'notice',
+                      'started_at', 'updated_at', 'idempotency_key'},
+    'draft_plan': {'plan_key', 'draft_id', 'revision', 'status', 'snapshot', 'confirmed',
+                   'updated_at', 'idempotency_key'},
+    'setting': {'key', 'values'},
+    'tool_activity': {'kind', 'activity_id', 'payload'},
+    'chat_session': {'session_id', 'payload'},
+    'research_source': {'source_id', 'payload'},
+}
+_REFACTOR_FIELD_VARIANTS = {
+    # A pending verification item and a completed evaluator result share the
+    # same durable history kind.  Accept both strict shapes so a device can
+    # sync the queue before an evaluator has produced a result.
+    'verification': (
+        _REFACTOR_FIELDS['verification'],
+        {'plan_key', 'verification_id', 'contract_id', 'objective_id',
+         'priority', 'reason', 'status', 'source_error_ids', 'created_at'},
+        {'plan_key', 'verification_id', 'contract_id', 'objective_id',
+         'priority', 'reason', 'status', 'source_error_ids', 'reason_codes',
+         'source_evidence_ids', 'created_at'},
+    ),
+    'evidence': (
+        _REFACTOR_FIELDS['evidence'],
+        _REFACTOR_FIELDS['evidence'] | {'session_id', 'artifact_refs'},
+    ),
+    'note': (
+        {'plan_key', 'task_id', 'text'},
+        _REFACTOR_FIELDS['note'],
+    ),
+}
 class Plan(StrictModel):
     title: str = Field(min_length=1, max_length=300)
     resource_ids: list[str] = Field(default_factory=list, max_length=100)
@@ -69,6 +155,15 @@ class Resource(StrictModel):
     media_type: str = Field(min_length=1, max_length=120, pattern=r'^[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+$')
     sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     size_bytes: int = Field(ge=0, le=9_223_372_036_854_775_807)
+    # Refactor materials may carry a bounded text excerpt.  Original bytes
+    # stay device-local; this is only the recoverable body fragment used by a
+    # plan on another device.
+    text: str | None = Field(default=None, max_length=8_000)
+    # Refactor learning records use a namespaced envelope.  Keeping the
+    # stable material identity beside the metadata lets a new device rebuild
+    # the envelope from a server snapshot while legacy resource records keep
+    # using the same canonical fields.
+    refactor_record_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 class Write(StrictModel):
     request_id: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')
@@ -81,6 +176,147 @@ class Delete(StrictModel):
 
 def error(code, status=409):
     return EnterprisePersistenceRequestError(code, code, status=status)
+
+
+def _refactor_resource_payload(entity_id: str, payload: object) -> dict | None:
+    """Validate and project a refactor resource envelope for storage.
+
+    The refactor client deliberately sends one generic envelope for every
+    record type.  ``resource`` is the one structured-sync kind with a strict
+    Pydantic shape, so bridge it here into the canonical resource metadata
+    shape.  Raw bytes, previews and local paths never enter this projection.
+    ``None`` means this is a legacy/product resource payload and the normal
+    validation path should handle it.
+    """
+    if not isinstance(payload, dict) or payload.get("schema") != "mentorflow.refactor-sync.v1":
+        return None
+    from pydantic import ValidationError
+    if set(payload) != {"schema", "version", "record_type", "record_id", "values"}:
+        raise error("SYNC_PAYLOAD_INVALID", 422)
+    if type(payload.get("version")) is not int or payload.get("version") != 1 or payload.get("record_type") != "resource":
+        raise error("SYNC_PAYLOAD_INVALID", 422)
+    record_id = payload.get("record_id")
+    if not isinstance(record_id, str) or not record_id or not re.fullmatch(ID_PATTERN, record_id):
+        raise error("SYNC_PAYLOAD_INVALID", 422)
+    expected_entity = "refactor.v1:resource:" + hashlib.sha256(record_id.encode("utf-8")).hexdigest()
+    if entity_id != expected_entity:
+        raise error("SYNC_ENTITY_INVALID", 422)
+    values = payload.get("values")
+    resource_fields = {"material_id", "filename", "media_type", "size", "sha256",
+                       "product_classification"}
+    if not isinstance(values, dict) or set(values) not in (resource_fields, resource_fields | {"text"}) or values.get("material_id") != record_id:
+        raise error("SYNC_PAYLOAD_INVALID", 422)
+    if type(values.get("size")) is not int or values["size"] < 0:
+        raise error("SYNC_PAYLOAD_INVALID", 422)
+    canonical = {
+        "filename": values.get("filename"),
+        "media_type": values.get("media_type"),
+        "sha256": values.get("sha256"),
+        "size_bytes": values.get("size"),
+        "product_classification": values.get("product_classification"),
+        "text": values.get("text", ""),
+        "refactor_record_id": record_id,
+    }
+    try:
+        projected = Resource.model_validate(canonical).model_dump()
+    except ValidationError as exc:
+        raise error("SYNC_PAYLOAD_INVALID", 422) from exc
+    projected.pop("product_record", None)
+    return projected
+
+
+def _refactor_sync_payload(kind: str, entity_id: str, payload: object) -> dict | None:
+    """Validate the generic refactor envelope before storing it in the ledger.
+
+    The structured-sync endpoint also serves older product projections.  New
+    learning records deliberately use a namespaced generic envelope so their
+    local schemas do not need to masquerade as the legacy ``Plan``/``Task``
+    models.  Resource metadata is projected to the existing canonical shape;
+    the other record types remain envelopes so the desktop adapter can rebuild
+    its exact local records on another device.
+    """
+    if not isinstance(payload, dict) or payload.get('schema') != 'mentorflow.refactor-sync.v1':
+        return None
+    if set(payload) != {'schema', 'version', 'record_type', 'record_id', 'values'}:
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    if type(payload.get('version')) is not int or payload['version'] != 1:
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    record_type = payload.get('record_type')
+    if record_type not in _REFACTOR_KIND_BY_RECORD or _REFACTOR_KIND_BY_RECORD[record_type] != kind:
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    record_id = payload.get('record_id')
+    if (not isinstance(record_id, str) or not record_id or len(record_id) > 512
+            or any(ord(char) < 32 for char in record_id)):
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    expected_entity = 'refactor.v1:' + record_type + ':' + hashlib.sha256(record_id.encode('utf-8')).hexdigest()
+    if entity_id != expected_entity:
+        raise error('SYNC_ENTITY_INVALID', 422)
+    values = payload.get('values')
+    if not isinstance(values, dict):
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    # Oversized account history is stored as a separately authenticated blob;
+    # the CAS entity keeps only this bounded manifest.
+    if set(values) == {'blob_ref', 'record_type', 'record_id', 'summary'}:
+        ref = values.get('blob_ref')
+        expected_manifest_entity = ('refactor.v1:' + record_type + ':'
+                                    + hashlib.sha256(str(values.get('record_id', '')).encode('utf-8')).hexdigest())
+        if (values.get('record_type') != record_type
+                or not isinstance(values.get('record_id'), str)
+                or expected_manifest_entity != entity_id
+                or not isinstance(values.get('summary'), dict)
+                or not isinstance(ref, dict)
+                or ref.get('schema') != 'mentorflow.history-blob.v1'
+                or not isinstance(ref.get('sha256'), str)
+                or not re.fullmatch(r'[a-f0-9]{64}', ref['sha256'])
+                or type(ref.get('size')) is not int or ref['size'] < 0
+                or ref['size'] > 8 * 1024 * 1024
+                or ref.get('content_type') != 'application/json'):
+            raise error('SYNC_PAYLOAD_INVALID', 422)
+        return {'schema': payload['schema'], 'version': payload['version'],
+                'record_type': record_type, 'record_id': values['record_id'],
+                'values': values}
+    allowed_fields = _REFACTOR_FIELDS[record_type]
+    if record_type == 'resource':
+        allowed = (allowed_fields, allowed_fields | {'text'})
+        if set(values) not in allowed:
+            raise error('SYNC_PAYLOAD_INVALID', 422)
+    elif record_type in _REFACTOR_FIELD_VARIANTS:
+        if set(values) not in _REFACTOR_FIELD_VARIANTS[record_type]:
+            raise error('SYNC_PAYLOAD_INVALID', 422)
+        if record_type == 'note' and set(values) == {'plan_key', 'task_id', 'text'}:
+            values = dict(values, revision=1)
+    elif set(values) != allowed_fields:
+        raise error('SYNC_PAYLOAD_INVALID', 422)
+    if record_type == 'resource':
+        return _refactor_resource_payload(entity_id, payload)
+    if record_type == 'draft_plan':
+        if (not isinstance(values.get('revision'), int) or values['revision'] < 1
+                or values.get('status') not in {'NEEDS_INPUT', 'PLAN_READY'}
+                or not isinstance(values.get('snapshot'), dict)
+                or type(values.get('confirmed')) is not bool):
+            raise error('SYNC_PAYLOAD_INVALID', 422)
+        confirmation = values['snapshot'].get('draft_confirmation')
+        if values['confirmed']:
+            required = {'schema', 'draft_id', 'revision', 'confirmed_at', 'confirmed_by', 'idempotency_key'}
+            if (not isinstance(confirmation, dict) or set(confirmation) != required
+                    or confirmation.get('schema') != 'mentorflow.draft-confirmation.v1'
+                    or confirmation.get('draft_id') != values.get('draft_id')
+                    or confirmation.get('revision') != values.get('revision')):
+                raise error('SYNC_PAYLOAD_INVALID', 422)
+    try:
+        encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False,
+                             sort_keys=True, separators=(',', ':')).encode('utf-8')
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise error('SYNC_PAYLOAD_INVALID', 422) from exc
+    if len(encoded) >= 256 * 1024:
+        raise error('SYNC_PAYLOAD_TOO_LARGE', 422)
+    return {
+        'schema': payload['schema'],
+        'version': payload['version'],
+        'record_type': record_type,
+        'record_id': record_id,
+        'values': values,
+    }
 
 def scope_of(context):
     return dict(issuer=context.actor.issuer, subject_id=context.actor.subject_id,
@@ -106,7 +342,6 @@ class StructuredSyncService:
                 c.execute(text('SET LOCAL synchronous_commit = on'))
 
     def write(self, actor, tenant, kind, entity_id, body, *, deleting=False):
-        import re
         from pydantic import ValidationError
         if kind not in SYNC_KINDS or not re.fullmatch(ID_PATTERN, entity_id):
             raise error('SYNC_ENTITY_INVALID', 422)
@@ -114,21 +349,29 @@ class StructuredSyncService:
         if not deleting:
             try:
                 _reject_secret(body.payload)
-                validate_product_record(kind, entity_id, body.payload)
-                if kind == 'progress' and body.payload.get('plan_id') is None and not body.payload.get('product_record'):
-                    raise error('SYNC_PAYLOAD_INVALID', 422)
-                model = {'plan': Plan, 'progress': Progress, 'resource': Resource}.get(kind)
-                payload = (model.model_validate(body.payload).model_dump() if model else SYNC_ITEM_REGISTRY[kind].project(body.payload))
-                if payload.get('product_record') is None:
-                    payload.pop('product_record', None)
+                refactor_payload = _refactor_sync_payload(kind, entity_id, body.payload)
+                if refactor_payload is not None:
+                    payload = refactor_payload
+                else:
+                    validate_product_record(kind, entity_id, body.payload)
+                    if kind == 'progress' and body.payload.get('plan_id') is None and not body.payload.get('product_record'):
+                        raise error('SYNC_PAYLOAD_INVALID', 422)
+                    model = {'plan': Plan, 'progress': Progress, 'resource': Resource}.get(kind)
+                    payload = (model.model_validate(body.payload).model_dump() if model else SYNC_ITEM_REGISTRY[kind].project(body.payload))
+                    if payload.get('product_record') is None:
+                        payload.pop('product_record', None)
+                    if payload.get('refactor_record_id') is None:
+                        payload.pop('refactor_record_id', None)
+                    if kind == 'resource' and payload.get('text') is None:
+                        payload.pop('text', None)
             except ProductSyncRejected as exc:
                 raise error(str(exc), 422) from exc
             except ValidationError as exc:
                 raise error('SYNC_PAYLOAD_INVALID', 422) from exc
             # Preserve pre-contract request fingerprints when the optional field is absent.
-            if kind == 'resource' and 'product_classification' not in body.payload:
+            if kind == 'resource' and refactor_payload is None and 'product_classification' not in body.payload:
                 payload.pop('product_classification', None)
-            if kind == 'plan' and (len(set(payload['resource_ids'])) != len(payload['resource_ids']) or
+            if kind == 'plan' and refactor_payload is None and (len(set(payload['resource_ids'])) != len(payload['resource_ids']) or
                     any(not re.fullmatch(ID_PATTERN, r) for r in payload['resource_ids'])):
                 raise error('SYNC_RESOURCE_IDS_INVALID', 422)
         context = TenantTransactionContext(tenant=tenant, actor=actor)

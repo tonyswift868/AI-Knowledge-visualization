@@ -323,6 +323,8 @@ def main() -> int:
                 "alembic",
                 "-c",
                 "alembic.ini",
+                "-x",
+                "closure_issuer=" + os.environ.get("MENTORFLOW_CLOSURE_ISSUER", ""),
                 "upgrade",
                 ALEMBIC_UPGRADE_TARGET,
             ],

@@ -23,7 +23,11 @@ x-account-core-environment: &account-core-environment
   MENTORFLOW_KEYCLOAK_AUDIENCE: mentorflow-api
   MENTORFLOW_IDENTITY_ALLOWED_ORIGINS: "${MENTORFLOW_PUBLIC_ORIGIN:?MENTORFLOW_PUBLIC_ORIGIN is required}"
   MENTORFLOW_OTEL_ENABLED: "false"
-  MENTORFLOW_OBJECT_STORE_PROFILE: OPTIONAL_DISABLED
+  # Account-owned originals are durable data; health must not classify this
+  # configured store as disabled. Keep the old variable as a compatibility alias.
+  MENTORFLOW_OBJECT_STORE_PROFILE: REQUIRED
+  MENTORFLOW_OBJECT_STORAGE_ROOT: /var/lib/mentorflow/object-storage
+  MENTORFLOW_OBJECT_STORE_ROOT: /var/lib/mentorflow/object-storage
 
 services:
   runtime-secrets-ready:
@@ -185,6 +189,8 @@ services:
     user: "10001:10001"
     working_dir: /app/backend
     command: [python, /opt/mentorflow/rp05/runtime-entrypoint.py, migrate]
+    environment:
+      MENTORFLOW_CLOSURE_ISSUER: "${MENTORFLOW_CLOSURE_ISSUER:-}"
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
       - migrate_secrets:/run/secrets:ro
@@ -256,8 +262,10 @@ services:
       <<: *account-core-environment
       SSL_CERT_FILE: /run/mentorflow/tls/tls.crt
       MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS: "${MENTORFLOW_APPLICATION_SUPER_ADMIN_ACCOUNT_IDS:-[]}"
+      MENTORFLOW_OBJECT_STORAGE_ROOT: /var/lib/mentorflow/object-storage
     volumes:
       - ./runtime-entrypoint.py:/opt/mentorflow/rp05/runtime-entrypoint.py:ro
+      - mentorflow-object-storage:/var/lib/mentorflow/object-storage
       - backend_tls:/run/mentorflow/tls:ro
       - backend_secrets:/run/secrets:ro
     extra_hosts:
@@ -342,6 +350,7 @@ secrets:
   tls_private_key: {file: "${MENTORFLOW_SECRETS_DIR:?MENTORFLOW_SECRETS_DIR is required}/tls.key"}
 
 volumes:
+  mentorflow-object-storage:
   backend_tls: {}
   postgres_secrets: {}
   postgres_provision_secrets: {}

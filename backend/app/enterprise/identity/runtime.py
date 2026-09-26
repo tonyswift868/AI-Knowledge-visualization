@@ -177,16 +177,21 @@ class EnterpriseIdentityRuntime:
         from .native import PUBLIC_PATHS
         from .reset_completion import PUBLIC_PATHS as RESET_PATHS
         from .lifecycle_api import PUBLIC_PATHS as LIFECYCLE_PATHS
-        return path in _PUBLIC_PATHS or path in PUBLIC_PATHS or path in RESET_PATHS or path in LIFECYCLE_PATHS
+        from refactor.server.closure_api import is_closure_path
+        return is_closure_path(path) or path in _PUBLIC_PATHS or path in PUBLIC_PATHS or path in RESET_PATHS or path in LIFECYCLE_PATHS
 
     async def authenticate_access_token(self, token: str, request: Request):
         from .native import ACCESS_PREFIX, expired
         if token.startswith(ACCESS_PREFIX):
             if request.url.scheme != 'https' or self.native_sessions is None:
                 raise expired()
-            return self.native_sessions.authenticate(token)
-        client, _directory = self._require_enterprise()
-        return await client.authenticate_access_token(token)
+            principal = self.native_sessions.authenticate(token)
+        else:
+            client, _directory = self._require_enterprise()
+            principal = await client.authenticate_access_token(token)
+        from refactor.server.closure_api import assert_principal_open
+        await assert_principal_open(self, principal)
+        return principal
 
     def config_payload(self) -> dict[str, object]:
         if not self.enterprise_enabled:
@@ -281,6 +286,8 @@ class EnterpriseIdentityRuntime:
         *,
         request_id: str,
     ) -> RequestIdentityContext:
+        from refactor.server.closure_api import assert_principal_open
+        await assert_principal_open(self, session.principal)
         _client, directory = self._require_enterprise()
         return await asyncio.to_thread(
             enterprise_request_context,
@@ -359,6 +366,8 @@ class EnterpriseIdentityRuntime:
                 "Enterprise session is invalid",
             )
         session = client.store.get_public(cookie_session_id)
+        from refactor.server.closure_api import assert_principal_open
+        await assert_principal_open(self, session.principal)
         supplied_organization = str(
             request.headers.get(_ORGANIZATION_HEADER) or ""
         ).strip()
@@ -521,6 +530,8 @@ def build_enterprise_identity_runtime(
     )
     from .lifecycle_api import from_env as lifecycle_from_env
     runtime.lifecycle = lifecycle_from_env(env)
+    from refactor.server.closure_api import install_store
+    install_store(runtime, engine, config.keycloak.canonical_identity_issuer)
     return runtime
 
 
@@ -811,6 +822,8 @@ def install_enterprise_identity(
     app.include_router(reset_router)
     from .lifecycle_api import router as lifecycle_router
     app.include_router(lifecycle_router)
+    from refactor.server.closure_api import router as closure_router
+    app.include_router(closure_router)
     # Imported lazily to keep the identity runtime independent from product
     # modules while installing the exact tenant-safe facade alongside it.
     from app.enterprise.product_bridge import install_enterprise_product_bridge

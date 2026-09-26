@@ -58,7 +58,7 @@ LABEL org.opencontainers.image.vendor="MentorFlow" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.source="https://github.com/tonyswift868/AI-Knowledge-visualization"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/backend \
+    PYTHONPATH=/app/backend:/app \
     MENTORFLOW_DB=/var/lib/mentorflow/app.db \
     MENTORFLOW_ORM_DB=/var/lib/mentorflow/mentorflow_v2.db \
     MENTORFLOW_ALLOWED_ORIGINS=https://invalid.example \
@@ -72,6 +72,8 @@ COPY --from=backend-wheels /wheels /wheels
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN python -m pip install --no-index --find-links=/wheels -r /app/backend/requirements.txt && rm -rf /wheels
 COPY --chown=mentorflow:mentorflow backend/ /app/backend/
+COPY --chown=mentorflow:mentorflow refactor/__init__.py /app/refactor/__init__.py
+COPY --chown=mentorflow:mentorflow refactor/server/ /app/refactor/server/
 COPY --chown=mentorflow:mentorflow content/ /app/content/
 COPY --chown=mentorflow:mentorflow story_packs/ /app/story_packs/
 USER 10001:10001

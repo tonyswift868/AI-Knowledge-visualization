@@ -1,4 +1,4 @@
-"""Read-only structural gate for the recovered, migration-owned 0036 ledger.
+"""Read-only structural gate for the 0036 ledger with exact 0041 closure access.
 
 This contract follows the retained staging migration, never creates or repairs
 tables, and must be checked in addition to the exact known Alembic head.
@@ -30,6 +30,37 @@ def _expression(value: str | None) -> str:
     return "".join(part if index % 2 else re.sub(
         r'[\s()"]', "", re.sub(r"::(?:character varying|text)(?:\[\])?", "", part)
     ) for index, part in enumerate(parts))
+
+
+def _closure_policy_matches(policy, command: str) -> bool:
+    return (policy["cmd"] == command and policy["permissive"] == "PERMISSIVE"
+            and list(policy["roles"]) == ["mentorflow_closure"]
+            and _expression(policy["qual"]) == "true" and policy["with_check"] is None)
+
+
+def _closure_access_matches(connection: Connection, table: str) -> bool:
+    """0041's NOLOGIN owner has SELECT/DELETE only, without delegation."""
+    role_safe = connection.execute(text("""
+        SELECT NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls
+          AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication AND NOT rolinherit
+        FROM pg_roles WHERE rolname='mentorflow_closure'
+    """)).scalar_one_or_none()
+    if role_safe is not True or connection.execute(text(
+        "SELECT pg_has_role('mentorflow_app','mentorflow_closure','MEMBER')"
+    )).scalar_one():
+        return False
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"):
+        allowed = connection.execute(text(
+            "SELECT has_table_privilege('mentorflow_closure', :table, :privilege)"
+        ), {"table": "public." + table, "privilege": privilege}).scalar_one()
+        if allowed != (privilege in {"SELECT", "DELETE"}):
+            return False
+    # Column grants can add UPDATE/INSERT without has_table_privilege noticing.
+    # No canonical migration grants column privileges on these four tables.
+    return not connection.execute(text("""
+        SELECT EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) p
+          WHERE a.attrelid=to_regclass(:table) AND a.attnum>0 AND NOT a.attisdropped)
+    """), {"table": "public." + table}).scalar_one()
 
 
 def require_account_import_ledger_schema(connection: Connection) -> None:
@@ -87,8 +118,12 @@ def require_account_import_ledger_schema(connection: Connection) -> None:
         SELECT policyname, permissive, roles, cmd, qual, with_check FROM pg_policies
         WHERE schemaname='public' AND tablename='account_import_ledger'
     """)).mappings().all()
-    require(len(policies) == 1)
-    policy = policies[0]
+    by_name = {p["policyname"]: p for p in policies}
+    require(len(policies) == 3 and set(by_name) == {
+        "tenant_isolation_account_import_ledger", "account_closure_read", "account_closure_delete"})
+    for name, command in (("account_closure_read", "SELECT"), ("account_closure_delete", "DELETE")):
+        require(_closure_policy_matches(by_name[name], command))
+    policy = by_name["tenant_isolation_account_import_ledger"]
     predicate = _expression(rls_predicate_for(TABLE))
     require(policy["policyname"] == "tenant_isolation_account_import_ledger"
             and policy["permissive"] == "PERMISSIVE" and list(policy["roles"]) == ["public"]
@@ -100,9 +135,10 @@ def require_account_import_ledger_schema(connection: Connection) -> None:
             "SELECT has_table_privilege(:role, 'public.account_import_ledger', :privilege)"
         ), {"role": APPLICATION_DATABASE_ROLE, "privilege": privilege}).scalar_one()
         require(allowed == (privilege in {"SELECT", "INSERT", "UPDATE"}))
+    require(_closure_access_matches(connection, TABLE))
     require(not connection.execute(text("""
         SELECT EXISTS (SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
           WHERE c.oid='public.account_import_ledger'::regclass AND
-            (a.grantee=0 OR pg_get_userbyid(a.grantee) NOT IN (:role, 'mentorflow_migrator')
-             OR (pg_get_userbyid(a.grantee)=:role AND a.is_grantable)))
+            (a.grantee=0 OR pg_get_userbyid(a.grantee) NOT IN (:role, 'mentorflow_migrator', 'mentorflow_closure')
+             OR (pg_get_userbyid(a.grantee) IN (:role, 'mentorflow_closure') AND a.is_grantable)))
     """), {"role": APPLICATION_DATABASE_ROLE}).scalar_one())

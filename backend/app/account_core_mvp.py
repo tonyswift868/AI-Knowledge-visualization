@@ -38,6 +38,7 @@ from app.enterprise_tenancy.document_import import EnterpriseDocumentImportServi
 from app.enterprise_tenancy.workspaces import EnterpriseWorkspaceService
 from app.enterprise.structured_sync_api import router as structured_sync_router
 from app.enterprise_tenancy.structured_sync import StructuredSyncService
+from app.enterprise_tenancy.account_object_storage import AccountObjectStorage
 from app.enterprise_tenancy.context import PostgresTenantTransactionManager
 from app.enterprise.identity.admin_overview import from_env as overview_from_env
 from app.observability.health import (
@@ -76,6 +77,8 @@ async def lifespan(app: FastAPI):
         orm_runtime.verify_enterprise_runtime_schema()
         app.state.enterprise_workspace_service = EnterpriseWorkspaceService(engine)
         app.state.structured_sync_service = StructuredSyncService(PostgresTenantTransactionManager(engine))
+        object_root = os.environ.get("MENTORFLOW_OBJECT_STORAGE_ROOT", "/var/lib/mentorflow/object-storage")
+        app.state.account_object_storage = AccountObjectStorage(object_root)
         app.state.account_workspace_bootstrap = AccountWorkspaceBootstrap(
             engine, issuer=config.keycloak.canonical_identity_issuer
         )

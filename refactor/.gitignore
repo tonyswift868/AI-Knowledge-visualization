@@ -1,0 +1,18 @@
+# The refactor tree is the product runtime area.  Keep disposable validation
+# sources and generated artifacts in E:\Codex\Temp\MentorFlowTests instead.
+tests/
+**/tests/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+*.pyc
+*.pyo
+.coverage
+coverage.*
+pytest-*.xml
+junit*.xml
+test-results/
+**/test-results/

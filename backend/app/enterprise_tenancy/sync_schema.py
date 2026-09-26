@@ -1,6 +1,6 @@
-"""Read-only admission of sync storage through the accepted 0040 policies."""
+"""Read-only admission of sync storage through the exact 0040/0041 policies."""
 from sqlalchemy import inspect, text
-from .import_ledger_schema import _expression
+from .import_ledger_schema import _expression, _closure_policy_matches, _closure_access_matches
 from .schema import rls_predicate_for
 
 
@@ -44,12 +44,14 @@ def require_structured_sync_schema(connection):
         policies = connection.execute(text('''SELECT policyname,permissive,roles,cmd,qual,with_check
             FROM pg_policies WHERE schemaname='public' AND tablename=:table'''), {'table': table}).mappings().all()
         tenant_policy = 'tenant_isolation_'+table
-        expected_names = {tenant_policy}
+        expected_names = {tenant_policy, 'account_closure_read', 'account_closure_delete'}
         if table == 'rehydration_manifests':
             expected_names.add('admin_overview_read')
         require(len(policies) == len(expected_names)
                 and {p['policyname'] for p in policies} == expected_names)
         by_name = {p['policyname']: p for p in policies}
+        for name, command in (('account_closure_read', 'SELECT'), ('account_closure_delete', 'DELETE')):
+            require(_closure_policy_matches(by_name[name], command))
         p = by_name[tenant_policy]
         require(p['policyname'] == 'tenant_isolation_'+table and p['cmd'] == 'ALL'
                 and p['permissive'] == 'PERMISSIVE' and list(p['roles']) == ['public']
@@ -67,9 +69,10 @@ def require_structured_sync_schema(connection):
             allowed = connection.execute(text("SELECT has_table_privilege('mentorflow_app', :table, :privilege)"),
                 dict(table='public.'+table, privilege=privilege)).scalar_one()
             require(allowed == (privilege in ('SELECT', 'INSERT', 'UPDATE')))
+        require(_closure_access_matches(connection, table))
         require(not connection.execute(text('''SELECT EXISTS (
             SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
             WHERE c.oid=to_regclass(:table) AND (a.grantee=0 OR
-            pg_get_userbyid(a.grantee) NOT IN ('mentorflow_app','mentorflow_migrator') OR
-            (pg_get_userbyid(a.grantee)='mentorflow_app' AND a.is_grantable)))'''),
+            pg_get_userbyid(a.grantee) NOT IN ('mentorflow_app','mentorflow_migrator','mentorflow_closure') OR
+            (pg_get_userbyid(a.grantee) IN ('mentorflow_app','mentorflow_closure') AND a.is_grantable)))'''),
             {'table': 'public.'+table}).scalar_one())

@@ -188,14 +188,16 @@ class Bridge(QObject):
 
 class AccountLifecyclePane(QWidget):
     finished=Signal(bool)
-    def __init__(self,intent,parent=None):
+    def __init__(self,intent,parent=None,*,shell_runtime=None):
         super().__init__(parent)
         if intent not in ('register','forgot_password'):raise ValueError('Invalid account action')
-        root=assets(); assert (root/'lifecycle.html').is_file(),'Lifecycle UI has not been built'
+        root=shell_runtime.lifecycle_root if shell_runtime is not None else assets()
+        assert (root/'lifecycle.html').is_file(),'Lifecycle UI has not been built'
         layout=QVBoxLayout(self); self.view=QWebEngineView(self); layout.addWidget(self.view)
         self.profile=QWebEngineProfile(self)
         self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
+        if shell_runtime is not None: shell_runtime.configure_web_profile(self.profile)
         self.interceptor=LocalOnly(root,self.profile);self.profile.setUrlRequestInterceptor(self.interceptor)
         self.page=LocalPage(self.profile,self.view);self.view.setPage(self.page)
         self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,False)

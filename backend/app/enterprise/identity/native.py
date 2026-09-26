@@ -184,6 +184,7 @@ class NativeSessions:
         self.refreshes = {}
         self.attempts = {}
         self.revocation_epoch = 0
+        self.pending_logins = {}
 
     @staticmethod
     def digest(value):
@@ -245,20 +246,27 @@ class NativeSessions:
 
     async def login(self, username, password, peer):
         self.throttle(username, peer)
+        ticket = object()
         with self.lock:
-            epoch = self.revocation_epoch
-        principal = await self.verifier.authenticate(username, password)
-        self._principal(principal)
-        with self.lock:
-            if epoch != self.revocation_epoch:
-                raise expired()
-            self._prune()
-            if len(self.families) >= self.capacity:
+            if len(self.pending_logins) >= self.capacity:
                 raise IdentityError('NATIVE_SESSION_CAPACITY', '账号服务暂不可用。', status=503)
-            fid = secrets.token_hex(32)
-            row = _Family(principal, self.clock() + 8 * 3600)
-            self.families[fid] = row
-            return self._rotate(fid, row)
+            revoked_subjects = self.pending_logins[ticket] = set()
+        try:
+            principal = await self.verifier.authenticate(username, password)
+            self._principal(principal)
+            with self.lock:
+                if principal.subject in revoked_subjects:
+                    raise expired()
+                self._prune()
+                if len(self.families) >= self.capacity:
+                    raise IdentityError('NATIVE_SESSION_CAPACITY', '账号服务暂不可用。', status=503)
+                fid = secrets.token_hex(32)
+                row = _Family(principal, self.clock() + 8 * 3600)
+                self.families[fid] = row
+                return self._rotate(fid, row)
+        finally:
+            with self.lock:
+                self.pending_logins.pop(ticket, None)
 
     def authenticate(self, token):
         if not token.startswith(ACCESS_PREFIX) or len(token) > 128:
@@ -313,6 +321,8 @@ class NativeSessions:
         """A committed credential reset also fences in-flight pre-reset logins."""
         with self.lock:
             self.revocation_epoch += 1
+            for revoked_subjects in self.pending_logins.values():
+                revoked_subjects.add(subject)
             for fid, row in list(self.families.items()):
                 if row.principal.subject == subject:
                     self._drop(fid)
@@ -373,6 +383,9 @@ async def _operation(request, operation):
             else:
                 service.logout(body['refresh_token'])
                 result = {'logged_out': True}
+            if operation != 'logout':
+                from refactor.server.closure_api import guard_native_result
+                await guard_native_result(request.app.state.enterprise_identity_runtime, result)
         finally:
             body.clear()
         return JSONResponse(result, headers={'Cache-Control': 'no-store', 'Pragma': 'no-cache'})
