@@ -14,8 +14,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | `399e9c4`（2026-09-27，main，含第一批全部成果与 services 包骨架）；第一批用的是 `6cca892` |
-| 说明 | 第二批（MF-01～MF-07 各两项）从 `399e9c4` 开工；原拟的 T08–T14 未发出，已由第二批取代 |
+| 基线提交 | `2014a74`（2026-09-27，main，含第二批全部成果）；第二批用 `399e9c4`，第一批用 `6cca892` |
+| 说明 | 第三批只派真正需要且不依赖前端的 3 项（MF-07、MF-01、MF-03）；MF-02/04/05 剩余工作是接入界面与编排（架构师做），MF-06 等用户选定声音 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -50,6 +50,9 @@
 | 2-MF05 | MF-05 tools | 语音术语纠正 + 每日刷新时钟与提醒 | VOICE-01、SYS-04、TEACH-05 | 399e9c4 | 已合入 89711dd |
 | 2-MF06 | MF-06 classroom | 通用下载器与朗读底模下载 + 嘴型数据 | VOICE-01、DATA-02 | 399e9c4 | 已合入 e87f02b |
 | 2-MF07 | MF-07 server | 既有失败测试与部署包 + 同步客户端（调用约定 1）与挤下线检测 | ARCH-05、ACC-01 | 399e9c4 | 已合入 d6a3277 |
+| 3-MF07 | MF-07 server | 服务器增量同步（含迁移）+ 客户端同步调度服务 | ARCH-05、DATA-02 | 2014a74 | 已派发 |
+| 3-MF01 | MF-01 library | 资料入库与重新关联 + 计划导出（注销前保存） | DATA-02、ACC-02、PLAN-09 | 2014a74 | 已派发 |
+| 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -966,4 +969,108 @@ B. 新数据同步客户端 + 挤下线检测
 回执
 【MF-07｜server｜第二批｜完成/部分完成/受阻】
 基线：399e9c4 ／ 提交：office/server 上的编号 ／ A：根因与处理、部署包清单 ／ B：改动 ／ 验证：命令与结果 ／ 未完成
+~~~
+
+## 第三批任务详情
+
+### [3-MF07] server｜服务器增量同步 + 客户端同步调度服务
+
+~~~text
+【MentorFlow 第三批｜MF-07（工位 server）｜服务器增量同步 + 客户端同步调度服务】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 2014a74          # 最新集成基线，含第二批全部成果
+后端测试用 D:\MentorFlow-office\server\.venv-backend；客户端测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-05]（含“已知缺口”）、[ACC-01]、[DATA-02]、[ARCH-03]。
+主线已有：你的 sync_course.py、session_guard.py、MF-U09 部署包；MF-03 的真实 CourseStore（refactor/learning/course/store.py，实现约定 1 的 RecordStore）；架构师新增的双设备联调测试 tests/refactor/course_integration/test_store_sync_roundtrip.py（用你的模拟服务器 + 两个真实 CourseStore），你的改动必须让它继续通过并扩展它。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
+
+A. 服务器增量拉取
+  - 现状：structured_sync_entities 只有每条记录的 revision，没有全局变化顺序，客户端每轮只能拉完整快照；课程资料正文、对话、判定事件增多后会越来越慢。
+  - 做：给同步表加一个全局单调的变化序号（写入/删除时更新；建议数据库序列），新增只读接口，例如 GET /api/enterprise/sync/v1/changes?since=<序号>&kind=learning_run&limit=<上限>，按序号返回该账号该空间的变化（含删除），并返回下一个游标；保持归属/空间隔离、分页上限、与现有快照接口完全兼容（旧客户端不受影响）。
+  - 这需要数据库迁移（在现有 0041 之后新增一个）：迁移必须对现有数据安全（为已有行补序号）、可重复检查、给出回滚方案；在隔离 PostgreSQL 里实测迁移前后（上次 MF-D04 的做法：隔离实例、真实应用角色与 RLS）。如你判断有不需迁移且同样可靠的方案，先在回执里论证。
+  - 更新 MF-U09 部署包：把新迁移与改动文件加入，同样默认只打印命令；写清部署顺序（先迁移后切镜像）和回滚。
+B. 客户端：切换到增量拉取 + 同步调度服务
+  - 改 course/sync_course.py：服务器支持增量接口时用增量（游标持久化在 RecordStore 的 sync_cursor），不支持时（旧服务器 404）回退到现有全量快照。
+  - 新建 refactor/learning/services/course_sync_service.py：CourseSyncService(QObject)：在后台线程跑 CourseSync；登录后立即一轮、之后约每 5 分钟一轮、本机有改动后 3–5 秒内合并触发一轮；提供 sync_now()；信号 status_changed（同步中/已同步时间/失败可重试/需要重新登录/账号在另一台设备登录）；收到 NATIVE_SESSION_SUPERSEDED 时停止并交给 SessionGuard 的 note_error；关闭时取消进行中的一轮、不丢数据。
+
+验收
+  后端：新迁移在隔离 PostgreSQL 上升级/检查/回滚实测；changes 接口的分页、游标、删除、跨账号隔离、与快照一致性测试；以及第二批跑过的全部后端测试。
+  客户端：D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/sync_course tests/refactor/session_guard tests/refactor/course_integration tests/refactor/course_sync_service -q -p no:cacheprovider；联调测试扩展为“增量 + 回退全量”两种服务器都通过；调度服务用假时钟测定时、合并触发、失败退避、挤下线停止、关闭取消。
+
+回执
+【MF-07｜server｜第三批｜完成/部分完成/受阻】
+基线：2014a74 ／ 提交：office/server 上的编号 ／ A：方案、迁移与实测、部署包更新 ／ B：改动 ／ 验证：命令与结果 ／ 未完成
+~~~
+
+### [3-MF01] library｜资料入库与重新关联 + 计划导出
+
+~~~text
+【MentorFlow 第三批｜MF-01（工位 library）｜资料入库与重新关联 + 计划导出】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 2014a74          # 最新集成基线，含第二批全部成果
+Python：D:\MentorFlow\.venv\Scripts\python.exe（不装新包）。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
+禁止 push；禁止改主目录。
+先读：AGENTS.md；CURRENT_STATE.md 的 [DATA-02]（资料存储与换设备）、[PLAN-09]、[PLAN-10]、[ACC-02]、[ARCH-02]（“账号注销导出”一条）、[ARCH-03]；主线上的 refactor/learning/course/store.py（MF-03 的数据库）与 extract.py、ocr.py（你的）。
+范围：预期范围见下；确有必要可改相邻文件（包括给 store.py 加少量需要的读写方法），回执逐个说明原因。
+
+A. 资料入库与重新关联：新建 refactor/learning/course/materials.py
+  - import_file(store, plan_id, path, *, ocr=False, progress=None, cancel=None)：计算 SHA256 → 原件存进 store 的 files/<sha256>（已存在不重复存）→ 用 extract 提取（ocr 开关透传）→ 作为一条 source（kind='file'，文件名、大小、sha256、标题、默认采用）连同全部正文块写入 store。同一计划重复导入同一文件时不重复建资料。
+  - 失败分类沿用 ExtractError 的中文提示；扫描件未开 OCR 时返回清楚的提示“可开启文字识别”。
+  - open_original(store, source)：本机有原件就返回路径；没有（例如在另一台电脑导入的）返回“原文件在另一台电脑上”。
+  - relink_original(store, plan_id, source_id, path)：用户重新选择一份文件，SHA256 必须与记录一致才关联（不一致给出明确提示，不覆盖记录）。
+  - 网页资料：import_verified_source(store, plan_id, verified)（接 MF-04 的 VerifiedSource）写入 source 与正文块（kind='url'，不存原件）。
+B. 计划导出（保证账号注销前“保存数据”在旧页面删除后仍可用）：新建 refactor/learning/course/export.py
+  - export_plan(store, plan_id, target_path, *, include_originals=True, progress=None, cancel=None) -> ExportResult：生成一个 ZIP：plan.json（计划、阶段、模块、知识点、出处）、progress.json（判定事件、时长记录、由事件算出的掌握情况和账本状态）、report.json（有则带上）、sources/（每份资料的正文文本，按章节与页码排版）、originals/（本机有的原件；缺失的在清单里列出）、manifest.json（每个文件的 SHA256）、index.html（离线可打开的简单浏览页，不依赖网络和外部脚本）。
+  - ExportResult 状态与旧接口一致：SUCCEEDED、CANCELLED、FAILED、MISSING_ORIGINALS、NO_CURRENT_PLAN（参考 refactor/learning/plan_export.py 的 ExportResult/ExportStatus，可直接复用这两个类型）。导出位置必须在账号数据目录之外（沿用旧导出的检查）；失败或取消不留半成品。
+  - 不改账号外壳和旧页面（换接线由架构师在换界面时做）。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/materials tests/refactor/export tests/refactor/store tests/refactor/extract -q -p no:cacheprovider
+  A：导入各格式（含扫描件开/关 OCR）、重复导入去重、原件去重存储、另一台设备（第二个 store 目录）上 open_original 提示缺失、relink 哈希一致/不一致、网页资料入库、取消。
+  B：导出内容完整且与数据库一致、缺原件时 MISSING_ORIGINALS 并列清单、导出到账号目录内被拒、取消/失败不留文件、index.html 离线可打开（检查不含外部地址）、manifest 哈希校验。
+
+回执
+【MF-01｜library｜第三批｜完成/部分完成/受阻】
+基线：2014a74 ／ 提交：office/library 上的编号 ／ 改动：文件及原因 ／ 验证：命令与结果 ／ 未完成
+~~~
+
+### [3-MF03] client｜学习报告数据
+
+~~~text
+【MentorFlow 第三批｜MF-03（工位 client）｜学习报告数据】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 2014a74          # 最新集成基线，含第二批全部成果
+Python：D:\MentorFlow\.venv\Scripts\python.exe；只用标准库。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录。
+先读：AGENTS.md；CURRENT_STATE.md 的 [RPT-01]、[CHK-01]、[TEACH-02]、[TEACH-07]、[PLAN-05]、[PLAN-08]；你的 mastery.py、store.py 与 T03 的 ledger.py。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
+
+要做：新建 refactor/learning/course/report.py：build_report(store, plan_id, *, today) -> dict（纯数据，给前端展示和导出用；不调用模型，不生成文字评价）
+  - 计划概况：目标、最终目标、起止日期、实际开始与完成日期、提前/逾期天数、重排次数与每次原因（有记录则带上）、总时长（计划/实际记入）。
+  - 时间：每日目标与完成（正式/暂记）序列、欠账峰值、超前峰值、学习天数。
+  - 模块：每个模块的状态（passed/skipped/failed/untested）、模块检测次数、首次检测掌握比例、重测次数、是否直接考通过。
+  - 知识点：每点两类错误数、是否曾为 weak/red、检验答题次数与答对率、检验通过前答错次数；按“薄弱程度”排序的前若干项（规则写清：例如检验前错误总数 + 检验中答错次数，平手按计划顺序）。
+  - 画像素材：把教师档案（teacher_profile，若有）的原文附上，供前端显示“AI 对你的画像”；报告本身不编写评价文字。
+  - 格式带 schema 版本号；save_report 存库；同一数据重复生成结果完全一致。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor/report tests/refactor/store tests/refactor/mastery tests/refactor/ledger -q -p no:cacheprovider
+  覆盖：完成、逾期、提前完成、直接考跳过、模块多次重测、检验中反复答错、有/无教师档案、重排过的计划；各项数字与事件逐项核对；结果确定性。
+
+回执
+【MF-03｜client｜第三批｜完成/部分完成/受阻】
+基线：2014a74 ／ 提交：office/client 上的编号 ／ 改动 ／ 报告字段摘要 ／ 验证：命令与结果 ／ 未完成
 ~~~
