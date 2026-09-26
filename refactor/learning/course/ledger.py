@@ -1,0 +1,524 @@
+"""Pure study-time accounting; no clock, storage, UI or network dependencies.
+
+Targets are fixed until an explicit replan. Closed segments are snapshots:
+later confirmation/revocation changes live credits and overall remaining time,
+but does not rewrite those snapshots or their recorded debt. Revoked historical
+minutes become a synthetic target just before the current segment's first day,
+filled before its fixed daily targets by all current credits. Credit IDs retain
+their original submission even after confirmation/revocation, so retries cannot
+resurrect revoked progress.
+"""
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta, tzinfo
+from fractions import Fraction
+from math import isfinite, lcm
+from types import MappingProxyType
+
+
+class LedgerError(ValueError):
+    def __init__(self, code: str, message: str | None = None):
+        self.code = code
+        self.message = message or {
+            "NO_STUDY_DAYS": "计划窗口内没有可学习的日期。",
+            "NAIVE_DATETIME": "开课时间必须包含时区。",
+            "CREDIT_CONFLICT": "同一进度标识不能提交不同的内容。",
+        }.get(code, "时长账本参数无效。")
+        super().__init__(self.message)
+
+
+def _date(value: date) -> date:
+    if not isinstance(value, date) or isinstance(value, datetime):
+        raise LedgerError("INVALID_DATE", "日期必须是不含时间的日历日期。")
+    return value
+
+
+def _integer(value: int, *, positive: bool = False) -> int:
+    if type(value) is not int or value < (1 if positive else 0):
+        raise LedgerError("INVALID_MINUTES", "分钟数或数量必须是有效的整数。")
+    return value
+
+
+def _weight(value: float) -> float:
+    if type(value) not in (int, float) or not 0 <= value <= 1 or not isfinite(value):
+        raise LedgerError("INVALID_WEIGHT", "日期权重必须是 0 到 1 之间的有限数。")
+    return float(value)
+
+
+def _dates(start: date, end: date):
+    # Ordinals also handle date.max without overflowing on the last increment.
+    return (date.fromordinal(n) for n in range(start.toordinal(), end.toordinal() + 1))
+
+
+@dataclass(frozen=True)
+class PlanWindow:
+    start: date
+    end: date
+    daily_cap_minutes: int
+    weekday_weights: tuple[float, ...] = (1.0,) * 7
+    date_weights: Mapping[date, float] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if _date(self.end) < _date(self.start):
+            raise LedgerError("INVALID_WINDOW", "计划结束日期不能早于开始日期。")
+        _integer(self.daily_cap_minutes, positive=True)
+        if not isinstance(self.weekday_weights, (tuple, list)) or len(self.weekday_weights) != 7:
+            raise LedgerError("INVALID_WEIGHT", "必须提供周一到周日的七个权重。")
+        if not isinstance(self.date_weights, Mapping):
+            raise LedgerError("INVALID_WEIGHT", "特殊日期权重必须按日期填写。")
+        object.__setattr__(self, "weekday_weights", tuple(_weight(w) for w in self.weekday_weights))
+        object.__setattr__(self, "date_weights", MappingProxyType(
+            {_date(day): _weight(weight) for day, weight in self.date_weights.items()}
+        ))
+
+
+def weight_of(window: PlanWindow, day: date) -> float:
+    return window.date_weights.get(_date(day), window.weekday_weights[day.weekday()])
+
+
+def _apportion(weighted_days: list[tuple[date, Fraction]], total: int) -> dict[date, int]:
+    if not weighted_days:
+        raise LedgerError("NO_STUDY_DAYS")
+    # Scale decimal weights to integers: no floating-point remainder ties and
+    # no loss of minutes even when total exceeds the exact range of floats.
+    scale = lcm(*(weight.denominator for _, weight in weighted_days))
+    weights = [int(weight * scale) for _, weight in weighted_days]
+    denominator = sum(weights)
+    quotients = [divmod(total * weight, denominator) for weight in weights]
+    values = [floor for floor, _ in quotients]
+    remainder = total - sum(values)
+    order = sorted(range(len(values)), key=lambda i: (-quotients[i][1], weighted_days[i][0]))
+    for index in order[:remainder]:
+        values[index] += 1
+    return {day: value for (day, _), value in zip(weighted_days, values)}
+
+
+def distribute(window: PlanWindow, total_minutes: int, *, from_date: date | None = None) -> dict[date, int]:
+    _integer(total_minutes)
+    start = window.start if from_date is None else _date(from_date)
+    targets = dict.fromkeys(_dates(start, window.end), 0)
+    weighted = [(day, Fraction(str(weight_of(window, day))))
+                for day in targets if weight_of(window, day) > 0]
+    targets.update(_apportion(weighted, total_minutes))
+    return targets
+
+
+def full_day_minutes(targets: Mapping[date, int], window: PlanWindow) -> int:
+    full = [minutes for day, minutes in targets.items() if weight_of(window, day) == 1]
+    return max(full if full else targets.values(), default=0)
+
+
+@dataclass(frozen=True)
+class CapReport:
+    ok: bool
+    full_day_minutes: int
+    cap: int
+    suggested_end: date | None
+
+
+def check_cap(window: PlanWindow, total_minutes: int) -> CapReport:
+    current = full_day_minutes(distribute(window, total_minutes), window)
+    cap = window.daily_cap_minutes
+    if current <= cap:
+        return CapReport(True, current, cap, None)
+    limit_year = min(window.end.year + 5, date.max.year)
+    try:
+        limit = window.end.replace(year=limit_year)
+    except ValueError:  # Five years after February 29 ends on February 28.
+        limit = date(limit_year, 2, 28)
+    weighted = [(day, Fraction(str(weight_of(window, day))))
+                for day in _dates(window.start, window.end) if weight_of(window, day) > 0]
+    weight_sum = sum((weight for _, weight in weighted), Fraction())
+    largest = max(weight for _, weight in weighted)
+    for ordinal in range(window.end.toordinal() + 1, limit.toordinal() + 1):
+        day = date.fromordinal(ordinal)
+        # Date overrides never extend beyond the original window.
+        weight = Fraction(str(window.weekday_weights[day.weekday()]))
+        if not weight:
+            continue
+        weighted.append((day, weight))
+        weight_sum += weight
+        largest = max(largest, weight)
+        floor = total_minutes * largest // weight_sum
+        if floor > cap:
+            continue
+        # The largest-weight days attain the maximum rounded target. Only a
+        # quota on the cap boundary needs the exact remainder allocation.
+        if floor < cap or max(_apportion(weighted, total_minutes).values()) <= cap:
+            return CapReport(False, current, cap, day)
+    return CapReport(False, current, cap, None)
+
+
+def study_day(ts: datetime, refresh: time, tz: tzinfo) -> date:
+    if not isinstance(ts, datetime) or ts.tzinfo is None or ts.utcoffset() is None:
+        raise LedgerError("NAIVE_DATETIME")
+    if not isinstance(refresh, time) or refresh.tzinfo is not None or not isinstance(tz, tzinfo):
+        raise LedgerError("INVALID_REFRESH", "刷新时间应为本地钟表时间，并另行指定时区。")
+    local = ts.astimezone(tz)
+    if local.time() < refresh:
+        if local.date() == date.min:
+            raise LedgerError("INVALID_DATE", "学习日超出了可表示的日期范围。")
+        return local.date() - timedelta(days=1)
+    return local.date()
+
+
+def _identifier(value: str):
+    if not isinstance(value, str) or not value.strip():
+        raise LedgerError("INVALID_CREDIT", "进度和学习单元标识不能为空。")
+
+
+@dataclass(frozen=True)
+class Credit:
+    credit_id: str
+    unit_id: str
+    minutes: int
+    day: date
+    state: str
+    seq: int
+
+    def __post_init__(self):
+        _identifier(self.credit_id)
+        _identifier(self.unit_id)
+        _integer(self.minutes, positive=True)
+        _date(self.day)
+        _integer(self.seq, positive=True)
+        if self.state not in ("tentative", "confirmed"):
+            raise LedgerError("INVALID_CREDIT", "进度状态必须是暂记或正式。")
+
+
+@dataclass(frozen=True)
+class LedgerStatus:
+    today_target: int
+    today_confirmed: int
+    today_tentative: int
+    debt_minutes: int
+    needs_negotiation: bool
+    ahead_minutes: int
+    ahead_days: int
+    remaining_minutes: int
+    remaining_confirmed_minutes: int
+    overdue_days: int
+    completed: bool
+    history_debt_minutes: int
+    overflow_minutes: int
+
+
+@dataclass(frozen=True)
+class _History:
+    window: PlanWindow
+    closed_on: date
+    targets: dict[date, int]
+    confirmed: dict[date, int]
+    tentative: dict[date, int]
+    relearning_minutes: int
+    relearning_confirmed: int
+    relearning_tentative: int
+    debt_minutes: int
+
+
+@dataclass(frozen=True)
+class _Allocation:
+    confirmed: dict[date, int]
+    tentative: dict[date, int]
+    relearning_confirmed: int
+    relearning_tentative: int
+    overflow: int
+
+
+def _fill(targets: Mapping[date, int], credits: list[Credit], relearning_minutes: int):
+    confirmed = dict.fromkeys(targets, 0)
+    tentative = dict.fromkeys(targets, 0)
+    days = [day for day in sorted(targets) if targets[day] > 0]
+    index = overflow = relearning_confirmed = relearning_tentative = 0
+    for credit in sorted(credits, key=lambda c: (c.state != "confirmed", c.seq)):
+        left = credit.minutes
+        filled = confirmed if credit.state == "confirmed" else tentative
+        paid = min(left, relearning_minutes - relearning_confirmed - relearning_tentative)
+        if credit.state == "confirmed":
+            relearning_confirmed += paid
+        else:
+            relearning_tentative += paid
+        left -= paid
+        while left and index < len(days):
+            day = days[index]
+            free = targets[day] - confirmed[day] - tentative[day]
+            amount = min(left, free)
+            filled[day] += amount
+            left -= amount
+            if amount == free:
+                index += 1
+        overflow += left
+    return _Allocation(confirmed, tentative, relearning_confirmed, relearning_tentative, overflow)
+
+
+class Ledger:
+    def __init__(self, window: PlanWindow, total_minutes: int):
+        self._targets = distribute(window, total_minutes)
+        self._window, self._total_minutes = window, total_minutes
+        self._active_start = window.start
+        self._credits: dict[str, Credit] = {}
+        self._submissions: dict[str, Credit] = {}
+        self._segments: dict[str, int] = {}
+        self._history: list[_History] = []
+        self._relearning_minutes = 0
+        self._next_seq = 1
+
+    @property
+    def window(self) -> PlanWindow:
+        return self._window
+
+    @property
+    def total_minutes(self) -> int:
+        return self._total_minutes
+
+    @property
+    def targets(self) -> dict[date, int]:
+        return dict(self._targets)
+
+    def _add(self, credit_id, unit_id, minutes, day, state):
+        submitted = Credit(credit_id, unit_id, minutes, day, state, self._next_seq)
+        previous = self._submissions.get(credit_id)
+        if previous is not None:
+            if replace(submitted, seq=previous.seq) != previous:
+                raise LedgerError("CREDIT_CONFLICT")
+            return
+        self._credits[credit_id] = self._submissions[credit_id] = submitted
+        self._segments[credit_id] = len(self._history)
+        self._next_seq += 1
+
+    def add_tentative(self, credit_id, unit_id, minutes, day):
+        self._add(credit_id, unit_id, minutes, day, "tentative")
+
+    def add_confirmed(self, credit_id, unit_id, minutes, day):
+        self._add(credit_id, unit_id, minutes, day, "confirmed")
+
+    def confirm(self, unit_id) -> int:
+        _identifier(unit_id)
+        matched = [c for c in self._credits.values() if c.unit_id == unit_id and c.state == "tentative"]
+        for credit in matched:
+            self._credits[credit.credit_id] = replace(credit, state="confirmed")
+        return sum(c.minutes for c in matched)
+
+    def revoke(self, unit_id) -> int:
+        _identifier(unit_id)
+        matched = [c for c in self._credits.values() if c.unit_id == unit_id and c.state == "tentative"]
+        for credit in matched:
+            if self._segments[credit.credit_id] < len(self._history):
+                self._relearning_minutes += credit.minutes
+            del self._credits[credit.credit_id]
+            del self._segments[credit.credit_id]
+        return sum(c.minutes for c in matched)
+
+    def _allocation(self):
+        return _fill(self._targets, [c for key, c in self._credits.items()
+                                     if self._segments[key] == len(self._history)], self._relearning_minutes)
+
+    def status(self, today: date) -> LedgerStatus:
+        _date(today)
+        allocation = self._allocation()
+        confirmed, tentative = allocation.confirmed, allocation.tentative
+        filled = {day: confirmed[day] + tentative[day] for day in self._targets}
+        debt = sum(target - filled[day] for day, target in self._targets.items() if day < today)
+        if today >= self._active_start:
+            debt += self._relearning_minutes - allocation.relearning_confirmed - allocation.relearning_tentative
+        ahead = sum(minutes for day, minutes in filled.items() if day > today)
+        ahead_days = 0
+        for day in sorted(self._targets):
+            if day <= today or self._targets[day] == 0:
+                continue
+            if filled[day] != self._targets[day]:
+                break
+            ahead_days += 1
+        remaining = self.total_minutes - sum(c.minutes for c in self._credits.values())
+        remaining_confirmed = self.total_minutes - sum(c.minutes for c in self._credits.values() if c.state == "confirmed")
+        return LedgerStatus(
+            self._targets.get(today, 0), confirmed.get(today, 0), tentative.get(today, 0),
+            debt, debt > 0 and debt >= 2 * full_day_minutes(self._targets, self.window), ahead, ahead_days,
+            remaining, remaining_confirmed,
+            (today - self.window.end).days if today > self.window.end and remaining_confirmed > 0 else 0,
+            remaining_confirmed <= 0, sum(h.debt_minutes for h in self._history), allocation.overflow,
+        )
+
+    def replan(self, today: date, new_window: PlanWindow, new_total_minutes: int) -> None:
+        _date(today)
+        _integer(new_total_minutes)
+        if new_window.end < today:
+            raise LedgerError("INVALID_REPLAN", "新的截止日期不能早于重排当天。")
+        if self._history and today < self._history[-1].closed_on:
+            raise LedgerError("INVALID_REPLAN", "不能重排已经冻结的历史日期。")
+        past = sum(c.minutes for c in self._credits.values() if c.day < today)
+        if new_total_minutes < past:
+            raise LedgerError("INVALID_REPLAN", "新总时长不能少于重排当天之前已经记录的分钟数。")
+        remaining = new_total_minutes - past
+        targets = (distribute(new_window, remaining, from_date=today) if remaining > 0
+                   else dict.fromkeys(_dates(today, new_window.end), 0))
+        allocation = self._allocation()
+        confirmed, tentative = allocation.confirmed, allocation.tentative
+        frozen = {day: value for day, value in self._targets.items() if day < today}
+        relearning = (self._relearning_minutes, allocation.relearning_confirmed, allocation.relearning_tentative)
+        if self._active_start > today:
+            relearning = (0, 0, 0)
+        history = _History(self.window, today, frozen,
+                           {day: confirmed[day] for day in frozen},
+                           {day: tentative[day] for day in frozen},
+                           *relearning,
+                           sum(target - confirmed[day] - tentative[day] for day, target in frozen.items())
+                           + relearning[0] - relearning[1] - relearning[2])
+        # All validation and calculations complete before any state is changed.
+        self._history.append(history)
+        for key, credit in self._credits.items():
+            if credit.day >= today:
+                self._segments[key] = len(self._history)
+        self._window, self._total_minutes = new_window, new_total_minutes
+        self._active_start, self._targets = today, targets
+        self._relearning_minutes = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "version": 1,
+            "window": _window_data(self.window),
+            "total_minutes": self.total_minutes,
+            "active_start": self._active_start.isoformat(),
+            "targets": _calendar_data(self._targets),
+            "relearning_minutes": self._relearning_minutes,
+            "history": [{"window": _window_data(h.window), "closed_on": h.closed_on.isoformat(),
+                         "targets": _calendar_data(h.targets), "confirmed": _calendar_data(h.confirmed),
+                         "tentative": _calendar_data(h.tentative), "debt_minutes": h.debt_minutes,
+                         "relearning_minutes": h.relearning_minutes, "relearning_confirmed": h.relearning_confirmed,
+                         "relearning_tentative": h.relearning_tentative}
+                        for h in self._history],
+            "credits": [dict(_credit_data(c), segment=self._segments[c.credit_id])
+                        for c in sorted(self._credits.values(), key=lambda c: c.seq)],
+            "submissions": [_credit_data(c) for c in sorted(self._submissions.values(), key=lambda c: c.seq)],
+            "next_seq": self._next_seq,
+        }
+
+    @classmethod
+    def from_dict(cls, data) -> Ledger:
+        try:
+            return _restore(cls, data)
+        except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+            raise LedgerError("INVALID_DATA", "账本数据格式或内容无效，无法恢复。") from None
+
+
+def _window_data(window):
+    return dict(start=window.start.isoformat(), end=window.end.isoformat(),
+                daily_cap_minutes=window.daily_cap_minutes, weekday_weights=list(window.weekday_weights),
+                date_weights={day.isoformat(): weight for day, weight in window.date_weights.items()})
+
+
+def _window_from(data):
+    _fields(data, {"start", "end", "daily_cap_minutes", "weekday_weights", "date_weights"})
+    return PlanWindow(date.fromisoformat(data["start"]), date.fromisoformat(data["end"]),
+                      data["daily_cap_minutes"], tuple(data["weekday_weights"]),
+                      {date.fromisoformat(day): weight for day, weight in data["date_weights"].items()})
+
+
+def _calendar_data(values):
+    return {day.isoformat(): value for day, value in sorted(values.items())}
+
+
+def _calendar_from(data):
+    if not isinstance(data, dict):
+        raise ValueError()
+    result = {date.fromisoformat(day): _integer(value) for day, value in data.items()}
+    if len(result) != len(data):
+        raise ValueError()
+    return result
+
+
+def _credit_data(credit):
+    return dict(credit_id=credit.credit_id, unit_id=credit.unit_id, minutes=credit.minutes,
+                day=credit.day.isoformat(), state=credit.state, seq=credit.seq)
+
+
+def _credit_from(data):
+    _fields(data, {"credit_id", "unit_id", "minutes", "day", "state", "seq"})
+    return Credit(data["credit_id"], data["unit_id"], data["minutes"], date.fromisoformat(data["day"]), data["state"], data["seq"])
+
+
+def _fields(data, keys):
+    if not isinstance(data, dict) or set(data) != keys:
+        raise ValueError()
+
+
+def _restore(cls, data):
+    _fields(data, {"version", "window", "total_minutes", "active_start", "targets", "relearning_minutes", "history", "credits", "submissions", "next_seq"})
+    if type(data["version"]) is not int or data["version"] != 1:
+        raise ValueError()
+    ledger = object.__new__(cls)
+    ledger._window = _window_from(data["window"])
+    ledger._total_minutes = _integer(data["total_minutes"])
+    ledger._active_start = date.fromisoformat(data["active_start"])
+    ledger._targets = _calendar_from(data["targets"])
+    ledger._relearning_minutes = _integer(data["relearning_minutes"])
+    budget = sum(ledger._targets.values())
+    expected = (distribute(ledger.window, budget, from_date=ledger._active_start) if budget
+                else dict.fromkeys(_dates(ledger._active_start, ledger.window.end), 0))
+    if ledger._active_start > ledger.window.end or expected != ledger._targets or budget > ledger.total_minutes:
+        raise ValueError()
+    if any(not isinstance(data[name], list) for name in ("history", "credits", "submissions")):
+        raise ValueError()
+    ledger._history = []
+    for raw in data["history"]:
+        _fields(raw, {"window", "closed_on", "targets", "confirmed", "tentative", "debt_minutes",
+                      "relearning_minutes", "relearning_confirmed", "relearning_tentative"})
+        h = _History(_window_from(raw["window"]), date.fromisoformat(raw["closed_on"]),
+                     *(_calendar_from(raw[key]) for key in ("targets", "confirmed", "tentative")),
+                     *(_integer(raw[key]) for key in ("relearning_minutes", "relearning_confirmed", "relearning_tentative")),
+                     _integer(raw["debt_minutes"]))
+        if set(h.targets) != set(h.confirmed) or set(h.targets) != set(h.tentative):
+            raise ValueError()
+        if any(day >= h.closed_on or day > h.window.end or h.confirmed[day] + h.tentative[day] > target
+               for day, target in h.targets.items()):
+            raise ValueError()
+        relearning_debt = h.relearning_minutes - h.relearning_confirmed - h.relearning_tentative
+        if relearning_debt < 0:
+            raise ValueError()
+        if h.debt_minutes != sum(target - h.confirmed[day] - h.tentative[day] for day, target in h.targets.items()) + relearning_debt:
+            raise ValueError()
+        if ledger._history and h.closed_on < ledger._history[-1].closed_on:
+            raise ValueError()
+        ledger._history.append(h)
+    if ledger._history:
+        if ledger._active_start != ledger._history[-1].closed_on:
+            raise ValueError()
+    elif ledger._active_start != ledger.window.start or budget != ledger.total_minutes:
+        raise ValueError()
+    ledger._submissions = {}
+    for raw in data["submissions"]:
+        credit = _credit_from(raw)
+        if credit.credit_id in ledger._submissions:
+            raise ValueError()
+        ledger._submissions[credit.credit_id] = credit
+    ledger._next_seq = _integer(data["next_seq"], positive=True)
+    if (ledger._next_seq != len(ledger._submissions) + 1
+            or {c.seq for c in ledger._submissions.values()} != set(range(1, ledger._next_seq))):
+        raise ValueError()
+    ledger._credits, ledger._segments = {}, {}
+    for raw in data["credits"]:
+        _fields(raw, {"credit_id", "unit_id", "minutes", "day", "state", "seq", "segment"})
+        credit = _credit_from({key: value for key, value in raw.items() if key != "segment"})
+        segment = _integer(raw["segment"])
+        original = ledger._submissions[credit.credit_id]
+        if (credit.credit_id in ledger._credits or replace(credit, state=original.state) != original
+                or (original.state == "confirmed" and credit.state != "confirmed") or segment > len(ledger._history)):
+            raise ValueError()
+        if segment < len(ledger._history) and credit.day >= ledger._history[segment].closed_on:
+            raise ValueError()
+        ledger._credits[credit.credit_id], ledger._segments[credit.credit_id] = credit, segment
+    return ledger
+
+
+def estimate_check_minutes(point_count: int, *, minutes_per_question: float,
+                           problem_ratio: float = 0.10, problem_questions: int = 4) -> int:
+    _integer(point_count)
+    _integer(problem_questions, positive=True)
+    ratio = _weight(problem_ratio)
+    if (type(minutes_per_question) not in (int, float) or not isfinite(minutes_per_question)
+            or minutes_per_question <= 0):
+        raise LedgerError("INVALID_MINUTES", "每题估算时长必须是大于零的有限数。")
+    return round(point_count * (1 - ratio) * minutes_per_question
+                 + point_count * ratio * problem_questions * minutes_per_question)
