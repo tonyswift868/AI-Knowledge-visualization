@@ -6,9 +6,10 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QComboBox
+from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox,
+                               QLineEdit, QComboBox, QGraphicsDropShadowEffect, QToolButton)
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
 _ICONS = (Path(__file__).resolve().parent / "resources" / "login").as_posix()
@@ -23,16 +24,58 @@ BRAND_SVG = (
     + '<circle r="2.6" fill="#b8457a"/></g></svg>')
 
 
+# Static background: deep plum night fading into sakura pink, soft glows and a few
+# petals. Painted once per resize/expose; no animation (see BUG-04).
+_PETALS = ((0.12, 0.30, 11, 20), (0.86, 0.22, 9, -35), (0.78, 0.52, 7, 60), (0.08, 0.66, 8, -15),
+           (0.92, 0.80, 10, 25), (0.20, 0.90, 6, 70), (0.55, 0.10, 6, -50), (0.35, 0.18, 5, 10))
+
+
+def paint_night_sakura(painter, width, height):
+    sky = QLinearGradient(0, 0, width * 0.35, height)
+    sky.setColorAt(0.0, QColor("#2a1428"))
+    sky.setColorAt(0.45, QColor("#5a2250"))
+    sky.setColorAt(0.8, QColor("#a83a74"))
+    sky.setColorAt(1.0, QColor("#e3769d"))
+    painter.fillRect(0, 0, width, height, sky)
+    for cx, cy, radius, color in ((0.15, 0.05, 0.75, (242, 155, 184, 70)), (0.95, 0.35, 0.6, (155, 110, 255, 45)),
+                                  (0.35, 1.0, 0.8, (255, 170, 200, 80))):
+        glow = QRadialGradient(width * cx, height * cy, width * radius)
+        glow.setColorAt(0.0, QColor(*color))
+        glow.setColorAt(1.0, QColor(color[0], color[1], color[2], 0))
+        painter.fillRect(0, 0, width, height, glow)
+    petal = QPainterPath()
+    petal.moveTo(0, 0)
+    petal.cubicTo(-10, -7, -13, -22, -6, -31)
+    petal.lineTo(0, -26.5)
+    petal.lineTo(6, -31)
+    petal.cubicTo(13, -22, 10, -7, 0, 0)
+    painter.setPen(Qt.PenStyle.NoPen)
+    for x, y, size, angle in _PETALS:
+        painter.save()
+        painter.translate(width * x, height * y)
+        painter.rotate(angle)
+        painter.scale(size / 31, size / 31)
+        painter.setBrush(QColor(255, 214, 229, 120))
+        painter.drawPath(petal)
+        painter.restore()
+
+
 def login_qss() -> str:
     return f"""
-QWidget#mentorflowLoginGateWindow {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fdf1f6, stop:0.55 #fbf4f7, stop:1 #f6e9f1);
+QWidget#mentorflowLoginGateWindow {{
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"; font-size: 14px; color: #35202f; }}
 QLabel {{ background: transparent; }}
-QLabel#loginTitle {{ color: #35202f; font-size: 28px; font-weight: 800; letter-spacing: 0.3px; }}
-QLabel#loginSubtitle {{ color: #75596a; font-size: 13px; }}
+QLabel#loginTitle {{ color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: 0.3px; }}
+QLabel#loginSubtitle {{ color: rgba(255, 228, 238, 0.82); font-size: 13px; }}
+QToolButton#loginChrome {{ border: 0; border-radius: 10px; background: transparent; color: rgba(255, 240, 246, 0.85);
+  font-size: 15px; min-width: 34px; min-height: 30px; }}
+QToolButton#loginChrome:hover {{ background: rgba(255, 255, 255, 0.14); color: #ffffff; }}
+QToolButton#loginChromeClose:hover {{ background: #e0556c; color: #ffffff; }}
+QToolButton#loginChromeClose {{ border: 0; border-radius: 10px; background: transparent; color: rgba(255, 240, 246, 0.85);
+  font-size: 15px; min-width: 34px; min-height: 30px; }}
 QLabel#loginStateTitle {{ color: #35202f; font-size: 19px; font-weight: 800; }}
 QLabel#loginStateDetail {{ color: #75596a; font-size: 13px; }}
-QLabel#loginSessionNotice {{ color: #b8457a; font-size: 13px; }}
+QLabel#loginSessionNotice {{ color: #ffe3ee; font-size: 13px; }}
 QFrame#loginCard {{ background: #ffffff; border: 1px solid rgba(185, 96, 136, 0.18); border-radius: 22px; }}
 QLineEdit {{ min-height: 44px; padding: 0 14px; border: 1px solid rgba(185, 96, 136, 0.32); border-radius: 13px;
   background: #fffafc; color: #35202f; font-size: 14px; selection-background-color: #f29bb8; }}
@@ -68,8 +111,8 @@ QPushButton#loginSmallButton {{ min-height: 40px; padding: 0 12px; border: 1px s
 QPushButton#loginSmallButton:hover {{ color: #d65a86; border-color: #d65a86; background: rgba(214, 90, 134, 0.06); }}
 QPushButton#loginSmallButton:pressed {{ background: rgba(214, 90, 134, 0.14); }}
 QPushButton#loginSmallButton:disabled {{ color: #c7b3be; border-color: rgba(185, 96, 136, 0.15); }}
-QPushButton#loginCancelButton {{ min-height: 34px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: #75596a; font-size: 13px; }}
-QPushButton#loginCancelButton:hover {{ color: #d65a86; background: rgba(214, 90, 134, 0.08); }}
+QPushButton#loginCancelButton {{ min-height: 34px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: rgba(255, 236, 244, 0.85); font-size: 13px; }}
+QPushButton#loginCancelButton:hover {{ color: #ffffff; background: rgba(255, 255, 255, 0.12); }}
 QToolTip {{ background: #ffffff; color: #35202f; border: 1px solid rgba(185, 96, 136, 0.3); border-radius: 8px; padding: 6px 8px; }}
 """
 
@@ -97,13 +140,9 @@ class LoginGateWindow(QWidget):
         super().__init__()
         self.setObjectName(LOGIN_GATE_OBJECT_NAME)
         self.setWindowTitle("登录 MentorFlow")
-        self.setWindowFlags(
-            Qt.WindowType.Window
-            | Qt.WindowType.CustomizeWindowHint
-            | Qt.WindowType.WindowTitleHint
-            | Qt.WindowType.WindowMinimizeButtonHint
-            | Qt.WindowType.WindowCloseButtonHint
-        )
+        # Frameless with our own top bar (drag to move, minimise, close); the
+        # painted background replaces the plain system caption and frame.
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         # Reserve the native form viewport from first paint, including the
         # native consent controls. Loading/form/refresh never resize the shell.
@@ -124,8 +163,24 @@ class LoginGateWindow(QWidget):
     def _build(self) -> None:
         self.setStyleSheet(login_qss())
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(28, 22, 28, 18)
+        outer.setContentsMargins(28, 10, 28, 18)
         outer.setSpacing(8)
+        chrome = QHBoxLayout()
+        chrome.setContentsMargins(0, 0, -16, 0)
+        chrome.addStretch(1)
+        self.minimize_button = QToolButton()
+        self.minimize_button.setObjectName("loginChrome")
+        self.minimize_button.setText("—")
+        self.minimize_button.setToolTip("最小化")
+        self.minimize_button.clicked.connect(self.showMinimized)
+        self.close_button = QToolButton()
+        self.close_button.setObjectName("loginChromeClose")
+        self.close_button.setText("✕")
+        self.close_button.setToolTip("关闭")
+        self.close_button.clicked.connect(self.close)
+        chrome.addWidget(self.minimize_button)
+        chrome.addWidget(self.close_button)
+        outer.addLayout(chrome)
         self.brand_widgets = []
         brand = QSvgWidget()
         brand.setObjectName("loginBrandMark")
@@ -216,6 +271,11 @@ class LoginGateWindow(QWidget):
         self.primary_button.setDefault(True)
         self.primary_button.clicked.connect(self._activate)
         card_layout.addWidget(self.primary_button)
+        shadow = QGraphicsDropShadowEffect(card)
+        shadow.setBlurRadius(46)
+        shadow.setOffset(0, 16)
+        shadow.setColor(QColor(40, 10, 32, 110))
+        card.setGraphicsEffect(shadow)
         outer.addWidget(card, 1)
         self.remember_box = QCheckBox("保存会话")
         self.remember_box.setObjectName("rememberLoginCheckBox")
@@ -262,7 +322,7 @@ class LoginGateWindow(QWidget):
         card_layout.insertLayout(card_layout.indexOf(self.primary_button), account_actions)
         self.cancel_button.hide()
         # Everything clickable shows a hand cursor.
-        for kind in (QPushButton, QCheckBox, QComboBox):
+        for kind in (QPushButton, QCheckBox, QComboBox, QToolButton):
             for widget in self.findChildren(kind):
                 widget.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
@@ -347,12 +407,24 @@ class LoginGateWindow(QWidget):
             self.activateWindow()
 
     def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        paint_night_sakura(painter, self.width(), self.height())
+        painter.end()
         super().paintEvent(event)
         if not self._first_paint_scheduled:
             self._first_paint_scheduled = True
             # This is a Qt paint/event-loop milestone, not proof of compositor
             # presentation or that a real credential form is interactive.
             QTimer.singleShot(0, self.first_paint_completed.emit)
+
+    def mousePressEvent(self, event) -> None:
+        # Empty space in the top band moves the window with the system's own
+        # move loop, so Windows snapping and multi-monitor moves keep working.
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 120 and self.windowHandle():
+            self.windowHandle().startSystemMove()
+            return
+        super().mousePressEvent(event)
 
     def _activate(self) -> None:
         if not self._login_enabled:
