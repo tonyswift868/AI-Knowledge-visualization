@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Archive, BookOpenCheck, Plus } from "lucide-react"
+import { Archive, BookOpenCheck, PencilLine, Plus } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Segmented, Skeleton } from "../ui"
@@ -20,6 +20,7 @@ const STATE_LABEL: Record<string, [string, string]> = {
 export function Plans() {
   const ready = useApp((s) => s.ready)
   const go = useApp((s) => s.go)
+  const set = useApp((s) => s.set)
   const [filter, setFilter] = React.useState<"current" | "all" | "archived">("current")
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
 
@@ -72,7 +73,9 @@ export function Plans() {
                     {p.total_minutes > 0 && <span>· 共约 {Math.round(p.total_minutes / 60)} 小时</span>}
                   </div>
                   <div className="row">
-                    <Button small disabled title="计划详情与路线图下一步开放"><BookOpenCheck />查看路线</Button>
+                    {p.state === "creating" || p.state === "ready"
+                      ? <Button small kind="primary" onClick={() => { set({ planId: p.id }); go("new-plan") }}><PencilLine />继续创建</Button>
+                      : <Button small onClick={() => { set({ planId: p.id }); go("plan") }}><BookOpenCheck />查看路线</Button>}
                   </div>
                 </div>
               )

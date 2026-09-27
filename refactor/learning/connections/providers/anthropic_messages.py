@@ -36,10 +36,10 @@ def parse(data, provider, requested_model, search_enabled):
                 hits.append(hit(result))
     raw = data['usage']
     cached = raw.get('cache_read_input_tokens', 0)
-    # DeepSeek's compatibility input includes cache; native Claude excludes it.
-    total = raw['input_tokens']
-    if provider in {'anthropic', 'relay_anthropic'}:
-        total += cached + raw.get('cache_creation_input_tokens', 0)
+    # input_tokens excludes cache reads/writes on native Claude and on DeepSeek's
+    # compatible endpoint alike (measured 2026-09-27: same prompt twice reported
+    # 2924+0, then 236+2688 cached), so the total adds them back for every provider.
+    total = raw['input_tokens'] + cached + raw.get('cache_creation_input_tokens', 0)
     searches = raw.get('server_tool_use', {}).get('web_search_requests')
     if searches is None:
         searches = tool_count if search_enabled else 0

@@ -326,9 +326,11 @@ class ModelGateway:
         return replace(result.usage, raw=raw)
 
     def complete(self, purpose, messages, *, system=None, enable_search=False,
-                 on_text=None, cancel=None, plan_id=''):
+                 on_text=None, cancel=None, plan_id='', max_tokens=4096):
+        if type(max_tokens) is not int or not 1 <= max_tokens <= 32768:
+            raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
         return self._complete(purpose, messages, system=system, enable_search=enable_search,
-                              on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=4096)
+                              on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens)
 
     def test_connection(self):
         """Explicit user action only. No probe during construction/save/select."""

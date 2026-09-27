@@ -24,7 +24,7 @@ REGISTRY: dict[str, ProviderSpec] = {
         search('anthropic_server_tool',
                'https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/',
                '已提供非流式实测样本：8 次搜索、44 条原始结果；流式未实测。'
-               'input_tokens 已含缓存命中；encrypted_content 不是可读摘要。', True)),
+               'input_tokens 不含缓存命中（与 Claude 相同，2026-09-27 实测）；encrypted_content 不是可读摘要。', True)),
     'qwen': ProviderSpec(
         'qwen', '通义千问', 'dashscope_generation',
         'https://dashscope.aliyuncs.com/api/v1', 'qwen-plus',

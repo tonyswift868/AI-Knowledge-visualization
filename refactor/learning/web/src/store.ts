@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type Route = "home" | "plans" | "new-plan" | "tools" | "chat" | "settings"
+export type Route = "home" | "plans" | "plan" | "new-plan" | "tools" | "chat" | "settings"
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
 export type Settings = {
@@ -20,11 +20,14 @@ export type Settings = {
 
 export type Account = { name: string; role_label: string; settings_available?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
+export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string } | null
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
 
 type State = {
   route: Route
   settingsTab: SettingsTab
+  planId: string | null
+  sync: SyncStatus
   account: Account | null
   settings: Settings | null
   options: Record<string, string[]>
@@ -45,6 +48,8 @@ let toastId = 0
 export const useApp = create<State>((set) => ({
   route: "home",
   settingsTab: "models",
+  planId: null,
+  sync: null,
   account: null,
   settings: null,
   options: {},

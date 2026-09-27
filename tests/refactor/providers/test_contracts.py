@@ -22,9 +22,10 @@ def test_ordinary_answers_and_usage(provider):
     assert result.provider_id == provider
     assert result.model == REGISTRY[provider].default_model
     assert result.search_queries == result.search_hits == result.citations == ()
-    assert result.usage.input_tokens == (150 if provider == 'anthropic' else 100)
+    # Anthropic-format providers report input without cache reads/writes (DeepSeek measured 2026-09-27).
+    assert result.usage.input_tokens == (150 if provider in {'anthropic', 'deepseek'} else 100)
     assert result.usage.cached_input_tokens == 40
-    assert result.usage.uncached_input_tokens == (110 if provider == 'anthropic' else 60)
+    assert result.usage.uncached_input_tokens == (110 if provider in {'anthropic', 'deepseek'} else 60)
     assert result.usage.output_tokens == (25 if provider == 'gemini' else 20)
     assert result.usage.reasoning_tokens == (0 if provider in {'deepseek', 'anthropic'} else 5)
     assert result.usage.search_requests == 0
@@ -79,8 +80,8 @@ def test_real_deepseek_evidence_preserves_all_44_entries_and_truncation():
     assert len(result.search_hits) == 44
     assert sum(bool(hit.url) for hit in result.search_hits) == 41
     assert result.usage.cached_input_tokens == 38656
-    assert result.usage.input_tokens == 45629
-    assert result.usage.uncached_input_tokens == 6973
+    assert result.usage.input_tokens == 45629 + 38656
+    assert result.usage.uncached_input_tokens == 45629
     assert result.usage.output_tokens == 4618
     assert result.finish_reason == 'max_tokens'
     assert result.citations == ()

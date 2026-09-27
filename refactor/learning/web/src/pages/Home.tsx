@@ -101,13 +101,13 @@ function TodayCard({ plan }: { plan: PlanItem }) {
       </div>
       <div className="row" style={{ gap: 18 }}>
         <Ring value={t.today_confirmed} total={t.today_target || 1} tentative={t.today_tentative} size={104} stroke={10}>
-          <b>{t.today_confirmed}</b><span>/ {t.today_target} 分</span>
+          {t.today_target ? <><b>{t.today_confirmed}</b><span>/ {t.today_target} 分</span></> : <><b>休</b><span>今天</span></>}
         </Ring>
         <div className="stack" style={{ gap: 8 }}>
           {t.debt_minutes > 0 && <span className="pill warn"><Flame size={13} />欠 {minutes(t.debt_minutes)}</span>}
           {t.ahead_minutes > 0 && <span className="pill ok"><TrendingUp size={13} />超前 {t.ahead_days ? `${t.ahead_days} 天` : minutes(t.ahead_minutes)}</span>}
           {t.today_tentative > 0 && <span className="pill muted">暂记 {t.today_tentative} 分</span>}
-          {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">按计划进行</span>}
+          {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">{t.today_target ? "按计划进行" : "今天是休息日，不用学"}</span>}
         </div>
       </div>
       <Button kind="primary" onClick={() => toast("info", "课堂正在开发中，下一步开放。")}><PlayCircle />开课</Button>

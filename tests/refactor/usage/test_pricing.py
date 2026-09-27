@@ -130,10 +130,10 @@ def test_actual_deepseek_fixture_quote_and_catalog_coverage():
     raw = json.loads((Path(__file__).parents[1] / 'providers/fixtures/with_tool.json').read_text(encoding='utf-8'))
     result = parse(raw['response'], 'deepseek', 'deepseek-v4-flash', True)
     value = result.usage
-    assert (value.input_tokens, value.cached_input_tokens, value.uncached_input_tokens, value.output_tokens, value.search_requests) == (45629, 38656, 6973, 4618, 8)
+    assert (value.input_tokens, value.cached_input_tokens, value.uncached_input_tokens, value.output_tokens, value.search_requests) == (84285, 38656, 45629, 4618, 8)
     cat = PriceCatalog(CATALOG)
-    assert cat.cost('deepseek', result.model, value, at='2026-09-26T04:00:00Z', context=GLOBAL).amount == Decimal('.02621812')
-    assert cat.cost('deepseek', result.model, value, at=AT, context=dict(GLOBAL, price_period='peak')).amount == Decimal('.05243624')
+    assert cat.cost('deepseek', result.model, value, at='2026-09-26T04:00:00Z', context=GLOBAL).amount == Decimal('.06487412')
+    assert cat.cost('deepseek', result.model, value, at=AT, context=dict(GLOBAL, price_period='peak')).amount == Decimal('.12974824')
     data = json.loads(CATALOG.read_text(encoding='utf-8'))
     for provider, spec in REGISTRY.items():
         if provider.startswith('relay_'):   # user-supplied endpoints have no official prices

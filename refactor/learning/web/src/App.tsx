@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Home as HomeIcon, LibraryBig, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon,
+import { Cloud, CloudOff, Home as HomeIcon, LibraryBig, RefreshCw, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon,
   Sparkles, Wand2, Wrench } from "lucide-react"
 import { call, on } from "./bridge"
 import { useApp, type Route } from "./store"
@@ -9,6 +9,7 @@ import { Plans } from "./pages/Plans"
 import { NewPlan } from "./pages/NewPlan"
 import { Tools } from "./pages/Tools"
 import { Chat } from "./pages/Chat"
+import { PlanDetail } from "./pages/PlanDetail"
 import { Settings } from "./pages/Settings"
 
 const NAV: { id: Route; label: string; icon: any }[] = [
@@ -27,13 +28,15 @@ export function App() {
     const load = () => call("app.bootstrap").then((r) => s.set({ account: r.account, settings: r.settings, options: r.options,
                                                                   notice: r.notice, ready: r.ready }))
     load()
+    call("sync.status").then((d) => s.set({ sync: d })).catch(() => {})
     const offs = [
       on("ready", (d) => { s.set({ ready: true, account: d.account }); call("settings.get").then((r) => s.set({ settings: r.settings })) }),
       on("account", (d) => s.set({ account: d })),
       on("settings", (d) => s.set({ settings: d })),
       on("session_notice", (d) => s.set({ notice: d })),
       on("window", (d) => s.set({ fullscreen: !!d.fullscreen })),
-      on("scope_changed", () => s.set({ ready: false })),
+      on("scope_changed", () => s.set({ ready: false, sync: null })),
+      on("sync_status", (d) => s.set({ sync: d })),
     ]
     return () => offs.forEach((off) => off())
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,7 +49,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = { home: Home, plans: Plans, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
+  const Page = { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
 
   return (
     <>
@@ -58,7 +61,8 @@ export function App() {
             <span className="brand-text">MentorFlow</span>
           </div>
           {NAV.map((n) => (
-            <button key={n.id} className={`nav-item ${s.route === n.id || (n.id === "tools" && s.route === "chat") ? "active" : ""}`} onClick={() => s.go(n.id)} title={n.label}>
+            <button key={n.id} className={`nav-item ${s.route === n.id || (n.id === "tools" && s.route === "chat") || (n.id === "plans" && s.route === "plan") ? "active" : ""}`}
+                    onClick={() => { if (n.id === "new-plan") s.set({ planId: null }); s.go(n.id) }} title={n.label}>
               <n.icon /><span className="nav-label">{n.label}</span>
             </button>
           ))}
@@ -80,6 +84,14 @@ export function App() {
             </button>
             <div className="grow" />
             <span className={`chip ${s.ready ? "" : "warn"}`}><span className="dot" />{s.ready ? "账号已连接" : "正在连接账号服务…"}</span>
+            {s.ready && s.sync && (
+              <button className={`chip sync ${s.sync.state}`} title={s.sync.state === "failed" ? "点一下重试" : "点一下立即同步"}
+                      onClick={() => call("sync.now").then((d) => s.set({ sync: d })).catch(() => {})}>
+                {s.sync.state === "syncing" ? <RefreshCw className="spin" /> : s.sync.state === "synced" ? <Cloud /> : <CloudOff />}
+                {s.sync.state === "synced" && s.sync.at ? `已同步 ${new Date(s.sync.at).toTimeString().slice(0, 5)}`
+                  : { syncing: "同步中…", failed: "同步失败", reauth: "需要重新登录", superseded: "已在别处登录", synced: "已同步" }[s.sync.state]}
+              </button>
+            )}
             <button className="icon-btn" aria-label={s.fullscreen ? "退出全屏" : "全屏"} title="全屏（F11）"
                     onClick={() => call("app.window", { action: "toggle_fullscreen" })}>
               {s.fullscreen ? <Minimize2 /> : <Maximize2 />}

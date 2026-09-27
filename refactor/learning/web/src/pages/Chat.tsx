@@ -5,7 +5,7 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
 import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
-import { BridgeFailure, call } from "../bridge"
+import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Skeleton } from "../ui"
 
@@ -47,7 +47,8 @@ export function Chat() {
 
   React.useEffect(() => {
     refresh().then((sessions) => { if (sessions[0]) open(sessions[0].id) }).catch((e) => { setList([]); toast("error", e.message) })
-    return () => abort.current?.abort()
+    const off = on("chat_changed", () => { refresh().catch(() => {}) })
+    return () => { off(); abort.current?.abort() }
   }, [refresh, open, toast])
 
   React.useLayoutEffect(() => {
