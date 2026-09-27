@@ -11,6 +11,7 @@ import { Tools } from "./pages/Tools"
 import { Chat } from "./pages/Chat"
 import { PlanDetail } from "./pages/PlanDetail"
 import { Settings } from "./pages/Settings"
+import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 
 type NavItem = { id: Route; label: string; icon: any; also?: Route[] }
 const NAV: { label: string; items: NavItem[] }[] = [
@@ -84,7 +85,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
+  const Page = window.location.hash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
 
   return (
     <>

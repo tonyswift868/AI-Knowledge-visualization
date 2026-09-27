@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; script-src 'self' file: qrc:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; font-src 'self' file: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+          content="default-src 'none'; script-src 'self' file: qrc: mentorflow://assets 'wasm-unsafe-eval'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: mentorflow://assets; font-src 'self' file: data:; connect-src mentorflow://assets; object-src 'none'; base-uri 'none'; form-action 'none'" />
     <title>MentorFlow</title>
-    <script type="module" crossorigin src="./assets/index-DHNnT0E7.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DSEtbQrT.css">
+    <script type="module" crossorigin src="./assets/index-xSiNtEjA.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-QTnfLwEv.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-BGnLRO0c.css">
   </head>
   <body>
     <div id="root"></div>
-    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   </body>
 </html>

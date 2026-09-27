@@ -23,6 +23,7 @@ from .bridge import AppBridge
 from . import handlers
 from .services import AppServices
 from .sync import WindowSync
+from .teacher_assets import TeacherAssets
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,10 @@ _ROLE_LABELS = {"SUPER_ADMIN": "管理员", "LEARNER": "学习者"}
 class _LocalOnly(QWebEngineUrlRequestInterceptor):
     """Only the bundled app files and Qt's channel script may load."""
 
-    def __init__(self, roots, parent=None):
+    def __init__(self, roots, parent=None, *, teacher_assets=None):
         super().__init__(parent)
         self.roots = tuple(Path(r).resolve() for r in roots)
+        self.teacher_assets = teacher_assets
 
     def interceptRequest(self, info):  # noqa: N802 - Qt API
         url = info.requestUrl()
@@ -50,6 +52,9 @@ class _LocalOnly(QWebEngineUrlRequestInterceptor):
                 allowed = False
         elif url.scheme() == "data":
             allowed = True
+        elif url.scheme() == "mentorflow":
+            allowed = (bytes(info.requestMethod()) == b"GET" and self.teacher_assets is not None
+                       and self.teacher_assets.allows(url))
         if not allowed:
             info.block(True)
 
@@ -112,7 +117,8 @@ class LearningWindow(QWidget):
         cache_root = self._data_root / ".web-cache" / "app"
         self.profile.setPersistentStoragePath(str(cache_root / "storage"))
         self.profile.setCachePath(str(cache_root / "cache"))
-        self.interceptor = _LocalOnly((WEB_ROOT,), self.profile)
+        self.teacher_assets = TeacherAssets(self.profile)
+        self.interceptor = _LocalOnly((WEB_ROOT,), self.profile, teacher_assets=self.teacher_assets)
         self.profile.setUrlRequestInterceptor(self.interceptor)
         entry = WEB_ROOT / "index.html"
         self.page = _AppPage(self.profile, self.view, entry)
@@ -126,6 +132,7 @@ class LearningWindow(QWidget):
         self._theme_changed.connect(self._apply_theme, Qt.ConnectionType.QueuedConnection)
         self.bridge = AppBridge(self)
         handlers.register(self.bridge, self)
+        self.teacher_assets.register(self.bridge, self)
         self.channel = QWebChannel(self.page)
         self.channel.registerObject("mf", self.bridge)
         self.page.setWebChannel(self.channel)
