@@ -110,7 +110,7 @@ export function NewPlan() {
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
   const canType = ["questions", "sources", "outline"].includes(draft.phase)
-  const placeholder = { questions: "回答上面的问题…", sources: "想要什么样的资料？比如：要中文的、要带练习题的", outline: "想怎么改路线？比如：第二阶段拆细一点、先学实战再补理论" }[draft.phase as string] ?? ""
+  const placeholder = { questions: "回答上面的问题…", sources: "想要什么样的资料？比如：要中文的、要带练习题的；也可以直接贴资料网址", outline: "想怎么改路线？比如：第二阶段拆细一点、先学实战再补理论" }[draft.phase as string] ?? ""
 
   return (
     <div className="page plan-page">
@@ -249,7 +249,7 @@ function FormCard({ draft, text, busy, onSubmit }: { draft: Draft; text: string;
           <MiniCalendar start={form.start} end={form.end} special={form.special_days} weekday={form.weekday_weights}
                         onChange={(special_days) => patch({ special_days })} />
         </Field>
-        <Field label="还想告诉 AI 的（可选）"><textarea className="input" rows={2} maxLength={1000} value={form.notes} placeholder="例如：想多做练习；偏好中文资料"
+        <Field label="还想告诉 AI 的（可选）"><textarea className="input" rows={2} maxLength={1000} value={form.notes} placeholder="例如：想多做练习；偏好中文资料；已有的资料网址也可以贴在这里"
                                                     onChange={(e) => patch({ notes: e.target.value })} /></Field>
         <div className="row between wrap">
           <label className="row small" style={{ cursor: "pointer" }}>

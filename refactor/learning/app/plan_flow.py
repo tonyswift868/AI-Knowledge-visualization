@@ -33,6 +33,11 @@ CHECK_MINUTES_PER_QUESTION = 1.5
 GENERATE_WORKERS = 4
 TRANSIENT = frozenset({"MODEL_RESPONSE_INVALID", "MODEL_CONNECTION_FAILED", "MODEL_TIMEOUT"})
 _PLAN_ID = re.compile(r"[a-f0-9]{32}")
+_URL = re.compile(r"https?://[^\s，。；、）)>\]】\"'<]+")
+
+
+def find_links(text):
+    return list(dict.fromkeys(u.rstrip(".,;:!?") for u in _URL.findall(text or "")))[:10]
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 LEVELS = tuple(agents.LEVELS)
 
@@ -130,6 +135,8 @@ class PlanFlow:
     def __init__(self, services, push, study_day, *, fetcher=None):
         self.services, self.push, self.study_day = services, push, study_day
         self.fetcher = fetcher  # injected by offline tests; None = real guarded web fetch
+        from ..course import github_repo
+        self.repo_fetch = github_repo.default_fetch  # replaced by offline tests
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
         self._status: dict[str, str] = {}
@@ -298,6 +305,10 @@ class PlanFlow:
         draft["messages"].append(_msg("ai", "text", f"信息够了。我理解的目标是：{verdict['goal']}"))
         draft["phase"] = "sources"
         self.save(draft)
+        links = find_links(" ".join([draft["form"].get("notes", ""), draft["form"].get("goal", "")] +
+                                    [m["text"] for m in draft["messages"] if m["kind"] == "user_text"]))
+        if links:
+            self._import_links(draft, ctx, links)
         if draft["form"].get("only_mine"):
             has_own = any(s["status"] == "adopted" for s in draft["sources"])
             draft["messages"].append(_msg("ai", "text", "你说只用自己给的资料，我就不另外搜索了。" +
@@ -344,6 +355,59 @@ class PlanFlow:
         for source in verified:
             self._verified.setdefault(plan_id, {})[source.url] = source
         self._show_batch(draft, ctx, searched=len(hits), verified=len(verified))
+
+    def _import_links(self, draft, ctx, urls):
+        """Links the learner gave: open and verify each, adopt what passes; no search, no scoring gate."""
+        from ..course.materials import import_verified_source
+        from ..course.research_pipeline import ResearchPipeline
+        from ..course.source_filter import RawHit
+        plan_id = draft["plan_id"]
+        done = set(draft["research"].setdefault("linked", []))
+        urls = [u for u in urls if u not in done]
+        if not urls:
+            return
+        from ..course import github_repo
+        repos = [u for u in urls if github_repo.parse(u)]
+        pages = [u for u in urls if u not in repos]
+        verified, failed = [], []
+        for url in repos:   # a repository's real material is its docs, not the home page
+            self.status(plan_id, "正在读取 GitHub 仓库里的文档（大仓库要一两分钟）…")
+            try:
+                verified.append(github_repo.import_repo(url, fetch=self.repo_fetch, cancel=ctx.cancel, lists=self._lists()))
+            except github_repo.RepoImportError as exc:
+                failed.append(f"{url}（{exc.message}）")
+            except Exception:  # noqa: BLE001 - network trouble on one link must not hide the others
+                if ctx.cancel.is_set():
+                    raise ModelCancelled() from None
+                log.warning("repository import failed", exc_info=True)
+                failed.append(f"{url}（读取失败，请稍后重试）")
+        if pages:
+            self.status(plan_id, f"正在打开你给的 {len(pages)} 个链接…")
+            pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=10, timeout=20.0)
+            try:
+                outcome = pipeline.run([RawHit(url=u) for u in pages], include_low=True, cancel=ctx.cancel)
+            finally:
+                pipeline.close()
+            verified.extend(outcome.verified)
+            failed.extend(f"{r.url}（{r.message}）" for r in outcome.rejected)
+        if ctx.cancel.is_set():
+            raise ModelCancelled()
+        cards = []
+        for source in verified:
+            saved = import_verified_source(self.services.store, plan_id, source)
+            if any(c.get("source_id") == saved["id"] for c in draft["sources"]):
+                continue
+            self._pool(plan_id).mark_accepted(source.url)
+            cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": source.title or source.url,
+                          "site": source.site, "tier": source.tier, "summary": source.summary[:300], "relevance": None,
+                          "credibility": None, "note": "你提供的链接", "status": "adopted", "source_id": saved["id"],
+                          "chars": source.document.char_count, "sha": source.document.sha256})
+        draft["sources"].extend(cards)
+        draft["research"]["linked"] = sorted(done | set(urls))
+        text = (f"已打开并采用你给的 {len(cards)} 个链接。" if cards else "") + \
+               ("没能使用：" + "；".join(failed[:5]) + "。" if failed else "")
+        draft["messages"].append(_msg("ai", "sources", text or "这些链接已经在资料里了。", cards=[c["card_id"] for c in cards]))
+        self.save(draft)
 
     def _lists(self):
         try:
@@ -400,6 +464,13 @@ class PlanFlow:
         if instruction:
             draft["messages"].append(_msg("user", "user_text", instruction))
             self.save(draft)
+            links = find_links(instruction)
+            if links:
+                self._import_links(draft, ctx, links)
+                rest = _URL.sub("", instruction).strip(" ，,。;；\n")
+                if len(rest) < 6:   # only links: no extra search
+                    return
+                instruction = rest
             return self._research(draft, ctx, instruction)
         if not self._show_batch(draft, ctx, quiet=True):
             self._research(draft, ctx)

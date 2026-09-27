@@ -184,3 +184,64 @@ def test_discard_removes_plan_and_draft(qapp, tmp_root):
     assert pump(qapp, bridge, sent, lambda m: m.get("id") == "d")[0]["error"]["code"] == "DRAFT_NOT_FOUND"
     bridge.close()
     services.close()
+
+
+def test_links_from_form_and_chat_are_opened_and_adopted_without_search(qapp, tmp_root):
+    services = AppServices(account_id=ACCOUNT, data_root=tmp_root, session_provider=lambda: None,
+                           api_base_url="https://api.invalid", ca_bundle=tmp_root / "ca.pem")
+    model = services._gateway = ScriptedModel()
+    model.sufficiency = [{"enough": True, "questions": [], "goal": "学 Python 类", "focus": []}]
+    bridge, sent = make_bridge(qapp)
+    handlers.register(bridge, Window(services))
+    n = iter(range(100))
+
+    def ask(method, **params):
+        rid = f"l{next(n)}"
+        bridge.call(json.dumps({"id": rid, "method": method, "params": params}))
+        reply = pump(qapp, bridge, sent, lambda m: m.get("id") == rid and m["type"] == "response", timeout=20)[0]
+        assert reply["ok"], reply
+        return reply["result"]
+
+    try:
+        pid = ask("plan.current")["draft"]["plan_id"]
+        linked = dict(form(date.today()), notes="主要用这个：https://docs.python.org/3/tutorial/classes.html", only_mine=True)
+        draft = ask("plan.submit", plan_id=pid, form=linked)["draft"]
+        mine = [c for c in draft["sources"] if c["note"] == "你提供的链接"]
+        assert [c["url"] for c in mine] == ["https://docs.python.org/3/tutorial/classes.html"] and mine[0]["status"] == "adopted"
+        assert not any(c[0] == "research" for c in model.calls)       # only_mine + a link: no web search
+        draft = ask("plan.say", plan_id=pid, text="再加上 https://docs.python.org/3/tutorial/errors.html")["draft"]
+        assert [c["url"] for c in draft["sources"] if c["status"] == "adopted"] == [
+            "https://docs.python.org/3/tutorial/classes.html", "https://docs.python.org/3/tutorial/errors.html"]
+        assert not any(c[0] == "research" for c in model.calls)       # a message that is only a link does not search
+        assert len(services.store.records("sources", pid)) == 2
+    finally:
+        bridge.close()
+        services.close()
+
+
+def test_a_github_repo_link_imports_its_docs(qapp, tmp_root):
+    from tests.refactor.planner.test_github_repo_import import fake_fetch
+    services = AppServices(account_id=ACCOUNT, data_root=tmp_root, session_provider=lambda: None,
+                           api_base_url="https://api.invalid", ca_bundle=tmp_root / "ca.pem")
+    model = services._gateway = ScriptedModel()
+    model.sufficiency = [{"enough": True, "questions": [], "goal": "学智能体", "focus": []}]
+    bridge, sent = make_bridge(qapp)
+    handlers.register(bridge, Window(services))
+    try:
+        bridge.call(json.dumps({"id": "g1", "method": "plan.current", "params": {}}))
+        pid = pump(qapp, bridge, sent, lambda m: m.get("id") == "g1")[0]["result"]["draft"]["plan_id"]
+        # PlanFlow is created lazily per services; swap the repository fetcher for the fake one.
+        from refactor.learning.app import plan_flow
+        flows = [o for o in __import__("gc").get_objects() if isinstance(o, plan_flow.PlanFlow)]
+        for f in flows:
+            f.repo_fetch = fake_fetch([])
+        linked = dict(form(date.today()), notes="教材：https://github.com/acme/book", only_mine=True)
+        bridge.call(json.dumps({"id": "g2", "method": "plan.submit", "params": {"plan_id": pid, "form": linked}}))
+        draft = pump(qapp, bridge, sent, lambda m: m.get("id") == "g2", timeout=20)[0]["result"]["draft"]
+        cards = [c for c in draft["sources"] if c["status"] == "adopted"]
+        assert [c["url"] for c in cards] == ["https://github.com/acme/book"] and cards[0]["site"] == "github.com"
+        chunks = services.store.records("source_chunks", pid)
+        assert chunks and {tuple(c["section"])[0] for c in chunks} >= {"第二章 发展史"}
+    finally:
+        bridge.close()
+        services.close()
