@@ -85,31 +85,26 @@ def test_lifecycle_mtls_uses_explicit_paired_backend_references(tmp_path, monkey
         api.from_env(env)
 
 
-def test_registration_and_uniform_forgot_use_existing_observer(monkeypatch):
-    calls=[]
-    class Admin:
-        async def create_account(self,**value):calls.append(('create',set(value)));return 'subject'
-        async def send_verification(self,subject):calls.append(('verify',subject))
-        async def find_account(self,name):return 'subject' if name=='present' else None
-        async def send_password_reset(self,subject):calls.append(('reset',subject))
-    ticket={'schema':'mentorflow.reset-completion.v1','transaction_id':'t'*43,'status':'PENDING'}
-    async def observe(*args):return ticket
-    monkeypatch.setattr('app.enterprise.identity.reset_completion.identity_observation',observe)
-    monkeypatch.setattr(api,'_throttle',lambda *a:None)
+def test_registration_uses_private_code_authority_and_old_forgot_sends_nothing(monkeypatch):
+    calls = []
+    def handler(request):
+        value = json.loads(request.content); calls.append(value['operation'])
+        return httpx.Response(200, json={'status':'CODE_SENT','credential':'t'*43,'expires_in':'600','resend_after':'60'})
+    monkeypatch.setattr(api, '_throttle', lambda *a: None)
     async def run():
-        verifier=SimpleNamespace(endpoint='https://id.invalid/private',http=httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json=ticket))))
-        runtime=SimpleNamespace(active=True,admin=Admin(),jobs=set())
+        verifier=SimpleNamespace(endpoint='https://id.invalid/private',http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        runtime=SimpleNamespace(active=True,jobs=set())
         app=FastAPI();app.include_router(api.router)
         app.state.enterprise_identity_runtime=SimpleNamespace(lifecycle=runtime,native_sessions=SimpleNamespace(verifier=verifier))
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='https://backend.invalid') as c:
             assert (await c.get(api.PREFIX+'/capabilities')).json()=={'register':True,'forgot_password':True}
-            r=await c.post(api.PREFIX+'/register',json={'username':'new','password':'fixture-password','email':'test@example.invalid'})
-            assert r.status_code==201
-            assert (await c.post(api.PREFIX+'/register',json={'username':'new','password':'fixture-password','email':'test@example.invalid','role':'SUPER_ADMIN'})).status_code==400
+            payload={'username':'new','password':'fixture-password','email':'test@example.invalid'}
+            r=await c.post(api.PREFIX+'/register',json=payload)
+            assert r.status_code==201 and r.json()['state']=='CODE_SENT'
+            assert (await c.post(api.PREFIX+'/register',json={**payload,'role':'SUPER_ADMIN'})).status_code==400
             a=await c.post(api.PREFIX+'/forgot',json={'account':'present'})
             b=await c.post(api.PREFIX+'/forgot',json={'account':'absent'})
-            assert a.status_code==b.status_code==202 and a.json()==b.json()
-            await asyncio.gather(*runtime.jobs)
-            assert calls==[('create',{'username','password','email'}),('verify','subject'),('reset','subject')]
+            assert a.status_code==b.status_code==410 and a.json()==b.json()
+            assert calls==['registration-start'] and not runtime.jobs
         await verifier.http.aclose()
     asyncio.run(run())

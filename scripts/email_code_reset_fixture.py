@@ -28,6 +28,7 @@ class Mailbox(socketserver.ThreadingTCPServer):
     daemon_threads = True
     def __init__(self):
         self.messages = []
+        self.receipts = []  # Nonsecret delivery-contract observations only.
         class SMTP(socketserver.StreamRequestHandler):
             def handle(s):
                 def reply(value):s.wfile.write(value+b'\r\n');s.wfile.flush()
@@ -47,6 +48,11 @@ class Mailbox(socketserver.ThreadingTCPServer):
                         text=message.get_body(preferencelist=('plain',)).get_content() if message.is_multipart() else message.get_content()
                         codes=re.findall(r'(?<!\d)\d{6}(?!\d)',text)
                         assert len(codes)==1
+                        s.server.receipts.append({'registration': '注册验证码' in str(message['Subject']),
+                            'registration_instruction': '请在 MentorFlow 注册页面输入' in text,
+                            'recovery_instruction': 'MentorFlow 软件的找回密码页面' in text,
+                            'ten_minutes': '10 分钟' in text,
+                            'no_link': 'http://' not in text and 'https://' not in text})
                         s.server.messages.append((str(message['To']),codes[0]))
                         data[:]=b'\0'*len(data)
                         reply(b'250 accepted')
@@ -96,7 +102,7 @@ def run(args):
             '-Dkc.home.dir='+str(kc),'-Djboss.server.config.dir='+str(kc/'conf'),
             '-Djava.util.concurrent.ForkJoinPool.common.threadFactory=io.quarkus.bootstrap.forkjoin.QuarkusForkJoinWorkerThreadFactory',
             '-cp',str(kc/'lib/quarkus-run.jar'),'io.quarkus.bootstrap.runner.QuarkusEntryPoint','start-dev','--db=dev-file','--cache=local',
-            '--http-enabled=false','--http-host=127.0.0.1','--http-management-host=127.0.0.1','--http-management-port='+str(port()),
+            '--http-enabled=false','--http-host=127.0.0.1','--http-port='+str(port()),'--http-management-host=127.0.0.1','--http-management-port='+str(port()),
             '--https-port='+issuer.split(':')[2].split('/')[0],'--https-certificate-file='+str(home/'server.pem'),
             '--https-certificate-key-file='+str(home/'server.key'),'--https-client-auth=request','--truststore-paths='+str(home/'ca.pem'),
             '--import-realm','--http-access-log-enabled=false','--log-level=error']

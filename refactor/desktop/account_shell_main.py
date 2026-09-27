@@ -1322,6 +1322,7 @@ class AccountShell:
         from refactor.desktop.login_shell import LoginGateState
 
         pane, self._pane = self._pane, None
+        completed_username = getattr(getattr(pane, "bridge", None), "completed_username", None)
         self.gate.set_auth_content(None)
         if pane is not None:
             dispose = getattr(pane, "dispose", None)
@@ -1345,7 +1346,10 @@ class AccountShell:
         self._confirmed_role_account_id = None
         self.gate.clear_password()
         self.gate.remember_password_box.setChecked(False)
+        if registration and completed and completed_username:
+            self.gate.username_field.setText(completed_username)
         detail = (
+            "注册成功，请登录" if registration and completed else
             "注册页面已关闭；请确认页面提示提交成功后再使用新账号登录。"
             if registration
             else COMPLETED_MESSAGE

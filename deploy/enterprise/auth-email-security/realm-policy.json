@@ -37,7 +37,7 @@
     },
     "UPDATE_PASSWORD": {
       "enabled": true,
-      "defaultAction": true,
+      "defaultAction": false,
       "priority": 30
     },
     "UPDATE_EMAIL": {

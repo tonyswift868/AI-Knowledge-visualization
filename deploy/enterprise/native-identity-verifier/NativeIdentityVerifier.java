@@ -200,6 +200,18 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     body.put(field.getKey(), field.getValue().textValue());
                 }
                 RealmModel realm = session.getContext().getRealm();
+                if (body.getOrDefault("operation", "").startsWith("registration-")) {
+                    if (!permitted("registration", false)) return result(429, Map.of("status", "UNAVAILABLE"));
+                    if (body.keySet().equals(Set.of("operation", "username", "email", "password")) && "registration-start".equals(body.get("operation")))
+                        return result(200, RegistrationCodes.start(session, body.get("username"), body.get("email"), body.get("password")));
+                    if (body.keySet().equals(Set.of("operation", "credential", "code")) && "registration-verify".equals(body.get("operation")))
+                        return result(200, RegistrationCodes.verify(session, body.get("credential"), body.get("code")));
+                    if (body.keySet().equals(Set.of("operation", "credential")) && "registration-resend".equals(body.get("operation")))
+                        return result(200, RegistrationCodes.resend(session, body.get("credential")));
+                    if (body.keySet().equals(Set.of("operation", "credential")) && "registration-status".equals(body.get("operation")))
+                        return result(200, RegistrationCodes.status(session, body.get("credential")));
+                    return result(400, Map.of("status", "INVALID"));
+                }
                 if (body.keySet().equals(Set.of("operation")) && "email-transport-health".equals(body.get("operation"))) {
                     if (!permitted("email-health", false)) return result(429, Map.of("status", "UNAVAILABLE"));
                     return result(200,MailTransportHealth.observe(session));
@@ -282,6 +294,9 @@ public final class NativeIdentityVerifier implements RealmResourceProviderFactor
                     "issuer", env("ISSUER"), "subject", user.getId(), "display_name", display,
                     "authentication_strength", "password_verified", "verification_handle", handle));
             } catch (Exception failure) {
+                // In particular, never commit a partially created registration on SMTP/DB failure.
+                if (body != null && body.getOrDefault("operation", "").startsWith("registration-"))
+                    session.getTransactionManager().setRollbackOnly();
                 // Never log credential requests or expose provider exceptions.
                 return result(503, Map.of("outcome", "unavailable"));
             } finally {

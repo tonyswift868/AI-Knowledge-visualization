@@ -171,6 +171,10 @@ def test_native_revalidation_uses_external_authority_and_retains_canonical_ancho
 
 
 def test_old_new_keep_membership_workspace_resources_and_vault(tmp_path, monkeypatch, signing_keys):
+    from scripts import test_storage_policy as storage_policy
+    monkeypatch.setattr(storage_policy, 'AUTHORIZED_ROOTS', frozenset({tmp_path}))
+    monkeypatch.setenv(storage_policy.TEST_MODE_ENV, '1')
+    monkeypatch.setenv(storage_policy.SCRATCH_ENV, str(tmp_path))
     from test_enterprise_workspace_persistence import _config
     from desktop.account_identity import AccountIdentity
     from desktop.account_vault import AccountVaultManager, VaultLayout, AssetAvailability

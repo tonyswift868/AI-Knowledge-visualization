@@ -2,7 +2,7 @@ import {mountAccountLifecycle} from './account-lifecycle.js';
 const root=document.getElementById('mf-account-lifecycle');
 new QWebChannel(qt.webChannelTransport, channel => {
     const bridge=channel.objects.lifecycle;
-    const instance=mountAccountLifecycle(root,{capabilities:{register:true,forgot_password:true},canResendVerification:false});
+    const instance=mountAccountLifecycle(root,{capabilities:{register:true,forgot_password:true},canResendVerification:true});
     window.mfStartNative=()=>{
         instance.model.navigate(window.mfNativeIntent==='register'?'REGISTER':'FORGOT_REQUEST');
         root.hidden=false;
@@ -16,6 +16,12 @@ new QWebChannel(qt.webChannelTransport, channel => {
             bridge.register(form.querySelector('[name=username]').value.trim(),first.value,form.querySelector('[name=email]').value.trim(),requestId);
         } else if(intent==='check_registration') {
             bridge.checkRegistration(event.detail.field,event.detail.value,requestId);
+        } else if(intent==='verify_registration') {
+            bridge.verifyRegistration(root.querySelector('#mf-registration-code').value,requestId);
+        } else if(intent==='resend_verification') {
+            bridge.resendRegistration(requestId);
+        } else if(intent==='restart_registration') {
+            bridge.restartRegistration();
         } else if(intent==='forgot_password') bridge.requestCode(root.querySelector('#mf-forgot-identity').value,requestId);
         else if(intent==='verify_code') bridge.verifyCode(root.querySelector('#mf-reset-code').value,requestId);
         else if(intent==='resend_code') bridge.resendCode(requestId);
@@ -30,8 +36,9 @@ new QWebChannel(qt.webChannelTransport, channel => {
     root.querySelectorAll('[data-navigate=LOGIN]').forEach(button=>button.addEventListener('click',()=>bridge.returnLogin()));
     bridge.result.connect(raw=>{
         const value=JSON.parse(raw);
-        if(value.kind==='register') instance.model.registrationResult(value.outcome,{requestId:value.requestId,email:value.email||'',message:value.message||''});
+        if(value.kind==='register') instance.model.registrationResult(value.outcome,{requestId:value.requestId,email:value.email||'',message:value.message||'',retryAfter:value.resendAfter});
         else if(value.kind==='registration_check') instance.model.registrationCheckResult(value.field,value);
+        else if(value.kind.startsWith('registration_')) instance.model.registrationCodeResult(value);
         else instance.model.codeResult(value);
     });
 });

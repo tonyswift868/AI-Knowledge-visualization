@@ -182,6 +182,8 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
         "/api/enterprise/auth/admin/overview",
         "/api/enterprise/auth/lifecycle/register",
         "/api/enterprise/auth/lifecycle/register/check",
+        "/api/enterprise/auth/lifecycle/register/verify",
+        "/api/enterprise/auth/lifecycle/register/resend",
         "/api/enterprise/auth/lifecycle/change-password",
         "/api/enterprise/auth/lifecycle/capabilities",
         "/api/enterprise/auth/lifecycle/forgot",

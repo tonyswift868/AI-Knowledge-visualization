@@ -80,9 +80,16 @@
                 <h2 tabindex="-1">验证你的邮箱</h2>
                 <p id="mf-verification-summary">账号已创建，验证邮件正在等待发送结果。</p>
                 <p id="mf-masked-email" class="mf-account-label"></p>
-                <p id="mf-verification-help" class="mf-hint">收到邮件后，请按邮件提示完成验证。</p>
+                <p id="mf-verification-help" class="mf-hint">请输入注册邮件中的 6 位验证码，10 分钟内有效。</p>
+                <form id="mf-registration-code-form" method="dialog" novalidate>
+                    <label for="mf-registration-code">6 位验证码</label>
+                    <input class="pf-c-form-control" id="mf-registration-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+                    <p id="mf-registration-code-status" class="mf-error" role="status" aria-live="polite"></p>
+                    <button id="mf-registration-code-submit" type="submit" class="mf-primary" disabled>验证并完成注册</button>
+                </form>
                 <p id="mf-resend-status" role="status" aria-live="polite"></p>
-                <button type="button" id="mf-resend" disabled>重新发送验证邮件</button>
+                <button type="button" id="mf-resend" disabled>重新发送验证码</button>
+                <button type="button" id="mf-registration-restart">重新开始注册</button>
                 <button type="button" data-navigate="LOGIN">返回登录</button>
             </section>
             <section data-screen="FORGOT_REQUEST FORGOT_SUBMITTING" hidden>

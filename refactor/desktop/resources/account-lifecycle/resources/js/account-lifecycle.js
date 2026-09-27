@@ -30,11 +30,13 @@ export function mountAccountLifecycle(root, options = {}) {
             && model.registrationAvailability.username.value === username.value.trim();
         const emailTaken = model.registrationAvailability.email.state === 'taken'
             && model.registrationAvailability.email.value === email.value.trim();
-        const usernameValid = !!username.value.trim() && model.registrationError !== 'USERNAME_TAKEN' && !usernameTaken;
-        const emailValid = email.validity.valid && model.registrationError !== 'EMAIL_TAKEN' && !emailTaken;
+        // Availability remains advisory: an expired, incomplete self-registration
+        // can be safely restarted only by the server with both fields matching.
+        const usernameValid = !!username.value.trim();
+        const emailValid = !!email.value.trim() && email.validity.valid;
         const length = Array.from(first.value).length;
         const policyValid = length >= FUTURE_PASSWORD_PRESENTATION.minimum && length <= FUTURE_PASSWORD_PRESENTATION.maximum;
-        find('#mf-username-error').textContent = model.registrationError === 'USERNAME_TAKEN' || usernameTaken ? '这个账号名已被使用，请换一个账号名。' : '';
+        find('#mf-username-error').textContent = model.registrationError === 'USERNAME_TAKEN' || usernameTaken ? '账号名已被使用；若是尚未完成的注册，10 分钟后可用相同账号名和邮箱重新开始。' : '';
         find('#mf-email-error').textContent = model.registrationError === 'EMAIL_TAKEN' || emailTaken ? '这个邮箱已被使用，请更换邮箱或返回登录。'
             : email.value && !email.validity.valid ? '请输入有效的邮箱地址。' : '';
         find('#mf-register-policy-error').textContent = length && !policyValid ? '密码长度需要为 8–128 个字符。' : '';
@@ -124,13 +126,18 @@ export function mountAccountLifecycle(root, options = {}) {
         find('#mf-auto-login').checked = model.autoLogin;
         find('#mf-auto-login').disabled = !model.rememberPassword;
         find('#mf-masked-email').textContent = model.maskedEmail;
-        find('#mf-verification-summary').textContent = '账号已创建，账号服务已接受向以下邮箱发送验证邮件的请求：';
-        find('#mf-verification-help').textContent = '收到邮件后，请点击其中的验证链接。若尚未收到，请查看垃圾邮件；未收件不代表需要重新注册。';
+        find('#mf-verification-summary').textContent = '注册验证码已发送至：';
+        find('#mf-verification-help').textContent = '请在此输入邮件中的 6 位验证码，10 分钟内有效。未收到时请查看垃圾邮件或重新发送。';
+        const registrationCode = find('#mf-registration-code');
+        registrationCode.disabled = !model.registrationCodeValid || !!model.pendingRequest;
+        find('#mf-registration-code-submit').disabled = registrationCode.disabled || !/^[0-9]{6}$/.test(registrationCode.value);
+        find('#mf-registration-code-status').textContent = model.pendingRequest?.kind === 'verify_registration' ? '正在验证…' : model.registrationCodeError;
+        find('#mf-registration-restart').disabled = !!model.pendingRequest;
         const resend = find('#mf-resend');
         resend.hidden = options.canResendVerification !== true;
-        resend.disabled = !model.capabilities.register || model.resendState === 'SENDING' || model.resendSeconds > 0;
+        resend.disabled = !model.capabilities.register || !model.registrationCodeValid || !!model.pendingRequest || model.resendSeconds > 0;
         resend.textContent = model.resendState === 'SENDING' ? '正在重新发送…'
-            : model.resendSeconds ? `重新发送验证邮件（${model.resendSeconds} 秒）` : '重新发送验证邮件';
+            : model.resendSeconds ? `重新发送验证码（${model.resendSeconds} 秒）` : '重新发送验证码';
         find('#mf-resend-status').textContent = resend.hidden ? '' : model.resendState === 'FAILED' ? '暂时无法重新发送，请稍后再试。'
             : model.resendSeconds ? '请稍候再尝试重新发送。' : '';
         find('#mf-register-status').textContent = model.screen === 'REGISTER_SUBMITTING' ? '正在提交注册申请…'
@@ -195,6 +202,12 @@ export function mountAccountLifecycle(root, options = {}) {
     on(find('#mf-code-resend'), 'click', () => { if (model.requestCodeResend()) emit('resend_code'); });
     on(find('#mf-reset-restart'), 'click', () => emit('restart_reset'));
     on(find('#mf-resend'), 'click', () => { if (model.requestResend()) emit('resend_verification'); });
+    on(find('#mf-registration-code'), 'input', render);
+    on(find('#mf-registration-code-form'), 'submit', event => {
+        event.preventDefault();
+        if (/^[0-9]{6}$/.test(find('#mf-registration-code').value) && model.requestRegistrationVerify()) emit('verify_registration');
+    });
+    on(find('#mf-registration-restart'), 'click', () => emit('restart_registration'));
     const unsubscribe = model.subscribe(render);
     const timer = setInterval(() => { if (['VERIFY_PENDING','FORGOT_REQUEST','FORGOT_SENT','CODE_INVALID'].includes(model.screen)) render(); }, 1000);
     const instance = {model, render, dispose() {

@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 import json
+import hashlib
 import logging
 import secrets
 import ssl
@@ -16,9 +17,8 @@ from .oidc import IdentityError
 
 PREFIX = '/api/enterprise/auth/lifecycle'
 PUBLIC_PATHS = frozenset(PREFIX + '/' + p for p in ('capabilities', 'register', 'forgot',
-    'register/check', 'reset-code/request', 'reset-code/verify', 'reset-code/complete'))
+    'register/check', 'register/verify', 'register/resend', 'reset-code/request', 'reset-code/verify', 'reset-code/complete'))
 router = APIRouter()
-MESSAGE = '如果该账号或邮箱可用于找回，我们会发送密码重置邮件，请查看邮箱。'
 LOG = logging.getLogger(__name__)
 
 
@@ -102,41 +102,99 @@ async def capabilities(request: Request):
     return JSONResponse({'register': enabled, 'forgot_password': enabled}, headers={'Cache-Control': 'no-store'})
 
 
+REGISTRATION_ERRORS = {
+    'USERNAME_ALREADY_IN_USE': (409, '账号名已被使用；如刚注册但未验证，请在 10 分钟后用相同账号名和邮箱重新开始。'),
+    'EMAIL_ALREADY_IN_USE': (409, '邮箱已被使用，请更换邮箱或返回登录。'),
+    'INPUT_INVALID': (400, '请检查账号名、邮箱和密码。'),
+    'PASSWORD_POLICY_REJECTED': (400, '密码不符合规则，请使用 8–128 个字符并重试。'),
+    'WRONG_CODE': (400, '验证码错误，请重新输入。'),
+    'EXPIRED': (400, '注册凭据已过期，请用相同账号名和邮箱重新注册并获取验证码。'),
+    'EXHAUSTED': (400, '验证码错误已达 5 次，请重新发送验证码。'),
+    'INVALID': (400, '注册凭据无效或已使用，请返回登录或重新注册。'),
+    'COOLDOWN': (429, '请在 60 秒后重新发送验证码。'),
+    'SEND_LIMIT': (429, '发送次数已达每小时上限，请稍后重试。'),
+    'UNAVAILABLE': (503, '注册结果暂未确认，请稍后重试；若账号已创建，10 分钟后可重新开始。'),
+}
+
+
+def _registration_error(status):
+    if status not in REGISTRATION_ERRORS: status = 'UNAVAILABLE'
+    http_status, message = REGISTRATION_ERRORS[status]
+    code = status if status in ('USERNAME_ALREADY_IN_USE', 'EMAIL_ALREADY_IN_USE', 'PASSWORD_POLICY_REJECTED') else 'REGISTRATION_' + status
+    return JSONResponse({'code': code, 'message': message}, status_code=http_status,
+                        headers={'Cache-Control': 'no-store'})
+
+
+async def _registration_authority(verifier, payload):
+    try:
+        return await _email_code_authority(verifier, payload)
+    except IdentityError:
+        return {'status': 'UNAVAILABLE'}
+    finally:
+        payload.clear()
+
+
+def _registration_sent(result, status=200):
+    if (result.get('status') != 'CODE_SENT'
+            or not re.fullmatch(r'[A-Za-z0-9_-]{43}', result.get('credential', ''))
+            or result.get('expires_in') != '600' or result.get('resend_after') != '60'):
+        return _registration_error(result.get('status'))
+    return JSONResponse({'state': 'CODE_SENT', 'credential': result['credential'],
+                         'expires_in': 600, 'resend_after': 60}, status_code=status,
+                        headers={'Cache-Control': 'no-store'})
+
+
 @router.post(PREFIX + '/register')
 async def register(request: Request):
+    _, verifier = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'watch')
     value = {}
     try:
-        svc, _ = service(request)
-        _throttle(request.client.host if request.client else 'unknown', 'watch')
         value = await body(request, {'username', 'password', 'email'})
-        subject = await svc.admin.create_account(**value)
-        await svc.admin.send_verification(subject)
-        LOG.info('Official verification email submitted')
-        return JSONResponse({'state': 'VERIFY_EMAIL_PENDING',
-            'message': '账号服务已接受验证邮件发送请求；不保证收件，请查看垃圾邮件。'},
-            status_code=201, headers={'Cache-Control':'no-store'})
-    except LifecycleError as exc:
-        messages = {
-            'USERNAME_ALREADY_IN_USE': '账号名已被使用，请换一个账号名。',
-            'EMAIL_ALREADY_IN_USE': '邮箱已被使用，请更换邮箱或返回登录。',
-            # Older doubles may still raise the combined code; the current
-            # create path resolves it into a field-specific or unresolved code.
-            'ACCOUNT_ALREADY_IN_USE': '账号名或邮箱已被使用，请更换后重试。',
-            'REGISTRATION_CONFLICT_UNRESOLVED': '注册冲突暂未确认，请稍后重试；不要重复注册。',
-            'REGISTRATION_INPUT_INVALID': '请检查账号名、邮箱和密码。',
-            'CREATED_ACCOUNT_RECONCILIATION_REQUIRED': '账号可能已创建，但未能确认注册结果；请先返回登录尝试。',
-            'KEYCLOAK_OPERATION_REJECTED': '注册或验证邮件提交未完成；账号可能已创建，请先返回登录或稍后重试。',
-            'KEYCLOAK_OUTCOME_UNKNOWN': '注册或验证邮件结果未确认；账号可能已创建，请先返回登录尝试。',
-        }
-        message = messages.get(exc.code, '注册暂未完成，请稍后重试；如账号已创建，请先返回登录尝试。')
-        status = (409 if exc.code in {
-            'USERNAME_ALREADY_IN_USE', 'EMAIL_ALREADY_IN_USE', 'ACCOUNT_ALREADY_IN_USE'}
-            else 400 if exc.code == 'REGISTRATION_INPUT_INVALID' else 503)
-        return JSONResponse({'code': exc.code, 'message': message}, status_code=status,
-                            headers={'Cache-Control': 'no-store'})
+        value['username'] = value['username'].strip(); value['email'] = value['email'].strip()
+        if (not value['username'] or len(value['username']) > 255 or
+                any(ord(c)<32 or 127<=ord(c)<=159 for c in value['username']) or
+                len(value['email']) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value['email'])):
+            raise ValueError()
+        validate_new_password(value['password'])
+        result = await _registration_authority(verifier, {'operation': 'registration-start', **value})
+        return _registration_sent(result, 201)
+    except (ValueError, LifecycleError):
+        return _registration_error('INPUT_INVALID')
+    finally:
+        value.clear()
+
+
+async def _registration_code(request, operation):
+    _, verifier = service(request)
+    _throttle(request.client.host if request.client else 'unknown', 'watch')
+    value = {}
+    try:
+        value = await body(request, {'credential', 'code'} if operation == 'verify' else {'credential'})
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['credential']): raise ValueError()
+        if operation == 'verify' and not re.fullmatch(r'[0-9]{6}', value['code']): raise ValueError()
+        _throttle('registration:' + hashlib.sha256(value['credential'].encode()).hexdigest(), 'watch')
+        result = await _registration_authority(verifier, {'operation': 'registration-' + operation, **value})
+        if operation == 'resend': return _registration_sent(result)
+        if result.get('status') == 'PENDING_COMMIT':
+            result = await _registration_authority(verifier, {'operation': 'registration-status', 'credential': value['credential']})
+            if result.get('status') != 'VERIFIED': return _registration_error('UNAVAILABLE')
+            return JSONResponse({'state': 'VERIFIED', 'message': '注册成功，请登录'}, headers={'Cache-Control': 'no-store'})
+        return _registration_error(result.get('status'))
     except ValueError:
-        return JSONResponse({'code':'REGISTRATION_INPUT_INVALID','message':'请检查账号、邮箱和密码。'}, status_code=400)
-    finally: value.clear()
+        return _registration_error('INPUT_INVALID')
+    finally:
+        value.clear()
+
+
+@router.post(PREFIX + '/register/verify')
+async def verify_registration(request: Request):
+    return await _registration_code(request, 'verify')
+
+
+@router.post(PREFIX + '/register/resend')
+async def resend_registration(request: Request):
+    return await _registration_code(request, 'resend')
 
 
 @router.post(PREFIX + '/register/check')
@@ -182,35 +240,12 @@ async def register_check(request: Request):
 
 @router.post(PREFIX + '/forgot')
 async def forgot(request: Request):
-    svc, verifier = service(request)
+    # Old clients must upgrade; this public entry never sends action-token links.
+    service(request)
     _throttle(request.client.host if request.client else 'unknown', 'watch')
-    try:
-        value = await body(request, {'account'})
-        name = value['account'].strip()
-        if not name or len(name) > 255: raise ValueError()
-    except ValueError:
-        return JSONResponse({'code':'ACCOUNT_INPUT_INVALID','message':'请输入账号或邮箱。'}, status_code=400)
-    if len(svc.jobs) >= 32:
-        raise IdentityError('RESET_RATE_LIMITED', '请稍后重试。', status=429)
-    from .reset_completion import identity_observation
-    observation = await identity_observation(verifier, 'watch', secrets.token_urlsafe(32))
-    # Return before provider lookup/send, with identical status/body for existence,
-    # provider failure and success. No recipient-specific timing crosses this API.
-    async def send():
-        try:
-            subject = await svc.admin.find_account(name)
-            if subject:
-                response = await verifier.http.post(verifier.endpoint, json={'operation':'reset-execute-bind',
-                    'transaction_id':observation['transaction_id'], 'subject':subject})
-                if response.status_code != 200 or response.json() != observation:
-                    return
-                await svc.admin.send_password_reset(subject)
-                LOG.info('Official UPDATE_PASSWORD email submitted')
-        except Exception:
-            pass  # Anonymous request remains uniform; no provider/credential logs.
-    task = asyncio.create_task(send())
-    svc.jobs.add(task); task.add_done_callback(svc.jobs.discard)
-    return JSONResponse({'state':'RESET_WAITING','message':MESSAGE,'observation':observation}, status_code=202, headers={'Cache-Control':'no-store'})
+    return JSONResponse({'code': 'RESET_CODE_REQUIRED',
+        'message': '请在 MentorFlow 软件的找回密码页面使用邮箱验证码；旧版入口已停用。'},
+        status_code=410, headers={'Cache-Control': 'no-store'})
 
 
 async def _email_code_authority(verifier, payload):

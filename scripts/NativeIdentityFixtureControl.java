@@ -50,6 +50,26 @@ public final class NativeIdentityFixtureControl implements RealmResourceProvider
                 return value;
             }).toList();
         }
+        @POST @Path("registration") @Consumes("application/json") @Produces("application/json")
+        public Map<String,Object> registration(Map<String,String> body) throws Exception {
+            var realm = guard();
+            String name = body.get("username");
+            if (name == null || !name.matches("action-[a-f0-9]{16}")) throw new BadRequestException();
+            var u = session.users().getUserByUsername(realm, name);
+            if (u == null) throw new BadRequestException();
+            switch (body.get("operation")) {
+                case "cooldown-elapsed" -> {
+                    String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
+                        u.getEmail().toLowerCase(Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    session.singleUseObjects().remove("mf-register-v1:"+realm.getId()+":send:"+digest+":cooldown");
+                }
+                case "force-password" -> u.addRequiredAction(UserModel.RequiredAction.UPDATE_PASSWORD);
+                case "state" -> { }
+                default -> throw new BadRequestException();
+            }
+            return Map.of("subject",u.getId(),"verified",u.isEmailVerified(),"actions",u.getRequiredActionsStream().toList(),
+                "marker",Objects.toString(u.getFirstAttribute("mf.registration.v1"),""));
+        }
         @POST @Path("mail-health") @Consumes("application/json") @Produces("application/json")
         public Map<String,Boolean> mailHealth(Map<String,String> body) throws Exception {
             var realm=guard();var config=new HashMap<>(realm.getSmtpConfig());

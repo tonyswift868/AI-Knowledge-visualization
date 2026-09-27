@@ -62,6 +62,12 @@ def test_backend_old_session_refresh_keeps_membership_id_and_scope(monkeypatch, 
     (OLD_ISSUER,True,'correct'), (NEW_ISSUER,True,'correct'),
     (NEW_ISSUER,True,None), (NEW_ISSUER,True,'wrong-account')])
 def test_desktop_old_credentials_restore_and_rotate_in_same_vault(monkeypatch, tmp_path, signing_keys, discovered, refresh, server_anchor):
+    # Explicitly authorize only this pytest case's D-drive scratch directory.
+    # Production vault path rules and historical dispatch roots remain unchanged.
+    from scripts import test_storage_policy as storage_policy
+    monkeypatch.setattr(storage_policy, 'AUTHORIZED_ROOTS', frozenset({tmp_path}))
+    monkeypatch.setenv(storage_policy.TEST_MODE_ENV, '1')
+    monkeypatch.setenv(storage_policy.SCRATCH_ENV, str(tmp_path))
     from desktop.account_identity import AccountIdentity, AccountCredentialVault
     from desktop.account_vault import VaultLayout
     from desktop.enterprise_oidc import DesktopOidcConfig, EnterpriseOidcClient, EnterpriseOidcError

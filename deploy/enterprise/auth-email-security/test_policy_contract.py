@@ -21,6 +21,8 @@ class PolicyContractTest(unittest.TestCase):
         self.assertTrue(settings['verifyEmail'])
         actions = self.policy['required_actions']
         self.assertTrue(actions['VERIFY_EMAIL']['defaultAction'])
+        self.assertTrue(actions['UPDATE_PASSWORD']['enabled'])
+        self.assertFalse(actions['UPDATE_PASSWORD']['defaultAction'])
         self.assertLess(actions['VERIFY_EMAIL']['priority'], actions['UPDATE_PASSWORD']['priority'])
         self.assertEqual(self.policy['email_required_roles'], ['user'])
         self.assertFalse(actions['VERIFY_PROFILE']['enabled'])

@@ -33,6 +33,7 @@ export class AccountLifecycleState {
         this.resetError = '';
         this.registrationError = '';
         this.registrationMessage = '';
+        this.registrationCodeError = ''; this.registrationCodeValid = false;
         this.maskedEmail = '';
         this.resendState = 'READY';
         this.resendDeadline = 0;
@@ -132,6 +133,7 @@ export class AccountLifecycleState {
         this.pendingRequest = null;
         if (outcome === 'verification_pending') {
             this.screen = 'VERIFY_PENDING'; this.maskedEmail = maskEmail(email);
+            this.registrationCodeError = ''; this.registrationCodeValid = true;
             this.setCooldown(retryAfter);
         } else {
             this.screen = 'REGISTER';
@@ -156,7 +158,7 @@ export class AccountLifecycleState {
         this.resendState = 'READY';
     }
     requestResend() {
-        if (!this.capabilities.register || this.screen !== 'VERIFY_PENDING' || this.resendSeconds || this.resendState === 'SENDING') return false;
+        if (!this.capabilities.register || this.screen !== 'VERIFY_PENDING' || !this.registrationCodeValid || this.pendingRequest || this.resendSeconds || this.resendState === 'SENDING') return false;
         this.beginRequest('resend_verification');
         this.resendState = 'SENDING'; this.changed(); return true;
     }
@@ -165,6 +167,22 @@ export class AccountLifecycleState {
         this.pendingRequest = null;
         if (accepted === true) this.setCooldown(retryAfter);
         else this.resendState = 'FAILED';
+        this.changed(); return true;
+    }
+    requestRegistrationVerify() {
+        if (this.screen !== 'VERIFY_PENDING' || !this.registrationCodeValid || this.pendingRequest) return false;
+        this.beginRequest('verify_registration'); this.registrationCodeError = ''; this.changed(); return true;
+    }
+    registrationCodeResult(value) {
+        if (value.kind === 'registration_restart') { this.navigate('REGISTER'); return true; }
+        if (value.kind !== 'registration_expired') {
+            const kind = value.kind === 'registration_verify' ? 'verify_registration' : 'resend_verification';
+            if (!this.acceptsResult(kind, value.requestId)) return false;
+        }
+        this.pendingRequest = null; this.resendState = 'READY';
+        this.registrationCodeError = value.message || '';
+        this.setCooldown(value.resendAfter || 0);
+        if (['REGISTRATION_INVALID','REGISTRATION_EXPIRED'].includes(value.code)) this.registrationCodeValid = false;
         this.changed(); return true;
     }
     requestForgot() {

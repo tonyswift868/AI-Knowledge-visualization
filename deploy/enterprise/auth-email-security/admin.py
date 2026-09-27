@@ -96,6 +96,10 @@ def apply_policy(policy_path):
     assert policy['schema_version'] == 'mentorflow.auth-email-security.v1'
     assert policy['realm'] == 'mentorflow'
     assert policy['realm_settings']['registrationAllowed'] is False
+    # New users already set a permanent password in the application. Keep the
+    # provider enabled for explicit admin/reset actions; never strip user actions.
+    assert policy['required_actions']['UPDATE_PASSWORD']['enabled'] is True
+    assert policy['required_actions']['UPDATE_PASSWORD']['defaultAction'] is False
     denylist = policy['password_denylist']
     if denylist.get('native_file_provider_enabled'):
         # Do not activate the shorter minimum until the full pinned list is mounted.

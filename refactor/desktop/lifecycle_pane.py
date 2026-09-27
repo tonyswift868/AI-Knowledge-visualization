@@ -67,6 +67,19 @@ class _RegistrationCheckResults(QObject):
         self.parent()._finish_registration_check(result)
 
 
+class _RegistrationResults(QObject):
+    """Private UI-thread channel; opaque credentials never enter QWebChannel."""
+    ready = Signal(object)
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.ready.connect(self.deliver)
+
+    @Slot(object)
+    def deliver(self, value):
+        self.parent()._finish_registration(value)
+
+
 class Bridge(QObject):
     result=Signal(str)
     back=Signal(bool)
@@ -78,6 +91,10 @@ class Bridge(QObject):
         self.completed_account_id=None; self.generation=0
         self._worker_results=_ResetResults(self)
         self._registration_check_results=_RegistrationCheckResults(self)
+        self._registration_results = _RegistrationResults(self)
+        self.registration_credential = None; self.registration_deadline = 0
+        self.registration_resend_deadline = 0; self.registration_username = ''
+        self.registration_email = ''; self.completed_username = None
         self._registration_checks={field: {'generation': 0, 'busy': False, 'pending': None}
             for field in ('username', 'email')}
         self.timer=QTimer(self); self.timer.setInterval(500)
@@ -89,6 +106,7 @@ class Bridge(QObject):
     def cancel(self):
         self.cancelled.set(); self.generation+=1
         self.clear_reset(); self.email=''; self.timer.stop()
+        self.registration_credential = None; self.registration_deadline = 0
 
     @Slot()
     def returnLogin(self): self.cancel(); self.back.emit(False)
@@ -140,30 +158,82 @@ class Bridge(QObject):
             self._start_registration_check(field, pending)
 
     @Slot(str,str,str,int)
-    def register(self,username,password,email,request_id):
+    def register(self, username, password, email, request_id):
         if self.busy or self.cancelled.is_set(): return
-        self.busy=True
+        self.registration_username = username.strip(); self.registration_email = email.strip()
+        self.registration_credential = None
+        self._registration_start('start', {'username': username, 'password': password, 'email': email}, request_id)
+
+    @Slot(str,int)
+    def verifyRegistration(self, code, request_id):
+        if self.busy or self.cancelled.is_set(): return
+        if not self.registration_credential or time.monotonic() >= self.registration_deadline:
+            self._registration_publish('registration_verify', request_id, 'REGISTRATION_EXPIRED'); return
+        self._registration_start('verify', {'credential': self.registration_credential, 'code': code}, request_id)
+
+    @Slot(int)
+    def resendRegistration(self, request_id):
+        if self.busy or self.cancelled.is_set(): return
+        if not self.registration_credential or time.monotonic() >= self.registration_deadline:
+            self._registration_publish('registration_resend', request_id, 'REGISTRATION_EXPIRED'); return
+        if time.monotonic() < self.registration_resend_deadline:
+            self._registration_publish('registration_resend', request_id, 'REGISTRATION_COOLDOWN'); return
+        self._registration_start('resend', {'credential': self.registration_credential}, request_id)
+
+    @Slot()
+    def restartRegistration(self):
+        if self.busy or self.cancelled.is_set(): return
+        self.generation += 1; self.registration_credential = None; self.registration_deadline = 0
+        self._registration_publish('registration_restart')
+
+    def _registration_publish(self, kind, request_id=0, error='', **extra):
+        self.result.emit(json.dumps(dict(kind=kind, requestId=request_id, code=error,
+            message=REGISTRATION_MESSAGES.get(error, ''),
+            resendAfter=max(0, int(self.registration_resend_deadline-time.monotonic()+0.999)), **extra)))
+
+    def _registration_start(self, operation, payload, request_id):
+        self.busy = True; self.generation += 1; generation = self.generation
+        started = time.monotonic()
         def work():
-            nonlocal password
             async def request():
-                client=LifecycleClient(AccountConfig.from_env())
-                try: return await client.action('register',dict(username=username,password=password,email=email))
+                client = LifecycleClient(AccountConfig.from_env())
+                try: return await client.registration_code(operation, payload)
                 finally: await client.aclose()
-            try:
-                asyncio.run(request()); result={'kind':'register','requestId':request_id,'outcome':'verification_pending','email':email}
+            value = None; error = ''
+            try: value = asyncio.run(request())
             except Exception as exc:
-                code = getattr(exc, 'code', 'REGISTRATION_RESULT_UNCERTAIN')
-                if code not in REGISTRATION_MESSAGES:
-                    code = 'REGISTRATION_RESULT_UNCERTAIN'
-                outcome = {'USERNAME_ALREADY_IN_USE': 'username_taken', 'EMAIL_ALREADY_IN_USE': 'email_taken',
-                           'ACCOUNT_ALREADY_IN_USE': 'account_in_use'}.get(code, 'failed')
-                result={'kind':'register','requestId':request_id,'outcome':outcome,
-                        'message':REGISTRATION_MESSAGES[code]}
-            finally: password=None; self.busy=False
+                error = getattr(exc, 'code', 'REGISTRATION_RESULT_UNCERTAIN')
+                if error not in REGISTRATION_MESSAGES: error = 'REGISTRATION_RESULT_UNCERTAIN'
+            finally: payload.clear()
             if not self.cancelled.is_set():
-                try: self.result.emit(json.dumps(result))
-                except RuntimeError: pass  # The pane was disposed as registration completed.
-        threading.Thread(target=work,daemon=True).start()
+                try: self._registration_results.ready.emit((generation, operation, request_id, started, value, error))
+                except RuntimeError: pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def _finish_registration(self, response):
+        generation, operation, request_id, started, value, error = response
+        if self.cancelled.is_set() or generation != self.generation: return
+        self.busy = False
+        kind = {'start': 'register', 'verify': 'registration_verify', 'resend': 'registration_resend'}[operation]
+        if error:
+            if error in ('REGISTRATION_EXPIRED', 'REGISTRATION_INVALID'):
+                self.registration_credential = None; self.registration_deadline = 0
+            if error == 'REGISTRATION_COOLDOWN': self.registration_resend_deadline = time.monotonic() + 60
+            if error == 'REGISTRATION_SEND_LIMIT': self.registration_resend_deadline = time.monotonic() + 3600
+            outcome = {'USERNAME_ALREADY_IN_USE': 'username_taken', 'EMAIL_ALREADY_IN_USE': 'email_taken',
+                       'ACCOUNT_ALREADY_IN_USE': 'account_in_use'}.get(error, 'failed')
+            self._registration_publish(kind, request_id, error, outcome=outcome); return
+        if operation in ('start', 'resend'):
+            self.registration_credential = value['credential']
+            self.registration_deadline = started + value['expires_in']
+            self.registration_resend_deadline = started + value['resend_after']
+            self._registration_publish(kind, request_id, outcome='verification_pending', email=self.registration_email)
+        else:
+            self.registration_credential = None; self.registration_deadline = 0
+            self.completed_username = self.registration_username
+            self._registration_publish(kind, request_id, outcome='verified')
+            self.back.emit(True)
+
     def _publish(self, kind, request_id=0, code='', **extra):
         self.result.emit(json.dumps(dict(kind=kind, requestId=request_id, code=code,
             message=RESET_MESSAGES.get(code, ''), stage=self.stage,
@@ -171,6 +241,9 @@ class Bridge(QObject):
 
     def _expire(self):
         if self.busy or self.cancelled.is_set(): return
+        if self.registration_deadline and time.monotonic() >= self.registration_deadline:
+            self.registration_credential = None; self.registration_deadline = 0
+            self._registration_publish('registration_expired', error='REGISTRATION_EXPIRED')
         if self.deadline and time.monotonic() >= self.deadline:
             code='RESET_CODE_INVALID_OR_EXPIRED' if self.stage=='code' else 'RESET_PROOF_INVALID_OR_EXPIRED'
             self.clear_reset(); self.stage='expired'

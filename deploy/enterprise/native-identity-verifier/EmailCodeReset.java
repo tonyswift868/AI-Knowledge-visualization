@@ -51,7 +51,7 @@ final class EmailCodeReset {
         int expires=Time.currentTime()+CODE_TTL;
         store.put(key,CODE_TTL+60,Map.of("subject",user.getId(),"email",hash(normalized),
             "binding",credentialBinding(user),"code",hash(ticket+"\0"+code),"expires",Integer.toString(expires)));
-        String text="您的 MentorFlow 密码重置验证码是："+code+"\n有效期为 10 分钟。请在 MentorFlow 登录窗口输入验证码。\n请勿向他人提供验证码。如非本人操作，请忽略此邮件。";
+        String text="您的 MentorFlow 密码重置验证码是："+code+"\n有效期为 10 分钟。请在 MentorFlow 软件的找回密码页面输入验证码。\n请勿向他人提供验证码。如非本人操作，请忽略此邮件。";
         try {
             s.getProvider(EmailSenderProvider.class).send(realm.getSmtpConfig(),user,
                 "MentorFlow 密码重置验证码",text,null);
