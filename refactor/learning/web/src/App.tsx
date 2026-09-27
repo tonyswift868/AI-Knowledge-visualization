@@ -8,6 +8,7 @@ import { Home } from "./pages/Home"
 import { Plans } from "./pages/Plans"
 import { NewPlan } from "./pages/NewPlan"
 import { Tools } from "./pages/Tools"
+import { Chat } from "./pages/Chat"
 import { Settings } from "./pages/Settings"
 
 const NAV: { id: Route; label: string; icon: any }[] = [
@@ -45,7 +46,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = { home: Home, plans: Plans, "new-plan": NewPlan, tools: Tools, settings: Settings }[s.route]
+  const Page = { home: Home, plans: Plans, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
 
   return (
     <>
@@ -57,7 +58,7 @@ export function App() {
             <span className="brand-text">MentorFlow</span>
           </div>
           {NAV.map((n) => (
-            <button key={n.id} className={`nav-item ${s.route === n.id ? "active" : ""}`} onClick={() => s.go(n.id)} title={n.label}>
+            <button key={n.id} className={`nav-item ${s.route === n.id || (n.id === "tools" && s.route === "chat") ? "active" : ""}`} onClick={() => s.go(n.id)} title={n.label}>
               <n.icon /><span className="nav-label">{n.label}</span>
             </button>
           ))}

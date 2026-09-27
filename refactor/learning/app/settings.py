@@ -1,7 +1,9 @@
 """Account-level learning preferences for the new window (TEACH-01, TEACH-05, SYS-04, UI-00).
 
-Preferences are chosen from presets, never typed prompts (TEACH-01). They
-apply to every plan of the account; mistakes and profiles stay per plan.
+Teaching preferences are chosen from presets, never typed prompts (TEACH-01).
+They apply to every plan of the account; mistakes and profiles stay per plan.
+chat_persona is the one typed text: the user's own persona for free chat (UI-02),
+never used by the classroom.
 """
 from __future__ import annotations
 
@@ -29,6 +31,7 @@ DEFAULTS = {
     "refresh_time": "04:00",
     "reminder_enabled": False,
     "reminder_time": "20:00",
+    "chat_persona": "",
 }
 
 _TIME = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
@@ -55,6 +58,7 @@ def validate(values: dict) -> dict:
         isinstance(merged["refresh_time"], str) and bool(_TIME.fullmatch(merged["refresh_time"])),
         type(merged["reminder_enabled"]) is bool,
         isinstance(merged["reminder_time"], str) and bool(_TIME.fullmatch(merged["reminder_time"])),
+        isinstance(merged["chat_persona"], str) and len(merged["chat_persona"]) <= 6000,
         merged["version"] == 1,
     )
     if not all(checks):

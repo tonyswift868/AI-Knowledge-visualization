@@ -192,3 +192,6 @@ def register(bridge, window):
         return {"plans": items, "study_day": today.isoformat()}
 
     bridge.register("plans.list", plan_list)
+
+    from . import chat
+    chat.register(bridge, services)

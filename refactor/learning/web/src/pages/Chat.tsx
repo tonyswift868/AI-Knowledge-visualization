@@ -1,0 +1,235 @@
+import * as React from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
+import "katex/dist/katex.min.css"
+import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
+import { BridgeFailure, call } from "../bridge"
+import { useApp } from "../store"
+import { Button, SakuraArt, Skeleton } from "../ui"
+
+type Msg = { role: "user" | "assistant"; content: string; seq?: number }
+type Summary = { id: string; title: string; updated_at: string; count: number }
+type Session = Summary & { messages: Msg[] }
+
+function when(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) return d.toTimeString().slice(0, 5)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+export function Chat() {
+  const toast = useApp((s) => s.toast)
+  const go = useApp((s) => s.go)
+  const [list, setList] = React.useState<Summary[] | null>(null)
+  const [current, setCurrent] = React.useState<Session | null>(null)
+  const [draft, setDraft] = React.useState("")
+  const [pending, setPending] = React.useState<{ user: string; reply: string } | null>(null)
+  const [personaOpen, setPersonaOpen] = React.useState(false)
+  const abort = React.useRef<AbortController | null>(null)
+  const scroller = React.useRef<HTMLDivElement>(null)
+  const input = React.useRef<HTMLTextAreaElement>(null)
+
+  const refresh = React.useCallback(async () => {
+    const r = await call<{ sessions: Summary[] }>("chat.list")
+    setList(r.sessions)
+    return r.sessions
+  }, [])
+
+  const open = React.useCallback(async (id: string) => {
+    try {
+      const r = await call<{ session: Session }>("chat.get", { session_id: id })
+      setCurrent(r.session)
+    } catch (e) { toast("error", (e as Error).message) }
+  }, [toast])
+
+  React.useEffect(() => {
+    refresh().then((sessions) => { if (sessions[0]) open(sessions[0].id) }).catch((e) => { setList([]); toast("error", e.message) })
+    return () => abort.current?.abort()
+  }, [refresh, open, toast])
+
+  React.useLayoutEffect(() => {
+    const el = scroller.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [current, pending])
+
+  async function fresh() {
+    if (pending) return
+    if (current && current.count === 0) { input.current?.focus(); return }
+    try {
+      const r = await call<{ session: Session }>("chat.create")
+      setCurrent(r.session)
+      await refresh()
+      input.current?.focus()
+    } catch (e) { toast("error", (e as Error).message) }
+  }
+
+  async function remove(id: string) {
+    try {
+      await call("chat.delete", { session_id: id })
+      const sessions = await refresh()
+      if (current?.id === id) {
+        setCurrent(null)
+        if (sessions[0]) open(sessions[0].id)
+      }
+    } catch (e) { toast("error", (e as Error).message) }
+  }
+
+  async function send() {
+    const text = draft.trim()
+    if (!text || pending) return
+    let session = current
+    try {
+      if (!session) {
+        session = (await call<{ session: Session }>("chat.create")).session
+        setCurrent(session)
+        refresh()
+      }
+    } catch (e) { toast("error", (e as Error).message); return }
+    setDraft("")
+    setPending({ user: text, reply: "" })
+    const controller = new AbortController()
+    abort.current = controller
+    try {
+      const r = await call<{ session: Session }>("chat.send", { session_id: session.id, text }, {
+        signal: controller.signal,
+        onStream: (d) => setPending((p) => p && { ...p, reply: p.reply + d }),
+      })
+      setCurrent(r.session)
+      refresh()
+    } catch (e) {
+      const err = e as BridgeFailure
+      setDraft((d) => d || text)
+      if (err.code === "CANCELLED") toast("info", err.message)
+      else toast("error", err.message)
+    } finally {
+      abort.current = null
+      setPending(null)
+    }
+  }
+
+  const messages = current?.messages ?? []
+
+  return (
+    <div className="page chat-page">
+      <aside className="card chat-list">
+        <div className="row between">
+          <Button small kind="ghost" onClick={() => go("tools")}><ArrowLeft />更多工具</Button>
+        </div>
+        <Button kind="primary" onClick={fresh} disabled={!!pending}><MessageSquarePlus />新对话</Button>
+        <div className="chat-sessions">
+          {list === null ? [0, 1, 2].map((i) => <Skeleton key={i} h={44} />)
+            : list.length === 0 ? <p className="muted small" style={{ padding: "4px 6px" }}>还没有对话。</p>
+            : list.map((s) => (
+              <SessionRow key={s.id} s={s} on={current?.id === s.id} disabled={!!pending}
+                          onOpen={() => open(s.id)} onDelete={() => remove(s.id)} />
+            ))}
+        </div>
+      </aside>
+
+      <section className="card chat-main">
+        <header className="chat-head">
+          <div style={{ minWidth: 0 }}>
+            <b className="chat-title">{current?.title ?? "教师闲聊"}</b>
+            <span className="muted small">想聊什么都行，不会进入课程</span>
+          </div>
+          <Button small kind={personaOpen ? "primary" : undefined} onClick={() => setPersonaOpen((v) => !v)}>
+            <UserRoundPen />人设
+          </Button>
+        </header>
+        {personaOpen && <Persona onClose={() => setPersonaOpen(false)} />}
+
+        <div className="chat-scroll" ref={scroller}>
+          {messages.length === 0 && !pending ? (
+            <div className="chat-empty fade-in">
+              <SakuraArt />
+              <p>随便聊点什么吧。<br /><span className="muted small">点右上角“人设”可以写下你希望老师是什么样子。</span></p>
+            </div>
+          ) : (
+            <>
+              {messages.map((m) => <Bubble key={m.seq} m={m} />)}
+              {pending && <>
+                <Bubble m={{ role: "user", content: pending.user }} />
+                <Bubble m={{ role: "assistant", content: pending.reply }} streaming />
+              </>}
+            </>
+          )}
+        </div>
+
+        <div className="composer">
+          <textarea ref={input} className="input" rows={1} value={draft} placeholder="输入消息，Enter 发送，Shift + Enter 换行"
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }} />
+          {pending
+            ? <Button onClick={() => abort.current?.abort()}><Square />停止</Button>
+            : <Button kind="primary" onClick={send} disabled={!draft.trim()}><SendHorizontal />发送</Button>}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function SessionRow({ s, on, disabled, onOpen, onDelete }:
+  { s: Summary; on: boolean; disabled: boolean; onOpen: () => void; onDelete: () => void }) {
+  const [confirm, setConfirm] = React.useState(false)
+  React.useEffect(() => {
+    if (!confirm) return
+    const t = setTimeout(() => setConfirm(false), 3000)
+    return () => clearTimeout(t)
+  }, [confirm])
+  return (
+    <div className={`chat-session ${on ? "on" : ""}`} onClick={() => !disabled && onOpen()}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <b>{s.title}</b>
+        <span>{when(s.updated_at)} · {s.count} 条</span>
+      </div>
+      <button className={`chat-del ${confirm ? "confirm" : ""}`} disabled={disabled} title="删除这段对话"
+              onClick={(e) => { e.stopPropagation(); confirm ? onDelete() : setConfirm(true) }}>
+        {confirm ? "确认删除" : <Trash2 size={15} />}
+      </button>
+    </div>
+  )
+}
+
+function Bubble({ m, streaming }: { m: Msg; streaming?: boolean }) {
+  if (m.role === "user") return <div className="bubble user" data-selectable>{m.content}</div>
+  return (
+    <div className={`bubble bot ${streaming ? "streaming" : ""}`} data-selectable>
+      {m.content
+        ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
+        : <span className="typing"><i /><i /><i /></span>}
+    </div>
+  )
+}
+
+function Persona({ onClose }: { onClose: () => void }) {
+  const settings = useApp((s) => s.settings)
+  const set = useApp((s) => s.set)
+  const toast = useApp((s) => s.toast)
+  const [text, setText] = React.useState(settings?.chat_persona ?? "")
+  const [busy, setBusy] = React.useState(false)
+  async function save() {
+    setBusy(true)
+    try {
+      const r = await call<{ settings: any }>("settings.save", { changes: { chat_persona: text } })
+      set({ settings: r.settings })
+      toast("ok", text.trim() ? "人设已保存，下一句开始生效。" : "已清空人设。")
+      onClose()
+    } catch (e) { toast("error", (e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="persona fade-in">
+      <textarea className="input" rows={5} maxLength={6000} value={text} onChange={(e) => setText(e.target.value)}
+                placeholder="例如：你叫小樱，说话轻松，喜欢用游戏打比方……" />
+      <div className="row between">
+        <span className="muted small">这段话会原样发给模型，除此之外没有任何提示。留空就是完全不设定。</span>
+        <div className="row">
+          <Button small kind="ghost" onClick={onClose}>取消</Button>
+          <Button small kind="primary" busy={busy} onClick={save}>保存</Button>
+        </div>
+      </div>
+    </div>
+  )
+}

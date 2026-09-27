@@ -88,7 +88,7 @@ const mockState: any = {
   settings: {
     version: 1, theme: "sakura", font_scale: 1, reduce_motion: false, teacher_style: "warm", detail: "normal",
     examples: "normal", analogy_domains: ["life", "games"], refresh_time: "04:00", reminder_enabled: false,
-    reminder_time: "20:00",
+    reminder_time: "20:00", chat_persona: "",
   },
   presets: [{ id: "p1", provider_id: "deepseek", display_name: "DeepSeek V4 Flash",
               base_url: "https://api.deepseek.com/anthropic", model: "deepseek-v4-flash", temperature: null,

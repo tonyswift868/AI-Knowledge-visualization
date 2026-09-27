@@ -27,6 +27,7 @@ class AppServices:
         self._gateway = None
         self._store = None
         self._catalog = None
+        self._chat = None
         self._closed = False
 
     # -- catalog (server whitelist and prices, cached, with built-in fallback)
@@ -66,6 +67,15 @@ class AppServices:
                 self._store = CourseStore(self.account_id, self.data_root)
             return self._store
 
+    # -- free chat sessions (same account path as the old tools page)
+    @property
+    def chat(self):
+        with self._lock:
+            if self._chat is None and not self._closed:
+                from .chat import open_store
+                self._chat = open_store(self.account_id, self.data_root)
+            return self._chat
+
     def refresh_catalog(self):
         try:
             catalog = self.catalog
@@ -78,6 +88,7 @@ class AppServices:
         with self._lock:
             self._closed = True
             services, self._gateway, self._store, self._catalog = (self._gateway, self._store, self._catalog), None, None, None
+            self._chat = None
         for service in services:
             if service is not None:
                 try:

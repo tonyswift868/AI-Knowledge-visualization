@@ -222,7 +222,7 @@ function Models() {
 // ------------------------------------------------------------------- usage
 const PURPOSE: Record<string, string> = {
   connection_test: "连接测试", research: "找资料", source_scoring: "资料评分", sufficiency: "需求核对", outline: "生成轮廓",
-  generate: "生成计划", teacher: "老师讲课", judge: "判定作答", question: "出题", profile: "学习档案", chat: "教师闲聊",
+  generate: "生成计划", teacher: "老师讲课", judge: "判定作答", question: "出题", profile: "学习档案", free_chat: "教师闲聊",
 }
 type Agg = { calls: number; input_tokens: number | null; cached_input_tokens: number | null; output_tokens: number | null; search_requests?: number | null;
   cache_hit_rate: string | null; amount: string | null; currency: string | null; usage_complete?: boolean; amount_complete?: boolean }

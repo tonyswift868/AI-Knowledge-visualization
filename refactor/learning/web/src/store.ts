@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type Route = "home" | "plans" | "new-plan" | "tools" | "settings"
+export type Route = "home" | "plans" | "new-plan" | "tools" | "chat" | "settings"
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
 export type Settings = {
@@ -15,6 +15,7 @@ export type Settings = {
   refresh_time: string
   reminder_enabled: boolean
   reminder_time: string
+  chat_persona: string
 }
 
 export type Account = { name: string; role_label: string; settings_available?: boolean }
