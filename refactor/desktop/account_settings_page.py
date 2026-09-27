@@ -5,6 +5,7 @@ import time
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import QDialog, QFrame, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
+from . import dialog_theme
 from .account_security_client import SECURITY_MESSAGES
 
 
@@ -32,22 +33,15 @@ class AccountSettingsPage(QDialog):
         self.setWindowTitle('MentorFlow · 账号设置')
         self.resize(520, 710)
         self.setMinimumSize(420, 480)
-        self.setStyleSheet('''
-            QDialog#accountSettingsWindow { background: #fff9fc; color: #3b2b3f; }
-            QFrame#settingsCard { background: white; border: 1px solid #ead8e1; border-radius: 8px; }
-            QPushButton { min-height: 30px; padding: 3px 10px; }
-            QLineEdit { min-height: 28px; padding: 3px 8px; }
-            QLabel#pageHeading { color: #3b2b3f; font-size: 24px; font-weight: 700; }
-        ''')
-        outer = QVBoxLayout(self)
+        outer = QVBoxLayout(self); outer.setContentsMargins(16, 8, 16, 16); outer.setSpacing(10)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         content = QWidget(); scroll.setWidget(content); outer.addWidget(scroll)
-        layout = QVBoxLayout(content); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(12)
+        layout = QVBoxLayout(content); layout.setContentsMargins(12, 18, 12, 12); layout.setSpacing(14)
         heading = QLabel('账号与安全'); heading.setObjectName('pageHeading'); layout.addWidget(heading)
         self.account_label = self._label(profile.safe_account_label, layout)
         self._label('查看或验证绑定邮箱，修改登录密码。', layout)
         card = QFrame(); card.setObjectName('settingsCard'); layout.addWidget(card)
-        fields = QVBoxLayout(card); fields.setContentsMargins(16, 14, 16, 14); fields.setSpacing(10)
+        fields = QVBoxLayout(card); fields.setContentsMargins(20, 18, 20, 18); fields.setSpacing(12)
         self.email_status = self._label('正在读取邮箱状态…', fields)
         self.email_address = QLineEdit(); self.email_address.setPlaceholderText('要绑定的邮箱')
         self.email_address.setAccessibleName('绑定邮箱'); self.email_address.setMaxLength(254); fields.addWidget(self.email_address)
@@ -65,7 +59,7 @@ class AccountSettingsPage(QDialog):
         self.security_status = self._label('', fields)
 
         password_card = QFrame(); password_card.setObjectName('settingsCard'); layout.addWidget(password_card)
-        password_layout = QVBoxLayout(password_card); password_layout.setContentsMargins(16, 14, 16, 14)
+        password_layout = QVBoxLayout(password_card); password_layout.setContentsMargins(20, 18, 20, 18); password_layout.setSpacing(12)
         self.password_toggle = QPushButton('修改密码…'); password_layout.addWidget(self.password_toggle)
         self.password_form = QWidget(); form = QVBoxLayout(self.password_form)
         self.current_password = self._password_field('当前密码', 1024, form)
@@ -92,6 +86,9 @@ class AccountSettingsPage(QDialog):
         for button in self.findChildren(QPushButton):
             button.setAutoDefault(False)
         self.email_code.returnPressed.connect(self._verify_code)
+        dialog_theme.apply(self, dialog_theme.theme_of(parent), {
+            close_button: "primary", self.change_password_button: "primary", self.verify_email_button: "primary",
+            self.send_email_code_button: "primary", self.closure_button: "danger", self.cancel_email_button: "ghost"})
 
     @staticmethod
     def _label(text, layout):

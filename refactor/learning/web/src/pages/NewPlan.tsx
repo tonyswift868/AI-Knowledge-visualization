@@ -5,7 +5,7 @@ import {
 } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, Field, Segmented } from "../ui"
+import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
 
 // ------------------------------------------------------------------ types
 type Card = {
@@ -228,7 +228,7 @@ function FormCard({ draft, text, busy, onSubmit }: { draft: Draft; text: string;
         <div className="grid three">
           <Field label="开始日期"><input className="input" type="date" value={form.start} onChange={(e) => patch({ start: e.target.value })} /></Field>
           <Field label="结束日期"><input className="input" type="date" value={form.end} onChange={(e) => patch({ end: e.target.value })} /></Field>
-          <Field label="这份计划每天最多学多久（分钟）">
+          <Field label="每日任务时长上限（分钟）" tip={TASK_TIME_TIP}>
             <div className="row">
               <input className="input" type="number" min={10} max={720} value={form.daily_cap} style={{ width: 96 }} onChange={(e) => patch({ daily_cap: Number(e.target.value) })} />
               {[30, 60, 90, 120, 300].map((m) => <button key={m} className={`tag-btn ${form.daily_cap === m ? "on" : ""}`} onClick={() => patch({ daily_cap: m })}>{m}</button>)}
@@ -345,10 +345,10 @@ function OutlineCard({ outline }: { outline: Outline }) {
     <div className="outline-card">
       <div className="outline-sum">
         <div><span>预计总时长</span><b>{hours(r.total[0])} – {hours(r.total[1])}</b></div>
-        <div><span>每个全天学</span><b>{r.daily[0]} – {r.daily[1]} 分钟</b></div>
+        <div><span>每日任务时长<Tip text={TASK_TIME_TIP} /></span><b>{r.daily[0]} – {r.daily[1]} 分钟</b></div>
         <div><span>模块</span><b>{all.length} 个 · {outline.stages.length} 个阶段</b></div>
       </div>
-      {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每天需要的时间可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
+      {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每日任务时长可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
       <div className="outline-tree">
         {outline.stages.map((stage, si) => (
           <div key={si} className="stage">
@@ -482,11 +482,11 @@ function ReadyCard({ draft, text, busy, act, onStarted }:
         <div className="outline-card">
           <div className="outline-sum">
             <div><span>总时长（含检验）</span><b>{hours(detail.plan.total_minutes)}</b></div>
-            <div><span>每个全天学</span><b>{d ? `${d.full_day} 分钟` : "—"}</b></div>
+            <div><span>每日任务时长<Tip text={TASK_TIME_TIP} /></span><b>{d ? `${d.full_day} 分钟` : "—"}</b></div>
             <div><span>日期</span><b>{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "—"}</b></div>
           </div>
           {d && !d.ok && (
-            <div className="outline-warn"><CircleAlert size={16} />每天需要 {d.full_day} 分钟，超过了你设的上限 {d.cap} 分钟。
+            <div className="outline-warn"><CircleAlert size={16} />每日任务时长 {d.full_day} 分钟，超过了你设的上限 {d.cap} 分钟。
               {d.suggested_end && <Button small disabled={busy} onClick={() => act("plan.extend", { end: d.suggested_end })}>把结束日期延后到 {d.suggested_end}</Button>}
               <span>也可以删掉一些模块。</span>
             </div>

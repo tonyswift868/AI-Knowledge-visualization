@@ -76,6 +76,8 @@ class _AppPage(QWebEnginePage):
 
 class LearningWindow(QWidget):
     switch_requested = Signal()
+    # Bridge handlers run on worker threads; widget changes must hop to the GUI thread.
+    _theme_changed = Signal(str)
     logout_requested = Signal()
     verify_requested = Signal()
     settings_requested = Signal()
@@ -121,6 +123,7 @@ class LearningWindow(QWidget):
         # An opaque page background matching the theme: a transparent one lets the
         # native window show through between animated frames (visible flicker).
         self._apply_theme("sakura")
+        self._theme_changed.connect(self._apply_theme, Qt.ConnectionType.QueuedConnection)
         self.bridge = AppBridge(self)
         handlers.register(self.bridge, self)
         self.channel = QWebChannel(self.page)
@@ -160,11 +163,13 @@ class LearningWindow(QWidget):
         return full
 
     def settings_changed(self, settings):
-        self._apply_theme(settings.get("theme", "sakura"))
+        """Called from bridge worker threads: only signals, never touches widgets here."""
+        self._theme_changed.emit(settings.get("theme", "sakura"))
         self.bridge.push("settings", settings)
 
     def _apply_theme(self, theme):
-        color = THEME_BACKGROUNDS.get(theme, THEME_BACKGROUNDS["sakura"])
+        self.current_theme = theme if theme in THEME_BACKGROUNDS else "sakura"  # read by account dialogs
+        color = THEME_BACKGROUNDS[self.current_theme]
         self.page.setBackgroundColor(QColor(color))
         self.setStyleSheet(f"#mentorflowLearningHome {{ background: {color}; }}")
 

@@ -1,4 +1,5 @@
 """Explicit save choice, preparation, final confirmation and recovery UI."""
+from . import dialog_theme
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QDialog, QLabel, QLineEdit, QPushButton,
                                QRadioButton, QVBoxLayout, QWidget)
@@ -17,7 +18,7 @@ class ClosurePage(QDialog):
     export_requested = Signal()
     closed = Signal()
 
-    def __init__(self, profile, parent=None):
+    def __init__(self, profile, parent=None, *, theme=None):
         super().__init__(parent)
         self.profile = profile
         self._closed = False
@@ -62,6 +63,10 @@ class ClosurePage(QDialog):
         for button in self.findChildren(QPushButton):
             button.setAutoDefault(False)
         self.confirmation.toggled.connect(self._buttons)
+        box.setContentsMargins(24, 22, 24, 20); box.setSpacing(12)
+        dialog_theme.apply(self, theme or dialog_theme.theme_of(parent), {
+            self.continue_button: "primary", self.prepare_button: "primary", self.commit_button: "danger",
+            self.cancel_button: "ghost"})
 
     @staticmethod
     def label(text, layout):

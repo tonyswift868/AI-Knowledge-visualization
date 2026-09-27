@@ -553,5 +553,18 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .chip.sync.failed, .chip.sync.reauth, .chip.sync.superseded { color: var(--warn); border-color: rgba(207, 139, 46, 0.35); }
 @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } .stage-label { position: static; } .form-card .grid.three { grid-template-columns: 1fr 1fr; } }
 
+/* ---------- hover help ---------- */
+.tip { position: relative; display: inline-flex; vertical-align: -3px; margin-left: 5px; color: var(--text-3); cursor: help; outline: none; }
+.tip > svg { width: 15px; height: 15px; transition: color 0.2s; }
+.tip:hover > svg, .tip:focus > svg { color: var(--accent); }
+.tip-bubble { position: fixed; width: 300px; transform: translate(-50%, -100%); padding: 11px 13px;
+  border-radius: 13px; background: var(--surface-solid); color: var(--text); border: 1px solid var(--border-strong); box-shadow: var(--shadow-hover);
+  font-size: 0.82rem; font-weight: 500; line-height: 1.65; white-space: normal; letter-spacing: 0; text-align: left;
+  pointer-events: none; z-index: 100; animation: tipIn 0.16s ease-out both; }
+.tip-bubble.below { transform: translate(-50%, 0); }
+@keyframes tipIn { from { opacity: 0; } to { opacity: 1; } }
+.outline-sum span .tip { vertical-align: -2px; }
+.outline-sum > div { overflow: visible; }
+
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

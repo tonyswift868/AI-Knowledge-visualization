@@ -1,5 +1,6 @@
 import * as React from "react"
-import { CheckCircle2, Info, Loader2, XCircle } from "lucide-react"
+import { CheckCircle2, CircleHelp, Info, Loader2, XCircle } from "lucide-react"
+import { createPortal } from "react-dom"
 import { useApp } from "./store"
 
 // ------------------------------------------------------------------ brand
@@ -137,10 +138,38 @@ export function Segmented<T extends string | number>({ value, options, onChange 
   )
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) {
+// One definition used everywhere a daily duration is shown (PLAN-05).
+export const TASK_TIME_TIP = "任务时长：每天安排给你的学习量，按学完的内容计算，不是开着软件的时间。" +
+  "讲解、随口问答、模块检测都算在内；讲完答对先记“暂记”，模块检测通过才算正式完成。" +
+  "整份计划的总时长会平均分到每个能学的日子（半天按一半），每天不超过你设的上限。"
+
+// The bubble lives in a body-level portal with fixed positioning, so cards with
+// overflow:hidden or scroll areas never clip it; it opens toward the roomier side.
+export function Tip({ text }: { text: string }) {
+  const ref = React.useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = React.useState<{ x: number; y: number; below: boolean } | null>(null)
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (!r) return
+    const below = r.top < 170
+    const x = Math.min(Math.max(r.left + r.width / 2, 166), window.innerWidth - 166)
+    setPos({ x, y: below ? r.bottom + 10 : r.top - 10, below })
+  }
+  return (
+    <span ref={ref} className="tip" tabIndex={0} aria-label={text} onMouseEnter={show} onFocus={show}
+          onMouseLeave={() => setPos(null)} onBlur={() => setPos(null)} onClick={(e) => e.preventDefault()}>
+      <CircleHelp />
+      {pos && createPortal(
+        <span className={`tip-bubble ${pos.below ? "below" : ""}`} role="tooltip" style={{ left: pos.x, top: pos.y }}>{text}</span>,
+        document.body)}
+    </span>
+  )
+}
+
+export function Field({ label, hint, tip, children }: { label: string; hint?: React.ReactNode; tip?: string; children: React.ReactNode }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>{label}{tip && <Tip text={tip} />}</span>
       {children}
       {hint && <small>{hint}</small>}
     </label>

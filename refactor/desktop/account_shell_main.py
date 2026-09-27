@@ -754,7 +754,8 @@ class AccountShell:
             client = (self._closure_client_factory(profile, credentials) if self._closure_client_factory else
                       ClosureClient(AccountConfig.from_env(), profile, credentials))
             cleanup = self._closure_cleanup_factory(self.session) if self._closure_cleanup_factory else ClosureCleanup(self.session)
-            page = ClosurePage(profile)
+            from . import dialog_theme
+            page = ClosurePage(profile, theme=dialog_theme.theme_of(self.home))
             home = self.home
             identity = current.identity if current and current.identity.account_id == profile.account_id else None
 
@@ -1523,6 +1524,9 @@ def _acquire_instance_lock(shell_runtime):
 
 
 def main() -> int:
+    # Qt's default D3D11 composition flickers on hybrid-GPU laptops (BUG-04);
+    # OpenGL composition does not. Must be set before QApplication exists.
+    os.environ.setdefault("QSG_RHI_BACKEND", "opengl")
     try:
         from .shell_paths import prepare_shell_runtime
 

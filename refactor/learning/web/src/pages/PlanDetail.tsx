@@ -2,7 +2,7 @@ import * as React from "react"
 import { ArrowLeft, BookOpen, ExternalLink } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
-import { Button, Skeleton } from "../ui"
+import { Button, Skeleton, TASK_TIME_TIP, Tip } from "../ui"
 import { PlanTree } from "./NewPlan"
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"]
@@ -30,7 +30,7 @@ export function PlanDetail() {
           <div className="outline-sum" style={{ marginTop: 14 }}>
             <div><span>模块</span><b>{detail.stages.reduce((a, s) => a + s.modules.length, 0)} 个 · {points} 个知识点</b></div>
             <div><span>总时长（含检验）</span><b>{Math.round(detail.plan.total_minutes / 6) / 10} 小时</b></div>
-            <div><span>每个全天学</span><b>{detail.daily ? `${detail.daily.full_day} 分钟` : "—"}</b></div>
+            <div><span>每日任务时长<Tip text={TASK_TIME_TIP} /></span><b>{detail.daily ? `${detail.daily.full_day} 分钟` : "—"}</b></div>
           </div>
         </div>
       </div>
