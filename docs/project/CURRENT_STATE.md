@@ -633,6 +633,7 @@
 - 原因：realm 策略把 UPDATE_PASSWORD 设为新账号的默认必需操作，注册又走 Keycloak 自带的验证链接，验证后顺势进入改密；旧流程没有“注册未完成”的安全重开路径。
 - 解决：身份系统扩展新增 RegistrationCodes：注册时在同一事务内建账号并打自助注册标记，发 6 位验证码邮件（10 分钟、错 5 次作废、60 秒冷却、每小时 10 次），客户端在注册页填码；过期后只对“有标记且未验证”的账号复用身份重新发码；UPDATE_PASSWORD 仅取消“新账号默认附加”，管理员强制改密等照旧；旧 /forgot 返回 410，找回密码只走软件内验证码。
 - 验证：6-MF07 在隔离的真实 Keycloak + 本机 SMTP 上 24 项注册验证通过；后端账号相关 424 项 + 部署包测试通过；架构师合并后复跑关键后端测试 86 项与客户端全套通过。线上未部署。
+- 部署进度（2026-09-28，用户已批准）：已完成——两个数据库备份到 /opt/mentorflow/state/mentorflow-e1-preview/mf-b03-rollback/mf-u11-db（数据库仍为 0042）；部署包上传到 /opt/mentorflow/artifacts/mf-u11；线上 realm 的 UPDATE_PASSWORD 已用容器内 kcadm 改为 defaultAction=false（enabled 仍为 true，原值备份在 /opt/mentorflow/state/mentorflow-e1-preview/mf-u11-rollback/update-password.before.json）。改用 kcadm 的原因：线上管理接口不对外（回环代理只转发 /realms/mentorflow/，Keycloak 8443 要双向证书），且管理员访问令牌默认 60 秒过期，部署包“HTTPS 网址 + 令牌”的方式不可行；为此写了只过滤掉 realm 步骤、其余沿用部署包原流程与自动回滚的包装脚本（同目录 deploy_no_realm.py）。未完成——prepare/build/deploy 被本机自动权限规则拦截（生产部署需用户单独放行），后端与 Keycloak 仍是 MF-U10 与原镜像；容器内留有 kcadm 临时凭据文件 /tmp/kcadm-mfu11.config（短期令牌，删除同样被拦截，重建容器时消失）。
 - 关联：[ACC-02]
 - 更新：2026-09-28
 
