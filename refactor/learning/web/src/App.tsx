@@ -1,9 +1,9 @@
 import * as React from "react"
-import { Cloud, CloudOff, Home as HomeIcon, LibraryBig, RefreshCw, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon,
-  Sparkles, Wand2, Wrench } from "lucide-react"
+import { ChevronsUpDown, CirclePlus, Cloud, CloudOff, House, LayoutGrid, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
+  RefreshCw, Repeat2, Route as RouteIcon, Settings2, ShieldCheck } from "lucide-react"
 import { call, on } from "./bridge"
 import { useApp, type Route } from "./store"
-import { Ambient, Button, Toasts } from "./ui"
+import { Ambient, BrandMark, Button, Toasts } from "./ui"
 import { Home } from "./pages/Home"
 import { Plans } from "./pages/Plans"
 import { NewPlan } from "./pages/NewPlan"
@@ -12,13 +12,48 @@ import { Chat } from "./pages/Chat"
 import { PlanDetail } from "./pages/PlanDetail"
 import { Settings } from "./pages/Settings"
 
-const NAV: { id: Route; label: string; icon: any }[] = [
-  { id: "home", label: "首页", icon: HomeIcon },
-  { id: "plans", label: "我的计划", icon: LibraryBig },
-  { id: "new-plan", label: "新建计划", icon: Wand2 },
-  { id: "tools", label: "更多工具", icon: Wrench },
-  { id: "settings", label: "设置", icon: SettingsIcon },
+type NavItem = { id: Route; label: string; icon: any; also?: Route[] }
+const NAV: { label: string; items: NavItem[] }[] = [
+  { label: "学习", items: [
+    { id: "home", label: "首页", icon: House },
+    { id: "plans", label: "我的计划", icon: RouteIcon, also: ["plan"] },
+    { id: "new-plan", label: "新建计划", icon: CirclePlus },
+  ] },
+  { label: "更多", items: [
+    { id: "tools", label: "更多工具", icon: LayoutGrid, also: ["chat"] },
+    { id: "settings", label: "设置", icon: Settings2 },
+  ] },
 ]
+
+function AccountMenu() {
+  const account = useApp((s) => s.account)
+  const go = useApp((s) => s.go)
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener("mousedown", close)
+    return () => document.removeEventListener("mousedown", close)
+  }, [open])
+  const act = (fn: () => void) => { setOpen(false); fn() }
+  return (
+    <div className="account" ref={ref}>
+      {open && (
+        <div className="account-menu fade-in">
+          <button onClick={() => act(() => go("settings", "account"))}><ShieldCheck />账号与安全</button>
+          <button onClick={() => act(() => call("app.account", { action: "switch" }))}><Repeat2 />切换账号</button>
+          <button className="danger" onClick={() => act(() => call("app.account", { action: "logout" }))}><LogOut />退出登录</button>
+        </div>
+      )}
+      <button className={`account-card ${open ? "open" : ""}`} onClick={() => setOpen(!open)} title={account?.name}>
+        <span className="avatar">{account?.name?.slice(0, 1) ?? "M"}</span>
+        <span className="account-meta"><b>{account?.name ?? "…"}</b><span>{account?.role_label || "学习者"}</span></span>
+        <ChevronsUpDown className="account-caret" />
+      </button>
+    </div>
+  )
+}
 
 export function App() {
   const s = useApp()
@@ -57,24 +92,24 @@ export function App() {
       <div className="shell">
         <aside className={`sidebar ${s.sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="brand">
-            <div className="brand-mark"><Sparkles /></div>
-            <span className="brand-text">MentorFlow</span>
+            <BrandMark />
+            <div className="brand-text"><b>MentorFlow</b><span>你的 AI 学习导师</span></div>
           </div>
-          {NAV.map((n) => (
-            <button key={n.id} className={`nav-item ${s.route === n.id || (n.id === "tools" && s.route === "chat") || (n.id === "plans" && s.route === "plan") ? "active" : ""}`}
-                    onClick={() => { if (n.id === "new-plan") s.set({ planId: null }); s.go(n.id) }} title={n.label}>
-              <n.icon /><span className="nav-label">{n.label}</span>
-            </button>
-          ))}
+          <nav className="nav">
+            {NAV.map((group) => (
+              <div key={group.label} className="nav-group">
+                <span className="nav-heading">{group.label}</span>
+                {group.items.map((n) => (
+                  <button key={n.id} className={`nav-item ${s.route === n.id || n.also?.includes(s.route) ? "active" : ""}`}
+                          onClick={() => { if (n.id === "new-plan") s.set({ planId: null }); s.go(n.id) }} title={n.label}>
+                    <span className="nav-icon"><n.icon /></span><span className="nav-label">{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
           <div className="nav-spacer" />
-          <div className="account-card" title={s.account?.name}>
-            <div className="avatar">{s.account?.name?.slice(0, 1) ?? "M"}</div>
-            <div className="account-meta"><b>{s.account?.name ?? "…"}</b><span>{s.account?.role_label ? `服务端身份：${s.account.role_label}` : ""}</span></div>
-          </div>
-          <div className="side-actions">
-            <button className="side-btn" onClick={() => call("app.account", { action: "switch" })}>切换账号</button>
-            <button className="side-btn" onClick={() => call("app.account", { action: "logout" })}>退出登录</button>
-          </div>
+          <AccountMenu />
         </aside>
 
         <main className="main">

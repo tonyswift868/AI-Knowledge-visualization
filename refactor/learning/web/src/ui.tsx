@@ -2,6 +2,27 @@ import * as React from "react"
 import { CheckCircle2, Info, Loader2, XCircle } from "lucide-react"
 import { useApp } from "./store"
 
+// ------------------------------------------------------------------ brand
+export function BrandMark() {
+  return (
+    <svg className="brand-mark" viewBox="0 0 40 40" aria-hidden>
+      <defs>
+        <linearGradient id="brandFill" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--accent-3)" />
+          <stop offset="1" stopColor="var(--accent-2)" />
+        </linearGradient>
+      </defs>
+      <rect width="40" height="40" rx="12" fill="url(#brandFill)" />
+      <g transform="translate(20 21)">
+        {[0, 72, 144, 216, 288].map((a) => (
+          <path key={a} transform={`rotate(${a}) scale(.42)`} d="M0 0C-10-7-13-22-6-31L0-26.5L6-31C13-22 10-7 0 0Z" fill="#fff" opacity=".95" />
+        ))}
+        <circle r="2.6" fill="var(--accent-2)" />
+      </g>
+    </svg>
+  )
+}
+
 // ------------------------------------------------------------------ ambient
 const petals = Array.from({ length: 14 }, (_, i) => ({
   left: (i * 71) % 100,

@@ -231,7 +231,7 @@ function FormCard({ draft, text, busy, onSubmit }: { draft: Draft; text: string;
           <Field label="这份计划每天最多学多久（分钟）">
             <div className="row">
               <input className="input" type="number" min={10} max={720} value={form.daily_cap} style={{ width: 96 }} onChange={(e) => patch({ daily_cap: Number(e.target.value) })} />
-              {[30, 60, 90, 120].map((m) => <button key={m} className={`tag-btn ${form.daily_cap === m ? "on" : ""}`} onClick={() => patch({ daily_cap: m })}>{m}</button>)}
+              {[30, 60, 90, 120, 300].map((m) => <button key={m} className={`tag-btn ${form.daily_cap === m ? "on" : ""}`} onClick={() => patch({ daily_cap: m })}>{m}</button>)}
             </div>
           </Field>
         </div>

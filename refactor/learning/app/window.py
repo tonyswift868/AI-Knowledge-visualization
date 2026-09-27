@@ -12,7 +12,7 @@ import threading
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QTimer, Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngineSettings,
                                      QWebEngineUrlRequestInterceptor)
@@ -27,6 +27,8 @@ from .sync import WindowSync
 log = logging.getLogger(__name__)
 
 WEB_ROOT = Path(__file__).resolve().parents[1] / "web" / "dist"
+# Same values as --bg in web/src/theme.css.
+THEME_BACKGROUNDS = {"sakura": "#fbf4f7", "aurora": "#0c0e1c"}
 _ROLE_LABELS = {"SUPER_ADMIN": "管理员", "LEARNER": "学习者"}
 
 
@@ -97,7 +99,6 @@ class LearningWindow(QWidget):
         self.setWindowTitle("MentorFlow")
         self.resize(1480, 940)
         self.setMinimumSize(1100, 720)
-        self.setStyleSheet("#mentorflowLearningHome { background: #fbf4f7; }")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -117,7 +118,9 @@ class LearningWindow(QWidget):
         settings = self.page.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, False)
-        self.page.setBackgroundColor(Qt.GlobalColor.transparent)
+        # An opaque page background matching the theme: a transparent one lets the
+        # native window show through between animated frames (visible flicker).
+        self._apply_theme("sakura")
         self.bridge = AppBridge(self)
         handlers.register(self.bridge, self)
         self.channel = QWebChannel(self.page)
@@ -157,7 +160,13 @@ class LearningWindow(QWidget):
         return full
 
     def settings_changed(self, settings):
+        self._apply_theme(settings.get("theme", "sakura"))
         self.bridge.push("settings", settings)
+
+    def _apply_theme(self, theme):
+        color = THEME_BACKGROUNDS.get(theme, THEME_BACKGROUNDS["sakura"])
+        self.page.setBackgroundColor(QColor(color))
+        self.setStyleSheet(f"#mentorflowLearningHome {{ background: {color}; }}")
 
     def sync_status(self):
         return self._sync.status() if self._sync is not None else dict(self._sync_fallback)
@@ -212,6 +221,7 @@ class LearningWindow(QWidget):
         self.services = AppServices(account_id=self._account_id, data_root=self._data_root,
                                     session_provider=guarded, api_base_url=endpoint[0], ca_bundle=Path(ca_bundle))
         self.services.refresh_catalog()
+        self._apply_theme(self.services.settings.load().get("theme", "sakura"))
         self._start_sync()
         self.bridge.push("ready", {"account": self.account_info()})
         return True
