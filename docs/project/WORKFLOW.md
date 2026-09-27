@@ -62,12 +62,12 @@
 | 6-MF05 | MF-05 tools | 新建计划“意图判断”组件：提示、输出格式、严格校验与离线测试（架构师负责接入流程与界面） | ARCH-04、ARCH-06、PLAN-07 | ce512bf | 已合入（8c4c0cd） |
 | 6-MF06 | MF-06 classroom | 新界面 Live2D 老师组件（椿）：舞台、待机、嘴型、点头/摇头接口、资源加载 | TEACH-05、VOICE-01、UI-00 | 69836b6 | 已合入（152598c） |
 | 6-MF01 | MF-01 library | 课堂判定 agent 与出题 agent 组件：提示、格式、严格校验、离线测试与小额真实抽查 | TEACH-02、TEACH-04、TEACH-06、ARCH-07、CHK-01 | 69836b6 | 已合入（1862169） |
-| 7-MF01 | MF-01 library | 课堂老师 agent 与学习档案 agent 组件 + 偏好效果对照实验 | TEACH-01、TEACH-06、ARCH-07、ARCH-08 | BASELINE7 | 已派发 |
-| 7-MF02 | MF-02 runtime | 网关出错也记账；输出截断明确报错（BUG-14） | SYS-01、SYS-03 | BASELINE7 | 已派发 |
-| 7-MF03 | MF-03 client | 账本缺陷修复（BUG-16）+ 今日状态数据接口 + 时间加速复测 | PLAN-05、TEACH-05、CHK-01 | BASELINE7 | 已派发 |
-| 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | BASELINE7 | 已派发 |
-| 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | BASELINE7 | 已派发 |
-| 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | BASELINE7 | 已派发 |
+| 7-MF01 | MF-01 library | 课堂老师 agent 与学习档案 agent 组件 + 偏好效果对照实验 | TEACH-01、TEACH-06、ARCH-07、ARCH-08 | 43d82b1 | 已派发 |
+| 7-MF02 | MF-02 runtime | 网关出错也记账；输出截断明确报错（BUG-14） | SYS-01、SYS-03 | 43d82b1 | 已派发 |
+| 7-MF03 | MF-03 client | 账本缺陷修复（BUG-16）+ 今日状态数据接口 + 时间加速复测 | PLAN-05、TEACH-05、CHK-01 | 43d82b1 | 已派发 |
+| 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | 43d82b1 | 已派发 |
+| 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | 43d82b1 | 已派发 |
+| 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | 43d82b1 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1535,7 +1535,7 @@ B. refactor/learning/course/question_agent.py
   cd D:\MentorFlow-office\library\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/library
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
@@ -1567,7 +1567,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\runtime\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/runtime
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
@@ -1591,7 +1591,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\client\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/client
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
@@ -1615,7 +1615,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\platform\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/platform
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
@@ -1640,7 +1640,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\tools\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/tools
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
@@ -1664,7 +1664,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\classroom\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/classroom
-  git reset --hard BASELINE7
+  git reset --hard 43d82b1
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成（BUG-10）。
 分工：组件由员工做；编排（状态机、导演提示、流程）与界面接入由架构师做。本轮架构师在改 refactor/learning/app/plan_flow.py、web/src/pages/NewPlan.tsx、新建的课堂编排文件；除任务明确允许的文件外不要改这些。
