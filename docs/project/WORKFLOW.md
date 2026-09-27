@@ -15,17 +15,17 @@
 | 项目 | 值 |
 | --- | --- |
 | 基线提交 | `f27737f`（2026-09-28，main，含新建计划链路、验收修复、ACC-02 新要求）；更早批次见任务行 |
-| 说明 | 第六批只派 MF-07：注册与找回密码改为软件内邮箱验证码（服务器 + 身份系统扩展 + 注册页逻辑 + 部署包）；架构师同时重做登录窗口外观 |
+| 说明 | 第六批：MF-07 注册与找回密码改为软件内邮箱验证码（基线 f27737f）；MF-03、MF-04 做用户短期测不到的测试——长时间跨度模拟、计划参数对照（基线 eeb4e8e）；架构师同时重做登录窗口外观 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-03（client） | D:\MentorFlow-office\client | 6-MF03 进行中 |
 | MF-07（server） | D:\MentorFlow-office\server | 6-MF07 进行中 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 6-MF04 进行中 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
@@ -56,6 +56,8 @@
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
 | 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已合入（见第五批审查记录） |
 | 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已派发 |
+| 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | eeb4e8e | 已派发 |
+| 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | eeb4e8e | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1231,4 +1233,81 @@ B. 客户端注册页（refactor\desktop）
 回执
 【MF-07｜server｜第六批｜完成/部分完成/受阻】
 基线：f27737f ／ 提交：office/server 上的编号 ／ A：方案（复用还是新增扩展操作、未完成注册怎么处理）、接口与邮件文案、部署包清单 ／ B：界面流程、新增 css 类 ／ 问题记录：本次遇到的问题按“现象、原因、解决、验证”写几条（架构师据此写 BUG 条目） ／ 验证：命令与结果 ／ 未完成
+~~~
+
+### [6-MF03] client｜长时间跨度模拟（时间加速）
+
+~~~text
+【MentorFlow 第六批｜MF-03（工位 client）｜长时间跨度模拟】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard eeb4e8e
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志、报告放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
+背景：用户（2026-09-28）要求，时间跨度大、变量多、用户短期内测不到的东西，由我们提前测好：用时间加速、对照实验去验证“这个设置到底有没有用”，结论要能拿出证据。
+先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-05]（每日任务时长、暂记/正式、欠账、超前、逾期协商、只按通过计）、[TEACH-05]（深夜上课算前一天、刷新时间）、[SYS-04]、[PLAN-08]、[ARCH-06]；代码 refactor/learning/course/ledger.py、store.py，新界面读取今日状态的 refactor/learning/app/handlers.py（plans.list、_local_study_day）。
+
+要做
+  1. 在 tests/refactor/timeline/ 写一套离线模拟（文件名全局不重名，普通 pytest 就能跑，几秒内完成，不调模型）：用真实 CourseStore 建一个已生成、已开始的计划（模块与知识点可以程序生成，分钟数给定），用可注入的“当前时间”逐日推进，按脚本模拟学习行为，每天通过新界面实际用到的读取路径（plans.list 返回的 today 数据；需要时 monkeypatch _local_study_day 或当前时间）核对显示给用户的数字。
+  2. 至少覆盖这些剧本，每个剧本写清“按需求应当显示什么”再断言：
+     - 按部就班：每天恰好学完；周末没空、某天半天的权重是否体现；最后一天完成后状态。
+     - 欠账：连续 1 天、3 天没学，欠多少分钟；到 2～3 天时是否触发“逾期、协商是否太紧”；之后补学如何先还欠账。
+     - 超前：某天多学，后面每天目标不变、显示超前几天；提前学完。
+     - 暂记转正式：讲完答对先记暂记；模块检测通过转正式；没通过扣掉暂记变成欠账（只按通过计）。
+     - 深夜：凌晨（刷新时间之前）学习算前一天；改刷新时间后的归属。
+     - 中途改日期（延后结束日期）后，已过去的日子冻结、之后重新均分。
+     - 跨月、闰年 2 月 29 日、时区（本机时区与 UTC 不同时）。
+  3. 发现与需求不符的地方：ledger.py / store.py 属于你之前写的模块，确定是缺陷的可以修（配测试、回执逐条说明）；app/、web/ 下的代码不要改，写进回执由架构师改。需求本身有歧义的，不自己拍板，列出来。
+  4. 产出一份报告 D:\MentorFlow\.local\test-tmp\timeline\report.md：每个剧本逐日的关键数字表（日期、今日目标、已完成、暂记、欠账、超前、是否逾期提醒），以及结论。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过（含你的新测试）。
+
+回执
+【MF-03｜client｜第六批｜完成/部分完成/受阻】
+基线：eeb4e8e ／ 提交 ／ 剧本清单与结论（与需求一致 / 不一致 / 有歧义）／ 修了什么 ／ 交给架构师的问题 ／ 问题记录（现象、原因、解决、验证）／ 验证：命令与结果
+~~~
+
+### [6-MF04] platform｜计划参数对照实验（真实模型）
+
+~~~text
+【MentorFlow 第六批｜MF-04（工位 platform）｜计划参数对照实验】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard eeb4e8e
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志、报告放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
+背景：用户（2026-09-28）要求，时间跨度大、变量多、用户短期内测不到的东西，由我们提前测好：用时间加速、对照实验去验证“这个设置到底有没有用”，结论要能拿出证据。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-06]、[PLAN-01]、[PLAN-02]、[PLAN-04]、[PLAN-05]、[PLAN-06]、[BUG-03]、[BUG-09]；代码 refactor/learning/app/plan_flow.py（编排）、refactor/learning/course/planner_agents.py（提示与校验）、refactor/learning/course/github_repo.py。
+
+问题：新建计划时用户填的“现在的水平（零基础/入门/有一定基础/比较熟练）”“每日任务时长上限”“起止日期”“补充说明”等，到底有没有让生成的路线和知识点产生应有的变化？用户短期测不出来，要你用对照实验给出证据。
+
+怎么做
+  1. 写一个真实模型实验脚本（放 tests/refactor/eval_plan/，文件名全局不重名；默认跳过，只有设置环境变量 MF_LIVE_EVAL=1 才运行）。直接调用 PlanFlow（参考 tests/refactor/app/test_app_plan_flow.py 的接法），不通过界面。
+     - 模型：用管理员账号的模型连接：ModelGateway("mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932", r"D:\MentorFlowData\account-shell")，Key 从 Windows 凭据读取，不要打印、不要写进任何文件。
+     - 数据：计划、资料、草稿全部写到 D:\MentorFlow\.local\test-tmp\eval-plan\ 下的新目录（AppServices 的 data_root 指向这里），绝不写入管理员的真实数据目录；用量记录会记到管理员账号，这是预期的。
+     - 资料：用户指定用 GitHub 上的 datawhalechina/hello-agents（在对话里贴仓库地址即可，会读取仓库文档）。全书很大；为了省钱，把目标限定在前几章（例如“智能体基础与经典范式”），或用 github_repo 的子目录地址只读部分章节。用户还提到一本 Agent Book，链接待用户给出，拿到前只用 hello-agents。
+     - 固定其他条件，每次只改一个变量。至少做这几组：
+         a. 水平：零基础 vs 比较熟练（目标、日期、上限都相同）
+         b. 每日任务时长上限与日期：宽松（每天 120 分钟、6 周）vs 紧张（每天 30 分钟、2 周）
+         c. 补充说明：无 vs “想多做练习、偏好实战” vs “只想理解原理”
+         d. 最终目标深浅：“能说清概念” vs “能独立写一个带工具调用的智能体”
+       每组至少跑到路线轮廓；a 组和 d 组再跑一次正式生成（知识点）。同一配置重复 2 次，用来估计同配置下的随机波动，差异要大于波动才算“有效果”。
+  2. 量化指标（脚本自动算）：追问数量与内容、模块数、各模块分钟区间、总时长、知识点数量、每点分钟数、知识点摘要长度、涉及的章节覆盖、是否超上限提醒。
+  3. 盲评：把一对结果打乱顺序交给模型评判（例如“哪一份是给零基础学习者设计的？理由？”），每对正反顺序各评一次以抵消位置偏差；评判提示与结果都存进报告。
+  4. 结论写进报告 D:\MentorFlow\.local\test-tmp\eval-plan\report.md：每个变量“有明显效果 / 效果弱 / 没效果”，附数字和典型例子；没效果或效果反了的，分析原因（例如提示里没用上这个字段），提出改法。本任务只做实验和报告，不改 refactor/ 下的产品代码；发现产品缺陷写进回执。
+  5. 花费上限：总计 ¥15。每次运行后用 gateway.usage_log.summary 统计本次花费并写进报告；接近上限就停，先报告已有结论。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过（实验脚本默认跳过）；报告与原始结果（轮廓、知识点 JSON、评判记录）在 eval-plan 目录。
+
+回执
+【MF-04｜platform｜第六批｜完成/部分完成/受阻】
+基线：eeb4e8e ／ 提交 ／ 每个变量的结论（一句话 + 关键数字）／ 实际花费 ／ 建议的提示词或流程修改 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
 ~~~
