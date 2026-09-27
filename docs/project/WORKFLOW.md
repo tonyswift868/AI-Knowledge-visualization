@@ -14,8 +14,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | `0d8ad81`（2026-09-27，main，含第三批与 MF-U09 部署失败记录）；更早批次见任务行 |
-| 说明 | 第四批只派 MF-07 修部署包；其余员工暂无必要任务，架构师开始前端 |
+| 基线提交 | `509c535`（2026-09-27，main，含新界面第 1 步、验收修复与新界面教师闲聊）；更早批次见任务行 |
+| 说明 | 第五批只派 MF-07：闲聊同步与新窗口接入同步服务；其余员工暂无必要任务，架构师继续前端（新建计划链路） |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -23,7 +23,7 @@
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 5-MF07 进行中 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
@@ -54,6 +54,7 @@
 | 3-MF01 | MF-01 library | 资料入库与重新关联 + 计划导出（注销前保存） | DATA-02、ACC-02、PLAN-09 | 2014a74 | 已合入 |
 | 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已合入 |
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
+| 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1129,4 +1130,52 @@ Python：D:\MentorFlow\.venv\Scripts\python.exe；只用标准库。提交：git
 回执
 【MF-07｜server｜第四批｜完成/部分完成/受阻】
 基线 ／ 提交 ／ 审计表 ／ 仓库调整（含对象存储的处理）／ MF-U10 部署包 ／ 本地演练 ／ 验证：命令与结果 ／ 需要架构师去线上取的文件清单 ／ 未完成
+~~~
+
+## 第五批任务详情
+
+### [5-MF07] server｜闲聊记录同步 + 新窗口接入同步服务
+
+~~~text
+【MentorFlow 第五批｜MF-07（工位 server）｜闲聊记录同步 + 新窗口接入同步服务】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 509c535          # 最新集成基线：新界面第 1 步 + 新界面教师闲聊
+客户端测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。本任务不改服务器代码（线上 MF-U10 已接受 plan_key 为空的 course_record）；若你判断必须改服务器，先停下在回执里说明。
+先读：AGENTS.md；CURRENT_STATE.md 的 [UI-02]、[ARCH-05]、[ACC-01]、[DATA-02]、[ARCH-01]。
+现状：
+  - 新窗口 refactor/learning/app/（window.py、bridge.py、services.py、handlers.py、chat.py）。新界面闲聊在 app/chat.py，目前存在旧页面的 JSON 目录（账号/tools/chat，AtomicJsonFreeChatStore），不会同步。
+  - CourseStore（refactor/learning/course/store.py）已有账号级 chat_sessions / chat_messages 实体（plan_key 为空），会随 CourseSync 上传/拉取。
+  - 同步：course/sync_course.py（CourseSync）、services/course_sync_service.py（CourseSyncService）、services/session_guard.py（SessionGuard）、sync_transport.py 都已完成，但新窗口还没有接上。
+  - 页面代码（refactor/learning/web/）由架构师负责，你不改；桥接方法名和返回格式保持不变，页面就不用动。
+范围：预期范围见下；确有必要可改相邻文件，回执逐个说明原因。
+
+A. 闲聊改存 CourseStore
+  - 改 app/chat.py：chat.list / get / create / delete / send 五个桥接方法的参数与返回结构保持完全不变（见 tests/refactor/app/test_app_free_chat.py 和 web/src/pages/Chat.tsx），底层改用 services.store 的 chat_sessions / chat_messages。
+  - 保持现有行为：发给模型的只有用户人设（settings.chat_persona，每轮现读）+ 对话本身，没有任何系统提示、不开搜索；流式；停止或失败的一轮不写入；只按 FreeChatHistoryWindow 截掉最旧轮次。
+  - 一轮的用户消息和老师回复要原子写入（两条都在或都不在）；两条消息的顺序在任何设备上都稳定（chat_messages 现按 (at, id) 排序，同一时刻两条的 id 是随机的，注意不要让回复排到提问前面）。标题：第一轮写入时按首条用户消息生成并存进 chat_sessions.title。
+  - chat_messages(session_id) 现在是全表扫描再过滤；消息多了会慢，改成按会话查询（可加索引，不改同步线格式）。
+  - 旧记录导入：首次打开时把旧目录（账号/tools/chat/sessions/*.json）里的对话一次性导入 CourseStore；会话、消息的 ID 由旧会话 ID 和序号确定性生成，所以两台电脑各导入一次也不会出现重复；导入完成做标记，只导入一次；旧文件保留不删；单个坏文件跳过并记日志，不影响其他。
+B. 新窗口接入同步服务
+  - 登录后（bind_feature_context 成功、服务就绪）启动 CourseSyncService（record_store = services.store，transport 用现有 SyncTransport 的写法，令牌每次现取）；本机 CourseStore 有写入后触发 notify_local_change（包括闲聊写入）；切换账号、退出、关窗时停止并取消进行中的一轮，不丢未上传数据。
+  - SessionGuard：新窗口打开期间一直运行（不只在上课时）。收到 NATIVE_SESSION_SUPERSEDED：停止同步，调用 window.set_session_notice 显示“账号已在另一台设备登录……”（沿用旧窗口的提示文字和“重新验证”按钮逻辑），本机未上传的数据保留；重新登录后继续上传。
+  - 把同步状态推给页面：bridge.push("sync_status", {"state": "syncing"|"synced"|"failed"|"reauth"|"superseded", "at": 最近成功时间 ISO 或 null, "message": 给用户看的一句中文})；另加桥接方法 sync.status（返回同样结构）和 sync.now（立即同步一轮）。页面显示由架构师做。
+  - 远端拉下来的闲聊（另一台设备的新对话/新消息）写入后推 bridge.push("chat_changed", {})，页面据此刷新列表。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过（现有 925 项）。
+  新增测试（放 tests/refactor/app/ 或 tests/refactor/chat_sync/，文件名全局不重名）：
+    - 现有 test_app_free_chat.py 三项在新存储上继续通过（第三项改为验证旧 JSON 导入后可见）；
+    - 原子写入与顺序：模型失败/取消不写入；同一时刻写入的一轮顺序正确；
+    - 导入：重复打开只导一次；两台设备各自导入同一份旧记录后同步，结果无重复；坏文件跳过；
+    - 双设备：扩展 tests/refactor/course_integration/test_store_sync_roundtrip.py 的模拟服务器，A 设备聊一轮 → 同步 → B 设备 chat.list/get 看到同样内容；B 删除会话 → 同步 → A 也消失；
+    - 新窗口接线：用假服务器验证登录后启动一轮、闲聊写入后几秒内触发、退出时停止、收到 NATIVE_SESSION_SUPERSEDED 后停止同步并出现会话提示、sync_status 事件序列正确。
+
+回执
+【MF-07｜server｜第五批｜完成/部分完成/受阻】
+基线：509c535 ／ 提交：office/server 上的编号 ／ A：改动与导入方案 ／ B：接线方式、事件格式 ／ 验证：命令与结果 ／ 未完成
 ~~~
