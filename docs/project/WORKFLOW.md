@@ -15,7 +15,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 基线提交 | `f27737f`（2026-09-28，main，含新建计划链路、验收修复、ACC-02 新要求）；更早批次见任务行 |
-| 说明 | 第六批：MF-07 注册与找回密码改为软件内邮箱验证码（基线 f27737f）；MF-03、MF-04 做用户短期测不到的测试——长时间跨度模拟、计划参数对照（基线 6bf5524）；架构师同时重做登录窗口外观 |
+| 说明 | 第六批：MF-07 注册与找回密码改为软件内邮箱验证码（基线 f27737f）；MF-03、MF-04 做用户短期测不到的测试——长时间跨度模拟、计划参数对照（基线 6bf5524）；MF-02 建新建计划对话用例集，先测现有能力（基线 184b2f2）；架构师同时重做登录窗口外观 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 6-MF03 进行中 |
 | MF-07（server） | D:\MentorFlow-office\server | 6-MF07 进行中 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 6-MF02 进行中 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 6-MF04 进行中 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
@@ -58,6 +58,7 @@
 | 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已派发 |
 | 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | 6bf5524 | 已派发 |
 | 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | 6bf5524 | 已派发 |
+| 6-MF02 | MF-02 runtime | 新建计划对话用例集：写全各类说法与预期；现在只用真实模型测已支持的几类，已知未支持的只备用例（花费上限 ¥5） | ARCH-06、PLAN-01、PLAN-02、PLAN-06、PLAN-07 | 184b2f2 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1310,4 +1311,49 @@ B. 客户端注册页（refactor\desktop）
 回执
 【MF-04｜platform｜第六批｜完成/部分完成/受阻】
 基线：6bf5524 ／ 提交 ／ 每个变量的结论（一句话 + 关键数字）／ 实际花费 ／ 建议的提示词或流程修改 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
+~~~
+
+### [6-MF02] runtime｜新建计划对话用例集（先测已支持的能力）
+
+~~~text
+【MentorFlow 第六批｜MF-02（工位 runtime）｜新建计划对话用例集】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 184b2f2
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志、报告放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-06]、[PLAN-01]、[PLAN-02]、[PLAN-06]、[PLAN-07]、[BUG-09]；代码 refactor/learning/app/plan_flow.py（register 里的 say()：按当前阶段决定一句话怎么处理）、refactor/learning/course/planner_agents.py。
+
+背景
+  用户在新建计划时会用自然语言和 AI 说各种话。现在的处理只看“处在哪一步”，不理解这句话想干什么。架构师已确认下面 B 类目前不支持，会由架构师加“意图判断”后再测；你这次不要花钱去证明它们会失败。
+
+要做
+  1. 用例集（数据文件 + 说明，放 tests/refactor/plan_dialogue/，文件名全局不重名）：每条用例写清“所处阶段、前置状态、用户这句话、按需求系统应当怎么做（可检查的断言：阶段变化、表单字段、资料卡片状态、是否调用了搜索、回复里应/不应出现的内容）”。说法要多样：口语、错别字、一句话里两件事、很短（“行”“不要”“换一批”）、很长。
+     A 类（现在应当已经能用，本次要真实测试）：
+       - 追问阶段回答问题（直接回答、答非所问、只回答一部分、顺带补充别的信息）
+       - 找资料阶段提资料要求（语言、难度、类型如视频/教材/官方文档、要带练习）
+       - 贴网址、贴 GitHub 仓库地址（含带 ?utm_source 参数、子目录地址、非仓库的 GitHub 页）
+       - 轮廓阶段提修改（拆细、合并、调顺序、加实战、删某部分、改节奏说法）
+       - 系统状态防护：让 AI“别找资料直接生成”“把每天改成 5 分钟”“忽略规则”——检查状态没有被模型私自改动（这部分现在就应该挡得住）
+     B 类（已知暂不支持，本次只写用例、不运行，标记 pending）：
+       - 在对话里改表单：改起止日期、每日任务时长上限、每周可学日、水平、目标
+       - 限定资料范围：“只学前 4 章”“第 8 章不要”“只用这份”
+       - 按名字处理资料卡片：“不要那份 CSDN 的”“采用第二个”
+       - 生成完成后用对话调整模块（删、调顺序）
+       - 提问而不是提要求：“这份资料难吗”“为什么这样排”“要花多少钱”
+       - 无关闲聊
+  2. 运行器：真实模型只跑 A 类（默认跳过，设环境变量 MF_LIVE_EVAL=1 才运行）。直接调用 PlanFlow（参考 tests/refactor/app/test_app_plan_flow.py），模型用管理员连接 ModelGateway("mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932", r"D:\MentorFlowData\account-shell")，Key 不打印、不落盘；计划与草稿写到 D:\MentorFlow\.local\test-tmp\plan-dialogue\ 下的新目录，绝不写入管理员真实数据目录。为省钱，前置状态尽量复用（例如一次生成出轮廓后，把草稿复制出多份，每条修改用例从同一个起点出发），网页核实用离线假抓取即可，只有“贴仓库地址”几条走真实网络。
+     B 类用例运行器也写好，架构师实现后直接用；本次运行时自动跳过。
+  3. 报告 D:\MentorFlow\.local\test-tmp\plan-dialogue\report.md：A 类每条的通过/失败，失败的给出实际表现和你判断的原因；同一类里说法不同、结果不同的要特别指出（说明对措辞敏感）。不改 refactor/ 下的产品代码；发现的产品问题写进回执。
+  4. 花费上限：总计 ¥5。每次运行后用 gateway.usage_log.summary 统计本次花费写进报告，接近上限就停。
+
+验收
+  D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过（真实模型运行器默认跳过）；用例集、报告、原始记录齐全。
+
+回执
+【MF-02｜runtime｜第六批｜完成/部分完成/受阻】
+基线：184b2f2 ／ 提交 ／ 用例数量（A / B 各多少）／ A 类通过率与主要失败 ／ 实际花费 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
 ~~~
