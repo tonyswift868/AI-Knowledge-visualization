@@ -15,7 +15,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 基线提交 | `f27737f`（2026-09-28，main，含新建计划链路、验收修复、ACC-02 新要求）；更早批次见任务行 |
-| 说明 | 第六批：MF-07 注册与找回密码改为软件内邮箱验证码（基线 f27737f）；MF-03、MF-04 做用户短期测不到的测试——长时间跨度模拟、计划参数对照（基线 eeb4e8e）；架构师同时重做登录窗口外观 |
+| 说明 | 第六批：MF-07 注册与找回密码改为软件内邮箱验证码（基线 f27737f）；MF-03、MF-04 做用户短期测不到的测试——长时间跨度模拟、计划参数对照（基线 6bf5524）；架构师同时重做登录窗口外观 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -56,8 +56,8 @@
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
 | 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已合入（见第五批审查记录） |
 | 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已派发 |
-| 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | eeb4e8e | 已派发 |
-| 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | eeb4e8e | 已派发 |
+| 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | 6bf5524 | 已派发 |
+| 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | 6bf5524 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1244,7 +1244,7 @@ B. 客户端注册页（refactor\desktop）
   cd D:\MentorFlow-office\client\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/client
-  git reset --hard eeb4e8e
+  git reset --hard 6bf5524
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志、报告放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
 背景：用户（2026-09-28）要求，时间跨度大、变量多、用户短期内测不到的东西，由我们提前测好：用时间加速、对照实验去验证“这个设置到底有没有用”，结论要能拿出证据。
@@ -1268,7 +1268,7 @@ B. 客户端注册页（refactor\desktop）
 
 回执
 【MF-03｜client｜第六批｜完成/部分完成/受阻】
-基线：eeb4e8e ／ 提交 ／ 剧本清单与结论（与需求一致 / 不一致 / 有歧义）／ 修了什么 ／ 交给架构师的问题 ／ 问题记录（现象、原因、解决、验证）／ 验证：命令与结果
+基线：6bf5524 ／ 提交 ／ 剧本清单与结论（与需求一致 / 不一致 / 有歧义）／ 修了什么 ／ 交给架构师的问题 ／ 问题记录（现象、原因、解决、验证）／ 验证：命令与结果
 ~~~
 
 ### [6-MF04] platform｜计划参数对照实验（真实模型）
@@ -1280,7 +1280,7 @@ B. 客户端注册页（refactor\desktop）
   cd D:\MentorFlow-office\platform\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/platform
-  git reset --hard eeb4e8e
+  git reset --hard 6bf5524
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志、报告放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
 背景：用户（2026-09-28）要求，时间跨度大、变量多、用户短期内测不到的东西，由我们提前测好：用时间加速、对照实验去验证“这个设置到底有没有用”，结论要能拿出证据。
@@ -1309,5 +1309,5 @@ B. 客户端注册页（refactor\desktop）
 
 回执
 【MF-04｜platform｜第六批｜完成/部分完成/受阻】
-基线：eeb4e8e ／ 提交 ／ 每个变量的结论（一句话 + 关键数字）／ 实际花费 ／ 建议的提示词或流程修改 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
+基线：6bf5524 ／ 提交 ／ 每个变量的结论（一句话 + 关键数字）／ 实际花费 ／ 建议的提示词或流程修改 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
 ~~~
