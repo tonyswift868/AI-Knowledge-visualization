@@ -237,8 +237,12 @@ class AccountShell:
         selector = self.gate.account_selector
         selector.blockSignals(True)
         selector.clear()
-        for row in snapshot["accounts"]:
-            selector.addItem(row["display_name"] + " · " + row["account_id"][-8:], row["account_id"])
+        labels = [friendly_name(row) for row in snapshot["accounts"]]
+        for index, row in enumerate(snapshot["accounts"]):
+            label = labels[index]
+            if labels.count(label) > 1:   # same name on two local accounts: number them, never show ids
+                label += f"（{labels[:index + 1].count(label)}）"
+            selector.addItem(label, row["account_id"])
         selector.setCurrentIndex(selector.findData(snapshot["current_account_id"]))
         selector.blockSignals(False)
         self.gate.remove_account_button.setEnabled(bool(snapshot["accounts"]))
@@ -279,7 +283,7 @@ class AccountShell:
         from refactor.desktop.login_shell import LoginGateState
 
         self.gate.set_state(LoginGateState.LOGIN_READY)
-        self.gate.state_title.setText(row["display_name"])
+        self.gate.state_title.setText(friendly_name(row))
         self.gate.state_detail.setText(
             "输入密码后登录；已记住密码时可直接点击登录。"
             if row.get("username")
@@ -502,7 +506,7 @@ class AccountShell:
         api_authority = urlsplit(api_base_url)
         api_label = api_authority.hostname or api_base_url or "账号服务"
         home = LearningWindow(
-            result.identity.display_name,
+            friendly_name({"display_name": result.identity.display_name, "username": (row or {}).get("username", "")}),
             self._confirmed_server_role,
             api_label,
             account_id=result.identity.profile().account_id,
@@ -1521,6 +1525,15 @@ def _acquire_instance_lock(shell_runtime):
     if not lock.tryLock(100):
         return None
     return lock
+
+
+def friendly_name(row) -> str:
+    """What the learner calls this account: the login name when the server only has the
+    placeholder display name (self-registered accounts have none), never an id fragment."""
+    display, username = (row.get("display_name") or "").strip(), (row.get("username") or "").strip()
+    if username and (not display or display == "MentorFlow"):
+        return username
+    return display or username or "我的账号"
 
 
 def main() -> int:

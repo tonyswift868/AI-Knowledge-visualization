@@ -3,9 +3,75 @@ from __future__ import annotations
 
 from enum import Enum
 from PySide6.QtCore import Qt, Signal, QTimer
+from pathlib import Path
+
+from PySide6.QtCore import QByteArray
+from PySide6.QtGui import QCursor
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QComboBox
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
+_ICONS = (Path(__file__).resolve().parent / "resources" / "login").as_posix()
+
+# Same mark as the new window's sidebar (web/src/ui.tsx BrandMark).
+BRAND_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#f29bb8"/><stop offset="1" stop-color="#b8457a"/></linearGradient></defs>'
+    '<rect width="40" height="40" rx="12" fill="url(#g)"/><g transform="translate(20 21)">'
+    + "".join(f'<path transform="rotate({a}) scale(.42)" d="M0 0C-10-7-13-22-6-31L0-26.5L6-31C13-22 10-7 0 0Z" fill="#fff" opacity=".95"/>'
+              for a in (0, 72, 144, 216, 288))
+    + '<circle r="2.6" fill="#b8457a"/></g></svg>')
+
+
+def login_qss() -> str:
+    return f"""
+QWidget#mentorflowLoginGateWindow {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fdf1f6, stop:0.55 #fbf4f7, stop:1 #f6e9f1);
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"; font-size: 14px; color: #35202f; }}
+QLabel {{ background: transparent; }}
+QLabel#loginTitle {{ color: #35202f; font-size: 28px; font-weight: 800; letter-spacing: 0.3px; }}
+QLabel#loginSubtitle {{ color: #75596a; font-size: 13px; }}
+QLabel#loginStateTitle {{ color: #35202f; font-size: 19px; font-weight: 800; }}
+QLabel#loginStateDetail {{ color: #75596a; font-size: 13px; }}
+QLabel#loginSessionNotice {{ color: #b8457a; font-size: 13px; }}
+QFrame#loginCard {{ background: #ffffff; border: 1px solid rgba(185, 96, 136, 0.18); border-radius: 22px; }}
+QLineEdit {{ min-height: 44px; padding: 0 14px; border: 1px solid rgba(185, 96, 136, 0.32); border-radius: 13px;
+  background: #fffafc; color: #35202f; font-size: 14px; selection-background-color: #f29bb8; }}
+QLineEdit:hover {{ border-color: rgba(214, 90, 134, 0.55); }}
+QLineEdit:focus {{ border: 1.5px solid #d65a86; background: #ffffff; }}
+QLineEdit:disabled {{ color: #a78b9a; background: #faf3f6; }}
+QComboBox {{ min-height: 40px; padding: 0 36px 0 14px; border: 1px solid rgba(185, 96, 136, 0.32); border-radius: 12px;
+  background: #fffafc; color: #35202f; font-size: 14px; }}
+QComboBox:hover {{ border-color: rgba(214, 90, 134, 0.55); }}
+QComboBox:focus {{ border: 1.5px solid #d65a86; }}
+QComboBox::drop-down {{ border: 0; width: 32px; }}
+QComboBox::down-arrow {{ image: url({_ICONS}/chevron.svg); width: 14px; height: 14px; }}
+QComboBox QAbstractItemView {{ background: #ffffff; border: 1px solid rgba(185, 96, 136, 0.3); border-radius: 10px; padding: 4px;
+  selection-background-color: rgba(214, 90, 134, 0.12); selection-color: #b8457a; outline: 0; }}
+QCheckBox {{ color: #75596a; font-size: 13px; spacing: 7px; }}
+QCheckBox:hover {{ color: #d65a86; }}
+QCheckBox::indicator {{ width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid rgba(185, 96, 136, 0.45); background: #ffffff; }}
+QCheckBox::indicator:hover {{ border-color: #d65a86; }}
+QCheckBox::indicator:checked {{ border: 0; image: url({_ICONS}/check.svg);
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f07aa2, stop:1 #b8457a); }}
+QCheckBox:disabled {{ color: #c7b3be; }}
+QPushButton#loginPrimaryButton {{ min-height: 50px; color: white; border: 0; border-radius: 14px; font-size: 15px; font-weight: 800;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f07aa2, stop:0.45 #d65a86, stop:1 #a8467e); }}
+QPushButton#loginPrimaryButton:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e0648f, stop:1 #973b6f); }}
+QPushButton#loginPrimaryButton:pressed {{ background: #973b6f; padding-top: 2px; }}
+QPushButton#loginPrimaryButton:disabled {{ background: #e3c6d3; color: #fff7fa; }}
+QPushButton#loginAccountAction {{ min-height: 26px; padding: 2px 4px; border: 0; background: transparent; color: #b8457a; font-size: 13px; font-weight: 600; }}
+QPushButton#loginAccountAction:hover {{ color: #d65a86; text-decoration: underline; }}
+QPushButton#loginAccountAction:pressed {{ color: #973b6f; }}
+QPushButton#loginAccountAction:disabled {{ color: #c7b3be; }}
+QPushButton#loginSmallButton {{ min-height: 40px; padding: 0 12px; border: 1px solid rgba(185, 96, 136, 0.32); border-radius: 12px;
+  background: #ffffff; color: #75596a; font-size: 13px; font-weight: 600; }}
+QPushButton#loginSmallButton:hover {{ color: #d65a86; border-color: #d65a86; background: rgba(214, 90, 134, 0.06); }}
+QPushButton#loginSmallButton:pressed {{ background: rgba(214, 90, 134, 0.14); }}
+QPushButton#loginSmallButton:disabled {{ color: #c7b3be; border-color: rgba(185, 96, 136, 0.15); }}
+QPushButton#loginCancelButton {{ min-height: 34px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: #75596a; font-size: 13px; }}
+QPushButton#loginCancelButton:hover {{ color: #d65a86; background: rgba(214, 90, 134, 0.08); }}
+QToolTip {{ background: #ffffff; color: #35202f; border: 1px solid rgba(185, 96, 136, 0.3); border-radius: 8px; padding: 6px 8px; }}
+"""
 
 class LoginGateState(str, Enum):
     LOGIN_READY = "LOGIN_READY"
@@ -56,37 +122,15 @@ class LoginGateWindow(QWidget):
         self.set_state(LoginGateState.LOGIN_READY)
 
     def _build(self) -> None:
-        self.setStyleSheet(
-            "QWidget#mentorflowLoginGateWindow { background: #fff9fc; }"
-            "QFrame#loginBrandMark { background: #3b2b3f; border-radius: 32px; }"
-            "QLabel#loginLeaf { color: white; font-size: 34px; background: transparent; }"
-            "QLabel#loginTitle { color: #3b2b3f; font-size: 30px; font-weight: 800; }"
-            "QLabel#loginSubtitle { color: #786572; font-size: 14px; }"
-            "QLabel#loginStateTitle { color: #8d3f62; font-size: 18px; font-weight: 750; }"
-            "QLabel#loginStateDetail { color: #786572; }"
-            "QFrame#loginCard { background: #fffdfd; border: 1px solid #edc2d3; border-radius: 18px; }"
-            "QPushButton#loginPrimaryButton { min-height: 52px; color: white; background: #c95f8d; border: 0; border-radius: 12px; font-weight: 750; }"
-            "QPushButton#loginPrimaryButton:hover { background: #ae4d78; }"
-            "QPushButton#loginPrimaryButton:pressed { background: #8d3f62; }"
-            "QPushButton#loginPrimaryButton:disabled { background: #d9b7c6; color: #fff7fa; }"
-            "QPushButton#loginAccountAction { min-height: 24px; padding: 2px; border: 0; background: transparent; color: #8d3f62; }"
-            "QPushButton#loginAccountAction:hover { color: #ae4d78; text-decoration: underline; }"
-            "QPushButton#loginAccountAction:pressed { color: #7a2f52; }"
-            "QPushButton#loginAccountAction:disabled { color: #a69ba2; }"
-        )
+        self.setStyleSheet(login_qss())
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setContentsMargins(28, 22, 28, 18)
         outer.setSpacing(8)
         self.brand_widgets = []
-        brand = QFrame()
+        brand = QSvgWidget()
         brand.setObjectName("loginBrandMark")
-        brand.setFixedSize(64, 64)
-        brand_row = QHBoxLayout(brand)
-        brand_row.setContentsMargins(0, 0, 0, 0)
-        leaf = QLabel("🌿")
-        leaf.setObjectName("loginLeaf")
-        leaf.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_row.addWidget(leaf)
+        brand.load(QByteArray(BRAND_SVG.encode("utf-8")))
+        brand.setFixedSize(60, 60)
         brand_wrap = QHBoxLayout()
         brand_wrap.addStretch(1)
         brand_wrap.addWidget(brand)
@@ -98,7 +142,7 @@ class LoginGateWindow(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(title)
         self.brand_widgets.append(title)
-        subtitle = QLabel("登录并管理你的账号")
+        subtitle = QLabel("你的 AI 学习导师")
         subtitle.setObjectName("loginSubtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(subtitle)
@@ -108,8 +152,8 @@ class LoginGateWindow(QWidget):
         self.login_card = card
         card.setObjectName("loginCard")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(26, 24, 26, 24)
-        card_layout.setSpacing(11)
+        card_layout.setContentsMargins(28, 26, 28, 26)
+        card_layout.setSpacing(12)
         card.setMinimumHeight(230)
         self.content_layout = card_layout
         self.auth_content = None
@@ -122,17 +166,21 @@ class LoginGateWindow(QWidget):
         self.state_detail.setObjectName("loginStateDetail")
         self.state_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.state_detail.setWordWrap(True)
-        self.state_detail.setMinimumHeight(54)
+        self.state_detail.setMinimumHeight(40)
         card_layout.addWidget(self.state_detail)
         account_row = QHBoxLayout()
         self.account_selector = QComboBox()
         self.account_selector.setAccessibleName('本机账号列表')
         self.account_selector.activated.connect(lambda _: self.account_selected.emit(self.account_selector.currentData() or ''))
-        self.add_account_button = QPushButton('添加账号')
+        self.add_account_button = QPushButton('添加')
         self.add_account_button.clicked.connect(self.cancel_requested.emit)
-        self.remove_account_button = QPushButton('移除本机账号')
+        self.remove_account_button = QPushButton('移除')
         self.remove_account_button.setToolTip('只移除本机账号与凭据；服务器账号及学习资料保留。')
         self.remove_account_button.clicked.connect(lambda: self.account_remove_requested.emit(self.account_selector.currentData() or ''))
+        self.add_account_button.setToolTip('登录另一个账号')
+        for button in (self.add_account_button, self.remove_account_button):
+            button.setObjectName('loginSmallButton')
+        account_row.setSpacing(8)
         account_row.addWidget(self.account_selector,1)
         account_row.addWidget(self.add_account_button)
         account_row.addWidget(self.remove_account_button)
@@ -153,11 +201,14 @@ class LoginGateWindow(QWidget):
         self.show_password.toggled.connect(lambda visible: self.password_field.setEchoMode(
             QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password))
         self.password_field.returnPressed.connect(self._activate)
-        for widget in (self.username_field, self.password_field, self.show_password):
+        for widget in (self.username_field, self.password_field):
             card_layout.addWidget(widget)
-        for field in (self.username_field, self.password_field):
-            field.setMinimumHeight(40)
-            field.setStyleSheet('QLineEdit {padding: 4px 10px; border: 1px solid #cbb4c1; border-radius: 6px;}')
+        # Options on one row inside the card (show password, remember password, auto login).
+        options = QHBoxLayout()
+        options.setSpacing(18)
+        self.options_row = options
+        options.addWidget(self.show_password)
+        card_layout.addLayout(options)
         self.primary_button = QPushButton("登录 MentorFlow")
         self.primary_button.setObjectName("loginPrimaryButton")
         self.primary_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -176,8 +227,10 @@ class LoginGateWindow(QWidget):
         self.remember_password_box = QCheckBox('记住密码')
         self.remember_password_box.setObjectName('rememberPasswordCheckBox')
         self.remember_password_box.setToolTip('密码仅保存在此设备的 Windows 凭据管理器；30天未登录后失效，成功登录续期。')
-        outer.addWidget(self.remember_password_box)
-        outer.addWidget(self.auto_box)
+        self.auto_box.setToolTip('打开软件时自动登录这个账号')
+        options.addWidget(self.remember_password_box)
+        options.addWidget(self.auto_box)
+        options.addStretch(1)
         def synchronize_consent():
             self.remember_box.setChecked(self.remember_password_box.isChecked() or self.auto_box.isChecked())
             self.auto_box.setEnabled(True)
@@ -186,7 +239,6 @@ class LoginGateWindow(QWidget):
         self.auto_box.setEnabled(True)
         self.cancel_button = QPushButton("取消并选择其他账号")
         self.cancel_button.setObjectName("loginCancelButton")
-        self.cancel_button.setStyleSheet('min-height: 24px; padding: 3px;')
         self.cancel_button.clicked.connect(self.cancel_requested)
         outer.addWidget(self.cancel_button)
         self.notice_label = QLabel()
@@ -203,10 +255,16 @@ class LoginGateWindow(QWidget):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setEnabled(False)
             account_actions.addWidget(button)
+            if button is self.register_button:
+                account_actions.addStretch(1)
         self.register_button.clicked.connect(lambda: self._account_action('register'))
         self.forgot_password_button.clicked.connect(lambda: self._account_action('forgot_password'))
         card_layout.insertLayout(card_layout.indexOf(self.primary_button), account_actions)
         self.cancel_button.hide()
+        # Everything clickable shows a hand cursor.
+        for kind in (QPushButton, QCheckBox, QComboBox):
+            for widget in self.findChildren(kind):
+                widget.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
 
 
