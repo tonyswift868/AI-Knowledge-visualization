@@ -1357,3 +1357,5 @@ B. 客户端注册页（refactor\desktop）
 【MF-02｜runtime｜第六批｜完成/部分完成/受阻】
 基线：184b2f2 ／ 提交 ／ 用例数量（A / B 各多少）／ A 类通过率与主要失败 ／ 实际花费 ／ 发现的产品问题 ／ 问题记录（现象、原因、解决、验证）
 ~~~
+
+6-MF07 澄清（2026-09-28，架构师只读查询线上后答复 MF-07 关于 MF-U11 的提问）：线上 Keycloak 容器 mentorflow-e1-preview-keycloak-1，镜像 mentorflow-r2-keycloak:37f9507（sha256:a744677a8b4682c2d64064f89af21c9db688fa68baaac616cc0611231c5871a5，2026-09-17 构建）；启动 /bin/sh -ec，读 /run/secrets 后 exec kc.sh start --optimized --import-realm，要求 /opt/keycloak/conf/mentorflow-optimized-v1；扩展 jar 打在镜像内 /opt/keycloak/providers/mentorflow-native-verifier.jar（46157 字节，sha256 367ab6e6724816eb3f06831d334c0fee096ee41e808f13d9d77f383ee34ec46b），providers 未挂载；主题与 realm 导入文件以只读方式从 /opt/mentorflow/releases/1531c65116063ec606ed1c623acd29fb68e9e8b7-exact-source 挂载。线上 jar 本地副本未取得（从生产取文件需用户另行授权），改为部署包在服务器上预检比对。
