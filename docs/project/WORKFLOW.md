@@ -14,8 +14,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | `509c535`（2026-09-27，main，含新界面第 1 步、验收修复与新界面教师闲聊）；更早批次见任务行 |
-| 说明 | 第五批只派 MF-07：闲聊同步与新窗口接入同步服务；其余员工暂无必要任务，架构师继续前端（新建计划链路） |
+| 基线提交 | `f27737f`（2026-09-28，main，含新建计划链路、验收修复、ACC-02 新要求）；更早批次见任务行 |
+| 说明 | 第六批只派 MF-07：注册与找回密码改为软件内邮箱验证码（服务器 + 身份系统扩展 + 注册页逻辑 + 部署包）；架构师同时重做登录窗口外观 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -23,7 +23,7 @@
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 6-MF07 进行中 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
@@ -55,6 +55,7 @@
 | 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已合入 |
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
 | 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已合入（见第五批审查记录） |
+| 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1181,3 +1182,53 @@ B. 新窗口接入同步服务
 ~~~
 
 第五批审查记录（2026-09-27）：office/server a9808b8 改动在范围内，按补丁应用到 main。集成时发现 1 处测试竞态：test_closing_services_does_not_wait_for_legacy_file_read 结束时后台线程仍在读旧 JSON，Windows 下临时目录删除偶发失败；已让测试等该线程读完再清理（产品行为不变）。同时 E 盘（USB 外接盘）在 20:59 因坏块掉盘，测试临时目录从 E 盘改到 D:\MentorFlow\.local\test-tmp（见 ENV-01），以后任务的测试临时文件一律放 D 盘。合并后客户端 948 通过、2 跳过（连续多次运行稳定）。
+
+## 第六批任务详情
+
+### [6-MF07] server｜注册与找回密码改为软件内邮箱验证码
+
+~~~text
+【MentorFlow 第六批｜MF-07（工位 server）｜注册与找回密码改为软件内邮箱验证码】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard f27737f
+后端测试用 D:\MentorFlow-office\server\.venv-backend；客户端测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署（部署包只写不执行）。所有测试临时文件、日志放 D 盘（D:\MentorFlow-office\server\temp 或 D:\MentorFlow\.local\test-tmp），不要写 E 盘（原因见 CURRENT_STATE 的 BUG-02）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ACC-02]（本任务需求，2026-09-28 用户改定）、[ACC-01]、[ARCH-05]（部署记录与 MF-U09 教训）、[BUG-06]。
+
+用户反馈的问题（2026-09-28 实测）
+  1. 在软件里注册（填了账号、邮箱、密码）后，邮件是一个验证链接；点开后进入 Keycloak 的英文“Update password / You need to change your password to activate your account”页，用户刚设好密码却被要求改密。
+  2. 用户要求：注册、找回密码凡是要验证邮箱的，一律把 6 位验证码发到邮箱，用户在软件里填，不再跳网页。
+已查到的原因与现有部件（架构师梳理，你开工后自己核实）
+  - deploy\enterprise\auth-email-security\realm-policy.json 把 UPDATE_PASSWORD 设为默认必需操作（defaultAction true），新建账号会被自动挂上；backend\app\enterprise\identity\account_lifecycle.py create_account 已设永久密码并只请求 VERIFY_EMAIL；send_verification 用 Keycloak 自带的“验证邮件链接”。
+  - 已有的 6 位邮箱验证码：Keycloak 扩展 deploy\enterprise\native-identity-verifier 的 EmailCodeBinding.java（账号设置里绑定邮箱，需已登录）与 EmailCodeReset.java（匿名找回密码，只对已验证邮箱有效）；后端 backend\app\enterprise\identity\lifecycle_api.py 的 /email-code/*、/reset-code/*；客户端 refactor\desktop\lifecycle_pane.py、lifecycle_client.py、resources\account-lifecycle\（lifecycle.html 与 js）。
+  - 未验证邮箱的账号无法登录（NativeIdentityVerifier 返回挑战，客户端显示“此账号需要额外验证”），所以注册验证不能走需要登录的 /email-code/*。
+
+范围与要求
+A. 服务器与身份系统
+  1. 新注册账号不再被要求改密码：realm 策略里 UPDATE_PASSWORD 不再是新账号的默认必需操作（同步改 policy 文件、应用脚本、test_policy_contract 等）；确认找回密码、管理员强制改密等仍需 UPDATE_PASSWORD 的路径不受影响。
+  2. 注册验证码：POST /register 创建账号后，由服务器发 6 位验证码邮件（邮件文案按注册来写：中文、说明 10 分钟有效、“请在 MentorFlow 注册页面输入”），返回一个不透明的注册凭据（不含也推不出账号 ID；服务器端映射到账号，10 分钟有效、一次性）。新增匿名接口：
+       - 提交验证码：{凭据, 6 位码} → 成功后邮箱标记已验证、移除 VERIFY_EMAIL（以及注册带上的其他必需操作），账号可以直接登录；
+       - 重新发送：{凭据} → 60 秒冷却、每小时上限；
+     安全要求沿用现有验证码机制的做法：码只存哈希、常量时间比较、错 5 次作废、按 IP 与按凭据限流、不泄露“某邮箱/账号是否存在”之外的信息（查重接口现有行为不变）；账号 ID 只从服务器端映射取得，绝不从请求里读。
+     可以复用 EmailCodeBinding/EmailCodeReset 的逻辑，或在扩展里新增一个“注册验证”操作；二选一，回执里说明理由。
+  3. 注册没完成的账号不能卡死用户：同一邮箱/账号名的未验证注册，在验证码过期后再次注册时应能重新开始（例如删除超过有效期且从未验证的自助注册账号后重建，或复用原账号重新发码——选一种，回执说明）；只处理“自助注册且从未验证”的账号，绝不动其他账号。
+  4. 找回密码：确认客户端走的是软件内验证码流程（/reset-code/*），不再走发链接的 execute-actions-email；如仍有入口会发链接，改掉。邮件文案说明在 MentorFlow 软件里输入。
+  5. 修改密码（账号设置里，已登录）保持“当前密码 + 新密码”，本任务不改。
+  6. 部署包 deploy\enterprise\staging\rp05\mf-u11\：以线上 MF-U10 为底，只覆盖本任务改动（后端文件、Keycloak 扩展 jar、realm 策略）；沿用 MF-U10 的做法：启动前导入检查、不健康自动回滚、默认只打印命令、显式参数才执行；写清部署顺序、回滚、上线后验证步骤（含用新邮箱实际注册一次、找回密码一次）。另附一个只读检查脚本：列出服务器上“自助注册、邮箱未验证”的账号（只打印，不删除），部署后由架构师与用户决定如何处理。
+B. 客户端注册页（refactor\desktop）
+  1. 注册成功后进入“输入验证码”界面：显示打码后的邮箱、6 位输入框、“重新发送”（倒计时）、错误提示（码错、过期、次数用完→可重新发送）；验证成功后回到登录界面，账号名自动填好，提示“注册成功，请登录”。
+  2. 找回密码同样全程在软件内完成（输邮箱→收码→填码→设新密码）。
+  3. 文件分工（架构师同时在改登录窗口外观）：你可以改 lifecycle_pane.py、lifecycle_client.py、account-lifecycle 目录下的 html 与 js、account_shell_main.py 里的 _begin_account_action / _return_from_account_action；不要改 login_shell.py、account_shell_main.py 的账号下拉框标签（约 241 行）、account-lifecycle 目录下的两个 css 文件、dialog_theme.py、account_settings_page.py。新界面元素尽量复用现有 css 类；确需新样式时在回执里列出元素和类名，架构师统一补样式。
+
+验收
+  后端：.venv-backend 跑账号相关全部测试（test_account_lifecycle_admin、test_account_mvp_wiring、test_account_core_mvp_runtime、test_account_email_binding、test_email_code_reset、test_change_password_binding、auth-email-security 的 test_policy_contract 等）并新增：注册发码、提交正确/错误/过期/超次数、重发冷却与上限、凭据一次性与不可推出账号、未完成注册的重新开始、找回密码走码不走链接。Keycloak 扩展有 Java 测试的一并跑；能在隔离 Keycloak（如上次 MF-D04 的做法）实测注册→填码→登录全流程最好，做不到写明。
+  客户端：D:\MentorFlow\.venv\Scripts\python.exe -m pytest tests/refactor -q -p no:cacheprovider 全部通过；新增 tests/refactor/account_lifecycle/（文件名全局不重名）覆盖新客户端接口与桥接（用 httpx.MockTransport 模拟服务器）。
+
+回执
+【MF-07｜server｜第六批｜完成/部分完成/受阻】
+基线：f27737f ／ 提交：office/server 上的编号 ／ A：方案（复用还是新增扩展操作、未完成注册怎么处理）、接口与邮件文案、部署包清单 ／ B：界面流程、新增 css 类 ／ 问题记录：本次遇到的问题按“现象、原因、解决、验证”写几条（架构师据此写 BUG 条目） ／ 验证：命令与结果 ／ 未完成
+~~~
