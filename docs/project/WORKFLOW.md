@@ -1292,7 +1292,7 @@ B. 客户端注册页（refactor\desktop）
   1. 写一个真实模型实验脚本（放 tests/refactor/eval_plan/，文件名全局不重名；默认跳过，只有设置环境变量 MF_LIVE_EVAL=1 才运行）。直接调用 PlanFlow（参考 tests/refactor/app/test_app_plan_flow.py 的接法），不通过界面。
      - 模型：用管理员账号的模型连接：ModelGateway("mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932", r"D:\MentorFlowData\account-shell")，Key 从 Windows 凭据读取，不要打印、不要写进任何文件。
      - 数据：计划、资料、草稿全部写到 D:\MentorFlow\.local\test-tmp\eval-plan\ 下的新目录（AppServices 的 data_root 指向这里），绝不写入管理员的真实数据目录；用量记录会记到管理员账号，这是预期的。
-     - 资料：用户指定用 GitHub 上的 datawhalechina/hello-agents（在对话里贴仓库地址即可，会读取仓库文档）。全书很大；为了省钱，把目标限定在前几章（例如“智能体基础与经典范式”），或用 github_repo 的子目录地址只读部分章节。用户还提到一本 Agent Book，链接待用户给出，拿到前只用 hello-agents。
+     - 资料：用户指定用 GitHub 上的 datawhalechina/hello-agents（在对话里贴仓库地址即可，会读取仓库文档）。全书很大；为了省钱，把目标限定在前几章（例如“智能体基础与经典范式”），或用 github_repo 的子目录地址只读部分章节。用户指定的第二份资料是 Agent Book：https://github.com/bojieli/ai-agent-book（《深入理解 AI Agent：设计原理与工程实践》，会读取 book/ 下中文正文 13 篇，约 47.5 万字）；两份都贴进对话即可。
      - 固定其他条件，每次只改一个变量。至少做这几组：
          a. 水平：零基础 vs 比较熟练（目标、日期、上限都相同）
          b. 每日任务时长上限与日期：宽松（每天 120 分钟、6 周）vs 紧张（每天 30 分钟、2 周）

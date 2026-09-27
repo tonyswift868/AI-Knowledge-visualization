@@ -38,7 +38,8 @@ class RepoImportError(Exception):
 
 def parse(url: str):
     """(owner, repo, branch or None, subpath or '') for a repository URL, else None."""
-    match = REPO_URL.match((url or "").strip())
+    # Shared links often carry tracking parameters (?utm_source=…) or anchors.
+    match = REPO_URL.match(re.split(r"[?#]", (url or "").strip(), maxsplit=1)[0])
     if not match or match.group(1).lower() in {"orgs", "topics", "search", "settings", "marketplace", "sponsors", "features", "about"}:
         return None
     owner, repo, branch, sub = match.groups()
@@ -49,17 +50,96 @@ def _natural(path):
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", path)]
 
 
-def pick_files(paths, subpath=""):
-    """Documentation Markdown files in reading order; a Chinese copy wins over an English one."""
+CHAPTER = re.compile(r"(?i)(chapter|chap|ch|lesson|lecture|part|unit|week|day)[-_ ]?\d+|第.{1,4}[章讲节课]|^\d{1,3}[-_. ]")
+INTRO = re.compile(r"(?i)^(readme|index|intro|introduction|preface|前言|序言|简介|引言)\.m")
+
+
+VARIANT = re.compile(r"(?i)^(?P<base>.+?)[-_.](?P<code>[a-z]{2}(?:[-_][a-z]{2,4})?|[a-z]{4})$")
+CHINESE_CODE = re.compile(r"(?i)^(zh|zh[-_]?(cn|hans|sc)|cn|chs)$")
+
+
+def _variant(name, siblings):
+    """(base, code) when `name` is a language copy of a sibling, e.g. book-hu next to book."""
+    m = VARIANT.match(name)
+    if m and m.group("base") in siblings:
+        return m.group("base"), m.group("code")
+    return None
+
+
+def drop_translations(paths):
+    """Keep one language per book: the Chinese copy when there is one, otherwise the original.
+
+    Generic, no language list: "X-code" / "X.code" / "X_code" is a copy of X when X also
+    exists next to it (folders: book vs book-hu; files: README.md vs README.ja.md).
+    """
+    dirs_by_parent, files_by_parent = {}, {}
+    for path in paths:
+        parts = path.split("/")
+        for i in range(len(parts) - 1):
+            dirs_by_parent.setdefault("/".join(parts[:i]), set()).add(parts[i])
+        stem = parts[-1].rsplit(".", 1)[0]
+        files_by_parent.setdefault("/".join(parts[:-1]), set()).add(stem)
+
+    def keep_dir(parent, name):
+        siblings = dirs_by_parent.get(parent, set())
+        hit = _variant(name, siblings)
+        if hit:                                  # a copy: keep only if it is the Chinese one
+            return bool(CHINESE_CODE.match(hit[1]))
+        chinese = [n for n in siblings if (v := _variant(n, siblings)) and v[0] == name and CHINESE_CODE.match(v[1])]
+        return not chinese                       # an original with a Chinese copy gives way
+
+    def keep_file(parent, stem):
+        siblings = files_by_parent.get(parent, set())
+        hit = _variant(stem, siblings)
+        if hit:
+            return bool(CHINESE_CODE.match(hit[1]))
+        chinese = [n for n in siblings if (v := _variant(n, siblings)) and v[0] == stem and CHINESE_CODE.match(v[1])]
+        return not chinese
+
+    kept = []
+    for path in paths:
+        parts = path.split("/")
+        if all(keep_dir("/".join(parts[:i]), parts[i]) for i in range(len(parts) - 1)) and \
+                keep_file("/".join(parts[:-1]), parts[-1].rsplit(".", 1)[0]):
+            kept.append(path)
+    return kept
+
+
+def _chapterish(path, root):
+    """A chapter-like file within two levels of the root (deeper files are data sets, assets, …)."""
+    rest = (path[len(root) + 1:] if root else path).split("/")
+    return len(rest) <= 2 and any(CHAPTER.search(part) for part in rest)
+
+
+def pick_files(paths, subpath="", sizes=None):
+    """The book's Markdown files in reading order.
+
+    Translations are dropped when an untranslated copy exists. Without a subpath,
+    the top-level folder whose chapter-like files hold the most text is the book
+    (docs/, book/, …; a folder that is itself one chapter, e.g. chapter3/, is not);
+    a Chinese copy wins over an English one in bilingual folders. sizes maps path
+    to bytes (from the tree listing); without it every file counts as 1.
+    """
+    sizes = sizes or {}
     md = [p for p in paths if p.lower().endswith((".md", ".markdown")) and not SKIP_NAMES.search(p) and not SKIP_DIRS.search(p)]
+    md = drop_translations(md) or md
     if subpath:
         md = [p for p in md if p == subpath or p.startswith(subpath + "/")]
     else:
-        for folder in DOC_DIRS:
-            inside = [p for p in md if p.lower().startswith(folder + "/")]
-            if len(inside) >= 2:
-                md = inside
-                break
+        roots = {}
+        for path in md:
+            roots.setdefault(path.split("/", 1)[0] if "/" in path else "", []).append(path)
+        scored = sorted(((sum(sizes.get(p, 1) for p in items if _chapterish(p, r)),
+                          sum(_chapterish(p, r) for p in items), r)
+                         for r, items in roots.items() if r and not CHAPTER.search(r)), reverse=True)
+        if scored and scored[0][1] >= 2:
+            md = roots[scored[0][2]]
+        else:
+            for folder in DOC_DIRS:
+                inside = [p for p in md if p.lower().startswith(folder + "/")]
+                if len(inside) >= 2:
+                    md = inside
+                    break
     non_english = [p for p in md if not ENGLISH.search(p)]
     if non_english and len(non_english) < len(md):
         md = non_english
@@ -71,14 +151,22 @@ def pick_files(paths, subpath=""):
     for items in folders.values():
         chinese = [p for p in items if CJK.search(p.rsplit("/", 1)[-1])]
         kept.extend(chinese if chinese and len(chinese) < len(items) else items)
-    # Top-level files before chapter folders; an intro (README / index / 前言) leads its folder.
-    intro = re.compile(r"(?i)^(readme|index|intro|introduction|preface|前言|序言|简介)\.m")
-    return sorted(kept, key=lambda p: (p.count("/"), not intro.match(p.rsplit("/", 1)[-1]), _natural(p)))
+
+    def order(path):
+        name = path.rsplit("/", 1)[-1]
+        rank = 0 if INTRO.match(name) else 1 if CHAPTER.search(path) else 2   # afterword / answers go last
+        return path.count("/"), rank, _natural(path)
+    return sorted(kept, key=order)
 
 
 def cjk_share(text):
     letters = sum(1 for ch in text if ch.isalpha())
     return len(CJK.findall(text)) / letters if letters else 0.0
+
+
+def _clean(heading):
+    """Drop Pandoc/kramdown attributes such as "{.unnumbered}" or "{#sec-intro}" from a heading."""
+    return re.sub(r"\s*\{[^{}]*\}\s*$", "", heading or "").strip()
 
 
 def _json(fetch, url, cancel):
@@ -110,9 +198,10 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
         raise RepoImportError("GITHUB_NOT_FOUND", "找不到这个仓库，或它不是公开仓库。")
     branch = branch or meta.get("default_branch") or "main"
     tree = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(branch, safe='')}?recursive=1", cancel)
-    paths = [item["path"] for item in (tree.get("tree") or []) if isinstance(item, dict) and item.get("type") == "blob"
-             and isinstance(item.get("path"), str)]
-    files = pick_files(paths, subpath)
+    entries = [item for item in (tree.get("tree") or []) if isinstance(item, dict) and item.get("type") == "blob"
+               and isinstance(item.get("path"), str)]
+    files = pick_files([e["path"] for e in entries], subpath,
+                       {e["path"]: e["size"] for e in entries if type(e.get("size")) is int})
     if not files:
         raise RepoImportError("NO_DOCS", "这个仓库里没有找到 Markdown 文档。")
     warnings = []
@@ -137,10 +226,10 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
         elif chinese_seen and share < 0.02:
             warnings.append(f"{path} 是另一种语言的重复版本，已跳过。")
             continue
-        chapter = (doc.title or path).strip()[:80]
+        chapter = _clean(doc.title or path)[:80]
         digest.update(path.encode("utf-8") + b"\0" + body + b"\0")
         for block in doc.blocks:
-            rest = tuple(s for s in block.section if s != chapter)[:2]
+            rest = tuple(t for t in (_clean(s) for s in block.section) if t and t != chapter)[:2]
             blocks.append(TextBlock(block.text, block.kind, None, (chapter,) + rest))
     if not blocks:
         raise RepoImportError("NO_DOCS", "仓库里的文档都没有可用正文。")
@@ -150,7 +239,8 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
     document = ExtractedDocument(title[:200], "text/markdown", sha,
                                  sum(len(b.text) for b in blocks) + 2 * (len(blocks) - 1), tuple(blocks), chunks, tuple(warnings))
     canonical = f"https://github.com/{owner}/{repo}" + (f"/tree/{branch}/{subpath}" if subpath else "")
-    summary = (meta.get("description") or "") + f"（读取了 {len({b.section[0] for b in blocks})} 篇文档）"
+    folder = files[0].rsplit("/", 1)[0].split("/")[0] + "/" if "/" in files[0] else "仓库根目录"
+    summary = (meta.get("description") or "") +         f"（读取了 {folder} 下 {len({b.section[0] for b in blocks})} 篇文档；要读其他部分可以贴对应子目录的地址）"
     return VerifiedSource(canonical, canonical, title[:200], "github.com", tier if tier in {"whitelist", "neutral", "low"} else "neutral",
                           "repository", ("github_docs",), document, summary[:500],
                           datetime.now(timezone.utc).isoformat(), sha)
