@@ -22,13 +22,13 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 6-MF03 进行中 |
-| MF-07（server） | D:\MentorFlow-office\server | 6-MF07 进行中 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 6-MF02 进行中 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 6-MF04 进行中 |
-| MF-01（library） | D:\MentorFlow-office\library | 6-MF01 进行中 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 6-MF06 进行中 |
-| MF-05（tools） | D:\MentorFlow-office\tools | 6-MF05 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
 
@@ -55,13 +55,13 @@
 | 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已合入 |
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
 | 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已合入（见第五批审查记录） |
-| 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已派发 |
-| 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | 6bf5524 | 已派发 |
-| 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | 6bf5524 | 已派发 |
-| 6-MF02 | MF-02 runtime | 新建计划对话用例集：写全各类说法与预期；现在只用真实模型测已支持的几类，已知未支持的只备用例（花费上限 ¥5） | ARCH-06、PLAN-01、PLAN-02、PLAN-06、PLAN-07 | 184b2f2 | 已派发 |
-| 6-MF05 | MF-05 tools | 新建计划“意图判断”组件：提示、输出格式、严格校验与离线测试（架构师负责接入流程与界面） | ARCH-04、ARCH-06、PLAN-07 | ce512bf | 已派发 |
-| 6-MF06 | MF-06 classroom | 新界面 Live2D 老师组件（椿）：舞台、待机、嘴型、点头/摇头接口、资源加载 | TEACH-05、VOICE-01、UI-00 | 69836b6 | 已派发 |
-| 6-MF01 | MF-01 library | 课堂判定 agent 与出题 agent 组件：提示、格式、严格校验、离线测试与小额真实抽查 | TEACH-02、TEACH-04、TEACH-06、ARCH-07、CHK-01 | 69836b6 | 已派发 |
+| 6-MF07 | MF-07 server | 注册、找回密码改为软件内邮箱验证码；新注册不再要求改密；MF-U11 部署包 | ACC-02 | f27737f | 已合入（acadcb7） |
+| 6-MF03 | MF-03 client | 长时间跨度模拟：用模拟时钟跑完数周学习，核对欠账/超前/逾期/刷新时间/深夜归属等（离线、不花钱） | PLAN-05、TEACH-05、SYS-04 | 6bf5524 | 已合入（c9666b9） |
+| 6-MF04 | MF-04 platform | 计划参数对照：同一目标只改水平/时长/日期等，用真实模型生成并量化比较、盲评，结论写报告（花费上限 ¥15） | PLAN-01、PLAN-02、PLAN-04、ARCH-06 | 6bf5524 | 已合入（8164eda） |
+| 6-MF02 | MF-02 runtime | 新建计划对话用例集：写全各类说法与预期；现在只用真实模型测已支持的几类，已知未支持的只备用例（花费上限 ¥5） | ARCH-06、PLAN-01、PLAN-02、PLAN-06、PLAN-07 | 184b2f2 | 已合入（476f4eb） |
+| 6-MF05 | MF-05 tools | 新建计划“意图判断”组件：提示、输出格式、严格校验与离线测试（架构师负责接入流程与界面） | ARCH-04、ARCH-06、PLAN-07 | ce512bf | 已合入（8c4c0cd） |
+| 6-MF06 | MF-06 classroom | 新界面 Live2D 老师组件（椿）：舞台、待机、嘴型、点头/摇头接口、资源加载 | TEACH-05、VOICE-01、UI-00 | 69836b6 | 已合入（152598c） |
+| 6-MF01 | MF-01 library | 课堂判定 agent 与出题 agent 组件：提示、格式、严格校验、离线测试与小额真实抽查 | TEACH-02、TEACH-04、TEACH-06、ARCH-07、CHK-01 | 69836b6 | 已合入（1862169） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1511,3 +1511,9 @@ B. refactor/learning/course/question_agent.py
 【MF-01｜library｜第六批｜完成/部分完成/受阻】
 基线：69836b6 ／ 提交 ／ 接口是否与本任务一致（有调整逐条说明理由）／ 抽查结果与典型问题 ／ 实际花费 ／ 问题记录（现象、原因、解决、验证）
 ~~~
+
+第六批审查记录（2026-09-28）：7 个分支改动均在范围内，按补丁合入 main（5a68e7d、874c816、59284fc）。
+- 6-MF06 放宽了页面 CSP（mentorflow://assets 的脚本/连接、wasm-unsafe-eval），资源放行只认按模型清单预建的白名单、只接受 GET、拒绝查询参数与越界路径，审查通过。
+- 6-MF07 的注册接口、身份扩展 RegistrationCodes 审查通过（凭据只从服务器端映射取账号、常量时间比较、错 5 次作废、一次性使用、只重开“有标记且未验证”的账号）；合并时部署包文件被本机 autocrlf 转成 CRLF 导致哈希测试失败，从索引重新检出后通过（BUG-12）。MF-U11 未部署，待用户批准。
+- 全部合并后：客户端 1313 通过、6 跳过；关键后端测试 86 项（含部署包 10 项）通过；web 构建与类型检查通过。
+- 回执中的产品问题已写入 CURRENT_STATE：BUG-11～BUG-16。
