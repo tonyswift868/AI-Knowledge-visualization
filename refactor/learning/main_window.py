@@ -66,7 +66,7 @@ class UnavailablePage(QWidget):
         self.setEnabled(False)
 
 
-class LearningWindow(QWidget):
+class LegacyLearningWindow(QWidget):
     switch_requested = Signal()
     logout_requested = Signal()
     verify_requested = Signal()
@@ -929,3 +929,14 @@ class LearningWindow(QWidget):
     def closeEvent(self, event) -> None:
         self.dispose()
         super().closeEvent(event)
+
+
+# The account shell imports ``LearningWindow`` from here. The new single-page
+# window (ARCH-01) is the default; MENTORFLOW_LEGACY_UI=1 keeps the old pages
+# available until the new ones replace them.
+import os as _os
+
+if _os.environ.get("MENTORFLOW_LEGACY_UI") == "1":
+    LearningWindow = LegacyLearningWindow
+else:
+    from .app.window import LearningWindow  # noqa: E402,F401
